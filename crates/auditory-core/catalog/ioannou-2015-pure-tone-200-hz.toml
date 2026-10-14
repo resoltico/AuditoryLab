@@ -1,19 +1,21 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
 # Source: Materials and Methods.
-schema_version = 1
+schema_version = 2
 duration_seconds = 60.0
 fade_seconds = 0.1
 
-[provenance]
+[about]
 title = "200 Hz pure tone"
+studied_for = "Comparison sound in a brain-rhythm study"
+summary = "A steady 200 Hz tone in both ears: the comparison minute that came before every binaural beat in a study of 32 adults' brain responses while they watched a silent film. The comparison helped researchers measure responses to the beats; responses were strongest for beats near 10 per second. The study did not test a wellbeing benefit."
 citation = "Ioannou CI, Pereda E, Lindsen JP, Bhattacharya J (2015). Electrical brain responses to an auditory illusion and the impact of musical expertise. PLoS ONE 10(6): e0129486."
 source_url = "https://doi.org/10.1371/journal.pone.0129486"
-description = "The non-binaural minute that preceded the binaural minute of every block: 200 Hz in both ears. Sixteen musicians and sixteen non-musicians watched a silent subtitled film during EEG while 34 blocks played, each 20 s of silence, 1 minute of 200 Hz in both ears, then 1 minute of a binaural beat from 1 to 48 Hz. Beats in the alpha band, 9 to 12 Hz, gave the strongest steady-state responses."
-adaptation = "Volume was set by each participant; the source states no phase, ramps or sample rate. Tones start at phase zero at -20 dBFS, uncalibrated, with 0.1 s fades added. The silent interval and the block sequence are not part of this preset."
+study = "The non-binaural minute that preceded the binaural minute of every block: 200 Hz in both ears. Sixteen musicians and sixteen non-musicians watched a silent subtitled film during EEG while 34 blocks played, each 20 s of silence, 1 minute of 200 Hz in both ears, then 1 minute of a binaural beat from 1 to 48 Hz. Beats in the alpha band, 9 to 12 Hz, gave the strongest steady-state responses."
+adaptation = "Volume was set by each participant; the source states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added. The silent interval and the block sequence are not part of this preset."
 
 [[component]]
 ears = "both"
 kind = "tone"
 frequency_hz = 200.0
-level_dbfs = -20.0
+peak_dbfs = -20.0

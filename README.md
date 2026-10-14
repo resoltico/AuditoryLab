@@ -1,68 +1,82 @@
 # Auditory Lab
 
-Auditory Lab composes tones, rectangular clicks and sinusoidal amplitude modulation into stereo stimuli. It can inspect a preset, export a float WAV file, or play through the configured default output. An embedded catalog contains selected published sound parameters with their sources and adaptations.
+Auditory Lab plays and exports sounds used in hearing and brain-rhythm research: binaural and monaural beats, steady and amplitude-modulated tones, click trains and pulsed tones. Each built-in sound comes from a published study. It says in plain words what the study tested and found, and gives the citation and every way the sound differs from the study's. You can also write your own sounds as small text files.
 
-## Quick start
+It runs in a terminal on macOS, Linux and Windows. It describes a sound, saves it as a WAV file, or plays it through the default audio output.
 
-Download the archive for your operating system and CPU from [Releases](https://github.com/resoltico/AuditoryLab/releases/latest). macOS 15 or later is required; Intel and Apple Silicon have separate ZIPs. Verify the download against `SHA256SUMS`, extract it and follow its `INSTALL.txt`; `USAGE.txt` gives commands. Mac executables are ad hoc signed and are not Apple notarized. The archive explains the app-specific security approval if macOS blocks a trusted download.
+## Listening safely
 
-Run `./auditory-lab list` on macOS/Linux or `.\auditory-lab.exe list` in PowerShell 7+ on Windows from the extracted folder to discover the embedded presets. No compiler or checkout is needed for the downloaded executable. Windows examples and verification scripts require [PowerShell 7 or later](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows); the executable itself has no PowerShell dependency.
+Turn the volume down before playing anything, then raise it slowly. Digital levels do not limit how loud a sound is, and long sessions at high volume can damage hearing. Binaural beats need headphones, because each ear must hear its own tone.
 
-### Install from source
+Most of the studies behind these sounds are small, and their results are mixed. A sound's description reports what its study found.
 
-Install [rustup](https://rustup.rs/); [rust-toolchain.toml](rust-toolchain.toml) selects the compiler. Rust also needs the platform's native linker:
+## Download
+
+Download the archive for your system and processor from [Releases](https://github.com/resoltico/AuditoryLab/releases/latest), check it against that release's `SHA256SUMS`, and extract it. Follow the selected release's bundled instructions and platform requirements; for online instructions, open its tag and read that version's README. Use the downloaded executable's `--help` for its supported commands and options.
+
+## Use
+
+These examples and the linked usage and preset guides describe this checkout. [Install from source](#install-from-source) to build it, then run these commands in a terminal.
+
+```sh
+auditory-lab list
+auditory-lab about beauchene-2016-binaural-15-hz
+auditory-lab play beauchene-2016-binaural-15-hz
+auditory-lab export beauchene-2016-binaural-15-hz --output beat.wav
+```
+
+To make your own version of a sound, save a built-in recipe, edit it in a text editor, then check and use it:
+
+```sh
+auditory-lab show chan-2022-clicks-40-hz --output my-clicks.toml
+auditory-lab inspect my-clicks.toml
+auditory-lab play my-clicks.toml
+```
+
+Ctrl-C stops playback or export. [Usage](docs/usage.md) covers every command and option, and [presets](docs/presets.md) the recipe format.
+
+## Install from source
+
+Install [rustup](https://rustup.rs/); [rust-toolchain.toml](rust-toolchain.toml) selects the compiler. On macOS and Linux, install the platform's linker and audio prerequisites:
 
 - macOS: Xcode Command Line Tools (`xcode-select --install`).
-- Linux: a C toolchain, ALSA headers and pkg-config; on Debian or Ubuntu, install `build-essential`, `libasound2-dev` and `pkg-config`.
-- Windows with MSVC: Visual Studio C++ Build Tools and a Windows SDK; follow rustup's setup prompts.
+- Linux: a C toolchain, ALSA headers and pkg-config; on Debian or Ubuntu, `build-essential`, `libasound2-dev` and `pkg-config`.
 
-See Rust's [installation guidance](https://doc.rust-lang.org/book/ch01-01-installation.html) for platform setup. Ensure Cargo's bin directory is on PATH so `auditory-lab` is found after installation.
-
-Obtain the source and install from its root:
+Then, from a clone of this repository on macOS or Linux:
 
 ```sh
-git clone https://github.com/resoltico/AuditoryLab.git
-cd AuditoryLab
 cargo install --locked --path crates/auditory-lab
-auditory-lab list
-auditory-lab inspect orozco-perez-2020-binaural-7-hz
-auditory-lab show chan-2022-clicks-40-hz > short-clicks.toml
 ```
 
-In PowerShell 7+, save with explicit UTF-8 encoding instead:
+On Windows, install the native GNU LLVM Rust host. For x86_64, run the downloaded rustup installer as:
 
-```powershell
-auditory-lab show chan-2022-clicks-40-hz | Out-File -Encoding utf8 -FilePath short-clicks.toml
+```text
+.\rustup-init.exe --default-host x86_64-pc-windows-gnullvm --default-toolchain none
 ```
 
-Edit `short-clicks.toml` to set `duration_seconds = 1.0` and update `provenance.adaptation` to describe the one-second copy. Then inspect and export it:
+Then open a terminal in a clone of this repository and run:
 
-```sh
-auditory-lab inspect short-clicks.toml
-auditory-lab export short-clicks.toml --output short-clicks.wav
+```text
+rustup toolchain install --component rust-mingw
+cargo install --locked --path crates/auditory-lab --target x86_64-pc-windows-gnullvm
 ```
 
-The installed executable works without the checkout. `list` shows durations; built-in conditions can last many minutes. Export requires a fresh destination and never replaces existing files.
+On ARM64, use `aarch64-pc-windows-gnullvm` in both commands that name a host or target. The repository selects the pinned compiler; its bundled `rust-mingw` and `rust-lld` provide the startup libraries and linker. Visual Studio C++ Build Tools and a separate C toolchain are not required for this application. Use an explicit native `--target` for Windows builds and checks, as described in [verification](docs/verification.md#standard-checks).
 
-**Set the output volume low before playback.** Digital levels do not limit sound pressure. Headphones preserve separate left/right ear routing; the program does not detect or calibrate them. To play the short copy:
+Windows executables built from this checkout need Windows 10 or later on x86_64, or Windows 11 on ARM64, with the system Universal C Runtime (UCRT). The x86_64 build requires SSE3, CMPXCHG16B and LAHF/SAHF instructions; see the [Windows build contract](docs/releasing.md#windows-build-contract).
 
-```sh
-auditory-lab play short-clicks.toml
-```
-
-Ctrl-C requests cancellation during export or playback. Forced termination may leave incomplete output. See [usage](docs/usage.md) for input, device and interruption details.
+Cargo installs `auditory-lab` into its bin directory, which must be on PATH.
 
 ## Documentation
 
-- [Usage](docs/usage.md): commands, input sources, output, errors and interruption.
-- [Presets](docs/presets.md): editable examples, fields, waveforms, levels and catalog sources.
-- [Architecture](docs/architecture.md): responsibilities, rendering and sink contracts.
-- [Contributing](CONTRIBUTING.md): change workflow, conventions and dependencies.
-- [Verification](docs/verification.md): checks, device tests and bounded mutation testing.
-- [Releasing](docs/releasing.md): native packages, release gates and publication.
-- [Changelog](CHANGELOG.md): public release outcomes and release notes.
-- [Security](SECURITY.md): private vulnerability reports.
+- [Usage](docs/usage.md): commands, input, output, errors and interruption.
+- [Presets](docs/presets.md): the recipe format, waveforms, levels and the built-in catalog.
+- [Architecture](docs/architecture.md): crates, rendering and output contracts.
+- [Contributing](CONTRIBUTING.md): changes, tests and dependencies.
+- [Verification](docs/verification.md): checks and device tests.
+- [Releasing](docs/releasing.md): building and publishing releases.
+- [Changelog](CHANGELOG.md) and [security](SECURITY.md).
 
 ## License
 
-Copyright © 2026 Ervins Strauhmanis. Source is available under the [Mozilla Public License 2.0](LICENSE). Dependencies retain their own licenses.
+Copyright © 2026 Ervins Strauhmanis. The source is available under the [Mozilla Public License 2.0](LICENSE). Third-party software in the executables is listed in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).

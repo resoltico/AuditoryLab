@@ -6,9 +6,10 @@ use crate::{Component, Ears, Modulation};
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::vec::Vec;
 
 const PAIR: &str = r#"# Two tones.
-schema_version = 1
+schema_version = 2
 duration_seconds = 10.0
 fade_seconds = 0.1
 
@@ -16,16 +17,16 @@ fade_seconds = 0.1
 ears = "left"
 kind = "tone"
 frequency_hz = 250.0
-level_dbfs = -20.0
+peak_dbfs = -20.0
 
 [[component]]
 ears = "right"
 kind = "tone"
 frequency_hz = 256.0
-level_dbfs = -20.0
+peak_dbfs = -20.0
 "#;
 
-const PROVENANCE: &str = "\n[provenance]\ntitle = \"t\"\ncitation = \"c\"\nsource_url = \"u\"\ndescription = \"d\"\nadaptation = \"a\"\n";
+const ABOUT: &str = "\n[about]\ntitle = \"t\"\nstudied_for = \"f\"\nsummary = \"s\"\ncitation = \"c\"\nsource_url = \"u\"\nstudy = \"d\"\nadaptation = \"a\"\n";
 
 fn edited(from: &str, to: &str) -> Result<Preset, PresetError> {
     assert!(PAIR.contains(from), "fixture lacks {from}");
@@ -35,7 +36,7 @@ fn edited(from: &str, to: &str) -> Result<Preset, PresetError> {
 #[test]
 fn a_preset_reads_into_its_stimulus_in_file_order() {
     let preset = Preset::parse(PAIR).unwrap();
-    assert_eq!(preset.provenance, None);
+    assert_eq!(preset.about, None);
     assert_eq!(preset.stimulus.duration_seconds, 10.0);
     assert_eq!(preset.stimulus.fade_seconds, 0.1);
     assert_eq!(
@@ -44,13 +45,13 @@ fn a_preset_reads_into_its_stimulus_in_file_order() {
             Component::Tone {
                 ears: Ears::Left,
                 frequency_hz: 250.0,
-                level_dbfs: -20.0,
+                peak_dbfs: -20.0,
                 modulation: None
             },
             Component::Tone {
                 ears: Ears::Right,
                 frequency_hz: 256.0,
-                level_dbfs: -20.0,
+                peak_dbfs: -20.0,
                 modulation: None
             },
         ]
@@ -59,7 +60,7 @@ fn a_preset_reads_into_its_stimulus_in_file_order() {
 
 #[test]
 fn every_kind_and_modulation_reads_and_whole_numbers_are_accepted_as_reals() {
-    let text = "schema_version = 1\nduration_seconds = 3\nfade_seconds = 0\n\n[[component]]\nears = \"both\"\nkind = \"click\"\nrate_hz = 40\nwidth_seconds = 0.001\nlevel_dbfs = -20\n\n[component.modulation]\nkind = \"sinusoidal\"\nrate_hz = 2\ndepth = 1\n";
+    let text = "schema_version = 2\nduration_seconds = 3\nfade_seconds = 0\n\n[[component]]\nears = \"both\"\nkind = \"click\"\nrate_hz = 40\nwidth_seconds = 0.001\npeak_dbfs = -20\n\n[component.modulation]\nkind = \"sinusoidal\"\nrate_hz = 2\ndepth = 1\n";
     let stimulus = Preset::parse(text).unwrap().stimulus;
     assert_eq!(stimulus.duration_seconds, 3.0);
     assert_eq!(
@@ -68,7 +69,7 @@ fn every_kind_and_modulation_reads_and_whole_numbers_are_accepted_as_reals() {
             ears: Ears::Both,
             rate_hz: 40.0,
             width_seconds: 0.001,
-            level_dbfs: -20.0,
+            peak_dbfs: -20.0,
             modulation: Some(Modulation::Sinusoidal {
                 rate_hz: 2.0,
                 depth: 1.0
@@ -80,40 +81,48 @@ fn every_kind_and_modulation_reads_and_whole_numbers_are_accepted_as_reals() {
 #[test]
 fn a_preset_without_components_is_silence() {
     let preset =
-        Preset::parse("schema_version = 1\nduration_seconds = 1.0\nfade_seconds = 0.0\n").unwrap();
+        Preset::parse("schema_version = 2\nduration_seconds = 1.0\nfade_seconds = 0.0\n").unwrap();
     assert!(preset.stimulus.components.is_empty());
     assert!(!preset.stimulus.uses_separate_ear_routing());
 }
 
 #[test]
-fn provenance_is_optional_and_strict_and_never_changes_the_stimulus() {
+fn about_text_is_optional_strict_and_never_changes_the_stimulus() {
     let plain = Preset::parse(PAIR).unwrap();
-    let annotated = Preset::parse(&format!("{PAIR}{PROVENANCE}")).unwrap();
+    let annotated = Preset::parse(&format!("{PAIR}{ABOUT}")).unwrap();
     assert_eq!(annotated.stimulus, plain.stimulus);
-    let context = annotated.provenance.unwrap();
+    let about = annotated.about.unwrap();
+    assert_eq!(about.title, "t");
     assert_eq!(
         [
-            context.title,
-            context.citation,
-            context.source_url,
-            context.description,
-            context.adaptation
+            about.studied_for,
+            about.summary,
+            about.citation,
+            about.source_url,
+            about.study,
+            about.adaptation
         ],
-        ["t", "c", "u", "d", "a"].map(String::from)
+        ["f", "s", "c", "u", "d", "a"].map(|value| Some(String::from(value)))
     );
+    // Only the title is required; every other field may be omitted alone.
+    let titled = Preset::parse(&format!("{PAIR}\n[about]\ntitle = \"t\"\n")).unwrap();
+    assert_eq!(titled.about.unwrap().summary, None);
     for (field, value) in [
         ("title", "t"),
+        ("studied_for", "f"),
+        ("summary", "s"),
         ("citation", "c"),
         ("source_url", "u"),
-        ("description", "d"),
+        ("study", "d"),
         ("adaptation", "a"),
     ] {
         let entry = format!("{field} = \"{value}\"\n");
-        assert!(PROVENANCE.contains(&entry), "{entry}");
+        assert!(ABOUT.contains(&entry), "{entry}");
+        let omitted = Preset::parse(&format!("{PAIR}{}", ABOUT.replace(&entry, "")));
+        assert_eq!(omitted.is_ok(), field != "title", "{field}");
         for altered in [
-            PROVENANCE.replace(&entry, ""),
-            PROVENANCE.replace(&entry, &format!("{field} = 1\n")),
-            PROVENANCE.replace(&entry, &format!("{entry}{entry}")),
+            ABOUT.replace(&entry, &format!("{field} = 1\n")),
+            ABOUT.replace(&entry, &format!("{entry}{entry}")),
         ] {
             assert!(
                 matches!(
@@ -124,14 +133,21 @@ fn provenance_is_optional_and_strict_and_never_changes_the_stimulus() {
             );
         }
     }
-    let extra = PROVENANCE.replace("[provenance]", "[provenance]\nreviewed = \"x\"");
-    assert!(Preset::parse(&format!("{PAIR}{extra}")).is_err());
+    for unknown in ["reviewed = \"x\"", "description = \"d\""] {
+        let extra = ABOUT.replace("[about]", &format!("[about]\n{unknown}"));
+        assert!(
+            Preset::parse(&format!("{PAIR}{extra}")).is_err(),
+            "{unknown}"
+        );
+    }
+    let old_table = ABOUT.replace("[about]", "[provenance]");
+    assert!(Preset::parse(&format!("{PAIR}{old_table}")).is_err());
 }
 
 #[test]
 fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
     for (from, to) in [
-        ("schema_version = 1\n", ""),
+        ("schema_version = 2\n", ""),
         ("duration_seconds = 10.0\n", ""),
         ("fade_seconds = 0.1\n", ""),
         ("fade_seconds = 0.1", "fade_seconds = 0.1\ngain = 0.1"),
@@ -155,12 +171,9 @@ fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
             "frequency_hz = 250.0\nrate_hz = 40.0",
         ),
         ("frequency_hz = 250.0", "frequency_hz = 250.0\nphase = 0.0"),
-        ("level_dbfs = -20.0\n", ""),
-        (
-            "level_dbfs = -20.0",
-            "level_dbfs = -20.0\nlevel_dbfs = -10.0",
-        ),
-        ("level_dbfs = -20.0", "gain = 0.1"),
+        ("peak_dbfs = -20.0\n", ""),
+        ("peak_dbfs = -20.0", "peak_dbfs = -20.0\npeak_dbfs = -10.0"),
+        ("peak_dbfs = -20.0", "gain = 0.1"),
         ("[[component]]", "[[components]]"),
         ("[[component]]", "[component]"),
         (
@@ -196,23 +209,23 @@ fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
 
 #[test]
 fn another_schema_version_is_reported_before_its_fields_are_read() {
-    for version in [0, 2, 999, u32::MAX] {
+    for version in [0, 1, 3, 999, u32::MAX] {
         // A later version may add fields this build does not know.
         let text = PAIR
-            .replace("schema_version = 1", &format!("schema_version = {version}"))
+            .replace("schema_version = 2", &format!("schema_version = {version}"))
             .replace(
-                "level_dbfs = -20.0",
-                "level_dbfs = -20.0\nphase_degrees = 90.0",
+                "peak_dbfs = -20.0",
+                "peak_dbfs = -20.0\nphase_degrees = 90.0",
             );
         let error = Preset::parse(&text).unwrap_err();
         assert_eq!(error, PresetError::UnsupportedVersion { found: version });
         assert_eq!(
             error.to_string(),
-            format!("preset has schema_version {version}; this build reads 1")
+            format!("preset has schema_version {version}; this build reads 2")
         );
     }
     assert!(matches!(
-        edited("schema_version = 1", "schema_version = \"1\""),
+        edited("schema_version = 2", "schema_version = \"1\""),
         Err(PresetError::Format(_))
     ));
 }
@@ -230,6 +243,20 @@ fn input_is_bounded_and_must_be_utf_8() {
         Err(PresetError::TooLarge)
     );
     assert_eq!(Preset::from_bytes(&[0xff]), Err(PresetError::NotUtf8));
+    // Windows tools commonly save UTF-16 with a byte-order mark; say so.
+    let utf16: Vec<u8> = [0xff, 0xfe]
+        .into_iter()
+        .chain(PAIR.encode_utf16().flat_map(u16::to_le_bytes))
+        .collect();
+    assert_eq!(Preset::from_bytes(&utf16), Err(PresetError::Utf16));
+    let big_endian: Vec<u8> = [0xfe, 0xff]
+        .into_iter()
+        .chain(PAIR.encode_utf16().flat_map(u16::to_be_bytes))
+        .collect();
+    assert_eq!(Preset::from_bytes(&big_endian), Err(PresetError::Utf16));
+    // A UTF-8 byte-order mark is accepted.
+    let marked = [&[0xef, 0xbb, 0xbf][..], PAIR.as_bytes()].concat();
+    assert!(Preset::from_bytes(&marked).is_ok());
 }
 
 #[test]
@@ -240,6 +267,10 @@ fn messages_say_what_is_wrong_with_the_preset() {
         "preset exceeds 65536 bytes"
     );
     assert_eq!(PresetError::NotUtf8.to_string(), "preset is not UTF-8 text");
+    assert_eq!(
+        PresetError::Utf16.to_string(),
+        "preset is UTF-16 text; save it as UTF-8"
+    );
     let format = edited("frequency_hz = 250.0\n", "").unwrap_err();
     let text = format.to_string();
     assert!(

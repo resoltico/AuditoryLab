@@ -1,41 +1,41 @@
 # Contributing
 
-Read [AGENTS.md](AGENTS.md) for design and review requirements, [architecture](docs/architecture.md) for responsibilities, and [verification](docs/verification.md) for runnable checks. [Quick start](README.md#quick-start) lists build prerequisites.
+Read [AGENTS.md](AGENTS.md) for design and review requirements, [architecture](docs/architecture.md) for responsibilities and [verification](docs/verification.md) for checks. [Install from source](README.md#install-from-source) lists the prerequisites.
 
-## Change workflow
+## Changes
 
-Understand the relevant code, contracts and tests. Design the whole change and challenge its assumptions before implementation. Follow affected callers, tests, configuration, packaging and documentation. Preserve unrelated work and verify the delivered state.
+Understand the code, contracts and tests involved, design the whole change, and challenge it before implementing. Follow it through callers, tests, configuration, packaging and documentation, and verify the result.
 
-Keep live guides about the current application and contributor procedures. Explain present constraints and reasons; omit development chronology and results from individual audit runs. [CHANGELOG.md](CHANGELOG.md) records public release outcomes and supplies release notes; unpublished development churn does not belong there. Catalog citations and adaptations describe the sources of the currently included stimuli.
+Documentation describes the current software and how to work on it. [CHANGELOG.md](CHANGELOG.md) records published outcomes and supplies release notes. Catalog citations, study descriptions and adaptations must stay accurate to their sources.
 
-For development, run commands from the checkout:
+Run the program from a checkout with:
 
 ```sh
 cargo run --release --locked -p auditory-lab -- list
 ```
 
+On Windows, use the native GNU LLVM host from the [source setup](README.md#install-from-source) and pass its target before `--`:
+
+```text
+cargo run --release --locked -p auditory-lab --target x86_64-pc-windows-gnullvm -- list
+```
+
+On ARM64, use `--target aarch64-pc-windows-gnullvm` instead. Keep the explicit native target for Cargo commands that compile or test the application; [verification](docs/verification.md#standard-checks) gives the check commands.
+
 ## Lints and tests
 
-[Cargo.toml](Cargo.toml) defines workspace lint levels, inherited by every member. Warnings are errors, `unsafe` is forbidden, and Clippy's `all` group plus explicit numeric-conversion and correctness lints are denied. Use a narrow `#[expect(lint, reason = "…")]` only when the code is correct and the reason explains the exception; stale expectations are compiler findings.
+[Cargo.toml](Cargo.toml) sets lint levels for every crate: warnings are errors, `unsafe` is forbidden, and Clippy's `all` group and the numeric-conversion and panic lints are denied. Use a narrow `#[expect(lint, reason = "…")]` only when the code is correct and the reason says why.
 
-- Unit tests sit beside their code. Public-interface and binary tests live in each crate's `tests` directory, with file-level `#![cfg(test)]` for the test-only unwrap/expect allowances.
-- Check signal mathematics against independent formulas. Give validation and ownership guards inputs they must reject.
-- [Determinism tests](crates/auditory-core/tests/determinism.rs) pin representative rendered samples. Preserve existing digests when samples are unchanged; explain deliberate sample changes and update their affected expectations together.
-- Property tests state case and shrink budgets, set `failure_persistence: None`, and use only proptest's `std` feature with defaults disabled. Shrink time limits minimization, not total test execution. `PROPTEST_RNG_SEED` replays a run; concrete shrunk failures belong in ordinary regression tests.
-- Parser tests cover strict structure, byte bounds, schema and semantic rejection. Filesystem tests use owned `tempfile` directories, with temporary output under `target/`.
+- Unit tests sit beside their code; public-interface and binary tests live in each crate's `tests` directory.
+- Check signal mathematics against independent formulas, and give every validation guard an input it must reject.
+- [Determinism tests](crates/auditory-core/tests/determinism.rs) pin rendered samples. A digest changes only when its samples deliberately change; say why in the change.
+- Property tests state their case and shrink budgets and set `failure_persistence: None`. `PROPTEST_RNG_SEED` replays a run; turn a shrunk failure into an ordinary regression test.
+- Filesystem tests use their own temporary directories, under `target/`, with TMPDIR, TEMP and TMP initialized there.
 
-The core uses `no_std` with `alloc` and portable `libm` arithmetic. Review production dependencies, imports and allocation/I/O behavior at the numerical boundary. Tests can use platform math as an independent oracle.
+The core is `no_std` with `alloc` and computes with `libm`, so its output is the same on every platform. Tests may use the platform's math as an independent oracle.
 
 ## Dependencies and toolchain
 
-[Cargo.toml](Cargo.toml) declares supported dependency ranges; [Cargo.lock](Cargo.lock) pins builds. Use `--locked` for build, test and install commands. To change a dependency, edit the root manifest or run `cargo update -p NAME`, replacing `NAME` with its package name, then inspect:
+[Cargo.toml](Cargo.toml) declares supported dependency ranges and [Cargo.lock](Cargo.lock) pins builds; use `--locked`. To update a dependency, edit the manifest or run `cargo update -p NAME`, then inspect `cargo tree --workspace --target all --duplicates`, run the checks and the advisory audit, and regenerate the third-party notices as [releasing](docs/releasing.md#dependency-updates) describes.
 
-```sh
-cargo tree --workspace --target all --duplicates
-```
-
-Run the applicable [checks](docs/verification.md#standard-checks) and advisory audit after the change. Core reads caller-supplied bounded text through `serde`/`toml` and computes samples with `libm`; it opens no filesystem or device handles.
-
-[rust-toolchain.toml](rust-toolchain.toml) pins the development/CI compiler. Root `rust-version` is the minimum supported compiler, enforced by Cargo. Tool versions for workflow linting, dependency auditing and mutation testing are pinned in [quality.yml](.github/workflows/quality.yml).
-
-Native archive preparation and public publication follow [releasing](docs/releasing.md). Release-tool checks use Python 3.11 or later locally; the workflows pin their Python version. Run `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v` from the checkout.
+[rust-toolchain.toml](rust-toolchain.toml) pins the compiler used in development and CI; `rust-version` in Cargo.toml is the minimum Cargo enforces. [.python-version](.python-version) pins CI's Python for the release tools, which run on Python 3.9 or later with the standard library only.

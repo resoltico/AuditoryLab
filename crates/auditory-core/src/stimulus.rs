@@ -1,7 +1,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::generator::{Carrier, Phase, Sinusoidal, Voice};
+use crate::generator::{Carrier, Modulator, Phase, PulseTrain, Sinusoidal, Voice};
 use crate::session::{Envelope, Session};
 use crate::{SampleRate, numeric};
 use alloc::vec::Vec;
@@ -26,7 +26,7 @@ pub struct Stimulus {
 
 /// One sound source routed to one or both ears.
 ///
-/// `level_dbfs` sets the component's amplitude bound: 0 dBFS is full scale. An
+/// `peak_dbfs` sets the component's peak amplitude: 0 dBFS is full scale. An
 /// optional [`Modulation`] shapes the amplitude without raising that peak.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -37,8 +37,8 @@ pub enum Component {
         ears: Ears,
         /// Frequency in hertz.
         frequency_hz: f64,
-        /// Amplitude bound in dBFS.
-        level_dbfs: f64,
+        /// Peak amplitude in dBFS.
+        peak_dbfs: f64,
         /// Optional amplitude modulation.
         modulation: Option<Modulation>,
     },
@@ -50,8 +50,8 @@ pub enum Component {
         rate_hz: f64,
         /// Length of each pulse in seconds.
         width_seconds: f64,
-        /// Pulse amplitude bound in dBFS.
-        level_dbfs: f64,
+        /// Pulse height in dBFS.
+        peak_dbfs: f64,
         /// Optional amplitude modulation.
         modulation: Option<Modulation>,
     },
@@ -78,7 +78,8 @@ pub enum Ear {
     Right,
 }
 
-/// A periodic change of a component's amplitude.
+/// A periodic change of a component's amplitude. Every modulation's gain
+/// lies within `[0, 1]`, so it never raises the component's peak.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Modulation {
@@ -90,6 +91,15 @@ pub enum Modulation {
         rate_hz: f64,
         /// Modulation depth from 0 (none) to 1 (full).
         depth: f64,
+    },
+    /// Gain 1 during the first `width_seconds` of each `1 / rate_hz` period
+    /// and 0 otherwise, the first period starting at time zero: the same
+    /// pulse train as a click, gating the carrier on and off.
+    Rectangular {
+        /// Gates per second.
+        rate_hz: f64,
+        /// Length of each open gate in seconds.
+        width_seconds: f64,
     },
 }
 
@@ -111,11 +121,11 @@ impl Component {
         }
     }
 
-    /// Return the configured amplitude bound in dBFS.
+    /// Return the configured peak in dBFS.
     #[must_use]
-    pub const fn level_dbfs(&self) -> f64 {
+    pub const fn peak_dbfs(&self) -> f64 {
         match self {
-            Self::Tone { level_dbfs, .. } | Self::Click { level_dbfs, .. } => *level_dbfs,
+            Self::Tone { peak_dbfs, .. } | Self::Click { peak_dbfs, .. } => *peak_dbfs,
         }
     }
 
@@ -129,9 +139,9 @@ impl Component {
 
     /// Check every value at `rate` and build the generator.
     fn voice(&self, rate: SampleRate) -> Result<Voice, ComponentError> {
-        let level_dbfs = self.level_dbfs();
-        if !(level_dbfs.is_finite() && level_dbfs <= 0.0) {
-            return Err(ComponentError::Level { level_dbfs });
+        let peak_dbfs = self.peak_dbfs();
+        if !(peak_dbfs.is_finite() && peak_dbfs <= 0.0) {
+            return Err(ComponentError::PeakDbfs { peak_dbfs });
         }
         let carrier = match *self {
             Self::Tone { frequency_hz, .. } => {
@@ -141,25 +151,12 @@ impl Component {
                 rate_hz,
                 width_seconds,
                 ..
-            } => {
-                let step = frequency_step("rate_hz", rate_hz, rate)?;
-                if !step.is_normal() {
-                    return Err(ComponentError::ClickRateTooSmall {
-                        rate_hz,
-                        sample_rate_hz: rate.hz(),
-                    });
-                }
-                let duty = width_seconds * rate_hz;
-                // At least one frame per click, and a gap before the next.
-                if !(width_seconds * rate.as_f64() >= 1.0 && duty < 1.0) {
-                    return Err(ComponentError::ClickWidth {
-                        width_seconds,
-                        rate_hz,
-                        sample_rate_hz: rate.hz(),
-                    });
-                }
-                Carrier::Click { step, duty }
-            }
+            } => Carrier::Click(pulse_train(
+                ("rate_hz", "width_seconds"),
+                rate_hz,
+                width_seconds,
+                rate,
+            )?),
         };
         let modulation = match self.modulation() {
             None => None,
@@ -177,14 +174,23 @@ impl Component {
                         sample_rate_hz: rate.hz(),
                     });
                 }
-                Some(Sinusoidal { phase, depth })
+                Some(Modulator::Sinusoidal(Sinusoidal { phase, depth }))
             }
+            Some(Modulation::Rectangular {
+                rate_hz,
+                width_seconds,
+            }) => Some(Modulator::Rectangular(pulse_train(
+                ("modulation rate_hz", "modulation width_seconds"),
+                rate_hz,
+                width_seconds,
+                rate,
+            )?)),
         };
         let ears = self.ears();
         Ok(Voice {
             left: ears.hears(Ear::Left),
             right: ears.hears(Ear::Right),
-            amplitude: numeric::amplitude(level_dbfs),
+            amplitude: numeric::amplitude(peak_dbfs),
             carrier,
             modulation,
         })
@@ -204,6 +210,35 @@ fn phase(field: &'static str, hz: f64, rate: SampleRate) -> Result<Phase, Compon
             sample_rate_hz: rate.hz(),
         })
     }
+}
+
+/// A pulse train whose rate gives a normal phase step, keeping relative
+/// timing precision, and whose pulses last at least one frame and end before
+/// the next begins. `fields` name the rate and width in messages.
+fn pulse_train(
+    (rate_field, width_field): (&'static str, &'static str),
+    rate_hz: f64,
+    width_seconds: f64,
+    rate: SampleRate,
+) -> Result<PulseTrain, ComponentError> {
+    let step = frequency_step(rate_field, rate_hz, rate)?;
+    if !step.is_normal() {
+        return Err(ComponentError::PulseRateTooSmall {
+            field: rate_field,
+            rate_hz,
+            sample_rate_hz: rate.hz(),
+        });
+    }
+    let duty = width_seconds * rate_hz;
+    if !(width_seconds * rate.as_f64() >= 1.0 && duty < 1.0) {
+        return Err(ComponentError::PulseWidth {
+            field: width_field,
+            width_seconds,
+            rate_hz,
+            sample_rate_hz: rate.hz(),
+        });
+    }
+    Ok(PulseTrain::new(step, duty))
 }
 
 /// Return the step for a frequency in the permitted range; the caller checks
@@ -383,27 +418,32 @@ pub enum ComponentError {
         /// The sample rate in frames per second.
         sample_rate_hz: u32,
     },
-    /// A click's rate gives a zero or subnormal phase step, whose relative
-    /// rounding cannot preserve the requested pulse timing.
-    ClickRateTooSmall {
-        /// The rejected click rate in hertz.
+    /// A click or rectangular-modulation rate gives a zero or subnormal
+    /// phase step, whose relative rounding cannot preserve pulse timing.
+    PulseRateTooSmall {
+        /// The field holding it.
+        field: &'static str,
+        /// The rejected rate in hertz.
         rate_hz: f64,
         /// The sample rate in frames per second.
         sample_rate_hz: u32,
     },
-    /// A click is shorter than one frame or not shorter than its period.
-    ClickWidth {
+    /// A click or open gate is shorter than one frame or not shorter than
+    /// its period.
+    PulseWidth {
+        /// The field holding it.
+        field: &'static str,
         /// The rejected width in seconds.
         width_seconds: f64,
-        /// Clicks per second.
+        /// Pulses per second.
         rate_hz: f64,
         /// The sample rate in frames per second.
         sample_rate_hz: u32,
     },
-    /// The level is not finite or is above full scale.
-    Level {
-        /// The rejected level.
-        level_dbfs: f64,
+    /// The peak is not finite or is above full scale.
+    PeakDbfs {
+        /// The rejected peak in dBFS.
+        peak_dbfs: f64,
     },
     /// The modulation depth is outside 0 to 1.
     Depth {
@@ -454,7 +494,7 @@ impl Display for StimulusError {
                 };
                 write!(
                     f,
-                    "the components for the {ear} add up to a peak of {level} dBFS, above full scale; lower their level_dbfs"
+                    "the components for the {ear} add up to a peak of {level} dBFS, above full scale; lower their peak_dbfs"
                 )
             }
         }
@@ -490,25 +530,27 @@ impl Display for ComponentError {
                 "frequency_hz {frequency_hz} Hz plus modulation rate_hz {rate_hz} Hz must stay below {} Hz, half the {sample_rate_hz} Hz sample rate",
                 f64::from(*sample_rate_hz) / 2.0
             ),
-            Self::ClickRateTooSmall {
+            Self::PulseRateTooSmall {
+                field,
                 rate_hz,
                 sample_rate_hz,
             } => write!(
                 f,
-                "rate_hz {rate_hz:e} Hz is too small for accurate click timing at {sample_rate_hz} Hz; raise rate_hz"
+                "{field} {rate_hz:e} Hz is too small for accurate pulse timing at {sample_rate_hz} Hz; raise {field}"
             ),
-            Self::ClickWidth {
+            Self::PulseWidth {
+                field,
                 width_seconds,
                 rate_hz,
                 sample_rate_hz,
             } => write!(
                 f,
-                "width_seconds {width_seconds} must be at least one frame ({} s at {sample_rate_hz} Hz) and shorter than the {} s between clicks at {rate_hz} Hz",
+                "{field} {width_seconds} must be at least one frame ({} s at {sample_rate_hz} Hz) and shorter than the {} s period at {rate_hz} Hz",
                 1.0 / f64::from(*sample_rate_hz),
                 1.0 / rate_hz
             ),
-            Self::Level { level_dbfs } => {
-                write!(f, "level_dbfs {level_dbfs} must be finite and at most 0")
+            Self::PeakDbfs { peak_dbfs } => {
+                write!(f, "peak_dbfs {peak_dbfs} must be finite and at most 0")
             }
             Self::Depth { depth } => write!(f, "modulation depth {depth} must be from 0 to 1"),
         }
@@ -551,6 +593,13 @@ impl Display for Modulation {
             Self::Sinusoidal { rate_hz, depth } => {
                 write!(f, "sinusoidal modulation {rate_hz} Hz, depth {depth}")
             }
+            Self::Rectangular {
+                rate_hz,
+                width_seconds,
+            } => write!(
+                f,
+                "rectangular modulation {rate_hz} Hz, {width_seconds} s open"
+            ),
         }
     }
 }
@@ -560,17 +609,17 @@ impl Display for Component {
         match self {
             Self::Tone {
                 frequency_hz,
-                level_dbfs,
+                peak_dbfs,
                 ..
-            } => write!(f, "tone {frequency_hz} Hz, {level_dbfs} dBFS")?,
+            } => write!(f, "tone {frequency_hz} Hz, peak {peak_dbfs} dBFS")?,
             Self::Click {
                 rate_hz,
                 width_seconds,
-                level_dbfs,
+                peak_dbfs,
                 ..
             } => write!(
                 f,
-                "clicks {rate_hz} Hz, {width_seconds} s wide, {level_dbfs} dBFS"
+                "clicks {rate_hz} Hz, {width_seconds} s wide, peak {peak_dbfs} dBFS"
             )?,
         }
         if let Some(modulation) = self.modulation() {

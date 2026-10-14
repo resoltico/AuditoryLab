@@ -1,13 +1,13 @@
 # Presets
 
-A preset is UTF-8 TOML describing stereo sound in hertz, seconds and dBFS. Its sample rate comes from inspection/export options or the playback stream configuration. Use [show and save](usage.md#commands-and-input) for a complete catalog entry, including its citation and adaptations.
+A preset is a UTF-8 TOML recipe for a stereo sound, in hertz, seconds and dBFS. It has no sample rate: `inspect` and `export` choose one, and playback uses the device's. `show NAME --output FILE` saves any built-in preset as a starting point.
 
-## Editable examples
+## Examples
 
-This two-second tone pair puts 250 Hz on the left and 240 Hz on the right:
+Two tones, 250 Hz on the left and 240 Hz on the right, for two seconds:
 
 ```toml
-schema_version = 1
+schema_version = 2
 duration_seconds = 2.0
 fade_seconds = 0.01
 
@@ -15,19 +15,19 @@ fade_seconds = 0.01
 ears = "left"
 kind = "tone"
 frequency_hz = 250.0
-level_dbfs = -20.0
+peak_dbfs = -20.0
 
 [[component]]
 ears = "right"
 kind = "tone"
 frequency_hz = 240.0
-level_dbfs = -20.0
+peak_dbfs = -20.0
 ```
 
-A tone with full sinusoidal amplitude modulation:
+A 1000 Hz tone whose amplitude swells and fades 40 times a second:
 
 ```toml
-schema_version = 1
+schema_version = 2
 duration_seconds = 1.0
 fade_seconds = 0.01
 
@@ -35,7 +35,7 @@ fade_seconds = 0.01
 ears = "both"
 kind = "tone"
 frequency_hz = 1000.0
-level_dbfs = -20.0
+peak_dbfs = -20.0
 
 [component.modulation]
 kind = "sinusoidal"
@@ -43,93 +43,116 @@ rate_hz = 40.0
 depth = 1.0
 ```
 
-A 40 Hz train of 1 ms rectangular clicks:
+A 5 kHz tone switched on for 1 ms at the start of every 25 ms, and a 40 Hz train of 1 ms clicks:
 
 ```toml
-schema_version = 1
+schema_version = 2
 duration_seconds = 1.0
 fade_seconds = 0.01
 
 [[component]]
-ears = "both"
+ears = "left"
+kind = "tone"
+frequency_hz = 5000.0
+peak_dbfs = -20.0
+
+[component.modulation]
+kind = "rectangular"
+rate_hz = 40.0
+width_seconds = 0.001
+
+[[component]]
+ears = "right"
 kind = "click"
 rate_hz = 40.0
 width_seconds = 0.001
-level_dbfs = -20.0
+peak_dbfs = -20.0
 ```
 
-These are engineering examples. A file with just `schema_version`, `duration_seconds` and `fade_seconds` produces silence. Validate a saved file with `inspect` before export or playback.
+A file with only `schema_version`, `duration_seconds` and `fade_seconds` is silence.
 
-## Fields and schema
+## Fields
 
-Input is at most 65,536 bytes. Unknown, missing, duplicated and mistyped keys are errors. Whole numbers are accepted for real-valued fields. This build reads only `schema_version = 1`; another numeric version is reported before unfamiliar fields are interpreted.
-
-| Field | Meaning |
-|---|---|
-| `schema_version` | `1`. |
-| `duration_seconds` | Stimulus length, resolved to frames. |
-| `fade_seconds` | Fade length at each edge, resolved to frames; `0` disables fading. |
-| `[[component]]` | Repeat to sum components. Omit for silence. |
-| `[provenance]` | Optional descriptive metadata; all five strings below are required when present. |
-| `provenance.title` | Short label in inspection/start notices; built-in titles appear in `list`. |
-| `provenance.citation` | Source authors, year, title and publication. |
-| `provenance.source_url` | Source link. |
-| `provenance.description` | Stimulus role and findings reported by its source. |
-| `provenance.adaptation` | Choices and differences between this preset and the source. |
-
-Each component has `ears`, `kind`, `level_dbfs`, its kind's fields, and optionally `[component.modulation]` for the component written immediately above it.
+Input is at most 65,536 bytes. Unknown, missing, duplicated and mistyped keys are errors, and whole numbers are accepted where a real number is expected. This build reads `schema_version = 2`; a file stating another version is reported as such before its other fields are read.
 
 | Field | Meaning |
 |---|---|
-| `ears` | `"left"`, `"right"`, or `"both"` for identical component samples in both channels. |
-| `kind = "tone"` | Sine carrier with `frequency_hz`. |
-| `kind = "click"` | Rectangular pulses with `rate_hz` and `width_seconds`. |
-| `level_dbfs` | Component amplitude bound; 0 dBFS is full scale. Modulation does not raise the bound; samples need not attain it. |
-| `modulation.kind = "sinusoidal"` | `rate_hz` and `depth` from 0 to 1. Available for either carrier kind. |
+| `schema_version` | `2`. |
+| `duration_seconds` | Length of the sound. |
+| `fade_seconds` | Length of the fade-in and fade-out at each end; `0` for none. |
+| `[[component]]` | One sound source; repeat to add sources. |
+| `[about]` | Optional text describing the sound; `title` is required when present. |
 
-Provenance types are checked, but sources are not fetched or certified. Metadata does not affect samples. Keep `provenance.adaptation` accurate when editing parameters; validation does not check that its text matches them. Use `show` for the full metadata of a built-in condition.
+Each component has `ears`, `kind`, `peak_dbfs` and the fields of its kind, and optionally a `[component.modulation]` table, which applies to the component written just above it.
 
-## Waveforms and frame timing
+| Component field | Meaning |
+|---|---|
+| `ears` | `"left"`, `"right"`, or `"both"` for the same samples in both channels. |
+| `kind = "tone"` | A sine wave of `frequency_hz`. |
+| `kind = "click"` | Rectangular pulses: `rate_hz` per second, each `width_seconds` long. |
+| `peak_dbfs` | The component's peak amplitude; 0 dBFS is full scale. Modulation never raises it. |
+| `modulation.kind = "sinusoidal"` | Amplitude swelling at `rate_hz` with `depth` from 0 to 1. |
+| `modulation.kind = "rectangular"` | The component switched on for `width_seconds` at the start of each `1 / rate_hz` period, and off otherwise. |
 
-For frame `n`, rate `fs` and nominal time `t = n / fs`, the waveform equations are:
+| `[about]` field | Meaning |
+|---|---|
+| `title` | A short name, shown by `list`, `about`, `inspect` and the start line of export and playback. |
+| `studied_for` | What the source studied the sound for, in a few plain words. |
+| `summary` | For listeners: what the sound is, what was studied and what was found, in plain language. |
+| `citation` | The source's authors, year, title and publication. |
+| `source_url` | A link to the source. |
+| `study` | For researchers: the sound's role in the source and the source's reported findings. |
+| `adaptation` | Every choice and difference between this preset and the source. |
+
+`[about]` text never affects the samples, and sources are neither fetched nor checked.
+
+## Waveforms
+
+For frame `n` at sample rate `fs`, with time `t = n / fs`:
 
 - Tone: `sin(2π · frequency_hz · t)`, starting at phase zero.
-- Click: `1` in the first `width_seconds` of each `1 / rate_hz` period, otherwise `0`, with a pulse at time zero.
-- Sinusoidal modulation: multiply by `(1 + depth · sin(2π · rate_hz · t)) / (1 + depth)`, starting at phase zero and bounded by 1.
-- Level: multiply each component by `10^(level_dbfs / 20)`.
-- Routing: sum components per ear in file order, then apply the fade gain.
+- Click: `1` during the first `width_seconds` of each `1 / rate_hz` period and `0` otherwise, with a pulse starting at time zero.
+- Sinusoidal modulation: the carrier times `(1 + depth · sin(2π · rate_hz · t)) / (1 + depth)`, starting at phase zero; it never exceeds 1.
+- Rectangular modulation: the carrier times the click waveform for its `rate_hz` and `width_seconds`, so a modulated tone keeps its phase across the gaps.
+- Peak: each component is multiplied by `10^(peak_dbfs / 20)`.
+- Mixing: each ear sums its components in file order, then the fade gain applies.
 
-The implementation uses binary64 arithmetic. Tone/modulation phases advance as wrapped cycle accumulators across buffers. Click phase comes from the absolute frame index; rounding near a pulse boundary can select an adjacent sampled frame. The equations describe the waveforms rather than promising bit-exact equality to an independently evaluated time formula. [Architecture](architecture.md#core-model-and-rendering) describes rendering.
+Clicks and rectangular gates switch instantly, so their spectra are broadband; only their rates are checked against half the sample rate, and part of their energy aliases. A higher sample rate reduces the aliased part.
 
-Duration and fade resolve by rounding the binary64 product `seconds · fs` to the nearest whole frame, with halfway values rounded away from zero. Let `N` be the total frames, `F` the fade frames and `d = min(n, N - 1 - n)`. For an active frame, fade gain is 1 when `F = 0` or `d >= F`; otherwise it is `0.5 - 0.5 · cos(π · d / F)`. Thus a positive resolved fade gives silent first/last frames, while a requested fade that rounds to zero applies no fade. Frames beyond the session are zero. Channels are left then right; export rounds samples to binary32.
+Arithmetic is binary64 with portable math functions, so a recipe renders the same bits on every platform. Tone and sinusoidal phases advance per frame and wrap at one cycle. Click and rectangular phases come from the absolute frame index; near a pulse edge, rounding can move the edge by one frame. The formulas describe the waveforms; they do not promise bit equality with another implementation.
+
+Lengths become whole frames: `seconds · fs` rounded to the nearest frame, halves away from zero. With `N` frames, `F` fade frames and `d = min(n, N − 1 − n)`, the fade gain is 1 when `F = 0` or `d ≥ F`, otherwise `0.5 − 0.5 · cos(π · d / F)`. A positive resolved fade therefore makes the first and last frames silent; a requested fade that rounds to zero applies no fade. Channels are left then right; export rounds samples to 32-bit float.
 
 ## Rules checked at a sample rate
 
-A preset can be valid at one rate and invalid at another. Inspect/export/play check:
+A recipe can be valid at one sample rate and invalid at another. `inspect`, `export` and `play` check, in order:
 
-- Finite, nonnegative duration/fade, resolving to 1 through 2^36 total frames, with `2 · F < N`.
-- At most 16 components; finite `level_dbfs <= 0`.
-- Finite, positive tone/click/modulation frequencies below half the rate. Modulated tones also require `frequency_hz + modulation.rate_hz < fs / 2`.
-- Nonzero binary64 phase steps (`hz / fs`) for tones and modulation; positive representable subnormal steps are allowed.
-- Normal phase steps for clicks, retaining relative timing precision. Click width is at least one frame and shorter than its period.
-- Per-ear component amplitude bounds summing to at most full scale. Every rendered sample is finite and full-scale-bounded; no clipping is performed.
+- Duration and fade are finite and not negative, the duration gives 1 to 2^36 frames, and the two fades leave at least one frame between them (`2F < N`).
+- At most 16 components, each with a finite `peak_dbfs` of at most 0.
+- Every frequency and rate is finite, positive and below half the sample rate. A tone with sinusoidal modulation also needs `frequency_hz + rate_hz` below half the sample rate.
+- Tone and sinusoidal rates are large enough to advance the phase. Click and rectangular rates keep full relative timing precision, and each pulse lasts at least one frame and ends before the next period.
+- Each ear's summed component peaks are at most full scale, so no sample ever needs clipping.
 
-Inspection shows conservative summed bounds, not measured or necessarily attained maxima.
+`inspect` reports these summed peaks per ear. They are bounds, not measured or necessarily reached maxima.
 
 ## Digital levels
 
-For unfaded coherent intervals with orthogonal, non-DC spectral terms, a sine's RMS is 3.01 dB below its amplitude bound; a conventional 100% SAM tone is 7.27 dB below it. Coincident/overlapping spectral terms need separate calculation. Distinct tones add in power under the same conditions, so two tones each 3.01 dB lower match one tone's RMS.
+`peak_dbfs` states a component's peak bound. Over complete steady cycles, an unmodulated tone's RMS is 3.01 dB below its peak bound. When the carrier frequency is above the modulation rate, a full-depth sinusoidally modulated tone is 7.27 dB below its peak bound over complete steady cycles. These relationships require distinct, non-DC spectral terms over the averaging interval; spectral coincidences need separate calculation. Distinct tones add in power over suitable steady intervals, so two tones each 3.01 dB lower match one tone's RMS under those conditions. Coincident frequencies can add coherently.
 
-For sampled clicks, use the actual active-frame fraction. Ideal duty gives `10 · log10(width_seconds · rate_hz)` dB below the bound: −13.98 dB for 1 ms/40 Hz. These are digital relationships. Ear-level sound pressure depends on the device, volume and transducer.
+An ideal rectangular click train's RMS is its pulse peak plus `10 · log10(width_seconds · rate_hz)` dB. That duty-cycle change also applies to a gated tone relative to its ungated RMS when its open windows contain complete tone cycles, as in the catalog's tone pips; other gated-tone RMS values depend on carrier phase and frequency. The duty-cycle change is −13.98 dB for 1 ms at 40 Hz. For sampled pulses, use the actual active-frame fraction, and exclude endpoint fades from steady-state calculations. Digital levels do not establish loudness at the ear; that depends on the device, its volume and the headphones or speakers.
 
 ## Built-in catalog
 
-Each entry implements selected source-described sound parameters and embeds its citation, study context and adaptations. Entries use 0.1 s fades and phase-zero tones/modulation; single-component bounds are −20 dBFS. Within-study level relationships are stated in the entry, including RMS-normalized summed tones.
-
-The catalog reproduces digital stimuli with declared adaptations, not full study procedures. Baselines, condition ordering, tasks, EEG recordings, calibration and non-auditory stimulation are outside a preset. Descriptions attribute study findings, including null results, to their sources.
+Each built-in preset reproduces the sound of one condition from a published study, and its `[about]` table gives the plain-language summary, the citation, the study context and every adaptation. Built-in sounds use 0.1 s fades, phase-zero starts and a −20 dBFS peak per component unless the study's own level relationships require otherwise; those cases are explained in `adaptation`. Study procedures beyond the sound itself (baselines, condition order, tasks, recordings, calibration, light stimulation) are not part of a preset.
 
 ### Adding a built-in preset
 
-Place lowercase `firstauthor-year-condition.toml` under `crates/auditory-core/catalog/` and add its name to the sorted list in `crates/auditory-core/src/catalog.rs`. Admit a condition only when its full-text methods specify waveform, ear routing, relevant carrier/modulation/click parameters and continuous duration. Sources with unstated maskers/routing/carriers, sweeps, live-measurement control or short recording-locked trials do not define a catalog condition.
+A study's condition qualifies only when its full-text methods state the waveform, which ear hears what, the frequencies or rates and widths, and a continuous duration. Sweeps, sounds controlled by live measurements, unstated maskers or noise, unstated ear assignment and short recording-locked trials do not qualify. Check the source for corrections and retractions.
 
-Check corrections/retractions, write source-based description and explicit adaptations, and add the recipe to the independent table in `crates/auditory-core/tests/catalog.rs`. Follow [verification](verification.md) for changes affecting rendering or catalog delivery.
+Name the file `firstauthor-year-condition.toml`, in lowercase, under `crates/auditory-core/catalog/`, and add the name to the list in `crates/auditory-core/src/catalog.rs`, which is in name order with numbers compared numerically, and its recipe to the independent table in `crates/auditory-core/tests/catalog.rs`. Write `[about]` values using printable ASCII characters from space through tilde, excluding double quotes, on one line per field:
+
+- `studied_for` names what the source investigated, not a benefit.
+- `summary` says what the listener hears, what the study tested on whom, what it found, including null results and the study's size, and whether the result comes from animals. It reports findings and never promises an effect. Where a disease is named, state that the sound is not an established treatment.
+- `study` and `adaptation` are for researchers and use the source's terms.
+
+Then run the [verification](verification.md) checks.

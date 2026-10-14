@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, ubuntu-22.04, windows-latest, windows-11-arm]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     defaults:
@@ -45,12 +45,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Require PowerShell 7 or later before Windows verification
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 or later is required. Install the current stable pwsh release.' }
-          $PSVersionTable.PSVersion.ToString()
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-version
@@ -69,40 +63,89 @@ jobs:
       - name: Install Linux audio build prerequisites
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install --yes libasound2-dev pkg-config
-      - name: Install the toolchain pinned in rust-toolchain.toml
-        run: rustup toolchain install
+      - name: Install the native toolchain pinned in rust-toolchain.toml
+        run: |
+          if [[ "${RUNNER_OS}" == Windows ]]; then
+            target="$(python - <<'PYHOST'
+          import os
+          import sys
+          sys.path.insert(0, "scripts")
+          from release import TARGETS
+          architecture = {"X64": "x86_64", "ARM64": "aarch64"}[os.environ["RUNNER_ARCH"]]
+          print(next(entry["target"] for entry in TARGETS if entry["platform"] == "windows-" + architecture))
+          PYHOST
+            )"
+            toolchain="$(python scripts/release.py toolchain --target "${target}")"
+            rustup toolchain install "${toolchain}" --profile minimal --component rustfmt,clippy,rust-mingw
+            host="$(RUSTUP_TOOLCHAIN="${toolchain}" rustc -vV | sed -n 's/^host: //p')"
+            [[ "${host}" == "${target}" ]]
+            echo "RUSTUP_TOOLCHAIN=${toolchain}" >> "${GITHUB_ENV}"
+            echo "WINDOWS_TARGET=${target}" >> "${GITHUB_ENV}"
+          else
+            rustup toolchain install
+          fi
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Lint every target
-        run: cargo clippy --workspace --all-targets --locked
+        run: |
+          if [[ "${RUNNER_OS}" == Windows ]]; then
+            cargo clippy --workspace --all-targets --locked --target "${WINDOWS_TARGET}"
+          else
+            cargo clippy --workspace --all-targets --locked
+          fi
       - name: Run unit, integration and documentation tests
-        run: cargo test --workspace --locked
-      - name: Test release tooling without public operations
+        run: |
+          if [[ "${RUNNER_OS}" == Windows ]]; then
+            cargo test --workspace --locked --target "${WINDOWS_TARGET}"
+          else
+            cargo test --workspace --locked
+          fi
+      - name: Test release tooling
         run: python -m unittest discover -s tests -v
       - name: Build documentation
-        run: cargo doc --workspace --no-deps --locked
-      - name: Build the release binary
-        run: cargo build --workspace --release --locked
-      - name: Test native Windows control events
-        if: runner.os == 'Windows'
-        shell: pwsh
         run: |
-          pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/test-windows-interrupts.ps1 `
-            -Binary target/release/auditory-lab.exe -Scratch target/windows-interrupt-tests
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if [[ "${RUNNER_OS}" == Windows ]]; then
+            cargo doc --workspace --no-deps --locked --target "${WINDOWS_TARGET}"
+          else
+            cargo doc --workspace --no-deps --locked
+          fi
+      - name: Build the release binary and record Windows runtime inputs
+        run: |
+          if [[ "${RUNNER_OS}" == Windows ]]; then
+            mkdir -p target/runtime-link
+            python scripts/windows_runtime.py build --target "${WINDOWS_TARGET}" \
+              --trace "target/runtime-link/${WINDOWS_TARGET}.json"
+          else
+            cargo build --workspace --release --locked
+          fi
+      - name: Require current third-party notices
+        if: runner.os == 'Linux'
+        run: python scripts/notices.py --check
+      - name: Package and smoke-test the executable as a release would
+        run: |
+          host="$(rustc -vV | sed -n 's/^host: //p')"
+          version="$(python scripts/release.py version)"
+          binary=target/release/auditory-lab
+          evidence=()
+          if [[ "${RUNNER_OS}" == Windows ]]; then
+            binary="target/${WINDOWS_TARGET}/release/auditory-lab.exe"
+            evidence=(--link-trace "target/runtime-link/${WINDOWS_TARGET}.json")
+          fi
+          python scripts/package.py --target "${host}" --version "${version}" \
+            --repository "${GITHUB_REPOSITORY}" --binary "${binary}" --output target/package-check "${evidence[@]}"
+      - name: Preserve Windows runtime link evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: quality-runtime-${{ runner.arch }}
+          path: target/runtime-link/*
+          if-no-files-found: error
+          retention-days: 14
       - name: Require unchanged tested source
         run: |
           git diff --exit-code
           status="$(git status --porcelain --untracked-files=all)"
           [[ -z "${status}" ]]
-      - name: Preserve Windows native report
-        if: always() && runner.os == 'Windows'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: windows-interrupts-${{ matrix.os }}
-          path: target/windows-interrupt-tests/report.txt
-          if-no-files-found: error
-          retention-days: 14
 
   audit:
     name: Audit dependencies
@@ -112,8 +155,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Initialize owned job temporary output
+        run: |
+          python3 - <<'PYINIT'
+          import os
+          from pathlib import Path
+          temporary = Path.cwd() / "target" / "job-temp"
+          temporary.mkdir(parents=True, exist_ok=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              for name in ("TMPDIR", "TEMP", "TMP"):
+                  output.write(f"{name}={temporary}\n")
+          PYINIT
       - name: Download the pinned auditor and verify its checksum
-        working-directory: ${{ runner.temp }}
+        working-directory: target/job-temp
         run: |
           asset="cargo-audit-x86_64-unknown-linux-musl-v${CARGO_AUDIT_VERSION}"
           curl --fail --location --silent --show-error --output "${asset}.tgz" \
@@ -123,7 +177,7 @@ jobs:
           tar -xzf "${asset}.tgz" --strip-components=1 "${asset}/cargo-audit"
       - name: Check every locked dependency against the advisory database
         run: |
-          "${RUNNER_TEMP}/cargo-audit" audit --deny warnings
+          "${PWD}/target/job-temp/cargo-audit" audit --deny warnings --db target/advisory-db
 
   workflow:
     name: Lint workflows
@@ -134,8 +188,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Initialize owned job temporary output
+        run: |
+          python3 - <<'PYINIT'
+          import os
+          from pathlib import Path
+          temporary = Path.cwd() / "target" / "job-temp"
+          temporary.mkdir(parents=True, exist_ok=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              for name in ("TMPDIR", "TEMP", "TMP"):
+                  output.write(f"{name}={temporary}\n")
+          PYINIT
       - name: Download the pinned linters and verify their checksums
-        working-directory: ${{ runner.temp }}
+        working-directory: target/job-temp
         run: |
           actionlint_asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
           shellcheck_asset="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
@@ -154,7 +219,7 @@ jobs:
         env:
           SHELLCHECK_OPTS: --enable=all
         run: |
-          "${RUNNER_TEMP}/actionlint" -shellcheck "${RUNNER_TEMP}/shellcheck" \
+          "${PWD}/target/job-temp/actionlint" -shellcheck "${PWD}/target/job-temp/shellcheck" \
             .github/workflows/*.yml
 
   mutation:
@@ -172,6 +237,17 @@ jobs:
           persist-credentials: false
       - name: Install the toolchain pinned in rust-toolchain.toml
         run: rustup toolchain install
+      - name: Initialize owned job temporary output
+        run: |
+          python3 - <<'PYINIT'
+          import os
+          from pathlib import Path
+          temporary = Path.cwd() / "target" / "job-temp"
+          temporary.mkdir(parents=True, exist_ok=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              for name in ("TMPDIR", "TEMP", "TMP"):
+                  output.write(f"{name}={temporary}\n")
+          PYINIT
       - name: Install the pinned mutation tester
         run: |
           mkdir -p target/tool-scratch

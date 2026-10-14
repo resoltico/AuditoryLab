@@ -42,27 +42,46 @@ impl Phase {
     }
 }
 
+/// Unipolar rectangular pulses: 1 while the phase of the frame is below
+/// `duty`, otherwise 0, with a pulse starting at frame zero.
+///
+/// The phase comes from the absolute frame index, so it accumulates no drift;
+/// rounding near a pulse edge may still select an adjacent frame.
+#[derive(Debug, Clone)]
+pub(crate) struct PulseTrain {
+    step: f64,
+    duty: f64,
+}
+
+impl PulseTrain {
+    /// The caller has checked that `step` is a normal binary64 value below
+    /// one half and that `duty` is below one.
+    pub(crate) const fn new(step: f64, duty: f64) -> Self {
+        Self { step, duty }
+    }
+
+    fn at(&self, frame: u64) -> f64 {
+        // The frame index is exact through Session::MAX_FRAMES.
+        let cycles = numeric::frames_to_f64(frame) * self.step;
+        let phase = cycles - libm::floor(cycles);
+        if phase < self.duty { 1.0 } else { 0.0 }
+    }
+}
+
 /// The waveform of a component before its level and modulation.
 #[derive(Debug, Clone)]
 pub(crate) enum Carrier {
     /// A sine wave.
     Tone(Phase),
-    /// Unipolar rectangular pulses: 1 while the phase is below `duty`, else 0.
-    Click { step: f64, duty: f64 },
+    /// Rectangular clicks.
+    Click(PulseTrain),
 }
 
 impl Carrier {
     fn next(&mut self, frame: u64) -> f64 {
         match self {
             Self::Tone(phase) => phase.sine(),
-            Self::Click { step, duty } => {
-                // The frame index is exact through Session::MAX_FRAMES.
-                // Computing each phase independently avoids accumulated drift;
-                // rounding near a boundary may still select an adjacent frame.
-                let cycles = numeric::frames_to_f64(frame) * *step;
-                let phase = cycles - libm::floor(cycles);
-                if phase < *duty { 1.0 } else { 0.0 }
-            }
+            Self::Click(pulses) => pulses.at(frame),
         }
     }
 }
@@ -82,6 +101,23 @@ impl Sinusoidal {
     }
 }
 
+/// A gain within `[0, 1]` applied to a carrier.
+#[derive(Debug, Clone)]
+pub(crate) enum Modulator {
+    Sinusoidal(Sinusoidal),
+    /// On/off gating by the same pulse train as clicks.
+    Rectangular(PulseTrain),
+}
+
+impl Modulator {
+    fn next(&mut self, frame: u64) -> f64 {
+        match self {
+            Self::Sinusoidal(modulation) => modulation.next(),
+            Self::Rectangular(pulses) => pulses.at(frame),
+        }
+    }
+}
+
 /// One component, ready to render.
 #[derive(Debug, Clone)]
 pub(crate) struct Voice {
@@ -89,7 +125,7 @@ pub(crate) struct Voice {
     pub(crate) right: bool,
     pub(crate) amplitude: f64,
     pub(crate) carrier: Carrier,
-    pub(crate) modulation: Option<Sinusoidal>,
+    pub(crate) modulation: Option<Modulator>,
 }
 
 impl Voice {
@@ -99,7 +135,7 @@ impl Voice {
         let carrier = self.carrier.next(frame);
         let shaped = match &mut self.modulation {
             None => carrier,
-            Some(modulation) => carrier * modulation.next(),
+            Some(modulation) => carrier * modulation.next(frame),
         };
         self.amplitude * shaped
     }
@@ -111,7 +147,7 @@ mod tests {
     use super::*;
     use alloc::vec::Vec;
 
-    fn voice(carrier: Carrier, modulation: Option<Sinusoidal>) -> Voice {
+    fn voice(carrier: Carrier, modulation: Option<Modulator>) -> Voice {
         Voice {
             left: true,
             right: false,
@@ -139,13 +175,7 @@ mod tests {
     fn clicks_are_unit_pulses_of_the_requested_width_at_the_requested_rate() {
         // 40 Hz, 1 ms at 48 kHz: 48 frames on in every 1200.
         let step = 40.0 / 48_000.0;
-        let mut clicks = voice(
-            Carrier::Click {
-                step,
-                duty: 0.001 * 40.0,
-            },
-            None,
-        );
+        let mut clicks = voice(Carrier::Click(PulseTrain::new(step, 0.001 * 40.0)), None);
         let samples: Vec<f64> = (0..48_000).map(|frame| clicks.next(frame)).collect();
         assert!(samples.iter().all(|s| *s == 0.0 || *s == 1.0));
         let onsets: Vec<usize> = (0..samples.len())
@@ -162,13 +192,7 @@ mod tests {
     #[test]
     fn a_click_covers_the_half_open_start_of_each_period() {
         // 1000 Hz at 8 kHz steps the phase by exactly 1/8; a 3/8 duty cycle ends exactly on a frame.
-        let mut clicks = voice(
-            Carrier::Click {
-                step: 0.125,
-                duty: 0.375,
-            },
-            None,
-        );
+        let mut clicks = voice(Carrier::Click(PulseTrain::new(0.125, 0.375)), None);
         let samples: Vec<f64> = (0..16).map(|frame| clicks.next(frame)).collect();
         let period = [1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0];
         assert_eq!(samples, [period, period].concat());
@@ -180,10 +204,10 @@ mod tests {
         let rate = 8_000.0;
         let mut am = voice(
             Carrier::Tone(Phase::new(1_000.0 / rate)),
-            Some(Sinusoidal {
+            Some(Modulator::Sinusoidal(Sinusoidal {
                 phase: Phase::new(125.0 / rate),
                 depth: 1.0,
-            }),
+            })),
         );
         let samples: Vec<f64> = (0..8_000).map(|frame| am.next(frame)).collect();
         let line = |hz: f64| {
@@ -228,6 +252,30 @@ mod tests {
     }
 
     #[test]
+    fn rectangular_modulation_gates_a_continuous_tone_with_the_click_pulse_train() {
+        // 1000 Hz at 8 kHz gated at 1000 Hz with a 3/8 duty: the first three frames of each period.
+        let rate = 8_000.0;
+        let mut gated = voice(
+            Carrier::Tone(Phase::new(1_000.0 / rate)),
+            Some(Modulator::Rectangular(PulseTrain::new(
+                1_000.0 / rate,
+                0.375,
+            ))),
+        );
+        for frame in 0..64_u32 {
+            let tone = (TAU * 1_000.0 * f64::from(frame) / rate).sin();
+            let open = frame % 8 < 3;
+            let sample = gated.next(u64::from(frame));
+            if open {
+                assert!((sample - tone).abs() < 1e-12, "frame {frame}");
+            } else {
+                // The product of a negative sine and a closed gate is negative zero.
+                assert_eq!(sample, 0.0, "frame {frame}");
+            }
+        }
+    }
+
+    #[test]
     fn modulation_envelopes_never_leave_zero_to_one_at_any_depth() {
         for depth in [0.0, 0.25, 0.999_999, 1.0] {
             let mut envelope = Sinusoidal {
@@ -249,10 +297,7 @@ mod click_clock_tests {
     #[test]
     fn absolute_click_phase_does_not_accumulate_long_period_drift() {
         let rate = 48_000.0 / 500_000_000.0;
-        let mut click = Carrier::Click {
-            step: rate / 48_000.0,
-            duty: rate / 48_000.0,
-        };
+        let mut click = Carrier::Click(PulseTrain::new(rate / 48_000.0, rate / 48_000.0));
         for frame in [499_999_993, 499_999_994, 499_999_999] {
             assert_eq!(click.next(frame), 0.0, "frame {frame}");
         }
@@ -263,10 +308,7 @@ mod click_clock_tests {
     #[test]
     fn absolute_click_phase_documents_adjacent_frame_boundary_rounding() {
         let rate = 7.367_306_782_540_053e-7;
-        let mut click = Carrier::Click {
-            step: rate / 48_000.0,
-            duty: (1.0 / 48_000.0) * rate,
-        };
+        let mut click = Carrier::Click(PulseTrain::new(rate / 48_000.0, (1.0 / 48_000.0) * rate));
         let boundary = 65_152_709_690;
         assert_eq!(click.next(boundary - 1), 0.0);
         assert_eq!(click.next(boundary), 0.0);

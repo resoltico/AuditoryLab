@@ -1,0 +1,9 @@
+# Use Rust's bundled MinGW startup and static LLVM unwinder with Windows OS UCRT.
+# Explicit --target builds keep these flags off host proc-macro compilation.
+[target.x86_64-pc-windows-gnullvm]
+linker = "rust-lld"
+rustflags = ["-C", "linker-flavor=ld.lld", "-C", "link-self-contained=yes", "-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-gnullvm]
+linker = "rust-lld"
+rustflags = ["-C", "linker-flavor=ld.lld", "-C", "link-self-contained=yes", "-C", "target-feature=+crt-static"]

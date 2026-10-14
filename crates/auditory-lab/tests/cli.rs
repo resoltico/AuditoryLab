@@ -11,14 +11,14 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
-const TONE: &str = r#"schema_version = 1
+const TONE: &str = r#"schema_version = 2
 duration_seconds = 0.02
 fade_seconds = 0.001
 [[component]]
 ears = "both"
 kind = "tone"
 frequency_hz = 440.0
-level_dbfs = -20.0
+peak_dbfs = -20.0
 "#;
 
 fn binary() -> Command {
@@ -103,7 +103,7 @@ fn engineering_stimuli_export_short_faded_stereo_at_both_rates() {
 ears="right"
 kind="tone"
 frequency_hz=446
-level_dbfs=-20
+peak_dbfs=-20
 "#,
         TONE.to_owned()
             + r#"
@@ -135,7 +135,7 @@ depth=0.5
                 assert_eq!(
                     String::from_utf8(inspected.stdout).unwrap(),
                     format!(
-                        "preset: standard input\nsample rate: {rate} Hz\nlength: 0.02 s ({frames} frames)\nfade: {fade_seconds} s ({fade} frames at each edge)\ncomponent 1: tone 440 Hz, -20 dBFS, both ears\npeak bound: left ear -20.00 dBFS, right ear -20.00 dBFS\n"
+                        "preset: standard input\nsample rate: {rate} Hz\nlength: 0.02 s ({frames} frames)\nfade: {fade_seconds} s ({fade} frames at each edge)\ncomponent 1: tone 440 Hz, peak -20 dBFS, both ears\npeak bound: left ear -20.00 dBFS, right ear -20.00 dBFS\n"
                     )
                 );
             }
@@ -233,8 +233,8 @@ fn a_preset_that_breaks_the_schema_exits_2_before_any_file_or_device_is_touched(
     let output = directory.path().join("absent.wav");
     let oversized = format!("{TONE}{}", " ".repeat(65_537 - TONE.len()));
     for bytes in [
-        TONE.replace("level_dbfs = -20.0", "").into_bytes(),
-        TONE.replace("schema_version = 1", "schema_version = 2")
+        TONE.replace("peak_dbfs = -20.0", "").into_bytes(),
+        TONE.replace("schema_version = 2", "schema_version = 1")
             .into_bytes(),
         format!("{TONE}\nunknown_field = 2").into_bytes(),
         oversized.into_bytes(),
@@ -265,7 +265,7 @@ fn a_value_the_core_rejects_exits_2_and_names_its_field() {
     let output = directory.path().join("absent.wav");
     fs::write(
         &preset,
-        TONE.replace("level_dbfs = -20.0", "level_dbfs = 2.0"),
+        TONE.replace("peak_dbfs = -20.0", "peak_dbfs = 2.0"),
     )
     .unwrap();
     for result in [
@@ -279,7 +279,7 @@ fn a_value_the_core_rejects_exits_2_and_names_its_field() {
             error.starts_with(&format!("error: {preset:?}: ")),
             "{error}"
         );
-        assert!(error.contains("level_dbfs"), "{error}");
+        assert!(error.contains("peak_dbfs"), "{error}");
         assert!(!error.contains("cannot be rendered at"));
     }
     let component = TONE.split_once("[[component]]").unwrap().1;
@@ -290,7 +290,7 @@ fn a_value_the_core_rejects_exits_2_and_names_its_field() {
         ),
         (
             format!(
-                "schema_version=1\nduration_seconds=0.02\nfade_seconds=0\n{}",
+                "schema_version=2\nduration_seconds=0.02\nfade_seconds=0\n{}",
                 format!("[[component]]{component}").repeat(17)
             ),
             "components",
@@ -417,12 +417,12 @@ fn a_preset_is_read_from_standard_input() {
     );
     assert!(exported.status.success());
     assert_eq!(wav(&fs::read(&output).unwrap()).1.len(), 320);
-    let invalid = piped(&["play".as_ref(), "-".as_ref()], b"schema_version = 2\n");
+    let invalid = piped(&["play".as_ref(), "-".as_ref()], b"schema_version = 1\n");
     assert_eq!(invalid.status.code(), Some(2));
     assert!(
         String::from_utf8(invalid.stderr)
             .unwrap()
-            .starts_with("error: standard input: preset has schema_version 2;")
+            .starts_with("error: standard input: preset has schema_version 1; this build reads 2")
     );
 }
 
@@ -549,7 +549,7 @@ mod on_unix {
     fn an_interrupt_during_export_exits_130_and_leaves_no_file() {
         // The interrupt arrives within milliseconds; no-component silence keeps the
         // fixture cheap. A completed stereo file would contain 230.4 MB of samples.
-        let long = "schema_version=1\nduration_seconds=600\nfade_seconds=0\n";
+        let long = "schema_version=2\nduration_seconds=600\nfade_seconds=0\n";
         for name in ["-INT", "-TERM"] {
             let directory = tempfile::tempdir().unwrap();
             let preset = directory.path().join("long.toml");
@@ -617,7 +617,7 @@ mod on_unix {
                 .spawn()
                 .unwrap();
             let mut stdin = child.stdin.take().unwrap();
-            stdin.write_all(b"schema_version = 1\n").unwrap();
+            stdin.write_all(b"schema_version = 2\n").unwrap();
             let mut running = Running(child);
             std::thread::sleep(Duration::from_millis(100));
             assert!(running.0.try_wait().unwrap().is_none());
@@ -749,7 +749,7 @@ fn catalog_listing_show_inspection_and_short_exports_use_real_entries() {
     assert!(listed.status.success());
     assert!(listed.stderr.is_empty());
     let listing = String::from_utf8(listed.stdout).unwrap();
-    assert_eq!(listing.lines().count(), 15);
+    assert_eq!(listing.lines().count(), catalog::ENTRIES.len());
     let directory = tempfile::tempdir().unwrap();
     for entry in catalog::ENTRIES {
         assert_eq!(
@@ -788,7 +788,7 @@ fn catalog_listing_show_inspection_and_short_exports_use_real_entries() {
                 entry.text.as_bytes(),
             );
             let expected = Preset::parse(entry.text).unwrap();
-            let metadata = expected.provenance.unwrap();
+            let about = expected.about.unwrap();
             let mut semantic = None;
             for (result, origin) in [
                 (named, format!("preset: {} (built-in)", entry.name)),
@@ -809,15 +809,9 @@ fn catalog_listing_show_inspection_and_short_exports_use_real_entries() {
                 } else {
                     semantic = Some(rest.to_owned());
                 }
-                for (field, value) in [
-                    ("title", &metadata.title),
-                    ("citation", &metadata.citation),
-                    ("source_url", &metadata.source_url),
-                    ("description", &metadata.description),
-                    ("adaptation", &metadata.adaptation),
-                ] {
-                    assert!(rest.contains(&format!("{field}: {value:?}\n")));
-                }
+                // Inspection identifies the sound; `about` carries its description.
+                assert!(rest.ends_with(&format!("title: {:?}\n", about.title)));
+                assert!(!rest.contains("summary:"));
                 assert!(rest.contains("peak bound: left ear"));
             }
         }
@@ -884,9 +878,9 @@ fn dotless_files_require_an_explicit_path_even_after_the_option_delimiter() {
 }
 
 #[test]
-fn hostile_provenance_is_quoted_in_real_inspection_and_export_start_context() {
+fn hostile_about_text_is_quoted_in_real_inspection_and_export_start_context() {
     let text = format!(
-        "{TONE}\n[provenance]\ntitle = \"hello\\nexported forged\\t\\r\\u001b[2J\\u202e\"\ncitation = \"authors\"\nsource_url = \"link\"\ndescription = \"role\"\nadaptation = \"limits\"\n"
+        "{TONE}\n[about]\ntitle = \"hello\\nexported forged\\t\\r\\u001b[2J\\u202e\"\ncitation = \"authors\"\nsource_url = \"link\"\nstudy = \"role\"\nadaptation = \"limits\"\n"
     );
     let inspected = piped(&["inspect".as_ref(), "-".as_ref()], text.as_bytes());
     assert!(inspected.status.success());
@@ -944,5 +938,338 @@ fn relative_filenames_with_a_dot_or_backslash_are_files_without_a_filesystem_pro
         let text = String::from_utf8(inspected.stdout).unwrap();
         assert!(text.starts_with(&format!("preset: {name:?}\n")));
         assert!(text.contains("length: 0.02 s (960 frames)\n"));
+    }
+}
+
+#[test]
+fn show_saves_the_exact_entry_to_a_new_file_and_never_replaces_one() {
+    use auditory_core::catalog;
+    let directory = tempfile::tempdir().unwrap();
+    let entry = &catalog::ENTRIES[0];
+    let path = directory.path().join("copy.toml");
+    let saved = run(&[
+        "show".as_ref(),
+        entry.name.as_ref(),
+        "--output".as_ref(),
+        path.as_os_str(),
+    ]);
+    assert!(saved.status.success());
+    assert!(saved.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8(saved.stdout).unwrap(),
+        format!("saved {} -> {path:?}\n", entry.name)
+    );
+    assert_eq!(fs::read(&path).unwrap(), entry.text.as_bytes());
+    fs::write(&path, b"mine").unwrap();
+    let refused = run(&[
+        "show".as_ref(),
+        "--output".as_ref(),
+        path.as_os_str(),
+        entry.name.as_ref(),
+    ]);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(
+        String::from_utf8(refused.stderr)
+            .unwrap()
+            .ends_with("the destination already exists and was left untouched\n")
+    );
+    assert_eq!(fs::read(&path).unwrap(), b"mine");
+    let unknown = run(&[
+        "show".as_ref(),
+        "missing".as_ref(),
+        "--output".as_ref(),
+        directory.path().join("missing.toml").as_os_str(),
+    ]);
+    assert_eq!(unknown.status.code(), Some(2));
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
+#[test]
+fn about_describes_every_entry_in_plain_wrapped_text() {
+    use auditory_core::{Preset, catalog};
+    for entry in catalog::ENTRIES {
+        let result = run(&["about".as_ref(), entry.name.as_ref()]);
+        assert!(result.status.success());
+        assert!(result.stderr.is_empty());
+        let text = String::from_utf8(result.stdout).unwrap();
+        let about = Preset::parse(entry.text).unwrap().about.unwrap();
+        assert!(text.starts_with(&format!("{}\n", about.title)), "{text}");
+        let words = |value: &str| value.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            words(&text).contains(&words(about.summary.as_deref().unwrap())),
+            "{}",
+            entry.name
+        );
+        assert!(
+            text.lines().all(|line| line.chars().count() <= 78),
+            "{text}"
+        );
+    }
+    let bare = piped(
+        &["about".as_ref(), "-".as_ref()],
+        b"schema_version = 2\nduration_seconds = 1\nfade_seconds = 0\n",
+    );
+    assert!(bare.status.success());
+    assert_eq!(
+        String::from_utf8(bare.stdout).unwrap(),
+        "standard input has no [about] table describing it.\n"
+    );
+}
+
+#[test]
+fn a_utf16_preset_is_named_as_such() {
+    let bytes: Vec<u8> = [0xff, 0xfe]
+        .into_iter()
+        .chain(TONE.encode_utf16().flat_map(u16::to_le_bytes))
+        .collect();
+    let result = piped(&["inspect".as_ref(), "-".as_ref()], &bytes);
+    assert_eq!(result.status.code(), Some(2));
+    assert_eq!(
+        String::from_utf8(result.stderr).unwrap(),
+        "error: standard input: preset is UTF-16 text; save it as UTF-8\n"
+    );
+}
+
+#[test]
+fn about_wraps_the_final_escaped_bytes_even_for_long_words() {
+    for title in [
+        "x".repeat(79),
+        format!("{}\\u001b", "a".repeat(76)),
+        format!("{} \\u001b", "a".repeat(72)),
+        format!("{}\\u202e", "b".repeat(76)),
+        format!("{}\\n\\r\\t\\u0000\\u0085", "c".repeat(76)),
+    ] {
+        let fixture = format!(
+            "schema_version=2\nduration_seconds=1\nfade_seconds=0\n[about]\ntitle=\"{title}\"\n"
+        );
+        let result = piped(&["about".as_ref(), "-".as_ref()], fixture.as_bytes());
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(result.stderr.is_empty());
+        let displayed = String::from_utf8(result.stdout).unwrap();
+        assert!(
+            displayed.lines().all(|line| line.chars().count() <= 78),
+            "{displayed}"
+        );
+        assert!(displayed.chars().all(|ch| !ch.is_control() || ch == '\n'));
+        assert!(!displayed.contains('\u{202e}'));
+        // Line filling may move whitespace; no source word or escape is lost.
+        let expected = title
+            .replace("\\u001b", "\\u{1b}")
+            .replace("\\u202e", "\\u{202e}")
+            .replace("\\u0000", "\\u{0}")
+            .replace("\\u0085", "\\u{85}");
+        let compact = |text: &str| {
+            text.chars()
+                .filter(|ch| !ch.is_whitespace())
+                .collect::<String>()
+        };
+        assert_eq!(compact(&displayed), compact(&expected));
+    }
+}
+
+#[test]
+fn about_wraps_unicode_columns_without_splitting_graphemes() {
+    // Independent fixture oracle: these specific Unicode clusters occupy the
+    // stated terminal cells. Do not call either production Unicode helper here.
+    let columns = |mut line: &str| {
+        let mut width = 0;
+        while !line.is_empty() {
+            let mut matched = false;
+            for (cluster, cells) in [
+                ("👩‍👩‍👧‍👦", 2),
+                ("👍🏽", 2),
+                ("🇱🇻", 2),
+                ("e\u{301}", 1),
+                (" \u{301}", 1),
+                ("界\u{301}", 2),
+                ("❤️", 2),
+                ("界", 2),
+            ] {
+                if let Some(rest) = line.strip_prefix(cluster) {
+                    width += cells;
+                    line = rest;
+                    matched = true;
+                    break;
+                }
+            }
+            if !matched {
+                let first = line.chars().next().unwrap();
+                assert!(
+                    first.is_ascii() && !first.is_control(),
+                    "split cluster: {line:?}"
+                );
+                width += 1;
+                line = &line[first.len_utf8()..];
+            }
+        }
+        width
+    };
+    for (title, displayed, expected_widths) in [
+        ("界".repeat(79), "界".repeat(79), vec![78, 78, 2]),
+        ("界\u{301}".repeat(40), "界\u{301}".repeat(40), vec![78, 2]),
+        ("❤️".repeat(40), "❤️".repeat(40), vec![78, 2]),
+        (
+            format!("{} \u{301}界", "x".repeat(77)),
+            format!("{} \u{301}界", "x".repeat(77)),
+            vec![78, 2],
+        ),
+        ("e\u{301}".repeat(79), "e\u{301}".repeat(79), vec![78, 1]),
+        ("👩‍👩‍👧‍👦".repeat(40), "👩‍👩‍👧‍👦".repeat(40), vec![78, 2]),
+        ("👍🏽".repeat(40), "👍🏽".repeat(40), vec![78, 2]),
+        ("🇱🇻".repeat(40), "🇱🇻".repeat(40), vec![78, 2]),
+        (
+            format!("{}👩‍👩‍👧‍👦", "x".repeat(77)),
+            format!("{}👩‍👩‍👧‍👦", "x".repeat(77)),
+            vec![77, 2],
+        ),
+        (
+            format!("{}\\u001b", "界".repeat(38)),
+            format!("{}\\u{{1b}}", "界".repeat(38)),
+            vec![78, 4],
+        ),
+    ] {
+        let fixture = format!(
+            "schema_version=2\nduration_seconds=1\nfade_seconds=0\n[about]\ntitle=\"{title}\"\n"
+        );
+        let result = piped(&["about".as_ref(), "-".as_ref()], fixture.as_bytes());
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(result.stderr.is_empty());
+        let text = String::from_utf8(result.stdout).unwrap();
+        assert_eq!(
+            text.lines().map(columns).collect::<Vec<_>>(),
+            expected_widths,
+            "{text}"
+        );
+        assert_eq!(text.replace('\n', ""), displayed);
+    }
+}
+
+#[test]
+fn about_preserves_the_separator_after_a_zero_column_word() {
+    for zero_width in ["\u{301}", "\u{200d}"] {
+        let fixture = format!(
+            "schema_version=2\nduration_seconds=1\nfade_seconds=0\n[about]\ntitle=\"{zero_width} alpha\"\n"
+        );
+        let result = piped(&["about".as_ref(), "-".as_ref()], fixture.as_bytes());
+        assert!(result.status.success());
+        assert_eq!(
+            String::from_utf8(result.stdout).unwrap(),
+            format!("{zero_width} alpha\n")
+        );
+    }
+}
+
+#[test]
+fn about_escapes_only_an_indivisible_cluster_wider_than_the_line() {
+    // A long Devanagari conjunct is one extended grapheme with more than 78
+    // columns under the width model; preserving it literally cannot fit a line.
+    let title = "क्".repeat(79) + "क";
+    let fixture = format!(
+        "schema_version=2\nduration_seconds=1\nfade_seconds=0\n[about]\ntitle=\"{title}\"\n"
+    );
+    let result = piped(&["about".as_ref(), "-".as_ref()], fixture.as_bytes());
+    assert!(result.status.success());
+    let text = String::from_utf8(result.stdout).unwrap();
+    assert!(text.is_ascii(), "{text}");
+    assert!(text.lines().all(|line| line.len() <= 78));
+    assert_eq!(
+        text.replace('\n', ""),
+        title
+            .chars()
+            .flat_map(char::escape_default)
+            .collect::<String>()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn show_refuses_dangling_symlinks_without_changing_them() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("copy.toml");
+    std::os::unix::fs::symlink("missing", &path).unwrap();
+    let result = binary()
+        .args(["show", auditory_core::catalog::ENTRIES[0].name, "--output"])
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert_eq!(result.status.code(), Some(1));
+    assert_eq!(fs::read_link(&path).unwrap(), Path::new("missing"));
+    assert!(String::from_utf8_lossy(&result.stderr).contains("left untouched"));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn show_write_failure_reports_real_acl_cleanup_denial() {
+    struct AclCleanup<'a>(&'a Path);
+    impl Drop for AclCleanup<'_> {
+        fn drop(&mut self) {
+            assert!(
+                Command::new("chmod")
+                    .arg("-RN")
+                    .arg(self.0)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("copy.toml");
+    for denied in [false, true] {
+        let cleanup = AclCleanup(directory.path());
+        if denied {
+            for rule in [
+                "everyone deny delete_child",
+                "everyone deny delete,file_inherit",
+            ] {
+                assert!(
+                    Command::new("chmod")
+                        .args(["+a", rule])
+                        .arg(directory.path())
+                        .status()
+                        .unwrap()
+                        .success()
+                );
+            }
+        }
+        // The shell passes an ignored SIGXFSZ and zero file-size limit to the real CLI.
+        let result = Command::new("/bin/sh")
+            .args([
+                "-c",
+                "trap '' XFSZ; ulimit -f 0; exec \"$@\"",
+                "show-write-limit",
+            ])
+            .arg(env!("CARGO_BIN_EXE_auditory-lab"))
+            .args(["show", auditory_core::catalog::ENTRIES[0].name, "--output"])
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(1));
+        assert!(result.stdout.is_empty());
+        let diagnostic = String::from_utf8(result.stderr).unwrap();
+        assert!(diagnostic.contains("File too large"), "{diagnostic}");
+        assert_eq!(path.exists(), denied);
+        if denied {
+            assert_eq!(fs::metadata(&path).unwrap().len(), 0);
+            assert!(
+                diagnostic.contains(&format!("incomplete output remains at {path:?}")),
+                "{diagnostic}"
+            );
+            assert!(diagnostic.contains("cannot remove it:"));
+        } else {
+            assert!(!diagnostic.contains("incomplete output"));
+        }
+        drop(cleanup);
+        if denied {
+            fs::remove_file(&path).unwrap();
+        }
     }
 }

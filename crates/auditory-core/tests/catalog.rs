@@ -12,11 +12,20 @@ use std::collections::BTreeMap;
 use std::f64::consts::{PI, TAU};
 use std::path::Path;
 
-/// (name, seconds, components as (ears, kind, Hz, level dBFS, modulation Hz)).
+/// How an independently written recipe modulates a component.
+#[derive(Clone, Copy)]
+enum Mod {
+    /// Full-depth sinusoidal modulation at this rate.
+    Sam(f64),
+    /// Rectangular gating at this rate, open for 1 ms.
+    Gate(f64),
+}
+
+/// (name, seconds, components as (ears, kind, Hz, peak dBFS, modulation)).
 type Recipe = (
     &'static str,
     f64,
-    &'static [(Ears, &'static str, f64, f64, Option<f64>)],
+    &'static [(Ears, &'static str, f64, f64, Option<Mod>)],
 );
 
 const L: Ears = Ears::Left;
@@ -25,6 +34,14 @@ const B: Ears = Ears::Both;
 const MONAURAL: f64 = -23.0103;
 
 const RECIPES: &[Recipe] = &[
+    (
+        "beauchene-2016-binaural-5-hz",
+        300.0,
+        &[
+            (L, "tone", 245.0, -20.0, None),
+            (R, "tone", 240.0, -20.0, None),
+        ],
+    ),
     (
         "beauchene-2016-binaural-10-hz",
         300.0,
@@ -38,14 +55,6 @@ const RECIPES: &[Recipe] = &[
         300.0,
         &[
             (L, "tone", 255.0, -20.0, None),
-            (R, "tone", 240.0, -20.0, None),
-        ],
-    ),
-    (
-        "beauchene-2016-binaural-5-hz",
-        300.0,
-        &[
-            (L, "tone", 245.0, -20.0, None),
             (R, "tone", 240.0, -20.0, None),
         ],
     ),
@@ -81,12 +90,24 @@ const RECIPES: &[Recipe] = &[
         ],
     ),
     (
-        "orozco-perez-2020-binaural-40-hz",
-        480.0,
-        &[
-            (L, "tone", 380.0, -20.0, None),
-            (R, "tone", 420.0, -20.0, None),
-        ],
+        "lahijanian-2024-tone-pips-40-hz",
+        40.0,
+        &[(B, "tone", 5000.0, -20.0, Some(Mod::Gate(40.0)))],
+    ),
+    (
+        "martorell-2019-tone-pips-8-hz",
+        3600.0,
+        &[(B, "tone", 10_000.0, -20.0, Some(Mod::Gate(8.0)))],
+    ),
+    (
+        "martorell-2019-tone-pips-40-hz",
+        3600.0,
+        &[(B, "tone", 10_000.0, -20.0, Some(Mod::Gate(40.0)))],
+    ),
+    (
+        "martorell-2019-tone-pips-80-hz",
+        3600.0,
+        &[(B, "tone", 10_000.0, -20.0, Some(Mod::Gate(80.0)))],
     ),
     (
         "orozco-perez-2020-binaural-7-hz",
@@ -97,11 +118,11 @@ const RECIPES: &[Recipe] = &[
         ],
     ),
     (
-        "orozco-perez-2020-monaural-40-hz",
+        "orozco-perez-2020-binaural-40-hz",
         480.0,
         &[
-            (B, "tone", 380.0, MONAURAL, None),
-            (B, "tone", 420.0, MONAURAL, None),
+            (L, "tone", 380.0, -20.0, None),
+            (R, "tone", 420.0, -20.0, None),
         ],
     ),
     (
@@ -113,19 +134,27 @@ const RECIPES: &[Recipe] = &[
         ],
     ),
     (
-        "van-eeckhoutte-2018-am-1000-hz",
-        307.2,
-        &[(L, "tone", 1000.0, -20.0, Some(39.0625))],
-    ),
-    (
-        "van-eeckhoutte-2018-am-2000-hz",
-        307.2,
-        &[(L, "tone", 2000.0, -20.0, Some(39.0625))],
+        "orozco-perez-2020-monaural-40-hz",
+        480.0,
+        &[
+            (B, "tone", 380.0, MONAURAL, None),
+            (B, "tone", 420.0, MONAURAL, None),
+        ],
     ),
     (
         "van-eeckhoutte-2018-am-500-hz",
         307.2,
-        &[(L, "tone", 500.0, -20.0, Some(39.0625))],
+        &[(L, "tone", 500.0, -20.0, Some(Mod::Sam(39.0625)))],
+    ),
+    (
+        "van-eeckhoutte-2018-am-1000-hz",
+        307.2,
+        &[(L, "tone", 1000.0, -20.0, Some(Mod::Sam(39.0625)))],
+    ),
+    (
+        "van-eeckhoutte-2018-am-2000-hz",
+        307.2,
+        &[(L, "tone", 2000.0, -20.0, Some(Mod::Sam(39.0625)))],
     ),
 ];
 
@@ -133,8 +162,29 @@ fn preset(entry: &Entry) -> Preset {
     Preset::parse(entry.text).unwrap_or_else(|error| panic!("{}: {error}", entry.name))
 }
 
+/// Name order with runs of digits compared as numbers, written independently
+/// of the catalog's own list.
+fn natural(name: &str) -> Vec<(bool, u64, String)> {
+    let mut parts = Vec::new();
+    let mut rest = name;
+    while let Some(first) = rest.chars().next() {
+        let digits = first.is_ascii_digit();
+        let end = rest
+            .find(|c: char| c.is_ascii_digit() != digits)
+            .unwrap_or(rest.len());
+        let (part, tail) = rest.split_at(end);
+        parts.push(if digits {
+            (true, part.parse().unwrap(), String::new())
+        } else {
+            (false, 0, part.to_owned())
+        });
+        rest = tail;
+    }
+    parts
+}
+
 #[test]
-fn the_catalog_is_exactly_the_files_in_the_catalog_directory_in_name_order() {
+fn the_catalog_is_exactly_the_files_in_the_catalog_directory_in_natural_name_order() {
     let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("catalog");
     let mut files: Vec<(String, String)> = std::fs::read_dir(directory)
         .unwrap()
@@ -149,7 +199,7 @@ fn the_catalog_is_exactly_the_files_in_the_catalog_directory_in_name_order() {
             (name, std::fs::read_to_string(&path).unwrap())
         })
         .collect();
-    files.sort();
+    files.sort_by_key(|(name, _)| natural(name));
     let entries: Vec<(String, String)> = catalog::ENTRIES
         .iter()
         .map(|e| (e.name.to_owned(), e.text.to_owned()))
@@ -167,6 +217,10 @@ fn the_catalog_is_exactly_the_files_in_the_catalog_directory_in_name_order() {
         assert_eq!(catalog::find(entry.name), Some(entry));
     }
     assert_eq!(catalog::find("missing"), None);
+    let names: Vec<_> = catalog::ENTRIES.iter().map(|e| e.name).collect();
+    let position = |name| names.iter().position(|n| *n == name).unwrap();
+    assert!(position("beauchene-2016-binaural-5-hz") < position("beauchene-2016-binaural-10-hz"));
+    assert!(position("martorell-2019-tone-pips-8-hz") < position("martorell-2019-tone-pips-40-hz"));
 }
 
 #[test]
@@ -184,12 +238,18 @@ fn every_entry_has_its_independently_written_recipe() {
             stimulus.components.iter().zip(*parts)
         {
             assert_eq!(component.ears(), *ears, "{name}");
-            assert_eq!(component.level_dbfs(), *level, "{name}");
+            assert_eq!(component.peak_dbfs(), *level, "{name}");
             assert_eq!(
                 component.modulation(),
-                modulation.map(|rate_hz| Modulation::Sinusoidal {
-                    rate_hz,
-                    depth: 1.0
+                modulation.map(|modulation| match modulation {
+                    Mod::Sam(rate_hz) => Modulation::Sinusoidal {
+                        rate_hz,
+                        depth: 1.0,
+                    },
+                    Mod::Gate(rate_hz) => Modulation::Rectangular {
+                        rate_hz,
+                        width_seconds: 0.001,
+                    },
                 }),
                 "{name}"
             );
@@ -219,29 +279,58 @@ fn every_entry_has_its_independently_written_recipe() {
     }
 }
 
+fn printable_about_value(value: &str) -> bool {
+    value
+        .bytes()
+        .all(|byte| (b' '..=b'~').contains(&byte) && byte != b'"')
+}
+
 #[test]
-fn every_entry_states_its_provenance_and_one_source_has_one_citation() {
+fn built_in_about_values_reject_controls_non_ascii_and_double_quotes() {
+    assert!(printable_about_value("space ~ apostrophe '"));
+    for value in [
+        "line\nfeed",
+        "carriage\rreturn",
+        "tab\t",
+        "nul\0",
+        "escape\u{1b}",
+        "delete\u{7f}",
+        "quoted\"",
+        "non-ascii é",
+    ] {
+        assert!(!printable_about_value(value), "{value:?}");
+    }
+}
+
+#[test]
+fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
     let mut citations = BTreeMap::new();
     for entry in catalog::ENTRIES {
-        let provenance = preset(entry)
-            .provenance
-            .unwrap_or_else(|| panic!("{} has no provenance", entry.name));
-        for (field, value) in [
-            ("title", &provenance.title),
-            ("citation", &provenance.citation),
-            ("source_url", &provenance.source_url),
-            ("description", &provenance.description),
-            ("adaptation", &provenance.adaptation),
+        let about = preset(entry)
+            .about
+            .unwrap_or_else(|| panic!("{} has no about table", entry.name));
+        let field = |name: &str, value: &Option<String>| {
+            value
+                .clone()
+                .unwrap_or_else(|| panic!("{}: no {name}", entry.name))
+        };
+        let citation = field("citation", &about.citation);
+        let source_url = field("source_url", &about.source_url);
+        for (name, value) in [
+            ("title", about.title.clone()),
+            ("studied_for", field("studied_for", &about.studied_for)),
+            ("summary", field("summary", &about.summary)),
+            ("citation", citation.clone()),
+            ("source_url", source_url.clone()),
+            ("study", field("study", &about.study)),
+            ("adaptation", field("adaptation", &about.adaptation)),
         ] {
-            assert!(!value.trim().is_empty(), "{}: empty {field}", entry.name);
-            assert!(
-                !value.contains('"') && !value.contains('\n'),
-                "{}: {field}",
-                entry.name
-            );
+            assert!(!value.trim().is_empty(), "{}: empty {name}", entry.name);
+            // Built-in values contain printable ASCII only, without double quotes.
+            assert!(printable_about_value(&value), "{}: {name}", entry.name);
         }
         assert!(
-            provenance.source_url.starts_with("https://doi.org/10."),
+            source_url.starts_with("https://doi.org/10."),
             "{}",
             entry.name
         );
@@ -250,17 +339,13 @@ fn every_entry_states_its_provenance_and_one_source_has_one_citation() {
             .split('-')
             .find(|part| part.len() == 4 && part.bytes().all(|b| b.is_ascii_digit()))
             .unwrap();
-        assert!(
-            provenance.citation.contains(&format!("({year})")),
-            "{}",
-            entry.name
-        );
+        assert!(citation.contains(&format!("({year})")), "{}", entry.name);
         let first = citations
-            .entry(provenance.source_url.clone())
-            .or_insert_with(|| provenance.citation.clone());
-        assert_eq!(*first, provenance.citation, "{}", entry.name);
+            .entry(source_url.clone())
+            .or_insert_with(|| citation.clone());
+        assert_eq!(*first, citation, "{}", entry.name);
     }
-    assert_eq!(citations.len(), 6);
+    assert_eq!(citations.len(), 8);
 }
 
 #[test]
@@ -341,6 +426,41 @@ fn the_amplitude_modulated_entries_match_the_textbook_formula() {
                 0.1 * (TAU * carrier * t).sin() * (1.0 + (TAU * 39.0625 * t).sin()) / 2.0 * fade;
             assert!((left - expected).abs() < 1e-10, "{name} frame {n}");
             assert_eq!(right.to_bits(), 0);
+        }
+    }
+}
+
+#[test]
+fn the_tone_pip_entries_gate_a_continuous_tone_open_for_one_millisecond_per_period() {
+    // At 48 kHz every rate divides the period into whole frames, and 1 ms
+    // is the first 48 frames of each period.
+    for (name, carrier, period) in [
+        ("lahijanian-2024-tone-pips-40-hz", 5_000.0, 1_200),
+        ("martorell-2019-tone-pips-8-hz", 10_000.0, 6_000),
+        ("martorell-2019-tone-pips-40-hz", 10_000.0, 1_200),
+        ("martorell-2019-tone-pips-80-hz", 10_000.0, 600),
+    ] {
+        let session = preset(catalog::find(name).unwrap())
+            .stimulus
+            .session(SampleRate::new(48_000).unwrap())
+            .unwrap();
+        let mut frames = vec![[0.0; 2]; 48_000];
+        session.into_renderer().render(&mut frames);
+        for (n, [left, right]) in (0_u32..).zip(&frames) {
+            let t = f64::from(n) / 48_000.0;
+            let fade = if n >= 4_800 {
+                1.0
+            } else {
+                0.5 - 0.5 * (PI * f64::from(n) / 4_800.0).cos()
+            };
+            let open = n % period < 48;
+            let expected = if open {
+                0.1 * (TAU * carrier * t).sin() * fade
+            } else {
+                0.0
+            };
+            assert!((left - expected).abs() < 1e-10, "{name} frame {n}");
+            assert_eq!(left.to_bits(), right.to_bits(), "{name} frame {n}");
         }
     }
 }

@@ -14,6 +14,7 @@ pub(crate) enum HelpTopic {
     Inspect,
     List,
     Show,
+    About,
 }
 
 impl HelpTopic {
@@ -25,6 +26,7 @@ impl HelpTopic {
             Self::Inspect => "inspect",
             Self::List => "list",
             Self::Show => "show",
+            Self::About => "about",
         }
     }
 }
@@ -39,26 +41,20 @@ pub(crate) fn help(topic: HelpTopic) -> String {
     );
     match topic {
         HelpTopic::Global => format!(
-            "Auditory Lab: inspect, export and play auditory stimuli.\n\nUsage:\n  auditory-lab (-h | --help)\n  auditory-lab --version\n  auditory-lab list\n  auditory-lab show NAME\n  auditory-lab play [--] PRESET\n  auditory-lab export --output OUTPUT [--sample-rate HZ] [--] PRESET\n  auditory-lab inspect [--sample-rate HZ] [--] PRESET\n\n{common}\nUse auditory-lab COMMAND --help for command help."
+            "Auditory Lab: inspect, export and play auditory stimuli.\n\nUsage:\n  auditory-lab (-h | --help)\n  auditory-lab --version\n  auditory-lab list\n  auditory-lab about [--] PRESET\n  auditory-lab show [--output OUTPUT] [--] NAME\n  auditory-lab play [--] PRESET\n  auditory-lab export --output OUTPUT [--sample-rate HZ] [--] PRESET\n  auditory-lab inspect [--sample-rate HZ] [--] PRESET\n\n{common}\nUse auditory-lab COMMAND --help for command help."
         ),
         HelpTopic::List => {
             "Usage: auditory-lab list\nList the built-in presets with durations and titles.".into()
         }
-        HelpTopic::Show => {
-            let save = if cfg!(windows) {
-                "PowerShell 7+: auditory-lab show chan-2022-clicks-40-hz | Out-File -Encoding utf8 -FilePath clicks.toml"
-            } else {
-                "Example: auditory-lab show chan-2022-clicks-40-hz > clicks.toml"
-            };
-            format!(
-                "Usage: auditory-lab show NAME\nPrint a built-in preset as UTF-8 TOML, ready to save and edit.\n{save}"
-            )
-        }
+        HelpTopic::Show => "Usage: auditory-lab show [--output OUTPUT] [--] NAME\nPrint a built-in preset as UTF-8 TOML, or save it to a new OUTPUT file, ready to edit.\nAn existing OUTPUT is never replaced.\nExample: auditory-lab show chan-2022-clicks-40-hz --output clicks.toml".into(),
         HelpTopic::Play => format!(
-            "Usage: auditory-lab play [--] PRESET\n{common}\nUses the backend-reported default stream rate and requires at least two channels.\nSet the output volume low: digital levels do not limit sound pressure. Use headphones to preserve intended ear routing.\nThe first handled interrupt requests cancellation; the second forces exit. An operation may already have completed; cancellation cannot undo it, and forced exit may leave incomplete output.\nExample: auditory-lab play orozco-perez-2020-binaural-7-hz"
+            "Usage: auditory-lab play [--] PRESET\n{common}\nPlays on the default output at its configured rate; it needs at least two channels.\nBefore playing, the program advises on volume and headphones for this sound.\nThe first handled interrupt requests cancellation; the second forces exit. An operation may already have completed; cancellation cannot undo it, and forced exit may leave incomplete output.\nExample: auditory-lab play orozco-perez-2020-binaural-7-hz"
         ),
         HelpTopic::Export => format!(
             "Usage: auditory-lab export --output OUTPUT [--sample-rate HZ] [--] PRESET\n{common}\n--output OUTPUT is required. OUTPUT - names a file, not standard output.\n{rate}\nAn existing OUTPUT is never replaced. Incomplete output is visible during export; cooperative cancellation removes it under exclusive path ownership.\nExample: auditory-lab export chan-2022-clicks-40-hz --output clicks.wav"
+        ),
+        HelpTopic::About => format!(
+            "Usage: auditory-lab about [--] PRESET\n{common}\nDescribe what a preset's sound is, what its source studied and what was found.\nExample: auditory-lab about orozco-perez-2020-binaural-7-hz"
         ),
         HelpTopic::Inspect => format!(
             "Usage: auditory-lab inspect [--sample-rate HZ] [--] PRESET\n{common}\n{rate}\nExample: auditory-lab inspect orozco-perez-2020-binaural-7-hz"
@@ -73,6 +69,7 @@ pub(crate) enum Command {
     List,
     Show {
         name: OsString,
+        output: Option<PathBuf>,
     },
     Play {
         preset: InputSource,
@@ -85,6 +82,9 @@ pub(crate) enum Command {
     Inspect {
         preset: InputSource,
         sample_rate: SampleRate,
+    },
+    About {
+        preset: InputSource,
     },
 }
 
@@ -101,7 +101,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
     let Some(verb) = args.first() else {
         return Err(usage(
             HelpTopic::Global,
-            "expected a command: list, show, play, export, or inspect".into(),
+            "expected a command: list, about, show, play, export, or inspect".into(),
         ));
     };
     if verb == "-h" || verb == "--help" || verb == "--version" {
@@ -123,10 +123,13 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
         Some("inspect") => HelpTopic::Inspect,
         Some("list") => HelpTopic::List,
         Some("show") => HelpTopic::Show,
+        Some("about") => HelpTopic::About,
         _ => {
             return Err(usage(
                 HelpTopic::Global,
-                format!("unknown command {verb:?}; expected list, show, play, export, or inspect"),
+                format!(
+                    "unknown command {verb:?}; expected list, about, show, play, export, or inspect"
+                ),
             ));
         }
     };
@@ -145,19 +148,6 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
             Err(error("list takes no arguments".into()))
         };
     }
-    if topic == HelpTopic::Show {
-        let literal = args.get(1).is_some_and(|word| word == "--");
-        let operands = &args[1..];
-        let operands = operands
-            .strip_prefix(&[OsString::from("--")])
-            .unwrap_or(operands);
-        return match operands {
-            [name] if !name.is_empty() && (literal || !option(name)) => {
-                Ok(Command::Show { name: name.clone() })
-            }
-            _ => Err(error("show requires one built-in preset name".into())),
-        };
-    }
     let mut preset = None;
     let mut destination = None;
     let mut rate = None;
@@ -169,7 +159,11 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
             continue;
         }
         if !literal && (word == "--output" || word == "--sample-rate") {
-            if topic == HelpTopic::Play || (topic == HelpTopic::Inspect && word == "--output") {
+            if topic == HelpTopic::Play
+                || topic == HelpTopic::About
+                || (topic == HelpTopic::Inspect && word == "--output")
+                || (topic == HelpTopic::Show && word == "--sample-rate")
+            {
                 return Err(error(format!(
                     "{} does not accept {}",
                     topic.verb(),
@@ -218,18 +212,28 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
             if preset.is_some() {
                 return Err(error(format!("unexpected extra preset argument {word:?}")));
             }
-            preset = Some(source(word));
+            preset = Some(word.clone());
         }
     }
-    let preset = preset.ok_or_else(|| {
+    if topic == HelpTopic::Show {
+        return match preset {
+            Some(name) => Ok(Command::Show {
+                name,
+                output: destination,
+            }),
+            None => Err(error("show requires one built-in preset name".into())),
+        };
+    }
+    let preset = source(&preset.ok_or_else(|| {
         error(format!(
             "{} requires a preset argument: a built-in name, file path or - for standard input",
             topic.verb()
         ))
-    })?;
+    })?);
     let sample_rate = rate.unwrap_or(SampleRate::DEFAULT);
     Ok(match topic {
         HelpTopic::Play => Command::Play { preset },
+        HelpTopic::About => Command::About { preset },
         HelpTopic::Inspect => Command::Inspect {
             preset,
             sample_rate,

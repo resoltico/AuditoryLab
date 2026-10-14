@@ -5,7 +5,7 @@
 //! generation.
 //!
 //! A [`Preset`] is a TOML document describing a [`Stimulus`] in physical
-//! units (hertz, seconds, dBFS) and, optionally, its [`Provenance`]. A
+//! units (hertz, seconds, dBFS) and, optionally, [`About`] text. A
 //! stimulus is a sum of [`Component`]s, each routed to the left ear, the
 //! right ear or both. [`Stimulus::session`] checks it against a
 //! [`SampleRate`] and returns a [`Session`], whose [`Renderer`] produces
@@ -24,7 +24,7 @@
 //!
 //! let preset = Preset::parse(
 //!     r#"
-//!     schema_version = 1
+//!     schema_version = 2
 //!     duration_seconds = 1.0
 //!     fade_seconds = 0.01
 //!
@@ -32,13 +32,13 @@
 //!     ears = "left"
 //!     kind = "tone"
 //!     frequency_hz = 250.0
-//!     level_dbfs = -20.0
+//!     peak_dbfs = -20.0
 //!
 //!     [[component]]
 //!     ears = "right"
 //!     kind = "tone"
 //!     frequency_hz = 256.0
-//!     level_dbfs = -20.0
+//!     peak_dbfs = -20.0
 //!     "#,
 //! )?;
 //! let session = preset.stimulus.session(SampleRate::DEFAULT)?;
@@ -66,7 +66,7 @@ mod rate;
 mod session;
 mod stimulus;
 
-pub use preset::{Preset, PresetError, Provenance};
+pub use preset::{About, Preset, PresetError};
 pub use rate::{SampleRate, SampleRateError};
 pub use session::{Renderer, Session};
 pub use stimulus::{Component, ComponentError, Ear, Ears, Modulation, Stimulus, StimulusError};

@@ -1,48 +1,42 @@
 # Architecture
 
-Four crates turn descriptive input into validated stereo frames and deliver them to a file or the configured default output.
+Four crates turn a recipe into validated stereo frames and deliver them to a file or the default audio output.
 
 | Crate | Responsibility |
 |---|---|
-| `auditory-core` | Preset format, catalog, stimulus validation and sample generation. |
-| `auditory-wav` | Stereo float RIFF/RF64 export and destination ownership. |
-| `auditory-device` | Configured-output discovery, conversion, placement and supervision. |
-| `auditory-lab` | Arguments, input reading, presentation, streams, exit statuses and interrupts. |
+| `auditory-core` | The preset format, the built-in catalog, validation and sample generation. |
+| `auditory-wav` | Stereo float RIFF/RF64 export to a new file. |
+| `auditory-device` | Default-output discovery, listening advice, sample conversion, channel placement and playback supervision. |
+| `auditory-lab` | The command line: arguments, reading input, presenting results, exit statuses and interrupts. |
 
-Sinks depend on core; the CLI depends on all three. Domain rules, defaults, limits and messages belong to the libraries. The CLI supplies input and presents library results.
+The sinks depend on the core, and the command line on all three. Every rule, limit, default, decision and message about sounds belongs to a library; the command line passes input in and presents what comes back, so another front end would repeat none of it.
 
-## Core model and rendering
+## Core
 
-`Preset` contains a descriptive `Stimulus` and optional `Provenance`. Components have explicit `Ears` routing and dBFS amplitude bounds. Tone/click carriers can use sinusoidal modulation; see the [format](presets.md).
+`Preset` holds a `Stimulus` and optional `About` text. A stimulus is a list of components, each a tone or click carrier with ear routing, a peak level and an optional sinusoidal or rectangular modulation; see the [format](presets.md).
 
-Parsing checks bounded UTF-8, strict structure and schema version first. `Stimulus::session(rate)` checks timing, component count, components in order, then per-ear summed bounds. It returns an opaque `Session` with private validated voices/envelope. Descriptive values can be invalid before this boundary.
+`Preset::parse` checks size, UTF-8, strict structure and the schema version. `Stimulus::session(rate)` checks timing, the component count, each component in order, then each ear's summed peak, and returns an opaque `Session`. Values can be invalid until this point.
 
-`Renderer` consumes session frames from the beginning, fills `[[f64; 2]]`, returns the active count and zeroes the tail. Its cursor advances once per active frame. Tone/modulation phases persist across buffers as wrapped binary64 cycle accumulators; clicks compute phase from the absolute frame index. Floating-point rounding can select an adjacent click frame near a boundary.
+A `Renderer` takes a session's frames from the first, filling `[[f64; 2]]` buffers, returning how many came from the session and zeroing the rest. Tone and sinusoidal phases are binary64 cycle accumulators that persist across buffers. Clicks and rectangular modulation share one pulse-train generator whose phase comes from the absolute frame index.
 
-Each ear's amplitude bound and samples are summed in the same component order. Carriers stay within ±1, modulation/fades within 0–1, and a computed bound above full scale is rejected. Round-to-nearest arithmetic preserves that computed bound. Validated rendering produces finite full-scale-bounded samples without clipping. The conservative bound need not be attained.
+Carriers lie within ±1 and modulation and fade gains within 0 to 1, and each ear's peaks are summed in the order its samples are, so round-to-nearest arithmetic keeps every rendered sample within the validated bound without clipping. Rendering allocates nothing, takes no locks and performs no I/O, so it can run on an audio thread.
 
-Rendering allocates nothing, takes no locks and performs no I/O. Construction/cloning can allocate. Core uses `no_std` with `alloc` and explicit portable `libm` arithmetic with default features disabled. Review production imports/dependencies and renderer ownership; `no_std` removes implicit std linkage/prelude but does not prohibit explicitly linking std. Fixed-fixture digests check rendered identity on each platform where the tests execute.
-
-The sorted catalog includes its TOML through `include_str!`. Source files are packaged with the core crate and embedded in the executable; no runtime catalog directory or source fetch is required.
+The core is `no_std` with `alloc` and uses `libm` for portable math, so the same recipe renders the same bits on every platform; pinned digests in the tests check this wherever they run. The catalog's TOML files are compiled in with `include_str!`.
 
 ## Sinks
 
-WAV export renders 4,096-frame blocks, rounds to binary32, writes the stereo header/payload and syncs before completion. Sizes select RIFF/RF64. [Usage](usage.md#export-and-ownership) defines create-new and exclusive pathname ownership.
+WAV export renders 4,096-frame blocks, rounds samples to 32-bit float, writes the header and samples, and syncs the file before reporting success. The session length decides between RIFF and RF64. [Usage](usage.md#export) states the file-ownership contract.
 
-Device discovery queries the backend's default stream configuration and stores an `OutputDescription` with the CPAL handle. Queries may open backend resources; they do not start this app's playback stream or certify the physical hardware rate. The selected configuration requires at least two channels and a supported representation/rate; the session must match it. The callback uses preallocated stereo scratch, converts samples, places left/right on leading channels and zeroes extras.
+Device discovery reads the backend's default stream configuration once; the session must match its rate. The audio callback converts samples, places left and right on the first two channels and silences the rest, using preallocated scratch. Callbacks and the supervising thread record one result, the first of completion, cancellation and failure; callbacks return silence once a result exists. Completion requires a callback at or after the latest backend estimate of when the last frame plays. `ListeningAdvice` decides the advice given before playback.
 
-Callbacks and supervision publish one terminal result through `OnceLock`: completion, cancellation or failure. Reading is nonblocking; concurrent publication attempts can wait for the result being initialized. Callbacks return silence when they observe a terminal result. Audio already queued to the backend cannot be recalled.
+## Command line
 
-Completion requires a silent callback at or after the latest backend estimate of the session end. Nanosecond rounding does not move that estimate earlier. Backward clocks and malformed buffers fail. Progress, underruns, route changes and timeout policy belong to the sink; backend timing does not measure acoustic delivery.
+Built-in names resolve through `catalog::find`; files and standard input share one bounded reader. The command line calls the libraries and presents their results: technical reports quote untrusted text, `about` wraps it, and one output boundary escapes control characters. `Failure` adds where a failure happened and its exit status. Interrupt handling starts only after input has been read.
 
-## CLI
+## Release artifacts
 
-Names resolve through `catalog::find`; files/stdin share a bounded reader. The CLI invokes core parsing/validation, then presents descriptive values and library `Display` messages. It generates no samples or waveform/normalization rules.
-
-`Failure` adds origins, applicable recovery hints and statuses. One terminal boundary protects output. Notices are best effort, reporting cannot undo completed operations, and closed pipes stop reporting quietly. A terminal-only stdin cue precedes reading; export/play install interrupt handlers after it finishes.
+[release.py](../scripts/release.py) defines the native targets. On Windows, [windows_runtime.py](../scripts/windows_runtime.py) builds with the pinned GNU LLVM toolchain, checks bundled startup/support inputs and selected members against their reviewed source identity, and binds the link trace and map to the executable bytes. [package.py](../scripts/package.py) requires that receipt alongside binary, import and extracted-artifact checks. [notices.py](../scripts/notices.py) consolidates the complete official Rust component notices, reviewed MinGW/LLVM native grants and ordinary crate notices; [releasing](releasing.md) describes the build and publication boundary.
 
 ## Changing the model
 
-For a component or modulation kind, update its core variant, validation, private generator and display, the [format](presets.md), and independent formula/boundary/allocation/partition tests. Add deterministic coverage for the affected waveform; preserve existing digests unless their samples intentionally change. CLI/sinks consume validated frames without kind-specific sample logic.
-
-Catalog additions follow the [curation criteria](presets.md#adding-a-built-in-preset). Run the applicable [verification](verification.md) and update affected current documentation with the implementation.
+A new component or modulation kind needs its core variant, validation, generator and display text, the [format](presets.md) documentation, and tests that check it against independent formulas, its rejection boundaries, allocation-free rendering and buffer-partition independence, plus a pinned digest. Existing digests change only when their samples deliberately change. Sinks and the command line consume frames and need no kind-specific code.

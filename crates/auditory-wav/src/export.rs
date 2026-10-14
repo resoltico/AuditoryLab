@@ -141,7 +141,7 @@ mod tests {
             components: vec![Component::Tone {
                 ears: Ears::Both,
                 frequency_hz: 500.0,
-                level_dbfs: -20.0,
+                peak_dbfs: -20.0,
                 modulation: None,
             }],
         }

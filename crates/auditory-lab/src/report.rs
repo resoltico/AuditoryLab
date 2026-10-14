@@ -5,6 +5,8 @@ use auditory_core::{Preset, Session};
 use auditory_device::{OutputDescription, Played};
 use auditory_wav::Exported;
 use std::path::Path;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 fn seconds(value: f64) -> String {
     let text = format!("{value:.6}");
@@ -38,16 +40,97 @@ pub(crate) fn resolved(origin: &str, preset: &Preset, session: &Session) -> Stri
         peak(left),
         peak(right)
     ));
-    if let Some(p) = &preset.provenance {
-        text.push_str(&format!(
-            "title: {:?}\ncitation: {:?}\nsource_url: {:?}\ndescription: {:?}\nadaptation: {:?}\n",
-            p.title, p.citation, p.source_url, p.description, p.adaptation
-        ));
+    if let Some(about) = &preset.about {
+        text.push_str(&format!("title: {:?}\n", about.title));
     }
     text
 }
+/// Wrap the final displayed text at 78 terminal columns. Split overlong words
+/// only at extended grapheme boundaries, preserving combining and emoji sequences.
+/// Escape embedded line breaks and tabs before measuring so values cannot
+/// introduce output lines, and escape other terminal controls at the same time.
+fn wrapped(text: &str) -> String {
+    let shown = crate::run::terminal_text(text)
+        .replace('\n', "\\n")
+        .replace('\t', "\\t");
+    // An indivisible cluster can itself exceed the line width (for example,
+    // a long Indic conjunct). Escape only those clusters instead of splitting them.
+    let mut bounded = String::new();
+    for grapheme in shown.graphemes(true) {
+        if grapheme.width() > 78 {
+            bounded.extend(grapheme.chars().flat_map(char::escape_default));
+        } else {
+            bounded.push_str(grapheme);
+        }
+    }
+    let mut lines = String::new();
+    let mut width = 0;
+    let graphemes: Vec<_> = bounded.graphemes(true).collect();
+    for word in graphemes
+        .split(|grapheme| *grapheme == " ")
+        .filter(|word| !word.is_empty())
+    {
+        let length: usize = word.iter().map(|grapheme| grapheme.width()).sum();
+        if !lines.is_empty() && !lines.ends_with('\n') {
+            if width + 1 + length > 78 {
+                lines.push('\n');
+                width = 0;
+            } else {
+                lines.push(' ');
+                width += 1;
+            }
+        }
+        for grapheme in word {
+            let columns = grapheme.width();
+            if width + columns > 78 {
+                lines.push('\n');
+                width = 0;
+            }
+            lines.push_str(grapheme);
+            width += columns;
+        }
+    }
+    lines.push('\n');
+    lines
+}
+
+/// Plain-language text about a preset, for listeners choosing a sound,
+/// followed by its research detail.
+pub(crate) fn about(origin: &str, preset: &Preset) -> String {
+    let Some(about) = &preset.about else {
+        return wrapped(&format!("{origin} has no [about] table describing it."));
+    };
+    let mut text = wrapped(&about.title);
+    if let Some(studied_for) = &about.studied_for {
+        text.push_str(&wrapped(&format!("Studied for: {studied_for}")));
+    }
+    if let Some(summary) = &about.summary {
+        text.push('\n');
+        text.push_str(&wrapped(summary));
+    }
+    if about.citation.is_some() || about.source_url.is_some() {
+        text.push('\n');
+    }
+    if let Some(citation) = &about.citation {
+        text.push_str(&wrapped(&format!("Source: {citation}")));
+    }
+    if let Some(source_url) = &about.source_url {
+        text.push_str(&wrapped(source_url));
+    }
+    for (label, value) in [("Study", &about.study), ("Adaptation", &about.adaptation)] {
+        if let Some(value) = value {
+            text.push('\n');
+            text.push_str(&wrapped(&format!("{label}: {value}")));
+        }
+    }
+    text
+}
+
 pub(crate) fn listing(name: &str, preset: &Preset, width: usize) -> String {
-    let title = preset.provenance.as_ref().map_or("", |p| p.title.as_str());
+    let title = preset
+        .about
+        .as_ref()
+        .map_or("", |about| about.title.as_str());
     format!(
         "{name:width$}  {:>6} s  {title}\n",
         seconds(preset.stimulus.duration_seconds)
@@ -55,7 +138,7 @@ pub(crate) fn listing(name: &str, preset: &Preset, width: usize) -> String {
 }
 pub(crate) fn start(action: &str, origin: &str, preset: &Preset, session: &Session) -> String {
     let title = preset
-        .provenance
+        .about
         .as_ref()
         .map_or_else(String::new, |p| format!(" ({:?})", p.title));
     format!(
@@ -83,15 +166,6 @@ pub(crate) fn exported(exported: Exported, origin: &str, destination: &Path) -> 
         exported.container
     )
 }
-pub(crate) fn playback_notices(preset: &Preset) -> String {
-    let mut text = String::from(
-        "Set the output volume low before playback: digital levels do not limit sound pressure.\n",
-    );
-    if preset.stimulus.uses_separate_ear_routing() {
-        text.push_str("Use headphones to preserve the intended ear routing.\n");
-    }
-    text
-}
 pub(crate) fn played(played: Played, origin: &str) -> String {
     format!(
         "played {origin}: {} frames at {} Hz as {}\n",
@@ -118,13 +192,16 @@ mod tests {
     #[test]
     fn displayed_domain_values_and_optional_start_title_are_quoted() {
         let mut p = Preset::parse(catalog::ENTRIES[0].text).unwrap();
-        p.provenance.as_mut().unwrap().title = "hostile\nexported forged\t\u{1b}[2J".into();
+        p.about.as_mut().unwrap().title = "hostile\nexported forged\t\u{1b}[2J".into();
         let s = p.stimulus.session(SampleRate::DEFAULT).unwrap();
         let line = start("exporting", "input", &p, &s);
         assert!(!line.contains('\n'));
         assert!(line.contains("hostile\\nexported forged\\t\\u{1b}[2J"));
-        assert!(resolved("input", &p, &s).contains("adaptation:"));
-        p.provenance = None;
+        assert!(
+            resolved("input", &p, &s)
+                .ends_with("title: \"hostile\\nexported forged\\t\\u{1b}[2J\"\n")
+        );
+        p.about = None;
         assert_eq!(
             start("exporting", "input", &p, &s),
             "exporting input: 300 s (14400000 frames), 48000 Hz"
@@ -132,19 +209,26 @@ mod tests {
     }
     #[test]
     fn silence_and_routing_notices_describe_the_contract() {
-        let p = Preset::parse("schema_version=1\nduration_seconds=1\nfade_seconds=0").unwrap();
+        let p = Preset::parse("schema_version=2\nduration_seconds=1\nfade_seconds=0").unwrap();
         let s = p.stimulus.session(SampleRate::DEFAULT).unwrap();
         assert!(resolved("input", &p, &s).contains(
             "components: none (silence)\npeak bound: left ear silent, right ear silent\n"
         ));
-        assert!(!playback_notices(&p).contains("headphones"));
+
         let p = Preset::parse(
             catalog::find("orozco-perez-2020-binaural-7-hz")
                 .unwrap()
                 .text,
         )
         .unwrap();
-        assert!(playback_notices(&p).contains("intended ear routing"));
+        assert!(
+            resolved(
+                "input",
+                &p,
+                &p.stimulus.session(SampleRate::DEFAULT).unwrap()
+            )
+            .contains("left ear")
+        );
     }
     #[test]
     fn seconds_device_and_underrun_reporting_preserve_stream_semantics() {

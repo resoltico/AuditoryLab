@@ -1,0 +1,26 @@
+# Copyright 2026 Ervins Strauhmanis
+# SPDX-License-Identifier: MPL-2.0
+# Source: STAR Methods, section 40 Hz auditory tone train stimulation protocol; Figure 3 and Figure S3 legends.
+schema_version = 2
+duration_seconds = 3600.0
+fade_seconds = 0.1
+
+[about]
+title = "8 Hz train of 1 ms 10 kHz tones"
+studied_for = "Comparison sound in Alzheimer's research in mice"
+summary = "Very short 10 kHz beeps, 8 per second. In mice bred to develop Alzheimer's-like changes, 4 mice heard this comparison sound for one hour a day for a week. Their amyloid levels did not significantly differ from the 19 mice hearing no stimulation; the 40-per-second group had lower levels. Memory was not tested for the 8-per-second condition. These are mouse findings, and the sound is not an established treatment."
+citation = "Martorell AJ, Paulson AL, Suk HJ, Abdurrob F, Drummond GT, Guan W, et al. (2019). Multi-sensory gamma stimulation ameliorates Alzheimer's-associated pathology and improves cognition. Cell 177(2): 256-271.e22."
+source_url = "https://doi.org/10.1016/j.cell.2019.02.014"
+study = "Auditory stimulation condition: 1 ms tones of 10 kHz repeated at 8 Hz. Mice of Alzheimer's disease models heard 1 ms tones of 10 kHz at 60 dB from loudspeakers above their chamber for 1 hour a day for 7 days, at 40 Hz or, as controls, at 8 Hz, 80 Hz or random intervals. In 5XFAD mice the 40 Hz trains reduced soluble amyloid-beta and plaques in auditory cortex and hippocampus and improved recognition and spatial memory; 8 Hz, 80 Hz and random trains did not significantly change amyloid-beta levels."
+adaptation = "The source states 1 ms tones of 10 kHz at 8 Hz (0.8% of each period) at 60 dB from loudspeakers, without ramps, phase or sample rate. Here a continuous 10 kHz tone starting at phase zero is gated open for the first 1 ms of each period, identical in both ears, with a -20 dBFS peak, uncalibrated, and 0.1 s fades added. The random-interval control is not reproduced."
+
+[[component]]
+ears = "both"
+kind = "tone"
+frequency_hz = 10000.0
+peak_dbfs = -20.0
+
+[component.modulation]
+kind = "rectangular"
+rate_hz = 8.0
+width_seconds = 0.001

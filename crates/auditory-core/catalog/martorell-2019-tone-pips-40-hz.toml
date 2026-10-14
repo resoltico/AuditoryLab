@@ -1,0 +1,26 @@
+# Copyright 2026 Ervins Strauhmanis
+# SPDX-License-Identifier: MPL-2.0
+# Source: STAR Methods, section 40 Hz auditory tone train stimulation protocol; Figure 3 and Figure S3 legends.
+schema_version = 2
+duration_seconds = 3600.0
+fade_seconds = 0.1
+
+[about]
+title = "40 Hz train of 1 ms 10 kHz tones"
+studied_for = "Alzheimer's disease research in mice"
+summary = "Very short 10 kHz beeps, 40 per second, heard as a high buzz. In mice bred to develop Alzheimer's-like changes, one hour a day for a week was associated with less amyloid in hearing and memory areas: 19 mice heard the sound and 19 were unstimulated controls. Recognition-memory tests used 20 mice per group; a water-maze test used 28 sound-exposed mice and 25 controls, with better performance in the sound groups. Each memory experiment also included 9 mice hearing random-interval beeps. The 8- and 80-per-second comparisons did not significantly reduce amyloid. These are mouse findings, and the sound is not an established treatment."
+citation = "Martorell AJ, Paulson AL, Suk HJ, Abdurrob F, Drummond GT, Guan W, et al. (2019). Multi-sensory gamma stimulation ameliorates Alzheimer's-associated pathology and improves cognition. Cell 177(2): 256-271.e22."
+source_url = "https://doi.org/10.1016/j.cell.2019.02.014"
+study = "Auditory stimulation condition: 1 ms tones of 10 kHz repeated at 40 Hz. Mice of Alzheimer's disease models heard 1 ms tones of 10 kHz at 60 dB from loudspeakers above their chamber for 1 hour a day for 7 days, at 40 Hz or, as controls, at 8 Hz, 80 Hz or random intervals. In 5XFAD mice the 40 Hz trains reduced soluble amyloid-beta and plaques in auditory cortex and hippocampus and improved recognition and spatial memory; 8 Hz, 80 Hz and random trains did not significantly change amyloid-beta levels."
+adaptation = "The source states 1 ms tones of 10 kHz at 40 Hz (4% of each period) at 60 dB from loudspeakers, without ramps, phase or sample rate. Here a continuous 10 kHz tone starting at phase zero is gated open for the first 1 ms of each period, identical in both ears, with a -20 dBFS peak, uncalibrated, and 0.1 s fades added. The random-interval control is not reproduced."
+
+[[component]]
+ears = "both"
+kind = "tone"
+frequency_hz = 10000.0
+peak_dbfs = -20.0
+
+[component.modulation]
+kind = "rectangular"
+rate_hz = 40.0
+width_seconds = 0.001

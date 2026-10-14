@@ -22,23 +22,28 @@ macro_rules! entries {
     };
 }
 
-/// Every built-in preset, in name order.
+/// Every built-in preset in name order, comparing runs of digits as numbers
+/// so that `8-hz` precedes `40-hz`.
 pub const ENTRIES: &[Entry] = entries![
+    "beauchene-2016-binaural-5-hz",
     "beauchene-2016-binaural-10-hz",
     "beauchene-2016-binaural-15-hz",
-    "beauchene-2016-binaural-5-hz",
     "beauchene-2016-pure-tone-240-hz",
     "chan-2022-clicks-40-hz",
     "ioannou-2015-binaural-10-hz",
     "ioannou-2015-pure-tone-200-hz",
     "jirakittayakorn-2017-binaural-6-hz",
-    "orozco-perez-2020-binaural-40-hz",
+    "lahijanian-2024-tone-pips-40-hz",
+    "martorell-2019-tone-pips-8-hz",
+    "martorell-2019-tone-pips-40-hz",
+    "martorell-2019-tone-pips-80-hz",
     "orozco-perez-2020-binaural-7-hz",
-    "orozco-perez-2020-monaural-40-hz",
+    "orozco-perez-2020-binaural-40-hz",
     "orozco-perez-2020-monaural-7-hz",
+    "orozco-perez-2020-monaural-40-hz",
+    "van-eeckhoutte-2018-am-500-hz",
     "van-eeckhoutte-2018-am-1000-hz",
     "van-eeckhoutte-2018-am-2000-hz",
-    "van-eeckhoutte-2018-am-500-hz",
 ];
 
 /// Return the built-in preset with this name.

@@ -12,11 +12,11 @@ fn rate(hz: u32) -> SampleRate {
     SampleRate::new(hz).unwrap()
 }
 
-fn tone(ears: Ears, frequency_hz: f64, level_dbfs: f64) -> Component {
+fn tone(ears: Ears, frequency_hz: f64, peak_dbfs: f64) -> Component {
     Component::Tone {
         ears,
         frequency_hz,
-        level_dbfs,
+        peak_dbfs,
         modulation: None,
     }
 }
@@ -175,14 +175,23 @@ fn component_values_are_checked_and_blamed_on_their_component_and_field() {
     let modulated = |frequency_hz, rate_hz, depth| Component::Tone {
         ears: Ears::Left,
         frequency_hz,
-        level_dbfs: -20.0,
+        peak_dbfs: -20.0,
         modulation: Some(Modulation::Sinusoidal { rate_hz, depth }),
+    };
+    let gated = |rate_hz, width_seconds| Component::Tone {
+        ears: Ears::Left,
+        frequency_hz: 1_000.0,
+        peak_dbfs: -20.0,
+        modulation: Some(Modulation::Rectangular {
+            rate_hz,
+            width_seconds,
+        }),
     };
     let click = |rate_hz, width_seconds| Component::Click {
         ears: Ears::Both,
         rate_hz,
         width_seconds,
-        level_dbfs: -20.0,
+        peak_dbfs: -20.0,
         modulation: None,
     };
     for (component, expected) in [
@@ -200,11 +209,11 @@ fn component_values_are_checked_and_blamed_on_their_component_and_field() {
         ),
         (
             tone(Ears::Left, 440.0, 0.1),
-            "level_dbfs 0.1 must be finite and at most 0",
+            "peak_dbfs 0.1 must be finite and at most 0",
         ),
         (
             tone(Ears::Left, 440.0, f64::NEG_INFINITY),
-            "level_dbfs -inf must be finite and at most 0",
+            "peak_dbfs -inf must be finite and at most 0",
         ),
         (
             modulated(1_000.0, -1.0, 1.0),
@@ -220,11 +229,27 @@ fn component_values_are_checked_and_blamed_on_their_component_and_field() {
         ),
         (
             click(40.0, 0.000_01),
-            "width_seconds 0.00001 must be at least one frame (0.000020833333333333333 s at 48000 Hz) and shorter than the 0.025 s between clicks at 40 Hz",
+            "width_seconds 0.00001 must be at least one frame (0.000020833333333333333 s at 48000 Hz) and shorter than the 0.025 s period at 40 Hz",
         ),
         (
             click(40.0, 0.025),
-            "width_seconds 0.025 must be at least one frame (0.000020833333333333333 s at 48000 Hz) and shorter than the 0.025 s between clicks at 40 Hz",
+            "width_seconds 0.025 must be at least one frame (0.000020833333333333333 s at 48000 Hz) and shorter than the 0.025 s period at 40 Hz",
+        ),
+        (
+            gated(40.0, 0.000_01),
+            "modulation width_seconds 0.00001 must be at least one frame (0.000020833333333333333 s at 48000 Hz) and shorter than the 0.025 s period at 40 Hz",
+        ),
+        (
+            gated(40.0, 0.025),
+            "modulation width_seconds 0.025 must be at least one frame (0.000020833333333333333 s at 48000 Hz) and shorter than the 0.025 s period at 40 Hz",
+        ),
+        (
+            gated(30_000.0, 0.000_01),
+            "modulation rate_hz 30000 Hz must be finite, positive and below 24000 Hz, half the 48000 Hz sample rate",
+        ),
+        (
+            gated(f64::from_bits(1), 1.0),
+            "modulation rate_hz 5e-324 Hz is too small for accurate pulse timing at 48000 Hz; raise modulation rate_hz",
         ),
         (
             click(30_000.0, 0.000_01),
@@ -267,7 +292,7 @@ fn component_values_are_checked_and_blamed_on_their_component_and_field() {
         ears: Ears::Both,
         rate_hz: 40.0,
         width_seconds: 0.001,
-        level_dbfs: -20.0,
+        peak_dbfs: -20.0,
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 2.0,
             depth: 1.0,
@@ -316,7 +341,7 @@ fn each_ear_may_reach_but_not_exceed_full_scale() {
     );
     assert_eq!(
         error.to_string(),
-        "the components for the right ear add up to a peak of 0.01 dBFS, above full scale; lower their level_dbfs"
+        "the components for the right ear add up to a peak of 0.01 dBFS, above full scale; lower their peak_dbfs"
     );
     let many = stimulus(vec![
         tone(Ears::Both, 250.0, -40.0);
@@ -340,31 +365,44 @@ fn each_ear_may_reach_but_not_exceed_full_scale() {
 fn components_describe_themselves() {
     assert_eq!(
         tone(Ears::Left, 396.5, -20.0).to_string(),
-        "tone 396.5 Hz, -20 dBFS, left ear"
+        "tone 396.5 Hz, peak -20 dBFS, left ear"
     );
     assert_eq!(
         Component::Tone {
             ears: Ears::Right,
             frequency_hz: 1_000.0,
-            level_dbfs: -20.0,
+            peak_dbfs: -20.0,
             modulation: Some(Modulation::Sinusoidal {
                 rate_hz: 39.0625,
                 depth: 1.0
             })
         }
         .to_string(),
-        "tone 1000 Hz, -20 dBFS, sinusoidal modulation 39.0625 Hz, depth 1, right ear"
+        "tone 1000 Hz, peak -20 dBFS, sinusoidal modulation 39.0625 Hz, depth 1, right ear"
     );
     assert_eq!(
         Component::Click {
             ears: Ears::Both,
             rate_hz: 40.0,
             width_seconds: 0.001,
-            level_dbfs: -20.0,
+            peak_dbfs: -20.0,
             modulation: None
         }
         .to_string(),
-        "clicks 40 Hz, 0.001 s wide, -20 dBFS, both ears"
+        "clicks 40 Hz, 0.001 s wide, peak -20 dBFS, both ears"
+    );
+    assert_eq!(
+        Component::Tone {
+            ears: Ears::Both,
+            frequency_hz: 5_000.0,
+            peak_dbfs: -20.0,
+            modulation: Some(Modulation::Rectangular {
+                rate_hz: 40.0,
+                width_seconds: 0.001
+            })
+        }
+        .to_string(),
+        "tone 5000 Hz, peak -20 dBFS, rectangular modulation 40 Hz, 0.001 s open, both ears"
     );
 }
 
@@ -374,32 +412,41 @@ fn full_scale_components() -> impl Strategy<Value = Vec<Component>> {
         (1.0..3_000.0_f64).prop_map(|hz| (hz, None, false)),
         (1.0..3_000.0_f64, 0.5..200.0_f64, 0.0..=1.0_f64).prop_map(|(hz, rate, depth)| (
             hz,
-            Some((rate, depth)),
+            Some(Modulation::Sinusoidal {
+                rate_hz: rate,
+                depth
+            }),
             false
         )),
         (1.0..300.0_f64).prop_map(|hz| (hz, None, true)),
+        (1.0..3_000.0_f64, 1.0..200.0_f64).prop_map(|(hz, rate)| (
+            hz,
+            Some(Modulation::Rectangular {
+                rate_hz: rate,
+                width_seconds: 0.4 / rate
+            }),
+            false
+        )),
     ];
     proptest::collection::vec((kind, 1u32..=100), 1..=Stimulus::MAX_COMPONENTS).prop_map(|parts| {
         let total: u32 = parts.iter().map(|(_, weight)| weight).sum();
         parts
             .into_iter()
             .map(|((hz, modulation, click), weight)| {
-                let level_dbfs = 20.0 * (f64::from(weight) / f64::from(total)).log10();
-                let modulation =
-                    modulation.map(|(rate_hz, depth)| Modulation::Sinusoidal { rate_hz, depth });
+                let peak_dbfs = 20.0 * (f64::from(weight) / f64::from(total)).log10();
                 if click {
                     Component::Click {
                         ears: Ears::Both,
                         rate_hz: hz,
                         width_seconds: 0.4 / hz,
-                        level_dbfs,
+                        peak_dbfs,
                         modulation,
                     }
                 } else {
                     Component::Tone {
                         ears: Ears::Both,
                         frequency_hz: hz,
-                        level_dbfs,
+                        peak_dbfs,
                         modulation,
                     }
                 }
@@ -474,13 +521,13 @@ fn rendering_is_independent_of_how_the_caller_divides_it_into_buffers() {
                 ears: Ears::Right,
                 rate_hz: 40.0,
                 width_seconds: 0.001,
-                level_dbfs: -20.0,
+                peak_dbfs: -20.0,
                 modulation: None,
             },
             Component::Tone {
                 ears: Ears::Both,
                 frequency_hz: 1_000.0,
-                level_dbfs: -20.0,
+                peak_dbfs: -20.0,
                 modulation: Some(Modulation::Sinusoidal {
                     rate_hz: 39.0625,
                     depth: 1.0,
@@ -537,7 +584,7 @@ fn click_rates_reject_zero_and_subnormal_phase_steps_without_narrowing_tone_rate
             ears: Ears::Both,
             rate_hz,
             width_seconds: 1.0,
-            level_dbfs: -20.0,
+            peak_dbfs: -20.0,
             modulation: None,
         };
         let error = session_error(&stimulus(vec![component]), 48_000);
@@ -545,7 +592,8 @@ fn click_rates_reject_zero_and_subnormal_phase_steps_without_narrowing_tone_rate
             error,
             StimulusError::Component {
                 number: 1,
-                error: ComponentError::ClickRateTooSmall {
+                error: ComponentError::PulseRateTooSmall {
+                    field: "rate_hz",
                     rate_hz,
                     sample_rate_hz: 48_000,
                 },
@@ -553,7 +601,7 @@ fn click_rates_reject_zero_and_subnormal_phase_steps_without_narrowing_tone_rate
         );
         let text = error.to_string();
         assert!(
-            text.contains("too small for accurate click timing at 48000 Hz"),
+            text.contains("too small for accurate pulse timing at 48000 Hz"),
             "{text}"
         );
     }
@@ -564,7 +612,7 @@ fn click_rates_reject_zero_and_subnormal_phase_steps_without_narrowing_tone_rate
             ears: Ears::Both,
             rate_hz: smallest_normal_step_rate,
             width_seconds: 1.0,
-            level_dbfs: -20.0,
+            peak_dbfs: -20.0,
             modulation: None,
         }])
         .session(rate(48_000))
@@ -582,7 +630,7 @@ fn phase_underflow_diagnostics_preserve_adjacent_subnormal_steps() {
     let modulated = |frequency_hz, rate_hz, depth| Component::Tone {
         ears: Ears::Left,
         frequency_hz,
-        level_dbfs: -20.0,
+        peak_dbfs: -20.0,
         modulation: Some(Modulation::Sinusoidal { rate_hz, depth }),
     };
     for bits in [24_000, 24_001] {

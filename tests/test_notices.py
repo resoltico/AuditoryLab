@@ -1,0 +1,125 @@
+# Copyright 2026 Ervins Strauhmanis
+# SPDX-License-Identifier: MPL-2.0
+"""Which crates the notices cover, and the guards on reviewed supplements."""
+import hashlib
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import notices
+
+
+def package(name, source="registry+https://github.com/rust-lang/crates.io-index", kind=None):
+    return {"id": name, "name": name, "version": "1.0.0", "source": source, "license": "MIT",
+            "manifest_path": f"/registry/{name}/Cargo.toml"}
+
+
+def dep(name, *kinds):
+    return {"pkg": name, "dep_kinds": [{"kind": kind} for kind in kinds]}
+
+
+METADATA = {
+    "packages": [package("auditory-lab", source=None), package("auditory-core", source=None),
+                 package("normal"), package("proc-macro"), package("build-only"), package("dev-only"),
+                 package("under-proc-macro"), package("under-build")],
+    "resolve": {"nodes": [
+        {"id": "auditory-lab", "deps": [dep("auditory-core", None), dep("dev-only", "dev")]},
+        {"id": "auditory-core", "deps": [dep("normal", None), dep("proc-macro", None), dep("build-only", "build")]},
+        {"id": "normal", "deps": []},
+        {"id": "proc-macro", "deps": [dep("under-proc-macro", None)]},
+        {"id": "build-only", "deps": [dep("under-build", None)]},
+        {"id": "dev-only", "deps": []},
+        {"id": "under-proc-macro", "deps": []},
+        {"id": "under-build", "deps": []},
+    ]},
+}
+
+
+class ClosureTests(unittest.TestCase):
+    def test_normal_dependencies_and_proc_macros_are_covered_but_not_build_or_dev_ones(self):
+        names = sorted(p["name"] for p in notices.linked_packages(METADATA))
+        self.assertEqual(names, ["normal", "proc-macro", "under-proc-macro"])
+
+
+class SupplementTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.licenses = Path(self.directory.name)
+        (self.licenses / "MIT.txt").write_text("MIT terms\n")
+        (self.licenses / ".cargo_vcs_info.json").write_text('{"git":{"sha1":"reviewed-commit"}}')
+        self.digest = hashlib.sha256(b"MIT terms\n").hexdigest()
+        patcher = mock.patch.object(notices, "LICENSES", self.licenses)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.directory.cleanup)
+
+    def reviewed(self, license="MIT", digest=None):
+        return {"normal": {"license": license, "version": "1.0.0", "repository": None, "vcs": "reviewed-commit", "files": [{"file": "MIT.txt", "sha256": digest or self.digest}]}}
+
+    def package(self):
+        result = package("normal")
+        result["manifest_path"] = str(self.licenses / "Cargo.toml")
+        return result
+
+    def test_same_license_identity_changes_require_review(self):
+        for field, value in (("version", "2.0.0"), ("repository", "https://changed.example")):
+            changed = self.package()
+            changed[field] = value
+            with self.assertRaisesRegex(ValueError, "published identity"):
+                notices.supplement(changed, self.reviewed())
+        (self.licenses / ".cargo_vcs_info.json").write_text('{"git":{"sha1":"another-commit"}}')
+        with self.assertRaisesRegex(ValueError, "published identity"):
+            notices.supplement(self.package(), self.reviewed())
+
+    def test_additional_source_change_requires_review(self):
+        (self.licenses / "sin.rs").write_bytes(b"source")
+        reviewed = self.reviewed()
+        reviewed["normal"]["sources"] = {"sin.rs": hashlib.sha256(b"source").hexdigest()}
+        notices.supplement(self.package(), reviewed)
+        (self.licenses / "sin.rs").write_bytes(b"altered")
+        with self.assertRaisesRegex(ValueError, "reviewed source"):
+            notices.supplement(self.package(), reviewed)
+
+    def test_a_reviewed_supplement_supplies_the_files(self):
+        files = notices.supplement(self.package(), self.reviewed())
+        self.assertEqual([path.name for path in files], ["MIT.txt"])
+
+    def test_missing_relicensed_and_altered_supplements_are_rejected(self):
+        for reviewed in [{}, self.reviewed(license="Apache-2.0"), self.reviewed(digest="0" * 64)]:
+            with self.assertRaises(ValueError):
+                notices.supplement(self.package(), reviewed)
+
+
+class LibmNoticeTests(unittest.TestCase):
+    def test_linked_source_notices_preserve_the_permission_and_attributions(self):
+        text = (notices.LICENSES / "libm-source-notices.txt").read_text()
+        for attribution in ("SunSoft", "SunPro", "Copyright (C) 2004 by Sun Microsystems"):
+            self.assertIn(attribution, text)
+        self.assertIn("software is freely granted, provided that this notice", text)
+        self.assertIn("is preserved.", text)
+
+    def test_missing_or_altered_libm_material_is_rejected(self):
+        import json
+        reviewed = json.loads((notices.LICENSES / "supplements.json").read_text())
+        libm = next(p for p in notices.linked_packages(notices.metadata("aarch64-apple-darwin")) if p["name"] == "libm")
+        with self.assertRaises(ValueError):
+            notices.supplement(libm, {})
+        saved = reviewed["libm"]["files"]
+        reviewed["libm"]["files"] = []
+        with self.assertRaisesRegex(ValueError, "no reviewed notice"):
+            notices.supplement(libm, reviewed)
+        reviewed["libm"]["files"] = saved
+        sources = reviewed["libm"].pop("sources")
+        with self.assertRaisesRegex(ValueError, "missing linked source"):
+            notices.supplement(libm, reviewed)
+        reviewed["libm"]["sources"] = sources
+        reviewed["libm"]["files"][0]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "reviewed bytes"):
+            notices.supplement(libm, reviewed)
+
+
+if __name__ == "__main__":
+    unittest.main()

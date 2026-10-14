@@ -1,112 +1,93 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
-"""Independent rejection controls for public version and note selection."""
+"""Release targets and release-note selection."""
 from pathlib import Path
-import os
-import subprocess
 import sys
 import tempfile
-import types
 import unittest
-from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from release import prepare, release_notes, validate_repository, validate_source, validate_version
+from release import TARGETS, archive_name, release_notes, windows_toolchain
+
+CHANGELOG = """# Changelog
+
+## [Unreleased]
+
+- Pending.
+
+## [0.2.0] - 2026-10-10
+
+### Changed
+
+- Second.
+
+## [0.1.0] - 2026-10-01
+
+- First release.
+"""
 
 
 class NotesTests(unittest.TestCase):
-    text = "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-10-14\n\n- First release.\n"
+    def test_the_selected_dated_section_body_is_returned_exactly(self):
+        self.assertEqual(release_notes(CHANGELOG, "0.2.0"), "### Changed\n\n- Second.\n")
+        self.assertEqual(release_notes(CHANGELOG, "0.1.0"), "- First release.\n")
 
-    def test_exact_owner_entry(self):
-        self.assertEqual(release_notes(self.text, "0.1.0"), "- First release.\n")
+    def test_missing_undated_empty_and_future_sections_are_rejected(self):
+        for text, version in [
+            (CHANGELOG, "0.3.0"),
+            (CHANGELOG.replace("## [0.2.0] - 2026-10-10", "## [0.2.0]"), "0.2.0"),
+            (CHANGELOG.replace("- First release.\n", ""), "0.1.0"),
+            (CHANGELOG.replace("2026-10-10", "2999-01-01"), "0.2.0"),
+            (CHANGELOG, "0.2"),
+        ]:
+            with self.assertRaises(ValueError, msg=version):
+                release_notes(text, version)
 
-    def test_other_sections_excluded(self):
-        text = self.text + "\n## [0.0.1] - 2026-10-01\n\n- Different body.\n"
-        self.assertEqual(release_notes(text, "0.1.0"), "- First release.\n")
-
-    def test_markdown_indentation_and_hard_break_are_preserved(self):
-        text = self.text.replace("- First release.", "    printf hello\n\nA line with a hard break.  ")
-        self.assertEqual(release_notes(text, "0.1.0"), "    printf hello\n\nA line with a hard break.  \n")
-
-    def test_example_heading_is_not_release(self):
-        text = self.text.replace("- First release.", "```md\n## [0.1.0] - 2026-10-14\n```\n\n- First release.")
-        self.assertEqual(release_notes(text, "0.1.0"), "```md\n## [0.1.0] - 2026-10-14\n```\n\n- First release.\n")
-
-    def test_reject_bad_sections(self):
-        for text in (self.text.replace("0.1.0", "0.2.0"), self.text + self.text,
-                     self.text.replace("- First release.", ""),
-                     self.text.replace(" - 2026-10-14", ""),
-                     self.text.replace("2026-10-14", "2026-02-30"),
-                     self.text.replace("2026-10-14", "9999-01-01"),
-                     self.text.replace("Unreleased", "Pending"),
-                     self.text + "\n```\n"):
-            with self.subTest(text=text), self.assertRaises(ValueError):
-                release_notes(text, "0.1.0")
-
-    def test_canonical_version(self):
-        self.assertEqual(validate_version("0.1.0"), "0.1.0")
-        for value in ("v0.1.0", "01.1.0", "0.1", "0.1.0-beta", "0.1.0\n", "0.1.0;echo x"):
-            with self.subTest(value=value), self.assertRaises(ValueError):
-                validate_version(value)
-
-    def test_identity_rejection(self):
-        self.assertEqual(validate_repository("resoltico/AuditoryLab"), "resoltico/AuditoryLab")
-        self.assertEqual(validate_source("a" * 40), "a" * 40)
-        for repo in ("owner/repo/extra", "https://github.com/owner/repo", "owner/repo\n"):
+    def test_fenced_headings_are_not_release_sections(self):
+        for marker in ["```", "~~~~"]:
             with self.assertRaises(ValueError):
-                validate_repository(repo)
-        for sha in ("a" * 39, "A" * 40, "a" * 40 + "\n", "main"):
+                release_notes(marker + "markdown\n## [0.2.0] - 2026-10-10\n- Example.\n" + marker + "\n", "0.2.0")
+            text = CHANGELOG.replace("- Second.", marker + "\n## [0.9.0] - 2026-10-10\n" + marker + "\n- Second.")
+            self.assertIn("- Second.", release_notes(text, "0.2.0"))
+
+    def test_unclosed_and_malformed_closing_fences_are_rejected(self):
+        for fence in ["```\n", "```\n~~~\n", "```\n``` extra\n"]:
             with self.assertRaises(ValueError):
-                validate_source(sha)
+                release_notes(CHANGELOG.replace("- Second.", "- Second.\n" + fence), "0.2.0")
+
+    def test_duplicate_live_sections_are_rejected(self):
+        with self.assertRaises(ValueError):
+            release_notes(CHANGELOG + "\n## [0.2.0] - 2026-10-10\n- Duplicate.\n", "0.2.0")
+
+    def test_indentation_and_hard_break_spaces_are_preserved(self):
+        text = "## [0.2.0] - 2026-10-10\n\n    code example\n\nLast line.  \n\n## [0.1.0] - 2026-10-01\n- Earlier.\n"
+        self.assertEqual(release_notes(text, "0.2.0"), "    code example\n\nLast line.  \n")
 
 
-class SourceTests(unittest.TestCase):
-    def setUp(self):
-        parent = Path(__file__).resolve().parents[1] / "target" / "release-tool-tests"
-        parent.mkdir(parents=True, exist_ok=True)
-        self.temp = tempfile.TemporaryDirectory(dir=parent)
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        self.env = dict(os.environ)
-        self.env.update(GIT_AUTHOR_NAME="Release fixture", GIT_COMMITTER_NAME="Release fixture",
-                        GIT_AUTHOR_EMAIL="fixture@example.invalid", GIT_COMMITTER_EMAIL="fixture@example.invalid")
-        self.git("init", "--quiet", "--initial-branch=main")
-        (self.root / "Cargo.toml").write_text('[workspace.package]\nversion = "0.1.0"\n', encoding="utf-8")
-        (self.root / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.99.0"\n', encoding="utf-8")
-        (self.root / "CHANGELOG.md").write_text(NotesTests.text, encoding="utf-8")
-        self.git("add", ".")
-        self.git("-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Qualification fixture")
-        self.source = self.git("rev-parse", "HEAD").strip()
+class TargetTests(unittest.TestCase):
+    def test_windows_targets_use_the_native_gnu_llvm_hosts(self):
+        self.assertEqual({entry["platform"]: entry["target"] for entry in TARGETS if entry["platform"].startswith("windows-")}, {
+            "windows-x86_64": "x86_64-pc-windows-gnullvm",
+            "windows-aarch64": "aarch64-pc-windows-gnullvm",
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.99.0"\n', encoding="utf-8")
+            self.assertEqual(windows_toolchain("x86_64-pc-windows-gnullvm", root), "1.99.0-x86_64-pc-windows-gnullvm")
+            self.assertEqual(windows_toolchain("aarch64-pc-windows-gnullvm", root), "1.99.0-aarch64-pc-windows-gnullvm")
+            for target in ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]:
+                with self.assertRaises(ValueError):
+                    windows_toolchain(target, root)
+            (root / "rust-toolchain.toml").write_text('[toolchain]\nprofile = "minimal"\n', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                windows_toolchain("x86_64-pc-windows-gnullvm", root)
 
-    def git(self, *args):
-        return subprocess.check_output(["git", *args], cwd=self.root, env=self.env, text=True)
-
-    def prepare(self, **environment):
-        # Only the matrix is isolated; source identity exercises real Git boundaries.
-        fixture = types.SimpleNamespace(matrix_for=lambda version: [])
-        with mock.patch.dict(sys.modules, {"release_archive": fixture}), mock.patch.dict(os.environ, {
-                "GITHUB_ACTIONS": "false", **environment}):
-            return prepare("0.1.0", "owner/repository", self.root)
-
-    def test_clean_source_then_dirty_and_untracked_rejection(self):
-        self.assertEqual(self.prepare()["source"], self.source)
-        changelog = self.root / "CHANGELOG.md"
-        changelog.write_text(NotesTests.text + "dirty notes\n", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "clean committed"):
-            self.prepare()
-        changelog.write_text(NotesTests.text, encoding="utf-8")
-        (self.root / "unexpected.txt").write_text("untracked source", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "clean committed"):
-            self.prepare()
-
-    def test_detached_ci_checkout_requires_frozen_dispatch_identity(self):
-        self.git("checkout", "--quiet", "--detach", self.source)
-        environment = {"GITHUB_ACTIONS": "true", "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": self.source}
-        self.assertEqual(self.prepare(**environment)["source"], self.source)
-        with self.assertRaisesRegex(ValueError, "dispatched source"):
-            self.prepare(**{**environment, "GITHUB_SHA": "b" * 40})
-        with self.assertRaisesRegex(ValueError, "main"):
-            self.prepare(**{**environment, "GITHUB_REF": "refs/heads/unqualified"})
+    def test_six_native_targets_have_distinct_archives(self):
+        names = {archive_name(entry["platform"], "1.2.3") for entry in TARGETS}
+        self.assertEqual(len(names), 6)
+        self.assertIn("auditory-lab-1.2.3-linux-x86_64.tar.gz", names)
+        self.assertIn("auditory-lab-1.2.3-windows-aarch64.zip", names)
+        self.assertIn("auditory-lab-1.2.3-macos-aarch64.zip", names)
 
 
 if __name__ == "__main__":

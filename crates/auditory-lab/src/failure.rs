@@ -44,6 +44,11 @@ pub(crate) enum Failure {
         path: PathBuf,
         error: ExportError,
     },
+    Save {
+        path: PathBuf,
+        error: io::Error,
+        removal: Option<io::Error>,
+    },
     Playback {
         origin: String,
         error: PlaybackError,
@@ -82,6 +87,7 @@ impl Failure {
             | Self::Output(_)
             | Self::Interrupts(_)
             | Self::Export { .. }
+            | Self::Save { .. }
             | Self::Playback { .. } => 1,
         }
     }
@@ -114,6 +120,28 @@ impl Display for Failure {
                 write!(f, "cannot export to {path:?}: {error}")
             }
             Self::Playback { origin, error } => write!(f, "{origin}: {error}"),
+            Self::Save {
+                path,
+                error,
+                removal: None,
+            } if error.kind() == io::ErrorKind::AlreadyExists => write!(
+                f,
+                "cannot save to {path:?}: the destination already exists and was left untouched"
+            ),
+            Self::Save {
+                path,
+                error,
+                removal,
+            } => {
+                write!(f, "cannot save to {path:?}: {error}")?;
+                if let Some(removal) = removal {
+                    write!(
+                        f,
+                        "; incomplete output remains at {path:?}: cannot remove it: {removal}"
+                    )?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -158,7 +186,7 @@ mod tests {
         assert_eq!(preset(PresetError::TooLarge).exit_code(), 2);
         assert_eq!(preset(PresetError::NotUtf8).exit_code(), 2);
         assert_eq!(
-            preset(PresetError::UnsupportedVersion { found: 2 }).exit_code(),
+            preset(PresetError::UnsupportedVersion { found: 1 }).exit_code(),
             2
         );
         assert_eq!(

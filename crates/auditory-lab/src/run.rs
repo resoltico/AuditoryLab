@@ -5,7 +5,7 @@ use crate::args::{Command, InputSource, help};
 use crate::failure::{Failure, INTERRUPTED};
 use crate::report;
 use auditory_core::{Preset, SampleRate, Session, StimulusError, catalog};
-use auditory_device::Output;
+use auditory_device::{ListeningAdvice, Output};
 use auditory_wav::export;
 use ctrlc::set_handler;
 use std::ffi::OsStr;
@@ -50,7 +50,24 @@ fn run_with(
             }
             Ok(())
         }
-        Command::Show { name } => output(stdout, entry(&name, false)?.text),
+        Command::Show { name, output: None } => output(stdout, entry(&name, false)?.text),
+        Command::Show {
+            name,
+            output: Some(path),
+        } => {
+            let entry = entry(&name, false)?;
+            save_new(&path, entry.text)?;
+            report_completed(
+                stdout,
+                stderr,
+                &format!("saved {} -> {path:?}\n", entry.name),
+            );
+            Ok(())
+        }
+        Command::About { preset } => {
+            let source = Source::read(&preset, stderr)?;
+            output(stdout, &report::about(&source.origin, &source.preset))
+        }
         Command::Inspect {
             preset,
             sample_rate,
@@ -102,7 +119,10 @@ fn run_with(
             };
             let device = Output::default_device().map_err(playback)?;
             let session = source.resolved(device.session(&source.preset.stimulus))?;
-            notify(stderr, &report::playback_notices(&source.preset));
+            notify(
+                stderr,
+                &ListeningAdvice::for_stimulus(&source.preset.stimulus).to_string(),
+            );
             notify(
                 stderr,
                 &format!(
@@ -185,6 +205,32 @@ impl Source {
     }
 }
 
+/// Write exact text to a new file, reporting an incomplete destination if cleanup fails.
+fn save_new(path: &std::path::Path, text: &str) -> Result<(), Failure> {
+    save_new_with(path, text, |mut file, text| {
+        file.write_all(text.as_bytes())
+            .and_then(|()| file.sync_all())
+    })
+}
+
+fn save_new_with(
+    path: &std::path::Path,
+    text: &str,
+    persist: impl FnOnce(File, &str) -> io::Result<()>,
+) -> Result<(), Failure> {
+    let failed = |error, removal| Failure::Save {
+        path: path.to_owned(),
+        error,
+        removal,
+    };
+    let file = File::create_new(path).map_err(|error| failed(error, None))?;
+    let written = persist(file, text);
+    match written {
+        Ok(()) => Ok(()),
+        Err(error) => Err(failed(error, std::fs::remove_file(path).err())),
+    }
+}
+
 /// Write and flush; a closed pipe is an expected way for the reader to stop.
 pub(crate) fn output(stdout: &mut impl Write, text: &str) -> Result<(), Failure> {
     match stdout
@@ -198,7 +244,7 @@ pub(crate) fn output(stdout: &mut impl Write, text: &str) -> Result<(), Failure>
 }
 
 /// Escape untrusted terminal controls once, preserving multiline diagnostics.
-fn terminal_text(text: &str) -> String {
+pub(crate) fn terminal_text(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
     for ch in text.chars() {
         if (ch.is_control() && ch != '\n' && ch != '\t')
@@ -212,7 +258,7 @@ fn terminal_text(text: &str) -> String {
     escaped
 }
 
-/// Report a finished export or playback. Failing to report it does not undo it.
+/// Report a finished recipe save, export or playback. A reporting failure does not undo it.
 fn report_completed(stdout: &mut impl Write, stderr: &mut impl Write, result: &str) {
     if let Err(error) = output(stdout, result) {
         notify(
@@ -272,6 +318,53 @@ mod tests {
             Err(self.kind.into())
         }
     }
+    #[test]
+    fn failed_save_cleans_up_after_write_or_sync_failure() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("copy.toml");
+        for stage in ["write failed", "sync failed"] {
+            let failure = save_new_with(&path, "exact", |mut file, text| {
+                if stage == "sync failed" {
+                    file.write_all(text.as_bytes())?;
+                }
+                Err(io::Error::other(stage))
+            })
+            .unwrap_err();
+            assert_eq!(failure.exit_code(), 1);
+            assert!(failure.diagnostic().contains(stage));
+            assert!(!failure.diagnostic().contains("incomplete output"));
+            assert!(!path.exists());
+        }
+    }
+
+    #[test]
+    fn failed_save_reports_both_failure_and_removal_error() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("copy.toml");
+        let failure = save_new_with(&path, "exact", |file, _| {
+            // Windows delays deletion until open handles close. Replace the path
+            // only after closing ours, so real removal rejects the directory.
+            drop(file);
+            std::fs::remove_file(&path)?;
+            std::fs::create_dir(&path)?;
+            Err(io::Error::other("sync failed"))
+        })
+        .unwrap_err();
+        assert_eq!(failure.exit_code(), 1);
+        let diagnostic = failure.diagnostic();
+        assert!(diagnostic.contains("sync failed"));
+        assert!(diagnostic.contains(&format!("incomplete output remains at {path:?}")));
+        assert!(diagnostic.contains("cannot remove it:"));
+        assert!(matches!(
+            failure,
+            Failure::Save {
+                removal: Some(_),
+                ..
+            }
+        ));
+        assert!(path.is_dir());
+    }
+
     #[test]
     fn terminal_stdin_cue_is_best_effort_and_pipes_are_quiet() {
         let mut notice = Vec::new();
@@ -360,12 +453,69 @@ mod tests {
         );
     }
     #[test]
+    fn completed_recipe_save_survives_write_or_flush_reporting_failure() {
+        let entry = &catalog::ENTRIES[0];
+        for on_flush in [false, true] {
+            for kind in [io::ErrorKind::Other, io::ErrorKind::BrokenPipe] {
+                let directory = tempfile::tempdir().unwrap();
+                let path = directory.path().join("copy.toml");
+                let mut warnings = Vec::new();
+                run_with(
+                    Command::Show {
+                        name: entry.name.into(),
+                        output: Some(path.clone()),
+                    },
+                    &mut Failing { kind, on_flush },
+                    &mut warnings,
+                    || panic!("recipe save installed an interrupt handler"),
+                )
+                .unwrap();
+                assert_eq!(std::fs::read(&path).unwrap(), entry.text.as_bytes());
+                let expected = if kind == io::ErrorKind::BrokenPipe {
+                    String::new()
+                } else {
+                    format!(
+                        "warning: saved {} -> {path:?}; cannot write to standard output: {}\n",
+                        entry.name,
+                        io::Error::from(kind)
+                    )
+                };
+                assert_eq!(String::from_utf8(warnings).unwrap(), expected);
+            }
+        }
+    }
+    #[test]
+    fn raw_recipe_show_still_reports_write_or_flush_output_failure() {
+        for on_flush in [false, true] {
+            for kind in [io::ErrorKind::Other, io::ErrorKind::BrokenPipe] {
+                let mut warnings = Vec::new();
+                let result = run_with(
+                    Command::Show {
+                        name: catalog::ENTRIES[0].name.into(),
+                        output: None,
+                    },
+                    &mut Failing { kind, on_flush },
+                    &mut warnings,
+                    || panic!("raw recipe output installed an interrupt handler"),
+                );
+                if kind == io::ErrorKind::BrokenPipe {
+                    assert!(result.is_ok());
+                } else {
+                    let failure = result.unwrap_err();
+                    assert_eq!(failure.exit_code(), 1);
+                    assert!(matches!(failure, Failure::Output(_)));
+                }
+                assert!(warnings.is_empty());
+            }
+        }
+    }
+    #[test]
     fn stderr_failure_does_not_stop_export_and_interrupts_are_installed_after_input() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("input.toml");
         std::fs::write(
             &path,
-            "schema_version=1\nduration_seconds=0.01\nfade_seconds=0",
+            "schema_version=2\nduration_seconds=0.01\nfade_seconds=0",
         )
         .unwrap();
         let destination = directory.path().join("output.wav");
@@ -397,6 +547,7 @@ mod tests {
             Command::Help(crate::args::HelpTopic::Global),
             Command::Show {
                 name: catalog::ENTRIES[0].name.into(),
+                output: None,
             },
             Command::Inspect {
                 preset: InputSource::Catalog(catalog::ENTRIES[0].name.into()),

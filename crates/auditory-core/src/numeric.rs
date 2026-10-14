@@ -23,8 +23,8 @@ pub(crate) const fn whole_to_frames(value: f64) -> u64 {
 }
 
 /// The linear amplitude of a level in dBFS: 0 dBFS is full scale.
-pub(crate) fn amplitude(level_dbfs: f64) -> f64 {
-    libm::pow(10.0, level_dbfs / 20.0)
+pub(crate) fn amplitude(peak_dbfs: f64) -> f64 {
+    libm::pow(10.0, peak_dbfs / 20.0)
 }
 
 /// The level in dBFS of a linear amplitude; silence is negative infinity.
