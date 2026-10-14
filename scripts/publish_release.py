@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+from urllib.parse import quote
 
 from release import ROOT, prepare, release_notes, validate_repository, validate_source, validate_version
 
@@ -35,8 +36,10 @@ class GitHub:
             subprocess.run(["gh", "api", endpoint, "-H", "Accept: application/octet-stream"],
                            stdout=output, check=True, timeout=180)
 
-    def upload(self, repository, tag, path):
-        subprocess.run(["gh", "release", "upload", tag, "--repo", repository, "--", str(path)],
+    def upload(self, repository, release_id, path):
+        endpoint = f"https://uploads.github.com/repos/{repository}/releases/{release_id}/assets?name={quote(path.name, safe='')}"
+        subprocess.run(["gh", "api", endpoint, "--method", "POST", "--input", str(path),
+                        "-H", "Content-Type: application/octet-stream"], stdout=subprocess.DEVNULL,
                        check=True, timeout=300)
 
 
@@ -79,6 +82,8 @@ def assert_identity(api, repository, tag, source, require_tag=True):
 
 
 def require_release(release, tag, source, notes):
+    if not isinstance(release, dict):
+        raise ValueError("The selected release is missing; stop without recreating it.")
     if (release.get("tag_name") != tag or release.get("name") != tag
             or release.get("body") != notes or release.get("prerelease") is not False):
         raise ValueError("Existing release identity or notes differ; no changes made.")
@@ -111,12 +116,35 @@ class Publisher:
         scratch.mkdir(parents=True, exist_ok=True)
 
     def release(self):
+        # The tag-name endpoint returns published releases only. Authenticated
+        # listing includes drafts; inspect every page before choosing one ID.
+        page, matches, ids = 1, [], set()
+        while True:
+            releases = self.api.api(f"repos/{self.repository}/releases?per_page=100&page={page}")
+            for release in releases:
+                if release["id"] in ids:
+                    raise ValueError("Release listing contains duplicate IDs.")
+                ids.add(release["id"])
+                if release["tag_name"] == self.tag:
+                    matches.append(release)
+            if len(releases) < 100:
+                break
+            page += 1
+        if len(matches) > 1:
+            raise ValueError("Multiple releases match the selected tag; no changes made.")
+        return matches[0] if matches else None
+
+    def refresh(self, release):
+        """Read the same object; a deleted/replaced draft is never recreated."""
         try:
-            return self.api.api(f"repos/{self.repository}/releases/tags/{self.tag}")
+            current = self.api.api(f"repos/{self.repository}/releases/{release['id']}")
         except ApiError as error:
             if error.missing:
-                return None
+                raise ValueError("The selected release ID disappeared; stop without recreating it.") from error
             raise
+        if current.get("id") != release["id"]:
+            raise ValueError("Release refresh changed identity; no changes made.")
+        return current
 
     def assets(self, release):
         return self.api.api(f"repos/{self.repository}/releases/{release['id']}/assets?per_page=100")
@@ -139,7 +167,12 @@ class Publisher:
             if not release["draft"]:
                 assert_identity(api, repository, tag, source)
                 self.verify_assets(release)
-                return release["html_url"]
+                current = self.refresh(release)
+                require_release(current, tag, source, self.notes)
+                if current["draft"]:
+                    raise ValueError("The selected release is no longer published.")
+                assert_identity(api, repository, tag, source)
+                return current["html_url"]
         if tag_commit(api, repository, tag) is None:
             try:
                 api.api(f"repos/{repository}/git/refs", "POST", {"ref": "refs/tags/" + tag, "sha": source})
@@ -172,7 +205,7 @@ class Publisher:
                         raise ValueError(f"Draft asset content differs: {name}; retain the draft for review.")
                 else:
                     try:
-                        api.upload(repository, tag, path)
+                        api.upload(repository, release["id"], path)
                     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                         # Never delete/reupload after an uncertain upload result.
                         current = asset_inventory(self.assets(release), self.files)
@@ -184,7 +217,7 @@ class Publisher:
                         if digest(downloaded) != digest(path):
                             raise ValueError(f"Uncertain upload has conflicting content: {name}")
             self.verify_assets(release)
-            release = self.release()
+            release = self.refresh(release)
             require_release(release, tag, source, self.notes)
             if not release["draft"]:
                 raise ValueError("Draft was published concurrently; stop for review.")
@@ -192,10 +225,10 @@ class Publisher:
             try:
                 api.api(f"repos/{repository}/releases/{release['id']}", "PATCH", {"draft": False, "make_latest": "true"})
             except (ApiError, subprocess.TimeoutExpired):
-                current = self.release()
-                if current is None or current["draft"]:
+                current = self.refresh(release)
+                if current["draft"]:
                     raise
-        release = self.release()
+        release = self.refresh(release)
         require_release(release, tag, source, self.notes)
         if release["draft"]:
             raise ValueError("Release is still a draft.")

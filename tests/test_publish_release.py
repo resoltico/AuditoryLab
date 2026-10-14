@@ -31,6 +31,9 @@ class GitHubFixture:
         self.ambiguous = set()
         self.before_publish_main = False
         self.timeout = set()
+        self.list_pages = None
+        self.disappear_before_publish = False
+        self.upload_ids = []
 
     def api(self, endpoint, method="GET", data=None):
         base = "repos/" + REPOSITORY
@@ -48,8 +51,17 @@ class GitHubFixture:
                 raise subprocess.TimeoutExpired(["gh", "api"], 90)
             return {"object": {"type": "commit", "sha": self.tag}}
         if endpoint == base + "/releases/tags/v0.1.0":
-            if self.current is None:
+            if self.current is None or self.current["draft"]:
                 raise ApiError("missing", missing=True)
+            return copy.deepcopy(self.current)
+        if endpoint.startswith(base + "/releases?per_page=100&page="):
+            page = int(endpoint.rsplit("=", 1)[1])
+            if self.list_pages is not None:
+                return copy.deepcopy(self.list_pages.get(page, []))
+            return [copy.deepcopy(self.current)] if self.current else []
+        if endpoint == base + "/releases/1" and method == "GET":
+            if self.current is None or self.disappear_before_publish:
+                raise ApiError("missing ID", missing=True)
             return copy.deepcopy(self.current)
         if endpoint == base + "/releases" and method == "POST":
             self.current = dict(data, id=1, html_url="https://github.com/owner/repository/releases/tag/v0.1.0")
@@ -75,7 +87,8 @@ class GitHubFixture:
             return None
         raise AssertionError((method, endpoint, data))
 
-    def upload(self, repository, tag, path):
+    def upload(self, repository, release_id, path):
+        self.upload_ids.append(release_id)
         self.mutations.append(("UPLOAD", path.name, None))
         asset_id = max(self.content, default=0) + 1
         self.content[asset_id] = path.read_bytes()
@@ -110,7 +123,7 @@ class PublishTests(unittest.TestCase):
 
     def upload_all(self):
         for path in self.files.values():
-            self.api.upload(REPOSITORY, "v0.1.0", path)
+            self.api.upload(REPOSITORY, 1, path)
         self.api.mutations.clear()
 
     def test_draft_first_then_verified_publication(self):
@@ -119,6 +132,7 @@ class PublishTests(unittest.TestCase):
         self.assertFalse(self.api.current["draft"])
         self.assertEqual(len(self.api.assets), 2)
         self.assertEqual(self.api.mutations[-1][0], "PATCH")
+        self.assertEqual(self.api.upload_ids, [1, 1])
 
     def test_matching_published_release_has_no_mutation(self):
         self.seed(draft=False)
@@ -224,6 +238,43 @@ class PublishTests(unittest.TestCase):
             self.publisher.publish()
         self.assertTrue(self.api.current["draft"])
         self.assertFalse(any(method == "PATCH" for method, _, _ in self.api.mutations))
+
+    def test_draft_hidden_by_tag_endpoint_is_found_and_refreshed_by_id(self):
+        self.seed()
+        with self.assertRaises(ApiError):
+            self.api.api("repos/" + REPOSITORY + "/releases/tags/v0.1.0")
+        self.publisher.publish()
+        self.assertFalse(self.api.current["draft"])
+
+    def test_draft_listing_searches_every_page_and_rejects_duplicates(self):
+        self.seed()
+        first = [{"id": i + 10, "tag_name": "v" + str(i)} for i in range(100)]
+        self.api.list_pages = {1: first, 2: [self.api.current]}
+        self.assertEqual(self.publisher.release()["id"], 1)
+        self.api.list_pages[2].append(dict(self.api.current, id=999))
+        with self.assertRaisesRegex(ValueError, "Multiple releases"):
+            self.publisher.publish()
+        self.assertEqual(self.api.mutations, [])
+        self.api.list_pages = {1: first, 2: [first[0]]}
+        with self.assertRaisesRegex(ValueError, "duplicate IDs"):
+            self.publisher.release()
+
+    def test_missing_stable_draft_id_is_not_recreated_or_published(self):
+        self.seed()
+        self.upload_all()
+        self.api.disappear_before_publish = True
+        with self.assertRaisesRegex(ValueError, "ID disappeared"):
+            self.publisher.publish()
+        self.assertEqual(self.api.mutations, [])
+        self.assertTrue(self.api.current["draft"])
+
+    def test_refresh_cannot_switch_release_identity(self):
+        self.seed()
+        original = copy.deepcopy(self.api.current)
+        self.api.current["id"] = 99
+        with self.assertRaisesRegex(ValueError, "changed identity"):
+            self.publisher.refresh(original)
+        self.assertEqual(self.api.mutations, [])
 
     def test_annotated_tags_are_peeled_and_cycles_rejected(self):
         class TagApi:
