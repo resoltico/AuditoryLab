@@ -15,6 +15,22 @@
 
 `PRESET` resolves by its spelling: `-` reads stdin; an operand containing `/`, `\` or `.` is a file path; anything else is a built-in name. Filesystem existence does not change this rule. Use `./name` for a dotless file, `./-` for a file named `-`, and `./--help` for an option-looking filename. `show` accepts only a built-in name.
 
+Examples below use an executable installed on PATH. In an extracted download folder, use `./auditory-lab` on macOS/Linux or `.\auditory-lab.exe` on Windows. Windows examples require [PowerShell 7 or later](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows); use its `pwsh` shell. The executable does not require PowerShell to run.
+
+Save an editable catalog copy as UTF-8. In a macOS/Linux shell:
+
+```sh
+auditory-lab show chan-2022-clicks-40-hz > mine.toml
+```
+
+In PowerShell 7+:
+
+```powershell
+auditory-lab show chan-2022-clicks-40-hz | Out-File -Encoding utf8 -FilePath mine.toml
+```
+
+Inspect the saved copy before export or playback. If you change study parameters, update its `provenance.adaptation` to describe your copy.
+
 ```sh
 auditory-lab show chan-2022-clicks-40-hz | auditory-lab inspect -
 ```

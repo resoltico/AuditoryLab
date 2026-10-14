@@ -265,5 +265,35 @@
     "license": "MIT",
     "selected_license": "MIT",
     "note": "Preserves the upstream licensing declaration and Apple SDK disclosure. MIT-standard.txt is an unmodified standard-terms reference with its original template placeholders; no package copyright holder or year is inferred."
+  },
+  "libm-0.2.16": {
+    "repository": "https://github.com/rust-lang/compiler-builtins",
+    "vcs": {
+      "git": {
+        "sha1": "dfd2203a4d6110820ad7bb65cafe1bf331a03a3d"
+      },
+      "path_in_vcs": "libm"
+    },
+    "license": "MIT",
+    "selected_license": "MIT",
+    "crate_checksum": "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981",
+    "coverage_file": "libm-notice-coverage.json",
+    "coverage_sha256": "4e30ecf662053094a6af1c5936cc5bc0ac817623dda5cbfce2d8471aa4b6ff19",
+    "files": [
+      {
+        "source_file": "libm-LICENSE.txt",
+        "archive_file": "LICENSE.txt",
+        "url": "https://raw.githubusercontent.com/rust-lang/compiler-builtins/dfd2203a4d6110820ad7bb65cafe1bf331a03a3d/libm/LICENSE.txt",
+        "sha256": "3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7"
+      },
+      {
+        "source_file": "libm-source-notices.txt",
+        "archive_file": "SOURCE-NOTICES.txt",
+        "url": "https://github.com/rust-lang/compiler-builtins/tree/dfd2203a4d6110820ad7bb65cafe1bf331a03a3d/libm/src",
+        "sha256": "a70d46e4607f603d542d89113299709c90787503ae3a89b738bc7f7320761bfd",
+        "kind": "reviewed-verbatim-source-notice-bundle"
+      }
+    ],
+    "note": "Complete raw legal comment blocks from the locked source, with path associations; source implementations/tests/architecture code are omitted. Coverage is independently checked against source during development; there is no runtime Rust lexer."
   }
 }

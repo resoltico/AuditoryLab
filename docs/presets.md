@@ -1,6 +1,6 @@
 # Presets
 
-A preset is UTF-8 TOML describing stereo sound in hertz, seconds and dBFS. Its sample rate comes from inspection/export options or the playback stream configuration. Start with `auditory-lab show NAME > mine.toml` for a complete catalog entry, including its citation and adaptations.
+A preset is UTF-8 TOML describing stereo sound in hertz, seconds and dBFS. Its sample rate comes from inspection/export options or the playback stream configuration. Use [show and save](usage.md#commands-and-input) for a complete catalog entry, including its citation and adaptations.
 
 ## Editable examples
 

@@ -1,14 +1,15 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
-# Run only in a dedicated powershell.exe process. Never dot-source this script.
-#requires -Version 5.1
+# Run only in a dedicated pwsh process. Never dot-source this script.
+#requires -Version 7.0
+#requires -PSEdition Core
 [CmdletBinding()]
 param([Parameter(Mandatory=$true)][string]$Binary,
       [Parameter(Mandatory=$true)][string]$Scratch)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Native Windows console verification requires Windows.' }
-if ($MyInvocation.InvocationName -eq '.') { throw 'Run this script in a dedicated powershell.exe process; do not dot-source it.' }
+if ($MyInvocation.InvocationName -eq '.') { throw 'Run this script in a dedicated pwsh process; do not dot-source it.' }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $binaryPath = (Resolve-Path -LiteralPath $Binary).Path
 $scratchPath = [IO.Path]::GetFullPath($Scratch)
@@ -273,7 +274,7 @@ public sealed class InterruptChild : IDisposable {
         if ($accepted -ne $control.Accept) { throw 'Private console membership control failed.' }
     }
     # Independent quote expectations, including trailing slashes and Unicode.
-    # ASCII source also preserves these exact code points in Windows PowerShell 5.1.
+    # Construct the quote-control code points independently of source encoding.
     $unicodeTone = 't' + [char]0x014D + 'ne'
     $quotes = @(
         @('plain', '"plain"'), @('two words', '"two words"'),

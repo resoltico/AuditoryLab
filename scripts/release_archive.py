@@ -76,6 +76,17 @@ def pinned_channel():
     return tomllib.loads((ROOT / "rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]["channel"]
 
 
+def require_powershell():
+    """Fail before Windows qualification or extraction without PowerShell 7+."""
+    message = "PowerShell 7 or later (pwsh) is required for Windows release verification. Install the current stable release: https://aka.ms/powershell-release?tag=stable"
+    try:
+        major = run(["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.Major"], timeout=30).strip()
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        raise ValueError(message) from error
+    if not major.isascii() or not major.isdecimal() or int(major) < 7:
+        raise ValueError(message)
+
+
 def compiler_info():
     lines = run(["rustc", "-vV"]).splitlines()
     info = dict(line.split(": ", 1) for line in lines[1:] if ": " in line)
@@ -143,6 +154,8 @@ def windows_runtime(target):
 
 def assert_host(target):
     entry = target_entry(target, "0.1.0")
+    if entry["windows"] and platform.system() == "Windows":
+        require_powershell()
     info = compiler_info()
     machine = platform.machine().lower()
     arm = target.startswith("aarch64")
@@ -329,6 +342,15 @@ def dependency_closure(metadata):
     return sorted(result, key=lambda package: (package["name"], package["version"]))
 
 
+def target_notice_packages(target):
+    """Resolve the locked source's normal/build dependencies for this target."""
+    metadata = json.loads(run(["cargo", "metadata", "--locked", "--format-version", "1", "--filter-platform", target]))
+    packages = dependency_closure(metadata)
+    if len({(package["name"], package["version"]) for package in packages}) != len(packages):
+        raise ValueError("The target closure has ambiguous dependency name/version identities.")
+    return packages
+
+
 def license_files(directory, declared=None):
     """Published license filenames are not consistently uppercase."""
     files = {path for path in directory.iterdir() if path.is_file() and path.name.upper().startswith(("LICENSE", "LICENCE", "NOTICE", "COPYRIGHT"))}
@@ -341,12 +363,36 @@ def upstream_supplements():
     return json.loads((ROOT / "scripts" / "licenses" / "upstream-notices.json").read_text(encoding="utf-8"))
 
 
+def libm_notice_policy(package):
+    """A new libm release requires review of its source-specific legal notices."""
+    key = package["name"] + "-" + package["version"]
+    expected = upstream_supplements().get(key)
+    if package["name"] != "libm" or expected is None or not expected.get("crate_checksum"):
+        raise ValueError("Unreviewed libm identity; review its complete source notices before updating packaging.")
+    lock = tomllib.loads((ROOT / "Cargo.lock").read_text(encoding="utf-8"))
+    selected = [item for item in lock["package"] if item["name"] == "libm" and item["version"] == package["version"]]
+    if len(selected) != 1 or selected[0].get("checksum") != expected["crate_checksum"]:
+        raise ValueError("Locked libm checksum differs from the reviewed source-notice material.")
+    return expected
+
+
+def check_libm_notice_layout(package):
+    """Require the locked notice layout; generic policy checks authenticate bytes."""
+    expected = libm_notice_policy(package)
+    key = package["name"] + "-" + package["version"]
+    wanted = {f"third-party/{key}/{item['archive_file']}" for item in expected["files"]}
+    if set(package["files"]) != wanted:
+        raise ValueError("libm must contain only its reviewed license and source-notice bundle, not implementations/tests.")
+
+
 def supplemental_materials(package, directory):
-    """Resolve only reviewed omissions, pinned to the published crate's VCS."""
+    """Resolve reviewed legal materials, pinned to the published crate's VCS."""
     key = package["name"] + "-" + package["version"]
     expected = upstream_supplements().get(key)
     if expected is None:
         raise ValueError(f"Missing declared license material for {key}; no reviewed upstream supplement exists.")
+    if package["name"] == "libm":
+        libm_notice_policy(package)
     vcs_file = directory / ".cargo_vcs_info.json"
     if package.get("repository") != expected["repository"] or package.get("license") != expected["license"] or not vcs_file.is_file() or json.loads(vcs_file.read_text(encoding="utf-8")) != expected["vcs"]:
         raise ValueError(f"Upstream license supplement does not match the published repository/license/VCS identity: {key}")
@@ -363,27 +409,58 @@ def supplemental_materials(package, directory):
     return materials, expected
 
 
+def package_notice_materials(package):
+    """Select complete legal material from a trusted Cargo package and policy."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", package["name"]) or not re.fullmatch(r"[A-Za-z0-9.+_-]+", package["version"]):
+        raise ValueError("Unsafe dependency notice directory name.")
+    directory = Path(package["manifest_path"]).parent
+    source_files = license_files(directory, package.get("license_file"))
+    if not package.get("license") and not package.get("license_file"):
+        raise ValueError(f"Missing declared license material for {package['name']} {package['version']}.")
+    materials = []
+    for path in sorted(source_files):
+        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(directory.resolve()):
+            raise ValueError("Dependency license file escapes its package or is missing.")
+        materials.append((path, path.relative_to(directory)))
+    key = package["name"] + "-" + package["version"]
+    if package["name"] == "libm":
+        libm_notice_policy(package)
+    supplement = None
+    if key in upstream_supplements() or not materials:
+        reviewed, supplement = supplemental_materials(package, directory)
+        combined = {relative: path for path, relative in materials}
+        for path, relative in reviewed:
+            original = combined.get(relative)
+            if original is not None and original.read_bytes() != path.read_bytes():
+                raise ValueError("Published upstream license differs from its reviewed exact material.")
+            combined.setdefault(relative, path)
+        materials = sorted(((path, relative) for relative, path in combined.items()), key=lambda pair: pair[1])
+    return materials, supplement
+
+
+def rust_library_notice():
+    """Use the pinned compiler's library copyright text, independent of host CPU."""
+    compiler_info()
+    sysroot = Path(run(["rustc", "--print", "sysroot"]).strip())
+    path = sysroot / "share" / "doc" / "rust" / "COPYRIGHT-library.html"
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("Pinned Rust toolchain's COPYRIGHT-library.html is missing; do not omit runtime notices.")
+    return path
+
+
+def microsoft_runtime_notice(runtime):
+    """Copyright/redistribution notice for the validated native runtime identity."""
+    terms = runtime["terms"]
+    return f"Microsoft retail C runtime, statically linked.\nCopyright Microsoft Corporation. All rights reserved.\nSelected {terms['family']} {runtime['visual_studio_version']} ({runtime['product_id']}); MSVC {runtime['toolset_version']}; Windows SDK {runtime['windows_sdk_version']}.\nRuntime portions have separate Microsoft Software License Terms, not the project's MPL source license. Read the complete paragraph text in {terms['license_file']}; use of those portions requires accepting those terms.\nOfficial runtime terms: {terms['runtime']}\nOriginal formatted terms: {terms['source_docx']}\nOriginal DOCX SHA256: {terms['source_sha256']}\nParagraph text SHA256: {terms['text_sha256']}\nThe producer's distributable-code terms and reference:\n{terms['distribution']}\n{terms['redistribution']}\nRetail runtime object code is embedded in the executable; Windows OS DLLs are external. These references do not license redistribution of the Visual Studio tools themselves. Redistributors must preserve the Microsoft runtime terms and require acceptance for those portions.\n"
+
+
 def copy_notices(destination, target, compiler, microsoft=None):
-    metadata = json.loads(run(["cargo", "metadata", "--locked", "--format-version", "1", "--filter-platform", target]))
-    packages = dependency_closure(metadata)
+    packages = target_notice_packages(target)
     notice_root = destination / "third-party"
     notice_root.mkdir()
     inventory = {"format": 1, "target": target, "packages": [], "rust": {"version": compiler["release"], "file": "third-party/RUST-COPYRIGHT-library.html"}}
     for package in packages:
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", package["name"]) or not re.fullmatch(r"[A-Za-z0-9.+_-]+", package["version"]):
-            raise ValueError("Unsafe dependency notice directory name.")
-        directory = Path(package["manifest_path"]).parent
-        source_files = license_files(directory, package.get("license_file"))
-        if not package.get("license") and not package.get("license_file"):
-            raise ValueError(f"Missing declared license material for {package['name']} {package['version']}.")
-        supplement = None
-        materials = []
-        for path in sorted(source_files):
-            if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(directory.resolve()):
-                raise ValueError("Dependency license file escapes its package or is missing.")
-            materials.append((path, path.relative_to(directory)))
-        if not materials:
-            materials, supplement = supplemental_materials(package, directory)
+        materials, supplement = package_notice_materials(package)
         folder = notice_root / f"{package['name']}-{package['version']}"
         folder.mkdir()
         copied = []
@@ -392,35 +469,20 @@ def copy_notices(destination, target, compiler, microsoft=None):
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(path, output)
             copied.append(output.relative_to(destination).as_posix())
-        if package["name"] == "libm":
-            for path in sorted((directory / "src").rglob("*")):
-                if path.is_symlink():
-                    raise ValueError("libm source supplement contains a link.")
-                if path.is_file():
-                    output = folder / path.relative_to(directory)
-                    output.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copyfile(path, output)
-                    copied.append(output.relative_to(destination).as_posix())
-            if not any(name.endswith("src/math/sin.rs") for name in copied):
-                raise ValueError("libm source permission-header supplement is missing.")
         if package["name"] == "unicode-ident" and not any(name.endswith("LICENSE-UNICODE") for name in copied):
             raise ValueError("unicode-ident's required Unicode license is missing.")
         record = {"name": package["name"], "version": package["version"], "license": package.get("license"), "license_file": package.get("license_file"), "repository": package.get("repository"), "files": copied}
         if supplement is not None:
             record["upstream_supplement"] = supplement
         inventory["packages"].append(record)
-    sysroot = Path(run(["rustc", "--print", "sysroot"]).strip())
-    copyright_file = sysroot / "share" / "doc" / "rust" / "COPYRIGHT-library.html"
-    if not copyright_file.is_file():
-        raise ValueError("Pinned Rust toolchain's COPYRIGHT-library.html is missing; do not omit runtime notices.")
-    shutil.copyfile(copyright_file, notice_root / "RUST-COPYRIGHT-library.html")
+    shutil.copyfile(rust_library_notice(), notice_root / "RUST-COPYRIGHT-library.html")
     if microsoft is not None:
         terms = microsoft["terms"]
         license_text = ROOT / "scripts" / "licenses" / terms["license_file"]
         if digest(license_text.read_bytes()) != terms["text_sha256"]:
             raise ValueError("The reviewed Microsoft runtime terms text differs from its source-material identity.")
         shutil.copyfile(license_text, notice_root / terms["license_file"])
-        (notice_root / "MICROSOFT-RUNTIME.txt").write_text(f"Microsoft retail C runtime, statically linked.\nCopyright Microsoft Corporation. All rights reserved.\nSelected {terms['family']} {microsoft['visual_studio_version']} ({microsoft['product_id']}); MSVC {microsoft['toolset_version']}; Windows SDK {microsoft['windows_sdk_version']}.\nRuntime portions have separate Microsoft Software License Terms, not the project's MPL source license. Read the complete paragraph text in {terms['license_file']}; use of those portions requires accepting those terms.\nOfficial runtime terms: {terms['runtime']}\nOriginal formatted terms: {terms['source_docx']}\nOriginal DOCX SHA256: {terms['source_sha256']}\nParagraph text SHA256: {terms['text_sha256']}\nThe producer's distributable-code terms and reference:\n{terms['distribution']}\n{terms['redistribution']}\nRetail runtime object code is embedded in the executable; Windows OS DLLs are external. These references do not license redistribution of the Visual Studio tools themselves. Redistributors must preserve the Microsoft runtime terms and require acceptance for those portions.\n", encoding="utf-8")
+        (notice_root / "MICROSOFT-RUNTIME.txt").write_bytes(microsoft_runtime_notice(microsoft).encode("utf-8"))
         inventory["microsoft_runtime"] = microsoft
     (notice_root / "index.json").write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return inventory
@@ -429,24 +491,185 @@ def copy_notices(destination, target, compiler, microsoft=None):
 def install_text(entry, version, repository, microsoft=None):
     filename = entry["archive"]
     source = f"https://github.com/{repository}/tree/v{version}"
-    common = f"Auditory Lab {version}\n\nDownload this archive only from https://github.com/{repository}/releases/tag/v{version}.\nArchive: {filename}\nTarget: {entry['target']}\nCompare its SHA-256 with the exact filename in that release's SHA256SUMS before extraction. SHA256SUMS identifies the release's bytes; an ad hoc Mac signature does not identify the publisher.\n\n"
+    common = f"""Auditory Lab {version}: installation
+
+This is a command-line program. Keep the extracted folder and run it from a terminal.
+Download this archive and SHA256SUMS from https://github.com/{repository}/releases/tag/v{version}.
+Archive: {filename}
+Target: {entry['target']}
+Compare the archive's SHA-256 with its exact filename in SHA256SUMS before first use.
+Rust and Python are not needed to run this download.
+
+"""
     if entry["macos"]:
-        platform_text = f"Requires macOS 15.0 or later. Native qualification runs on macOS 15; the minimum version is not an executed CI test.\nApple menu > About This Mac: a Chip entry identifying Apple silicon needs macos-aarch64; an Intel Processor entry needs macos-x86_64. These are separate native downloads, not universal binaries.\n\nIn Terminal in the download directory:\n  shasum -a 256 {filename}\nAfter comparing the digest, extract the ZIP with Finder, then open Terminal in {entry['root']} and run:\n  ./auditory-lab --version\n\nThe executable is ad hoc signed and is not Developer ID signed or notarized. If macOS blocks the launch, first verify the download, then run in the extracted directory:\n  codesign --verify --strict --verbose=2 ./auditory-lab\nA successful signature check confirms integrity, not Developer ID or Gatekeeper approval. Then use the app-specific System Settings > Privacy & Security > Open Anyway option if macOS offers it after that blocked attempt. Managed policies may prohibit exceptions. An invalid or modified signature requires a fresh verified download, not an exception. Do not disable Gatekeeper/SIP globally, routinely remove quarantine, or resign this executable.\nOptional user installation: create ~/.local/bin, copy auditory-lab there, and put that directory on your shell PATH. No app bundle, Python or Rust runtime is needed.\n"
+        platform_text = f"""Requires macOS 15.0 or later. Native qualification runs on macOS 15;
+the exact minimum version is not an executed CI test.
+Apple menu > About This Mac identifies your CPU:
+  Apple silicon (Chip): macos-aarch64
+  Intel Processor: macos-x86_64
+These are separate downloads, not universal binaries or app bundles.
+
+In Terminal in the download directory:
+  shasum -a 256 {filename}
+After comparing the digest, extract the ZIP with Finder and open Terminal in
+{entry['root']}. Run:
+  ./auditory-lab --version
+
+The executable is ad hoc signed, not Developer ID signed or Apple notarized.
+If macOS blocks it, verify the download, then check the extracted executable:
+  codesign --verify --strict --verbose=2 ./auditory-lab
+This checks integrity, not publisher identity or Gatekeeper approval. A failed
+signature check requires a fresh verified download, not a security exception.
+After a blocked attempt, use System Settings > Privacy & Security > Open Anyway
+for this executable only if offered. Managed policies can prohibit exceptions.
+Do not disable Gatekeeper/SIP globally, routinely remove quarantine, or resign it.
+
+"""
     elif entry["windows"]:
         minimum = "Windows 11 ARM64" if entry["target"].startswith("aarch64") else "Windows 10 x64 or Windows Server 2016 x64"
-        terms = microsoft["terms"]["runtime"] if microsoft else "https://visualstudio.microsoft.com/license-terms/"
-        platform_text = f"Requires {minimum} or later. Native CI runs on {entry['runner']}; it does not execute every stated minimum version. Choose the architecture matching your Windows system type in Settings > System > About.\n\nIn PowerShell in the download directory:\n  Get-FileHash -Algorithm SHA256 -LiteralPath .\\{filename}\nAfter comparing the digest, use Extract All, open PowerShell in {entry['root']} and run:\n  .\\auditory-lab.exe --version\n\nNo Rust/Python or separately installed Visual C++ runtime is required. Retail Microsoft CRT portions are statically linked and are subject to separate Microsoft terms; before using the executable, read and accept the complete runtime terms in third-party/{microsoft['terms']['license_file'] if microsoft else 'MICROSOFT-RUNTIME.txt'}. Use of Microsoft runtime portions accepts those terms; the official reference is:\n{terms}\nSee third-party/MICROSOFT-RUNTIME.txt for the selected runtime and producer's redistribution references. These terms apply to Microsoft runtime portions, not Auditory Lab's MPL-covered source. Keep all notices when redistributing this archive.\nWindows may show publisher/reputation warnings because this release has no Microsoft Authenticode publisher certificate. Verify the official archive digest before choosing any app-specific exception; managed policy can prevent execution.\n"
+        if microsoft is None:
+            raise ValueError("Windows installation instructions require the selected Microsoft runtime identity.")
+        terms = microsoft["terms"]
+        platform_text = f"""Requires {minimum} or later. Native CI runs on {entry['runner']};
+it does not execute every stated minimum version.
+Check Settings > System > About > System type:
+  x64-based processor and 64-bit Windows: windows-x86_64
+  ARM-based processor and 64-bit Windows: windows-aarch64
+
+These instructions use PowerShell 7 or later (pwsh). Install it from:
+https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows
+PowerShell is the shell for these examples, not an executable runtime dependency.
+In PowerShell in the download directory, check the version first:
+  if ($PSVersionTable.PSVersion.Major -lt 7) {{ throw 'Open PowerShell 7 (pwsh) to follow these instructions.' }}
+  Get-FileHash -Algorithm SHA256 -LiteralPath .\\{filename}
+After comparing the digest, use Extract All and open PowerShell 7 in
+{entry['root']}.
+
+Before running the executable, read and accept the complete Microsoft runtime
+terms in third-party/{terms['license_file']}. Use of the statically linked
+Microsoft CRT portions accepts those terms. Their official reference is:
+{terms['runtime']}
+third-party/MICROSOFT-RUNTIME.txt identifies the selected runtime and the
+producer's redistribution references. These terms apply to Microsoft runtime
+portions, not Auditory Lab's MPL-covered source. No separately installed Visual
+C++ runtime is required.
+
+Run:
+  .\\auditory-lab.exe --version
+This release has no Microsoft Authenticode publisher certificate. If Windows
+shows a publisher/reputation warning, verify the official archive digest before
+choosing an app-specific exception. Managed policy can prevent execution.
+
+"""
     else:
-        platform_text = f"Built and natively tested on Ubuntu 22.04 for {entry['target'].split('-')[0]}, with glibc 2.35 and the system ALSA runtime (libasound.so.2). Other distributions are not individually qualified. Requires compatible 64-bit glibc/ALSA libraries and a matching CPU. On Ubuntu, install the runtime with: sudo apt-get install libasound2\n\nIn a terminal in the download directory:\n  sha256sum {filename}\nAfter comparing the digest:\n  tar -xzf {filename}\n  cd {entry['root']}\n  ./auditory-lab --version\n\nNo Rust/Python runtime is needed. Optional user installation: copy auditory-lab to ~/.local/bin and put that directory on your shell PATH.\n"
-    return common + platform_text + f"\nRead USAGE.txt for list/show/inspect and a short, silent export. Playback is opt-in: lower the output volume first; digital levels do not limit sound pressure. Headphones preserve intended ear routing.\n\nProject source and matching license: {source}\nMPL-2.0-covered source is available at that exact tag. LICENSE applies to project source; third-party notices retain their respective terms. BUILD_INFO.json records build identity.\n"
+        platform_text = f"""Built and natively tested on Ubuntu 22.04 with glibc 2.35.
+Other distributions are not individually qualified. A compatible 64-bit glibc,
+system GCC runtime (libgcc_s.so.1), ALSA runtime (libasound.so.2) and CPU are required.
+Run uname -m to identify the CPU:
+  x86_64: linux-x86_64 (Intel/AMD 64-bit)
+  aarch64: linux-aarch64 (ARM64)
+On Ubuntu, install the runtime packages if needed:
+  sudo apt-get update
+  sudo apt-get install libasound2 libgcc-s1
+
+In a terminal in the download directory:
+  sha256sum {filename}
+After comparing the digest:
+  tar -xzf {filename}
+  cd {entry['root']}
+  ./auditory-lab --version
+
+"""
+    path_note = """Optional: add the extracted folder to PATH for this terminal session:
+  $env:Path = "$((Get-Location).Path);$env:Path"
+""" if entry["windows"] else """Optional: add the extracted folder to PATH for this terminal session:
+  export PATH="$PWD:$PATH"
+"""
+    return common + platform_text + path_note + f"""Otherwise use the executable prefix shown in USAGE.txt. For future terminals,
+add the folder through your shell or operating system's PATH settings.
+
+Read USAGE.txt for a complete silent starter and a short, editable preset flow.
+Playback is opt-in: lower the output volume first; digital levels do not limit
+sound pressure. Headphones preserve intended ear routing.
+
+Project source and matching license: {source}
+MPL-2.0-covered source is available at that exact tag. LICENSE applies to project
+source; third-party notices retain their respective terms. Keep LICENSE and
+third-party notices when redistributing this package. BUILD_INFO.json records
+build identity.
+"""
 
 
-def usage_text(binary):
-    text = "Auditory Lab command reference\n\n"
-    for args in (["--help"], ["list", "--help"], ["show", "--help"], ["inspect", "--help"], ["export", "--help"], ["play", "--help"]):
-        text += run([binary, *args], cwd=binary.parent, timeout=30).rstrip() + "\n\n"
+def usage_text(binary, version, repository):
     prefix = ".\\auditory-lab.exe" if binary.suffix == ".exe" else "./auditory-lab"
-    return text + f"Short silent export\nSave the following as silence.toml (UTF-8):\n\n  schema_version = 1\n  duration_seconds = 0.01\n  fade_seconds = 0.0\n\nThen run:\n  {prefix} list\n  {prefix} inspect --sample-rate 48000 ./silence.toml\n  {prefix} export --sample-rate 48000 --output silence.wav ./silence.toml\nExisting output files are never overwritten. This example contains no components and makes a small silent stereo float WAV.\n\nThe built-in catalog is embedded in the executable. Use show NAME to save and edit a recipe; inspect it before export or optional playback. Scientific metadata documents adaptations, not clinical efficacy. A WAV export does not play sound. Playback opens the default output device; set volume low before opting in.\n"
+    if binary.suffix == ".exe":
+        save_silence = """  @'
+schema_version = 1
+duration_seconds = 0.01
+fade_seconds = 0.0
+'@ | Out-File -Encoding utf8 -LiteralPath .\\silence.toml
+"""
+        save_preset = f"  {prefix} show chan-2022-clicks-40-hz | Out-File -Encoding utf8 -LiteralPath .\\short-clicks.toml\n"
+        shell = "Use PowerShell 7 or later, as described in INSTALL.txt.\n"
+    else:
+        save_silence = """  cat > silence.toml <<'TOML'
+schema_version = 1
+duration_seconds = 0.01
+fade_seconds = 0.0
+TOML
+"""
+        save_preset = f"  {prefix} show chan-2022-clicks-40-hz > short-clicks.toml\n"
+        shell = "Use your terminal shell, as described in INSTALL.txt.\n"
+    return f"""Auditory Lab {version}: usage
+
+Run these commands from the extracted folder. {shell}Use fresh example filenames: shell save commands can overwrite preset files;
+export refuses to replace an existing output file. Export writes a file without playing
+sound. The catalog is embedded; no source checkout or preset download is needed.
+
+Silent starter
+Create this UTF-8 preset:
+{save_silence}
+Inspect it, then make a small silent stereo float WAV:
+  {prefix} inspect ./silence.toml
+  {prefix} export --output ./silence.wav ./silence.toml
+This preset has no components and lasts 0.01 seconds. These commands open no
+playback device.
+
+Copy and edit a catalog preset
+  {prefix} list
+{save_preset}
+Open short-clicks.toml in a plain-text editor and save it as UTF-8. Set
+duration_seconds = 1.0. In provenance.adaptation, change the preset duration
+from "for 3 minutes" to "for 1 second"; keep the citation and study description
+as source context. The existing 0.1-second fades fit this one-second copy.
+Then validate and export the edited file:
+  {prefix} inspect ./short-clicks.toml
+  {prefix} export --output ./short-clicks.wav ./short-clicks.toml
+Read its provenance to understand the source methods and declared adaptations.
+Metadata documents study context, not clinical efficacy of this program.
+
+Optional playback
+Lower the output volume before opting in. Digital levels do not limit sound
+pressure; use headphones to preserve intended ear routing. Playback opens the
+default output device. Only after those choices, run:
+  {prefix} play ./short-clicks.toml
+Ctrl-C requests cancellation during export/play; a second handled interrupt
+forces exit and may leave incomplete output. Keep the output pathname and its
+parent unchanged until export ends. Cancellation cannot undo a completed file.
+
+Input, recovery and help
+Built-in names select embedded presets; explicit paths such as ./name select
+files. A PRESET containing /, \\ or . is a path; other text is a built-in name,
+except - reads standard input. Use ./- for a file named -.
+For an unknown name, use list; for a file, pass its explicit path. For an
+existing export destination, choose a fresh filename.
+  {prefix} --help
+  {prefix} show --help
+  {prefix} export --help
+Use {prefix} COMMAND --help for any command's options.
+Matching usage guide: https://github.com/{repository}/blob/v{version}/docs/usage.md
+Preset format and sources: https://github.com/{repository}/blob/v{version}/docs/presets.md
+"""
 
 
 def member_name(name, root):
@@ -471,8 +694,15 @@ def archive_members(path, root):
                 if name in seen or member.flag_bits & 1 or stat.S_ISLNK(mode) or (stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR)):
                     raise ValueError("Archive has duplicate, encrypted, linked or special members.")
                 seen.add(name)
+                kind = stat.S_IFMT(mode)
+                if (kind == stat.S_IFDIR and not member.is_dir()) or (kind == stat.S_IFREG and member.is_dir()):
+                    raise ValueError("ZIP member type and trailing slash disagree.")
                 if member.is_dir():
+                    if member.file_size or stat.S_IMODE(mode) != 0o755:
+                        raise ValueError("Archive directories must have no payload and mode 0755.")
                     continue
+                if name == root:
+                    raise ValueError("The archive root must be a directory, not a regular file.")
                 total += member.file_size
                 if member.file_size > MAX_MEMBER or total > MAX_CONTENT:
                     raise ValueError("Archive content exceeds the release verification size limit.")
@@ -485,13 +715,22 @@ def archive_members(path, root):
                 if name in seen or not (member.isdir() or member.isfile()):
                     raise ValueError("Archive has duplicate, linked or special members.")
                 seen.add(name)
+                if member.uid != 0 or member.gid != 0 or member.uname or member.gname:
+                    raise ValueError("Tar members must use neutral numeric ownership and empty owner names.")
                 if member.isdir():
+                    if member.size or member.mode != 0o755:
+                        raise ValueError("Archive directories must have no payload and mode 0755.")
                     continue
+                if name == root:
+                    raise ValueError("The archive root must be a directory, not a regular file.")
                 total += member.size
                 if member.size > MAX_MEMBER or total > MAX_CONTENT:
                     raise ValueError("Archive content exceeds the release verification size limit.")
                 files[name] = archive.extractfile(member).read()
                 modes[name] = member.mode
+    regular_names = {name.casefold() for name in files}
+    if any(str(parent).casefold() in regular_names for name in seen for parent in PurePosixPath(name).parents):
+        raise ValueError("Archive uses a regular file as a parent directory.")
     if any(not any(filename.startswith(name + "/") for filename in files) for name in seen - files.keys()):
         raise ValueError("Archive contains an unexpected empty directory.")
     if len({name.casefold() for name in seen}) != len(seen):
@@ -509,7 +748,20 @@ def verify_archive(path, target, version, source, repository):
         raise ValueError("Archive filename differs from the exact matrix asset.")
     files, modes = archive_members(path, entry["root"])
     prefix = entry["root"] + "/"
-    relative = {name[len(prefix):]: data for name, data in files.items() if name.startswith(prefix)}
+    if any(not name.startswith(prefix) for name in files):
+        raise ValueError("Every regular archive member must be beneath its root directory.")
+    relative = {name[len(prefix):]: data for name, data in files.items()}
+    exe = "auditory-lab.exe" if entry["windows"] else "auditory-lab"
+    for name, data in relative.items():
+        if modes[prefix + name] != (0o755 if name == exe else 0o644):
+            raise ValueError("Archive files must use mode 0755 for the executable and 0644 for other content.")
+        if name != exe:
+            try:
+                text = data.decode("utf-8")
+            except UnicodeDecodeError as error:
+                raise ValueError("Archive guides, metadata and legal materials must be UTF-8 text.") from error
+            if "\0" in text:
+                raise ValueError("Archive guides, metadata and legal materials cannot contain NUL/binary data.")
     required = {"auditory-lab.exe" if entry["windows"] else "auditory-lab", "INSTALL.txt", "USAGE.txt", "LICENSE", "BUILD_INFO.json", "third-party/index.json", "third-party/RUST-COPYRIGHT-library.html"}
     if not required <= relative.keys() or any(name not in required and not name.startswith("third-party/") for name in relative):
         raise ValueError("Archive is missing required content or has unexpected top-level files.")
@@ -524,12 +776,9 @@ def verify_archive(path, target, version, source, repository):
     settings = info.get("settings", {})
     if settings.get("overflow_checks") is not True or settings.get("cpu") != "portable-default" or settings.get("crt") != ("static-retail" if entry["windows"] else None) or settings.get("macos_deployment_target") != ("15.0" if entry["macos"] else None):
         raise ValueError("Archive build settings do not match the release contract.")
-    exe = "auditory-lab.exe" if entry["windows"] else "auditory-lab"
     header = executable_header(relative[exe], target)
     if any(info.get("platform", {}).get(key) != value for key, value in header.items()):
         raise ValueError("Executable header differs from its build metadata.")
-    if not entry["windows"] and modes[prefix + exe] != 0o755:
-        raise ValueError("Unix executable archive mode must be exactly 0755.")
     if entry["macos"]:
         check_macos_libraries(info.get("platform", {}).get("libraries", []))
     elif not entry["windows"]:
@@ -537,28 +786,47 @@ def verify_archive(path, target, version, source, repository):
     inventory = json.loads(relative["third-party/index.json"])
     if inventory.get("format") != 1 or inventory.get("target") != target or not inventory.get("packages"):
         raise ValueError("Third-party inventory must describe this target's nonempty closure.")
+    if inventory.get("rust") != {"version": pinned_channel(), "file": "third-party/RUST-COPYRIGHT-library.html"}:
+        raise ValueError("Rust runtime notice identity must match the pinned compiler and expected library-only file.")
+    if relative["LICENSE"] != (ROOT / "LICENSE").read_bytes():
+        raise ValueError("Project license text differs from the qualified source.")
+    if relative["third-party/RUST-COPYRIGHT-library.html"] != rust_library_notice().read_bytes():
+        raise ValueError("Rust library copyright text differs from the pinned toolchain.")
+    if sum(package.get("name") == "libm" for package in inventory["packages"]) != 1:
+        raise ValueError("Every CLI archive must contain exactly one reviewed locked libm notice package.")
+    for package in inventory["packages"]:
+        if package.get("name") == "libm":
+            libm_notice_policy(package)
+    trusted = {(package["name"], package["version"]): package for package in target_notice_packages(target)}
+    actual = {(package.get("name"), package.get("version")) for package in inventory["packages"]}
+    if actual != trusted.keys() or len(inventory["packages"]) != len(trusted):
+        raise ValueError("Archive dependency identities differ from the complete locked target closure.")
     listed = {"third-party/index.json", inventory.get("rust", {}).get("file")}
     pairs = set()
-    supplements = upstream_supplements()
     for package in inventory["packages"]:
         pair = (package["name"], package["version"])
         if pair in pairs or not package.get("files") or not (package.get("license") or package.get("license_file")):
             raise ValueError("Duplicate dependency or incomplete licensing inventory.")
         pairs.add(pair)
+        reference = trusted[pair]
+        if any(package.get(field) != reference.get(field) for field in ("license", "license_file", "repository")):
+            raise ValueError("Archive licensing declarations differ from trusted Cargo metadata.")
+        materials, expected = package_notice_materials(reference)
+        expected_files = {f"third-party/{package['name']}-{package['version']}/{relative_path.as_posix()}": path
+                          for path, relative_path in materials}
+        if set(package["files"]) != expected_files.keys() or len(package["files"]) != len(expected_files):
+            raise ValueError("Archive notice filenames differ from the complete trusted source materials.")
+        for name, path in expected_files.items():
+            if name not in relative or digest(relative[name]) != digest(path.read_bytes()):
+                raise ValueError("Archive legal material differs from the trusted source bytes.")
         listed.update(package["files"])
-        key = package["name"] + "-" + package["version"]
-        expected = supplements.get(key)
         if expected is not None or "upstream_supplement" in package:
-            if expected is None or package.get("upstream_supplement") != expected or package.get("repository") != expected["repository"] or package.get("license") != expected["license"]:
+            if expected is None or package.get("upstream_supplement") != expected:
                 raise ValueError("Archive upstream license supplement has an unreviewed or mismatched identity.")
-            for item in expected["files"]:
-                name = f"third-party/{key}/{item['archive_file']}"
-                if name not in package["files"] or name not in relative or digest(relative[name]) != item["sha256"]:
-                    raise ValueError("Archive upstream license material is missing or altered.")
         if package["name"] == "unicode-ident" and not any(name.endswith("/LICENSE-UNICODE") for name in package["files"]):
             raise ValueError("Unicode license missing from archive.")
-        if package["name"] == "libm" and not any(name.endswith("/src/math/sin.rs") for name in package["files"]):
-            raise ValueError("libm source permission headers missing from archive.")
+        if package["name"] == "libm":
+            check_libm_notice_layout(package)
     if entry["windows"]:
         runtime = inventory.get("microsoft_runtime", {})
         version_vs = runtime.get("visual_studio_version", "")
@@ -569,6 +837,8 @@ def verify_archive(path, target, version, source, repository):
         terms_file = "third-party/" + runtime["terms"]["license_file"]
         if terms_file not in relative or digest(relative[terms_file]) != runtime["terms"]["text_sha256"]:
             raise ValueError("Complete reviewed Microsoft runtime terms are missing or altered.")
+        if relative.get("third-party/MICROSOFT-RUNTIME.txt") != microsoft_runtime_notice(runtime).encode("utf-8"):
+            raise ValueError("Microsoft copyright/redistribution notice differs from the validated runtime identity.")
         listed.add(terms_file)
     if listed != {name for name in relative if name.startswith("third-party/")}:
         raise ValueError("Third-party inventory and actual notice files differ.")
@@ -582,6 +852,8 @@ def verify_archive(path, target, version, source, repository):
 
 
 def extract_native(archive, entry, scratch):
+    if entry["windows"]:
+        require_powershell()
     destination = scratch / "extracted"
     if destination.exists():
         raise ValueError("Extraction scratch already exists; use a fresh owned target directory.")
@@ -590,7 +862,7 @@ def extract_native(archive, entry, scratch):
         run(["ditto", "-x", "-k", archive, destination])
     elif entry["windows"]:
         quote = lambda value: "'" + str(value).replace("'", "''") + "'"
-        run(["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", f"$ErrorActionPreference='Stop'; Expand-Archive -LiteralPath {quote(archive)} -DestinationPath {quote(destination)}"])
+        run(["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", f"$ErrorActionPreference='Stop'; Expand-Archive -LiteralPath {quote(archive)} -DestinationPath {quote(destination)}"])
     else:
         run(["tar", "-xzf", archive, "-C", destination])
     binary = destination / entry["root"] / ("auditory-lab.exe" if entry["windows"] else "auditory-lab")
@@ -676,10 +948,12 @@ def package(target, version, source, repository, binary, output_directory, scrat
     copy_notices(stage, target, host["compiler"], microsoft)
     shutil.copyfile(ROOT / "LICENSE", stage / "LICENSE")
     (stage / "INSTALL.txt").write_text(install_text(entry, version, repository, microsoft), encoding="utf-8")
-    (stage / "USAGE.txt").write_text(usage_text(executable), encoding="utf-8")
+    (stage / "USAGE.txt").write_text(usage_text(executable, version, repository), encoding="utf-8")
     files = {path.relative_to(stage).as_posix(): digest(path.read_bytes()) for path in sorted(stage.rglob("*")) if path.is_file()}
     info = {"format": 1, "target": target, "version": version, "source": source, "repository": repository, "compiler": host["compiler"], "settings": {"overflow_checks": True, "cpu": "portable-default", "crt": "static-retail" if entry["windows"] else None, "macos_deployment_target": "15.0" if entry["macos"] else None}, "platform": platform_info, "files": files}
     (stage / "BUILD_INFO.json").write_text(json.dumps(info, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    for path in [stage, *stage.rglob("*")]:
+        path.chmod(0o755 if path.is_dir() or path == executable else 0o644)
     if archive.suffix == ".zip":
         if entry["macos"]:
             run(["ditto", "-c", "-k", "--norsrc", "--keepParent", stage, archive])
@@ -687,10 +961,17 @@ def package(target, version, source, repository, binary, output_directory, scrat
             with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as output:
                 for path in sorted(stage.rglob("*")):
                     if path.is_file():
-                        output.write(path, (Path(entry["root"]) / path.relative_to(stage)).as_posix())
+                        member = zipfile.ZipInfo.from_file(path, (Path(entry["root"]) / path.relative_to(stage)).as_posix())
+                        member.create_system = 3
+                        member.external_attr = (stat.S_IFREG | (0o755 if path == executable else 0o644)) << 16
+                        output.writestr(member, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     else:
         with tarfile.open(archive, "x:gz") as output:
-            output.add(stage, arcname=entry["root"])
+            def neutral_owner(member):
+                member.uid = member.gid = 0
+                member.uname = member.gname = ""
+                return member
+            output.add(stage, arcname=entry["root"], filter=neutral_owner)
     verify_archive(archive, target, version, source, repository)
     extracted = extract_native(archive, entry, scratch)
     if extracted.read_bytes() != executable.read_bytes():

@@ -6,7 +6,7 @@ Auditory Lab composes tones, rectangular clicks and sinusoidal amplitude modulat
 
 Download the archive for your operating system and CPU from [Releases](https://github.com/resoltico/AuditoryLab/releases/latest). macOS 15 or later is required; Intel and Apple Silicon have separate ZIPs. Verify the download against `SHA256SUMS`, extract it and follow its `INSTALL.txt`; `USAGE.txt` gives commands. Mac executables are ad hoc signed and are not Apple notarized. The archive explains the app-specific security approval if macOS blocks a trusted download.
 
-Run `auditory-lab list` to discover the embedded presets. No compiler or checkout is needed for the downloaded executable.
+Run `./auditory-lab list` on macOS/Linux or `.\auditory-lab.exe list` in PowerShell 7+ on Windows from the extracted folder to discover the embedded presets. No compiler or checkout is needed for the downloaded executable. Windows examples and verification scripts require [PowerShell 7 or later](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows); the executable itself has no PowerShell dependency.
 
 ### Install from source
 
@@ -27,6 +27,12 @@ cargo install --locked --path crates/auditory-lab
 auditory-lab list
 auditory-lab inspect orozco-perez-2020-binaural-7-hz
 auditory-lab show chan-2022-clicks-40-hz > short-clicks.toml
+```
+
+In PowerShell 7+, save with explicit UTF-8 encoding instead:
+
+```powershell
+auditory-lab show chan-2022-clicks-40-hz | Out-File -Encoding utf8 -FilePath short-clicks.toml
 ```
 
 Edit `short-clicks.toml` to set `duration_seconds = 1.0` and update `provenance.adaptation` to describe the one-second copy. Then inspect and export it:

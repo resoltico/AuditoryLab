@@ -37,15 +37,15 @@ Record an unavailable check when no compatible default output exists. Do not cha
 
 ## Native Windows interrupts
 
-With the release executable built, use a dedicated Windows process:
+With the release executable built, use a dedicated Windows process running [PowerShell 7 or later](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows). CI checks the version before Windows verification; the standalone helper rejects older versions before running:
 
 ```powershell
-powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/test-windows-interrupts.ps1 `
+pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/test-windows-interrupts.ps1 `
   -Binary target/release/auditory-lab.exe -Scratch target/windows-interrupt-tests
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 ```
 
-The PowerShell 5.1 helper uses isolated native consoles/bounded pipes, never broadcasts to the caller's console and opens no audio. Its process-scoped policy changes no persistent policy and does not override Group Policy. Check all six event/phase cases, quote controls, statuses, file/capture results and cleanup.
+The helper uses isolated native consoles/bounded pipes, never broadcasts to the caller's console and opens no audio. Keep it in a dedicated child `pwsh` process; never dot-source it into your terminal or the CI controller. Its process-scoped policy changes no persistent policy and does not override Group Policy. Check all six event/phase cases, quote controls, statuses, file/capture results and cleanup.
 
 Challenge the relevant signal guards in a disposable source copy: ineffective second handler, immediate first exit, early handler installation and omitted export cancellation must be detected. Missing facilities, blocked policy or omitted cases are unavailable or failing evidence, not a pass. Syntax/C# compilation or cross compilation alone does not exercise native events.
 

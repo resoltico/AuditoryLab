@@ -38,12 +38,31 @@ pub(crate) fn help(topic: HelpTopic) -> String {
         SampleRate::DEFAULT.hz()
     );
     match topic {
-        HelpTopic::Global => format!("Auditory Lab: inspect, export and play auditory stimuli.\n\nUsage:\n  auditory-lab (-h | --help)\n  auditory-lab --version\n  auditory-lab list\n  auditory-lab show NAME\n  auditory-lab play [--] PRESET\n  auditory-lab export --output OUTPUT [--sample-rate HZ] [--] PRESET\n  auditory-lab inspect [--sample-rate HZ] [--] PRESET\n\n{common}\nUse auditory-lab COMMAND --help for command help."),
-        HelpTopic::List => "Usage: auditory-lab list\nList the built-in presets with durations and titles.".into(),
-        HelpTopic::Show => "Usage: auditory-lab show NAME\nPrint a built-in preset as TOML, ready to save and edit.\nExample: auditory-lab show chan-2022-clicks-40-hz > clicks.toml".into(),
-        HelpTopic::Play => format!("Usage: auditory-lab play [--] PRESET\n{common}\nUses the backend-reported default stream rate and requires at least two channels.\nSet the output volume low: digital levels do not limit sound pressure. Use headphones to preserve intended ear routing.\nThe first handled interrupt requests cancellation; the second forces exit. An operation may already have completed; cancellation cannot undo it, and forced exit may leave incomplete output.\nExample: auditory-lab play orozco-perez-2020-binaural-7-hz"),
-        HelpTopic::Export => format!("Usage: auditory-lab export --output OUTPUT [--sample-rate HZ] [--] PRESET\n{common}\n--output OUTPUT is required. OUTPUT - names a file, not standard output.\n{rate}\nAn existing OUTPUT is never replaced. Incomplete output is visible during export; cooperative cancellation removes it under exclusive path ownership.\nExample: auditory-lab export chan-2022-clicks-40-hz --output clicks.wav"),
-        HelpTopic::Inspect => format!("Usage: auditory-lab inspect [--sample-rate HZ] [--] PRESET\n{common}\n{rate}\nExample: auditory-lab inspect orozco-perez-2020-binaural-7-hz"),
+        HelpTopic::Global => format!(
+            "Auditory Lab: inspect, export and play auditory stimuli.\n\nUsage:\n  auditory-lab (-h | --help)\n  auditory-lab --version\n  auditory-lab list\n  auditory-lab show NAME\n  auditory-lab play [--] PRESET\n  auditory-lab export --output OUTPUT [--sample-rate HZ] [--] PRESET\n  auditory-lab inspect [--sample-rate HZ] [--] PRESET\n\n{common}\nUse auditory-lab COMMAND --help for command help."
+        ),
+        HelpTopic::List => {
+            "Usage: auditory-lab list\nList the built-in presets with durations and titles.".into()
+        }
+        HelpTopic::Show => {
+            let save = if cfg!(windows) {
+                "PowerShell 7+: auditory-lab show chan-2022-clicks-40-hz | Out-File -Encoding utf8 -FilePath clicks.toml"
+            } else {
+                "Example: auditory-lab show chan-2022-clicks-40-hz > clicks.toml"
+            };
+            format!(
+                "Usage: auditory-lab show NAME\nPrint a built-in preset as UTF-8 TOML, ready to save and edit.\n{save}"
+            )
+        }
+        HelpTopic::Play => format!(
+            "Usage: auditory-lab play [--] PRESET\n{common}\nUses the backend-reported default stream rate and requires at least two channels.\nSet the output volume low: digital levels do not limit sound pressure. Use headphones to preserve intended ear routing.\nThe first handled interrupt requests cancellation; the second forces exit. An operation may already have completed; cancellation cannot undo it, and forced exit may leave incomplete output.\nExample: auditory-lab play orozco-perez-2020-binaural-7-hz"
+        ),
+        HelpTopic::Export => format!(
+            "Usage: auditory-lab export --output OUTPUT [--sample-rate HZ] [--] PRESET\n{common}\n--output OUTPUT is required. OUTPUT - names a file, not standard output.\n{rate}\nAn existing OUTPUT is never replaced. Incomplete output is visible during export; cooperative cancellation removes it under exclusive path ownership.\nExample: auditory-lab export chan-2022-clicks-40-hz --output clicks.wav"
+        ),
+        HelpTopic::Inspect => format!(
+            "Usage: auditory-lab inspect [--sample-rate HZ] [--] PRESET\n{common}\n{rate}\nExample: auditory-lab inspect orozco-perez-2020-binaural-7-hz"
+        ),
     }
 }
 

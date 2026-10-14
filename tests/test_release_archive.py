@@ -70,16 +70,31 @@ def valid_payload(target=MAC):
         platform_info["libraries"] = ["/usr/lib/libSystem.B.dylib"]
     elif not entry["windows"]:
         platform_info.update(libraries=["libasound.so.2", "libc.so.6"], glibc_versions=["2.2.5", "2.35"])
-    notices = {"format": 1, "target": target, "rust": {"version": archive.pinned_channel(), "file": "third-party/RUST-COPYRIGHT-library.html"}, "packages": [{"name": "libm", "version": "0.2.16", "license": "MIT", "files": ["third-party/libm-0.2.16/LICENSE.txt", "third-party/libm-0.2.16/src/math/sin.rs"]}]}
-    files = {executable: binary, "LICENSE": b"Mozilla Public License Version 2.0", "USAGE.txt": b"Use --help.\n", "INSTALL.txt": f"https://github.com/{REPOSITORY}/tree/v{VERSION}\n".encode(), "third-party/RUST-COPYRIGHT-library.html": b"Runtime notices", "third-party/libm-0.2.16/LICENSE.txt": b"MIT license", "third-party/libm-0.2.16/src/math/sin.rs": b"Sun permission header"}
+    expected = archive.upstream_supplements()["libm-0.2.16"]
+    names = ["third-party/libm-0.2.16/" + item["archive_file"] for item in expected["files"]]
+    notices = {"format": 1, "target": target, "rust": {"version": archive.pinned_channel(), "file": "third-party/RUST-COPYRIGHT-library.html"}, "packages": [{"name": "libm", "version": "0.2.16", "license": expected["license"], "repository": expected["repository"], "upstream_supplement": expected, "files": names}]}
+    files = {executable: binary, "LICENSE": (archive.ROOT / "LICENSE").read_bytes(), "USAGE.txt": b"Use --help.\n", "INSTALL.txt": f"https://github.com/{REPOSITORY}/tree/v{VERSION}\n".encode(), "third-party/RUST-COPYRIGHT-library.html": b"Runtime notices"}
+    for item, name in zip(expected["files"], names):
+        files[name] = (archive.ROOT / "scripts" / "licenses" / item["source_file"]).read_bytes()
     if entry["windows"]:
         runtime = {"visual_studio_version": "17.14.1.0", "product_id": "Microsoft.VisualStudio.Product.Enterprise", "toolset_version": "14.44.1", "windows_sdk_version": "10.0.1.0", "terms": archive.MICROSOFT_TERMS[17], "libraries": [{"name": name, "sha256": "b" * 64} for name in ("libcmt.lib", "libvcruntime.lib", "libucrt.lib")]}
         notices["microsoft_runtime"] = runtime
-        files["third-party/MICROSOFT-RUNTIME.txt"] = b"Microsoft runtime terms reference"
+        files["third-party/MICROSOFT-RUNTIME.txt"] = archive.microsoft_runtime_notice(runtime).encode("utf-8")
         files["third-party/" + runtime["terms"]["license_file"]] = (archive.ROOT / "scripts" / "licenses" / runtime["terms"]["license_file"]).read_bytes()
     files["third-party/index.json"] = json.dumps(notices).encode()
     info = {"format": 1, "target": target, "version": VERSION, "source": SOURCE, "repository": REPOSITORY, "compiler": {"release": archive.pinned_channel(), "host": target}, "settings": {"overflow_checks": True, "cpu": "portable-default", "crt": "static-retail" if entry["windows"] else None, "macos_deployment_target": "15.0" if entry["macos"] else None}, "platform": platform_info}
     return entry, files, info
+
+
+def trusted_package_fixture(parent, name, version):
+    """An independent source directory for bounded reviewed-supplement fixtures."""
+    expected = archive.upstream_supplements()[name + "-" + version]
+    directory = parent / ("trusted-" + name + "-" + version)
+    directory.mkdir(exist_ok=True)
+    (directory / ".cargo_vcs_info.json").write_text(json.dumps(expected["vcs"]))
+    return {"name": name, "version": version, "license": expected["license"],
+            "license_file": None, "repository": expected["repository"],
+            "manifest_path": str(directory / "Cargo.toml")}
 
 
 class ArchiveChecks(unittest.TestCase):
@@ -89,6 +104,20 @@ class ArchiveChecks(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(dir=scratch)
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
+        # Bounded binary fixtures have an injected trusted Cargo closure. Material
+        # selection still checks actual reviewed supplements/VCS and source bytes.
+        self.trusted_packages = [self.trusted_package("libm", "0.2.16")]
+        metadata = patch.object(archive, "target_notice_packages", return_value=self.trusted_packages)
+        metadata.start()
+        self.addCleanup(metadata.stop)
+        rust_text = self.directory / "trusted-RUST-COPYRIGHT-library.html"
+        rust_text.write_bytes(b"Runtime notices")
+        rust = patch.object(archive, "rust_library_notice", return_value=rust_text)
+        rust.start()
+        self.addCleanup(rust.stop)
+
+    def trusted_package(self, name, version):
+        return trusted_package_fixture(self.directory, name, version)
 
     def write_archive(self, target=MAC, change=None, additional=None, mode=0o755):
         entry, files, info = valid_payload(target)
@@ -102,7 +131,7 @@ class ArchiveChecks(unittest.TestCase):
                 for name, data in files.items():
                     member = zipfile.ZipInfo(entry["root"] + "/" + name)
                     member.create_system = 3
-                    member.external_attr = (stat.S_IFREG | (mode if name == "auditory-lab" else 0o644)) << 16
+                    member.external_attr = (stat.S_IFREG | (mode if name in ("auditory-lab", "auditory-lab.exe") else 0o644)) << 16
                     output.writestr(member, data)
                 if additional:
                     additional(output, entry)
@@ -111,7 +140,7 @@ class ArchiveChecks(unittest.TestCase):
                 for name, data in files.items():
                     member = tarfile.TarInfo(entry["root"] + "/" + name)
                     member.size = len(data)
-                    member.mode = mode if name == "auditory-lab" else 0o644
+                    member.mode = mode if name in ("auditory-lab", "auditory-lab.exe") else 0o644
                     output.addfile(member, io.BytesIO(data))
                 if additional:
                     additional(output, entry)
@@ -190,7 +219,7 @@ class ArchiveChecks(unittest.TestCase):
             self.verify(path)
 
     def test_missing_licensing_and_template_rejections(self):
-        for name in ("third-party/RUST-COPYRIGHT-library.html", "third-party/libm-0.2.16/src/math/sin.rs", "LICENSE"):
+        for name in ("third-party/RUST-COPYRIGHT-library.html", "third-party/libm-0.2.16/SOURCE-NOTICES.txt", "LICENSE"):
             with self.subTest(name=name):
                 path = self.write_archive(change=lambda files, info: files.pop(name))
                 with self.assertRaises(ValueError):
@@ -389,14 +418,18 @@ class ArchiveChecks(unittest.TestCase):
 
     def test_upstream_source_files_preserve_exact_declared_grants_and_copyrights(self):
         supplements = archive.upstream_supplements()
-        self.assertEqual(len(supplements), 10)
+        self.assertEqual(len(supplements), 11)
         for package, record in supplements.items():
             self.assertEqual(record["selected_license"], "MIT")
             self.assertRegex(record["vcs"]["git"]["sha1"], r"^[0-9a-f]{40}$")
             for item in record["files"]:
                 content = (archive.ROOT / "scripts" / "licenses" / item["source_file"]).read_bytes()
                 self.assertEqual(archive.digest(content), item["sha256"], (package, item["source_file"]))
-                self.assertTrue(item["url"].startswith("https://raw.githubusercontent.com/"))
+                if item.get("kind") == "reviewed-verbatim-source-notice-bundle":
+                    self.assertEqual(package, "libm-0.2.16")
+                    self.assertEqual(item["url"], f"https://github.com/rust-lang/compiler-builtins/tree/{record['vcs']['git']['sha1']}/libm/src")
+                else:
+                    self.assertTrue(item["url"].startswith("https://raw.githubusercontent.com/"))
         source = (archive.ROOT / "scripts" / "licenses" / "objc2-LICENSE.md").read_text()
         self.assertIn("Apple SDKs", source)
         self.assertIn("https://www.apple.com/legal/sla/docs/xcode.pdf", source)
@@ -406,6 +439,7 @@ class ArchiveChecks(unittest.TestCase):
         self.assertIn("Copyright (c) 2016 RustAudio Developers", sample)
 
     def test_archive_rejects_changed_supplement_provenance_and_material(self):
+        self.trusted_packages.append(self.trusted_package("block2", "0.6.2"))
         def include_supplement(files, info):
             key = "block2-0.6.2"
             expected = archive.upstream_supplements()[key]
@@ -421,14 +455,14 @@ class ArchiveChecks(unittest.TestCase):
         def changed_material(files, info):
             include_supplement(files, info)
             files["third-party/block2-0.6.2/LICENSE.md"] += b"altered grant"
-        with self.assertRaisesRegex(ValueError, "upstream license material"):
+        with self.assertRaisesRegex(ValueError, "trusted source bytes"):
             self.verify(self.write_archive(change=changed_material))
         def changed_provenance(files, info):
             include_supplement(files, info)
             index = json.loads(files["third-party/index.json"])
             index["packages"][-1]["upstream_supplement"]["vcs"]["git"]["sha1"] = "0" * 40
             files["third-party/index.json"] = json.dumps(index).encode()
-        with self.assertRaisesRegex(ValueError, "upstream license supplement"):
+        with self.assertRaisesRegex(ValueError, "trusted source bytes|upstream license supplement"):
             self.verify(self.write_archive(change=changed_provenance))
         def omitted_marker_and_changed_material(files, info):
             include_supplement(files, info)
@@ -436,14 +470,169 @@ class ArchiveChecks(unittest.TestCase):
             index["packages"][-1].pop("upstream_supplement")
             files["third-party/index.json"] = json.dumps(index).encode()
             files["third-party/block2-0.6.2/LICENSE.md"] += b"altered grant without provenance marker"
-        with self.assertRaisesRegex(ValueError, "upstream license supplement"):
+        with self.assertRaisesRegex(ValueError, "trusted source bytes"):
             self.verify(self.write_archive(change=omitted_marker_and_changed_material))
+        def omitted_marker(files, info):
+            include_supplement(files, info)
+            index = json.loads(files["third-party/index.json"])
+            index["packages"][-1].pop("upstream_supplement")
+            files["third-party/index.json"] = json.dumps(index).encode()
+        with self.assertRaisesRegex(ValueError, "upstream license supplement"):
+            self.verify(self.write_archive(change=omitted_marker))
         def unknown_marker(files, info):
+            include_supplement(files, info)
             index = json.loads(files["third-party/index.json"])
             index["packages"][0]["upstream_supplement"] = archive.upstream_supplements()["block2-0.6.2"]
             files["third-party/index.json"] = json.dumps(index).encode()
         with self.assertRaisesRegex(ValueError, "upstream license supplement"):
             self.verify(self.write_archive(change=unknown_marker))
+
+    def test_archive_requires_libm_record_even_when_other_notices_remain(self):
+        def omit_libm(files, info):
+            index = json.loads(files["third-party/index.json"])
+            for name in index["packages"][0]["files"]:
+                files.pop(name)
+            name = "third-party/example-1.0.0/LICENSE"
+            files[name] = b"Example MIT permission notice"
+            index["packages"] = [{"name": "example", "version": "1.0.0", "license": "MIT", "files": [name]}]
+            files["third-party/index.json"] = json.dumps(index).encode()
+        # write_archive rebuilds BUILD_INFO, so this rejects omission rather than a stale hash.
+        with self.assertRaisesRegex(ValueError, "exactly one reviewed locked libm"):
+            self.verify(self.write_archive(change=omit_libm))
+
+    def test_complete_package_materials_and_declarations_use_trusted_source(self):
+        directory = self.directory / "trusted-example"
+        directory.mkdir()
+        texts = {"LICENSE-MIT": b"Independent MIT grant\n", "LICENSE-APACHE": b"Independent Apache grant\n"}
+        for name, body in texts.items():
+            (directory / name).write_bytes(body)
+        reference = {"name": "example", "version": "1.0.0", "license": "MIT OR Apache-2.0",
+                     "license_file": None, "repository": "https://example.invalid/source",
+                     "manifest_path": str(directory / "Cargo.toml")}
+        self.trusted_packages.append(reference)
+        def include(files, info):
+            names = []
+            for name, body in texts.items():
+                path = "third-party/example-1.0.0/" + name
+                files[path] = body
+                names.append(path)
+            index = json.loads(files["third-party/index.json"])
+            record = {key: reference[key] for key in ("name", "version", "license", "license_file", "repository")}
+            index["packages"].append(dict(record, files=names))
+            files["third-party/index.json"] = json.dumps(index).encode()
+        self.verify(self.write_archive(change=include))
+        def omit_package(files, info):
+            include(files, info)
+            index = json.loads(files["third-party/index.json"])
+            for name in index["packages"][-1]["files"]:
+                files.pop(name)
+            index["packages"].pop()
+            files["third-party/index.json"] = json.dumps(index).encode()
+        with self.assertRaisesRegex(ValueError, "complete locked target closure"):
+            self.verify(self.write_archive(change=omit_package))
+        def omit_material(files, info):
+            include(files, info)
+            index = json.loads(files["third-party/index.json"])
+            files.pop(index["packages"][-1]["files"].pop())
+            files["third-party/index.json"] = json.dumps(index).encode()
+        with self.assertRaisesRegex(ValueError, "complete trusted source materials"):
+            self.verify(self.write_archive(change=omit_material))
+        def alter_material(files, info):
+            include(files, info)
+            files["third-party/example-1.0.0/LICENSE-MIT"] += b"removed original conditions"
+        with self.assertRaisesRegex(ValueError, "trusted source bytes"):
+            self.verify(self.write_archive(change=alter_material))
+        for field, value in (("license", "MIT"), ("license_file", "LICENSE-MIT"), ("repository", "https://example.invalid/other")):
+            def changed_declaration(files, info):
+                include(files, info)
+                index = json.loads(files["third-party/index.json"])
+                index["packages"][-1][field] = value
+                files["third-party/index.json"] = json.dumps(index).encode()
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "trusted Cargo metadata"):
+                self.verify(self.write_archive(change=changed_declaration))
+
+    def test_project_rust_and_microsoft_notices_require_complete_reference_bytes(self):
+        for name, message, target in (("LICENSE", "Project license text", MAC),
+                                      ("third-party/RUST-COPYRIGHT-library.html", "Rust library copyright", MAC),
+                                      ("third-party/MICROSOFT-RUNTIME.txt", "Microsoft copyright/redistribution", WINDOWS)):
+            def change(files, info):
+                files[name] += b"changed legal notice"
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, message):
+                self.verify(self.write_archive(target, change=change), target)
+
+    def test_generated_microsoft_notice_uses_canonical_bytes_on_windows_writer(self):
+        _, files, _ = valid_payload(WINDOWS)
+        runtime = json.loads(files["third-party/index.json"])["microsoft_runtime"]
+        destination = self.directory / "writer"
+        destination.mkdir()
+        write_text = Path.write_text
+        def windows_text(path, text, *args, **kwargs):
+            kwargs["newline"] = "\r\n"
+            return write_text(path, text, *args, **kwargs)
+        with patch.object(Path, "write_text", windows_text):
+            archive.copy_notices(destination, WINDOWS, {"release": archive.pinned_channel()}, runtime)
+        notice_root = destination / "third-party"
+        self.assertIn(b"\r\n", (notice_root / "index.json").read_bytes())
+        self.assertEqual((notice_root / "MICROSOFT-RUNTIME.txt").read_bytes(),
+                         archive.microsoft_runtime_notice(runtime).encode("utf-8"))
+        terms = runtime["terms"]["license_file"]
+        self.assertEqual((notice_root / terms).read_bytes(),
+                         (archive.ROOT / "scripts" / "licenses" / terms).read_bytes())
+
+    def test_libm_exact_legal_bytes_cannot_be_replaced_with_refreshed_hashes(self):
+        for name in ("LICENSE.txt", "SOURCE-NOTICES.txt"):
+            def alter(files, info):
+                files["third-party/libm-0.2.16/" + name] += b"altered permission text"
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "trusted source bytes"):
+                self.verify(self.write_archive(change=alter))
+        def omit_marker(files, info):
+            index = json.loads(files["third-party/index.json"])
+            index["packages"][0].pop("upstream_supplement")
+            files["third-party/index.json"] = json.dumps(index).encode()
+            files["third-party/libm-0.2.16/SOURCE-NOTICES.txt"] = b"Incomplete legal text"
+        with self.assertRaisesRegex(ValueError, "trusted source bytes"):
+            self.verify(self.write_archive(change=omit_marker))
+
+    def test_libm_notice_layout_excludes_implementation_and_extra_legal_named_files(self):
+        for name in ("src/math/arch/x86.rs", "LICENSE-IMPLEMENTATION.txt"):
+            def retain_code(files, info):
+                index = json.loads(files["third-party/index.json"])
+                path = "third-party/libm-0.2.16/" + name
+                files[path] = b"pub fn implementation() {}\n"
+                index["packages"][0]["files"].append(path)
+                files["third-party/index.json"] = json.dumps(index).encode()
+            expected = "complete trusted source materials"
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, expected):
+                self.verify(self.write_archive(change=retain_code))
+
+    def test_unreviewed_libm_version_and_changed_locked_checksum_fail_closed(self):
+        def unknown_version(files, info):
+            index = json.loads(files["third-party/index.json"])
+            package = index["packages"][0]
+            package["version"] = "0.2.17"
+            package.pop("upstream_supplement")
+            # Ordinary original-license names remain valid; the version guard must reject them.
+            for name in package["files"]:
+                files.pop(name)
+            name = "third-party/libm-0.2.17/LICENSE.txt"
+            files[name] = b"MIT license"
+            package["files"] = [name]
+            files["third-party/index.json"] = json.dumps(index).encode()
+        with self.assertRaisesRegex(ValueError, "Unreviewed libm identity"):
+            self.verify(self.write_archive(change=unknown_version))
+        changed = copy.deepcopy(archive.upstream_supplements())
+        changed["libm-0.2.16"]["crate_checksum"] = "0" * 64
+        with patch.object(archive, "upstream_supplements", return_value=changed), self.assertRaisesRegex(ValueError, "Locked libm checksum"):
+            archive.libm_notice_policy({"name": "libm", "version": "0.2.16"})
+
+    def test_rust_notice_identity_matches_the_pinned_library_only_contract(self):
+        for change in ({"version": "1.98.0"}, {"file": "third-party/LICENSE"}):
+            def wrong_identity(files, info):
+                index = json.loads(files["third-party/index.json"])
+                index["rust"].update(change)
+                files["third-party/index.json"] = json.dumps(index).encode()
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "Rust runtime notice identity"):
+                self.verify(self.write_archive(change=wrong_identity))
 
 
 if __name__ == "__main__":
