@@ -59,7 +59,7 @@ public sealed class InterruptChild : IDisposable {
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] [return: MarshalAs(UnmanagedType.Bool)] delegate bool Handler(uint kind);
     [DllImport("kernel32.dll", SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] static extern bool AllocConsole();
     [DllImport("kernel32.dll", SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] static extern bool FreeConsole();
-    [DllImport("kernel32.dll", SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] static extern bool AttachConsole(uint pid);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern uint GetConsoleProcessList([Out] uint[] processes,uint capacity);
     [DllImport("kernel32.dll", SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] static extern bool SetConsoleCtrlHandler(Handler callback,[MarshalAs(UnmanagedType.Bool)] bool add);
     [DllImport("kernel32.dll", SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] static extern bool GenerateConsoleCtrlEvent(uint kind,uint group);
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] static extern bool CreateProcessW(string application,StringBuilder command,IntPtr processSA,IntPtr threadSA,[MarshalAs(UnmanagedType.Bool)] bool inherit,uint flags,IntPtr environment,string directory,ref SI startup,out PI info);
@@ -75,13 +75,24 @@ public sealed class InterruptChild : IDisposable {
     [DllImport("kernel32.dll", SetLastError=true)] [return: MarshalAs(UnmanagedType.Bool)] static extern bool CloseHandle(IntPtr handle);
 
     IntPtr process,thread,input,outputRead,inputRead,outputWrite,errorHandle;
-    uint pid,inputCapacity; bool attached,blocked; Thread reader;
+    uint pid,controllerPid,inputCapacity; bool attached,blocked; Thread reader;
     Handler handler; Exception readerError; bool overflow;
+    string consoleIdentity="unchecked"; int membershipChecks;
     MemoryStream capture=new MemoryStream();
-    static void Check(bool ok,string api) { if (!ok) throw new Win32Exception(Marshal.GetLastWin32Error(),api); }
+    static Win32Exception NativeFailure(int error,string api) {
+        return new Win32Exception(error,api+" failed with Win32 error "+error+": "+new Win32Exception(error).Message);
+    }
+    static void Check(bool ok,string api) { if (!ok) throw NativeFailure(Marshal.GetLastWin32Error(),api); }
     static SA Security(bool inherit) { SA s=new SA(); s.length=Marshal.SizeOf(typeof(SA)); s.inherit=inherit; return s; }
     static void Close(ref IntPtr h) { if (h!=IntPtr.Zero && h!=Invalid) { IntPtr old=h; h=IntPtr.Zero; Check(CloseHandle(old),"CloseHandle"); } }
-    static void Detach() { if (!FreeConsole()) { int error=Marshal.GetLastWin32Error(); if(error!=6) throw new Win32Exception(error,"FreeConsole"); } }
+    static void Detach() { if (!FreeConsole()) { int error=Marshal.GetLastWin32Error(); if(error!=6) throw NativeFailure(error,"FreeConsole"); } }
+    public static void ValidateConsoleMembers(uint[] members,uint count,uint controller,uint child) {
+        if(controller==0 || child==0 || controller==child) throw new Exception("Invalid controller/child console identity");
+        if(members==null || count>members.Length) throw new Exception("Console process count exceeds supplied capacity: "+count);
+        if(count!=2) throw new Exception("Private console must contain exactly controller and child; count="+count);
+        if(!((members[0]==controller && members[1]==child) || (members[0]==child && members[1]==controller)))
+            throw new Exception("Unexpected private console members: "+members[0]+","+members[1]+"; expected "+controller+","+child);
+    }
     public static string Quote(string value) {
         StringBuilder s=new StringBuilder("\""); int slashes=0;
         foreach(char ch in value) {
@@ -122,7 +133,12 @@ public sealed class InterruptChild : IDisposable {
         InterruptChild child=new InterruptChild();
         try {
             Detach(); Check(AllocConsole(),"AllocConsole"); child.attached=true;
+            child.controllerPid=(uint)Process.GetCurrentProcess().Id;
             Check(SetConsoleCtrlHandler(null,false),"SetConsoleCtrlHandler(clear inherited ignore)");
+            // Each process owns its handlers. The child inherits the cleared ignore flag,
+            // while this rooted controller handler absorbs our group-zero events.
+            child.handler=delegate(uint kind) { return kind==0 || kind==1; };
+            Check(SetConsoleCtrlHandler(child.handler,true),"SetConsoleCtrlHandler(owned console handler)");
             SA inherited=Security(true);
             Check(CreatePipe(out child.inputRead,out child.input,ref inherited,4096),"CreatePipe(stdin)");
             child.inputCapacity=Capacity(child.inputRead);
@@ -137,13 +153,12 @@ public sealed class InterruptChild : IDisposable {
             SI startup=new SI(); startup.cb=(uint)Marshal.SizeOf(typeof(SI)); startup.flags=0x100|1; startup.show=0;
             startup.input=child.inputRead; startup.output=child.outputWrite; startup.error=child.errorHandle;
             StringBuilder command=new StringBuilder(Quote(binary)); foreach(string arg in args) command.Append(" "+Quote(arg));
-            PI info; Check(CreateProcessW(binary,command,IntPtr.Zero,IntPtr.Zero,true,0x10,IntPtr.Zero,directory,ref startup,out info),"CreateProcessW(CREATE_NEW_CONSOLE)");
+            // Flags zero inherit only the controller's freshly allocated private console.
+            PI info; Check(CreateProcessW(binary,command,IntPtr.Zero,IntPtr.Zero,true,0,IntPtr.Zero,directory,ref startup,out info),"CreateProcessW(inherit private console)");
             child.process=info.process; child.thread=info.thread; child.pid=info.pid;
+            child.consoleIdentity="controller="+child.controllerPid+" child="+child.pid+" members=unchecked";
             Close(ref child.inputRead); Close(ref child.outputWrite); Close(ref child.errorHandle);
             if(captureStdout && !fillStdout) child.StartReader();
-            Detach(); child.attached=false; Check(AttachConsole(child.pid),"AttachConsole(child)"); child.attached=true;
-            child.handler=delegate(uint kind) { return kind==0 || kind==1; };
-            Check(SetConsoleCtrlHandler(child.handler,true),"SetConsoleCtrlHandler(owned console handler)");
             return child;
         } catch { child.Dispose(); throw; }
     }
@@ -154,7 +169,7 @@ public sealed class InterruptChild : IDisposable {
                 while(true) {
                     if(!ReadFile(outputRead,bytes,(uint)bytes.Length,out count,IntPtr.Zero)) {
                         int error=Marshal.GetLastWin32Error(); if(error==109) break;
-                        throw new Win32Exception(error,"ReadFile(stdout)");
+                        throw NativeFailure(error,"ReadFile(stdout)");
                     }
                     if(count==0) break;
                     int room=65536-(int)capture.Length, keep=Math.Min(room,(int)count);
@@ -167,14 +182,21 @@ public sealed class InterruptChild : IDisposable {
     public void WriteInput(byte[] bytes) { BoundedWrite(input,bytes,false); }
     public void CloseInput() { Close(ref input); }
     public uint GetInputCapacity() { return inputCapacity; }
+    public string ConsoleIdentity { get { return consoleIdentity+" membership_checks="+membershipChecks; } }
     public void SendControlEvent(uint kind) {
-        if(!attached || pid==0) throw new Exception("No isolated child console attached");
+        if(!attached || pid==0 || !IsRunning) throw new Exception("No running child in owned private console");
+        uint[] members=new uint[2]; uint count=GetConsoleProcessList(members,(uint)members.Length);
+        if(count==0) throw NativeFailure(Marshal.GetLastWin32Error(),"GetConsoleProcessList("+ConsoleIdentity+")");
+        consoleIdentity="controller="+controllerPid+" child="+pid+" count="+count+" capacity="+members.Length;
+        // An undersized buffer contains no valid IDs. Validate count before reading it.
+        ValidateConsoleMembers(members,count,controllerPid,pid);
+        consoleIdentity+=" members="+members[0]+","+members[1]; membershipChecks++;
         Check(GenerateConsoleCtrlEvent(kind,0),"GenerateConsoleCtrlEvent(isolated group zero)");
     }
     public bool WaitForExit(int millis) {
         uint result=WaitForSingleObject(process,(uint)millis);
         if(result==WAIT_OBJECT_0) return true; if(result==WAIT_TIMEOUT) return false;
-        throw new Win32Exception(Marshal.GetLastWin32Error(),"WaitForSingleObject");
+        throw NativeFailure(Marshal.GetLastWin32Error(),"WaitForSingleObject");
     }
     public bool IsRunning { get { return !WaitForExit(0); } }
     public uint ExitCode { get { if(IsRunning) throw new Exception("Child still running"); uint code; Check(GetExitCodeProcess(process,out code),"GetExitCodeProcess"); return code; } }
@@ -199,7 +221,7 @@ public sealed class InterruptChild : IDisposable {
                     ValidateWave(actual); return actual;
                 } finally { Close(ref handle); }
             }
-            int error=Marshal.GetLastWin32Error(); if(error!=2 && error!=32) throw new Win32Exception(error,"CreateFileW(exclusive output barrier)");
+            int error=Marshal.GetLastWin32Error(); if(error!=2 && error!=32) throw NativeFailure(error,"CreateFileW(exclusive output barrier)");
             Thread.Sleep(5);
         }
         throw new Exception("Exclusive output completion barrier timeout");
@@ -234,16 +256,34 @@ public sealed class InterruptChild : IDisposable {
     }
 }
 '@
+    # These pure controls must reject unsafe or incomplete console membership.
+    $memberships = @(
+        @{ Members = [uint32[]]@(101, 202); Count = 2; Accept = $true },
+        @{ Members = [uint32[]]@(202, 101); Count = 2; Accept = $true },
+        @{ Members = [uint32[]]@(); Count = 0; Accept = $false },
+        @{ Members = [uint32[]]@(101); Count = 1; Accept = $false },
+        @{ Members = [uint32[]]@(101, 101); Count = 2; Accept = $false },
+        @{ Members = [uint32[]]@(101, 303); Count = 2; Accept = $false },
+        @{ Members = [uint32[]]@(101, 202, 303); Count = 3; Accept = $false },
+        @{ Members = [uint32[]]@(101, 202); Count = 3; Accept = $false }
+    )
+    foreach ($control in $memberships) {
+        $accepted = $false
+        try { [InterruptChild]::ValidateConsoleMembers($control.Members, $control.Count, 101, 202); $accepted = $true } catch { }
+        if ($accepted -ne $control.Accept) { throw 'Private console membership control failed.' }
+    }
     # Independent quote expectations, including trailing slashes and Unicode.
+    # ASCII source also preserves these exact code points in Windows PowerShell 5.1.
+    $unicodeTone = 't' + [char]0x014D + 'ne'
     $quotes = @(
         @('plain', '"plain"'), @('two words', '"two words"'),
         @('a"b', '"a\"b"'), @('a\', '"a\\"'), @('a\"b', '"a\\\"b"'),
-        @('tōne', '"tōne"'), @('', '""')
+        @($unicodeTone, ('"t' + [char]0x014D + 'ne"')), @('', '""')
     )
     foreach ($pair in $quotes) { if ([InterruptChild]::Quote($pair[0]) -cne $pair[1]) { throw "Windows argument quote control failed: $($pair[0])" } }
     $long = "schema_version = 1`nduration_seconds = 600.0`nfade_seconds = 0.0`n"
     $one = $long.Replace('600.0', '0.000020833333333333333')
-    $longPath = Join-Path $owned 'long stimulus.toml'; $onePath = Join-Path $owned 'one sīlence.toml'
+    $longPath = Join-Path $owned 'long stimulus.toml'; $onePath = Join-Path $owned ('one s' + [char]0x012B + 'lence.toml')
     [IO.File]::WriteAllText($longPath, $long, (New-Object Text.UTF8Encoding($false)))
     [IO.File]::WriteAllText($onePath, $one, (New-Object Text.UTF8Encoding($false)))
     foreach ($event in @(0, 1)) {
@@ -289,11 +329,12 @@ public sealed class InterruptChild : IDisposable {
                     if (Test-Path -LiteralPath $destination) { throw 'Pre-input export created output' }
                     if ($child.ReadStdoutAfterExit().Length -ne 0) { throw 'Pre-input child emitted stdout' }
                 }
-                $results.Add("PASS event=$event case=$case elapsed_ms=$($watch.ElapsedMilliseconds)")
+                $results.Add("PASS event=$event case=$case elapsed_ms=$($watch.ElapsedMilliseconds) console=[$($child.ConsoleIdentity)]")
             } catch {
                 $overall = 1
                 $code = if ($null -ne $child -and -not $child.IsRunning) { [string]$child.ExitCode } else { 'running/unstarted' }
-                $results.Add("FAIL event=$event case=$case phase=$phase exit=$code file_exists=$(Test-Path -LiteralPath $destination) elapsed_ms=$($watch.ElapsedMilliseconds): $_")
+                $console = if ($null -ne $child) { $child.ConsoleIdentity } else { 'unstarted' }
+                $results.Add("FAIL event=$event case=$case phase=$phase exit=$code file_exists=$(Test-Path -LiteralPath $destination) elapsed_ms=$($watch.ElapsedMilliseconds) console=[$console]: $_")
             } finally {
                 if ($null -ne $child) { $child.Dispose() }
             }
