@@ -1,0 +1,233 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version matching Cargo.toml and CHANGELOG.md
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  RUST_BACKTRACE: full
+
+jobs:
+  prepare:
+    name: Validate release identity
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.identity.outputs.matrix }}
+      version: ${{ steps.identity.outputs.version }}
+      source: ${{ steps.identity.outputs.source }}
+      channel: ${{ steps.identity.outputs.channel }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+          architecture: x64
+      - name: Validate the dispatched source, version and notes
+        id: identity
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          python scripts/release.py prepare --version "${RELEASE_VERSION}" \
+            --repository "${GITHUB_REPOSITORY}" --github-output "${GITHUB_OUTPUT}"
+
+  quality:
+    name: Required quality gates
+    needs: prepare
+    uses: ./.github/workflows/quality.yml
+    permissions:
+      contents: read
+
+  build:
+    name: Qualify ${{ matrix.target }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_SOURCE: ${{ needs.prepare.outputs.source }}
+      RELEASE_CHANNEL: ${{ needs.prepare.outputs.channel }}
+      RELEASE_TARGET: ${{ matrix.target }}
+      RELEASE_ROOT: ${{ matrix.root }}
+      RUSTFLAGS: ${{ matrix.windows && '-C target-feature=+crt-static' || '' }}
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macos && '15.0' || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.source }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+          architecture: ${{ startsWith(matrix.target, 'aarch64-') && 'arm64' || 'x64' }}
+      - name: Initialize owned job output and temporary directories
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path.cwd()
+          temporary = root / "target" / "release-temp"
+          temporary.mkdir(parents=True, exist_ok=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              for name in ("TMPDIR", "TEMP", "TMP"):
+                  output.write(f"{name}={temporary}\n")
+              output.write(f"CARGO_TARGET_DIR={root / 'target'}\n")
+              output.write(f"RUSTUP_TOOLCHAIN={os.environ['RELEASE_CHANNEL']}-{os.environ['RELEASE_TARGET']}\n")
+          PY
+      - name: Install Linux audio build prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes libasound2-dev pkg-config
+      - name: Select the native retail Windows compiler environment
+        if: matrix.windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $arm = $env:RELEASE_TARGET -eq 'aarch64-pc-windows-msvc'
+          $component = if ($arm) { 'Microsoft.VisualStudio.Component.VC.Tools.ARM64' } else { 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' }
+          $argument = if ($arm) { 'arm64' } else { 'amd64' }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $selected = @((& $vswhere -latest -products '*' -requires $component -format json -utf8) | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0 -or $selected.Count -ne 1 -or $selected[0].isPrerelease) { throw 'One complete retail Visual Studio installation is required' }
+          $installation = $selected[0]
+          $major = ([version]$installation.installationVersion).Major
+          if ($major -notin @(17, 18)) { throw 'Unsupported Visual Studio product version' }
+          $vcvars = Join-Path $installation.installationPath 'VC/Auxiliary/Build/vcvarsall.bat'
+          $environment = & $env:ComSpec /d /s /c "call `"$vcvars`" $argument >nul && set"
+          if ($LASTEXITCODE -ne 0) { throw 'Native vcvarsall environment initialization failed' }
+          $values = @{}
+          foreach ($line in $environment) {
+            if ($line -match '^([^=]+)=(.*)$') { $values[$matches[1]] = $matches[2] }
+          }
+          $required = @('PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'VSINSTALLDIR', 'VCToolsInstallDir', 'VCToolsVersion', 'WindowsSdkDir', 'WindowsSDKVersion')
+          foreach ($name in $required) {
+            if (-not $values[$name]) { throw "vcvarsall omitted required variable $name" }
+          }
+          $retained = $required + @('VCINSTALLDIR', 'VCToolsRedistDir', 'UniversalCRTSdkDir', 'UCRTVersion', 'WindowsLibPath', 'VisualStudioVersion', 'VSCMD_VER', 'VSCMD_ARG_TGT_ARCH', 'VSCMD_ARG_HOST_ARCH')
+          foreach ($name in $retained) {
+            if ($values[$name]) {
+              if ($values[$name] -match "[`r`n]") { throw "Invalid multiline compiler variable $name" }
+              "$name=$($values[$name])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            }
+          }
+          $linker = Join-Path $values['VCToolsInstallDir'] $(if ($arm) { 'bin/HostARM64/arm64/link.exe' } else { 'bin/Hostx64/x64/link.exe' })
+          if (-not (Test-Path -LiteralPath $linker -PathType Leaf)) { throw 'Native matching MSVC linker is absent' }
+          $linkerVariable = if ($arm) { 'CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER' } else { 'CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER' }
+          "$linkerVariable=$linker" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $metadata = Join-Path $env:GITHUB_WORKSPACE 'target/release-msvc/visual-studio.json'
+          New-Item -ItemType Directory -Force -Path (Split-Path $metadata) | Out-Null
+          $installation | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $metadata -Encoding utf8
+          "AUDITORY_LAB_VS_INFO=$metadata" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Install the pinned native Rust toolchain
+        run: |
+          rustup toolchain install "${RUSTUP_TOOLCHAIN}" --profile minimal \
+            --component rustfmt --component clippy
+      - name: Verify native host and build settings
+        run: python scripts/release_archive.py host --target "${RELEASE_TARGET}"
+      - name: Run locked native debug tests
+        run: cargo test --workspace --locked
+      - name: Run locked native release tests and digests
+        run: cargo test --workspace --release --locked
+      - name: Build the native release executable
+        run: cargo build --workspace --release --locked
+      - name: Package, extract and smoke the delivered executable
+        run: |
+          executable=target/release/auditory-lab
+          if [[ "${RUNNER_OS}" == Windows ]]; then executable="${executable}.exe"; fi
+          python scripts/release_archive.py package --target "${RELEASE_TARGET}" \
+            --version "${RELEASE_VERSION}" --source "${RELEASE_SOURCE}" \
+            --repository "${GITHUB_REPOSITORY}" --binary "${executable}" \
+            --output-directory target/release-assets --scratch target/release-package
+      - name: Test native Windows events on the extracted package
+        if: matrix.windows
+        shell: pwsh
+        run: |
+          $binary = Join-Path 'target/release-package/extracted' "$env:RELEASE_ROOT/auditory-lab.exe"
+          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/test-windows-interrupts.ps1 `
+            -Binary $binary -Scratch target/windows-packaged-interrupts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Require unchanged qualified source
+        run: |
+          git diff --exit-code
+          status="$(git status --porcelain --untracked-files=all)"
+          [[ -z "${status}" ]]
+      - name: Attest the qualified archive
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: target/release-assets/${{ matrix.archive }}
+          create-storage-record: false
+      - name: Preserve packaged Windows event evidence
+        if: always() && matrix.windows
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-packaged-interrupts-${{ matrix.target }}
+          path: target/windows-packaged-interrupts/report.txt
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+      - name: Freeze the qualified staging archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.artifact }}
+          path: target/release-assets/${{ matrix.archive }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+          overwrite: true
+
+  publish:
+    name: Verify and publish the complete draft
+    needs: [prepare, quality, build]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      attestations: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_SOURCE: ${{ needs.prepare.outputs.source }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.source }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+          architecture: x64
+      - name: Retrieve only this run's frozen release archives
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: target/release-assets
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Verify identities, attestations and remote content before publishing
+        run: |
+          python scripts/publish_release.py --version "${RELEASE_VERSION}" \
+            --source "${RELEASE_SOURCE}" --repository "${GITHUB_REPOSITORY}" \
+            --assets target/release-assets

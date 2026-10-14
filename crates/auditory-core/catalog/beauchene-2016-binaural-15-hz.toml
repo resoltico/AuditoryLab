@@ -1,0 +1,25 @@
+# Copyright 2026 Ervins Strauhmanis
+# SPDX-License-Identifier: MPL-2.0
+# Source: Materials and Methods, section Auditory Stimulus.
+schema_version = 1
+duration_seconds = 300.0
+fade_seconds = 0.1
+
+[provenance]
+title = "15 Hz binaural beat"
+citation = "Beauchene C, Abaid N, Moran R, Diana RA, Leonessa A (2016). The effect of binaural beats on visuospatial working memory and cortical connectivity. PLoS ONE 11(11): e0166630."
+source_url = "https://doi.org/10.1371/journal.pone.0166630"
+description = "Binaural-beat condition: 240 Hz in the right ear and 255 Hz in the left. One of six 5-minute sound conditions played in random order while 28 adults did a visuospatial working-memory task during EEG. Accuracy rose during the 15 Hz binaural beat and fell during the other conditions."
+adaptation = "The source generated the tones in MATLAB and let participants set the volume; it states no phase, ramps or sample rate. Tones start at phase zero at -20 dBFS, uncalibrated, with 0.1 s fades added."
+
+[[component]]
+ears = "left"
+kind = "tone"
+frequency_hz = 255.0
+level_dbfs = -20.0
+
+[[component]]
+ears = "right"
+kind = "tone"
+frequency_hz = 240.0
+level_dbfs = -20.0

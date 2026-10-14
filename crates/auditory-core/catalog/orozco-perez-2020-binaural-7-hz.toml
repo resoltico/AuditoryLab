@@ -1,0 +1,25 @@
+# Copyright 2026 Ervins Strauhmanis
+# SPDX-License-Identifier: MPL-2.0
+# Source: Materials and Methods, sections Stimuli and Procedure.
+schema_version = 1
+duration_seconds = 480.0
+fade_seconds = 0.1
+
+[provenance]
+title = "7 Hz binaural beat"
+citation = "Orozco Perez HD, Dumas G, Lehmann A (2020). Binaural beats through the auditory pathway: from brainstem to connectivity patterns. eNeuro 7(2): ENEURO.0232-19.2020."
+source_url = "https://doi.org/10.1523/ENEURO.0232-19.2020"
+description = "Binaural-beat condition: 396.5 Hz in the left ear and 403.5 Hz in the right. Sixteen adults heard each of four 8-minute conditions (7 Hz and 40 Hz, binaural and monaural) during EEG. Both beat types entrained cortical activity at the beat frequency, monaural beats more strongly; ratings of mental relaxation and absorption did not differ between conditions."
+adaptation = "The source states equal starting phases and the lower tone in the left ear; both tones start at phase zero here. The Stimuli section gives 396.5 Hz and the FFR analysis 397.5 Hz; this preset uses 396.5 Hz, which gives the stated 7 Hz difference. The source generated sound live at 48 kHz and calibrated output to 70 dB SPL per ear; it does not specify ramps; this preset uses -20 dBFS per tone, uncalibrated, and adds 0.1 s fades."
+
+[[component]]
+ears = "left"
+kind = "tone"
+frequency_hz = 396.5
+level_dbfs = -20.0
+
+[[component]]
+ears = "right"
+kind = "tone"
+frequency_hz = 403.5
+level_dbfs = -20.0

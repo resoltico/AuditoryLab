@@ -1,0 +1,9 @@
+# cargo-mutants configuration. See docs/verification.md for scoped invocation.
+
+# The report goes under target/, which is ignored and which `cargo clean` removes.
+output = "target"
+# Each mutant is built once and discarded, so it carries no debug information.
+profile = "mutants"
+# The workspace denies warnings. A mutant that leaves a variable or an import
+# unused must still be built and tested, not set aside as failing to compile.
+cap_lints = true

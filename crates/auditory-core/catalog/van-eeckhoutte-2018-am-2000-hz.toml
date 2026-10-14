@@ -1,0 +1,24 @@
+# Copyright 2026 Ervins Strauhmanis
+# SPDX-License-Identifier: MPL-2.0
+# Source: Methods.
+schema_version = 1
+duration_seconds = 307.2
+fade_seconds = 0.1
+
+[provenance]
+title = "40 Hz amplitude-modulated 2000 Hz tone, left ear"
+citation = "Van Eeckhoutte M, Wouters J, Francart T (2018). Objective binaural loudness balancing based on 40-Hz auditory steady-state responses. Part I: Normal hearing. Trends in Hearing 22: 2331216518805352."
+source_url = "https://doi.org/10.1177/2331216518805352"
+description = "A 2000 Hz tone, 100% sinusoidally amplitude-modulated at 39.0625 Hz, presented to one ear for 307.2 s to 19 of the study's 38 normal-hearing adults, who heard the 500 Hz and 2000 Hz carriers while watching a silent subtitled film during EEG. The study measured 40 Hz auditory steady-state responses at levels from 40 to 80 dB SPL to predict the level balance between the ears; 39.0625 Hz gives each 1.024 s analysis epoch a whole number of modulation periods."
+adaptation = "The study stimulated the left and right ears in alternation at several calibrated levels with a 96 kHz signal sampling rate; this preset is the left ear at a -20 dBFS amplitude bound, uncalibrated, and changing ears to right gives the other ear. The study states no modulation formula, phase or ramps: here tone and modulator start at phase zero, the envelope is (1 + sin)/2, and 0.1 s fades are added."
+
+[[component]]
+ears = "left"
+kind = "tone"
+frequency_hz = 2000.0
+level_dbfs = -20.0
+
+[component.modulation]
+kind = "sinusoidal"
+rate_hz = 39.0625
+depth = 1.0

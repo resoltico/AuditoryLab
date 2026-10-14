@@ -1,0 +1,202 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  schedule:
+    # Advisories are published independently of pushes.
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  RUST_BACKTRACE: full
+  CARGO_MUTANTS_VERSION: "27.1.0"
+  CARGO_AUDIT_VERSION: "0.22.2"
+  CARGO_AUDIT_LINUX_X86_64_MUSL_SHA256: 7fb9497f8594b389e5fce5ef9b92db08432996895b2e0c5a0167a69ed445c428
+  ACTIONLINT_VERSION: "1.7.12"
+  ACTIONLINT_LINUX_AMD64_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+  SHELLCHECK_VERSION: "0.11.0"
+  SHELLCHECK_LINUX_X86_64_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    # The weekly run exists for new advisories; the code has not changed.
+    if: github.event_name != 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+          architecture: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+      - name: Initialize owned verification temporary output
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          temporary = Path.cwd() / "target" / "verification-temp"
+          temporary.mkdir(parents=True, exist_ok=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              for name in ("TMPDIR", "TEMP", "TMP"):
+                  output.write(f"{name}={temporary}\n")
+          PY
+      - name: Install Linux audio build prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes libasound2-dev pkg-config
+      - name: Install the toolchain pinned in rust-toolchain.toml
+        run: rustup toolchain install
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint every target
+        run: cargo clippy --workspace --all-targets --locked
+      - name: Run unit, integration and documentation tests
+        run: cargo test --workspace --locked
+      - name: Test release tooling without public operations
+        run: python -m unittest discover -s tests -v
+      - name: Build documentation
+        run: cargo doc --workspace --no-deps --locked
+      - name: Build the release binary
+        run: cargo build --workspace --release --locked
+      - name: Test native Windows control events
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/test-windows-interrupts.ps1 `
+            -Binary target/release/auditory-lab.exe -Scratch target/windows-interrupt-tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Require unchanged tested source
+        run: |
+          git diff --exit-code
+          status="$(git status --porcelain --untracked-files=all)"
+          [[ -z "${status}" ]]
+      - name: Preserve Windows native report
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-interrupts-${{ matrix.os }}
+          path: target/windows-interrupt-tests/report.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  audit:
+    name: Audit dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download the pinned auditor and verify its checksum
+        working-directory: ${{ runner.temp }}
+        run: |
+          asset="cargo-audit-x86_64-unknown-linux-musl-v${CARGO_AUDIT_VERSION}"
+          curl --fail --location --silent --show-error --output "${asset}.tgz" \
+            "https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv${CARGO_AUDIT_VERSION}/${asset}.tgz"
+          printf '%s  %s\n' "${CARGO_AUDIT_LINUX_X86_64_MUSL_SHA256}" "${asset}.tgz" \
+            | sha256sum --check --strict
+          tar -xzf "${asset}.tgz" --strip-components=1 "${asset}/cargo-audit"
+      - name: Check every locked dependency against the advisory database
+        run: |
+          "${RUNNER_TEMP}/cargo-audit" audit --deny warnings
+
+  workflow:
+    name: Lint workflows
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download the pinned linters and verify their checksums
+        working-directory: ${{ runner.temp }}
+        run: |
+          actionlint_asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          shellcheck_asset="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          curl --fail --location --silent --show-error --output "${actionlint_asset}" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${actionlint_asset}"
+          curl --fail --location --silent --show-error --output "${shellcheck_asset}" \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${shellcheck_asset}"
+          printf '%s  %s\n' \
+            "${ACTIONLINT_LINUX_AMD64_SHA256}" "${actionlint_asset}" \
+            "${SHELLCHECK_LINUX_X86_64_SHA256}" "${shellcheck_asset}" \
+            | sha256sum --check --strict
+          tar -xzf "${actionlint_asset}" actionlint
+          tar -xJf "${shellcheck_asset}" --strip-components=1 \
+            "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+      - name: Lint workflows and their shell scripts
+        env:
+          SHELLCHECK_OPTS: --enable=all
+        run: |
+          "${RUNNER_TEMP}/actionlint" -shellcheck "${RUNNER_TEMP}/shellcheck" \
+            .github/workflows/*.yml
+
+  mutation:
+    name: Core mutations (${{ matrix.source }})
+    if: github.event_name != 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [generator, session]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the toolchain pinned in rust-toolchain.toml
+        run: rustup toolchain install
+      - name: Install the pinned mutation tester
+        run: |
+          mkdir -p target/tool-scratch
+          TMPDIR="${PWD}/target/tool-scratch" CARGO_BUILD_JOBS=2 \
+            env -u CARGO_BUILD_TARGET_DIR \
+            cargo install cargo-mutants --version "${CARGO_MUTANTS_VERSION}" --locked \
+              --root "${PWD}/target/tools" --target-dir "${PWD}/target/tool-build"
+      - name: Test one core source file with locked Cargo subprocesses
+        env:
+          MUTATION_SOURCE: ${{ matrix.source }}
+        run: |
+          mkdir -p "target/mutations/${MUTATION_SOURCE}/scratch"
+          PATH="${PWD}/target/tools/bin:${PATH}" \
+            TMPDIR="${PWD}/target/mutations/${MUTATION_SOURCE}/scratch" \
+            env -u CARGO_TARGET_DIR -u CARGO_BUILD_TARGET_DIR \
+            cargo mutants --file "crates/auditory-core/src/${MUTATION_SOURCE}.rs" \
+              --package auditory-core --test-workspace=false --copy-target=false \
+              --jobs 2 --jobserver-tasks 2 --timeout 60 --build-timeout 60 \
+              --cargo-arg=--locked --output "target/mutations/${MUTATION_SOURCE}"
+      - name: Require the mutation outcome report
+        if: always()
+        env:
+          MUTATION_SOURCE: ${{ matrix.source }}
+        run: test -s "target/mutations/${MUTATION_SOURCE}/mutants.out/outcomes.json"
+      - name: Preserve mutation report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-${{ matrix.source }}-ubuntu
+          path: |
+            target/mutations/${{ matrix.source }}/mutants.out/outcomes.json
+            target/mutations/${{ matrix.source }}/mutants.out/log/*.log
+          if-no-files-found: error
+          retention-days: 14

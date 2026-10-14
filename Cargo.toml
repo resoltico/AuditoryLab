@@ -1,0 +1,76 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/auditory-core",
+    "crates/auditory-wav",
+    "crates/auditory-device",
+    "crates/auditory-lab",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MPL-2.0"
+repository = "https://github.com/resoltico/AuditoryLab"
+publish = false
+
+[workspace.dependencies]
+allocation-counter = "0.8.1"
+auditory-core = { path = "crates/auditory-core" }
+auditory-wav = { path = "crates/auditory-wav" }
+auditory-device = { path = "crates/auditory-device" }
+cpal = "0.18.2"
+ctrlc = { version = "3.5.2", features = ["termination"] }
+# Without `arch`, every platform runs the same portable code.
+libm = { version = "0.2.16", default-features = false }
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+serde = { version = "1.0.229", default-features = false, features = ["alloc", "derive"] }
+tempfile = "3.27.0"
+toml = { version = "1.1.8", default-features = false, features = ["parse", "serde"] }
+waveadapter = "0.3.1"
+
+[workspace.lints.rust]
+warnings = "deny"
+unsafe_code = "forbid"
+missing_docs = "deny"
+unreachable_pub = "deny"
+unused_lifetimes = "deny"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+# Argument counts do not establish responsibility or maintainability.
+too_many_arguments = "allow"
+cast_possible_truncation = "deny"
+cast_precision_loss = "deny"
+cast_sign_loss = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+mem_forget = "deny"
+allow_attributes_without_reason = "deny"
+
+# Debug information for dependencies and incremental caches make up most of a
+# build directory and are not needed to work on this workspace. Line tables
+# keep file and line numbers in backtraces.
+[profile.dev]
+debug = "line-tables-only"
+incremental = false
+
+[profile.dev.package."*"]
+debug = false
+
+# The shipped binary keeps the arithmetic checks the tests run with.
+[profile.release]
+overflow-checks = true
+
+# Selected by .cargo/mutants.toml: every mutant is built once and discarded.
+[profile.mutants]
+inherits = "test"
+debug = false
