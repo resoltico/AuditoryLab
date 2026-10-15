@@ -120,7 +120,8 @@ class RuntimeTests(unittest.TestCase):
             f"00001000 000003d1    16         {self.bundled / 'crt2.o'}:(.text)\n", encoding="utf-8")
         artifact = {"reason": "compiler-artifact", "target": {"name": "auditory-lab"},
                     "executable": str(self.executable)}
-        message = {"reason": "compiler-message", "message": {"rendered": self.trace_text}}
+        message = {"reason": "compiler-message", "message": {
+            "message": self.trace_text, "children": [], "rendered": self.trace_text}}
         return subprocess.CompletedProcess(command, 0, json.dumps(artifact) + "\n" + json.dumps(message) + "\n", "")
 
     def test_cargo_json_utf8_survives_an_ansi_parent_decoder(self):
@@ -129,7 +130,7 @@ class RuntimeTests(unittest.TestCase):
         def legacy_parent(command, *args, **kwargs):
             result = self.fake_cargo(command)
             messages = [json.loads(line) for line in result.stdout.splitlines()]
-            messages[-1]['message']['rendered'] += '\n' + diagnostic + '\n'
+            messages[-1]['message']['message'] += '\n' + diagnostic + '\n'
             wire = ('\n'.join(json.dumps(message, ensure_ascii=False) for message in messages) + '\n').encode('utf-8')
             producer = [sys.executable, '-c', 'import sys; sys.stdout.buffer.write(bytes.fromhex(' + repr(wire.hex()) + '))']
             kwargs.setdefault('encoding', 'cp1252')
@@ -138,6 +139,60 @@ class RuntimeTests(unittest.TestCase):
             runtime.build(self.target, self.receipt)
             recorded = json.loads(self.receipt.read_text(encoding='utf-8'))
             self.assertIn(diagnostic, recorded['linker_output'])
+
+    def test_build_reads_raw_parent_and_child_crlf_traces_with_unicode_paths(self):
+        previous = self.sysroot
+        self.sysroot = self.base / "Rust \u240d\u2028\u0085 toolchain"
+        previous.rename(self.sysroot)
+        self.bundled = self.sysroot / "lib/rustlib" / self.target / "lib/self-contained"
+        self.trace_text = self.trace_text.replace(str(previous), str(self.sysroot))
+        raw = self.trace_text.replace("\n", "\r\n")
+        for child in (False, True):
+            def cargo(command, **kwargs):
+                result = self.fake_cargo(command)
+                messages = [json.loads(line) for line in result.stdout.split("\n") if line]
+                diagnostic = messages[-1]["message"]
+                diagnostic["message"] = "linker diagnostic" if child else raw
+                diagnostic["children"] = [{"message": raw, "children": [], "rendered": None}] if child else []
+                diagnostic["rendered"] = raw.replace("\r", "\u240d")
+                result.stdout = "\n".join(json.dumps(message, ensure_ascii=False) for message in messages) + "\n"
+                return result
+            with self.subTest(child=child), self.toolchain(), self.policy(), mock.patch.object(runtime.subprocess, "run", side_effect=cargo):
+                runtime.build(self.target, self.receipt)
+                recorded = json.loads(self.receipt.read_text(encoding="utf-8"))
+                self.assertIn(raw, recorded["linker_output"])
+                runtime.verify(self.executable, self.target, self.receipt)
+
+    def test_rendered_trace_cannot_substitute_for_raw_link_inputs(self):
+        def cargo(command, **kwargs):
+            result = self.fake_cargo(command)
+            messages = [json.loads(line) for line in result.stdout.split("\n") if line]
+            messages[-1]["message"]["message"] = "no raw linker input records"
+            result.stdout = "\n".join(json.dumps(message) for message in messages) + "\n"
+            return result
+        self.receipt.write_text("stale success")
+        with self.toolchain(), self.policy(), mock.patch.object(runtime.subprocess, "run", side_effect=cargo):
+            with self.assertRaisesRegex(ValueError, "lacks.*startup"):
+                runtime.build(self.target, self.receipt)
+        self.assertFalse(self.receipt.exists())
+
+    def test_raw_filename_characters_cannot_hide_unreviewed_native_inputs(self):
+        traces = [("control picture", self.trace_text.replace("crt2.o", "crt2.o\u240d"))]
+        for separator in ("\u2028", "\u0085"):
+            extra = self.executable.parent / "deps" / ("libextra.rlib" + separator + "private-native.o")
+            traces.append((f"separator U+{ord(separator):04X}", self.trace_text + f"\nrust-lld: Reading {extra}"))
+        for name, raw in traces:
+            def cargo(command, **kwargs):
+                result = self.fake_cargo(command)
+                messages = [json.loads(line) for line in result.stdout.split("\n") if line]
+                messages[-1]["message"]["message"] = raw
+                result.stdout = "\n".join(json.dumps(message, ensure_ascii=False) for message in messages) + "\n"
+                return result
+            self.receipt.write_text("stale success")
+            with self.subTest(case=name), self.toolchain(), self.policy(), mock.patch.object(runtime.subprocess, "run", side_effect=cargo):
+                with self.assertRaisesRegex(ValueError, "unexpected.*native link input"):
+                    runtime.build(self.target, self.receipt)
+            self.assertFalse(self.receipt.exists())
 
     def test_success_status_handles_unicode_paths_on_legacy_and_ascii_writers(self):
         directory = self.base / 'Łódź-Ж' / 'release'

@@ -58,7 +58,8 @@ def check_trace(text, executable, target, sysroot, inputs):
     dependencies = executable.parent / "deps"
     archives, seen, selected = {}, set(), set()
     reading = 0
-    for line in text.splitlines():
+    # Other Unicode line separators are valid filename characters, not records.
+    for line in text.replace("\r\n", "\n").split("\n"):
         match = PREFIX.fullmatch(line)
         if not match:
             continue
@@ -133,7 +134,7 @@ def verify(executable, target, trace, sysroot=None):
         raise ValueError("Windows link receipt does not match the executable bytes")
     if sha256(Path(receipt["map"])) != receipt["map_sha256"]:
         raise ValueError("Windows link map differs from the recorded build")
-    map_lines = Path(receipt["map"]).read_text(encoding="utf-8").splitlines()
+    map_lines = Path(receipt["map"]).read_text(encoding="utf-8").split("\n")
     if not map_lines or map_lines[0].split() != ["Address", "Size", "Align", "Out", "In", "Symbol"]:
         raise ValueError("Windows link map lacks the pinned lld map header")
     startup = (sysroot / "lib" / "rustlib" / target / "lib" / "self-contained" / "crt2.o").resolve()
@@ -186,13 +187,18 @@ def build(target, trace, sysroot=None):
         sys.stderr.write(diagnostic)
         raise ValueError(f"Windows build failed; evidence retained in {str(evidence)!a}")
     artifacts, diagnostics = [], [result.stderr]
-    for line in result.stdout.splitlines():
+    for line in result.stdout.split("\n"):
+        if not line:
+            continue
         message = json.loads(line)
         if (message.get("reason") == "compiler-artifact" and message.get("executable")
                 and message.get("target", {}).get("name") == "auditory-lab"):
             artifacts.append(Path(message["executable"]).resolve())
         if message.get("reason") == "compiler-message":
-            diagnostics.append(message["message"].get("rendered") or "")
+            # Display rendering can replace CR with a glyph and change path identity.
+            diagnostic = message["message"]
+            diagnostics.append(diagnostic["message"])
+            diagnostics.extend(child["message"] for child in diagnostic.get("children", []))
     if len(artifacts) != 1:
         raise ValueError(f"Windows build did not report one application executable; see {evidence}")
     executable = artifacts[0]
