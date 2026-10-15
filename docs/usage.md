@@ -12,9 +12,11 @@
 | `inspect [--sample-rate HZ] [--] PRESET` | Validation and a technical description at a sample rate, without opening a device. |
 | `export --output FILE [--sample-rate HZ] [--] PRESET` | A new stereo 32-bit float WAV file. |
 | `play [--] PRESET` | Playback on the default output, at its configured rate. |
-| `--help`, `-h`, `--version` | Usage or the version; these must be used alone. |
+| `--help`, `-h`, `--version` | Usage or the version; at the top level, these must be used alone. |
 
 `inspect` and `export` render at 48,000 Hz unless `--sample-rate` gives whole hertz from 1 to 768,000. A recipe can be valid at one rate and not another; see [rules checked at a sample rate](presets.md#rules-checked-at-a-sample-rate).
+
+`about` reads the recipe's description without checking those sample-rate rules. Use `inspect` to validate the sound at the rate you intend to use.
 
 ## Naming a preset
 
@@ -24,7 +26,7 @@
 - An operand containing `/`, `\` or `.` is a file path.
 - Anything else is a built-in name.
 
-Write `./name` for a file without a dot, `./-` for a file named `-` and `./--help` for a file named like an option. Options and the operand can come in any order; `--` ends options, and the operand after it follows the same rule. `--output -` names a file called `-`; export never writes audio to standard output. `show` accepts only built-in names.
+Write `./name` for a file without a dot, `./-` for a file named `-` and `./--help` for a file named like an option. Options and the operand can come in any order before `--`; after it, arguments are literal operands and follow the same spelling rule. For an output path that starts with `-`, include `./`, as in `--output ./-draft.toml`. `--output -` names a file called `-`; export never writes audio to standard output. `show` accepts only built-in names.
 
 When standard input is a terminal, the program first prints a one-line cue on standard error; on Unix, Ctrl-D on an empty line ends input. Input is at most 65,536 bytes.
 
@@ -47,20 +49,20 @@ File paths, device names and text from recipes are shown quoted in technical rep
 | 2 | Wrong usage, an unknown name, or a recipe the format or its rules reject. |
 | 130 | Export or playback cancelled by an interrupt. |
 
-An unknown name suggests `list`, and for a recipe file the explicit `./name` form. Errors in a recipe name its source and the field; rule violations also name the sample rate. A file saved as UTF-16, as some Windows tools do, is reported as such; save it as UTF-8.
+An unknown name suggests `list`, and for a recipe file the explicit `./name` form. Recipe errors identify the input and describe the format or rule violation. UTF-16 with a byte-order mark is recognized and reported as such; save recipes as UTF-8.
 
 ## Playback
 
-`play` uses the default output's configured sample rate, channel count and sample format; there are no overrides. The output needs at least two channels: left goes to the first, right to the second, and any others stay silent. Supported formats are 64- and 32-bit float and 32-, 24- and 16-bit integer.
+`play` uses the default output's backend-reported stream sample rate, channel count and sample format; there are no overrides. This stream configuration does not establish the physical hardware's sample rate. The output needs at least two channels: left goes to the first, right to the second, and any others stay silent. Supported formats are 64- and 32-bit float and 32-, 24- and 16-bit integer.
 
-Before playing, the program advises a low volume, and headphones when a sound routes components to one ear. Playback ends when the backend reports that the last frame has played. Underruns are counted and reported. A change of output device, invalid timing from the backend, 30 seconds without progress, or running 30 seconds past the sound's length ends playback with an error.
+Before playing, the program advises a low volume, and headphones when a sound routes components to one ear. Playback ends when the backend's timing indicates that the last frame has played. Underruns are counted and reported. A backend report that the output route changed, invalid backend timing, 30 seconds without progress, or running 30 seconds past the sound's length ends playback with an error.
 
 ## Export
 
-Export creates the file only if nothing has that name, writes the complete header and then the samples, and syncs the file before reporting success. Files up to 4 GiB of samples are RIFF/WAVE; longer ones are RF64. Samples are rounded to 32-bit float.
+Export creates the file only if nothing has that name, writes the complete header and then the samples, and syncs the file before reporting success. It uses RIFF/WAVE when the container's sizes fit its 32-bit fields, and RF64 otherwise. Samples are rounded to 32-bit float.
 
 The file is incomplete while export runs. Leave its path and folder alone until the command ends: a failed or cancelled export removes the incomplete file, or reports that it could not.
 
 ## Interrupts
 
-During `export` and `play`, the first Ctrl-C (Unix SIGINT, SIGTERM or SIGHUP; Windows Ctrl-C or Ctrl-Break) asks the operation to stop: export stops before its next block and removes its file, and playback falls silent once its 10 ms check sees the request. Sound already queued in the audio system still plays. A second interrupt exits at once with status 130 and may leave an incomplete file. Other commands, and reading input, end on the first interrupt as the system does.
+During `export` and `play`, the first Ctrl-C (Unix SIGINT, SIGTERM or SIGHUP; Windows Ctrl-C or Ctrl-Break) requests cancellation. Export checks before each block and after the last one; if cancelled, it removes its incomplete file or reports why it could not. Playback polls the request at 10 ms intervals, but scheduling and backend calls can delay observation; callbacks produce silence after observing cancellation. Sound already queued in the audio system still plays. An operation that finishes before observing the request stays successful. A second interrupt exits at once with status 130 and may leave an incomplete file. Other commands, and reading input, end on the first interrupt as the system does.

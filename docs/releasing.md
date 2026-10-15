@@ -10,7 +10,7 @@ Each archive holds one folder with four files: the executable, `README.txt` from
 
 ## Windows build contract
 
-Both Windows targets use native GNU LLVM Rust hosts, `x86_64-pc-windows-gnullvm` and `aarch64-pc-windows-gnullvm`. The archive platform names remain `windows-x86_64` and `windows-aarch64`. The compiler version comes from [rust-toolchain.toml](../rust-toolchain.toml); `python3 scripts/release.py toolchain --target TARGET` prints the full Windows host toolchain identifier used by CI. The host includes the `rust-mingw` component and bundled `rust-lld` linker, so the application needs no Visual Studio or external C toolchain.
+Both Windows targets use native GNU LLVM Rust hosts, `x86_64-pc-windows-gnullvm` and `aarch64-pc-windows-gnullvm`. The archive platform names are `windows-x86_64` and `windows-aarch64`. The compiler version comes from [rust-toolchain.toml](../rust-toolchain.toml); `python scripts/release.py toolchain --target TARGET` prints the full Windows host toolchain identifier used by CI. The host includes the `rust-mingw` component and bundled `rust-lld` linker, so the application needs no Visual Studio or external C toolchain.
 
 [.cargo/config.toml](../.cargo/config.toml) selects `ld.lld`, self-contained linking and `+crt-static` for these targets. This selects bundled open-source MinGW startup/support and static LLVM unwind code; the UCRT implementation remains an external Windows OS component. Release binaries need Windows 10 or later on x86_64, or Windows 11 on ARM64. The x86_64 target enables SSE3, CMPXCHG16B and LAHF/SAHF, as specified by the [pinned Rust target source](https://github.com/rust-lang/rust/blob/1.99.0/compiler/rustc_target/src/spec/targets/x86_64_pc_windows_gnullvm.rs). Do not remove those features or rebuild the standard library to claim an older CPU baseline.
 
@@ -28,7 +28,9 @@ The consolidated notices retain the complete version-matched MinGW runtime notic
 
 ## Prepare
 
-1. Set the workspace version in [Cargo.toml](../Cargo.toml).
+Follow the [verification setup](verification.md#standard-checks) for local tools and temporary output. Use `python` in place of `python3` on Windows.
+
+1. Set the workspace version in [Cargo.toml](../Cargo.toml), run `cargo update --workspace` to refresh workspace package entries in `Cargo.lock`, and review the lockfile changes.
 2. Move the Unreleased entries of [CHANGELOG.md](../CHANGELOG.md) into a section headed `## [VERSION] - YYYY-MM-DD`. Its body becomes the release notes with surrounding blank lines removed; code indentation and Markdown hard-break spaces are preserved.
 3. Run the [standard checks](verification.md#standard-checks) and `python3 scripts/release.py notes --version VERSION`.
 4. Commit, push `main`, and dispatch the workflow from it:
@@ -45,18 +47,19 @@ gh workflow run release.yml --repo resoltico/AuditoryLab --ref main -f version=V
 
 ## When publishing fails
 
-If `publish` fails after creating the draft, inspect it, delete the draft (no tag exists until publication) and re-run the failed job. A rebuilt archive can differ in bytes, so re-run the whole workflow rather than mixing archives from different runs. Never edit, retarget or replace a published release; publish a new version instead.
+Inspect the release state first: a command can fail after the server has published it. If it is published, verify its assets and provenance; never edit, retarget or replace it. Any correction needs a new version. If it is still a draft, delete only that draft and re-run the failed `publish` job using the qualified archives from the same workflow run. If any archive needs rebuilding, re-run the whole workflow so all six archives come from one run.
 
 ## Verify a release
 
-Download every asset, check `sha256sum -c SHA256SUMS` (or `shasum -a 256 -c`), and verify an archive's provenance against the release commit:
+Download every asset, check `sha256sum -c SHA256SUMS` (or `shasum -a 256 -c`), and verify an archive's provenance against the release commit. Replace `ARCHIVE` with its path and `COMMIT` with the full commit SHA at the selected release's tag:
 
 ```sh
 gh attestation verify ARCHIVE --repo resoltico/AuditoryLab \
-  --signer-workflow resoltico/AuditoryLab/.github/workflows/release.yml --source-ref refs/heads/main
+  --signer-workflow resoltico/AuditoryLab/.github/workflows/release.yml \
+  --source-ref refs/heads/main --source-digest COMMIT
 ```
 
-Checksums and attestations establish which commit and workflow built an archive; they do not show what was tested.
+Checksums establish that the downloaded bytes match `SHA256SUMS`. The attestation check binds the archive to the specified source commit and workflow. Neither shows what was tested.
 
 ## Dependency updates
 

@@ -10,7 +10,7 @@ use serde::Deserialize;
 /// A preset: a stimulus and, optionally, what it is about.
 ///
 /// A preset is strict TOML of at most [`Preset::MAX_BYTES`]. Unknown,
-/// missing, duplicated and mistyped fields are errors. Values are checked
+/// missing required, duplicated and mistyped fields are errors. Values are checked
 /// when the stimulus is given a sample rate by [`Stimulus::session`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Preset {

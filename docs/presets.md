@@ -4,6 +4,8 @@ A preset is a UTF-8 TOML recipe for a stereo sound, in hertz, seconds and dBFS. 
 
 ## Examples
 
+Save an example as `custom.toml` in UTF-8, then run `auditory-lab inspect ./custom.toml` to validate it without opening an audio device.
+
 Two tones, 250 Hz on the left and 240 Hz on the right, for two seconds:
 
 ```toml
@@ -73,14 +75,14 @@ A file with only `schema_version`, `duration_seconds` and `fade_seconds` is sile
 
 ## Fields
 
-Input is at most 65,536 bytes. Unknown, missing, duplicated and mistyped keys are errors, and whole numbers are accepted where a real number is expected. This build reads `schema_version = 2`; a file stating another version is reported as such before its other fields are read.
+Input is at most 65,536 bytes. `schema_version`, `duration_seconds` and `fade_seconds` are required; components and `[about]` are optional. Unknown or duplicated keys, missing required fields and values of the wrong type are errors. Whole numbers are accepted where a real number is expected. The required `schema_version` is `2`; other version values are rejected.
 
 | Field | Meaning |
 |---|---|
 | `schema_version` | `2`. |
 | `duration_seconds` | Length of the sound. |
 | `fade_seconds` | Length of the fade-in and fade-out at each end; `0` for none. |
-| `[[component]]` | One sound source; repeat to add sources. |
+| `[[component]]` | Optional sound source; repeat to add sources. |
 | `[about]` | Optional text describing the sound; `title` is required when present. |
 
 Each component has `ears`, `kind`, `peak_dbfs` and the fields of its kind, and optionally a `[component.modulation]` table, which applies to the component written just above it.
@@ -93,6 +95,8 @@ Each component has `ears`, `kind`, `peak_dbfs` and the fields of its kind, and o
 | `peak_dbfs` | The component's peak amplitude; 0 dBFS is full scale. Modulation never raises it. |
 | `modulation.kind = "sinusoidal"` | Amplitude swelling at `rate_hz` with `depth` from 0 to 1. |
 | `modulation.kind = "rectangular"` | The component switched on for `width_seconds` at the start of each `1 / rate_hz` period, and off otherwise. |
+
+Within `[about]`, only `title` is required; the other text fields are optional for custom presets.
 
 | `[about]` field | Meaning |
 |---|---|
@@ -125,12 +129,12 @@ Lengths become whole frames: `seconds · fs` rounded to the nearest frame, halve
 
 ## Rules checked at a sample rate
 
-A recipe can be valid at one sample rate and invalid at another. `inspect`, `export` and `play` check, in order:
+A recipe can be valid at one sample rate and invalid at another. `inspect`, `export` and `play` check these rules:
 
 - Duration and fade are finite and not negative, the duration gives 1 to 2^36 frames, and the two fades leave at least one frame between them (`2F < N`).
 - At most 16 components, each with a finite `peak_dbfs` of at most 0.
 - Every frequency and rate is finite, positive and below half the sample rate. A tone with sinusoidal modulation also needs `frequency_hz + rate_hz` below half the sample rate.
-- Tone and sinusoidal rates are large enough to advance the phase. Click and rectangular rates keep full relative timing precision, and each pulse lasts at least one frame and ends before the next period.
+- Dividing a tone or sinusoidal frequency by the sample rate gives a nonzero binary64 phase step. Click and rectangular rates must give a normal step (neither zero nor subnormal), and each pulse lasts at least one frame and ends before the next period.
 - Each ear's summed component peaks are at most full scale, so no sample ever needs clipping.
 
 `inspect` reports these summed peaks per ear. They are bounds, not measured or necessarily reached maxima.

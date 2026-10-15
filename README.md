@@ -18,19 +18,25 @@ Download the archive for your system and processor from [Releases](https://githu
 
 These examples and the linked usage and preset guides describe this checkout. [Install from source](#install-from-source) to build it, then run these commands in a terminal.
 
-```sh
+```text
 auditory-lab list
-auditory-lab about beauchene-2016-binaural-15-hz
-auditory-lab play beauchene-2016-binaural-15-hz
-auditory-lab export beauchene-2016-binaural-15-hz --output beat.wav
+auditory-lab about ioannou-2015-binaural-10-hz
+auditory-lab inspect ioannou-2015-binaural-10-hz
+auditory-lab export ioannou-2015-binaural-10-hz --output beat.wav
+```
+
+`about` gives the study context; `inspect` checks the recipe and shows its length, ear routing and digital levels without opening an audio device. This example exports a 60-second sound. To listen on the default output after checking its description and length:
+
+```text
+auditory-lab play ioannou-2015-binaural-10-hz
 ```
 
 To make your own version of a sound, save a built-in recipe, edit it in a text editor, then check and use it:
 
-```sh
+```text
 auditory-lab show chan-2022-clicks-40-hz --output my-clicks.toml
 auditory-lab inspect my-clicks.toml
-auditory-lab play my-clicks.toml
+auditory-lab export my-clicks.toml --output my-clicks.wav
 ```
 
 Ctrl-C stops playback or export. [Usage](docs/usage.md) covers every command and option, and [presets](docs/presets.md) the recipe format.

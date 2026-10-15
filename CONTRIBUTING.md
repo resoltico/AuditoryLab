@@ -8,7 +8,7 @@ Understand the code, contracts and tests involved, design the whole change, and 
 
 Documentation describes the current software and how to work on it. [CHANGELOG.md](CHANGELOG.md) records published outcomes and supplies release notes. Catalog citations, study descriptions and adaptations must stay accurate to their sources.
 
-Run the program from a checkout with:
+On macOS or Linux, run the program from a checkout with:
 
 ```sh
 cargo run --release --locked -p auditory-lab -- list
@@ -32,7 +32,7 @@ On ARM64, use `--target aarch64-pc-windows-gnullvm` instead. Keep the explicit n
 - Property tests state their case and shrink budgets and set `failure_persistence: None`. `PROPTEST_RNG_SEED` replays a run; turn a shrunk failure into an ordinary regression test.
 - Filesystem tests use their own temporary directories, under `target/`, with TMPDIR, TEMP and TMP initialized there.
 
-The core is `no_std` with `alloc` and computes with `libm`, so its output is the same on every platform. Tests may use the platform's math as an independent oracle.
+The core is `no_std` with `alloc` and computes with portable `libm`, so a recipe renders the same samples across supported targets. Determinism tests check this; tests may use the platform's math as an independent oracle.
 
 ## Dependencies and toolchain
 

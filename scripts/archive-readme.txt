@@ -32,12 +32,15 @@ macOS
   Built for macOS {macos_aarch64} or later on Apple silicon and {macos_x86_64} or later on Intel;
   release testing runs on macOS 15. The program is signed ad hoc, not by an
   Apple developer identity. If macOS blocks it after you verified the
-  download, open System Settings > Privacy & Security and choose Open Anyway.
+  download, use the app-specific Open Anyway option if offered in System
+  Settings > Privacy & Security, or System Preferences > Security & Privacy
+  > General.
 
 Linux
   Needs the ALSA sound library (libasound.so.2) and a glibc at least as new as
-  Ubuntu 22.04's (2.35), where release testing runs. On Debian or Ubuntu:
+  Ubuntu 22.04's (2.35), where release testing runs. On Ubuntu 22.04:
     sudo apt-get install libasound2
+  On other distributions, install the package that provides libasound.so.2.
 
 Windows
   Needs 64-bit Windows 10 or later (x86_64) or Windows 11 (ARM64); release
