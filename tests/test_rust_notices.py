@@ -33,7 +33,7 @@ def assert_blocks_preserved(test, source, rendered):
 class RustNoticeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        sysroot = Path(subprocess.check_output(["rustc", "--print", "sysroot"], text=True).strip())
+        sysroot = Path(subprocess.check_output(["rustc", "--print", "sysroot"], text=True, encoding="utf-8").strip())
         cls.licenses = sysroot / "share" / "doc" / "rust" / "licenses"
         cls.source = (sysroot / "share" / "doc" / "rust" / "COPYRIGHT-library.html").read_bytes().decode("utf-8")
         cls.generated = notices.generate()
@@ -87,8 +87,8 @@ class RustNoticeTests(unittest.TestCase):
         self.assertTrue(identifiers)
         self.assertTrue({identifier + '.txt' for identifier in identifiers}.issubset(notices.RUST_TEXTS))
         for identifier in identifiers:
-            text = (self.licenses / (identifier + '.txt')).read_text().replace('\r\n', '\n').strip('\n')
-            self.assertIn(text, self.generated)
+            text = (self.licenses / (identifier + '.txt')).read_text(encoding='utf-8').replace('\r\n', '\n').strip('\n')
+            self.assertTrue(text in self.generated, f'{identifier} toolchain license text omitted or altered')
 
     def test_inline_entities_links_and_legal_whitespace_are_preserved(self):
         legal = '\r\n  Permission <software> & authors\nline with two spaces  \n\tindented\n'

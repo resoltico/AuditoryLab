@@ -218,7 +218,7 @@ class RuntimeTests(unittest.TestCase):
             writer.flush()
         message = buffer.getvalue().decode('ascii')
         self.assertIn('\\u0141', message)
-        self.assertIn('next line\n', message)
+        self.assertIn('next line', message.splitlines())
         self.assertIn('fatal: \\u0416', message)
         self.assertTrue(str(failure.exception).isascii())
         self.assertFalse(self.receipt.exists())

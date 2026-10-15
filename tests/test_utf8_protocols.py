@@ -18,7 +18,12 @@ import package
 
 class ProtocolTests(unittest.TestCase):
     def test_known_program_protocol_uses_utf8_while_native_tool_default_is_unchanged(self):
-        wire = 'saved C:\\Users\\Łódź\\Ervīns\\target\n'.encode('utf-8')
+        # All bytes also decode in cp1252, so the control does not depend on
+        # whether a subprocess reader-thread exception reaches the caller.
+        wire = 'saved C:\\Users\\Žanete\\Ervīns\\target\n'.encode('utf-8')
+        utf8 = wire.decode('utf-8')
+        native = wire.decode('cp1252')
+        self.assertNotEqual(utf8, native)
         producer = [sys.executable, '-c', 'import sys; sys.stdout.buffer.write(bytes.fromhex(' + repr(wire.hex()) + '))']
         original = subprocess.Popen
         def legacy_parent(command, *args, **kwargs):
@@ -26,9 +31,8 @@ class ProtocolTests(unittest.TestCase):
                 kwargs['encoding'] = 'cp1252'
             return original(command, *args, **kwargs)
         with mock.patch.object(subprocess, 'Popen', side_effect=legacy_parent):
-            self.assertEqual(package.run(*producer, encoding='utf-8'), wire.decode('utf-8'))
-            with self.assertRaises(UnicodeDecodeError):
-                package.run(*producer)
+            self.assertEqual(package.run(*producer, encoding='utf-8'), utf8)
+            self.assertEqual(package.run(*producer), native)
 
     def test_real_utf8_children_preserve_nonascii_metadata_and_sysroot_with_ansi_default(self):
         with tempfile.TemporaryDirectory() as directory:

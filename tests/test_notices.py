@@ -48,8 +48,8 @@ class SupplementTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.licenses = Path(self.directory.name)
-        (self.licenses / "MIT.txt").write_text("MIT terms\n")
-        (self.licenses / ".cargo_vcs_info.json").write_text('{"git":{"sha1":"reviewed-commit"}}')
+        (self.licenses / "MIT.txt").write_bytes(b"MIT terms\n")
+        (self.licenses / ".cargo_vcs_info.json").write_text('{"git":{"sha1":"reviewed-commit"}}', encoding="utf-8")
         self.digest = hashlib.sha256(b"MIT terms\n").hexdigest()
         patcher = mock.patch.object(notices, "LICENSES", self.licenses)
         patcher.start()
@@ -70,7 +70,7 @@ class SupplementTests(unittest.TestCase):
             changed[field] = value
             with self.assertRaisesRegex(ValueError, "published identity"):
                 notices.supplement(changed, self.reviewed())
-        (self.licenses / ".cargo_vcs_info.json").write_text('{"git":{"sha1":"another-commit"}}')
+        (self.licenses / ".cargo_vcs_info.json").write_text('{"git":{"sha1":"another-commit"}}', encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "published identity"):
             notices.supplement(self.package(), self.reviewed())
 
@@ -95,7 +95,7 @@ class SupplementTests(unittest.TestCase):
 
 class LibmNoticeTests(unittest.TestCase):
     def test_linked_source_notices_preserve_the_permission_and_attributions(self):
-        text = (notices.LICENSES / "libm-source-notices.txt").read_text()
+        text = (notices.LICENSES / "libm-source-notices.txt").read_text(encoding="utf-8")
         for attribution in ("SunSoft", "SunPro", "Copyright (C) 2004 by Sun Microsystems"):
             self.assertIn(attribution, text)
         self.assertIn("software is freely granted, provided that this notice", text)
@@ -103,7 +103,7 @@ class LibmNoticeTests(unittest.TestCase):
 
     def test_missing_or_altered_libm_material_is_rejected(self):
         import json
-        reviewed = json.loads((notices.LICENSES / "supplements.json").read_text())
+        reviewed = json.loads((notices.LICENSES / "supplements.json").read_text(encoding="utf-8"))
         libm = next(p for p in notices.linked_packages(notices.metadata("aarch64-apple-darwin")) if p["name"] == "libm")
         with self.assertRaises(ValueError):
             notices.supplement(libm, {})
