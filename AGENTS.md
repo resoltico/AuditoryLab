@@ -12,7 +12,7 @@ Do not name things merely for implementation generations, task provenance, devel
 
 States, stages, ordering, lifetimes and versions are valid when they describe the domain, algorithm, contract, compatibility boundary or artifact. `api/v2`, `LegacyEncoding`, `TemporaryDirectory` and `FinalInvoice` can be precise. A versioned public contract need not lose its versioned name when older versions retire.
 
-Apply this to comments, documentation, logs, errors and test descriptions too. Explain current constraints and contracts directly.
+Apply this to comments, documentation, logs, errors and test descriptions too. Retain history where it explains current constraints or belongs in a historical record.
 
 Review names introduced or affected by the task, including your prose. Fix misleading names within scope and update references. Respect external conventions, persisted formats and established compatibility commitments; use an authorized migration or deprecation path where needed.
 
@@ -47,7 +47,7 @@ Build the simplest design that fully solves the stated problem and is easy to un
 Scale design and review to risk, not line count: a one-line change to authorization or data deletion can be high-risk. Routine low-risk edits need only a brief sanity check; use distinct design and challenge passes for non-trivial changes to behavior, contracts or mechanisms.
 
 1. **Design.** Establish the problem, relevant constraints, alternatives and chosen approach. Consider a fundamentally different approach where it could be simpler, and effects on callers, data, tests, documentation and operations.
-2. **Challenge it.** Review the design in a separate skeptical pass. Test assumptions against code, focused probes or counterexamples; try to make it fail. Revise where the evidence disagrees, rather than restating the design.
+2. **Challenge it.** Review the design in a separate skeptical pass. Test assumptions against code, experiments or counterexamples; try to make it fail. Revise where the evidence disagrees, rather than restating the design.
 3. **Build.** Implement the reviewed design. If implementation invalidates an assumption, revisit and challenge that part before proceeding.
 
 ## Finish the whole change
@@ -55,7 +55,7 @@ Scale design and review to risk, not line count: a one-line change to authorizat
 Follow the change through its dependents, not just the edited files.
 
 - Find affected callers, configuration, lockfiles, generated files, build/CI rules, documentation, tests and external consumers. Update in-scope dependents; identify needed external coordination.
-- Search relevant inputs, including hidden, ignored or binary files when needed. Check tool exclusions and stale references; retain valid current-contract and rejection-test references. No text matches does not prove completeness.
+- Search relevant inputs, including hidden, ignored or binary files when needed. Check tool exclusions and stale references; retain valid history, compatibility and rejection-test references. No text matches does not prove completeness.
 - Check that intended files reach deliverables and relevant files reach required checks, including test discovery. Inspect tracking, ignore and packaging rules; regenerate affected outputs per project policy.
 
 Report implementation, verification and external rollout separately. Do not claim an unmet requirement is satisfied or widen scope without authorization.
@@ -82,7 +82,7 @@ An exit code establishes only what that command's success criteria mean. Check t
 
 ## Documentation and comments state the current truth
 
-Describe supported behavior, assumptions and current reasons. Live guides must contain no project-development chronology or individual audit-run results. CHANGELOG.md separately records public release outcomes and supplies release notes. Prefer links, generated content or consistency checks over manually duplicated reference facts. The authoritative source may be code or configuration, not a document. Update affected documentation, examples and error text with the change, and check affected links and generated blocks proportionately. Do not create documentation machinery merely to satisfy this rule.
+Describe supported behavior, assumptions and reasons. Keep history in change or decision records unless it explains a current constraint or migration; do not erase useful rationale. Prefer links, generated content or consistency checks over manually duplicated reference facts. The authoritative source may be code or configuration, not a document. Update affected documentation, examples and error text with the change, and check affected links and generated blocks proportionately. Do not create documentation machinery merely to satisfy this rule.
 
 ## Working hygiene
 
@@ -95,14 +95,12 @@ Describe supported behavior, assumptions and current reasons. Live guides must c
 
 Document the shortest setup from a clean checkout, prerequisites and actionable errors. Reuse commands; do not mandate setup wrappers or doctor tools. Declare each toolchain version authoritatively; derive or check required copies. Pin inputs for reproducible builds; retain supported dependency ranges and deliberate compatibility probes.
 
-## Maintain current documentation
+## Changelog: record release outcomes, not development history
 
-Keep live guides focused on the current application, contracts and contributor procedures. Do not create development timelines or inventories of superseded unpublished behavior. Explain necessary present constraints directly and update affected examples, links and descriptions with the implementation.
+Record notable net changes for users, operators, integrators and contributors against the relevant published baseline. Lead with what changed and who is affected; state breaking changes and necessary action, including breaking fixes. Substantiate claims and retain material commands, public identifiers, limits and non-guarantees. Link detailed explanations rather than narrating implementation; do not invent benefits or present unfinished capabilities as delivered.
 
-Scientific citations and study-method/adaptation descriptions are source data for the currently included presets; preserve their accuracy. License terms and explicitly requested archival audit/test evidence are separate from the live project guides. Do not delete those records as documentation cleanup.
+Consolidate related pending work into its final outcome. Omit routine churn and wholly reversed, unpublished work with no remaining consequence. Classify against released behaviour, not commit labels. Fold repairs to never-released functionality into the completed feature; retain meaningful consequences for public-prerelease users.
 
-Prefer one clear home for each topic, linking to authoritative code/configuration where appropriate. Verify commands, complete examples and dependent navigation before finishing.
+Use established categories consistently and omit empty ones. Internal is for noteworthy implementation, verification or release-process outcomes, not routine churn or concealed compatibility changes, new build requirements or user-visible effects. Keep technical method and protocol identifiers; omit development-phase labels.
 
-## Changelog
-
-Retain Unreleased and public release history. Record notable net outcomes against the published baseline, including breaking changes and required user action. Consolidate related pending work; omit routine churn and reversed unpublished work. Do not invent benefits or present unfinished capabilities as delivered. Release notes are the exact selected dated section body; retain version/date attribution. Published corrections require evidence and never change what artifacts shipped.
+Retain Unreleased and release history. Preserve version attribution, dates, links and publication-status distinctions. Published entries may be clarified, consolidated or reclassified without changing what they say shipped; factual corrections require evidence. Do not prune or relocate history without an explicit policy or request, or alter tags or published artifacts when editing the working file.
