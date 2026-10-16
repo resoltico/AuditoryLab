@@ -126,6 +126,7 @@ pub(super) fn dependencies(metadata: &Value) -> Result<Vec<&Value>, String> {
                     ("auditory-wav", "dev", "tempfile" | "waveadapter") => true,
                     ("auditory-app", "normal", "cpal" | "tempfile") => true,
                     ("auditory-app", "normal", "libc") => dep["target"] == "cfg(unix)",
+                    ("auditory-app", "normal", "winapi-util") => dep["target"] == "cfg(windows)",
                     (
                         "auditory-app",
                         "dev",
@@ -314,6 +315,42 @@ mod tests {
     #[test]
     fn whole_workspace_roles_reject_wrong_directions_and_unclassified_members() {
         dependencies(&fixture()).unwrap();
+        // Only the facade admits native Windows document handles. Neither
+        // frontends nor pure/adapter crates gain this producer in any scope.
+        for owner in 0..6 {
+            for kind in [Value::Null, json!("dev"), json!("build")] {
+                for target in [Value::Null, json!("cfg(windows)"), json!("cfg(unix)")] {
+                    let mut metadata = fixture();
+                    let owner_name = metadata["packages"][owner]["name"]
+                        .as_str()
+                        .unwrap()
+                        .to_owned();
+                    let allowed =
+                        owner_name == "auditory-app" && kind.is_null() && target == "cfg(windows)";
+                    metadata["packages"][owner]["dependencies"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(json!({
+                            "name":"winapi-util", "kind":kind, "target":target,
+                            "source":"registry+https://github.com/rust-lang/crates.io-index",
+                            "req":"^0.1.11", "rename":null
+                        }));
+                    assert_eq!(
+                        dependencies(&metadata).is_ok(),
+                        allowed,
+                        "{owner_name}: {kind}, {target}"
+                    );
+                    if allowed {
+                        metadata["packages"][owner]["dependencies"]
+                            .as_array_mut()
+                            .unwrap()
+                            .last_mut()
+                            .unwrap()["rename"] = json!("innocent");
+                        assert!(dependencies(&metadata).is_err());
+                    }
+                }
+            }
+        }
         for from in 0..6 {
             for to in 0..6 {
                 for kind in [Value::Null, json!("dev"), json!("build")] {

@@ -491,6 +491,7 @@ dependencies = [
  "syn 2.0.119",
  "tempfile",
  "toml",
+ "winapi-util",
 ]
 
 [[package]]

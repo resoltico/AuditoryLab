@@ -162,7 +162,21 @@ fn connected_owned_pipe_sending_no_bytes_and_native_devices_reject() {
     let connected = dir.path().join("connected");
     // The server owns only this unique pipe and deliberately sends no bytes. If
     // admission accidentally reads it, the bounded child check fails and reaps it.
-    let script = "$p=[System.IO.Pipes.NamedPipeServerStream]::new($env:AUDITORY_PIPE_NAME,[System.IO.Pipes.PipeDirection]::Out); try {[IO.File]::WriteAllText($env:AUDITORY_PIPE_READY,'ready'); $p.WaitForConnection(); [IO.File]::WriteAllText($env:AUDITORY_PIPE_CONNECTED,'connected'); Start-Sleep -Seconds 60} finally {$p.Dispose()}";
+    // Post the connection wait before advertising readiness, so even a client
+    // that rejects and closes immediately cannot outrun the server's wait.
+    let script = r#"
+$ErrorActionPreference='Stop'
+$p=[System.IO.Pipes.NamedPipeServerStream]::new($env:AUDITORY_PIPE_NAME,[System.IO.Pipes.PipeDirection]::Out,1,[System.IO.Pipes.PipeTransmissionMode]::Byte,[System.IO.Pipes.PipeOptions]::Asynchronous)
+try {
+    $waiting=$p.WaitForConnectionAsync()
+    [IO.File]::WriteAllText($env:AUDITORY_PIPE_READY,'ready')
+    $waiting.GetAwaiter().GetResult()
+    [IO.File]::WriteAllText($env:AUDITORY_PIPE_CONNECTED,'connected')
+    Start-Sleep -Seconds 60
+} finally {
+    $p.Dispose()
+}
+"#;
     let _server = OwnedChild(
         Command::new("powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-Command", script])
@@ -180,7 +194,7 @@ fn connected_owned_pipe_sending_no_bytes_and_native_devices_reject() {
         assert!(Instant::now() < deadline, "pipe server not ready");
         thread::sleep(Duration::from_millis(10));
     }
-    rejected_without_wait(Path::new(&format!(r"\\.\pipe\{name}")), false);
+    rejected_without_wait(Path::new(&format!(r"\\.\pipe\{name}")), true);
     while !connected.exists() {
         assert!(Instant::now() < deadline, "pipe client never connected");
         thread::sleep(Duration::from_millis(10));

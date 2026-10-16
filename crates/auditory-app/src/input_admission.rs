@@ -31,8 +31,17 @@ fn open_handle(path: &Path) -> io::Result<File> {
 }
 
 fn admit(file: File) -> Result<File, Failure> {
-    // Inspect the opened object, never a second lookup of its pathname. On
-    // Windows unsupported pipe/device metadata fails closed before any Read.
+    // Reject non-disk Windows handles before querying filesystem metadata or
+    // reading any bytes; document admission does not consume streams.
+    #[cfg(windows)]
+    if !winapi_util::file::typ(&file)
+        .map_err(Failure::Io)?
+        .is_disk()
+    {
+        return Err(Failure::NotRegular);
+    }
+    // Inspect the opened object, never a second lookup of its pathname. A disk
+    // handle still needs this check to distinguish regular files from directories.
     if !file.metadata().map_err(Failure::Io)?.is_file() {
         return Err(Failure::NotRegular);
     }
