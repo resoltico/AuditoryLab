@@ -262,7 +262,7 @@ pub struct AppError {
     destination: Option<PathBuf>,
     diagnostic: Box<Diagnostic>,
     source: Box<dyn Error + Send + Sync>,
-    cleanup: Option<CleanupFailure>,
+    cleanup: Option<Box<CleanupFailure>>,
 }
 impl AppError {
     fn new(
@@ -299,7 +299,7 @@ impl AppError {
     }
     /// Additional owned-stage cleanup failure, if any.
     pub fn cleanup(&self) -> Option<&CleanupFailure> {
-        self.cleanup.as_ref()
+        self.cleanup.as_deref()
     }
     /// Reason derived from diagnostic facts, never independently relabeled.
     pub fn reason(&self) -> Reason {
@@ -386,7 +386,7 @@ impl AppError {
         )
     }
     pub(crate) fn with_cleanup(mut self, stage: PathBuf, error: io::Error) -> Self {
-        self.cleanup = Some(CleanupFailure { stage, error });
+        self.cleanup = Some(Box::new(CleanupFailure { stage, error }));
         self
     }
     pub(crate) fn not_regular_file(origin: Origin) -> Self {
