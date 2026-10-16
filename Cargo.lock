@@ -477,7 +477,7 @@ dependencies = [
 
 [[package]]
 name = "auditory-app"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "auditory-core",
  "auditory-device",
@@ -495,7 +495,7 @@ dependencies = [
 
 [[package]]
 name = "auditory-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "auditory-app",
  "ctrlc",
@@ -507,7 +507,7 @@ dependencies = [
 
 [[package]]
 name = "auditory-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "allocation-counter",
  "libm",
@@ -518,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "auditory-device"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "allocation-counter",
  "auditory-core",
@@ -529,7 +529,7 @@ dependencies = [
 
 [[package]]
 name = "auditory-gui"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "allocation-counter",
  "auditory-app",
@@ -541,7 +541,7 @@ dependencies = [
 
 [[package]]
 name = "auditory-wav"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "auditory-core",
  "tempfile",

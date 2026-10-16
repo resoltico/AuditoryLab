@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-16
+
 ### Breaking
 
 - CLI and desktop packages require macOS 15 or later on both Apple silicon and Intel. CLI users on older macOS versions must upgrade the OS to use these packages.
@@ -15,7 +17,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Added
 
-- A native `auditorylab-gui` desktop frontend with a Compact session layout, selectable research/diagnostic text, native/manual recipe paths, validation, WAV export and explicit Play/Stop. Close and ordinary macOS Quit wait for the actual operation and worker. Packages provide an ad hoc signed, unnotarized macOS `.app`, a console-free Windows application and an optional Linux desktop launcher. Slint enables native accessibility and GPU-capable drawing with software recovery; enabled accessibility is not screen-reader qualification. GPU drawing does not offload audio, use every installed GPU or promise recovery from every later graphics failure. See the [desktop guide](docs/desktop.md) for platform prerequisites, Linux checkout-root/system FreeType/Fontconfig source-build requirements and `SLINT_BACKEND=winit-software` recovery.
+- A native `auditorylab-gui` desktop frontend with a Compact session layout, selectable research/diagnostic text, native/manual recipe paths, validation, WAV export and explicit Play/Stop. Close and ordinary macOS Quit wait for the actual operation and worker. Packages provide an ad hoc signed, unnotarized macOS `.app`, a console-free Windows application and an optional Linux desktop launcher. Slint enables native accessibility and GPU-capable drawing with software recovery; enabled accessibility is not screen-reader qualification. GPU drawing does not offload audio, use every installed GPU or promise recovery from every later graphics failure. See the [desktop guide](https://github.com/resoltico/AuditoryLab/blob/v0.3.0/docs/desktop.md) for platform prerequisites, Linux checkout-root/system FreeType/Fontconfig source-build requirements and `SLINT_BACKEND=winit-software` recovery.
 - Optional Generated signal observation and separate-ear waveform detail/two-second recent Peak range views, with actual source coverage, gaps, freshness, bounded live/frozen displays and reduced-motion presentation. Charts show mixed/faded generated samples before output conversion, not microphone input, sound pressure or an audible playhead. Freeze display leaves audio running; observed samples cannot establish playback completion.
 - `auditory-app` supplies both frontends' input/catalog workflows, immutable declared descriptions and resolved facts, typed diagnostics, bound preparation views, listening notices and contextual completion reports. Synthesis/validation and signal analysis remain shared; WAV encoding accepts a caller-owned writer and application workflows own publication and cancellation.
 - Shared product/build identity and a narrow standalone `--build-info` artifact-verification response on both products. Local and candidate archives carry explicit local/development markers; candidate identities retain the full source revision. Read-only development qualification uses the release workflow's native checks and isolated final builds without publishing or inventing a next version.
