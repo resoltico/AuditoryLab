@@ -403,14 +403,6 @@ fn sources_for(
     // Inspect every Rust file under src, including cfg-disabled modules and bins.
     Ok(())
 }
-fn directory(
-    root: &Path,
-    path: &Path,
-    seen: &mut HashSet<PathBuf>,
-    directories: &mut HashSet<PathBuf>,
-) -> Result<(), String> {
-    directory_for(root, path, seen, directories, false)
-}
 fn directory_for(
     root: &Path,
     path: &Path,
@@ -1119,11 +1111,12 @@ mod tests {
         {
             std::os::unix::fs::symlink(&outside, root.join("escape.rs")).unwrap();
             assert!(
-                directory(
+                directory_for(
                     &root.canonicalize().unwrap(),
                     &root,
                     &mut HashSet::new(),
-                    &mut HashSet::new()
+                    &mut HashSet::new(),
+                    false,
                 )
                 .unwrap_err()
                 .contains("escapes")
