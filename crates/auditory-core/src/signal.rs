@@ -465,19 +465,41 @@ mod tests {
                         modulation: None,
                     },
                 ];
-                let mut renderer = Stimulus {
+                let session = Stimulus {
                     duration_seconds: 0.1,
                     fade_seconds: 0.001,
                     components,
                 }
                 .session(rate(hz))
-                .unwrap()
-                .into_renderer();
+                .unwrap();
+                let total = session.frames();
+                let mut renderer = session.into_renderer();
                 let mut history = SignalHistory::new(rate(hz));
                 let mut raw = Vec::new();
                 let mut block = [[0.0; 2]; 997];
-                while !renderer.is_complete() {
+                let block_frames = u64::try_from(block.len()).unwrap();
+                // Never let a broken renderer completion predicate determine the
+                // test's iteration count or grow the retained oracle indefinitely.
+                for chunk in 0..total.div_ceil(block_frames) {
+                    let offset = chunk * block_frames;
+                    let remaining = total - offset;
+                    let expected = usize::try_from(remaining.min(block_frames)).unwrap();
+                    assert_eq!(renderer.frames_remaining(), remaining);
+                    assert!(!renderer.is_complete());
                     let span = renderer.render(&mut block);
+                    assert_eq!(span.start(), offset);
+                    assert_eq!(span.frames(), expected);
+                    assert_eq!(span.end(), offset + u64::try_from(expected).unwrap());
+                    assert_eq!(
+                        renderer.frames_remaining(),
+                        remaining - u64::try_from(expected).unwrap()
+                    );
+                    assert!(
+                        block[expected..]
+                            .iter()
+                            .flatten()
+                            .all(|sample| sample.to_bits() == 0)
+                    );
                     history.feed(span.start(), &block[..span.frames()]).unwrap();
                     raw.extend(
                         block[..span.frames()]
@@ -486,6 +508,17 @@ mod tests {
                             .map(|(i, sample)| (span.start() + i as u64, *sample)),
                     );
                 }
+                assert_eq!(u64::try_from(raw.len()).unwrap(), total);
+                assert_eq!(renderer.frames_remaining(), 0);
+                assert!(renderer.is_complete());
+                block.fill([1.0; 2]);
+                let eof = renderer.render(&mut block);
+                assert_eq!(eof.start(), total);
+                assert_eq!(eof.frames(), 0);
+                assert_eq!(eof.end(), total);
+                assert_eq!(renderer.frames_remaining(), 0);
+                assert!(renderer.is_complete());
+                assert!(block.iter().flatten().all(|sample| sample.to_bits() == 0));
                 for bin in history.detail(u64::MAX, 143).bins() {
                     oracle(&raw, bin);
                 }

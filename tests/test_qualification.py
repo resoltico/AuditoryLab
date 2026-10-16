@@ -37,42 +37,48 @@ class QualificationTests(unittest.TestCase):
                         qualify.check_source('a' * 40)
 
     def test_all_macos_products_share_floor_and_reset_ambient_deployment_target(self):
-        self.assertEqual(MACOS_MINIMUM, '15.0')
-        for entry in TARGETS:
-            environments = []
-            for product in ('cli', 'gui'):
-                with mock.patch.dict(os.environ, {'MACOSX_DEPLOYMENT_TARGET': '99',
-                                                 'AUDITORY_BUILD_KIND': 'release',
-                                                 'AUDITORY_SOURCE_REVISION': 'b' * 40}, clear=True):
-                    environment = qualify.controlled_environment(product, entry, 'local', None)
-                    qualified = qualify.controlled_environment(product, entry, 'candidate', 'a' * 40)
-                if 'apple' in entry['target']:
-                    self.assertEqual(environment['MACOSX_DEPLOYMENT_TARGET'], '15.0')
-                else:
-                    self.assertNotIn('MACOSX_DEPLOYMENT_TARGET', environment)
-                self.assertNotIn('AUDITORY_SOURCE_REVISION', environment)
-                self.assertNotIn('AUDITORY_BUILD_KIND', environment)
-                self.assertEqual(qualified['AUDITORY_BUILD_KIND'], 'candidate')
-                self.assertEqual(qualified['AUDITORY_SOURCE_REVISION'], 'a' * 40)
-                if 'apple' in entry['target']:
-                    self.assertEqual(qualified['MACOSX_DEPLOYMENT_TARGET'], '15.0')
-                else:
-                    self.assertNotIn('MACOSX_DEPLOYMENT_TARGET', qualified)
-                environments.append(environment)
-            self.assertNotEqual(environments[0]['CARGO_TARGET_DIR'], environments[1]['CARGO_TARGET_DIR'])
+        # The cleared environment deliberately has no Windows USERPROFILE.
+        # Use an owned home while exercising the real ambient-config guard.
+        with tempfile.TemporaryDirectory() as home, mock.patch.object(qualify.Path, 'home', return_value=Path(home)):
+            self.assertEqual(MACOS_MINIMUM, '15.0')
+            for entry in TARGETS:
+                environments = []
+                for product in ('cli', 'gui'):
+                    with mock.patch.dict(os.environ, {'MACOSX_DEPLOYMENT_TARGET': '99',
+                                                     'AUDITORY_BUILD_KIND': 'release',
+                                                     'AUDITORY_SOURCE_REVISION': 'b' * 40}, clear=True):
+                        environment = qualify.controlled_environment(product, entry, 'local', None)
+                        qualified = qualify.controlled_environment(product, entry, 'candidate', 'a' * 40)
+                    if 'apple' in entry['target']:
+                        self.assertEqual(environment['MACOSX_DEPLOYMENT_TARGET'], '15.0')
+                    else:
+                        self.assertNotIn('MACOSX_DEPLOYMENT_TARGET', environment)
+                    self.assertNotIn('AUDITORY_SOURCE_REVISION', environment)
+                    self.assertNotIn('AUDITORY_BUILD_KIND', environment)
+                    self.assertEqual(qualified['AUDITORY_BUILD_KIND'], 'candidate')
+                    self.assertEqual(qualified['AUDITORY_SOURCE_REVISION'], 'a' * 40)
+                    if 'apple' in entry['target']:
+                        self.assertEqual(qualified['MACOSX_DEPLOYMENT_TARGET'], '15.0')
+                    else:
+                        self.assertNotIn('MACOSX_DEPLOYMENT_TARGET', qualified)
+                    environments.append(environment)
+                self.assertNotEqual(environments[0]['CARGO_TARGET_DIR'], environments[1]['CARGO_TARGET_DIR'])
 
 
     def test_compiler_override_checks_repeat_even_when_cargo_would_use_cache(self):
-        entry = TARGETS[0]
-        with mock.patch.dict(os.environ, {}, clear=True):
-            qualify.controlled_environment('gui', entry, 'local', None)
-            for name, value in [('SLINT_BUNDLE_TRANSLATIONS', '/external/tree'),
-                                ('SLINT_EMBED_RESOURCES', 'false'), ('SLINT_UNKNOWN_OVERRIDE', '1'),
-                                ('SLINT_COMPILER_DENY_WARNINGS', '0'), ('DEP_MCU_BOARD_SUPPORT_PATH', '/external')]:
-                with self.subTest(name=name), mock.patch.dict(os.environ, {name: value}), self.assertRaisesRegex(ValueError, name):
-                    qualify.controlled_environment('gui', entry, 'local', None)
-            with mock.patch.dict(os.environ, {'SLINT_COMPILER_DENY_WARNINGS': '1'}):
+        # The cleared environment deliberately has no Windows USERPROFILE.
+        # Use an owned home while exercising the real ambient-config guard.
+        with tempfile.TemporaryDirectory() as home, mock.patch.object(qualify.Path, 'home', return_value=Path(home)):
+            entry = TARGETS[0]
+            with mock.patch.dict(os.environ, {}, clear=True):
                 qualify.controlled_environment('gui', entry, 'local', None)
+                for name, value in [('SLINT_BUNDLE_TRANSLATIONS', '/external/tree'),
+                                    ('SLINT_EMBED_RESOURCES', 'false'), ('SLINT_UNKNOWN_OVERRIDE', '1'),
+                                    ('SLINT_COMPILER_DENY_WARNINGS', '0'), ('DEP_MCU_BOARD_SUPPORT_PATH', '/external')]:
+                    with self.subTest(name=name), mock.patch.dict(os.environ, {name: value}), self.assertRaisesRegex(ValueError, name):
+                        qualify.controlled_environment('gui', entry, 'local', None)
+                with mock.patch.dict(os.environ, {'SLINT_COMPILER_DENY_WARNINGS': '1'}):
+                    qualify.controlled_environment('gui', entry, 'local', None)
 
     def test_identity_inputs_and_names_distinguish_local_candidate_release(self):
         for kind, revision in [('local', 'a' * 40), ('candidate', None), ('release', ''), ('unknown', None), ('candidate', 'g' * 40)]:

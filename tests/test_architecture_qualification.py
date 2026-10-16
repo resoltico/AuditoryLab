@@ -47,6 +47,10 @@ mod source { mod tests {
             environment['CARGO_HOME'] = str(root / 'cargo-home')
             environment['CARGO_TARGET_DIR'] = str(root / 'artifacts')
             environment['RUSTUP_TOOLCHAIN'] = subprocess.check_output(['rustup', 'show', 'active-toolchain'], cwd=qualify.ROOT, text=True, encoding='utf-8').split()[0]
+            host = next(line[6:] for line in subprocess.check_output(['rustc', '-vV'], cwd=qualify.ROOT, text=True, encoding='utf-8').splitlines() if line.startswith('host: '))
+            # Outside-root probes retain the supported native Windows linker
+            # contract without copying its flags into this test fixture.
+            cargo_config = ['--config', str(qualify.ROOT / '.cargo/config.toml')] if 'windows' in host else []
             for exclusion in ('', 'autotests=false\n', 'autotests=false\n[[test]]\nname="frontend_boundary"\npath="tests/frontend_boundary.rs"\n', '[lib]\ntest=false\n'):
                 manifest.write_text(base + exclusion, encoding='utf-8')
                 result = subprocess.run(['cargo', 'metadata', '--offline', '--format-version', '1', '--no-deps'], cwd=root,
@@ -58,7 +62,7 @@ mod source { mod tests {
                         qualify.require_application_test_targets(metadata, root)
                 else:
                     qualify.require_application_test_targets(metadata, root)
-                    command = ['cargo', 'test', '--offline', '-p', 'auditory-app', '--test', 'frontend_boundary']
+                    command = ['cargo', *cargo_config, 'test', '--offline', '-p', 'auditory-app', '--test', 'frontend_boundary', '--target', host]
                     listed = subprocess.run([*command, '--', '--list'], cwd=root, env=environment, capture_output=True, text=True, encoding='utf-8', timeout=30)
                     self.assertEqual(listed.returncode, 0, listed.stdout + listed.stderr)
                     discovered = qualify.architecture_test_names(listed.stdout, qualify.ARCHITECTURE_CONTROLS)

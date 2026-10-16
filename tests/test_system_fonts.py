@@ -60,7 +60,11 @@ class SystemFontTests(unittest.TestCase):
             environment['CARGO_TARGET_DIR'] = str(root / 'artifacts')
             environment['CARGO_HOME'] = str(root / 'cargo-home')
             environment['RUSTUP_TOOLCHAIN'] = subprocess.check_output(['rustup', 'show', 'active-toolchain'], cwd=qualify.ROOT, text=True, encoding='utf-8').split()[0]
-            command = ['cargo', 'check', '--offline', '--target', host]
+            # Only Windows needs the root's native GNU LLVM linker settings.
+            # Loading it on Linux would retain the real freetype override after
+            # deleting this fixture's override and invalidate the negative case.
+            cargo_config = ['--config', str(qualify.ROOT / '.cargo/config.toml')] if 'windows' in host else []
+            command = ['cargo', *cargo_config, 'check', '--offline', '--target', host]
             passed = subprocess.run(command, cwd=root, env=environment, capture_output=True, text=True, encoding='utf-8', timeout=60)
             self.assertEqual(passed.returncode, 0, passed.stdout + passed.stderr)
             config.unlink()

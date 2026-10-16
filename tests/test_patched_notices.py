@@ -1,8 +1,10 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
 """The narrow reviewed backend fork remains visible and source/license bound."""
+import io
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -24,11 +26,45 @@ class PatchedNoticeTests(unittest.TestCase):
             shutil.copytree(self.source, destination)
             package = {'name': 'i-slint-backend-winit', 'version': '1.18.1',
                        'manifest_path': str(destination / 'Cargo.toml')}
-            with mock.patch.object(notices, 'ROOT', root):
+            actual_run = subprocess.run
+            def byte_transport(*args, **kwargs):
+                self.assertIsInstance(kwargs['input'], bytes)
+                self.assertNotIn('text', kwargs)
+                self.assertNotIn('encoding', kwargs)
+                return actual_run(*args, **kwargs)
+            with mock.patch.object(notices, 'ROOT', root), mock.patch.object(notices.subprocess, 'run', side_effect=byte_transport):
                 notices.validate_patched_dependency(package)
                 files = notices.published_files(package)
                 self.assertTrue(any('Royalty-free-2.0' in path.name for path in files))
                 self.assertTrue(any('GPL-3.0' in path.name for path in files))
+                failure = subprocess.CompletedProcess(['git', 'apply'], 1, b'', b'original patch failure: \xff')
+                with mock.patch.object(notices.subprocess, 'run', return_value=failure), self.assertRaises(ValueError) as caught:
+                    notices.validate_patched_dependency(package)
+                self.assertIn('original patch failure: \\xff', str(caught.exception))
+
+    def test_git_patch_bytes_preserve_lf_and_reject_text_newline_translation(self):
+        # Model Windows TextIOWrapper newline translation at the actual Git
+        # boundary; the checked patch and source bytes themselves stay unchanged.
+        patch = b"--- a/source.txt\n+++ b/source.txt\n@@ -1,3 +1,3 @@\n first\n-old\n+new\n last\n"
+        stream = io.BytesIO()
+        writer = io.TextIOWrapper(stream, encoding='utf-8', newline='\r\n')
+        writer.write(patch.decode('utf-8'))
+        writer.flush()
+        translated = stream.getvalue()
+        self.assertNotEqual(patch, translated)
+        for accepted, payload in ((True, patch), (False, translated)):
+            with self.subTest(translated=not accepted), tempfile.TemporaryDirectory(dir=notices.ROOT / 'target') as directory:
+                root = Path(directory)
+                source = root / 'source.txt'
+                source.write_bytes(b'first\nnew\nlast\n')
+                result = subprocess.run(['git', 'apply', '--reverse', '--whitespace=nowarn', '-'], cwd=root,
+                                        input=payload, capture_output=True)
+                if accepted:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(source.read_bytes(), b'first\nold\nlast\n')
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(source.read_bytes(), b'first\nnew\nlast\n')
 
     def test_source_patch_provenance_license_and_corpus_changes_fail(self):
         for change in ('source', 'patch', 'provenance', 'license', 'added', 'missing'):

@@ -320,10 +320,12 @@ def validate_patched_dependency(package):
         for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
             environment.pop(name, None)
         environment["GIT_CEILING_DIRECTORIES"] = str(scratch)
+        # Text-mode stdin rewrites LF on Windows and breaks exact patch context.
         result = subprocess.run(["git", "apply", "--reverse", "--whitespace=nowarn", "-"], cwd=scratch,
-                                input="".join(normalized), capture_output=True, text=True, encoding="utf-8", env=environment)
+                                input="".join(normalized).encode("utf-8"), capture_output=True, env=environment)
         if result.returncode:
-            raise ValueError("reviewed patch cannot reconstruct upstream source: " + result.stderr)
+            raise ValueError("reviewed patch cannot reconstruct upstream source: "
+                             + result.stderr.decode("utf-8", errors="backslashreplace"))
         if any(hashlib.sha256((scratch / name).read_bytes()).hexdigest() != original[name] for name in modified):
             raise ValueError("reversed patch does not match the reviewed original source")
     return record

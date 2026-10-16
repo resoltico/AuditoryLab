@@ -323,10 +323,24 @@ mod composition_characterization {
         let bound = session.peak;
         let mut renderer = session.into_renderer();
         let mut buffer = [[0.0; 2]; 4_096];
+        let block_frames = u64::try_from(buffer.len()).unwrap();
         let mut offset = 0;
-        while !renderer.is_complete() {
-            let active = renderer.render(&mut buffer).frames();
-            assert!(active > 0);
+        // The test's work bound comes from captured session facts, independently
+        // of the completion/remaining methods whose behavior it checks.
+        for _ in 0..count.div_ceil(block_frames) {
+            let remaining = count - offset;
+            assert_eq!(renderer.frames_remaining(), remaining);
+            assert!(!renderer.is_complete());
+            let expected = usize::try_from(remaining.min(block_frames)).unwrap();
+            let span = renderer.render(&mut buffer);
+            assert_eq!(span.start(), offset);
+            assert_eq!(span.frames(), expected);
+            assert_eq!(span.end(), offset + u64::try_from(expected).unwrap());
+            let active = span.frames();
+            assert_eq!(
+                renderer.frames_remaining(),
+                remaining - u64::try_from(active).unwrap()
+            );
             for (index, frame) in buffer[..active].iter().enumerate() {
                 let n = offset + u64::try_from(index).unwrap();
                 assert!(frame[0].abs() <= bound[0] && frame[1].abs() <= bound[1]);
@@ -378,7 +392,15 @@ mod composition_characterization {
             offset += u64::try_from(active).unwrap();
         }
         assert_eq!(offset, count);
-        assert_eq!(renderer.render(&mut buffer).frames(), 0);
+        assert_eq!(renderer.frames_remaining(), 0);
+        assert!(renderer.is_complete());
+        buffer.fill([1.0; 2]);
+        let eof = renderer.render(&mut buffer);
+        assert_eq!(eof.start(), count);
+        assert_eq!(eof.frames(), 0);
+        assert_eq!(eof.end(), count);
+        assert_eq!(renderer.frames_remaining(), 0);
+        assert!(renderer.is_complete());
         assert!(buffer.iter().flatten().all(|sample| sample.to_bits() == 0));
     }
     #[test]
