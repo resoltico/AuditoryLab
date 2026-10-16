@@ -1,0 +1,25 @@
+{
+  "distribution": "Ubuntu 22.04 LTS",
+  "scope": "external OS libraries; reference producer terms, not bundled implementations",
+  "acknowledgment": "This software is based in part on the work of the FreeType Team.",
+  "materials": [
+    {
+      "package": "libfreetype6",
+      "version": "2.11.1+dfsg-1ubuntu0.4",
+      "architecture": "arm64",
+      "file": "ubuntu22-freetype-copyright",
+      "sha256": "992b869abf2c114288dafb51c37f19c0afc3455477b9d589371d45ad214a8b07",
+      "origin": "/usr/share/doc/libfreetype6/copyright",
+      "source": "https://packages.ubuntu.com/jammy/libfreetype6"
+    },
+    {
+      "package": "libfontconfig1",
+      "version": "2.13.1-4.2ubuntu5",
+      "architecture": "arm64",
+      "file": "ubuntu22-fontconfig-copyright",
+      "sha256": "b215a61cdd3e62b5b17cc28b1852c78acb3dd38be0fb30706f7efc050dba91db",
+      "origin": "/usr/share/doc/libfontconfig1/copyright",
+      "source": "https://packages.ubuntu.com/jammy/libfontconfig1"
+    }
+  ]
+}

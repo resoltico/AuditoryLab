@@ -1,68 +1,89 @@
 # Usage
 
-`auditory-lab --help` and `auditory-lab COMMAND --help` show the grammar without opening any file or device. The built-in catalog is part of the executable, so no other files are needed.
+Run `auditorylab` with no arguments for a starting point, or `auditorylab COMMAND --help` for command help. Both return successfully without reading stdin or opening a device. From an unpacked download, use `./auditorylab` on macOS/Linux or `.\auditorylab.exe` in PowerShell; an installed command on PATH uses `auditorylab`.
 
 ## Commands
 
 | Command | Result |
 |---|---|
-| `list` | Every built-in sound: name, length and title. |
-| `about [--] PRESET` | What a sound is, what its source studied and found, its citation and adaptations, as wrapped text. |
-| `show [--output FILE] [--] NAME` | A built-in recipe as UTF-8 TOML, printed or saved to a new FILE. |
-| `inspect [--sample-rate HZ] [--] PRESET` | Validation and a technical description at a sample rate, without opening a device. |
-| `export --output FILE [--sample-rate HZ] [--] PRESET` | A new stereo 32-bit float WAV file. |
-| `play [--] PRESET` | Playback on the default output, at its configured rate. |
-| `--help`, `-h`, `--version` | Usage or the version; at the top level, these must be used alone. |
+| `list` | Built-in preset IDs, human durations and wrapped Sound descriptions. |
+| `describe SOURCE` | Declared sound facts, listening guidance, research context and adaptations. |
+| `recipe PRESET_ID [--output PATH]` | Exact built-in UTF-8 TOML, printed or saved to a new file. |
+| `inspect SOURCE [--sample-rate HZ]` | Validation and exact technical facts without opening an output device. |
+| `play SOURCE` | Playback on the default output, at its stream rate. |
+| `export SOURCE --output PATH [--sample-rate HZ]` | A new stereo 32-bit float WAV file. |
+| `--help`, `-h`, `--version`, `--build-info` | Help/version; top-level forms must be used alone. |
 
-`inspect` and `export` render at 48,000 Hz unless `--sample-rate` gives whole hertz from 1 to 768,000. A recipe can be valid at one rate and not another; see [rules checked at a sample rate](presets.md#rules-checked-at-a-sample-rate).
+Recipe files use `[about]` for descriptive metadata. `recipe` accepts only a built-in ID because it retrieves the original source, rather than reconstructing a document.
 
-`about` reads the recipe's description without checking those sample-rate rules. Use `inspect` to validate the sound at the rate you intend to use.
+## Choosing input explicitly
 
-## Naming a preset
+Choose exactly one SOURCE:
 
-`PRESET` is read by its spelling, never by what exists on disk:
+- A positional built-in preset ID, such as `chan-2022-clicks-40-hz`.
+- `--file PATH` for a regular UTF-8 TOML recipe file on disk (including symlinks to regular files). Directories, pipes and devices reject before reading; use `--stdin` for intentional streams.
+- `--stdin` to read a UTF-8 recipe until EOF.
 
-- `-` reads standard input until end of file.
-- An operand containing `/`, `\` or `.` is a file path.
-- Anything else is a built-in name.
+A positional value always names a built-in preset: `tone.toml`, `./tone`, `-` and values after `--` never select a file or stdin. Existing files and piped data never change that rule. Unknown IDs suggest `list` and the explicit `--file PATH` form; names are not autocorrected.
 
-Write `./name` for a file without a dot, `./-` for a file named `-` and `./--help` for a file named like an option. Options and the operand can come in any order before `--`; after it, arguments are literal operands and follow the same spelling rule. For an output path that starts with `-`, include `./`, as in `--output ./-draft.toml`. `--output -` names a file called `-`; export never writes audio to standard output. `show` accepts only built-in names.
+Options and the preset ID may appear in either order before `--`. The delimiter only ends option recognition; remaining operands are still built-in IDs. `list --` succeeds, `list -- extra` rejects, and a top-level `auditorylab --` is a usage error. Missing sources, source combinations, duplicate options, extra operands and invalid values reject before input or output I/O.
 
-When standard input is a terminal, the program first prints a one-line cue on standard error; on Unix, Ctrl-D on an empty line ends input. Input is at most 65,536 bytes.
+Path and rate options accept both separated and equals forms: `--file recipe.toml`, `--file=recipe.toml`, `--output=beat.wav`, `--sample-rate=44100`. Native path spelling is retained without canonicalization or lossy conversion. A separated path beginning with a hyphen is rejected except a lone `-`; use `--file=-draft.toml` or `--output=-draft.wav` instead. `--file=--help` and `--file=--` name those literal files. `--file -` reads a file named `-`; `--output -` creates a file named `-`. Export never writes audio to stdout.
 
-## Saving and editing a recipe
+Only exact standalone `-h` or `--help` before the first standalone `--` requests command help, even if other arguments are incomplete. For example, `play --file --help` shows help without I/O, while `play --file=--help` selects a file. After `--`, `--help` is a catalog ID. Unknown commands still reject even when followed by help. Short bundles/attached forms (`-hh`, `-hfoo`, `-h=foo`), `--help=foo`, abbreviations and all other short options reject unless a separate exact help request takes precedence.
 
-`show NAME --output FILE` writes the recipe's exact bytes and never replaces an existing file. On a write or sync failure, it removes the incomplete file or reports both the original failure and why removal failed. Edit the copy in a plain-text editor, keep it UTF-8, and check it with `inspect` before export or playback. When you change a study's parameters, update `[about]` so it describes your copy; validation does not compare text with numbers.
+When explicit `--stdin` selects a terminal, a one-line cue is printed on stderr; on Unix Ctrl-D on an empty line ends input. Input is bounded at 65,536 bytes. Regular-file admission does not promise an I/O deadline for stalled remote or failing filesystems, and captured bytes are not an atomic filesystem snapshot. No signal handler is installed until input has been read.
+
+## Discovery, description and inspection
+
+`list` preserves natural catalog order and complete IDs. Each record has an ID/duration row and an indented Sound field, which may wrap onto continuation lines. The human layout is not a machine protocol.
+
+`describe` presents declared duration, actual component ear assignments and study metadata without validating numeric playability or querying a device. No components means silence. Both-ear, left-only and right-only assignments remain distinct; separate equal tones are still separate-ear assignments. The app supplies headphone guidance from its routing policy. Guidance is for later playback, and does not mean describing a sound starts audio. Missing metadata is stated explicitly. Descriptive prose is not checked against the numeric parameters.
+
+`inspect` and `export` use the application default of 48,000 Hz unless `--sample-rate` gives whole decimal hertz from 1 to 768,000. Inspection labels the selection as default or explicit, including an explicit selection of 48,000 Hz. It reports exact frames/rate and declared versus resolved duration and fade, including a positive declared fade rounded to zero frames (fading disabled). The frame count and rate determine resolved seconds; division can round. Playback validates again at the output stream's sample rate. Neither inspection nor a backend stream configuration certifies the physical hardware rate. See [validation rules](presets.md#rules-checked-at-a-sample-rate).
+
+Human durations use hours/minutes/seconds, such as `1 h` or `5 min 7.2 s`. `~` marks an approximation when conversion to nanoseconds changes the binary64 input. Tiny, huge or invalid declarations retain round-trip seconds rather than being silently clipped or rounded to zero. Technical views retain exact counts, rates and round-trip scalar values. Peak bounds describe f64 generation before output conversion; float/integer quantization can change peaks slightly.
+
+## Editing recipes
+
+```text
+auditorylab recipe chan-2022-clicks-40-hz --output clicks.toml
+auditorylab describe --file clicks.toml
+auditorylab inspect --file clicks.toml
+auditorylab export --file clicks.toml --output clicks.wav
+```
+
+`recipe PRESET_ID` writes exact source bytes to stdout without headers, sanitization or completion text. `recipe --output` saves those same bytes through the staged publisher. Edit a copy as UTF-8 and update `[about]` when its meaning changes. The source study's nominal frequency can differ from the configured value; the van Eeckhoutte AM recipes explicitly configure 39.0625 Hz, while their study discusses nominal 40 Hz.
 
 ## Output and errors
 
-Results go to standard output: listings, descriptions, inspection reports and the completion line of a recipe save, export or playback. Notices, warnings and errors go to standard error. `export` and `play` print a start line with the resolved length and rate, and `play` adds the device and listening advice. A closed output pipe ends reporting quietly; a completed recipe save, export or playback stays successful even if its result cannot be printed. Other completion-reporting errors produce a warning with the completed result and output error.
+Help, version, list, describe, inspection and raw recipes go to stdout. Preparation, reminders, warnings, cancellation and errors go to stderr. Successful save/export/play completion goes to stdout. A closed output pipe is quiet success. Ordinary read-only reporting failures return status 1; after a side effect completes, a reporting failure cannot undo it and produces only a best-effort warning containing the completed result/path.
 
-`about` wraps the escaped text at 78 terminal columns using Unicode widths (ambiguous-width characters count as one column) and preserves combining and emoji sequences. An indivisible grapheme wider than a line is shown as escapes.
-
-File paths, device names and text from recipes are shown quoted in technical reports and with control characters escaped everywhere, so text from a file cannot rewrite the terminal or forge report lines.
+Human prose and continuation fields wrap at 78 columns using Unicode widths and grapheme boundaries. Inline control characters, bidi controls, newlines and tabs are escaped before width measurement. Native paths/device names are quoted; IDs and path identity remain intact rather than truncated. A grapheme wider than a line is rendered as escapes. Human output is static in terminals and pipes, with no pager, color or implicit prompt.
 
 | Exit status | Meaning |
 |---|---|
-| 0 | Success. |
-| 1 | A file, device or other runtime failure, including an existing output file. |
-| 2 | Wrong usage, an unknown name, or a recipe the format or its rules reject. |
-| 130 | Export or playback cancelled by an interrupt. |
+| 0 | Success, including empty invocation/help. |
+| 1 | File, device, publication, cleanup or other operational failure. |
+| 2 | Usage, unknown ID, format/schema or validation rejection. |
+| 130 | Clean cooperative export/playback cancellation. |
 
-An unknown name suggests `list`, and for a recipe file the explicit `./name` form. Recipe errors identify the input and describe the format or rule violation. UTF-16 with a byte-order mark is recognized and reported as such; save recipes as UTF-8.
+Usage errors give one diagnosis, short usage, a targeted example and a help pointer. Runtime errors retain source/destination context and technical causes. A final no-clobber conflict says the destination was untouched and suggests a different `--output` path. An AlreadyExists error before commit remains a publication failure and does not blame the requested destination. Cleanup failure retains both causes and the owned stage path. UTF-16 BOMs are diagnosed; input still requires UTF-8.
 
 ## Playback
 
-`play` uses the default output's backend-reported stream sample rate, channel count and sample format; there are no overrides. This stream configuration does not establish the physical hardware's sample rate. The output needs at least two channels: left goes to the first, right to the second, and any others stay silent. Supported formats are 64- and 32-bit float and 32-, 24- and 16-bit integer.
+Turn output volume down before running `play`. Preparation says `Starting playback` before execution and shows the source, resolved duration, actual device or unavailable name, stream rate, channel count and sample representation. It supplies listening reminders and `Press Ctrl-C to stop`; there is no confirmation prompt or countdown. Digital levels do not limit sound pressure.
 
-Before playing, the program advises a low volume, and headphones when a sound routes components to one ear. Playback ends when the backend's timing indicates that the last frame has played. Underruns are counted and reported. A backend report that the output route changed, invalid backend timing, 30 seconds without progress, or running 30 seconds past the sound's length ends playback with an error.
+The default output needs at least two channels: left goes to the first, right to the second, and extras remain silent. Supported formats are 64-/32-bit float and 32-/24-/16-bit integer. Completion is based on backend timing estimates, not acoustic delivery. Underruns are counted; nonzero counts produce the app's typed warning. Route changes, invalid timing, 30 seconds without progress, or running 30 seconds beyond the session length end playback with an error.
 
-## Export
+## New-file publication
 
-Export creates the file only if nothing has that name, writes the complete header and then the samples, and syncs the file before reporting success. It uses RIFF/WAVE when the container's sizes fit its 32-bit fields, and RF64 otherwise. Samples are rounded to 32-bit float.
+Export preparation binds the requested destination spelling and creates no output. The app stages recipe/WAV bytes in a randomly named file in that destination folder, syncs them, then publishes without replacing any existing file, symlink or directory. WAV uses RIFF when 32-bit container sizes fit, otherwise RF64, and rounds samples to 32-bit float.
 
-The file is incomplete while export runs. Leave its path and folder alone until the command ends: a failed or cancelled export removes the incomplete file, or reports that it could not.
+These operations create no final file before commit and never replace an existing destination. Failure/cancellation cleans only the owned stage; cleanup failure identifies it alongside the primary cause. Unix permissions follow ordinary creation and the inherited umask. Keep the directory under ordinary caller control: binding a pathname is not binding a directory handle. No-overwrite publication is not universally atomic; some filesystems may leave a staging hard link after success. Abnormal termination can leave a stage, there is no startup scavenger, and file sync does not guarantee directory-entry persistence after power loss.
 
 ## Interrupts
 
-During `export` and `play`, the first Ctrl-C (Unix SIGINT, SIGTERM or SIGHUP; Windows Ctrl-C or Ctrl-Break) requests cancellation. Export checks before each block and after the last one; if cancelled, it removes its incomplete file or reports why it could not. Playback polls the request at 10 ms intervals, but scheduling and backend calls can delay observation; callbacks produce silence after observing cancellation. Sound already queued in the audio system still plays. An operation that finishes before observing the request stays successful. A second interrupt exits at once with status 130 and may leave an incomplete file. Other commands, and reading input, end on the first interrupt as the system does.
+During export/play, the first Ctrl-C (Unix SIGINT/SIGTERM/SIGHUP; Windows Ctrl-C/Ctrl-Break) requests cancellation; the second exits immediately with 130. Export checks before writing, between blocks and before commit. Successful publication completes the operation even if cancellation races after the last check. A forced exit can leave a stage. Playback polls at 10 ms intervals, subject to scheduling/backend delay, and callbacks silence after observing the terminal outcome. Already queued sound cannot be recalled. Cancellation reports no invented partial-frame count or acoustic delivery. Input reads and other commands retain default system interruption behavior.
+
+`--version` identifies the product/version and qualification kind rather than implying that a local build is published. Standalone `--build-info` emits the narrow artifact-identity JSON protocol before input/device work; it is not a general JSON report mode. Qualified identities include the full checked source revision and target.

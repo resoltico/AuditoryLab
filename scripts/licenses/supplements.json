@@ -200,6 +200,476 @@
       "src/math/rem_pio2_large.rs": "986b5b9ad2c8fba828aee47bf198eab97fab243359ab03eb09783d98ca5847b5",
       "src/math/pow.rs": "c5566d0f48682d107e8803b0ed204ff3521503348f18a4f26cbe3f47fef15192",
       "src/math/log10.rs": "4a96dd2b6a2a505497f2bb7ea956a50491d068dab1b6055a573aec1724a52e40"
+    },
+    "additional_material": true
+  },
+  "accesskit@0.24.1": {
+    "license": "MIT OR Apache-2.0",
+    "version": "0.24.1",
+    "repository": "https://github.com/AccessKit/accesskit",
+    "vcs": "a55d3e1a18bb9ef0e4bccc9083fb13c3e0ad8969",
+    "files": [
+      {
+        "file": "accesskit-0.24.1-LICENSE-MIT",
+        "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/a55d3e1a18bb9ef0e4bccc9083fb13c3e0ad8969/LICENSE-MIT"
+      },
+      {
+        "file": "accesskit-0.24.1-LICENSE-APACHE",
+        "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/a55d3e1a18bb9ef0e4bccc9083fb13c3e0ad8969/LICENSE-APACHE"
+      }
+    ]
+  },
+  "accesskit_winit@0.33.2": {
+    "license": "Apache-2.0",
+    "version": "0.33.2",
+    "repository": "https://github.com/AccessKit/accesskit",
+    "vcs": "c88605b96d04431f9c3c792464a0f2f253480e94",
+    "files": [
+      {
+        "file": "accesskit-0.24.1-LICENSE-APACHE",
+        "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-APACHE"
+      }
+    ]
+  },
+  "accesskit_windows@0.34.0": {
+    "license": "MIT OR Apache-2.0",
+    "version": "0.34.0",
+    "repository": "https://github.com/AccessKit/accesskit",
+    "vcs": "c88605b96d04431f9c3c792464a0f2f253480e94",
+    "files": [
+      {
+        "file": "accesskit-0.24.1-LICENSE-MIT",
+        "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-MIT"
+      },
+      {
+        "file": "accesskit-0.24.1-LICENSE-APACHE",
+        "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-APACHE"
+      }
+    ]
+  },
+  "accesskit_consumer@0.38.0": {
+    "license": "MIT OR Apache-2.0",
+    "version": "0.38.0",
+    "repository": "https://github.com/AccessKit/accesskit",
+    "vcs": "c88605b96d04431f9c3c792464a0f2f253480e94",
+    "files": [
+      {
+        "file": "accesskit-0.24.1-LICENSE-MIT",
+        "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-MIT"
+      },
+      {
+        "file": "accesskit-0.24.1-LICENSE-APACHE",
+        "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-APACHE"
+      }
+    ]
+  },
+  "clipboard-win@5.4.1": {
+    "license": "BSL-1.0",
+    "version": "5.4.1",
+    "repository": "https://github.com/DoumanAsh/clipboard-win",
+    "vcs": "3b27cf2bfd1adcfa6e0264eb51c1025ddaf0f342",
+    "files": [
+      {
+        "file": "clipboard-win-5.4.1-LICENSE",
+        "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
+        "origin": "https://raw.githubusercontent.com/DoumanAsh/clipboard-win/3b27cf2bfd1adcfa6e0264eb51c1025ddaf0f342/LICENSE"
+      }
+    ]
+  },
+  "lyon_algorithms@1.0.21": {
+    "license": "MIT OR Apache-2.0",
+    "version": "1.0.21",
+    "repository": "https://github.com/nical/lyon",
+    "vcs": "994526f2766c7e9bc5bb16687232fd7e8999dbdf",
+    "files": [
+      {
+        "file": "lyon_algorithms-1.0.21-LICENSE-MIT",
+        "sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e",
+        "origin": "https://raw.githubusercontent.com/nical/lyon/994526f2766c7e9bc5bb16687232fd7e8999dbdf/LICENSE-MIT"
+      },
+      {
+        "file": "lyon_algorithms-1.0.21-LICENSE-APACHE",
+        "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06",
+        "origin": "https://raw.githubusercontent.com/nical/lyon/994526f2766c7e9bc5bb16687232fd7e8999dbdf/LICENSE-APACHE"
+      }
+    ]
+  },
+  "lyon_path@1.0.19": {
+    "license": "MIT OR Apache-2.0",
+    "version": "1.0.19",
+    "repository": "https://github.com/nical/lyon",
+    "vcs": "56219c95c658d4f39de7b190d98e57d5773ba241",
+    "files": [
+      {
+        "file": "lyon_algorithms-1.0.21-LICENSE-MIT",
+        "sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e",
+        "origin": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-MIT"
+      },
+      {
+        "file": "lyon_algorithms-1.0.21-LICENSE-APACHE",
+        "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06",
+        "origin": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-APACHE"
+      }
+    ]
+  },
+  "lyon_geom@1.0.19": {
+    "license": "MIT OR Apache-2.0",
+    "version": "1.0.19",
+    "repository": "https://github.com/nical/lyon",
+    "vcs": "56219c95c658d4f39de7b190d98e57d5773ba241",
+    "files": [
+      {
+        "file": "lyon_algorithms-1.0.21-LICENSE-MIT",
+        "sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e",
+        "origin": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-MIT"
+      },
+      {
+        "file": "lyon_algorithms-1.0.21-LICENSE-APACHE",
+        "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06",
+        "origin": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-APACHE"
+      }
+    ]
+  },
+  "lyon_extra@1.1.0": {
+    "license": "MIT OR Apache-2.0",
+    "version": "1.1.0",
+    "repository": "https://github.com/nical/lyon",
+    "vcs": "56219c95c658d4f39de7b190d98e57d5773ba241",
+    "files": [
+      {
+        "file": "lyon_algorithms-1.0.21-LICENSE-MIT",
+        "sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e",
+        "origin": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-MIT"
+      },
+      {
+        "file": "lyon_algorithms-1.0.21-LICENSE-APACHE",
+        "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06",
+        "origin": "https://raw.githubusercontent.com/nical/lyon/56219c95c658d4f39de7b190d98e57d5773ba241/LICENSE-APACHE"
+      }
+    ]
+  },
+  "rspolib@0.1.2": {
+    "license": "MIT",
+    "version": "0.1.2",
+    "repository": "https://github.com/mondeja/rspolib",
+    "vcs": "8170d99ebad29d894712ccb3dc6d0be2198d3055",
+    "files": [
+      {
+        "file": "rspolib-0.1.2-LICENSE",
+        "sha256": "4fe9b5fce8fd028261959d039d19ef66182be088ab48ffa97dbeaef7b35e39c3",
+        "origin": "https://raw.githubusercontent.com/mondeja/rspolib/8170d99ebad29d894712ccb3dc6d0be2198d3055/LICENSE"
+      }
+    ]
+  },
+  "accesskit_unix@0.22.1": {
+    "license": "MIT OR Apache-2.0",
+    "version": "0.22.1",
+    "repository": "https://github.com/AccessKit/accesskit",
+    "vcs": "c88605b96d04431f9c3c792464a0f2f253480e94",
+    "files": [
+      {
+        "file": "accesskit-0.24.1-LICENSE-MIT",
+        "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-MIT"
+      },
+      {
+        "file": "accesskit-0.24.1-LICENSE-APACHE",
+        "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-APACHE"
+      }
+    ]
+  },
+  "accesskit_atspi_common@0.19.1": {
+    "license": "MIT OR Apache-2.0",
+    "version": "0.19.1",
+    "repository": "https://github.com/AccessKit/accesskit",
+    "vcs": "c88605b96d04431f9c3c792464a0f2f253480e94",
+    "files": [
+      {
+        "file": "accesskit-0.24.1-LICENSE-MIT",
+        "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-MIT"
+      },
+      {
+        "file": "accesskit-0.24.1-LICENSE-APACHE",
+        "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-APACHE"
+      }
+    ]
+  },
+  "objc2-app-kit@0.3.2": {
+    "license": "Zlib OR Apache-2.0 OR MIT",
+    "version": "0.3.2",
+    "repository": "https://github.com/madsmtm/objc2",
+    "vcs": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+    "files": [
+      {
+        "file": "objc2-LICENSE.md",
+        "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+        "origin": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      },
+      {
+        "file": "MIT.txt",
+        "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5",
+        "origin": "https://spdx.org/licenses/MIT.html"
+      }
+    ]
+  },
+  "objc2-core-graphics@0.3.2": {
+    "license": "Zlib OR Apache-2.0 OR MIT",
+    "version": "0.3.2",
+    "repository": "https://github.com/madsmtm/objc2",
+    "vcs": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+    "files": [
+      {
+        "file": "objc2-LICENSE.md",
+        "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+        "origin": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      },
+      {
+        "file": "MIT.txt",
+        "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5",
+        "origin": "https://spdx.org/licenses/MIT.html"
+      }
+    ]
+  },
+  "objc2-quartz-core@0.3.2": {
+    "license": "Zlib OR Apache-2.0 OR MIT",
+    "version": "0.3.2",
+    "repository": "https://github.com/madsmtm/objc2",
+    "vcs": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+    "files": [
+      {
+        "file": "objc2-LICENSE.md",
+        "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+        "origin": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      },
+      {
+        "file": "MIT.txt",
+        "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5",
+        "origin": "https://spdx.org/licenses/MIT.html"
+      }
+    ]
+  },
+  "accesskit_macos@0.26.3": {
+    "license": "MIT OR Apache-2.0",
+    "version": "0.26.3",
+    "repository": "https://github.com/AccessKit/accesskit",
+    "vcs": "c88605b96d04431f9c3c792464a0f2f253480e94",
+    "files": [
+      {
+        "file": "accesskit-0.24.1-LICENSE-MIT",
+        "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-MIT"
+      },
+      {
+        "file": "accesskit-0.24.1-LICENSE-APACHE",
+        "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+        "origin": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-APACHE"
+      }
+    ]
+  },
+  "objc2-core-text@0.3.2": {
+    "license": "Zlib OR Apache-2.0 OR MIT",
+    "version": "0.3.2",
+    "repository": "https://github.com/madsmtm/objc2",
+    "vcs": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+    "files": [
+      {
+        "file": "objc2-LICENSE.md",
+        "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+        "origin": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      },
+      {
+        "file": "MIT.txt",
+        "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5",
+        "origin": "https://spdx.org/licenses/MIT.html"
+      }
+    ]
+  },
+  "taffy@0.10.1": {
+    "license": "MIT",
+    "version": "0.10.1",
+    "repository": "https://github.com/DioxusLabs/taffy",
+    "vcs": "639f0acdd20f914f847abffbeaa903d66cae4882",
+    "files": [
+      {
+        "file": "taffy-0.10.1-LICENSE.md",
+        "sha256": "a7083ef3dd41a65eeb2162c2c091b0082e2724fb4c6ed029b363c7840d244ecd",
+        "origin": "https://raw.githubusercontent.com/DioxusLabs/taffy/639f0acdd20f914f847abffbeaa903d66cae4882/LICENSE.md"
+      }
+    ]
+  },
+  "objc2@0.5.3": {
+    "license": "MIT",
+    "version": "0.5.3",
+    "repository": "https://github.com/madsmtm/objc2",
+    "vcs": "5237cbf081d04ef75a1f6a207b4018e7c1ae7438",
+    "files": [
+      {
+        "file": "objc2-0.5.3-LICENSE.txt",
+        "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+        "origin": "https://raw.githubusercontent.com/madsmtm/objc2/5237cbf081d04ef75a1f6a207b4018e7c1ae7438/LICENSE.txt"
+      }
+    ]
+  },
+  "objc-sys@0.3.5": {
+    "license": "MIT",
+    "version": "0.3.5",
+    "repository": "https://github.com/madsmtm/objc2",
+    "vcs": "4fc083f1c6d6784577e38b0ee8dbd344481e2fd2",
+    "files": [
+      {
+        "file": "objc2-0.5.3-LICENSE.txt",
+        "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+        "origin": "https://raw.githubusercontent.com/madsmtm/objc2/4fc083f1c6d6784577e38b0ee8dbd344481e2fd2/LICENSE.txt"
+      }
+    ]
+  },
+  "objc2-app-kit@0.2.2": {
+    "license": "MIT",
+    "version": "0.2.2",
+    "repository": "https://github.com/madsmtm/objc2",
+    "vcs": "e282618be4c3a3b9542957e0c8540e9588472ce8",
+    "files": [
+      {
+        "file": "objc2-0.5.3-LICENSE.txt",
+        "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+        "origin": "https://raw.githubusercontent.com/madsmtm/objc2/e282618be4c3a3b9542957e0c8540e9588472ce8/LICENSE.txt"
+      }
+    ]
+  },
+  "objc2-foundation@0.2.2": {
+    "license": "MIT",
+    "version": "0.2.2",
+    "repository": "https://github.com/madsmtm/objc2",
+    "vcs": "e282618be4c3a3b9542957e0c8540e9588472ce8",
+    "files": [
+      {
+        "file": "objc2-0.5.3-LICENSE.txt",
+        "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+        "origin": "https://raw.githubusercontent.com/madsmtm/objc2/e282618be4c3a3b9542957e0c8540e9588472ce8/LICENSE.txt"
+      }
+    ]
+  },
+  "block2@0.5.1": {
+    "license": "MIT",
+    "version": "0.5.1",
+    "repository": "https://github.com/madsmtm/objc2",
+    "vcs": "4fc083f1c6d6784577e38b0ee8dbd344481e2fd2",
+    "files": [
+      {
+        "file": "objc2-0.5.3-LICENSE.txt",
+        "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+        "origin": "https://raw.githubusercontent.com/madsmtm/objc2/4fc083f1c6d6784577e38b0ee8dbd344481e2fd2/LICENSE.txt"
+      }
+    ]
+  },
+  "dispatch@0.2.0": {
+    "license": "MIT",
+    "version": "0.2.0",
+    "repository": "http://github.com/SSheldon/rust-dispatch",
+    "vcs": "82d6c7a5b75dc0c71c3f46f87bb6c16a476f7748",
+    "sources": {
+      "Cargo.toml.orig": "05c60b829931ef7f1f130735843c11f5cf9cc69546eca5fc941d014781c68e31"
+    },
+    "files": [
+      {
+        "file": "dispatch-source-notices.txt",
+        "sha256": "77627aa09de5435bcc48145383d1a8e7122a4a64d278c3d1ba4c098430c99af4",
+        "origin": "https://raw.githubusercontent.com/SSheldon/rust-dispatch/82d6c7a5b75dc0c71c3f46f87bb6c16a476f7748/Cargo.toml"
+      },
+      {
+        "file": "MIT.txt",
+        "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5",
+        "origin": "https://spdx.org/licenses/MIT.html"
+      }
+    ]
+  },
+  "profiling@1.0.18": {
+    "license": "MIT OR Apache-2.0",
+    "version": "1.0.18",
+    "repository": "https://github.com/aclysma/profiling",
+    "vcs": "8271551172eb6fa4cba47369aedd93790c623df9",
+    "files": [
+      {
+        "file": "profiling-1.0.18-LICENSE-MIT",
+        "sha256": "c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333",
+        "origin": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-MIT"
+      },
+      {
+        "file": "profiling-1.0.18-LICENSE-APACHE",
+        "sha256": "10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551",
+        "origin": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-APACHE"
+      }
+    ]
+  },
+  "spirv@0.4.0+sdk-1.4.341.0": {
+    "license": "Apache-2.0",
+    "version": "0.4.0+sdk-1.4.341.0",
+    "repository": "https://github.com/gfx-rs/rspirv",
+    "vcs": "8afc3d0ac8e158128cd1410bb2e4b4c26ab11bb4",
+    "files": [
+      {
+        "file": "spirv-0.4.0+sdk-1.4.341.0-LICENSE",
+        "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "origin": "https://raw.githubusercontent.com/gfx-rs/rspirv/8afc3d0ac8e158128cd1410bb2e4b4c26ab11bb4/LICENSE"
+      },
+      {
+        "file": "spirv-headers-LICENSE",
+        "sha256": "ea43b1de38a6f90c488800d66dec1ed671e68cda530266bc96951fb5b6307613",
+        "origin": "https://raw.githubusercontent.com/KhronosGroup/SPIRV-Headers/04f10f650d514df88b76d25e83db360142c7b174/LICENSE"
+      },
+      {
+        "file": "spirv-grammar-notices.txt",
+        "sha256": "cb4b3a63e807dc41a997341b3b340dc94a712e391fcf8aac3560b054147f2df3",
+        "origin": "https://raw.githubusercontent.com/KhronosGroup/SPIRV-Headers/04f10f650d514df88b76d25e83db360142c7b174/include/spirv/unified1/spirv.core.grammar.json"
+      }
+    ],
+    "sources": {
+      "autogen_spirv.rs": "2260b34bd7b8a757be33f835ecc7431f7b791c39e9fa30a0acf47c03ae60b436"
     }
+  },
+  "objc2-metal@0.3.2": {
+    "license": "Zlib OR Apache-2.0 OR MIT",
+    "version": "0.3.2",
+    "repository": "https://github.com/madsmtm/objc2",
+    "vcs": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+    "files": [
+      {
+        "file": "objc2-LICENSE.md",
+        "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+        "origin": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      },
+      {
+        "file": "MIT.txt",
+        "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5",
+        "origin": "https://spdx.org/licenses/MIT.html"
+      }
+    ]
+  },
+  "sctk-adwaita@0.10.1": {
+    "license": "MIT",
+    "version": "0.10.1",
+    "repository": "https://github.com/PolyMeilex/sctk-adwaita",
+    "vcs": "d5f343c45c04d4a026db57f76760819b7325db00",
+    "additional_material": true,
+    "sources": {
+      "src/title/Cantarell-Regular.ttf": "d15f25bcdaba2e25f54c32d4e29e68fedeb1b7a1d8fbc83f7c4475916e93b55f"
+    },
+    "files": [
+      {
+        "file": "sctk-adwaita-font-notices.txt",
+        "sha256": "87a8954c7571397f0fe4d8d1550e55923864e2be50c86296f92bbc8753debea4",
+        "origin": "https://raw.githubusercontent.com/spdx/license-list-data/d46e94e2c78ceede1cfc63cfa0396472d2798d4c/text/OFL-1.1.txt"
+      }
+    ]
   }
 }

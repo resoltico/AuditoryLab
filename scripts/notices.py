@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """Generate THIRD-PARTY-NOTICES.txt from the locked dependency graph.
 
-The file includes the CLI normal-dependency closure across release targets,
+The file includes both products' normal-dependency closures across release targets,
 including proc-macro crates and excluding build/dev-only crates. Complete
 upstream Rust standard-library and Windows native-runtime bundles can cover
 additional material not linked into a particular executable. Ordinary crate
@@ -18,12 +18,15 @@ import hashlib
 from html import unescape
 from html.parser import HTMLParser
 import json
+import os
+import shutil
+import tempfile
 from pathlib import Path
 import re
 import subprocess
 import sys
 
-from release import ROOT, TARGETS
+from release import ROOT, TARGETS, cargo_identities
 
 OUTPUT = ROOT / "THIRD-PARTY-NOTICES.txt"
 LICENSES = ROOT / "scripts" / "licenses"
@@ -220,25 +223,121 @@ def metadata(target):
         cwd=ROOT, text=True, encoding="utf-8"))
 
 
-def linked_packages(meta):
-    """The registry packages in the CLI's normal-dependency closure."""
-    nodes = {node["id"]: node for node in meta["resolve"]["nodes"]}
-    packages = {package["id"]: package for package in meta["packages"]}
-    pending = [p["id"] for p in meta["packages"] if p["name"] == "auditory-lab" and p["source"] is None]
-    seen = set()
-    while pending:
-        current = pending.pop()
-        if current not in seen:
-            seen.add(current)
-            pending.extend(dep["pkg"] for dep in nodes[current]["deps"]
-                           if any(kind["kind"] is None for kind in dep["dep_kinds"]))
-    return [packages[i] for i in seen if packages[i]["source"] is not None]
+def notice_packages(meta, target):
+    """Retain normal material and distinguish Cargo's actual runtime closure.
+
+    Metadata includes inactive optional edges. Cargo tree owns feature/target
+    selection; no-proc-macro removes producer subtrees from the runtime query.
+    Both queries select the same exact checked product IDs independently, and
+    every returned package must map uniquely back to this metadata graph.
+    """
+    identities = cargo_identities(meta)
+    packages = {}
+    for package in meta["packages"]:
+        packages.setdefault((package["name"], package["version"]), []).append(package)
+    sets = {}
+    for scope, edges in (("normal", "normal"), ("runtime", "normal,no-proc-macro")):
+        selected = {}
+        for identity in identities.values():
+            command = ["cargo", "tree", "--locked", "--target", target, "--edges", edges,
+                       "--prefix", "none", "--format", "{p}", "-p", identity["id"]]
+            output = subprocess.check_output(command, cwd=ROOT, text=True, encoding="utf-8")
+            for line in output.splitlines():
+                if not line:
+                    continue
+                match = re.match(r"^(\S+) v(\S+)(?: |$)", line)
+                if match is None or len(packages.get((match[1], match[2]), [])) != 1:
+                    raise ValueError(f"Cargo {scope} dependency identity is absent or ambiguous: {line!r}")
+                package = packages[(match[1], match[2])][0]
+                selected[package["id"]] = package
+        if not {identity["id"] for identity in identities.values()} <= selected.keys():
+            raise ValueError(f"Cargo {scope} dependency output omits a checked product root")
+        sets[scope] = selected
+    if not sets["runtime"].keys() <= sets["normal"].keys():
+        raise ValueError("Cargo runtime dependency output is not a subset of normal material")
+    workspace = set(meta["workspace_members"])
+    result = []
+    for package in sets["normal"].values():
+        if package["source"] is None and (package["id"] not in workspace or package["name"] in {"i-slint-backend-winit", "sctk-adwaita"}):
+            if package["id"] in workspace:
+                raise ValueError("vendored third-party producers must be excluded from workspace ownership, not omitted from notices")
+            validate_patched_dependency(package)
+        if package["id"] not in workspace:
+            result.append(dict(package, notice_role=("runtime dependency" if package["id"] in sets["runtime"]
+                                                    else "host code-generation material")))
+    return result
+
+
+def validate_patched_dependency(package):
+    """Retain patched third-party roots and prove their exact reviewed diff/base."""
+    records = json.loads((LICENSES / "patched-dependencies.json").read_text(encoding="utf-8"))
+    key = package["name"] + "@" + package["version"]
+    record = records.get(key)
+    directory = Path(package["manifest_path"]).parent.resolve()
+    if record is None or not directory.is_relative_to(ROOT.resolve()) or directory != (ROOT / record["path"]).resolve():
+        raise ValueError(f"third-party path dependency {key} needs reviewed patch provenance")
+    provenance_path = directory / "auditorylab-provenance.json"
+    patch_path = directory / "auditorylab.patch"
+    if (hashlib.sha256(provenance_path.read_bytes()).hexdigest() != record["provenance_sha256"]
+            or hashlib.sha256(patch_path.read_bytes()).hexdigest() != record["patch_sha256"]):
+        raise ValueError("patched third-party diff/provenance changed; independent review is required")
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    if (provenance["package"], provenance["version"], provenance["crate_checksum_sha256"], provenance["upstream_git_commit"]) != (
+            package["name"], package["version"], record["upstream_crate_sha256"], record["upstream_git_commit"]):
+        raise ValueError("patched dependency upstream identity differs from reviewed producer")
+    original = provenance["upstream_files_sha256"]
+    modified = set(record["modified_files"])
+    if modified != set(provenance["modified_upstream_files"]) or modified != {"i-slint-backend-winit": {"Cargo.toml", "lib.rs"}, "sctk-adwaita": {"Cargo.toml"}}.get(package["name"]):
+        raise ValueError("unsupported patched source scope")
+    extras = {"AUDITORYLAB.md", "auditorylab.patch", "auditorylab-provenance.json"}
+    if any(path.is_symlink() for path in directory.rglob("*")):
+        raise ValueError("patched dependency source must not escape through symlinks")
+    actual = {path.relative_to(directory).as_posix() for path in directory.rglob("*") if path.is_file()}
+    expected = set(original) | extras
+    if actual != expected:
+        raise ValueError("patched dependency has missing or unreviewed added files: "
+                         + "missing=" + repr(sorted(expected - actual)) + "; added=" + repr(sorted(actual - expected)))
+    for name, digest in original.items():
+        path = directory / name
+        if path.is_symlink() or (name not in modified and hashlib.sha256(path.read_bytes()).hexdigest() != digest):
+            raise ValueError("unreviewed patched dependency source/license change: " + name)
+    normalized = []
+    for line in patch_path.read_text(encoding="utf-8").splitlines(keepends=True):
+        if line.startswith(("--- ", "+++ ")):
+            prefix = "upstream/" if line.startswith("--- ") else record["path"] + "/"
+            name = line[4:].rstrip("\n").removeprefix(prefix)
+            if not line[4:].startswith(prefix) or name not in modified:
+                raise ValueError("patch header escapes the reviewed source files")
+            line = line[:4] + ("a/" if line.startswith("--- ") else "b/") + name + "\n"
+        normalized.append(line)
+    temporary = ROOT / "target/notices-temp"
+    temporary.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=temporary) as scratch:
+        scratch = Path(scratch)
+        for name in modified:
+            shutil.copyfile(directory / name, scratch / name)
+        environment = os.environ.copy()
+        for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+            environment.pop(name, None)
+        environment["GIT_CEILING_DIRECTORIES"] = str(scratch)
+        result = subprocess.run(["git", "apply", "--reverse", "--whitespace=nowarn", "-"], cwd=scratch,
+                                input="".join(normalized), capture_output=True, text=True, encoding="utf-8", env=environment)
+        if result.returncode:
+            raise ValueError("reviewed patch cannot reconstruct upstream source: " + result.stderr)
+        if any(hashlib.sha256((scratch / name).read_bytes()).hexdigest() != original[name] for name in modified):
+            raise ValueError("reversed patch does not match the reviewed original source")
+    return record
 
 
 def published_files(package):
     directory = Path(package["manifest_path"]).parent
-    files = {path for path in directory.iterdir()
-             if path.is_file() and path.name.upper().startswith(NOTICE_PREFIXES)}
+    files = set()
+    for path in directory.iterdir():
+        if path.name.upper().startswith(NOTICE_PREFIXES):
+            if path.is_file():
+                files.add(path)
+            elif path.is_dir():
+                files.update(child for child in path.rglob("*") if child.is_file())
     if package.get("license_file"):
         files.add(directory / package["license_file"])
     return sorted(files)
@@ -246,7 +345,7 @@ def published_files(package):
 
 def supplement(package, reviewed):
     """Reviewed license or additional source notices for a published package."""
-    entry = reviewed.get(package["name"])
+    entry = reviewed.get(package["name"] + "@" + package["version"], reviewed.get(package["name"]))
     if entry is None:
         raise ValueError(f"{package['name']} {package['version']} lacks required reviewed notices; "
                          "review its upstream license and add it to scripts/licenses/supplements.json")
@@ -275,6 +374,55 @@ def supplement(package, reviewed):
     return files
 
 
+def framework_materials(meta):
+    """Bind generated Slint widgets/assets separately from normal dependencies."""
+    reviewed = json.loads((LICENSES / "slint-framework.json").read_text(encoding="utf-8"))
+    packages = [package for package in meta["packages"] if package["name"] == reviewed["name"]]
+    if len(packages) != 1 or packages[0]["version"] != reviewed["version"]:
+        raise ValueError("Slint compiler asset producer needs a new source/license review")
+    directory = Path(packages[0]["manifest_path"]).parent
+    vcs = json.loads((directory / ".cargo_vcs_info.json").read_text(encoding="utf-8"))["git"]["sha1"]
+    actual = {path.relative_to(directory).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+              for folder in ("widgets", "LICENSES") for path in (directory / folder).rglob("*") if path.is_file()}
+    if vcs != reviewed["vcs"] or actual != reviewed["files"]:
+        raise ValueError("Slint standard widgets/assets differ from reviewed source; review additions and notices")
+    selected = directory / "LICENSES/LicenseRef-Slint-Royalty-free-2.0.md"
+    if selected.read_bytes() != (LICENSES / "slint-royalty-free-2.0.md").read_bytes():
+        raise ValueError("selected Slint royalty-free terms differ from reviewed material")
+    for name, digest in reviewed["upstream_review"].items():
+        path = LICENSES / ("slint-" + name)
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise ValueError("Slint upstream asset-license review materials differ")
+    return directory, reviewed
+
+
+def system_library_notices():
+    """Retain external engine obligations separately from MIT binding crates."""
+    reviewed = json.loads((LICENSES / "system-library-notices.json").read_text(encoding="utf-8"))
+    if ({item["package"] for item in reviewed["materials"]} != {"libfreetype6", "libfontconfig1"}
+            or len(reviewed["materials"]) != 2
+            or reviewed["acknowledgment"] != "This software is based in part on the work of the FreeType Team."):
+        raise ValueError("system font integration needs its reviewed engine acknowledgment and terms")
+    output = [reviewed["acknowledgment"],
+              "The Linux GUI links external system FreeType and Fontconfig. The FreeType\n"
+              "engine integration selects the FreeType License (FTL). These are not the\n"
+              "MIT Rust binding crates or bundled native implementations. Reference\n"
+              "copyright/grant bundles below come from reviewed Ubuntu 22.04 producers.\n"
+              "They also cover source/build/package material, not all linked into the\n"
+              "application. Actual installed package versions are recorded separately\n"
+              "during native qualification; keep system security updates installed."]
+    for item in reviewed["materials"]:
+        path = LICENSES / item["file"]
+        content = path.read_bytes()
+        if hashlib.sha256(content).hexdigest() != item["sha256"]:
+            raise ValueError("reviewed system library copyright/grant material differs: " + path.name)
+        output.append(f"Reference producer: {item['package']} {item['version']} ({item['architecture']})\n"
+                      f"Distribution: {reviewed['distribution']}\n"
+                      f"Source: {item['source']}\nOriginal location: {item['origin']}\n\n"
+                      + content.decode("utf-8"))
+    return "\n\n".join(output)
+
+
 def generate():
     channel = re.search(r'^channel = "([^"]+)"', (ROOT / "rust-toolchain.toml").read_text(encoding="utf-8"), re.M)[1]
     version = subprocess.check_output(["rustc", "--version"], cwd=ROOT, text=True, encoding="utf-8").split()[1]
@@ -282,10 +430,17 @@ def generate():
         raise ValueError(f"Rust {version} does not match the pinned toolchain {channel}")
     reviewed = json.loads((LICENSES / "supplements.json").read_text(encoding="utf-8"))
     crates = {}
+    framework = None
     for target in TARGETS:
-        for package in linked_packages(metadata(target["target"])):
+        graph = metadata(target["target"])
+        if framework is None:
+            framework = framework_materials(graph)
+        for package in notice_packages(graph, target["target"]):
             key = (package["name"], package["version"])
-            crates.setdefault(key, (package, set()))[1].add(target["platform"].split("-")[0])
+            stored, systems = crates.setdefault(key, (package, set()))
+            systems.add(target["platform"].split("-")[0])
+            if package["notice_role"] == "runtime dependency":
+                stored["notice_role"] = "runtime dependency"
     texts = {}
     sysroot = Path(subprocess.check_output(["rustc", "--print", "sysroot"], cwd=ROOT, text=True, encoding="utf-8").strip())
     components = rust_component_notices(
@@ -298,7 +453,8 @@ def generate():
     entries = []
     for (name, version), (package, systems) in sorted(crates.items()):
         files = published_files(package)
-        if not files or name == "libm":
+        entry = reviewed.get(name + "@" + version, reviewed.get(name, {}))
+        if not files or entry.get("additional_material", False):
             files += supplement(package, reviewed)
         numbers = []
         for path in files:
@@ -306,17 +462,61 @@ def generate():
             number = texts.setdefault(text, len(texts) + 1)
             numbers.append(f"[{number}] {path.name}")
         where = "all platforms" if len(systems) == 3 else ", ".join(sorted(systems))
+        provenance = ""
+        if package.get("source") is None:
+            patch = validate_patched_dependency(package)
+            provenance = (f"  Modified source: {patch['path']}; upstream crate SHA-256 "
+                          f"{patch['upstream_crate_sha256']}\n"
+                          f"  Upstream commit: {patch['upstream_git_commit']}\n"
+                          f"  Reviewed patch SHA-256: {patch['patch_sha256']}\n")
         entries.append(f"{name} {version}\n  License: {package.get('license') or 'see files'}\n"
                        f"  Source: {package.get('repository') or 'https://crates.io/crates/' + name}\n"
-                       f"  Used on: {where}\n  Texts: {'; '.join(numbers)}")
+                       f"  Scope: {package['notice_role']}\n"
+                       f"  Selected for: {where}\n{provenance}  Texts: {'; '.join(numbers)}")
+    compiler, framework_review = framework
+    asset_texts = []
+    for path in sorted((compiler / "LICENSES").iterdir()) + [LICENSES / "slint-CC-BY-SA-4.0.txt"]:
+        text = path.read_text(encoding="utf-8").replace("\r\n", "\n").strip("\n")
+        number = texts.setdefault(text, len(texts) + 1)
+        asset_texts.append(f"[{number}] {path.name}")
     body = ["Third-party notices for Auditory Lab",
-            "This file combines the CLI dependency union across release targets with\n"
+            "This file combines both products’ normal-dependency union across release targets with\n"
             "complete upstream Rust standard-library and Windows native-runtime notice\n"
             "bundles. Those bundles can cover additional build/platform material not\n"
             "linked into a particular executable. Ordinary crate license/notice texts\n"
             "are numbered and printed once; complete upstream bundles are not filtered.",
             "== Rust standard library ==\n" + RUST.format(version=channel, texts="; ".join(rust), components=components),
             "== Windows native startup and runtime support ==\n" + windows_runtime_notices(channel),
+            "== Slint desktop integration and generated assets ==\n"
+            "The desktop product selects the Royalty-free Desktop, Mobile, and Web\n"
+            "Applications License 2.0 for Slint; Auditory Lab source remains MPL-2.0.\n"
+            "Attribution is the standard AboutSlint widget in Help -> About. This is\n"
+            "a desktop integration, not standalone Slint, embedded use or an exposed\n"
+            "Slint API. The retained upstream terms govern this dependency.\n"
+            "Cargo's runtime normal closure excludes proc-macro producer subtrees. The\n"
+            "crate list separately retains host code-generation material and its grants;\n"
+            "that role does not deny obligations for emitted code/resources. Explicit\n"
+            "build/dev-only edges are excluded. Runtime scope means selected by at least\n"
+            "one product/target; platform lists describe retained normal material.\n"
+            "Generated widgets/icons/logo come from\n"
+            f"i-slint-compiler {framework_review['version']} ({framework_review['vcs']}).\n"
+            "All compiler widget/resource and license inputs are identity-checked;\n"
+            "Material Icons (Apache-2.0), Copyright © Microsoft Corporation Fluent icons\n"
+            "(MIT), Cosmic Icons by System76 (CC-BY-SA-4.0), and Copyright © SixtyFPS\n"
+            "GmbH <info@slint.dev> logo (CC-BY-ND-4.0) grants\n"
+            "are retained with the upstream compiler license set. The logo is unmodified;\n"
+            "their license set is retained as: " + "; ".join(asset_texts) + ".\n"
+            "System fonts are resolved at runtime; no project font/image is bundled.\n"
+            "Source: https://github.com/slint-ui/slint/tree/v1.18.1/internal/compiler/widgets",
+            "== Linux system font integration ==\n"
+            "The GUI selects system FreeType and Fontconfig through the supported root\n"
+            "Cargo links overrides. freetype-sys build.rs is skipped, so its bundled\n"
+            "FreeType native implementation is not compiled or shipped. The MIT crate\n"
+            "entry covers its Rust bindings, not the uncompiled native C corpus.\n"
+            "Use security-updated distribution libraries. SCTK source retains an inactive\n"
+            "Cantarell font with its original copyright and full SIL OFL terms below;\n"
+            "the selected crossfont title renderer uses system fonts.\n",
+            "== External Linux system font libraries ==\n" + system_library_notices(),
             "== Crates ==\n" + "\n\n".join(entries),
             "== License and notice texts =="]
     for text, number in texts.items():

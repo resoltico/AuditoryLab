@@ -11,15 +11,20 @@ Before you listen
   hearing. Use headphones for binaural beats: each ear must hear its own tone.
 
 Start here, in a terminal opened in this folder
-  macOS or Linux:  ./auditory-lab list
-  Windows:         .\auditory-lab.exe list
+  macOS or Linux:  ./auditorylab list
+  Windows:         .\auditorylab.exe list
 
-  list                          every built-in sound
-  about NAME                    what it is and what its study found
-  play NAME                     play it; Ctrl-C stops
-  export NAME --output a.wav    save it as a WAV file instead
-  show NAME --output mine.toml  save an editable copy of its recipe
-  --help                        every command and option
+  list                            built-in sounds and durations
+  describe PRESET_ID              sound and research context
+  recipe PRESET_ID --output a.toml save an editable built-in recipe
+  inspect --file a.toml           validate an edited recipe at 48,000 Hz
+  play PRESET_ID                  play it; Ctrl-C stops
+  export PRESET_ID --output a.wav save it as a new WAV file
+  --help                          every command and option
+
+Input is a built-in ID, --file PATH, or --stdin; filenames never select input
+implicitly. recipe accepts built-in IDs only. Output files must be new;
+existing files are never replaced. To play an edited recipe, use --file a.toml.
 
 Check the download
   Compare the archive's SHA-256 digest with its line in SHA256SUMS from the
@@ -29,12 +34,13 @@ Check the download
     Windows:  certutil -hashfile FILE SHA256
 
 macOS
-  Built for macOS {macos_aarch64} or later on Apple silicon and {macos_x86_64} or later on Intel;
-  release testing runs on macOS 15. The program is signed ad hoc, not by an
+  Built for macOS {macos_minimum} or later on Apple silicon and Intel;
+  native CI is configured for macos-15 and macos-15-intel runners. Declaring
+  the deployment minimum alone does not establish execution on that OS.
+  The program is signed ad hoc, not by an
   Apple developer identity. If macOS blocks it after you verified the
   download, use the app-specific Open Anyway option if offered in System
-  Settings > Privacy & Security, or System Preferences > Security & Privacy
-  > General.
+  Settings > Privacy & Security.
 
 Linux
   Needs the ALSA sound library (libasound.so.2) and a glibc at least as new as
@@ -50,7 +56,6 @@ Windows
   comes from Windows. No separate runtime needs installing. Windows may warn
   about an unrecognized publisher.
 
-Documentation: https://github.com/{repository}/tree/v{version}#readme
-Auditory Lab is licensed under the Mozilla Public License 2.0 (LICENSE);
-its source code is at the link above. Third-party software notices are in
-THIRD-PARTY-NOTICES.txt.
+{source_reference}
+Auditory Lab source is licensed under the Mozilla Public License 2.0 (LICENSE).
+Third-party software notices are in THIRD-PARTY-NOTICES.txt.

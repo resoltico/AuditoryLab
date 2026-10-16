@@ -3,9 +3,9 @@
 
 use crate::{Container, ExportError, header};
 use auditory_core::{Renderer, SampleRate, Session};
-use std::fs::{self, File};
-use std::io::{self, Write};
-use std::path::Path;
+
+use std::io::Write;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Samples rendered and written at a time.
@@ -22,73 +22,40 @@ pub struct Exported {
     pub container: Container,
 }
 
-/// Write a session to a new 32-bit float WAV file.
-///
-/// The destination is created only if nothing has its name, so no existing
-/// file or symbolic link is replaced. The complete header is written first,
-/// then the samples as they are rendered, and the file is synced before
-/// success is reported. Setting `cancel` stops the export before its next
-/// block. An export that fails or is cancelled removes its file; until then,
-/// and if the process is killed, the destination holds an incomplete file.
-///
-/// Callers must leave the destination entry and its parent directory unchanged
-/// until export ends. Cleanup addresses that pathname; failed removal or forced
-/// termination can leave incomplete output.
+/// Encode a validated session into a caller-owned writer. No destination I/O occurs.
+/// Cancellation is checked before writing and between rendered blocks.
 ///
 /// ```no_run
-/// fn write(session: auditory_core::Session, path: &std::path::Path, cancel: &std::sync::atomic::AtomicBool) {
-///     let _ = auditory_wav::export(session, path, cancel);
+/// fn encode(session: auditory_core::Session) -> Result<(), auditory_wav::ExportError> {
+///     let mut bytes = Vec::new();
+///     let cancel = std::sync::atomic::AtomicBool::new(false);
+///     auditory_wav::encode(session, &mut bytes, &cancel)?;
+///     Ok(())
 /// }
 /// ```
-/// ```compile_fail,E0308
-/// fn write(renderer: auditory_core::Renderer, path: &std::path::Path, cancel: &std::sync::atomic::AtomicBool) {
-///     let _ = auditory_wav::export(renderer, path, cancel);
+/// ```compile_fail
+/// fn encode(renderer: auditory_core::Renderer) {
+///     let _ = auditory_wav::encode(renderer, &mut Vec::new(), &std::sync::atomic::AtomicBool::new(false));
 /// }
 /// ```
 ///
 /// # Errors
-/// Returns an error for an existing or uncreatable destination, cancellation,
-/// or a failed write or sync.
-pub fn export(
+/// Returns cancellation or the writer's original I/O error.
+pub fn encode(
     session: Session,
-    destination: &Path,
+    output: &mut impl Write,
     cancel: &AtomicBool,
 ) -> Result<Exported, ExportError> {
     let frames = session.frames();
     let sample_rate = session.sample_rate();
     let layout = header::layout(sample_rate, frames);
     stop_if_cancelled(cancel)?;
-    let mut file = File::create_new(destination).map_err(|error| {
-        if error.kind() == io::ErrorKind::AlreadyExists {
-            ExportError::DestinationExists
-        } else {
-            ExportError::Io(error)
-        }
-    })?;
-    let written = write(&mut file, &layout.header, session.into_renderer(), cancel)
-        .and_then(|()| file.sync_all().map_err(ExportError::Io));
-    // Windows cannot remove a file that is still open.
-    drop(file);
-    match written {
-        Ok(()) => Ok(Exported {
-            frames,
-            sample_rate,
-            container: layout.container,
-        }),
-        Err(failure) => Err(discard(destination, failure)),
-    }
-}
-
-/// Remove the incomplete file of a failed export.
-fn discard(destination: &Path, failure: ExportError) -> ExportError {
-    match fs::remove_file(destination) {
-        Ok(()) => failure,
-        Err(removal) if removal.kind() == io::ErrorKind::NotFound => failure,
-        Err(removal) => ExportError::IncompleteFileLeft {
-            failure: Box::new(failure),
-            removal,
-        },
-    }
+    write(output, &layout.header, session.into_renderer(), cancel)?;
+    Ok(Exported {
+        frames,
+        sample_rate,
+        container: layout.container,
+    })
 }
 
 fn stop_if_cancelled(cancel: &AtomicBool) -> Result<(), ExportError> {
@@ -110,7 +77,7 @@ fn write(
     let mut bytes = Vec::with_capacity(samples.len() * 8);
     while !renderer.is_complete() {
         stop_if_cancelled(cancel)?;
-        let rendered = renderer.render(&mut samples);
+        let rendered = renderer.render(&mut samples).frames();
         bytes.clear();
         for sample in samples[..rendered].iter().flatten() {
             bytes.extend_from_slice(&nearest_f32(*sample).to_le_bytes());
@@ -133,6 +100,7 @@ const fn nearest_f32(sample: f64) -> f32 {
 mod tests {
     use super::*;
     use auditory_core::{Component, Ears, Stimulus};
+    use std::io;
 
     fn session(frames: u64) -> Session {
         Stimulus {
@@ -215,83 +183,153 @@ mod tests {
         }
     }
 
-    /// Requests cancellation after the first payload write.
-    struct Cancelling<'flag> {
-        file: File,
-        cancel: &'flag AtomicBool,
-        calls: usize,
-    }
-    impl Write for Cancelling<'_> {
-        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-            self.file.write_all(bytes)?;
-            self.calls += 1;
-            if self.calls == 2 {
-                self.cancel.store(true, Ordering::Relaxed);
-            }
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            self.file.flush()
-        }
+    #[test]
+    fn cancellation_before_encoding_writes_nothing() {
+        let mut bytes = Vec::new();
+        assert!(matches!(
+            encode(session(5), &mut bytes, &AtomicBool::new(true)),
+            Err(ExportError::Cancelled)
+        ));
+        assert!(bytes.is_empty());
     }
     #[test]
-    fn cancellation_during_a_payload_stops_before_next_block_or_final_success_and_cleans_up() {
-        for frames in [10, 5_000] {
-            let directory = tempfile::tempdir().unwrap();
-            let path = directory.path().join("cancelled.wav");
+    fn cancellation_in_payload_stops_before_another_block_or_final_success() {
+        struct Cancelling<'a> {
+            bytes: Vec<u8>,
+            cancel: &'a AtomicBool,
+            calls: usize,
+        }
+        impl Write for Cancelling<'_> {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                self.bytes.extend_from_slice(bytes);
+                self.calls += 1;
+                if self.calls == 2 {
+                    self.cancel.store(true, Ordering::Relaxed);
+                }
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        for frames in [10, 5000] {
             let cancel = AtomicBool::new(false);
-            let layout = header::layout(session(frames).sample_rate(), frames);
             let mut writer = Cancelling {
-                file: File::create_new(&path).unwrap(),
+                bytes: vec![],
                 cancel: &cancel,
                 calls: 0,
             };
-            let result = write(
-                &mut writer,
-                &layout.header,
-                session(frames).into_renderer(),
-                &cancel,
-            );
-            assert!(matches!(result, Err(ExportError::Cancelled)));
-            assert_eq!(writer.calls, 2);
-            let expected = 58 + frames.min(4_096) * 8;
-            assert_eq!(writer.file.metadata().unwrap().len(), expected);
-            drop(writer);
             assert!(matches!(
-                discard(&path, result.unwrap_err()),
-                ExportError::Cancelled
+                encode(session(frames), &mut writer, &cancel),
+                Err(ExportError::Cancelled)
             ));
-            assert!(!path.exists());
+            assert_eq!(writer.calls, 2);
+            assert_eq!(writer.bytes.len() as u64, 58 + frames.min(4096) * 8);
         }
     }
+}
 
+#[cfg(test)]
+mod quantization {
+    use super::*;
     #[test]
-    fn discarding_removes_the_file_and_reports_one_it_cannot_remove() {
-        let directory = tempfile::tempdir().unwrap();
-        let file = directory.path().join("incomplete.wav");
-        fs::write(&file, b"partial").unwrap();
-        assert!(matches!(
-            discard(&file, ExportError::Cancelled),
-            ExportError::Cancelled
-        ));
-        assert!(!file.exists());
-        // Already gone: the original failure stands.
-        assert!(matches!(
-            discard(&file, ExportError::Cancelled),
-            ExportError::Cancelled
-        ));
-        // A directory cannot be removed as a file.
-        let error = discard(directory.path(), ExportError::Cancelled);
-        let ExportError::IncompleteFileLeft { failure, .. } = &error else {
-            panic!("removal failure was not reported: {error:?}");
-        };
-        assert!(matches!(**failure, ExportError::Cancelled));
-        assert!(
-            error
-                .to_string()
-                .starts_with("export cancelled before completion; ")
+    fn nearest_binary32_handles_even_midpoints_signed_zero_subnormals_and_underflow() {
+        let minimum = f64::from(f32::from_bits(1));
+        let normal = f64::from(f32::MIN_POSITIVE);
+        for (input, bits) in [
+            (0.0, 0),
+            (-0.0, 0x8000_0000),
+            (1.0 + 2.0_f64.powi(-24), 1.0_f32.to_bits()),
+            (1.0 + 3.0 * 2.0_f64.powi(-24), 1.0_f32.to_bits() + 2),
+            (minimum / 2.0, 0),
+            (-minimum / 2.0, 0x8000_0000),
+            ((minimum / 2.0).next_up(), 1),
+            (-(minimum / 2.0).next_up(), 0x8000_0001),
+            (minimum, 1),
+            (-minimum, 0x8000_0001),
+            (minimum * 1.5, 2),
+            (minimum * 2.5, 2),
+            (normal - minimum / 2.0, f32::MIN_POSITIVE.to_bits()),
+            (f64::MIN_POSITIVE, 0),
+            (-f64::MIN_POSITIVE, 0x8000_0000),
+        ] {
+            assert_eq!(nearest_f32(input).to_bits(), bits, "input {input:e}");
+        }
+    }
+    #[test]
+    fn absolute_rounding_bounds_include_half_a_minimum_subnormal_near_zero() {
+        let half_minimum = f64::from(f32::from_bits(1)) / 2.0;
+        for input in [
+            0.0,
+            half_minimum,
+            half_minimum.next_up(),
+            half_minimum * 3.0,
+            1e-45,
+            1e-40,
+            f64::from(f32::MIN_POSITIVE),
+            1e-20,
+            0.1,
+            0.5,
+            1.0,
+        ] {
+            for input in [input, -input] {
+                let encoded = f64::from(nearest_f32(input));
+                let allowance = (input.abs() * 2.0_f64.powi(-24)).max(half_minimum);
+                assert!(
+                    (encoded - input).abs() <= allowance,
+                    "{input:e} -> {encoded:e}"
+                );
+            }
+        }
+        // A normal-only relative epsilon bound is false at underflow.
+        assert!(half_minimum > half_minimum * f64::from(f32::EPSILON));
+        assert_eq!(nearest_f32(half_minimum), 0.0);
+    }
+    #[test]
+    fn actual_encoded_peaks_can_round_above_the_binary64_generation_bound() {
+        use auditory_core::{Component, Ears, Stimulus};
+        let session = Stimulus {
+            duration_seconds: 4.0 / 8_000.0,
+            fade_seconds: 0.0,
+            components: vec![Component::Tone {
+                ears: Ears::Left,
+                frequency_hz: 2_000.0,
+                peak_dbfs: -20.0,
+                modulation: None,
+            }],
+        }
+        .session(SampleRate::new(8_000).unwrap())
+        .unwrap();
+        let mut expected = [[0.0; 2]; 4];
+        session.clone().into_renderer().render(&mut expected);
+        assert_eq!(expected[1][0], 0.1);
+        let mut bytes = Vec::new();
+        encode(session, &mut bytes, &AtomicBool::new(false)).unwrap();
+        let encoded = f32::from_le_bytes(bytes[66..70].try_into().unwrap());
+        assert!(f64::from(encoded) > expected[1][0]);
+        for frame in bytes[58..].as_chunks::<8>().0 {
+            assert_eq!(&frame[4..], &[0; 4]);
+        }
+        let session = Stimulus {
+            duration_seconds: 4.0 / 8_000.0,
+            fade_seconds: 0.0,
+            components: vec![Component::Tone {
+                ears: Ears::Both,
+                frequency_hz: 2_000.0,
+                peak_dbfs: -1_000.0,
+                modulation: None,
+            }],
+        }
+        .session(SampleRate::new(8_000).unwrap())
+        .unwrap();
+        let mut bytes = Vec::new();
+        encode(session, &mut bytes, &AtomicBool::new(false)).unwrap();
+        for sample in bytes[58..].as_chunks::<4>().0 {
+            assert_eq!(f32::from_le_bytes(*sample), 0.0);
+        }
+        assert_eq!(
+            u32::from_le_bytes(bytes[82..86].try_into().unwrap()),
+            0x8000_0000
         );
-        assert!(error.to_string().contains("could not be removed"));
-        assert!(directory.path().is_dir());
     }
 }

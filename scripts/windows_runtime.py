@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 
-from release import ROOT
+from release import ROOT, PRODUCTS, cargo_identity
 
 MANIFEST = ROOT / "scripts" / "licenses" / "windows-runtime.json"
 PREFIX = re.compile(r"^\s*rust-lld(?:\.exe)?: (Reading|Loaded) (.+)$")
@@ -40,7 +40,7 @@ def toolchain():
     return version, host, sysroot
 
 
-def policy(target):
+def policy(target, product="cli"):
     reviewed = json.loads(MANIFEST.read_text(encoding="utf-8"))
     pinned = re.search(r'^channel = "([^"]+)"',
                        (ROOT / "rust-toolchain.toml").read_text(encoding="utf-8"), re.M)[1]
@@ -48,10 +48,29 @@ def policy(target):
         raise ValueError("Windows native runtime material requires review for this Rust version")
     if target not in reviewed["targets"]:
         raise ValueError(f"no reviewed Windows native runtime inputs for {target}")
-    return pinned, reviewed["targets"][target]["inputs"]
+    inputs = dict(reviewed["targets"][target]["inputs"])
+    if product == "gui":
+        imported = json.loads((MANIFEST.parent / "windows-import-libraries.json").read_text(encoding="utf-8"))["targets"][target]
+        inputs[Path(imported["relative_path"]).name] = imported
+    return pinned, inputs
 
 
-def check_trace(text, executable, target, sysroot, inputs):
+def native_input_path(entry):
+    if "crate" not in entry:
+        return None
+    graph = json.loads(subprocess.check_output(["cargo", "metadata", "--locked", "--format-version", "1"],
+                      cwd=ROOT, text=True, encoding="utf-8"))
+    packages = [p for p in graph["packages"] if p["name"] == entry["crate"] and p["version"] == entry["version"] and p["source"] is not None]
+    if len(packages) != 1:
+        raise ValueError("reviewed Windows system import producer is missing or ambiguous")
+    directory = Path(packages[0]["manifest_path"]).parent
+    vcs = json.loads((directory / ".cargo_vcs_info.json").read_text(encoding="utf-8"))["git"]["sha1"]
+    if vcs != entry["vcs"]:
+        raise ValueError("Windows system import producer differs from reviewed published identity")
+    return directory / entry["relative_path"]
+
+
+def check_trace(text, executable, target, sysroot, inputs, product="cli"):
     """Check actual rust-lld inputs, including archive member selection."""
     libraries = (sysroot / "lib" / "rustlib" / target / "lib").resolve()
     bundled = libraries / "self-contained"
@@ -89,7 +108,7 @@ def check_trace(text, executable, target, sysroot, inputs):
         reading += 1
         path = Path(item).resolve()
         if path.name in inputs:
-            expected = bundled / path.name
+            expected = native_input_path(inputs[path.name]) or bundled / path.name
             if path != expected.resolve() or expected.is_symlink():
                 raise ValueError(f"Windows native input is outside the bundled runtime: {item}")
             if sha256(expected) != inputs[path.name]["sha256"]:
@@ -98,7 +117,7 @@ def check_trace(text, executable, target, sysroot, inputs):
         elif path.suffix == ".rlib" and path.parent in (libraries, dependencies):
             pass
         elif (path.name.endswith(".rcgu.o") and path.parent == dependencies
-              and path.name.startswith("auditory_lab-")):
+              and path.name.startswith(PRODUCTS[product]["bin"].replace("-", "_") + "-")):
             pass
         elif (path.name == "symbols.o" and path.parent.parent == dependencies
               and path.parent.name.startswith("rustc")):
@@ -114,20 +133,20 @@ def check_trace(text, executable, target, sysroot, inputs):
         raise ValueError("Windows link trace lacks the reviewed startup and static runtime inputs")
 
 
-def verify(executable, target, trace, sysroot=None):
+def verify(executable, target, trace, sysroot=None, product="cli"):
     """Verify a binary-bound build receipt; sysroot injection is for cross-probes/tests."""
     executable, trace = Path(executable).resolve(), Path(trace)
-    pinned, inputs = policy(target)
+    pinned, inputs = policy(target, product)
     version, _, installed = toolchain()
     if version != pinned:
         raise ValueError(f"Windows runtime verification requires Rust {pinned}, found {version}")
     sysroot = Path(sysroot).resolve() if sysroot is not None else installed
     receipt = json.loads(trace.read_text(encoding="utf-8"))
-    fields = ("target", "rust", "sysroot", "sha256", "map", "map_sha256",
+    fields = ("product", "target", "rust", "sysroot", "sha256", "map", "map_sha256",
               "executable", "linker_output")
     if not isinstance(receipt, dict) or any(not isinstance(receipt.get(field), str) for field in fields):
         raise ValueError("Windows link receipt is incomplete or has invalid field types")
-    if (receipt["target"] != target or receipt["rust"] != pinned
+    if (receipt["product"] != product or receipt["target"] != target or receipt["rust"] != pinned
             or Path(receipt["sysroot"]).resolve() != sysroot):
         raise ValueError("Windows link receipt target/toolchain does not match this build")
     if receipt["sha256"] != sha256(executable):
@@ -143,12 +162,13 @@ def verify(executable, target, trace, sysroot=None):
     if not any(record and Path(record[1]).resolve() == startup for record in records):
         raise ValueError("Windows link map lacks a bundled startup text record")
     check_trace(receipt["linker_output"], Path(receipt["executable"]).resolve(),
-                target, sysroot, inputs)
+                target, sysroot, inputs, product)
 
 
-def build(target, trace, sysroot=None):
+def build(target, trace, sysroot=None, product="cli"):
     """Force a final application relink and record its actual artifact and evidence."""
-    pinned, _ = policy(target)
+    identity = cargo_identity(product=product)
+    pinned, _ = policy(target, product)
     version, host, installed = toolchain()
     if version != pinned:
         raise ValueError(f"Windows runtime build requires Rust {pinned}, found {version}")
@@ -174,8 +194,8 @@ def build(target, trace, sysroot=None):
         # the final binary. Encoded flags preserve sysroot paths containing spaces.
         environment["CARGO_ENCODED_RUSTFLAGS"] = "\x1f".join([
             "--sysroot", str(effective), "-C", "target-feature=+crt-static"])
-    command = ["cargo", "rustc", "--release", "--locked", "-p", "auditory-lab",
-               "--bin", "auditory-lab", "--target", target,
+    command = ["cargo", "rustc", "--release", "--locked", "-p", identity["name"],
+               "--bin", identity["bin"], "--target", target,
                "--message-format=json", "--"] + flags
     result = subprocess.run(command, cwd=ROOT, env=environment, capture_output=True, text=True, encoding="utf-8")
     (evidence / "cargo.stdout").write_text(result.stdout, encoding="utf-8")
@@ -192,7 +212,9 @@ def build(target, trace, sysroot=None):
             continue
         message = json.loads(line)
         if (message.get("reason") == "compiler-artifact" and message.get("executable")
-                and message.get("target", {}).get("name") == "auditory-lab"):
+                and message.get("package_id") == identity["id"]
+                and "bin" in message.get("target", {}).get("kind", [])
+                and message.get("target", {}).get("name") == identity["bin"]):
             artifacts.append(Path(message["executable"]).resolve())
         if message.get("reason") == "compiler-message":
             # Display rendering can replace CR with a glyph and change path identity.
@@ -202,7 +224,7 @@ def build(target, trace, sysroot=None):
     if len(artifacts) != 1:
         raise ValueError(f"Windows build did not report one application executable; see {evidence}")
     executable = artifacts[0]
-    receipt = {"target": target, "rust": pinned, "sysroot": str(effective),
+    receipt = {"product": product, "target": target, "rust": pinned, "sysroot": str(effective),
                "executable": str(executable), "sha256": sha256(executable),
                "map": str(map_path), "map_sha256": sha256(map_path),
                "linker_output": "\n".join(diagnostics)}
@@ -210,7 +232,7 @@ def build(target, trace, sysroot=None):
     # trace or binary never leaves a success receipt for the packager to consume.
     candidate = evidence / "receipt.json"
     candidate.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
-    verify(executable, target, candidate, sysroot=effective)
+    verify(executable, target, candidate, sysroot=effective, product=product)
     candidate.replace(trace)
     print(f"verified Windows native inputs: {str(executable)!a}; receipt: {str(trace)!a}")
 
@@ -221,9 +243,10 @@ def main():
     builder = commands.add_parser("build", help="relink the release CLI and verify native inputs")
     builder.add_argument("--target", required=True)
     builder.add_argument("--trace", type=Path, required=True, help="receipt path under target/")
+    builder.add_argument("--product", choices=PRODUCTS, default="cli")
     args = parser.parse_args()
     try:
-        build(args.target, args.trace)
+        build(args.target, args.trace, product=args.product)
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
         sys.exit(f"windows runtime: {error}")
 

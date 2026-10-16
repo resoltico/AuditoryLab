@@ -26,7 +26,6 @@ jobs:
     timeout-minutes: 10
     outputs:
       source: ${{ steps.identity.outputs.source }}
-      matrix: ${{ steps.identity.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -59,108 +58,25 @@ jobs:
             echo "Tag ${tag} already exists; releases are never replaced." >&2
             exit 1
           fi
-          matrix="$(python scripts/release.py matrix)"
           echo "source=${source}" >> "${GITHUB_OUTPUT}"
-          echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
 
   quality:
     name: Quality gates
     needs: prepare
     uses: ./.github/workflows/quality.yml
+    with:
+      skip-native: true
     permissions:
       contents: read
 
   build:
-    name: Build ${{ matrix.platform }}
+    name: Qualify release artifacts
     needs: prepare
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    uses: ./.github/workflows/native.yml
+    with:
+      build-kind: release
     permissions:
       contents: read
-      attestations: write
-      id-token: write
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.prepare.outputs.source }}
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version-file: .python-version
-      - name: Initialize owned job temporary output
-        run: |
-          python3 - <<'PYINIT'
-          import os
-          from pathlib import Path
-          temporary = Path.cwd() / "target" / "job-temp"
-          temporary.mkdir(parents=True, exist_ok=True)
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
-              for name in ("TMPDIR", "TEMP", "TMP"):
-                  output.write(f"{name}={temporary}\n")
-          PYINIT
-      - name: Install Linux audio build prerequisites
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes libasound2-dev pkg-config
-      - name: Install the native toolchain pinned in rust-toolchain.toml
-        run: |
-          if [[ "${RUNNER_OS}" == Windows ]]; then
-            toolchain="$(python scripts/release.py toolchain --target "${{ matrix.target }}")"
-            rustup toolchain install "${toolchain}" --profile minimal --component rustfmt,clippy,rust-mingw
-            host="$(RUSTUP_TOOLCHAIN="${toolchain}" rustc -vV | sed -n 's/^host: //p')"
-            [[ "${host}" == "${{ matrix.target }}" ]]
-            echo "RUSTUP_TOOLCHAIN=${toolchain}" >> "${GITHUB_ENV}"
-          else
-            rustup toolchain install
-          fi
-      - name: Test natively in the release profile
-        run: cargo test --workspace --release --locked --target "${{ matrix.target }}"
-      - name: Build the executable and record Windows runtime inputs
-        env:
-          BUILD_TARGET: ${{ matrix.target }}
-        run: |
-          if [[ "${RUNNER_OS}" == Windows ]]; then
-            mkdir -p target/runtime-link
-            python scripts/windows_runtime.py build --target "${BUILD_TARGET}" \
-              --trace "target/runtime-link/${BUILD_TARGET}.json"
-          else
-            cargo build -p auditory-lab --release --locked --target "${BUILD_TARGET}"
-          fi
-      - name: Package and test the packaged executable
-        run: |
-          binary="target/${{ matrix.target }}/release/auditory-lab"
-          evidence=()
-          if [[ "${RUNNER_OS}" == Windows ]]; then
-            binary="${binary}.exe"
-            evidence=(--link-trace "target/runtime-link/${{ matrix.target }}.json")
-          fi
-          python scripts/package.py --target "${{ matrix.target }}" --version "${RELEASE_VERSION}" \
-            --repository "${GITHUB_REPOSITORY}" --binary "${binary}" --output target/assets "${evidence[@]}"
-      - name: Preserve Windows runtime link evidence
-        if: always() && runner.os == 'Windows'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: runtime-${{ matrix.platform }}
-          path: target/runtime-link/*
-          if-no-files-found: error
-          retention-days: 14
-      - name: Attest the archive's build provenance
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-path: target/assets/*
-          create-storage-record: false
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release-${{ matrix.platform }}
-          path: target/assets/*
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 14
 
   publish:
     name: Publish the release
@@ -169,6 +85,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+      attestations: write
+      id-token: write
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_SOURCE: ${{ needs.prepare.outputs.source }}
@@ -191,13 +109,21 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: release-*
-          path: target/assets
-          merge-multiple: true
+          path: target/downloads
           digest-mismatch: error
+      - name: Validate assigned artifacts before flattening
+        run: python3 scripts/release.py validate-artifacts --directory target/downloads --version "${RELEASE_VERSION}" --source-revision "${RELEASE_SOURCE}"
+      - name: Flatten validated archives
+        run: |
+          mkdir target/assets
+          mv target/downloads/release-*/* target/assets/
+      - name: Attest the qualified archives without rebuilding
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: target/assets/*
+          create-storage-record: false
       - name: Write checksums and notes
         run: |
-          archives=(target/assets/*)
-          [[ "${#archives[@]}" -eq 6 ]]
           (cd target/assets && sha256sum -- * > SHA256SUMS)
           python3 scripts/release.py notes --version "${RELEASE_VERSION}" > "${PWD}/target/job-temp/notes.md"
       - name: Publish a release whose uploaded assets match the built ones

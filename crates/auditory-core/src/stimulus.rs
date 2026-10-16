@@ -145,14 +145,14 @@ impl Component {
         }
         let carrier = match *self {
             Self::Tone { frequency_hz, .. } => {
-                Carrier::Tone(phase("frequency_hz", frequency_hz, rate)?)
+                Carrier::Tone(phase(Parameter::Frequency, frequency_hz, rate)?)
             }
             Self::Click {
                 rate_hz,
                 width_seconds,
                 ..
             } => Carrier::Click(pulse_train(
-                ("rate_hz", "width_seconds"),
+                (Parameter::Rate, Parameter::Width),
                 rate_hz,
                 width_seconds,
                 rate,
@@ -161,7 +161,7 @@ impl Component {
         let modulation = match self.modulation() {
             None => None,
             Some(Modulation::Sinusoidal { rate_hz, depth }) => {
-                let phase = phase("modulation rate_hz", rate_hz, rate)?;
+                let phase = phase(Parameter::ModulationRate, rate_hz, rate)?;
                 if !(0.0..=1.0).contains(&depth) {
                     return Err(ComponentError::Depth { depth });
                 }
@@ -180,7 +180,7 @@ impl Component {
                 rate_hz,
                 width_seconds,
             }) => Some(Modulator::Rectangular(pulse_train(
-                ("modulation rate_hz", "modulation width_seconds"),
+                (Parameter::ModulationRate, Parameter::ModulationWidth),
                 rate_hz,
                 width_seconds,
                 rate,
@@ -199,13 +199,13 @@ impl Component {
 
 /// A phase accumulator for a frequency that is finite, positive, below
 /// half the sample rate and large enough to advance the phase.
-fn phase(field: &'static str, hz: f64, rate: SampleRate) -> Result<Phase, ComponentError> {
-    let step = frequency_step(field, hz, rate)?;
+fn phase(parameter: Parameter, hz: f64, rate: SampleRate) -> Result<Phase, ComponentError> {
+    let step = frequency_step(parameter, hz, rate)?;
     if step > 0.0 {
         Ok(Phase::new(step))
     } else {
         Err(ComponentError::PhaseStepTooSmall {
-            field,
+            parameter,
             hz,
             sample_rate_hz: rate.hz(),
         })
@@ -214,17 +214,17 @@ fn phase(field: &'static str, hz: f64, rate: SampleRate) -> Result<Phase, Compon
 
 /// A pulse train whose rate gives a normal phase step, keeping relative
 /// timing precision, and whose pulses last at least one frame and end before
-/// the next begins. `fields` name the rate and width in messages.
+/// the next begins. `parameters` name the rate and width in messages.
 fn pulse_train(
-    (rate_field, width_field): (&'static str, &'static str),
+    (rate_parameter, width_parameter): (Parameter, Parameter),
     rate_hz: f64,
     width_seconds: f64,
     rate: SampleRate,
 ) -> Result<PulseTrain, ComponentError> {
-    let step = frequency_step(rate_field, rate_hz, rate)?;
+    let step = frequency_step(rate_parameter, rate_hz, rate)?;
     if !step.is_normal() {
         return Err(ComponentError::PulseRateTooSmall {
-            field: rate_field,
+            parameter: rate_parameter,
             rate_hz,
             sample_rate_hz: rate.hz(),
         });
@@ -232,7 +232,7 @@ fn pulse_train(
     let duty = width_seconds * rate_hz;
     if !(width_seconds * rate.as_f64() >= 1.0 && duty < 1.0) {
         return Err(ComponentError::PulseWidth {
-            field: width_field,
+            parameter: width_parameter,
             width_seconds,
             rate_hz,
             sample_rate_hz: rate.hz(),
@@ -243,12 +243,12 @@ fn pulse_train(
 
 /// Return the step for a frequency in the permitted range; the caller checks
 /// whether the result has the precision required by its generator.
-fn frequency_step(field: &'static str, hz: f64, rate: SampleRate) -> Result<f64, ComponentError> {
+fn frequency_step(parameter: Parameter, hz: f64, rate: SampleRate) -> Result<f64, ComponentError> {
     if hz > 0.0 && hz < rate.nyquist_hz() {
         Ok(hz / rate.as_f64())
     } else {
         Err(ComponentError::Frequency {
-            field,
+            parameter,
             hz,
             sample_rate_hz: rate.hz(),
         })
@@ -388,13 +388,39 @@ pub enum StimulusError {
     },
 }
 
+/// A carrier or modulation parameter identified independently of diagnostic wording.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Parameter {
+    /// Tone carrier frequency_hz.
+    Frequency,
+    /// Click carrier rate_hz.
+    Rate,
+    /// Click carrier width_seconds.
+    Width,
+    /// Sinusoidal or rectangular modulation rate_hz.
+    ModulationRate,
+    /// Rectangular modulation width_seconds.
+    ModulationWidth,
+}
+impl Display for Parameter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Frequency => "frequency_hz",
+            Self::Rate => "rate_hz",
+            Self::Width => "width_seconds",
+            Self::ModulationRate => "modulation rate_hz",
+            Self::ModulationWidth => "modulation width_seconds",
+        })
+    }
+}
+
 /// Why a component cannot be rendered at a sample rate.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComponentError {
     /// A frequency is not finite and positive below half the sample rate.
     Frequency {
-        /// The field holding it.
-        field: &'static str,
+        /// The parameter holding it.
+        parameter: Parameter,
         /// The rejected frequency in hertz.
         hz: f64,
         /// The sample rate in frames per second.
@@ -402,8 +428,8 @@ pub enum ComponentError {
     },
     /// A positive, in-range frequency rounds to a zero phase step.
     PhaseStepTooSmall {
-        /// The field holding it.
-        field: &'static str,
+        /// The parameter holding it.
+        parameter: Parameter,
         /// The rejected frequency in hertz.
         hz: f64,
         /// The sample rate in frames per second.
@@ -421,8 +447,8 @@ pub enum ComponentError {
     /// A click or rectangular-modulation rate gives a zero or subnormal
     /// phase step, whose relative rounding cannot preserve pulse timing.
     PulseRateTooSmall {
-        /// The field holding it.
-        field: &'static str,
+        /// The parameter holding it.
+        parameter: Parameter,
         /// The rejected rate in hertz.
         rate_hz: f64,
         /// The sample rate in frames per second.
@@ -431,8 +457,8 @@ pub enum ComponentError {
     /// A click or open gate is shorter than one frame or not shorter than
     /// its period.
     PulseWidth {
-        /// The field holding it.
-        field: &'static str,
+        /// The parameter holding it.
+        parameter: Parameter,
         /// The rejected width in seconds.
         width_seconds: f64,
         /// Pulses per second.
@@ -505,21 +531,21 @@ impl Display for ComponentError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Frequency {
-                field,
+                parameter,
                 hz,
                 sample_rate_hz,
             } => write!(
                 f,
-                "{field} {hz} Hz must be finite, positive and below {} Hz, half the {sample_rate_hz} Hz sample rate",
+                "{parameter} {hz} Hz must be finite, positive and below {} Hz, half the {sample_rate_hz} Hz sample rate",
                 f64::from(*sample_rate_hz) / 2.0
             ),
             Self::PhaseStepTooSmall {
-                field,
+                parameter,
                 hz,
                 sample_rate_hz,
             } => write!(
                 f,
-                "{field} {hz:e} Hz is too small to advance the phase at {sample_rate_hz} Hz; raise {field}"
+                "{parameter} {hz:e} Hz is too small to advance the phase at {sample_rate_hz} Hz; raise {parameter}"
             ),
             Self::Sideband {
                 frequency_hz,
@@ -531,21 +557,21 @@ impl Display for ComponentError {
                 f64::from(*sample_rate_hz) / 2.0
             ),
             Self::PulseRateTooSmall {
-                field,
+                parameter,
                 rate_hz,
                 sample_rate_hz,
             } => write!(
                 f,
-                "{field} {rate_hz:e} Hz is too small for accurate pulse timing at {sample_rate_hz} Hz; raise {field}"
+                "{parameter} {rate_hz:e} Hz is too small for accurate pulse timing at {sample_rate_hz} Hz; raise {parameter}"
             ),
             Self::PulseWidth {
-                field,
+                parameter,
                 width_seconds,
                 rate_hz,
                 sample_rate_hz,
             } => write!(
                 f,
-                "{field} {width_seconds} must be at least one frame ({} s at {sample_rate_hz} Hz) and shorter than the {} s period at {rate_hz} Hz",
+                "{parameter} {width_seconds} must be at least one frame ({} s at {sample_rate_hz} Hz) and shorter than the {} s period at {rate_hz} Hz",
                 1.0 / f64::from(*sample_rate_hz),
                 1.0 / rate_hz
             ),

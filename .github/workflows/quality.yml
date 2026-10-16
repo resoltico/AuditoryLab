@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
   workflow_call:
+    inputs:
+      skip-native:
+        type: boolean
+        default: false
   schedule:
     # Advisories are published independently of pushes.
     - cron: "17 5 * * 1"
@@ -29,18 +33,10 @@ env:
 
 jobs:
   verify:
-    name: Verify (${{ matrix.os }})
-    # The weekly run exists for new advisories; the code has not changed.
+    name: Source checks
     if: github.event_name != 'schedule'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, ubuntu-22.04, windows-latest, windows-11-arm]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,10 +44,69 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-version
-          architecture: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
-      - name: Initialize owned verification temporary output
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - name: Install the freestanding core qualification target
+        run: |
+          target="$(python -c 'import sys; sys.path.insert(0, "scripts"); from qualify import FREESTANDING_TARGET; print(FREESTANDING_TARGET)')"
+          rustup target add "${target}"
+      - name: Initialize owned source-check temporary output
         run: |
           python - <<'PY'
+          import os
+          from pathlib import Path
+          temporary = Path.cwd() / "target/verification-temp"
+          temporary.mkdir(parents=True, exist_ok=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              for name in ("TMPDIR", "TEMP", "TMP"):
+                  output.write(f"{name}={temporary}\n")
+          PY
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Compile pure core and reject a std-bearing dependency
+        run: |
+          python - <<'PYCORE'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          from qualify import freestanding_core_check
+          output = Path("target/qualification-results/source")
+          output.mkdir(parents=True, exist_ok=True)
+          freestanding_core_check(os.environ.copy(), output)
+          PYCORE
+      - name: Test release tooling
+        run: python -m unittest discover -s tests -v
+      - name: Require current third-party notices
+        run: python scripts/notices.py --check
+      - name: Require unchanged tested source
+        run: |
+          git diff --exit-code
+          status="$(git status --porcelain --untracked-files=all)"
+          [[ -z "${status}" ]]
+
+  native:
+    if: github.event_name != 'schedule' && !inputs.skip-native
+    uses: ./.github/workflows/native.yml
+    with:
+      build-kind: candidate
+    permissions:
+      contents: read
+
+  python-minimum:
+    name: Release tooling (Python 3.9)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+      - name: Initialize owned tooling temporary output
+        run: |
+          python - <<'PYTEMP'
           import os
           from pathlib import Path
           temporary = Path.cwd() / "target" / "verification-temp"
@@ -59,93 +114,13 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
               for name in ("TMPDIR", "TEMP", "TMP"):
                   output.write(f"{name}={temporary}\n")
-          PY
-      - name: Install Linux audio build prerequisites
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes libasound2-dev pkg-config
-      - name: Install the native toolchain pinned in rust-toolchain.toml
+          PYTEMP
+      - name: Install the toolchain pinned in rust-toolchain.toml
+        run: rustup toolchain install
+      - name: Resolve locked metadata and test all release tooling
         run: |
-          if [[ "${RUNNER_OS}" == Windows ]]; then
-            target="$(python - <<'PYHOST'
-          import os
-          import sys
-          sys.path.insert(0, "scripts")
-          from release import TARGETS
-          architecture = {"X64": "x86_64", "ARM64": "aarch64"}[os.environ["RUNNER_ARCH"]]
-          print(next(entry["target"] for entry in TARGETS if entry["platform"] == "windows-" + architecture))
-          PYHOST
-            )"
-            toolchain="$(python scripts/release.py toolchain --target "${target}")"
-            rustup toolchain install "${toolchain}" --profile minimal --component rustfmt,clippy,rust-mingw
-            host="$(RUSTUP_TOOLCHAIN="${toolchain}" rustc -vV | sed -n 's/^host: //p')"
-            [[ "${host}" == "${target}" ]]
-            echo "RUSTUP_TOOLCHAIN=${toolchain}" >> "${GITHUB_ENV}"
-            echo "WINDOWS_TARGET=${target}" >> "${GITHUB_ENV}"
-          else
-            rustup toolchain install
-          fi
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-      - name: Lint every target
-        run: |
-          if [[ "${RUNNER_OS}" == Windows ]]; then
-            cargo clippy --workspace --all-targets --locked --target "${WINDOWS_TARGET}"
-          else
-            cargo clippy --workspace --all-targets --locked
-          fi
-      - name: Run unit, integration and documentation tests
-        run: |
-          if [[ "${RUNNER_OS}" == Windows ]]; then
-            cargo test --workspace --locked --target "${WINDOWS_TARGET}"
-          else
-            cargo test --workspace --locked
-          fi
-      - name: Test release tooling
-        run: python -m unittest discover -s tests -v
-      - name: Build documentation
-        run: |
-          if [[ "${RUNNER_OS}" == Windows ]]; then
-            cargo doc --workspace --no-deps --locked --target "${WINDOWS_TARGET}"
-          else
-            cargo doc --workspace --no-deps --locked
-          fi
-      - name: Build the release binary and record Windows runtime inputs
-        run: |
-          if [[ "${RUNNER_OS}" == Windows ]]; then
-            mkdir -p target/runtime-link
-            python scripts/windows_runtime.py build --target "${WINDOWS_TARGET}" \
-              --trace "target/runtime-link/${WINDOWS_TARGET}.json"
-          else
-            cargo build --workspace --release --locked
-          fi
-      - name: Require current third-party notices
-        if: runner.os == 'Linux'
-        run: python scripts/notices.py --check
-      - name: Package and smoke-test the executable as a release would
-        run: |
-          host="$(rustc -vV | sed -n 's/^host: //p')"
-          version="$(python scripts/release.py version)"
-          binary=target/release/auditory-lab
-          evidence=()
-          if [[ "${RUNNER_OS}" == Windows ]]; then
-            binary="target/${WINDOWS_TARGET}/release/auditory-lab.exe"
-            evidence=(--link-trace "target/runtime-link/${WINDOWS_TARGET}.json")
-          fi
-          python scripts/package.py --target "${host}" --version "${version}" \
-            --repository "${GITHUB_REPOSITORY}" --binary "${binary}" --output target/package-check "${evidence[@]}"
-      - name: Preserve Windows runtime link evidence
-        if: always() && runner.os == 'Windows'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: quality-runtime-${{ runner.arch }}
-          path: target/runtime-link/*
-          if-no-files-found: error
-          retention-days: 14
-      - name: Require unchanged tested source
-        run: |
-          git diff --exit-code
-          status="$(git status --porcelain --untracked-files=all)"
-          [[ -z "${status}" ]]
+          cargo metadata --locked --format-version 1 > /dev/null
+          python -m unittest discover -s tests -v
 
   audit:
     name: Audit dependencies

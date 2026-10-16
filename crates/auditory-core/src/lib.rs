@@ -45,7 +45,7 @@
 //! assert_eq!(session.frames(), 48_000);
 //! let mut renderer = session.into_renderer();
 //! let mut frames = [[1.0; 2]; 48_010];
-//! assert_eq!(renderer.render(&mut frames), 48_000);
+//! assert_eq!(renderer.render(&mut frames).frames(), 48_000);
 //! assert!(renderer.is_complete());
 //! assert_eq!(frames[0], [0.0, 0.0]);
 //! assert!(frames.iter().all(|[l, r]| l.abs() <= 0.1 && r.abs() <= 0.1));
@@ -64,9 +64,15 @@ mod numeric;
 mod preset;
 mod rate;
 mod session;
+mod signal;
 mod stimulus;
 
 pub use preset::{About, Preset, PresetError};
 pub use rate::{SampleRate, SampleRateError};
-pub use session::{Renderer, Session};
-pub use stimulus::{Component, ComponentError, Ear, Ears, Modulation, Stimulus, StimulusError};
+pub use session::{RenderedSpan, Renderer, Session};
+pub use signal::{
+    FrameRange, HistoryError, MAX_SIGNAL_BINS, SignalBin, SignalHistory, SignalView, StereoExtrema,
+};
+pub use stimulus::{
+    Component, ComponentError, Ear, Ears, Modulation, Parameter, Stimulus, StimulusError,
+};

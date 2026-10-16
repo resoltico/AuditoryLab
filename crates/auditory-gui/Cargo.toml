@@ -1,0 +1,70 @@
+[package]
+name = "auditory-gui"
+autobins = false
+description = "Native desktop frontend for Auditory Lab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+auditory-app.workspace = true
+slint.workspace = true
+rfd.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+allocation-counter.workspace = true
+
+[[bin]]
+name = "auditorylab-gui"
+path = "src/main.rs"
+
+# Cargo cannot partially inherit lint tables. The boundary guard checks this
+# copy; only generated Slint code requires deny instead of inherited forbid.
+[lints.rust]
+warnings = "deny"
+unsafe_code = "deny"
+missing_docs = "deny"
+unreachable_pub = "deny"
+unused_lifetimes = "deny"
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+# Argument counts do not establish responsibility or maintainability.
+too_many_arguments = "allow"
+cast_possible_truncation = "deny"
+cast_precision_loss = "deny"
+cast_sign_loss = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+mem_forget = "deny"
+allow_attributes_without_reason = "deny"
+
+
+[[test]]
+name = "native_window"
+path = "tests/native_window.rs"
+harness = false
+
+[[test]]
+name = "native_termination"
+path = "tests/native_termination.rs"
+harness = false
+
+[[test]]
+name = "native_signal_geometry"
+path = "tests/native_signal_geometry.rs"
+harness = false

@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MPL-2.0
 """The packager's PE import reader and archive reader, against independent fixtures."""
 import io
+import json
 from pathlib import Path
 import stat
 import struct
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -14,8 +16,8 @@ import warnings
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from package import members, pe_imports, check_dependencies, check_identity, check_macos_minimum, check_macos_native, package
-from release import archive_name
+from package import source_reference, expected_members, bundle_metadata, validate_bundle, validate_catalog_listing, ROOT, run, members, pe_imports, check_dependencies, check_identity, check_macos_minimum, check_macos_native, package
+from release import MACOS_MINIMUM, archive_name, expected_identity
 
 
 def minimal_pe(dlls):
@@ -140,11 +142,64 @@ class NativeGuardTests(unittest.TestCase):
             with patch("package.run", side_effect=[libraries, versions]), self.assertRaises(ValueError):
                 check_dependencies(Path("tool"), "x86_64-unknown-linux-gnu")
 
+    def test_linux_gui_requires_system_font_libraries_without_expanding_cli(self):
+        dynamic = " (NEEDED) [libc.so.6]\n (NEEDED) [libfreetype.so.6]\n (NEEDED) [libfontconfig.so.1]\n"
+        with patch("package.run", side_effect=[dynamic, "GLIBC_2.35"]):
+            check_dependencies(Path("gui"), "x86_64-unknown-linux-gnu", "gui")
+        for changed in (dynamic.replace("libfreetype.so.6", "libother.so"), dynamic.replace("libfontconfig.so.1", "libother.so")):
+            with patch("package.run", side_effect=[changed, "GLIBC_2.35"]), self.assertRaises(ValueError):
+                check_dependencies(Path("gui"), "x86_64-unknown-linux-gnu", "gui")
+        with patch("package.run", side_effect=[dynamic, "GLIBC_2.35"]), self.assertRaises(ValueError):
+            check_dependencies(Path("cli"), "x86_64-unknown-linux-gnu", "cli")
+
     def test_emulated_compiler_host_does_not_establish_native_machine(self):
         with patch("package.run", return_value="host: x86_64-apple-darwin\n"), patch("package.platform.system", return_value="Darwin"), patch("package.platform.machine", return_value="arm64"), self.assertRaisesRegex(ValueError, "native machine"):
             package("x86_64-apple-darwin", "0.1.0", "owner/repo", Path("unused"), Path("unused"))
         with patch("package.run", return_value="host: x86_64-apple-darwin\n"), patch("package.platform.system", return_value="Linux"), patch("package.platform.machine", return_value="x86_64"), self.assertRaisesRegex(ValueError, "operating system"):
             package("x86_64-apple-darwin", "0.1.0", "owner/repo", Path("unused"), Path("unused"))
+
+    def test_current_macos_artifact_policy_requires_exact_common_floor(self):
+        self.assertEqual(MACOS_MINIMUM, "15.0")
+        for floor in ("15.0", "10.12", "11.0", "14.0", "16.0"):
+            text = f"Load command 1\n cmd LC_BUILD_VERSION\n platform 1\n minos {floor}\n sdk 27.0\n"
+            with self.subTest(floor=floor), patch("package.run", return_value=text):
+                if floor == MACOS_MINIMUM:
+                    check_macos_minimum(Path("tool"), MACOS_MINIMUM)
+                else:
+                    with self.assertRaises(ValueError):
+                        check_macos_minimum(Path("tool"), MACOS_MINIMUM)
+
+    def test_package_rejects_old_macos_binary_for_both_products_and_architectures(self):
+        for product in ('cli', 'gui'):
+            for architecture in ('aarch64', 'x86_64'):
+                target = architecture + '-apple-darwin'
+                def native_output(*command, **kwargs):
+                    if command == ('rustc', '-vV'):
+                        return 'host: ' + target + '\n'
+                    if len(command) == 2 and command[1] == '--build-info':
+                        return json.dumps(expected_identity(product, '0.2.0', target, 'local', None))
+                    if command[:2] == ('codesign', '--force'):
+                        return ''
+                    if command[:2] == ('otool', '-l'):
+                        return 'Load command 1\n cmd LC_BUILD_VERSION\n platform 1\n minos 14.0\n sdk 27.0\n'
+                    raise AssertionError('unexpected package command: ' + repr(command))
+                with self.subTest(product=product, target=target), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    binary = root / 'owned-binary'
+                    binary.write_bytes(b'owned native-policy fixture')
+                    output = root / 'archives'
+                    with patch('package.run', side_effect=native_output), \
+                         patch('package.platform.system', return_value='Darwin'), \
+                         patch('package.platform.machine', return_value=architecture), \
+                         patch('package.check_macos_native') as native, \
+                         patch('package.cargo_identity', return_value={'version': '0.2.0'}), \
+                         patch('package.check_identity') as cpu, patch('package.check_dependencies') as imports, \
+                         self.assertRaisesRegex(ValueError, 'not 15.0'):
+                        package(target, '0.2.0', 'owner/repo', binary, output, product=product)
+                    native.assert_called_once()
+                    cpu.assert_called_once()
+                    imports.assert_called_once()
+                    self.assertEqual(list(output.iterdir()), [])
 
     def test_macos_translation_is_rejected_even_when_reported_architectures_match(self):
         with patch("package.run", side_effect=["host: x86_64-apple-darwin\n", "1\n"]), patch("package.platform.system", return_value="Darwin"), patch("package.platform.machine", return_value="x86_64"), self.assertRaisesRegex(ValueError, "Rosetta"):
@@ -164,7 +219,7 @@ class NativeGuardTests(unittest.TestCase):
 
     def test_dangling_destination_symlink_is_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
-            destination = Path(directory) / archive_name("macos-aarch64", "0.1.0")
+            destination = Path(directory) / archive_name("macos-aarch64", "0.1.0", build_kind="local")
             destination.symlink_to("missing.zip")
             with patch("package.run", side_effect=["host: aarch64-apple-darwin\n", "0\n"]), patch("package.platform.system", return_value="Darwin"), patch("package.platform.machine", return_value="arm64"), self.assertRaisesRegex(ValueError, "already exists"):
                 package("aarch64-apple-darwin", "0.1.0", "owner/repo", Path("unused"), Path(directory))
@@ -198,6 +253,147 @@ class MemberRejectionTests(unittest.TestCase):
                         archive.addfile(info)
                 with self.assertRaises(ValueError):
                     members(tarred)
+
+
+class CatalogListingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.listing = (Path(__file__).parent / "fixtures/catalog-listing.txt").read_text(encoding="utf-8")
+        cls.catalog = list((ROOT / "crates/auditory-core/catalog").glob("*.toml"))
+
+    def test_real_catalog_fixture_has_all_nineteen_records(self):
+        self.assertEqual(len(self.catalog), 19)
+        validate_catalog_listing(self.listing, self.catalog)
+
+    def test_sound_continuations_are_allowed_without_becoming_catalog_ids(self):
+        wrapped = self.listing.replace("Sound: 40 Hz train of 1 ms 10 kHz tones",
+                                       "Sound: 40 Hz train of 1 ms\n         10 kHz tones")
+        validate_catalog_listing(wrapped, self.catalog)
+
+    def test_empty_missing_extra_duplicate_reordered_and_truncated_ids_reject(self):
+        lines = self.listing.splitlines(keepends=True)
+        cases = {
+            "empty": "",
+            "header-only": lines[0],
+            "missing": "".join(lines[:1] + lines[3:]),
+            "extra": self.listing + "other-id 1 min\n  Sound: Other\n",
+            "duplicate": self.listing + "".join(lines[1:3]),
+            "reordered": "".join(lines[:1] + lines[3:5] + lines[1:3] + lines[5:]),
+            "truncated": self.listing.replace("beauchene-2016-binaural-5-hz", "beauchene-2016-binaural"),
+        }
+        for label, text in cases.items():
+            with self.subTest(label=label), self.assertRaises(ValueError):
+                validate_catalog_listing(text, self.catalog)
+
+    def test_header_and_sound_structure_confusion_rejects(self):
+        lines = self.listing.splitlines(keepends=True)
+        cases = {
+            "no-header": "".join(lines[1:]),
+            "second-header": self.listing + lines[0],
+            "wrong-header": self.listing.replace("PRESET", "PRESETS", 1),
+            "indented-header": "  " + self.listing,
+            "header-as-sound": self.listing.replace("  Sound: 5 Hz binaural beat", "  PRESET DURATION", 1),
+            "orphan-continuation": lines[0] + "  Sound: Orphan\n" + "".join(lines[1:]),
+            "missing-sound": "".join(lines[:2] + lines[3:]),
+            "empty-sound": self.listing.replace("  Sound: 5 Hz binaural beat", "  Sound: ", 1),
+            "duplicate-sound": self.listing.replace(lines[2], lines[2] * 2, 1),
+            "unindented-sound": self.listing.replace("  Sound:", "Sound:", 1),
+            "blank-record": self.listing + "\n",
+        }
+        for label, text in cases.items():
+            with self.subTest(label=label), self.assertRaises(ValueError):
+                validate_catalog_listing(text, self.catalog)
+
+    def test_incorrect_duration_and_sound_reject(self):
+        for before, after in (("3 min", "180 min"), ("3 min", "three minutes"),
+                              ("5 min 7.2 s", "5 min 7.3 s"), ("5 min 7.2 s", "5 min 5 min"),
+                              ("5 Hz binaural beat", "Different sound")):
+            with self.subTest(after=after), self.assertRaises(ValueError):
+                validate_catalog_listing(self.listing.replace(before, after, 1), self.catalog)
+
+    def test_empty_source_catalog_cannot_pass(self):
+        with self.assertRaisesRegex(ValueError, "source catalog is empty"):
+            validate_catalog_listing("PRESET DURATION\n", [])
+
+
+class ProductPackageTests(unittest.TestCase):
+    def test_readme_source_reference_uses_qualified_sha_and_no_local_fake_ref(self):
+        local = source_reference('owner/repo', 'local', None)
+        self.assertIn("builder's", local)
+        self.assertIn('unqualified', local)
+        self.assertNotIn('/tree/', local)
+        for kind in ('candidate', 'release'):
+            qualified = source_reference('owner/repo', kind, 'a' * 40)
+            self.assertIn('/tree/' + 'a' * 40 + '#readme', qualified)
+            self.assertNotIn('/tree/v0.2.0', qualified)
+        with self.assertRaises(ValueError):
+            source_reference('owner/repo', 'local', 'a' * 40)
+        for product in ('archive-readme.txt', 'archive-readme-gui.txt'):
+            template = (ROOT / 'scripts' / product).read_text()
+            rendered = template.format(version='0.2.0', repository='owner/repo',
+                                       macos_minimum=MACOS_MINIMUM, source_reference=local)
+            self.assertIn('MPL-2.0' if product.endswith('gui.txt') else 'Mozilla Public License', rendered)
+            self.assertIn(local, rendered)
+            self.assertIn('macOS 15.0 or later', rendered)
+            self.assertNotIn('/tree/v0.2.0', rendered)
+
+    def test_gui_bundle_metadata_and_members_are_separate_from_cli(self):
+        import plistlib
+        target = "aarch64-apple-darwin"
+        self.assertEqual(len(expected_members("cli", target)), 4)
+        self.assertIn("Auditory Lab.app/Contents/MacOS/auditorylab-gui", expected_members("gui", target))
+        correct = bundle_metadata("0.2.0")
+        validate_bundle(plistlib.dumps(correct), "0.2.0")
+        self.assertEqual(correct["LSMinimumSystemVersion"], "15.0")
+        for old_floor in ("10.12", "11.0", "14.0", "16.0"):
+            with self.subTest(floor=old_floor), self.assertRaises(ValueError):
+                validate_bundle(plistlib.dumps(dict(correct, LSMinimumSystemVersion=old_floor)), "0.2.0")
+        for key, value in [("LSMinimumSystemVersion", "11.0"), ("CFBundleExecutable", "auditorylab"),
+                           ("CFBundlePackageType", "BNDL"), ("CFBundleShortVersionString", "0.1.0")]:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                validate_bundle(plistlib.dumps(dict(correct, **{key: value})), "0.2.0")
+
+    def test_windows_gui_subsystem_and_import_additions_do_not_change_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "gui.exe"
+            image = bytearray(minimal_pe(["kernel32.dll", "gdi32.dll"]))
+            struct.pack_into("<H", image, 0x40 + 24 + 68, 2)
+            executable.write_bytes(image)
+            check_identity(executable, "x86_64-pc-windows-gnullvm", "gui")
+            check_dependencies(executable, "x86_64-pc-windows-gnullvm", "gui")
+            with self.assertRaisesRegex(ValueError, "unexpected runtime"):
+                check_dependencies(executable, "x86_64-pc-windows-gnullvm", "cli")
+            struct.pack_into("<H", image, 0x40 + 24 + 68, 3)
+            executable.write_bytes(image)
+            with self.assertRaisesRegex(ValueError, "GUI subsystem"):
+                check_identity(executable, "x86_64-pc-windows-gnullvm", "gui")
+
+    def test_gui_exact_framework_policy_cannot_loosen_cli_import_gate(self):
+        output = "binary:\n    /usr/lib/libSystem.B.dylib (compatibility version 1)\n    /System/Library/Frameworks/Unreviewed.framework/Versions/A/Unreviewed (compatibility version 1)\n"
+        with patch("package.run", side_effect=["", output]), self.assertRaisesRegex(ValueError, "unexpected runtime"):
+            check_dependencies(Path("gui"), "aarch64-apple-darwin", "gui")
+
+
+class DiagnosticTests(unittest.TestCase):
+    def test_raw_recipe_boundary_does_not_normalize_line_endings(self):
+        value = run(sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'raw\\r\\nsource\\r\\n')", text=False)
+        self.assertEqual(value, b"raw\r\nsource\r\n")
+
+    def test_failure_keeps_command_status_stdout_and_stderr(self):
+        with self.assertRaises(ValueError) as caught:
+            run(sys.executable, "-c", "import sys; print('tool output'); print('specific cause', file=sys.stderr); sys.exit(7)", encoding="utf-8")
+        self.assertIn("tool output", str(caught.exception))
+        self.assertIn("specific cause", str(caught.exception))
+        self.assertIn("7", str(caught.exception))
+        self.assertIsInstance(caught.exception.__cause__, subprocess.CalledProcessError)
+
+    def test_timeout_preserves_partial_bytes_and_cause(self):
+        error = subprocess.TimeoutExpired(["fixture-tool"], 120, output=b"partial output", stderr=b"timeout detail")
+        with patch("package.subprocess.run", side_effect=error), self.assertRaises(ValueError) as caught:
+            run("fixture-tool")
+        for evidence in ("fixture-tool", "120", "partial output", "timeout detail"):
+            self.assertIn(evidence, str(caught.exception))
+        self.assertIs(caught.exception.__cause__, error)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,13 @@
 [workspace]
 resolver = "3"
+exclude = ["vendor/slint-winit", "vendor/sctk-adwaita"]
 members = [
     "crates/auditory-core",
     "crates/auditory-wav",
     "crates/auditory-device",
-    "crates/auditory-lab",
+    "crates/auditory-cli",
+    "crates/auditory-app",
+    "crates/auditory-gui",
 ]
 
 [workspace.package]
@@ -17,13 +20,16 @@ publish = false
 
 [workspace.dependencies]
 allocation-counter = "0.8.1"
+auditory-app = { path = "crates/auditory-app" }
 auditory-core = { path = "crates/auditory-core" }
 auditory-wav = { path = "crates/auditory-wav" }
 auditory-device = { path = "crates/auditory-device" }
 cpal = "0.18.2"
 ctrlc = { version = "3.5.2", features = ["termination"] }
-# Without `arch`, every platform runs the same portable code.
-libm = { version = "0.2.16", default-features = false }
+# Keep portable arithmetic even when GUI transitive dependencies enable `arch`.
+# libm's maintained override disables architecture intrinsics after feature unification.
+libm = { version = "0.2.16", default-features = false, features = ["force-soft-floats"] }
+lexopt = "0.3.2"
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 serde = { version = "1.0.229", default-features = false, features = ["alloc", "derive"] }
 tempfile = "3.27.0"
@@ -31,6 +37,11 @@ toml = { version = "1.1.8", default-features = false, features = ["parse", "serd
 unicode-segmentation = "1.13.3"
 unicode-width = { version = "0.2.2", default-features = false }
 waveadapter = "0.3.1"
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-18", "backend-winit", "renderer-software", "renderer-femtovg-wgpu", "accessibility", "raw-window-handle-06", "unstable-winit-030"] }
+slint-build = { version = "=1.18.1", default-features = false, features = ["compat-1-18"] }
+rtrb = "=0.4.0"
+libc = "0.2"
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
 
 [workspace.lints.rust]
 warnings = "deny"
@@ -76,3 +87,8 @@ overflow-checks = true
 [profile.mutants]
 inherits = "test"
 debug = false
+
+[patch.crates-io]
+i-slint-backend-winit = { path = "vendor/slint-winit" }
+
+sctk-adwaita = { path = "vendor/sctk-adwaita" }

@@ -32,7 +32,10 @@ fn stimulus(components: Vec<Component>) -> Stimulus {
 fn render(stimulus: &Stimulus, hz: u32) -> Vec<[f64; 2]> {
     let session = stimulus.session(rate(hz)).unwrap();
     let mut frames = vec![[9.0; 2]; usize::try_from(session.frames()).unwrap()];
-    assert_eq!(session.into_renderer().render(&mut frames), frames.len());
+    assert_eq!(
+        session.into_renderer().render(&mut frames).frames(),
+        frames.len()
+    );
     frames
 }
 
@@ -273,7 +276,7 @@ fn component_values_are_checked_and_blamed_on_their_component_and_field() {
         StimulusError::Component {
             number: 1,
             error: ComponentError::PhaseStepTooSmall {
-                field: "frequency_hz",
+                parameter: Parameter::Frequency,
                 ..
             }
         }
@@ -542,7 +545,7 @@ fn rendering_is_independent_of_how_the_caller_divides_it_into_buffers() {
             let mut parts = Vec::new();
             for count in blocks.into_iter().chain([whole.len() + 3]) {
                 let mut buffer = vec![[7.0; 2]; count];
-                let produced = renderer.render(&mut buffer);
+                let produced = renderer.render(&mut buffer).frames();
                 prop_assert!(
                     buffer[produced..]
                         .iter()
@@ -593,7 +596,7 @@ fn click_rates_reject_zero_and_subnormal_phase_steps_without_narrowing_tone_rate
             StimulusError::Component {
                 number: 1,
                 error: ComponentError::PulseRateTooSmall {
-                    field: "rate_hz",
+                    parameter: Parameter::Rate,
                     rate_hz,
                     sample_rate_hz: 48_000,
                 },

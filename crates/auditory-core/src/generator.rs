@@ -316,3 +316,167 @@ mod click_clock_tests {
         assert_eq!(click.next(boundary + 2), 0.0);
     }
 }
+
+#[cfg(test)]
+mod characterization {
+    use super::*;
+
+    // See docs/signal-verification.md: u=2^-53, one rounded division,
+    // <=u absolute error per bounded addition, and exact Sterbenz subtraction.
+    const U: f64 = f64::EPSILON / 2.0;
+    fn reference(frame: u64, numerator: u32, denominator: u32, hz: u32) -> f64 {
+        let period = u128::from(denominator) * u128::from(hz);
+        let remainder = (u128::from(frame) * u128::from(numerator)) % period;
+        f64::from(u32::try_from(remainder).unwrap()) / f64::from(u32::try_from(period).unwrap())
+    }
+    fn budget(frame: u64, frequency: f64, hz: u32) -> f64 {
+        let n = numeric::frames_to_f64(frame);
+        n * U * (frequency / f64::from(hz)) + n * U + U
+    }
+    fn close(actual: f64, expected: f64, limit: f64) -> bool {
+        let difference = (actual - expected).abs();
+        (0.0..1.0).contains(&actual) && difference.min((1.0 - difference).abs()) <= limit
+    }
+    fn check_phase(numerator: u32, denominator: u32, hz: u32, frames: u64) {
+        let frequency = f64::from(numerator) / f64::from(denominator);
+        let mut phase = Phase::new(frequency / f64::from(hz));
+        let mut checkpoint = 0;
+        for frame in 0..frames {
+            let actual = phase.advance();
+            // Keep the long run inexpensive, but include both sides of its end.
+            if frame < 8 || frame == checkpoint || frame + 8 >= frames {
+                if frame == checkpoint {
+                    checkpoint += u64::from(hz);
+                }
+                let expected = reference(frame, numerator, denominator, hz);
+                let tolerance = budget(frame, frequency, hz);
+                assert!(
+                    close(actual, expected, tolerance),
+                    "{frequency} Hz / {hz}, frame {frame}: {actual} vs {expected}, limit {tolerance}"
+                );
+                // Sine is 1-Lipschitz in radians. Add a separate 32u allowance
+                // for bounded-angle argument/kernel/native-reference evaluation.
+                let sample = libm::sin(actual * TAU);
+                let oracle = (expected * TAU).sin();
+                assert!((sample - oracle).abs() <= TAU * tolerance + 32.0 * U);
+            }
+        }
+    }
+    #[test]
+    fn declared_frequencies_match_independent_rational_phase_and_sine_references() {
+        for hz in [44_100, 48_000, 96_000] {
+            for (numerator, denominator) in [(807, 2), (625, 16), (10_000, 1)] {
+                check_phase(numerator, denominator, hz, u64::from(hz) * 2);
+            }
+        }
+    }
+    #[test]
+    #[ignore = "offline long-session characterization; run explicitly in release mode"]
+    fn hour_long_accumulation_matches_the_declared_frequency_budget() {
+        for hz in [44_100, 48_000, 96_000] {
+            // The longest built-in tone-pip sessions run for one hour. Check
+            // their 10 kHz carrier plus the slow 39.0625 Hz catalog SAM clock.
+            for (numerator, denominator) in [(10_000, 1), (625, 16)] {
+                check_phase(numerator, denominator, hz, u64::from(hz) * 3_600);
+            }
+        }
+    }
+    fn check_pulse(train: &PulseTrain, frame: u64, hz: u32, rate: u32) -> bool {
+        let phase = reference(frame, rate, 1, hz);
+        let duty = f64::from(rate) / 1_000.0;
+        // Independent decimal 1 ms width and integer declared rate. Division
+        // and multiplication each contribute <=u relative uncertainty. Floor
+        // and the fractional subtraction add none for these bounded indices.
+        let uncertainty = 2.0 * U * numeric::frames_to_f64(frame) * f64::from(rate) / f64::from(hz)
+            + 2.0 * U * duty
+            + U;
+        let near_edge = phase.min(1.0 - phase).min((phase - duty).abs()) <= uncertainty;
+        let expected = if phase < duty { 1.0 } else { 0.0 };
+        train.at(frame) == expected || near_edge
+    }
+    #[test]
+    fn late_pulse_edges_and_44100_hz_counts_follow_rational_boundaries() {
+        for hz in [44_100, 48_000, 96_000, 768_000] {
+            for rate in [8, 40, 80] {
+                let train =
+                    PulseTrain::new(f64::from(rate) / f64::from(hz), 0.001 * f64::from(rate));
+                let last_cycle = crate::Session::MAX_FRAMES * u64::from(rate) / u64::from(hz) - 1;
+                for cycle in [0, 1, u64::from(rate) * 3_600 - 1, last_cycle] {
+                    let onset = (u128::from(cycle) * u128::from(hz)).div_ceil(u128::from(rate));
+                    let end = (u128::from(cycle) * u128::from(hz) * 1_000
+                        + u128::from(hz) * u128::from(rate))
+                    .div_ceil(u128::from(rate) * 1_000);
+                    for edge in [onset, end] {
+                        let edge = u64::try_from(edge).unwrap();
+                        for frame in edge.saturating_sub(2)..=edge + 2 {
+                            assert!(frame <= crate::Session::MAX_FRAMES);
+                            assert!(
+                                check_pulse(&train, frame, hz, rate),
+                                "{hz}/{rate}: frame {frame}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        let train = PulseTrain::new(40.0 / 44_100.0, 0.04);
+        let mut onsets = 0;
+        let mut previous = false;
+        let mut width = 0;
+        for frame in 0..44_100 {
+            let active = train.at(frame) == 1.0;
+            assert!(check_pulse(&train, frame, 44_100, 40));
+            if active && !previous {
+                onsets += 1;
+            }
+            if active {
+                width += 1;
+            }
+            if !active && previous {
+                assert!((43..=46).contains(&width));
+                width = 0;
+            }
+            previous = active;
+        }
+        assert_eq!(onsets, 40);
+        // Exactly representable clocks have an unambiguous half-open edge even
+        // at the frame limit, independent of a multiplication using the step.
+        let exact = PulseTrain::new(0.125, 0.375);
+        for frame in crate::Session::MAX_FRAMES - 16..=crate::Session::MAX_FRAMES {
+            assert_eq!(exact.at(frame), if frame % 8 < 3 { 1.0 } else { 0.0 });
+        }
+    }
+    #[test]
+    fn characterization_detects_phase_rate_and_half_open_edge_defects() {
+        let n = 48_000;
+        let expected = reference(n, 807, 2, 48_000);
+        let limit = budget(n, 403.5, 48_000);
+        for (step, initial) in [
+            (403.5 / 48_000.0, 0.0),
+            (403.6 / 48_000.0, 0.0),
+            (403.5 / 48_000.0, 0.01),
+        ] {
+            let mut phase = Phase::new(step);
+            phase.cycles = initial;
+            for _ in 0..n {
+                phase.advance();
+            }
+            assert_eq!(
+                close(phase.cycles, expected, limit),
+                initial == 0.0 && step == 403.5 / 48_000.0
+            );
+        }
+        let expected_off = PulseTrain::new(0.125, 0.375).at(3);
+        assert_eq!(expected_off, 0.0);
+        assert_ne!(
+            PulseTrain::new(0.125, 0.375_f64.next_up()).at(3),
+            expected_off
+        );
+        assert!(!check_pulse(
+            &PulseTrain::new(41.0 / 44_100.0, 0.041),
+            1_080,
+            44_100,
+            40
+        ));
+    }
+}

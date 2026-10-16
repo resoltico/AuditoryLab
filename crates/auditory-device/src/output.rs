@@ -4,7 +4,7 @@
 use crate::{
     PlaybackError,
     callback::{Callback, Rounding, frame_duration},
-    shared::Shared,
+    shared::{Shared, Terminal},
 };
 use auditory_core::{SampleRate, Session, Stimulus, StimulusError};
 use cpal::{
@@ -141,20 +141,32 @@ impl Output {
     /// stream that makes no progress for 30 seconds or outlasts the session
     /// by more than 30 seconds.
     ///
+    /// Optional observation copies the same mixed/faded generated stereo prefix
+    /// before device conversion. It reports generation, not audible delivery;
+    /// cancellation may subsequently silence the device buffer. A full or
+    /// disconnected observation queue never changes audio or terminal results.
+    /// Allocate it from the prepared rate before playback; `None` adds no sample
+    /// copying or analysis work.
+    ///
     /// # Errors
     /// Returns an error for a session of another sample rate, cancellation,
     /// a backend failure, invalid backend timing or a timeout.
     /// ```no_run
     /// fn play(output: auditory_device::Output, session: auditory_core::Session, cancel: &std::sync::atomic::AtomicBool) {
-    ///     let _ = output.play(session, cancel);
+    ///     let _ = output.play(session, cancel, None);
     /// }
     /// ```
     /// ```compile_fail,E0308
     /// fn play(output: auditory_device::Output, renderer: auditory_core::Renderer, cancel: &std::sync::atomic::AtomicBool) {
-    ///     let _ = output.play(renderer, cancel);
+    ///     let _ = output.play(renderer, cancel, None);
     /// }
     /// ```
-    pub fn play(self, session: Session, cancel: &AtomicBool) -> Result<Played, PlaybackError> {
+    pub fn play(
+        self,
+        session: Session,
+        cancel: &AtomicBool,
+        observation: Option<crate::ObservationProducer>,
+    ) -> Result<Played, PlaybackError> {
         if cancel.load(Ordering::Relaxed) {
             return Err(PlaybackError::Cancelled);
         }
@@ -162,33 +174,33 @@ impl Output {
         let frames = session.frames();
         let time_limit = time_limit(frames, self.description.sample_rate);
         let shared = Arc::new(Shared::default());
-        let callback = Callback::new(
+        let mut callback = Callback::new(
             session.into_renderer(),
             self.config.channels,
             Arc::clone(&shared),
         );
-        // Every way playback can end is recorded in `shared`; the first one stands.
-        match self.stream(callback, &shared) {
+        callback.observe(observation);
+        // Keep synchronous diagnostics on this worker, before publishing their
+        // fixed outcome. An asynchronous writer can be paused independently.
+        let mut setup_error = None;
+        let terminal = match self.stream(callback, &shared) {
             Ok(stream) => {
-                match stream.play() {
+                let terminal = match stream.play() {
                     Ok(()) => supervise(&shared, time_limit, cancel),
-                    Err(error) => shared.finish(Err(error.into())),
-                }
+                    Err(error) => setup_failed(&shared, error, &mut setup_error),
+                };
                 drop(stream);
+                terminal
             }
-            Err(error) => shared.finish(Err(error.into())),
-        }
-        match shared.result() {
-            Some(Ok(())) => Ok(Played {
-                frames,
-                sample_rate: self.description.sample_rate,
-                representation: self.description.representation,
-                underruns: shared.underruns(),
-            }),
-            Some(Err(error)) => Err(error.clone()),
-            // `supervise` returns only once a result is recorded.
-            None => Err(PlaybackError::TimedOut),
-        }
+            Err(error) => setup_failed(&shared, error, &mut setup_error),
+        };
+        resolve(&shared, terminal, setup_error)?;
+        Ok(Played {
+            frames,
+            sample_rate: self.description.sample_rate,
+            representation: self.description.representation,
+            underruns: shared.underruns(),
+        })
     }
 
     fn stream(&self, callback: Callback, shared: &Arc<Shared>) -> Result<Stream, cpal::Error> {
@@ -221,7 +233,7 @@ impl Output {
 
 /// Quantize through a saturated 32-bit integer: the direct conversion maps
 /// positive full scale one step beyond the 24-bit range.
-fn to_i24(sample: f64) -> cpal::I24 {
+pub(crate) fn to_i24(sample: f64) -> cpal::I24 {
     cpal::I24::from_sample(i32::from_sample(sample))
 }
 
@@ -302,20 +314,59 @@ impl Watchdog {
 
 /// Wait until playback has a result, recording cancellation or a timeout
 /// when that comes first.
-fn supervise(shared: &Shared, time_limit: Duration, cancel: &AtomicBool) {
+fn supervise(shared: &Shared, time_limit: Duration, cancel: &AtomicBool) -> Terminal {
     let started = Instant::now();
     let mut watchdog = Watchdog::new(time_limit);
     loop {
-        if shared.result().is_some() {
-            return;
+        let terminal = shared.terminal();
+        if terminal != Terminal::Running {
+            return terminal;
         }
         if cancel.load(Ordering::Relaxed) {
-            return shared.finish(Err(PlaybackError::Cancelled));
+            shared.finish(Terminal::Cancelled);
+            return shared.terminal();
         }
         if watchdog.expired(started.elapsed(), shared.progress()) {
-            return shared.finish(Err(PlaybackError::TimedOut));
+            shared.finish(Terminal::TimedOut);
+            return shared.terminal();
         }
         thread::sleep(POLL_INTERVAL);
+    }
+}
+
+pub(crate) fn setup_failed(
+    shared: &Shared,
+    error: cpal::Error,
+    local: &mut Option<cpal::Error>,
+) -> Terminal {
+    *local = Some(error);
+    shared.finish(Terminal::StreamSetupFailed);
+    shared.terminal()
+}
+
+/// Resolve only on the worker, after stream teardown. Backend payload storage
+/// precedes its terminal publication; setup diagnostics never enter that slot.
+pub(crate) fn resolve(
+    shared: &Shared,
+    terminal: Terminal,
+    setup_error: Option<cpal::Error>,
+) -> Result<(), PlaybackError> {
+    match terminal {
+        Terminal::Complete => Ok(()),
+        Terminal::Cancelled => Err(PlaybackError::Cancelled),
+        Terminal::TimedOut => Err(PlaybackError::TimedOut),
+        Terminal::InvalidTiming => Err(PlaybackError::InvalidTiming),
+        Terminal::MisalignedBuffer => Err(PlaybackError::MisalignedBuffer),
+        Terminal::Backend => Err(PlaybackError::Backend(shared.backend_error().clone())),
+        Terminal::StreamSetupFailed => {
+            let Some(error) = setup_error else {
+                unreachable!("setup failure retains its worker-local error");
+            };
+            Err(PlaybackError::Backend(error))
+        }
+        Terminal::Running => {
+            unreachable!("supervision and setup failure return a published outcome")
+        }
     }
 }
 
@@ -494,15 +545,12 @@ mod tests {
     fn supervision_records_cancellation_and_leaves_an_earlier_result_alone() {
         let shared = Shared::default();
         supervise(&shared, Duration::from_secs(3_600), &AtomicBool::new(true));
-        assert!(matches!(
-            shared.result(),
-            Some(Err(PlaybackError::Cancelled))
-        ));
+        assert!(matches!(shared.terminal(), Terminal::Cancelled));
 
         let shared = Shared::default();
-        shared.finish(Ok(()));
+        shared.finish(Terminal::Complete);
         supervise(&shared, Duration::ZERO, &AtomicBool::new(true));
-        assert!(matches!(shared.result(), Some(Ok(()))));
+        assert!(shared.terminal() == Terminal::Complete);
     }
 
     #[test]
@@ -512,13 +560,10 @@ mod tests {
         let stream = Arc::clone(&shared);
         let worker = thread::spawn(move || {
             thread::sleep(Duration::from_millis(500));
-            stream.finish(Ok(()));
+            stream.finish(Terminal::Complete);
         });
         supervise(&shared, Duration::ZERO, &AtomicBool::new(false));
-        assert!(matches!(
-            shared.result(),
-            Some(Err(PlaybackError::TimedOut))
-        ));
+        assert!(matches!(shared.terminal(), Terminal::TimedOut));
         worker.join().unwrap();
     }
 
@@ -528,11 +573,109 @@ mod tests {
         let stream = Arc::clone(&shared);
         let worker = thread::spawn(move || {
             thread::sleep(Duration::from_millis(30));
-            stream.finish(Ok(()));
+            stream.finish(Terminal::Complete);
         });
         // The limit is far beyond the wait, yet lets the test end if the result is never seen.
         supervise(&shared, Duration::from_secs(10), &AtomicBool::new(false));
-        assert!(matches!(shared.result(), Some(Ok(()))));
+        assert!(shared.terminal() == Terminal::Complete);
         worker.join().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod quantization {
+    use super::*;
+    #[test]
+    fn integer_steps_and_endpoint_saturation_are_distinct_from_float_rounding() {
+        for value in [
+            0.0,
+            -0.0,
+            f64::from(f32::from_bits(1)),
+            -f64::from(f32::from_bits(1)),
+        ] {
+            assert_eq!(i16::from_sample(value), 0);
+            assert_eq!(i32::from_sample(value), 0);
+        }
+        let step16 = 1.0 / 32_768.0;
+        let step32 = 1.0 / 2_147_483_648.0;
+        for (steps, expected) in [
+            (0.0, 0),
+            (0.75, 0),
+            (-0.75, 0),
+            (1.0, 1),
+            (-1.0, -1),
+            (1.75, 1),
+            (-1.75, -1),
+        ] {
+            assert_eq!(i16::from_sample(steps * step16), expected);
+            assert_eq!(i32::from_sample(steps * step32), i32::from(expected));
+        }
+        // I24 deliberately goes through saturated I32, then discards low bits.
+        // Signed right shift floors negative half-steps rather than rounding them.
+        let step24 = 1.0 / 8_388_608.0;
+        for (steps, expected) in [
+            (0.0, 0),
+            (0.5, 0),
+            (-0.5, -1),
+            (1.0, 1),
+            (-1.0, -1),
+            (1.5, 1),
+            (-1.5, -2),
+        ] {
+            assert_eq!(to_i24(steps * step24).inner(), expected);
+        }
+        assert_eq!(i16::from_sample(1.0_f64), i16::MAX);
+        assert_eq!(i16::from_sample(-1.0_f64), i16::MIN);
+        assert_eq!(i32::from_sample(1.0_f64), i32::MAX);
+        assert_eq!(i32::from_sample(-1.0_f64), i32::MIN);
+        assert_eq!(to_i24(1.0).inner(), 8_388_607);
+        assert_eq!(to_i24(-1.0).inner(), -8_388_608);
+        for sample in [-1.0, -0.37, -1e-20, 0.0, 1e-20, 0.37, 1.0] {
+            assert!((f64::from(i16::from_sample(sample)) * step16 - sample).abs() <= step16);
+            assert!((f64::from(i32::from_sample(sample)) * step32 - sample).abs() <= step32);
+            assert!((f64::from(to_i24(sample).inner()) * step24 - sample).abs() <= step24 + step32);
+        }
+    }
+    #[test]
+    fn real_callback_conversion_preserves_first_two_channels_and_zeros_every_extra_channel() {
+        use crate::shared::Shared;
+        use auditory_core::{Component, Ears};
+        let session = Stimulus {
+            duration_seconds: 8.0 / 8_000.0,
+            fade_seconds: 0.0,
+            components: vec![
+                Component::Tone {
+                    ears: Ears::Left,
+                    frequency_hz: 2_000.0,
+                    peak_dbfs: 0.0,
+                    modulation: None,
+                },
+                Component::Tone {
+                    ears: Ears::Right,
+                    frequency_hz: 1_000.0,
+                    peak_dbfs: -20.0,
+                    modulation: None,
+                },
+            ],
+        }
+        .session(SampleRate::new(8_000).unwrap())
+        .unwrap();
+        let mut callback = Callback::new(session.into_renderer(), 5, Arc::new(Shared::default()));
+        let mut output = [cpal::I24::from_sample(0.5_f64); 40];
+        let now = cpal::StreamInstant::from_nanos(0);
+        callback.fill(
+            &mut output,
+            cpal::OutputStreamTimestamp {
+                callback: now,
+                playback: now,
+            },
+            &to_i24,
+        );
+        assert_eq!(output[5].inner(), 8_388_607);
+        assert_eq!(output[15].inner(), -8_388_608);
+        assert!(output[11].inner() > 800_000 && output[11].inner() < 850_000);
+        for frame in output.as_chunks::<5>().0 {
+            assert!(frame[2..].iter().all(|sample| sample.inner() == 0));
+        }
     }
 }

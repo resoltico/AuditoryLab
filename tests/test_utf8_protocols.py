@@ -14,6 +14,7 @@ import notices
 import release
 import windows_runtime
 import package
+import qualify
 
 
 class ProtocolTests(unittest.TestCase):
@@ -37,16 +38,24 @@ class ProtocolTests(unittest.TestCase):
     def test_real_utf8_children_preserve_nonascii_metadata_and_sysroot_with_ansi_default(self):
         with tempfile.TemporaryDirectory() as directory:
             path = str((Path(directory) / 'Łódź' / 'Ervīns').resolve())
-            metadata = {'packages': [{'name': 'auditory-lab', 'version': '0.1.0', 'manifest_path': path}]}
+            metadata = {'workspace_members': ['path+file://' + path + '#auditory-cli@0.1.0'],
+                        'packages': [{'id': 'path+file://' + path + '#auditory-cli@0.1.0',
+                                      'name': 'auditory-cli', 'version': '0.1.0', 'manifest_path': path,
+                                      'targets': [{'name': 'auditorylab', 'kind': ['bin']}]}]}
+            gui = dict(metadata['packages'][0], id='path+file://' + path + '#auditory-gui@0.1.0',
+                       name='auditory-gui', targets=[{'name': 'auditorylab-gui', 'kind': ['bin']}])
+            metadata['packages'].append(gui)
+            metadata['workspace_members'].append(gui['id'])
             payloads = {
                 'cargo': json.dumps(metadata, ensure_ascii=False),
+                'cargo-tree': 'slint v1.18.1 (' + path + ')|accessibility,backend-winit,compat-1-18,raw-window-handle-06,renderer-software,renderer-femtovg-wgpu,i-slint-renderer-femtovg,std,unstable-winit-030\nslint-build v1.18.1|compat-1-18\n',
                 '-vV': 'release: 1.99.0\nhost: x86_64-pc-windows-gnullvm\n',
                 '--print': path + '\n',
             }
             original = subprocess.Popen
             def legacy_parent(command, *args, **kwargs):
                 if command[0] in ('cargo', 'rustc'):
-                    text = payloads['cargo' if command[0] == 'cargo' else command[1]]
+                    text = payloads[('cargo-tree' if command[1] == 'tree' else 'cargo') if command[0] == 'cargo' else command[1]]
                     wire = text.encode('utf-8')
                     command = [sys.executable, '-c', 'import sys; sys.stdout.buffer.write(bytes.fromhex(' + repr(wire.hex()) + '))']
                 kwargs.setdefault('encoding', 'cp1252')
@@ -58,6 +67,7 @@ class ProtocolTests(unittest.TestCase):
                     subprocess.check_output(['cargo', 'metadata'], text=True)
                 self.assertEqual(notices.metadata('x86_64-pc-windows-gnullvm'), metadata)
                 self.assertEqual(release.workspace_version(), '0.1.0')
+                qualify.check_gui_profile('x86_64-pc-windows-gnullvm')
                 version, host, sysroot = windows_runtime.toolchain()
                 self.assertEqual(version, '1.99.0')
                 self.assertEqual(host, 'x86_64-pc-windows-gnullvm')

@@ -1,0 +1,108 @@
+--- upstream/Cargo.toml
++++ vendor/slint-winit/Cargo.toml
+@@ -87,7 +87,7 @@
+ ]
+ wayland = [
+     "winit/wayland",
+-    "winit/wayland-csd-adwaita",
++    "winit/wayland-csd-adwaita-crossfont",
+     "glutin?/wayland",
+     "glutin-winit?/wayland",
+     "dep:arboard",
+@@ -381,6 +381,7 @@
+ version = "0.3.2"
+ features = [
+     "std",
++    "NSApplication",
+     "NSColor",
+     "NSView",
+     "NSWindow",
+--- upstream/lib.rs
++++ vendor/slint-winit/lib.rs
+@@ -515,7 +515,10 @@
+             builder.build().map_err(|e| format!("Error initializing winit event loop: {e}"))?;
+ 
+         #[cfg(target_os = "macos")]
+-        Self::disable_macos_automatic_shortcut_localization();
++        {
++            Self::disable_macos_automatic_shortcut_localization();
++            Self::install_macos_deferred_termination()?;
++        }
+ 
+         cfg_if::cfg_if! {
+             if #[cfg(all(unix, not(target_vendor = "apple"), feature = "wayland"))] {
+@@ -607,6 +610,74 @@
+         }
+     }
+ 
++    // Auditory Lab: normal AppKit Quit must take the same vetoable close path as
++    // the titlebar button. Otherwise AppKit closes windows and exits the process
++    // before the application can cancel and join its worker.
++    #[cfg(target_os = "macos")]
++    fn install_macos_deferred_termination() -> Result<(), PlatformError> {
++        use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
++        use objc2::{msg_send, sel, Message};
++        use objc2::rc::Retained;
++        use objc2_app_kit::{NSApplication, NSWindow};
++        use objc2_foundation::NSUInteger;
++
++        unsafe extern "C-unwind" fn should_terminate(
++            _this: *mut AnyObject,
++            _cmd: Sel,
++            app: &NSApplication,
++        ) -> NSUInteger {
++            // Snapshot both windows and delegates before delivering any callbacks:
++            // a close handler can synchronously change the native window registry.
++            let windows: Vec<(Retained<NSWindow>, Retained<AnyObject>)> = app
++                .windows()
++                .iter()
++                .filter_map(|window| {
++                    let delegate = window.delegate()?;
++                    let delegate: &AnyObject = (*delegate).as_ref();
++                    (delegate.class().name().to_bytes() == b"WinitWindowDelegate")
++                        .then(|| (window.retain(), delegate.retain()))
++                })
++                .collect();
++            if windows.is_empty() {
++                // This application's main native window precedes every worker and
++                // remains retained until its worker has joined. No managed window
++                // therefore means there is no application work left to protect.
++                return 1; // NSTerminateNow
++            }
++            for (window, delegate) in windows {
++                // SAFETY: the pinned WinitWindowDelegate implements this selector
++                // with BOOL return and NSWindow argument. Calling the delegate
++                // directly avoids performClose:'s alert sound on a vetoed close.
++                let _: bool = unsafe { msg_send![&*delegate, windowShouldClose: &*window] };
++            }
++            0 // NSTerminateCancel; return to normal event processing until joined.
++        }
++
++        let cls = AnyClass::get(c"WinitApplicationDelegate")
++            .ok_or_else(|| PlatformError::from("Missing pinned Winit application delegate"))?;
++        let selector = sel!(applicationShouldTerminate:);
++        if cls.instance_method(selector).is_some() {
++            return Err("Unexpected Winit application termination implementation".into());
++        }
++        // SAFETY: class and selector are checked above; callback and encoding use
++        // AppKit's NSUInteger return ABI on the supported 64-bit macOS targets.
++        let installed = unsafe {
++            objc2::ffi::class_addMethod(
++                (cls as *const AnyClass).cast_mut(),
++                selector,
++                core::mem::transmute::<
++                    unsafe extern "C-unwind" fn(*mut AnyObject, Sel, &NSApplication) -> NSUInteger,
++                    Imp,
++                >(should_terminate),
++                c"Q@:@".as_ptr(),
++            )
++        };
++        if !installed.as_bool() {
++            return Err("Cannot install deferred native application termination".into());
++        }
++        Ok(())
++    }
++
+     pub fn register_window(&self, id: winit::window::WindowId, window: Rc<WinitWindowAdapter>) {
+         self.active_windows.borrow_mut().insert(id, Rc::downgrade(&window));
+     }

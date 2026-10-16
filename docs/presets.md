@@ -1,10 +1,10 @@
 # Presets
 
-A preset is a UTF-8 TOML recipe for a stereo sound, in hertz, seconds and dBFS. It has no sample rate: `inspect` and `export` choose one, and playback uses the device's. `show NAME --output FILE` saves any built-in preset as a starting point.
+A preset is a UTF-8 TOML recipe for a stereo sound, in hertz, seconds and dBFS. It has no sample rate: `inspect` and `export` choose one, and playback uses the device's. `auditorylab recipe PRESET_ID --output PATH` saves any built-in preset as a starting point.
 
 ## Examples
 
-Save an example as `custom.toml` in UTF-8, then run `auditory-lab inspect ./custom.toml` to validate it without opening an audio device.
+Save an example as `custom.toml` in UTF-8, then run `auditorylab inspect --file ./custom.toml` to validate it without opening an audio device.
 
 Two tones, 250 Hz on the left and 240 Hz on the right, for two seconds:
 
@@ -100,7 +100,7 @@ Within `[about]`, only `title` is required; the other text fields are optional f
 
 | `[about]` field | Meaning |
 |---|---|
-| `title` | A short name, shown by `list`, `about`, `inspect` and the start line of export and playback. |
+| `title` | A short name, shown by `list`, `describe`, `inspect` and the start line of export and playback. |
 | `studied_for` | What the source studied the sound for, in a few plain words. |
 | `summary` | For listeners: what the sound is, what was studied and what was found, in plain language. |
 | `citation` | The source's authors, year, title and publication. |
@@ -108,7 +108,7 @@ Within `[about]`, only `title` is required; the other text fields are optional f
 | `study` | For researchers: the sound's role in the source and the source's reported findings. |
 | `adaptation` | Every choice and difference between this preset and the source. |
 
-`[about]` text never affects the samples, and sources are neither fetched nor checked.
+`[about]` text never affects the samples. The running program does not fetch or check source URLs; the [catalog reference](catalog-review.md) documents source comparisons and evidence limits.
 
 ## Waveforms
 
@@ -143,15 +143,15 @@ A recipe can be valid at one sample rate and invalid at another. `inspect`, `exp
 
 `peak_dbfs` states a component's peak bound. Over complete steady cycles, an unmodulated tone's RMS is 3.01 dB below its peak bound. When the carrier frequency is above the modulation rate, a full-depth sinusoidally modulated tone is 7.27 dB below its peak bound over complete steady cycles. These relationships require distinct, non-DC spectral terms over the averaging interval; spectral coincidences need separate calculation. Distinct tones add in power over suitable steady intervals, so two tones each 3.01 dB lower match one tone's RMS under those conditions. Coincident frequencies can add coherently.
 
-An ideal rectangular click train's RMS is its pulse peak plus `10 · log10(width_seconds · rate_hz)` dB. That duty-cycle change also applies to a gated tone relative to its ungated RMS when its open windows contain complete tone cycles, as in the catalog's tone pips; other gated-tone RMS values depend on carrier phase and frequency. The duty-cycle change is −13.98 dB for 1 ms at 40 Hz. For sampled pulses, use the actual active-frame fraction, and exclude endpoint fades from steady-state calculations. Digital levels do not establish loudness at the ear; that depends on the device, its volume and the headphones or speakers.
+An ideal rectangular click train's RMS is its pulse peak plus `10 · log10(width_seconds · rate_hz)` dB. That duty-cycle change also applies to a gated tone relative to its ungated RMS when its open windows contain complete tone cycles, as in the catalog's tone pips; other gated-tone RMS values depend on carrier phase and frequency. The duty-cycle change is −13.98 dB for 1 ms at 40 Hz. For sampled pulses, use the actual active-frame fraction, and exclude endpoint fades from steady-state calculations. The validated linear/decibel bounds apply before sink conversion; nearest-f32 and signed integer quantization have separate spacing/rounding rules and can change a peak slightly. [Signal verification](signal-verification.md) covers midpoint, signed-zero and subnormal cases. Digital levels do not establish loudness at the ear; that depends on the device, its volume and the headphones or speakers.
 
 ## Built-in catalog
 
-Each built-in preset reproduces the sound of one condition from a published study, and its `[about]` table gives the plain-language summary, the citation, the study context and every adaptation. Built-in sounds use 0.1 s fades, phase-zero starts and a −20 dBFS peak per component unless the study's own level relationships require otherwise; those cases are explained in `adaptation`. Study procedures beyond the sound itself (baselines, condition order, tasks, recordings, calibration, light stimulation) are not part of a preset.
+Each built-in preset is a parameterized audio adaptation of a selected condition from a published study. Its `[about]` table distinguishes stated source parameters, unspecified details and explicit synthesis or presentation choices. These recipes do not reproduce the original apparatus, calibrated acoustic levels or every waveform detail. The [catalog reference](catalog-review.md) documents the primary methods, supplements, adaptations and remaining evidence limits for all nineteen recipes. Built-in sounds use 0.1 s fades, phase-zero starts and a −20 dBFS peak per component unless the study's own level relationships require otherwise; those cases are explained in `adaptation`. Study procedures beyond the sound itself (baselines, condition order, tasks, recordings, calibration, light stimulation) are not part of a preset.
 
 ### Adding a built-in preset
 
-A study's condition qualifies only when its full-text methods state the waveform, which ear hears what, the frequencies or rates and widths, and a continuous duration. Sweeps, sounds controlled by live measurements, unstated maskers or noise, unstated ear assignment and short recording-locked trials do not qualify. Check the source for corrections and retractions.
+A condition qualifies only when its full primary methods give enough evidence to identify the waveform, frequencies or rates and widths, continuous duration, and original presentation. Headphone routing must be stated; a documented speaker presentation may be explicitly adapted to identical ear channels, without claiming that this recreates the acoustic field. Selecting one stated ear or EEG session from a wider protocol must also be disclosed. Unexplained routing guesses, unreported carrier or pulse parameters, sweeps, live-controlled sounds, unstated maskers/noise and short recording-locked trial reconstructions do not qualify. Record missing phase, ramps, audio rate and calibration instead of inventing them. Check supplements and publisher corrections/retractions, and state unavailable evidence honestly.
 
 Name the file `firstauthor-year-condition.toml`, in lowercase, under `crates/auditory-core/catalog/`, and add the name to the list in `crates/auditory-core/src/catalog.rs`, which is in name order with numbers compared numerically, and its recipe to the independent table in `crates/auditory-core/tests/catalog.rs`. Write `[about]` values using printable ASCII characters from space through tilde, excluding double quotes, on one line per field:
 

@@ -34,7 +34,7 @@ fn silence_completes() {
     let session = verified(&output, 1.0);
     let frames = session.frames();
     let start = Instant::now();
-    let played = output.play(session, &AtomicBool::new(false)).unwrap();
+    let played = output.play(session, &AtomicBool::new(false), None).unwrap();
     let elapsed = start.elapsed();
     println!(
         "played {} frames as {} in {elapsed:?}; {} underruns",
@@ -57,7 +57,7 @@ fn silence_cancels() {
             std::thread::sleep(Duration::from_millis(500));
             cancel.store(true, Ordering::Relaxed);
         });
-        output.play(session, &cancel)
+        output.play(session, &cancel, None)
     });
     println!("cancelled after {:?}: {result:?}", start.elapsed());
     assert!(matches!(result, Err(PlaybackError::Cancelled)));

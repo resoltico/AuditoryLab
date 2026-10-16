@@ -1,0 +1,108 @@
+name: Native qualification
+on:
+  workflow_call:
+    inputs:
+      build-kind:
+        description: candidate or release; never controls publication
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: targets
+        run: |
+          targets="$(python3 scripts/release.py matrix)"
+          echo "targets=${targets}" >> "${GITHUB_OUTPUT}"
+  native:
+    needs: matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.targets) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      QUALIFICATION_KIND: ${{ inputs.build-kind }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+          architecture: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+      - name: Require a qualification kind and initialize owned temporary output
+        run: |
+          [[ "${QUALIFICATION_KIND}" == candidate || "${QUALIFICATION_KIND}" == release ]]
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          temporary = Path.cwd() / "target" / "qualification-temp"
+          temporary.mkdir(parents=True, exist_ok=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              for name in ("TMPDIR", "TEMP", "TMP"):
+                  output.write(f"{name}={temporary}\n")
+          PY
+      - name: Install Linux native prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libasound2-dev pkg-config libxkbcommon-dev libxkbcommon0 libxkbcommon-x11-0 libfontconfig1-dev libfreetype6-dev libwayland-dev libx11-dev libx11-xcb-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxrandr-dev libxi-dev libxcursor-dev dbus-x11 zenity fonts-dejavu-core xvfb
+      - name: Install the pinned native toolchain
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+        run: |
+          if [[ "${RUNNER_OS}" == Windows ]]; then
+            toolchain="$(python scripts/release.py toolchain --target "${BUILD_TARGET}")"
+            rustup toolchain install "${toolchain}" --profile minimal --component rustfmt,clippy,rust-mingw
+            echo "RUSTUP_TOOLCHAIN=${toolchain}" >> "${GITHUB_ENV}"
+          else
+            rustup toolchain install
+          fi
+      - name: Install the freestanding core qualification target
+        run: |
+          target="$(python -c 'import sys; sys.path.insert(0, "scripts"); from qualify import FREESTANDING_TARGET; print(FREESTANDING_TARGET)')"
+          rustup target add "${target}"
+      - name: Test and qualify both final native products
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+        run: |
+          python scripts/qualify.py --target "${BUILD_TARGET}" --build-kind "${QUALIFICATION_KIND}" \
+            --source-revision "${GITHUB_SHA}" --repository "${GITHUB_REPOSITORY}" --output target/assets
+      - name: Preserve native evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evidence-${{ inputs.build-kind }}-${{ matrix.platform }}
+          path: |
+            target/runtime-link/**
+            target/qualification-results/**
+            target/native-termination/**
+          if-no-files-found: ignore
+      - name: Retain qualified CLI archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.build-kind }}-cli-${{ matrix.platform }}
+          path: target/assets/auditorylab-[0-9]*
+          if-no-files-found: error
+          compression-level: 0
+      - name: Retain qualified desktop archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.build-kind }}-gui-${{ matrix.platform }}
+          path: target/assets/auditorylab-gui-*
+          if-no-files-found: error
+          compression-level: 0

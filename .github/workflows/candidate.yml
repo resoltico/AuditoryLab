@@ -1,0 +1,13 @@
+name: Development qualification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  qualify:
+    # Relative reusable workflow and its checkout both use this immutable github.sha.
+    uses: ./.github/workflows/native.yml
+    with:
+      build-kind: candidate
+    permissions:
+      contents: read

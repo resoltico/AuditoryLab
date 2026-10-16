@@ -38,7 +38,7 @@ fn rendered(components: &str) -> Vec<[f64; 2]> {
             break;
         }
         let end = frames.len().min(offset + count);
-        offset += renderer.render(&mut frames[offset..end]);
+        offset += renderer.render(&mut frames[offset..end]).frames();
     }
     assert_eq!(offset, frames.len());
     frames

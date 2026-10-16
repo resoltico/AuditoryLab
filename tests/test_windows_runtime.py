@@ -22,11 +22,16 @@ class RuntimeTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory(dir=runtime.ROOT / "target")
         self.addCleanup(self.directory.cleanup)
         self.base = Path(self.directory.name)
+        identity = mock.patch.object(runtime, "cargo_identity", return_value={
+            "id": "path+file:///fixture#auditory-cli@1.0.0", "name": "auditory-cli",
+            "bin": "auditorylab", "version": "1.0.0"})
+        identity.start()
+        self.addCleanup(identity.stop)
         self.target = "x86_64-pc-windows-gnullvm"
         self.sysroot = self.base / "Rust toolchain"
         self.bundled = self.sysroot / "lib/rustlib" / self.target / "lib/self-contained"
         self.bundled.mkdir(parents=True)
-        self.executable = self.base / "release/auditory-lab.exe"
+        self.executable = self.base / "release/auditorylab.exe"
         self.executable.parent.mkdir()
         self.executable.write_bytes(b"fixture executable")
         self.inputs = {}
@@ -118,7 +123,7 @@ class RuntimeTests(unittest.TestCase):
         Path(map_flag.split("=", 2)[2]).write_text(
             "Address  Size     Align Out     In      Symbol\n"
             f"00001000 000003d1    16         {self.bundled / 'crt2.o'}:(.text)\n", encoding="utf-8")
-        artifact = {"reason": "compiler-artifact", "target": {"name": "auditory-lab"},
+        artifact = {"reason": "compiler-artifact", "package_id": "path+file:///fixture#auditory-cli@1.0.0", "target": {"name": "auditorylab", "kind": ["bin"]},
                     "executable": str(self.executable)}
         message = {"reason": "compiler-message", "message": {
             "message": self.trace_text, "children": [], "rendered": self.trace_text}}
@@ -197,7 +202,7 @@ class RuntimeTests(unittest.TestCase):
     def test_success_status_handles_unicode_paths_on_legacy_and_ascii_writers(self):
         directory = self.base / 'Łódź-Ж' / 'release'
         directory.mkdir(parents=True)
-        executable = directory / 'auditory-lab.exe'
+        executable = directory / 'auditorylab.exe'
         shutil.copyfile(self.executable, executable)
         self.executable = executable
         self.receipt = directory.parent / 'receipt.json'
@@ -285,13 +290,79 @@ class RuntimeTests(unittest.TestCase):
     def test_failed_build_or_untraced_cached_artifact_cannot_leave_stale_receipt(self):
         results = [subprocess.CompletedProcess([], 1, "", "fixture build error\n"),
                    subprocess.CompletedProcess([], 0, json.dumps({"reason": "compiler-artifact",
-                       "target": {"name": "auditory-lab"}, "executable": str(self.executable)}) + "\n", "")]
+                       "package_id": "path+file:///fixture#auditory-cli@1.0.0", "target": {"name": "auditorylab", "kind": ["bin"]}, "executable": str(self.executable)}) + "\n", "")]
         for result in results:
             self.receipt.write_text("stale success")
             with self.toolchain(), self.policy(), mock.patch.object(runtime.subprocess, "run", return_value=result):
                 with self.assertRaises((ValueError, OSError)):
                     runtime.build(self.target, self.receipt)
                 self.assertFalse(self.receipt.exists())
+
+    def test_root_object_names_reject_stale_and_unrelated_stems(self):
+        root = self.executable.parent / "deps"
+        self.check(self.trace_text + f"\nrust-lld: Reading {root / 'auditorylab-123.unit.rcgu.o'}")
+        for stem in ("auditory_lab-123", "auditory-cli-123", "unrelated-123", "auditorylab_other-123"):
+            with self.subTest(stem=stem), self.assertRaisesRegex(ValueError, "unexpected Windows native link input"):
+                self.check(self.trace_text + f"\nrust-lld: Reading {root / (stem + '.unit.rcgu.o')}")
+
+    def test_zero_multiple_and_wrong_identity_compiler_artifacts_reject(self):
+        for mode in ("zero", "multiple", "wrong-package", "example", "old-bin"):
+            def cargo(command, **kwargs):
+                result = self.fake_cargo(command, **kwargs)
+                lines = result.stdout.splitlines()
+                artifact = json.loads(lines[0])
+                if mode == "zero":
+                    lines = lines[1:]
+                elif mode == "multiple":
+                    lines.append(lines[0])
+                else:
+                    if mode == "wrong-package":
+                        artifact["package_id"] = "path+file:///other#other@1.0.0"
+                    elif mode == "example":
+                        artifact["target"]["kind"] = ["example"]
+                    else:
+                        artifact["target"]["name"] = "auditory-lab"
+                    lines[0] = json.dumps(artifact)
+                result.stdout = "\n".join(lines) + "\n"
+                return result
+            with self.subTest(mode=mode), self.toolchain(), self.policy(), mock.patch.object(runtime.subprocess, "run", side_effect=cargo):
+                with self.assertRaisesRegex(ValueError, "one application executable"):
+                    runtime.build(self.target, self.receipt)
+                self.assertFalse(self.receipt.exists())
+
+    def test_gui_object_identity_and_receipts_cannot_be_substituted_for_cli(self):
+        root = self.executable.parent / "deps"
+        runtime.check_trace(self.trace_text + f"\nrust-lld: Reading {root / 'auditorylab_gui-123.unit.rcgu.o'}",
+                            self.executable, self.target, self.sysroot, self.inputs, product="gui")
+        with self.assertRaisesRegex(ValueError, "unexpected Windows native link input"):
+            runtime.check_trace(self.trace_text + f"\nrust-lld: Reading {root / 'auditorylab-123.unit.rcgu.o'}",
+                                self.executable, self.target, self.sysroot, self.inputs, product="gui")
+        with self.toolchain(), self.policy(), mock.patch.object(runtime.subprocess, "run", side_effect=self.fake_cargo):
+            runtime.build(self.target, self.receipt)
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                runtime.verify(self.executable, self.target, self.receipt, product="gui")
+
+    def test_reviewed_gui_system_import_archives_are_source_bound(self):
+        # This checks published import material on any host, not Windows linking.
+        manifest = json.loads((runtime.MANIFEST.parent / "windows-import-libraries.json").read_text())
+        for target, entry in manifest["targets"].items():
+            path = runtime.native_input_path(entry)
+            self.assertEqual(runtime.sha256(path), entry["sha256"])
+            self.assertIn("kernel32.dll", entry["members"])
+            self.assertEqual(set(entry["reviewed_sections"]), {".idata$2", ".idata$3", ".idata$4", ".idata$5", ".idata$6"})
+            with self.subTest(target=target), self.assertRaisesRegex(ValueError, "published identity"):
+                runtime.native_input_path(dict(entry, vcs="0" * 40))
+        entry = manifest["targets"][self.target]
+        path = runtime.native_input_path(entry)
+        inputs = dict(self.inputs, **{path.name: entry})
+        text = self.trace_text + f"\nrust-lld: Reading {path}\nrust-lld: Loaded {path.name}(kernel32.dll) for symbol"
+        runtime.check_trace(text, self.executable, self.target, self.sysroot, inputs, product="gui")
+        bad = dict(inputs, **{path.name: dict(entry, sha256="0" * 64)})
+        with self.assertRaisesRegex(ValueError, "differs from its reviewed component"):
+            runtime.check_trace(text, self.executable, self.target, self.sysroot, bad, product="gui")
+        with self.assertRaisesRegex(ValueError, "unreviewed Windows native member"):
+            runtime.check_trace(text.replace("(kernel32.dll)", "(unreviewed-native.o)"),
+                                self.executable, self.target, self.sysroot, inputs, product="gui")
 
 
 if __name__ == "__main__":
