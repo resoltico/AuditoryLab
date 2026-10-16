@@ -75,6 +75,8 @@ cargo install --locked --path crates/auditory-cli --target x86_64-pc-windows-gnu
 
 On ARM64, use `aarch64-pc-windows-gnullvm` in both commands that name a host or target. The repository selects the pinned compiler; its bundled `rust-mingw` and `rust-lld` provide the startup libraries and linker. Visual Studio C++ Build Tools and a separate C toolchain are not required for this application. Use an explicit native `--target` for Windows builds and checks, as described in [verification](docs/verification.md#standard-checks).
 
+Windows GUI builds and workspace tests additionally need Python 3.9 or later to [prepare the reviewed system-import material](docs/desktop.md#build-and-start). This prerequisite does not apply to CLI-only builds.
+
 Windows executables require Windows 10 or later on x86_64, or Windows 11 on ARM64, with the system Universal C Runtime (UCRT). The x86_64 build requires SSE3, CMPXCHG16B and LAHF/SAHF instructions; see the [Windows build contract](docs/releasing.md#windows-build-contract).
 
 Cargo installs `auditorylab` into its bin directory, which must be on PATH. Ordinary Cargo source builds are local/unqualified and use the toolchain's deployment defaults; they do not enforce the supported macOS 15 package baseline. Use the [native qualifier](docs/verification.md#product-identity-and-native-qualification) to build and check both packaged products against that baseline.

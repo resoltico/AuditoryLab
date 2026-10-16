@@ -15,13 +15,19 @@ mod generated_ui {
 mod signal_geometry;
 use auditory_app::{SampleRate, analyze_samples};
 use slint::ComponentHandle;
-use std::{cell::RefCell, io::Write as _, path::PathBuf, rc::Rc};
+use std::{
+    cell::RefCell,
+    io::Write as _,
+    path::PathBuf,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 const SIZES: [(u16, u16); 3] = [(600, 640), (900, 800), (1200, 900)];
 const SCENES: [&str; 3] = ["anchors", "asymmetric", "gap"];
-#[derive(Default)]
 struct Capture {
     next: usize,
     waited: bool,
+    deadline: Instant,
     entries: Vec<String>,
     error: Option<String>,
 }
@@ -82,6 +88,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         return Err("geometry output requires an existing empty absolute owned directory".into());
     }
+    let requested_scale: f32 = std::env::var("SLINT_SCALE_FACTOR")?.parse()?;
+    if !requested_scale.is_finite() || requested_scale <= 0.0 {
+        return Err("geometry fixture requires a finite positive requested scale".into());
+    }
     let ui = generated_ui::MainWindow::new()?;
     ui.set_source_title("Native geometry fixture — no audio".into());
     ui.set_status("Offline presentation sentinels".into());
@@ -90,8 +100,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.set_signal_through("No playback operation".into());
     scene(&ui, SCENES[0])?;
     ui.show()?;
-    resize(&ui, 600, 640);
-    let progress = Rc::new(RefCell::new(Capture::default()));
+    resize(&ui, 600, 640, requested_scale);
+    let progress = Rc::new(RefCell::new(Capture {
+        next: 0,
+        waited: false,
+        deadline: Instant::now() + Duration::from_secs(5),
+        entries: Vec::new(),
+        error: None,
+    }));
     let state = Rc::clone(&progress);
     let weak = ui.as_weak();
     let timer = slint::Timer::default();
@@ -106,11 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if state.error.is_some() || state.next >= 9 {
                 return;
             }
-            if !state.waited {
-                state.waited = true;
-                return;
-            }
-            if let Err(error) = capture(&ui, &directory, &mut state) {
+            if let Err(error) = capture(&ui, &directory, &mut state, requested_scale) {
                 state.error = Some(error.to_string());
                 let _ = slint::quit_event_loop();
             }
@@ -132,23 +144,41 @@ fn capture(
     ui: &generated_ui::MainWindow,
     directory: &std::path::Path,
     state: &mut Capture,
+    requested_scale: f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (width, height) = SIZES[state.next / 3];
     let name = SCENES[state.next % 3];
+    // Native scale/resize events can arrive after show(), and the first render
+    // can initialize the backend. Discard priming images until the requested
+    // state survives two separate event-loop timer boundaries.
     let image = ui.window().take_snapshot()?;
-    if state.next == 0 {
-        println!("NATIVE_WINDOW_STARTED: production geometry fixture with actual native snapshot");
-    }
     let scale = ui.window().scale_factor();
     let physical = ui.window().size();
-    if image.width() != physical.width
-        || image.height() != physical.height
-        || (f64::from(physical.width) - f64::from(width) * f64::from(scale)).abs() > 2.0
-        || (f64::from(physical.height) - f64::from(height) * f64::from(scale)).abs() > 2.0
-    {
-        return Err(
-            "native capture did not retain requested logical size/actual physical scale".into(),
-        );
+    let ready = (scale - requested_scale).abs() <= 0.001
+        && image.width() == physical.width
+        && image.height() == physical.height
+        && (f64::from(physical.width) - f64::from(width) * f64::from(requested_scale)).abs() <= 2.0
+        && (f64::from(physical.height) - f64::from(height) * f64::from(requested_scale)).abs()
+            <= 2.0;
+    if Instant::now() >= state.deadline {
+        return Err(format!(
+            "native capture readiness expired: requested={width}x{height}@{requested_scale}, actual={}x{}@{scale}, snapshot={}x{}",
+            physical.width, physical.height, image.width(), image.height()
+        ).into());
+    }
+    if !ready {
+        state.waited = false;
+        resize(ui, width, height, requested_scale);
+        ui.window().request_redraw();
+        return Ok(());
+    }
+    if !state.waited {
+        state.waited = true;
+        ui.window().request_redraw();
+        return Ok(());
+    }
+    if state.next == 0 {
+        println!("NATIVE_WINDOW_STARTED: production geometry fixture with actual native snapshot");
     }
     let filename = format!("{name}-{width}x{height}.ppm");
     let mut file = std::fs::File::create(directory.join(&filename))?;
@@ -166,6 +196,7 @@ fn capture(
     );
     state.next += 1;
     state.waited = false;
+    state.deadline = Instant::now() + Duration::from_secs(5);
     if state.next == 9 {
         std::fs::write(
             directory.join("manifest.json"),
@@ -180,17 +211,17 @@ fn capture(
     } else {
         let (next_width, next_height) = SIZES[state.next / 3];
         scene(ui, SCENES[state.next % 3])?;
-        resize(ui, next_width, next_height);
+        resize(ui, next_width, next_height, requested_scale);
         ui.window().request_redraw();
     }
     Ok(())
 }
 
-fn resize(ui: &generated_ui::MainWindow, width: u16, height: u16) {
+fn resize(ui: &generated_ui::MainWindow, width: u16, height: u16, scale: f32) {
     // The runtime scale override controls UI coordinates, while a live native
     // logical-size request can use the OS backing scale. Request exact physical
-    // dimensions derived from the UI's measured scale instead.
+    // dimensions derived from the requested scale; readiness verifies that the
+    // backend has actually applied it before retaining a capture.
     let size = slint::LogicalSize::new(f32::from(width), f32::from(height));
-    ui.window()
-        .set_size(size.to_physical(ui.window().scale_factor()));
+    ui.window().set_size(size.to_physical(scale));
 }

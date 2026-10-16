@@ -14,11 +14,14 @@ target/debug/auditorylab-gui
 On Windows, use the native GNU LLVM host from the CLI setup, then run:
 
 ```text
+python scripts/windows_runtime.py prepare --target x86_64-pc-windows-gnullvm
 cargo build --locked -p auditory-gui --target x86_64-pc-windows-gnullvm
 target\x86_64-pc-windows-gnullvm\debug\auditorylab-gui.exe
 ```
 
 Substitute `aarch64-pc-windows-gnullvm` on Windows ARM64.
+
+The preparation command verifies the locked system-import producer and creates its finite, unchanged library-name views under `target/windows-imports/TARGET`. It needs Python 3.9 or later and no Windows SDK. Run it again after dependency updates or removal of that directory, including before ordinary GUI tests. Existing unexpected or altered files reject; inspect the named owned output directory before removing it and preparing again. The GUI build script supplies this directory only to GUI binaries/tests; CLI builds do not use it. Qualified builds repeat the byte checks and inspect the actual link receipt. An ordinary Cargo build remains local/unqualified.
 
 CLI and GUI packages require macOS 15 or later on Apple silicon and Intel. The desktop application's other platform requirements are Windows 10 on x86_64, Windows 11 on ARM64, and Ubuntu 22.04-class Linux. Ordinary Cargo source builds are local/unqualified and use toolchain deployment defaults; the [native qualifier](verification.md#product-identity-and-native-qualification) sets and checks the macOS package baseline. A declared minimum OS does not establish execution on that OS.
 

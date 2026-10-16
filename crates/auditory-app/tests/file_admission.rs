@@ -23,18 +23,18 @@ impl Drop for OwnedChild {
     }
 }
 fn child_output(child: &mut OwnedChild) -> String {
-    let mut output = String::new();
+    let mut output = Vec::new();
     if let Some(mut stdout) = child.0.stdout.take() {
         stdout
-            .read_to_string(&mut output)
+            .read_to_end(&mut output)
             .unwrap_or_else(|error| panic!("child stdout: {error}"));
     }
     if let Some(mut stderr) = child.0.stderr.take() {
         stderr
-            .read_to_string(&mut output)
+            .read_to_end(&mut output)
             .unwrap_or_else(|error| panic!("child stderr: {error}"));
     }
-    output
+    String::from_utf8_lossy(&output).into_owned()
 }
 fn rejected_without_wait(path: &Path, typed: bool) {
     let mut child = OwnedChild(
@@ -154,6 +154,31 @@ fn fifo_symlink_and_devices_reject_before_read_without_a_writer() {
 }
 
 #[cfg(windows)]
+fn wait_for_pipe_marker(server: &mut OwnedChild, marker: &Path, phase: &str, deadline: Instant) {
+    while !marker.exists() {
+        if let Some(status) = server
+            .0
+            .try_wait()
+            .unwrap_or_else(|error| panic!("pipe server wait: {error}"))
+        {
+            panic!(
+                "pipe server exited during {phase}: {status}\n{}",
+                child_output(server)
+            );
+        }
+        if Instant::now() >= deadline {
+            let _ = server.0.kill();
+            let _ = server.0.wait();
+            panic!(
+                "pipe server deadline during {phase}\n{}",
+                child_output(server)
+            );
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[cfg(windows)]
 #[test]
 fn connected_owned_pipe_sending_no_bytes_and_native_devices_reject() {
     let dir = tempfile::tempdir().unwrap();
@@ -166,18 +191,21 @@ fn connected_owned_pipe_sending_no_bytes_and_native_devices_reject() {
     // that rejects and closes immediately cannot outrun the server's wait.
     let script = r#"
 $ErrorActionPreference='Stop'
+[Console]::Error.WriteLine('pipe server: constructing')
 $p=[System.IO.Pipes.NamedPipeServerStream]::new($env:AUDITORY_PIPE_NAME,[System.IO.Pipes.PipeDirection]::Out,1,[System.IO.Pipes.PipeTransmissionMode]::Byte,[System.IO.Pipes.PipeOptions]::Asynchronous)
 try {
     $waiting=$p.WaitForConnectionAsync()
+    [Console]::Error.WriteLine('pipe server: connection wait posted')
     [IO.File]::WriteAllText($env:AUDITORY_PIPE_READY,'ready')
     $waiting.GetAwaiter().GetResult()
+    [Console]::Error.WriteLine('pipe server: connected')
     [IO.File]::WriteAllText($env:AUDITORY_PIPE_CONNECTED,'connected')
     Start-Sleep -Seconds 60
 } finally {
     $p.Dispose()
 }
 "#;
-    let _server = OwnedChild(
+    let mut server = OwnedChild(
         Command::new("powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-Command", script])
             .env("AUDITORY_PIPE_NAME", &name)
@@ -190,15 +218,9 @@ try {
             .unwrap_or_else(|error| panic!("admission child spawn: {error}")),
     );
     let deadline = Instant::now() + Duration::from_secs(5);
-    while !ready.exists() {
-        assert!(Instant::now() < deadline, "pipe server not ready");
-        thread::sleep(Duration::from_millis(10));
-    }
+    wait_for_pipe_marker(&mut server, &ready, "Ready", deadline);
     rejected_without_wait(Path::new(&format!(r"\\.\pipe\{name}")), true);
-    while !connected.exists() {
-        assert!(Instant::now() < deadline, "pipe client never connected");
-        thread::sleep(Duration::from_millis(10));
-    }
+    wait_for_pipe_marker(&mut server, &connected, "Connected", deadline);
     for device in [r"\\.\NUL", r"\\.\CONIN$"] {
         rejected_without_wait(Path::new(device), false);
     }

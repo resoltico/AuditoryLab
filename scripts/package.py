@@ -52,7 +52,7 @@ WINDOWS_UCRT_LIBRARIES = {
 GUI_WINDOWS_LIBRARIES = WINDOWS_LIBRARIES | {
     "gdi32.dll", "dwrite.dll", "dwmapi.dll", "imm32.dll", "comctl32.dll",
     "uiautomationcore.dll", "oleacc.dll", "uxtheme.dll", "shcore.dll", "hid.dll", "msimg32.dll",
-    "d3d12.dll", "dxgi.dll", "d3dcompiler_47.dll",
+    "d3d12.dll", "dxgi.dll", "d3dcompiler_47.dll", "opengl32.dll",
 }
 GUI_LINUX_SYSTEM_FONTS = {"libfreetype.so.6", "libfontconfig.so.1"}
 GUI_LINUX_LIBRARIES = LINUX_LIBRARIES | GUI_LINUX_SYSTEM_FONTS

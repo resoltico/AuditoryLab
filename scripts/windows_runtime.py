@@ -50,9 +50,73 @@ def policy(target, product="cli"):
         raise ValueError(f"no reviewed Windows native runtime inputs for {target}")
     inputs = dict(reviewed["targets"][target]["inputs"])
     if product == "gui":
-        imported = json.loads((MANIFEST.parent / "windows-import-libraries.json").read_text(encoding="utf-8"))["targets"][target]
+        imports = import_policy()
+        imported = imports["targets"][target]
         inputs[Path(imported["relative_path"]).name] = imported
+        for name in imports["library_views"]:
+            inputs["lib" + name + ".a"] = dict(imported, library_view=name)
     return pinned, inputs
+
+
+def import_policy():
+    return json.loads((MANIFEST.parent / "windows-import-libraries.json").read_text(encoding="utf-8"))
+
+
+def import_directory(target):
+    if target not in import_policy()["targets"]:
+        raise ValueError(f"no reviewed Windows GUI imports for {target}")
+    directory = ROOT / "target/windows-imports" / target
+    for path in (ROOT / "target", directory.parent, directory):
+        if path.is_symlink():
+            raise ValueError("Windows GUI import preparation cannot use a symlink")
+    directory.resolve().relative_to(ROOT.resolve())
+    return directory
+
+
+def checked_import_views(target):
+    """Accept only the fixed, byte-identical views of the reviewed producer."""
+    imports = import_policy()
+    entry = imports["targets"][target]
+    original = native_input_path(entry)
+    if original.is_symlink() or sha256(original) != entry["sha256"]:
+        raise ValueError("Windows GUI import producer differs from reviewed bytes")
+    directory = import_directory(target)
+    names = {"lib" + name + ".a" for name in imports["library_views"]}
+    if not directory.is_dir() or {path.name for path in directory.iterdir()} != names:
+        raise ValueError("Windows GUI imports are missing or unexpected; inspect/remove only "
+                         + str(directory) + ", then run python scripts/windows_runtime.py prepare --target " + target)
+    for path in directory.iterdir():
+        if path.is_symlink() or not path.is_file() or sha256(path) != entry["sha256"]:
+            raise ValueError("Windows GUI import view differs from reviewed producer bytes")
+    return {name: directory / name for name in names}
+
+
+def prepare_imports(target):
+    """Prepare the finite library-name views needed by ordinary GUI Cargo builds.
+
+    MinGW's -l search requires each name to exist. These are full, unchanged
+    import archives, not per-DLL subsets or Windows implementation libraries.
+    Existing invalid material is rejected rather than silently repaired.
+    """
+    imports = import_policy()
+    directory = import_directory(target)
+    entry = imports["targets"][target]
+    original = native_input_path(entry)
+    if original.is_symlink() or sha256(original) != entry["sha256"]:
+        raise ValueError("Windows GUI import producer differs from reviewed bytes")
+    if not directory.exists():
+        directory.parent.mkdir(parents=True, exist_ok=True)
+        data = original.read_bytes()
+        if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+            raise ValueError("Windows GUI import producer differs from reviewed bytes")
+        with tempfile.TemporaryDirectory(prefix=target + "-", dir=directory.parent) as staging:
+            staged = Path(staging) / "imports"
+            staged.mkdir()
+            for name in imports["library_views"]:
+                with (staged / ("lib" + name + ".a")).open("xb") as output:
+                    output.write(data)
+            staged.rename(directory)
+    return checked_import_views(target)
 
 
 def native_input_path(entry):
@@ -77,6 +141,7 @@ def check_trace(text, executable, target, sysroot, inputs, product="cli"):
     dependencies = executable.parent / "deps"
     archives, seen, selected = {}, set(), set()
     reading = 0
+    views = None
     # Other Unicode line separators are valid filename characters, not records.
     for line in text.replace("\r\n", "\n").split("\n"):
         match = PREFIX.fullmatch(line)
@@ -108,7 +173,14 @@ def check_trace(text, executable, target, sysroot, inputs, product="cli"):
         reading += 1
         path = Path(item).resolve()
         if path.name in inputs:
-            expected = native_input_path(inputs[path.name]) or bundled / path.name
+            if "library_view" in inputs[path.name]:
+                if product != "gui":
+                    raise ValueError("Windows GUI import views cannot be used by the CLI")
+                if views is None:
+                    views = checked_import_views(target)
+                expected = views[path.name]
+            else:
+                expected = native_input_path(inputs[path.name]) or bundled / path.name
             if path != expected.resolve() or expected.is_symlink():
                 raise ValueError(f"Windows native input is outside the bundled runtime: {item}")
             if sha256(expected) != inputs[path.name]["sha256"]:
@@ -167,6 +239,8 @@ def verify(executable, target, trace, sysroot=None, product="cli"):
 
 def build(target, trace, sysroot=None, product="cli"):
     """Force a final application relink and record its actual artifact and evidence."""
+    if product == "gui":
+        prepare_imports(target)
     identity = cargo_identity(product=product)
     pinned, _ = policy(target, product)
     version, host, installed = toolchain()
@@ -240,13 +314,18 @@ def build(target, trace, sysroot=None, product="cli"):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
-    builder = commands.add_parser("build", help="relink the release CLI and verify native inputs")
+    builder = commands.add_parser("build", help="relink the release product and verify native inputs")
     builder.add_argument("--target", required=True)
     builder.add_argument("--trace", type=Path, required=True, help="receipt path under target/")
     builder.add_argument("--product", choices=PRODUCTS, default="cli")
+    preparer = commands.add_parser("prepare", help="prepare reviewed import material for Windows GUI Cargo builds/tests")
+    preparer.add_argument("--target", required=True)
     args = parser.parse_args()
     try:
-        build(args.target, args.trace, product=args.product)
+        if args.command == "prepare":
+            prepare_imports(args.target)
+        else:
+            build(args.target, args.trace, product=args.product)
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
         sys.exit(f"windows runtime: {error}")
 

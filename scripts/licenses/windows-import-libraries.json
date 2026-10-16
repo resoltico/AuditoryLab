@@ -1,5 +1,6 @@
 {
   "scope": "GUI only; windows-targets 0.52.6 COFF system import descriptors and short imports, no implementation sections",
+  "library_views": ["advapi32", "gdi32", "opengl32", "shell32", "shlwapi"],
   "targets": {
     "x86_64-pc-windows-gnullvm": {
       "crate": "windows_x86_64_gnullvm",

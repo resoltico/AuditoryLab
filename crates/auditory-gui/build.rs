@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Compile only the contained GUI with explicitly embedded resources.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    windows_imports()?;
     // Pinned slint-build/i-slint-compiler inputs; track absent values as well.
     for name in [
         "SLINT_STYLE",
@@ -36,5 +37,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let configuration = slint_build::CompilerConfiguration::new()
         .embed_resources(slint_build::EmbedResourcesKind::EmbedFiles);
     slint_build::compile_with_config("ui/main.slint", configuration)?;
+    Ok(())
+}
+
+// These names are checked against the reviewed import-producer manifest. The
+// explicit preparer verifies bytes; this check gives ordinary Cargo users an
+// actionable prerequisite without searching the registry or invoking Cargo.
+fn windows_imports() -> Result<(), Box<dyn std::error::Error>> {
+    let target = std::env::var("TARGET")?;
+    if !matches!(
+        target.as_str(),
+        "aarch64-pc-windows-gnullvm" | "x86_64-pc-windows-gnullvm"
+    ) {
+        return Ok(());
+    }
+    let directory = std::path::PathBuf::from(
+        std::env::var_os("CARGO_MANIFEST_DIR").ok_or("missing Cargo manifest directory")?,
+    )
+    .join("../..")
+    .canonicalize()?
+    .join("target/windows-imports")
+    .join(&target);
+    for name in [
+        "libadvapi32.a",
+        "libgdi32.a",
+        "libopengl32.a",
+        "libshell32.a",
+        "libshlwapi.a",
+    ] {
+        let path = directory.join(name);
+        if !path.is_file() {
+            return Err(format!("missing reviewed Windows GUI import views; run python scripts/windows_runtime.py prepare --target {target}").into());
+        }
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+    println!("cargo:rustc-link-search=native={}", directory.display());
     Ok(())
 }

@@ -266,6 +266,19 @@ class QualificationTests(unittest.TestCase):
             self.assertTrue(all('--lib' in command and '-p' in command for command in explicit_ignored))
             self.assertTrue((root / 'target/qualification-results/candidate/aarch64-apple-darwin/packages.json').is_file())
 
+    def test_windows_prepares_gui_imports_before_standard_checks(self):
+        import windows_runtime
+        target = 'x86_64-pc-windows-gnullvm'
+        def identities():
+            prepared.assert_called_once_with(target)
+            raise RuntimeError('stop before Cargo work')
+        with mock.patch.object(qualify, 'controlled_environment', return_value={}), \
+             mock.patch.object(qualify, 'run', return_value='host: ' + target), \
+             mock.patch.object(windows_runtime, 'prepare_imports') as prepared, \
+             mock.patch.object(qualify, 'cargo_identities', side_effect=identities), \
+             self.assertRaisesRegex(RuntimeError, 'stop before Cargo work'):
+            qualify.qualify(target, 'local', None, Path('unused'), 'owner/repo')
+
     def test_observation_measurements_require_all_active_modes_and_maximum_rate(self):
         from itertools import product
         rows = []

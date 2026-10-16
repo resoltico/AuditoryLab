@@ -364,6 +364,108 @@ class RuntimeTests(unittest.TestCase):
             runtime.check_trace(text.replace("(kernel32.dll)", "(unreviewed-native.o)"),
                                 self.executable, self.target, self.sysroot, inputs, product="gui")
 
+    def import_fixture(self):
+        original = self.base / "published.a"
+        original.write_bytes(b"reviewed import archive")
+        entry = {"crate": "reviewed-producer", "sha256": runtime.sha256(original),
+                 "members": ["kernel32.dll"], "relative_path": "lib/published.a"}
+        manifest = {"library_views": ["advapi32", "gdi32", "opengl32", "shell32", "shlwapi"],
+                    "targets": {self.target: entry}}
+        return original, entry, manifest
+
+    def test_gui_import_preparation_and_trace_bind_each_exact_view(self):
+        original, entry, manifest = self.import_fixture()
+        with mock.patch.object(runtime, "ROOT", self.base), \
+                mock.patch.object(runtime, "import_policy", return_value=manifest), \
+                mock.patch.object(runtime, "native_input_path", side_effect=lambda entry: original if "crate" in entry else None):
+            views = runtime.prepare_imports(self.target)
+            self.assertEqual(runtime.prepare_imports(self.target), views)
+            self.assertEqual(set(views), {"lib" + name + ".a" for name in manifest["library_views"]})
+            for name, path in views.items():
+                self.assertEqual(path.read_bytes(), original.read_bytes())
+                inputs = dict(self.inputs, **{name: dict(entry, library_view=name[3:-2])})
+                text = self.trace_text + f"\nrust-lld: Reading {path}\nrust-lld: Loaded {name}(kernel32.dll) for symbol"
+                runtime.check_trace(text, self.executable, self.target, self.sysroot, inputs, product="gui")
+                with self.assertRaisesRegex(ValueError, "GUI import views cannot"):
+                    runtime.check_trace(text, self.executable, self.target, self.sysroot, inputs)
+                with self.assertRaisesRegex(ValueError, "unreviewed Windows native member"):
+                    runtime.check_trace(text.replace("(kernel32.dll)", "(implementation.o)"),
+                                        self.executable, self.target, self.sysroot, inputs, product="gui")
+                substituted = self.base / name
+                substituted.write_bytes(original.read_bytes())
+                with self.assertRaisesRegex(ValueError, "outside the bundled runtime"):
+                    runtime.check_trace(text.replace(str(path), str(substituted)),
+                                        self.executable, self.target, self.sysroot, inputs, product="gui")
+
+    def test_gui_import_preparation_rejects_tampering_extra_missing_and_wrong_producer(self):
+        original, _, manifest = self.import_fixture()
+        with mock.patch.object(runtime, "ROOT", self.base), \
+                mock.patch.object(runtime, "import_policy", return_value=manifest), \
+                mock.patch.object(runtime, "native_input_path", side_effect=lambda entry: original if "crate" in entry else None):
+            views = runtime.prepare_imports(self.target)
+            path = next(iter(views.values()))
+            path.write_bytes(b"tampered")
+            with self.assertRaisesRegex(ValueError, "view differs"):
+                runtime.prepare_imports(self.target)
+            path.write_bytes(original.read_bytes())
+            extra = path.parent / "libunreviewed.a"
+            extra.write_bytes(original.read_bytes())
+            with self.assertRaisesRegex(ValueError, "unexpected"):
+                runtime.prepare_imports(self.target)
+            extra.unlink()
+            path.unlink()
+            with self.assertRaisesRegex(ValueError, "missing"):
+                runtime.prepare_imports(self.target)
+            path.write_bytes(original.read_bytes())
+            original.write_bytes(b"wrong producer")
+            with self.assertRaisesRegex(ValueError, "producer differs"):
+                runtime.prepare_imports(self.target)
+
+    def test_gui_import_preparation_failure_does_not_publish_partial_directory(self):
+        original, _, manifest = self.import_fixture()
+        with mock.patch.object(runtime, "ROOT", self.base), \
+                mock.patch.object(runtime, "import_policy", return_value=manifest), \
+                mock.patch.object(runtime, "native_input_path", side_effect=lambda entry: original if "crate" in entry else None):
+            with mock.patch.object(Path, "rename", side_effect=OSError("owned publication failure")):
+                with self.assertRaisesRegex(OSError, "publication failure"):
+                    runtime.prepare_imports(self.target)
+            self.assertFalse(runtime.import_directory(self.target).exists())
+            self.assertEqual(list((self.base / "target/windows-imports").iterdir()), [])
+            self.assertEqual(len(runtime.prepare_imports(self.target)), 5)
+
+    def test_direct_gui_builder_prepares_before_cargo_and_cli_does_not(self):
+        def identity(**kwargs):
+            prepared.assert_called_once_with(self.target)
+            raise RuntimeError("stop before Cargo identity")
+        with mock.patch.object(runtime, "prepare_imports") as prepared, \
+                mock.patch.object(runtime, "cargo_identity", side_effect=identity), \
+                self.assertRaisesRegex(RuntimeError, "before Cargo identity"):
+            runtime.build(self.target, self.receipt, product="gui")
+        with mock.patch.object(runtime, "prepare_imports") as prepared, \
+                mock.patch.object(runtime, "cargo_identity", side_effect=RuntimeError("stop")), \
+                self.assertRaisesRegex(RuntimeError, "stop"):
+            runtime.build(self.target, self.receipt)
+        prepared.assert_not_called()
+
+    @unittest.skipUnless(hasattr(Path, "symlink_to") and sys.platform != "win32", "owned symlink controls require native permission")
+    def test_gui_import_preparation_rejects_symlinked_directories_and_files(self):
+        original, _, manifest = self.import_fixture()
+        with mock.patch.object(runtime, "ROOT", self.base), \
+                mock.patch.object(runtime, "import_policy", return_value=manifest), \
+                mock.patch.object(runtime, "native_input_path", side_effect=lambda entry: original if "crate" in entry else None):
+            directory = self.base / "target/windows-imports"
+            directory.parent.mkdir(exist_ok=True)
+            directory.symlink_to(self.executable.parent, target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "symlink"):
+                runtime.prepare_imports(self.target)
+            directory.unlink()
+            views = runtime.prepare_imports(self.target)
+            path = next(iter(views.values()))
+            path.unlink()
+            path.symlink_to(original)
+            with self.assertRaisesRegex(ValueError, "view differs"):
+                runtime.prepare_imports(self.target)
+
 
 if __name__ == "__main__":
     unittest.main()

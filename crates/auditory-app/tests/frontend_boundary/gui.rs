@@ -226,9 +226,73 @@ pub(super) fn lint_weakening(meta: &Meta) -> bool {
         });
     lowers || meta.path().is_ident("unsafe") || nested.iter().any(lint_weakening)
 }
+fn windows_import_manifest() -> Result<serde_json::Value, String> {
+    serde_json::from_str(
+        &std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../scripts/licenses/windows-import-libraries.json"),
+        )
+        .map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())
+}
+fn check_windows_import_setup(item: &syn::Item) -> Result<(), String> {
+    let manifest = windows_import_manifest()?;
+    let mut targets: Vec<_> = manifest["targets"]
+        .as_object()
+        .ok_or("missing Windows import targets")?
+        .keys()
+        .collect();
+    targets.sort();
+    let targets = targets
+        .into_iter()
+        .map(|name| format!("{name:?}"))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    let libraries = manifest["library_views"]
+        .as_array()
+        .ok_or("missing reviewed Windows import library views")?
+        .iter()
+        .map(|name| name.as_str().map(|name| format!("\"lib{name}.a\"")))
+        .collect::<Option<Vec<_>>>()
+        .ok_or("invalid Windows import library view")?
+        .join(",")
+        + ",";
+    let expected = r#"fn windows_imports() -> Result<(), Box<dyn std::error::Error>> {
+    let target = std::env::var("TARGET")?;
+    if !matches!(
+        target.as_str(),
+        __TARGETS__
+    ) {
+        return Ok(());
+    }
+    let directory = std::path::PathBuf::from(
+        std::env::var_os("CARGO_MANIFEST_DIR").ok_or("missing Cargo manifest directory")?,
+    )
+    .join("../..")
+    .canonicalize()?
+    .join("target/windows-imports")
+    .join(&target);
+    for name in [__LIBRARIES__    ] {
+        let path = directory.join(name);
+        if !path.is_file() {
+            return Err(format!("missing reviewed Windows GUI import views; run python scripts/windows_runtime.py prepare --target {target}").into());
+        }
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+    println!("cargo:rustc-link-search=native={}", directory.display());
+    Ok(())
+}
+"#.replace("__TARGETS__", &targets).replace("__LIBRARIES__", &libraries);
+    let expected: syn::Item = syn::parse_str(&expected).map_err(|error| error.to_string())?;
+    if spelling(item) != spelling(&expected) {
+        return Err("GUI Windows imports must use only the fixed reviewed local views; run the explicit preparer for provenance".into());
+    }
+    Ok(())
+}
 fn check_build_source(source: &str) -> Result<(), String> {
     let fail = || {
-        "GUI build.rs must only track/reject reviewed compiler overrides and compile ui/main.slint with explicit EmbedFiles".to_string()
+        "GUI build.rs must only admit reviewed Windows import views, reject compiler overrides and compile ui/main.slint with explicit EmbedFiles".to_string()
     };
     let tree = syn::parse_file(source).map_err(|error| error.to_string())?;
     if tree
@@ -238,9 +302,10 @@ fn check_build_source(source: &str) -> Result<(), String> {
     {
         return Err(fail());
     }
-    if tree.items.len() != 1 {
+    if tree.items.len() != 2 {
         return Err(fail());
     }
+    check_windows_import_setup(&tree.items[1])?;
     let syn::Item::Fn(main) = &tree.items[0] else {
         return Err(fail());
     };
@@ -251,7 +316,7 @@ fn check_build_source(source: &str) -> Result<(), String> {
         || main.sig.abi.is_some()
         || !main.sig.inputs.is_empty()
         || !main.sig.generics.params.is_empty()
-        || main.block.stmts.len() != 5
+        || main.block.stmts.len() != 6
     {
         return Err(fail());
     }
@@ -266,7 +331,10 @@ fn check_build_source(source: &str) -> Result<(), String> {
     if !no_attributes.0 {
         return Err(fail());
     }
-    let statements = &main.block.stmts;
+    if spelling(&main.block.stmts[0]) != "windows_imports () ? ;" {
+        return Err(fail());
+    }
+    let statements = &main.block.stmts[1..];
     let Some(Expr::ForLoop(track)) = expr(&statements[0]) else {
         return Err(fail());
     };
@@ -564,6 +632,32 @@ fn compiler_record_with_framework(
     } else {
         resources
     };
+    // These rerun records are linker inputs emitted by the exact build helper,
+    // not Slint source dependencies. Preserve the separate main/UI witness.
+    let imports = windows_import_manifest()?;
+    let workspace = root
+        .join("../..")
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let mut import_paths = HashSet::new();
+    for target in imports["targets"]
+        .as_object()
+        .ok_or("missing Windows import targets")?
+        .keys()
+    {
+        for name in imports["library_views"]
+            .as_array()
+            .ok_or("missing Windows import views")?
+        {
+            let name = name.as_str().ok_or("invalid Windows import view")?;
+            import_paths.insert(
+                workspace
+                    .join("target/windows-imports")
+                    .join(target)
+                    .join(format!("lib{name}.a")),
+            );
+        }
+    }
     let mut saw_main = false;
     for line in record.lines() {
         let Some(path) = line
@@ -591,6 +685,15 @@ fn compiler_record_with_framework(
         let actual = requested
             .canonicalize()
             .map_err(|error| format!("compiler dependency {}: {error}", requested.display()))?;
+        if import_paths.contains(&requested) {
+            if requested != actual || requested.is_symlink() {
+                return Err(
+                    "reviewed Windows import rerun input must not redirect through a symlink"
+                        .into(),
+                );
+            }
+            continue;
+        }
         if actual == main {
             saw_main = true;
         }
@@ -665,6 +768,18 @@ mod tests {
             valid.replace("fn main()", "fn extra() {}\nfn main()"),
             valid.replace("let configuration =", "std::process::Command::new(\"sh\").status()?; let configuration ="),
             valid.replace("let configuration =", "std::env::set_var(\"SLINT_STYLE\", \"external\"); let configuration ="),
+            valid.replace("windows_imports()?;", ""),
+            valid.replace("windows_imports()?;", "#[cfg(any())] windows_imports()?;"),
+            valid.replace("target/windows-imports", "outside"),
+            valid.replace("directory.join(name)", "std::path::PathBuf::from(name)"),
+            valid.replace("path.is_file()", "true"),
+            valid.replace("cargo:rustc-link-search=native={}", "cargo:rustc-link-lib={}"),
+            valid.replace("cargo:rerun-if-changed={}", "ignored={}"),
+            valid.replace("libopengl32.a", "libunreviewed.a"),
+            valid.replace("\"libshlwapi.a\",", ""),
+            valid.replace("std::env::var(\"TARGET\")", "std::env::var(\"UNTRUSTED_TARGET\")"),
+            valid.replace(".join(&target)", ".join(std::env::var(\"UNTRUSTED_PATH\")?)"),
+            valid.replace("let path = directory.join(name);", "std::process::Command::new(\"cargo\").status()?; let path = directory.join(name);"),
             valid.replace("EmbedFiles", "Nothing"),
             valid.replace("ui/main.slint", "../outside.slint"),
             valid.replace("compile_with_config(\"ui/main.slint\", configuration)?", "compile_with_config(\"ui/main.slint\", configuration)"),
@@ -773,8 +888,9 @@ mod tests {
     #[test]
     fn compiler_reported_paths_are_independent_of_literal_markup_checks() {
         let directory = tempfile::tempdir().unwrap();
-        let root = directory.path().canonicalize().unwrap();
-        std::fs::create_dir(root.join("ui")).unwrap();
+        let workspace = directory.path().canonicalize().unwrap();
+        let root = workspace.join("crates/auditory-gui");
+        std::fs::create_dir_all(root.join("ui")).unwrap();
         let main = root.join("ui/main.slint");
         std::fs::write(&main, "export component Main inherits Window {}").unwrap();
         assert!(
@@ -784,6 +900,62 @@ mod tests {
             )
             .unwrap()
         );
+        let imports = windows_import_manifest().unwrap();
+        let mut import_records = String::new();
+        let mut paths = Vec::new();
+        for target in imports["targets"].as_object().unwrap().keys() {
+            let target_root = workspace.join("target/windows-imports").join(target);
+            std::fs::create_dir_all(&target_root).unwrap();
+            for name in imports["library_views"].as_array().unwrap() {
+                let file = target_root.join(format!("lib{}.a", name.as_str().unwrap()));
+                // Record classification only; Python verifies producer bytes.
+                std::fs::write(&file, b"owned linker-input fixture").unwrap();
+                import_records.push_str(&format!("cargo:rerun-if-changed={}\n", file.display()));
+                paths.push(file);
+            }
+        }
+        assert!(
+            !compiler_record(&root, &import_records).unwrap(),
+            "linker records cannot replace the Slint main witness"
+        );
+        let report = format!(
+            "cargo:rerun-if-changed={}\n{import_records}",
+            main.display()
+        );
+        assert!(compiler_record(&root, &report).unwrap());
+        let path = &paths[0];
+        for wrong in [
+            workspace.join(path.file_name().unwrap()),
+            path.parent().unwrap().join("libunreviewed.a"),
+            workspace
+                .join("target/windows-imports/unreviewed-target")
+                .join(path.file_name().unwrap()),
+        ] {
+            std::fs::create_dir_all(wrong.parent().unwrap()).unwrap();
+            std::fs::write(&wrong, b"outside or unreviewed linker input").unwrap();
+            assert!(
+                compiler_record(
+                    &root,
+                    &format!("cargo:rerun-if-changed={}\n", wrong.display())
+                )
+                .is_err()
+            );
+        }
+        #[cfg(unix)]
+        {
+            let external_archive = workspace.join("external.a");
+            std::fs::write(&external_archive, b"external archive").unwrap();
+            std::fs::remove_file(path).unwrap();
+            std::os::unix::fs::symlink(&external_archive, path).unwrap();
+            assert!(compiler_record(&root, &report).is_err());
+            std::fs::remove_file(path).unwrap();
+            std::fs::write(path, b"owned linker-input fixture").unwrap();
+            let target_root = path.parent().unwrap();
+            let redirected = workspace.join("redirected-imports");
+            std::fs::rename(target_root, &redirected).unwrap();
+            std::os::unix::fs::symlink(&redirected, target_root).unwrap();
+            assert!(compiler_record(&root, &report).is_err());
+        }
         let external = root.join("translation.po");
         std::fs::write(&external, "external compiler input").unwrap();
         assert!(

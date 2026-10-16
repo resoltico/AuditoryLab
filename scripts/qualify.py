@@ -513,6 +513,9 @@ def qualify(target, build_kind, source_revision, output, repository):
         raise ValueError(f"native qualification requires host {target}, found {host}")
     if build_kind != "local":
         check_source(source_revision)
+    if "windows" in target:
+        from windows_runtime import prepare_imports
+        prepare_imports(target)
     identities = cargo_identities()
     check_gui_profile(target)
     # The same native test path is used by Quality, candidates and releases.

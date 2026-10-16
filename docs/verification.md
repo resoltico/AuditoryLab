@@ -24,6 +24,14 @@ $env:PYTHONDONTWRITEBYTECODE = "1"
 
 On Windows, use `python` in place of `python3` and the native GNU LLVM host from the [source setup](../README.md#install-from-source). Append `--target x86_64-pc-windows-gnullvm` to the `cargo clippy`, `cargo test`, `cargo doc` and `cargo build` commands below; on ARM64 use `--target aarch64-pc-windows-gnullvm`. Keep the explicit target even when it matches the host, so target linker flags do not apply to host proc-macro builds. `cargo fmt` needs no target.
 
+Before the Windows workspace checks, prepare the GUI's reviewed system-import material:
+
+```text
+python scripts/windows_runtime.py prepare --target x86_64-pc-windows-gnullvm
+```
+
+Use `aarch64-pc-windows-gnullvm` on Windows ARM64. This is also the prerequisite for ordinary GUI `cargo test`; the authoritative native qualifier prepares and validates it automatically before any GUI compilation. See the [source-build contract](desktop.md#build-and-start).
+
 Then run:
 
 ```sh

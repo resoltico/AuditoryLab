@@ -363,6 +363,10 @@ class ProductPackageTests(unittest.TestCase):
             check_dependencies(executable, "x86_64-pc-windows-gnullvm", "gui")
             with self.assertRaisesRegex(ValueError, "unexpected runtime"):
                 check_dependencies(executable, "x86_64-pc-windows-gnullvm", "cli")
+            executable.write_bytes(minimal_pe(["kernel32.dll", "opengl32.dll"]))
+            check_dependencies(executable, "x86_64-pc-windows-gnullvm", "gui")
+            with self.assertRaisesRegex(ValueError, "unexpected runtime"):
+                check_dependencies(executable, "x86_64-pc-windows-gnullvm", "cli")
             struct.pack_into("<H", image, 0x40 + 24 + 68, 3)
             executable.write_bytes(image)
             with self.assertRaisesRegex(ValueError, "GUI subsystem"):
