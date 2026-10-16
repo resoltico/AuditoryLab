@@ -421,34 +421,73 @@ mod tests {
     fn second_console_interrupt_forces_exit_after_first_acknowledgement() {
         let directory = tempfile::tempdir().unwrap();
         let script = r#"
-import ctypes, pathlib, subprocess, sys, time
+import ctypes, os, pathlib, subprocess, sys, time
 from ctypes import wintypes
 kernel=ctypes.WinDLL('kernel32',use_last_error=True)
 HANDLER=ctypes.WINFUNCTYPE(wintypes.BOOL,wintypes.DWORD)
 handler=HANDLER(lambda event: True)
+null_handler=HANDLER()
+for name in ('FreeConsole','AllocConsole'):
+    getattr(kernel,name).argtypes=[]
+    getattr(kernel,name).restype=wintypes.BOOL
 kernel.SetConsoleCtrlHandler.argtypes=[HANDLER,wintypes.BOOL]
+kernel.SetConsoleCtrlHandler.restype=wintypes.BOOL
+kernel.GenerateConsoleCtrlEvent.argtypes=[wintypes.DWORD,wintypes.DWORD]
+kernel.GenerateConsoleCtrlEvent.restype=wintypes.BOOL
 directory=pathlib.Path(sys.argv[2])
-process=subprocess.Popen([sys.argv[1],'--exact','run::tests::interrupt_handler_probe','--nocapture'],env=__import__('os').environ.copy()|{'AUDITORYLAB_SIGNAL_PROBE':str(directory)},stdout=subprocess.PIPE,stderr=subprocess.PIPE,creationflags=subprocess.CREATE_NEW_CONSOLE)
+process=None
+console_owned=False
+phase='initialization'
+def enter(name):
+    global phase
+    phase=name
+    print('console probe: '+name,flush=True)
+def checked(result):
+    if not result:
+        raise ctypes.WinError(ctypes.get_last_error())
 def wait_file(name):
+    enter('waiting for '+name)
     deadline=time.monotonic()+20
     while not (directory/name).exists():
         assert process.poll() is None, 'probe exited before '+name
         assert time.monotonic()<deadline, 'timeout before '+name
         time.sleep(0.005)
 try:
-    wait_file('ready')
+    enter('allocating private console')
     kernel.FreeConsole()
-    assert kernel.AttachConsole(process.pid), ctypes.WinError(ctypes.get_last_error())
-    assert kernel.SetConsoleCtrlHandler(handler,True)
-    assert kernel.GenerateConsoleCtrlEvent(0,0)
+    checked(kernel.AllocConsole())
+    console_owned=True
+    # Establish a known inherited-ignore state, then explicitly normalize it.
+    # Registering a non-NULL handler alone does not enable Ctrl+C processing.
+    enter('normalizing inherited Ctrl+C processing')
+    checked(kernel.SetConsoleCtrlHandler(null_handler,True))
+    checked(kernel.SetConsoleCtrlHandler(null_handler,False))
+    checked(kernel.SetConsoleCtrlHandler(handler,True))
+    enter('spawning probe in the private console')
+    process=subprocess.Popen([sys.argv[1],'--exact','run::tests::interrupt_handler_probe','--nocapture'],env=os.environ.copy()|{'AUDITORYLAB_SIGNAL_PROBE':str(directory)},stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    wait_file('ready')
+    enter('sending first Ctrl+C')
+    checked(kernel.GenerateConsoleCtrlEvent(0,0))
     wait_file('ack')
-    assert kernel.GenerateConsoleCtrlEvent(1,0)
+    enter('sending second Ctrl+Break')
+    checked(kernel.GenerateConsoleCtrlEvent(1,0))
     stdout,stderr=process.communicate(timeout=20)
     assert process.returncode==130,(process.returncode,stdout,stderr)
+    enter('observed cancellation acknowledgement and forced exit 130')
+except BaseException:
+    print('console probe failed during '+phase,file=sys.stderr,flush=True)
+    raise
 finally:
-    if process.poll() is None: process.kill()
-    process.wait(timeout=20)
-    kernel.FreeConsole()
+    try:
+        if process is not None:
+            if process.poll() is None:
+                process.kill()
+            stdout,stderr=process.communicate(timeout=20)
+            print('console probe child: exit='+str(process.returncode)+' stdout='+repr(stdout)+' stderr='+repr(stderr),file=sys.stderr,flush=True)
+    finally:
+        if console_owned and not kernel.FreeConsole():
+            print('console probe cleanup: '+str(ctypes.WinError(ctypes.get_last_error())),file=sys.stderr,flush=True)
+
 "#;
         let result = std::process::Command::new("python")
             .args(["-c", script])
@@ -458,7 +497,8 @@ finally:
             .unwrap();
         assert!(
             result.status.success(),
-            "{}",
+            "stdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&result.stdout),
             String::from_utf8_lossy(&result.stderr)
         );
     }

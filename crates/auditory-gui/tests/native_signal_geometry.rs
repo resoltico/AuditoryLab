@@ -152,6 +152,25 @@ fn capture(
     // can initialize the backend. Discard priming images until the requested
     // state survives two separate event-loop timer boundaries.
     let image = ui.window().take_snapshot()?;
+    #[cfg(target_os = "macos")]
+    {
+        use slint::winit_030::WinitWindowAccessor;
+        // AppKit otherwise clamps content to the available screen area. These
+        // owned fixture windows may extend offscreen: the oracle measures the
+        // actual renderer readback, rather than complete physical scanout.
+        // Apply the current case's minimum only after a native render witness,
+        // including retries, so initialization and future downsizes stay valid.
+        let minimum = slint::LogicalSize::new(f32::from(width), f32::from(height))
+            .to_physical(requested_scale);
+        ui.window()
+            .with_winit_window(|window| {
+                window.set_min_inner_size(Some(slint::winit_030::winit::dpi::PhysicalSize::new(
+                    minimum.width,
+                    minimum.height,
+                )));
+            })
+            .ok_or("native geometry render witness has no Winit window")?;
+    }
     let scale = ui.window().scale_factor();
     let physical = ui.window().size();
     let ready = (scale - requested_scale).abs() <= 0.001
