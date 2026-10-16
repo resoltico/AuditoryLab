@@ -34,7 +34,7 @@ LINUX_LIBRARIES = {"libasound.so.2", "libgcc_s.so.1", "libm.so.6", "libc.so.6",
                    "ld-linux-x86-64.so.2", "ld-linux-aarch64.so.1"}
 # Reviewed Windows OS libraries; UCRT implementations are supplied by Windows.
 # Separate Visual C++/LLVM runtime DLLs remain outside this boundary.
-WINDOWS_LIBRARIES = {"kernel32.dll", "ntdll.dll", "user32.dll", "advapi32.dll", "ole32.dll", "oleaut32.dll", "uuid.dll", "winmm.dll", "avrt.dll", "ws2_32.dll", "bcrypt.dll", "secur32.dll", "shell32.dll", "shlwapi.dll", "propsys.dll", "setupapi.dll", "powrprof.dll", "cfgmgr32.dll", "wintrust.dll", "crypt32.dll", "psapi.dll", "dbghelp.dll", "version.dll", "userenv.dll", "combase.dll", "mmdevapi.dll"}
+WINDOWS_LIBRARIES = {"kernel32.dll", "ntdll.dll", "user32.dll", "advapi32.dll", "ole32.dll", "oleaut32.dll", "uuid.dll", "winmm.dll", "avrt.dll", "ws2_32.dll", "bcrypt.dll", "bcryptprimitives.dll", "secur32.dll", "shell32.dll", "shlwapi.dll", "propsys.dll", "setupapi.dll", "powrprof.dll", "cfgmgr32.dll", "wintrust.dll", "crypt32.dll", "psapi.dll", "dbghelp.dll", "version.dll", "userenv.dll", "combase.dll", "mmdevapi.dll"}
 WINDOWS_UCRT_LIBRARIES = {
     'api-ms-win-crt-environment-l1-1-0.dll',
     'api-ms-win-crt-heap-l1-1-0.dll',

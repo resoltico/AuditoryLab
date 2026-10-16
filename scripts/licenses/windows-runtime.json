@@ -33,6 +33,13 @@
       "origin": "https://raw.githubusercontent.com/mingw-w64/mingw-w64/287a0d4d478e3575d082ba37ce4dcba86524fc9e/mingw-w64-crt/crt/pseudo-reloc.c",
       "source_sha256": "5a99b13e8c0de14fe257790a29e3eefb3797a7755f89f8e0df9bd78618cb17ea",
       "source_section": "Complete initial copyright/public-domain/warranty comment"
+    },
+    {
+      "file": "mingw-complex-internal-notice.txt",
+      "sha256": "039ed6b4f31bb7fb97e733170b58cc435335352e4745734fcfd113877fdaf340",
+      "origin": "https://raw.githubusercontent.com/mingw-w64/mingw-w64/287a0d4d478e3575d082ba37ce4dcba86524fc9e/mingw-w64-crt/complex/complex_internal.h",
+      "source_sha256": "f94803efc15a8b5f4e8ca131d7201615f457a316805cc91263b87aa817e6c91d",
+      "source_section": "Complete initial copyright, ZPL 2.1 license and disclaimer comment"
     }
   ],
   "targets": {
@@ -101,6 +108,9 @@
             "lib64_libmingwex_a-loadcfg.o",
             "lib64_libmingwex_a-mingw_cfguard_support.o",
             "lib64_libmingwex_a-mingw_matherr.o"
+          ],
+          "gui_members": [
+            "lib64_libmingwex_a-hypotf.o"
           ]
         },
         "libmsvcrt.a": {
@@ -122,6 +132,10 @@
             "lib64_libucrt_extra_a-ucrt_amsg_exit.o",
             "lib64_libucrt_extra_a-ucrt_fprintf.o",
             "lib64_libucrt_extra_a-ucrt_vfprintf.o"
+          ],
+          "gui_members": [
+            "lib64_libucrt_extra_a-sincos.o",
+            "lib64_libucrt_extra_a-sincosf.o"
           ]
         },
         "libntdll.a": {
@@ -224,6 +238,11 @@
             "libarm64_libmingwex_a-loadcfg.o",
             "libarm64_libmingwex_a-mingw_cfguard_support.o",
             "libarm64_libmingwex_a-mingw_matherr.o"
+          ],
+          "gui_members": [
+            "libarm64_libmingwex_a-hypotf.o",
+            "libarm64_libmingwex_a-sincos.o",
+            "libarm64_libmingwex_a-sincosf.o"
           ]
         },
         "libmsvcrt.a": {

@@ -42,6 +42,22 @@ def minimal_pe(dlls):
 
 
 class PeTests(unittest.TestCase):
+    def test_process_prng_os_import_is_exact_for_both_products_and_architectures(self):
+        for target, machine in (("x86_64-pc-windows-gnullvm", 0x8664),
+                                ("aarch64-pc-windows-gnullvm", 0xaa64)):
+            for product in ("cli", "gui"):
+                with self.subTest(target=target, product=product), tempfile.TemporaryDirectory() as directory:
+                    binary = Path(directory) / "application.exe"
+                    for dll in ("BCryptPrimitives.dll", "bcryptprimitives-extra.dll"):
+                        image = bytearray(minimal_pe(["kernel32.dll", dll]))
+                        struct.pack_into("<H", image, 0x44, machine)
+                        binary.write_bytes(image)
+                        if dll == "BCryptPrimitives.dll":
+                            check_dependencies(binary, target, product)
+                        else:
+                            with self.assertRaisesRegex(ValueError, "unexpected runtime"):
+                                check_dependencies(binary, target, product)
+
     def test_import_names_are_read_lowercased_in_order(self):
         image = minimal_pe(["KERNEL32.dll", "VCRUNTIME140.dll"])
         self.assertEqual(pe_imports(image), ["kernel32.dll", "vcruntime140.dll"])

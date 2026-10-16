@@ -364,6 +364,52 @@ class RuntimeTests(unittest.TestCase):
             runtime.check_trace(text.replace("(kernel32.dll)", "(unreviewed-native.o)"),
                                 self.executable, self.target, self.sysroot, inputs, product="gui")
 
+    def test_gui_math_members_remain_exact_product_scoped_and_source_bound(self):
+        expected = {
+            "x86_64-pc-windows-gnullvm": {
+                "libmingwex.a": ["lib64_libmingwex_a-hypotf.o"],
+                "libmsvcrt.a": ["lib64_libucrt_extra_a-sincos.o", "lib64_libucrt_extra_a-sincosf.o"],
+            },
+            "aarch64-pc-windows-gnullvm": {
+                "libmingwex.a": ["libarm64_libmingwex_a-hypotf.o", "libarm64_libmingwex_a-sincos.o",
+                                "libarm64_libmingwex_a-sincosf.o"],
+            },
+        }
+        for target, additions in expected.items():
+            cli = runtime.policy(target, "cli")[1]
+            gui = runtime.policy(target, "gui")[1]
+            actual = {name: sorted(set(gui[name]["members"]) - set(entry["members"]))
+                      for name, entry in cli.items() if set(gui[name]["members"]) != set(entry["members"])}
+            self.assertEqual(actual, additions)
+            bundled = self.sysroot / "lib/rustlib" / target / "lib/self-contained"
+            bundled.mkdir(parents=True, exist_ok=True)
+            for name in self.inputs:
+                (bundled / name).write_bytes((self.bundled / name).read_bytes())
+            trace = self.trace_text.replace(str(self.bundled), str(bundled))
+            inputs = {name: dict(entry, members=entry["members"] + additions.get(name, []))
+                      for name, entry in self.inputs.items()}
+            for archive, added in additions.items():
+                for member in added:
+                    with self.subTest(target=target, archive=archive, member=member):
+                        self.assertNotIn(member, cli[archive]["members"])
+                        text = trace + f"\nrust-lld: Loaded {archive}({member}) for renderer symbol"
+                        runtime.check_trace(text, self.executable, target, self.sysroot, inputs, product="gui")
+                        with self.assertRaisesRegex(ValueError, "unreviewed.*member"):
+                            runtime.check_trace(text, self.executable, target, self.sysroot, self.inputs)
+                        with self.assertRaisesRegex(ValueError, "unreviewed.*member"):
+                            runtime.check_trace(text.replace(member, "unreviewed-math.o"), self.executable,
+                                                target, self.sysroot, inputs, product="gui")
+                        bad = dict(inputs, **{archive: dict(inputs[archive], sha256="0" * 64)})
+                        with self.assertRaisesRegex(ValueError, "differs from its reviewed component"):
+                            runtime.check_trace(text, self.executable, target, self.sysroot, bad, product="gui")
+                        shadow = self.base / archive
+                        shadow.write_bytes((bundled / archive).read_bytes())
+                        with self.assertRaisesRegex(ValueError, "outside the bundled runtime"):
+                            runtime.check_trace(text.replace(str(bundled / archive), str(shadow)),
+                                                self.executable, target, self.sysroot, inputs, product="gui")
+            # Each product receives its own list; GUI use cannot widen a later CLI query.
+            self.assertEqual(runtime.policy(target, "cli")[1], cli)
+
     def import_fixture(self):
         original = self.base / "published.a"
         original.write_bytes(b"reviewed import archive")

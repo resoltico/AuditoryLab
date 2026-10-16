@@ -186,6 +186,7 @@ def rust_component_notices(source):
 WINDOWS_MATERIALS = {
     "mingw-COPYING", "mingw-COPYING-runtime.txt", "mingw-DISCLAIMER.PD",
     "mingw-pseudo-reloc-notice.txt", "llvm-libunwind-LICENSE.TXT",
+    "mingw-complex-internal-notice.txt",
 }
 
 

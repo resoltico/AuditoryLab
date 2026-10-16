@@ -28,6 +28,7 @@ class NativeNoticeTests(unittest.TestCase):
             'mingw-DISCLAIMER.PD': 'This file has no copyright assigned',
             'llvm-libunwind-LICENSE.TXT': 'LLVM Exceptions to the Apache 2.0 License',
             'mingw-pseudo-reloc-notice.txt': 'Contributed by Egor Duda',
+            'mingw-complex-internal-notice.txt': 'Copyright (c) 2009, 2010 by the mingw-w64 project',
         }
         self.assertEqual({item['file'] for item in self.reviewed['materials']}, set(expected))
         for name, grant in expected.items():
@@ -52,7 +53,7 @@ class NativeNoticeTests(unittest.TestCase):
                 elif kind == 'duplicate':
                     reviewed['materials'][-1] = reviewed['materials'][0]
                 elif kind == 'altered':
-                    reviewed['materials'][0]['sha256'] = '0' * 64
+                    reviewed['materials'][-1]['sha256'] = '0' * 64
                 else:
                     reviewed['producer']['rust'] = '0.0.0'
                 manifest.write_text(json.dumps(reviewed))

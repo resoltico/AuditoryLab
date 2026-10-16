@@ -50,6 +50,8 @@ def policy(target, product="cli"):
         raise ValueError(f"no reviewed Windows native runtime inputs for {target}")
     inputs = dict(reviewed["targets"][target]["inputs"])
     if product == "gui":
+        inputs = {name: dict(entry, members=entry["members"] + entry.get("gui_members", []))
+                  for name, entry in inputs.items()}
         imports = import_policy()
         imported = imports["targets"][target]
         inputs[Path(imported["relative_path"]).name] = imported
