@@ -4,6 +4,32 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Breaking
+
+- Integer phase and frame-quantized pulses replace the synthesis model. Click and rectangular-gate pulses last exactly `round(width_seconds × sample rate)` frames and start on the first frame at or after each onset; edges can move by one frame against 0.3.0. Recipes that leave no closed frame in a period are rejected. Tone and modulation sample bits also change.
+- Rust packages are `auditorylab-core`, `auditorylab`, `auditorylab-cli` and `auditorylab-gui`, under `crates/core`, `crates/lib`, `crates/cli` and `crates/gui`. WAV and device APIs move into the library. Callers use `Stimulus::signal`, immutable seekable `Signal`, and the library's loading/export/playback API; update Rust imports and exhaustive error matches. Install the CLI with `cargo install --locked --path crates/cli`.
+- Windows source builds require MSVC Visual Studio Build Tools. Downloads statically link the Microsoft C runtime. Linux builds use distribution fontconfig without the former font-library patch or root-directory build requirement.
+- Each macOS product has one universal archive instead of separate processor archives. Notices are generated per product and target inside downloads.
+
+### Added
+
+- Desktop progress and elapsed time, waveform previews before playback and a waveform window following the latency-compensated playback position.
+- CLI `-V` as an alias for `--version`.
+- Positive frequencies previously rejected as too small to advance the phase are accepted.
+
+### Changed
+
+- CLI help and usage use clap. Commands, options, explicit source selection and exit codes stay the same. Version output is `auditorylab VERSION`, with a short commit ID for CI builds.
+- Desktop Open and Export use native dialogs. Save replaces an existing file only after native confirmation; CLI output keeps existing files untouched. Closing the window waits for worker cleanup; macOS Cmd-Q can leave a hidden `.NAME.RANDOM.partial` export file beside the destination.
+- Desktop drawing uses OpenGL. The plot is computed from the same seekable signal as playback and export.
+- Preset files retain `schema_version = 2`; existing catalog parameters are unchanged.
+- Packaging uses `cargo xtask`; reusable CI builds the release archives. cargo-deny gates dependency policy, and packaging checks dependency and license-text coverage.
+
+### Removed
+
+- `--build-info` output, build kinds, the sample observation transport, display memory budgets and vendored backend patches.
+- Python build/release tooling and committed generated third-party notices.
+
 ## [0.3.0] - 2026-10-16
 
 ### Breaking

@@ -434,7 +434,6 @@ pub enum ComponentError {
         /// The sample rate in frames per second.
         sample_rate_hz: u32,
     },
-    /// A positive, in-range frequency rounds to a zero phase step.
     /// A tone's upper modulation sideband reaches half the sample rate.
     Sideband {
         /// The tone frequency in hertz.
@@ -444,10 +443,7 @@ pub enum ComponentError {
         /// The sample rate in frames per second.
         sample_rate_hz: u32,
     },
-    /// A click or rectangular-modulation rate gives a zero or subnormal
-    /// phase step, whose relative rounding cannot preserve pulse timing.
-    /// A click or open gate is shorter than one frame or not shorter than
-    /// its period.
+    /// A pulse rounds to no open frame or leaves no closed frame.
     PulseWidth {
         /// The parameter holding it.
         parameter: Parameter,

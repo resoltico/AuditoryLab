@@ -99,9 +99,7 @@ pub(crate) struct Output {
 impl Output {
     /// Find the default output and its backend-reported default stream configuration.
     ///
-    /// Discovery does not start this app's playback stream, but backend queries
-    /// may open resources. Playback builds a stream from the saved rate,
-    /// channels and format; these do not certify the physical hardware rate.
+    /// Playback builds a stream from the saved rate, channels and format.
     ///
     /// # Errors
     /// Returns an error when there is no default output device, the backend

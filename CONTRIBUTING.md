@@ -1,53 +1,55 @@
 # Contributing
 
-Read [AGENTS.md](AGENTS.md) for design and review requirements, [architecture](docs/architecture.md) for responsibilities and [verification](docs/verification.md) for checks. [Install from source](README.md#install-from-source) lists the prerequisites.
+Read [AGENTS.md](AGENTS.md) and the [architecture guide](docs/architecture.md). [Source setup](README.md#build-from-source) lists prerequisites. Understand the affected contracts, design the whole change, challenge it, then update callers, tests and documents together.
 
-## Changes
+Run the CLI with `cargo run --release --locked -p auditorylab-cli -- list`, or the desktop with `cargo run --release --locked -p auditorylab-gui`.
 
-Understand the code, contracts and tests involved, design the whole change, and challenge it before implementing. Follow it through callers, tests, configuration, packaging and documentation, and verify the result.
+## Checks
 
-Documentation describes the current software and how to work on it. [CHANGELOG.md](CHANGELOG.md) records published outcomes and supplies release notes. Catalog citations, study descriptions and adaptations must stay accurate to their sources.
-
-On macOS or Linux, run the program from a checkout with:
+Keep temporary files under `target/`. Set TMPDIR (and TEMP/TMP on Windows) to an absolute directory there before running tests.
 
 ```sh
-cargo run --release --locked -p auditory-cli -- list
+mkdir -p target/tmp
+export TMPDIR="$PWD/target/tmp"
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked
+cargo test --workspace --locked
+cargo test -p auditorylab-core --release --locked
+cargo doc --workspace --no-deps --locked
+cargo deny check
 ```
 
-On Windows, use the native GNU LLVM host from the [source setup](README.md#install-from-source) and pass its target before `--`:
+The toolchain is pinned in [rust-toolchain.toml](rust-toolchain.toml); the workspace manifest declares the minimum compiler. CI tool versions and platforms are defined in [ci.yml](.github/workflows/ci.yml).
 
-```text
-cargo run --release --locked -p auditory-cli --target x86_64-pc-windows-gnullvm -- list
+Unit tests live beside code; integration tests use public APIs and the actual CLI executable. Check signal formulas against independent oracles. Give validation guards accepted and rejected neighbours. Change a [pinned digest](crates/core/tests/determinism.rs) only for a deliberate sample change and explain it in the commit. Property tests set bounded case/shrink budgets and disable persistence; turn minimized failures into regression tests. Allocation tests include a negative control. Device tests are ignored by default and use component-free silence; preserve the user's device, routing and volume.
+
+Frontends use the library for domain workflows. Keep rendering and validation in core, publication and playback in the library, and presentation in frontends. Core, library and CLI forbid unsafe code; the GUI's only unsafe allowance covers Slint-generated code. [Workspace lints](Cargo.toml) are shared.
+
+Mutation testing stays short and scoped to one file:
+
+```sh
+TMPDIR="$PWD/target/tmp" cargo mutants --file crates/core/src/synthesis.rs \
+  --timeout 60 --cargo-arg=--locked --output target/mutations
 ```
 
-On ARM64, use `--target aarch64-pc-windows-gnullvm` instead. Keep the explicit native target for Cargo commands that compile or test the application; [verification](docs/verification.md#standard-checks) gives the check commands.
+Use `--re` to focus a smaller selection. Investigate survivors against an independent oracle. The CI command excludes three equivalent integer-phase mutations with their reasons beside the command. Keep the Nyquist guard in the selection.
 
-## Lints and tests
+## Dependencies
 
-[Cargo.toml](Cargo.toml) sets the workspace lint authority: warnings are errors, handwritten unsafe code is prohibited, and Clippy's `all` group plus the numeric-conversion/panic rules are denied. Library and CLI crates use `unsafe_code = forbid`. GUI alone has a checked full lint copy with deny and one generated-only allowance required by Slint; handwritten GUI unsafe syntax is rejected. Third-party dependencies retain their own reviewed implementation/licensing boundaries. Use a narrow `#[expect(lint, reason = "…")]` only when the code is correct and the reason says why.
+[Cargo.toml](Cargo.toml) declares ranges and [Cargo.lock](Cargo.lock) pins resolution. Update a named dependency with `cargo update -p NAME`, inspect the delta, run the checks and regenerate archives. Portable `libm` with `force-soft-floats` keeps math independent of platform intrinsics after feature unification.
 
-- Unit tests sit beside their code; public-interface and binary tests live in each crate's `tests` directory.
-- Check signal mathematics against independent formulas, and give every validation guard an input it must reject.
-- [Determinism tests](crates/auditory-core/tests/determinism.rs) pin rendered samples. A digest changes only when its samples deliberately change; say why in the change.
-- Property tests state their case and shrink budgets and set `failure_persistence: None`. `PROPTEST_RNG_SEED` replays a run; turn a shrunk failure into an ordinary regression test.
-- Filesystem tests use their own temporary directories, under `target/`, with TMPDIR, TEMP and TMP initialized there.
+[cargo-deny policy](deny.toml) gates advisories, licenses, sources and duplicate versions. New advisory ignores need a written reason. [about.toml](about.toml) controls license selection. Packaging resolves the full non-dev graph, compares cargo-about package identities against Cargo's selected tree and metadata, checks every crate's license-text coverage, then emits normal/proc-macro dependency notices. Slint terms come from the locked Slint package. Rust standard-library and Windows runtime paragraphs live in [notice templates](xtask/templates).
 
-The core is `no_std` with `alloc` and computes with portable `libm`; `force-soft-floats` overrides architecture features introduced by transitive GUI feature unification. Determinism tests check this; tests may use the platform's math as an independent oracle.
+## Desktop checks
 
-Frontends must use `auditory-app` for domain workflows. The required architecture integration driver checks every workspace role, dependency kind/target and admitted production source root. New dependencies or target roles require a deliberate policy review in `crates/auditory-app/tests/frontend_boundary/roles.rs`; frontend syntax and source admission live in separate private modules. Native qualification explicitly requires the essential app integration targets and their behavioral/rejection controls to be discovered and executed, so a successful excluded or empty suite is insufficient. Reviewers must still check for copied algorithms and policy; syntax and dependency checks cannot prove semantic equivalence. Prepared playback stays on its native worker; owned reports and failures can cross threads. GUI and CLI have separate presentation allowlists. The reviewed GUI compiler/generated module, embedded resources and actual compiler inputs have narrow checks; they are not general source-inclusion/build-script exemptions. Keep runtime renderer environment variables out of Cargo compiler invocations. Waveform analysis belongs in core/app; frontends map app-supplied ranges to coordinates. No frontend resynthesis, independent extrema/RMS/FFT or raw device/transport ownership is permitted.
+Open the built window. Check selection, static previews, waveform windows, selectable research text, native Open and Save, confirmed replacement, export cancellation, close during an operation and About. Play only a component-free recipe during development checks. Check progress and CPU use at the intended display scale. The UI uses OpenGL and synthesis runs on the CPU.
 
-## Dependencies and toolchain
+## Packaging and releases
 
-[Cargo.toml](Cargo.toml) declares supported dependency ranges and [Cargo.lock](Cargo.lock) pins builds; use `--locked`. To update a dependency, edit the manifest or run `cargo update -p NAME`, then inspect `cargo tree --workspace --target all --duplicates`, run the checks and the advisory audit, and regenerate the third-party notices as [releasing](docs/releasing.md#notices-and-dependency-updates) describes.
+Install cargo-about, cargo-deny and cargo-mutants at the versions defined in [CI](.github/workflows/ci.yml). `cargo xtask dist --target TARGET` builds both products with the distribution profile, generates notices and README files, writes archives under `target/dist`, and runs host smoke checks. Supported target arguments are defined in [xtask](xtask/src/main.rs). Universal macOS packaging needs both Apple Rust targets plus `lipo` and `codesign` from Xcode Command Line Tools.
 
-[rust-toolchain.toml](rust-toolchain.toml) pins the compiler used in development and CI; `rust-version` in Cargo.toml is the minimum Cargo enforces. [.python-version](.python-version) pins CI's Python for the release tools, which run on Python 3.9 or later with the standard library only.
+To inspect notices without building archives, use `cargo xtask notices cli TARGET target/cli-notices.txt` or substitute `gui`. The checks reject missing dependency identities and missing license sections. For ZIP and tar archives, xtask writes members in-process and preserves executable permissions.
 
-## Desktop and qualification
+For a release, set the workspace version, add a dated changelog section, run `cargo xtask check-release VERSION`, and review `cargo xtask notes VERSION`. Commit on main and push. CI tests each platform and uploads the product archives. Test the downloaded archives, then dispatch [release.yml](.github/workflows/release.yml) with that version.
 
-Run supported Linux source builds from the checkout root so its Cargo links overrides suppress the bundled FreeType fallback. Install security-updated distribution FreeType/Fontconfig development libraries; outside-root `--manifest-path` and alternate compiler/configuration inputs are outside this checked source-build policy.
-
-Use [desktop setup](docs/desktop.md) for Slint/native prerequisites and [verification](docs/verification.md) for source checks, actual window/renderer checks, silent audio and platform/accessibility evidence. Native code generation, headless package smoke and a painted window prove different properties. GPU feature selection does not establish an actual GPU frame or a power/performance improvement.
-
-[qualify.py](scripts/qualify.py) is the shared native test/build/package entry point used by CI. Local kind remains usable for a dirty checkout and makes no immutable-source claim. Candidate/release kinds require clean exact committed source and isolated per-product environments/floors. Publication is a separate authorized workflow; a development qualifier never publishes. Keep all owned output under target and retain useful failure evidence.
-
-The narrow Slint backend source patch is covered by its [provenance and rationale](vendor/slint-winit/AUDITORYLAB.md), selected upstream terms and independent native/rejection tests. Do not update reviewed hashes merely to accept a changed patch. Dependency notices distinguish actual runtime reachability from separately retained code-generation material and generated assets; none of those identity checks replaces review.
+Release checks the ref, version, notes and absent tag, calls CI for those source bytes, collects archives, writes SHA256SUMS and attests the artifacts. It creates a draft release, compares uploaded digests with the built bytes, then publishes. Published tags and assets are never replaced. If publication stops at a draft, inspect the failed step and its logs; compare every uploaded digest and source commit before completing that same draft. Choose a new version for changes to published bytes. To verify a public download, compare SHA256SUMS and the release asset digests, inspect the attestation against the release workflow/source commit, and run the binary's `--version`.

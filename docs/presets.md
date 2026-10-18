@@ -75,7 +75,7 @@ A file with only `schema_version`, `duration_seconds` and `fade_seconds` is sile
 
 ## Fields
 
-Input is at most 65,536 bytes. `schema_version`, `duration_seconds` and `fade_seconds` are required; components and `[about]` are optional. Unknown or duplicated keys, missing required fields and values of the wrong type are errors. Whole numbers are accepted where a real number is expected. The required `schema_version` is `2`; other version values are rejected.
+Input is bounded by [`Preset::MAX_BYTES`](../crates/core/src/preset.rs). `schema_version`, `duration_seconds` and `fade_seconds` are required; components and `[about]` are optional. Unknown or duplicated keys, missing required fields and values of the wrong type are errors. Whole numbers are accepted where a real number is expected. The required `schema_version` is `2`; other version values are rejected.
 
 | Field | Meaning |
 |---|---|
@@ -112,18 +112,16 @@ Within `[about]`, only `title` is required; the other text fields are optional f
 
 ## Waveforms
 
-For frame `n` at sample rate `fs`, with time `t = n / fs`:
+For frame `n` at sample rate `fs`, every periodic generator uses a 64-bit integer phase: one cycle is `2^64` units. Its step is `ceil(hz × 2^64 / fs)`, computed exactly from the binary64 frequency. Frame `n` uses `n × step` modulo `2^64`. The frequency resolution is `fs / 2^64`; any finite positive frequency below Nyquist has a positive step.
 
-- Tone: `sin(2π · frequency_hz · t)`, starting at phase zero.
-- Click: `1` during the first `width_seconds` of each `1 / rate_hz` period and `0` otherwise, with a pulse starting at time zero.
-- Sinusoidal modulation: the carrier times `(1 + depth · sin(2π · rate_hz · t)) / (1 + depth)`, starting at phase zero; it never exceeds 1.
-- Rectangular modulation: the carrier times the click waveform for its `rate_hz` and `width_seconds`, so a modulated tone keeps its phase across the gaps.
-- Peak: each component is multiplied by `10^(peak_dbfs / 20)`.
-- Mixing: each ear sums its components in file order, then the fade gain applies.
+- Tone: `sin(2π × c)`, where `c` is the signed top 53 phase bits converted exactly to cycles in `[-0.5, 0.5)`.
+- Click: let `W = round(width_seconds × fs)`, halves away from zero. A pulse starts on the first frame at or after each period's onset and stays open for exactly `W` frames. It is open while `phase < W × step`.
+- Sinusoidal modulation: multiply by `(1 + depth × sin(2π × c_m)) / (1 + depth)` at the modulation phase.
+- Rectangular modulation: multiply by the click waveform at its rate and width. A tone keeps its phase across closed gates.
+- Peak: multiply each component by `10^(peak_dbfs / 20)`.
+- Mixing: sum each ear's components in file order, then apply the fade gain.
 
-Clicks and rectangular gates switch instantly, so their spectra are broadband; only their rates are checked against half the sample rate, and part of their energy aliases. A higher sample rate reduces the aliased part.
-
-Arithmetic is binary64 with portable math functions, so a recipe renders the same bits on every platform. Tone and sinusoidal phases advance per frame and wrap at one cycle. Click and rectangular phases come from the absolute frame index; near a pulse edge, rounding can move the edge by one frame. The formulas describe the waveforms; they do not promise bit equality with another implementation.
+Clicks and rectangular gates switch instantly and have broadband spectra. Rate validation checks Nyquist; a higher sample rate reduces aliasing. Integer phases, binary64 arithmetic and portable `libm` give identical sample bits across platforms and build profiles. Any frame can be evaluated directly.
 
 Lengths become whole frames: `seconds · fs` rounded to the nearest frame, halves away from zero. With `N` frames, `F` fade frames and `d = min(n, N − 1 − n)`, the fade gain is 1 when `F = 0` or `d ≥ F`, otherwise `0.5 − 0.5 · cos(π · d / F)`. A positive resolved fade therefore makes the first and last frames silent; a requested fade that rounds to zero applies no fade. Channels are left then right; export rounds samples to 32-bit float.
 
@@ -131,10 +129,10 @@ Lengths become whole frames: `seconds · fs` rounded to the nearest frame, halve
 
 A recipe can be valid at one sample rate and invalid at another. `inspect`, `export` and `play` check these rules:
 
-- Duration and fade are finite and not negative, the duration gives 1 to 2^36 frames, and the two fades leave at least one frame between them (`2F < N`).
-- At most 16 components, each with a finite `peak_dbfs` of at most 0.
+- Duration and fade are finite and not negative, duration gives at least one frame within [`Signal::MAX_FRAMES`](../crates/core/src/signal.rs), and the fades leave at least one frame between them (`2F < N`).
+- Component count stays within [`Stimulus::MAX_COMPONENTS`](../crates/core/src/stimulus.rs), and each component has a finite `peak_dbfs` of at most 0.
 - Every frequency and rate is finite, positive and below half the sample rate. A tone with sinusoidal modulation also needs `frequency_hz + rate_hz` below half the sample rate.
-- Dividing a tone or sinusoidal frequency by the sample rate gives a nonzero binary64 phase step. Click and rectangular rates must give a normal step (neither zero nor subnormal), and each pulse lasts at least one frame and ends before the next period.
+- Pulse widths must give `W ≥ 1` and satisfy `(W + 1) × rate_hz ≤ fs`, compared exactly. This leaves at least one closed frame in every period, including fractional-frame periods.
 - Each ear's summed component peaks are at most full scale, so no sample ever needs clipping.
 
 `inspect` reports these summed peaks per ear. They are bounds, not measured or necessarily reached maxima.
@@ -143,7 +141,7 @@ A recipe can be valid at one sample rate and invalid at another. `inspect`, `exp
 
 `peak_dbfs` states a component's peak bound. Over complete steady cycles, an unmodulated tone's RMS is 3.01 dB below its peak bound. When the carrier frequency is above the modulation rate, a full-depth sinusoidally modulated tone is 7.27 dB below its peak bound over complete steady cycles. These relationships require distinct, non-DC spectral terms over the averaging interval; spectral coincidences need separate calculation. Distinct tones add in power over suitable steady intervals, so two tones each 3.01 dB lower match one tone's RMS under those conditions. Coincident frequencies can add coherently.
 
-An ideal rectangular click train's RMS is its pulse peak plus `10 · log10(width_seconds · rate_hz)` dB. That duty-cycle change also applies to a gated tone relative to its ungated RMS when its open windows contain complete tone cycles, as in the catalog's tone pips; other gated-tone RMS values depend on carrier phase and frequency. The duty-cycle change is −13.98 dB for 1 ms at 40 Hz. For sampled pulses, use the actual active-frame fraction, and exclude endpoint fades from steady-state calculations. The validated linear/decibel bounds apply before sink conversion; nearest-f32 and signed integer quantization have separate spacing/rounding rules and can change a peak slightly. [Signal verification](signal-verification.md) covers midpoint, signed-zero and subnormal cases. Digital levels do not establish loudness at the ear; that depends on the device, its volume and the headphones or speakers.
+An ideal rectangular click train's RMS is its pulse peak plus `10 · log10(width_seconds · rate_hz)` dB. That duty-cycle change also applies to a gated tone relative to its ungated RMS when its open windows contain complete tone cycles, as in the catalog's tone pips; other gated-tone RMS values depend on carrier phase and frequency. The duty-cycle change is −13.98 dB for 1 ms at 40 Hz. For sampled pulses, use the actual active-frame fraction, and exclude endpoint fades from steady-state calculations. The validated linear/decibel bounds apply before sink conversion; nearest-f32 and signed integer quantization have separate spacing/rounding rules and can change a peak slightly. The [encoder](../crates/lib/src/wav/export.rs) rounds samples to binary32. Loudness at the ear depends on the device, its volume and the headphones or speakers.
 
 ## Built-in catalog
 
@@ -153,10 +151,10 @@ Each built-in preset is a parameterized audio adaptation of a selected condition
 
 A condition qualifies only when its full primary methods give enough evidence to identify the waveform, frequencies or rates and widths, continuous duration, and original presentation. Headphone routing must be stated; a documented speaker presentation may be explicitly adapted to identical ear channels, without claiming that this recreates the acoustic field. Selecting one stated ear or EEG session from a wider protocol must also be disclosed. Unexplained routing guesses, unreported carrier or pulse parameters, sweeps, live-controlled sounds, unstated maskers/noise and short recording-locked trial reconstructions do not qualify. Record missing phase, ramps, audio rate and calibration instead of inventing them. Check supplements and publisher corrections/retractions, and state unavailable evidence honestly.
 
-Name the file `firstauthor-year-condition.toml`, in lowercase, under `crates/auditory-core/catalog/`, and add the name to the list in `crates/auditory-core/src/catalog.rs`, which is in name order with numbers compared numerically, and its recipe to the independent table in `crates/auditory-core/tests/catalog.rs`. Write `[about]` values using printable ASCII characters from space through tilde, excluding double quotes, on one line per field:
+Name the file `firstauthor-year-condition.toml`, in lowercase, under `crates/core/catalog/`, and add its recipe to the independent table in `crates/core/tests/catalog.rs`. The build script embeds the directory in natural order, comparing runs of digits as numbers. Write `[about]` values using printable ASCII characters from space through tilde, excluding double quotes, on one line per field:
 
 - `studied_for` names what the source investigated, not a benefit.
 - `summary` says what the listener hears, what the study tested on whom, what it found, including null results and the study's size, and whether the result comes from animals. It reports findings and never promises an effect. Where a disease is named, state that the sound is not an established treatment.
 - `study` and `adaptation` are for researchers and use the source's terms.
 
-Then run the [verification](verification.md) checks.
+Then run the [contributor checks](../CONTRIBUTING.md#checks).
