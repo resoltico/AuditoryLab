@@ -67,13 +67,65 @@ fn readme(version: &str, gui: bool, target: &str) -> String {
 }
 fn section<'a>(changelog: &'a str, version: &str) -> Result<(&'a str, &'a str)> {
     let marker = format!("## [{version}]");
-    let start = changelog
-        .find(&marker)
-        .ok_or("changelog version section missing")?;
-    let tail = &changelog[start..];
-    let (heading, body) = tail.split_once('\n').ok_or("empty changelog section")?;
-    let end = body.find("\n## ").unwrap_or(body.len());
-    Ok((heading, body[..end].trim()))
+    let dated = format!("{marker} - ");
+    let mut tail = changelog;
+    while !tail.is_empty() {
+        let (heading, body) = tail.split_once('\n').unwrap_or((tail, ""));
+        if heading == marker || heading.starts_with(&dated) {
+            let end = if body.starts_with("## ") {
+                0
+            } else {
+                body.find("\n## ").unwrap_or(body.len())
+            };
+            return Ok((heading, body[..end].trim()));
+        }
+        tail = body;
+    }
+    Err("changelog version section missing".into())
+}
+fn release_notes<'a>(changelog: &'a str, version: &str) -> Result<&'a str> {
+    let (heading, body) = section(changelog, version)?;
+    let date = heading
+        .strip_prefix(&format!("## [{version}] - "))
+        .ok_or("release needs a dated changelog section")?;
+    let fields: Vec<_> = date.split('-').collect();
+    if fields.len() != 3
+        || fields[0].len() != 4
+        || fields[1].len() != 2
+        || fields[2].len() != 2
+        || fields
+            .iter()
+            .any(|field| !field.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err("release date must be YYYY-MM-DD".into());
+    }
+    let year: u32 = fields[0].parse()?;
+    let month: usize = fields[1].parse()?;
+    let day: u32 = fields[2].parse()?;
+    let leap = year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
+    let days = [
+        31,
+        28 + u32::from(leap),
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    if year == 0
+        || !(1..=12).contains(&month)
+        || day == 0
+        || day > days[month - 1]
+        || body.is_empty()
+    {
+        return Err("release needs a valid date and nonempty changelog section".into());
+    }
+    Ok(body)
 }
 // Cargo metadata merges host/target and workspace feature sets. The selected
 // product's normal-edge tree supplies the enabled graph; metadata supplies IDs.
@@ -378,7 +430,7 @@ fn main() -> Result<()> {
     match args.first().map(String::as_str) {
         Some("dist") => { let mut target=None; let mut out=PathBuf::from("target/dist"); let mut i=1; while i<args.len() { let value=args.get(i+1).ok_or("missing option value")?; match args[i].as_str() { "--target"=>target=Some(value.as_str()),"--out"=>out=PathBuf::from(value),_=>return Err("use dist --target TARGET [--out DIR]".into()) } i+=2; } dist(target.ok_or("dist requires --target")?,&out) }
         Some("notes") if args.len()==2 => { println!("{}",section(&fs::read_to_string("CHANGELOG.md")?,&args[1])?.1); Ok(()) }
-        Some("check-release") if args.len()==2 => { let meta=metadata(None)?; if version(&meta)?!=args[1] { return Err("workspace version differs from requested release".into()); } let text=fs::read_to_string("CHANGELOG.md")?; let (heading,body)=section(&text,&args[1])?; let date=heading.split_once(" - ").map(|(_,d)|d); if !date.is_some_and(|d| d.len()==10 && d.bytes().enumerate().all(|(i,b)| if i==4 || i==7 {b==b'-'} else {b.is_ascii_digit()})) || body.is_empty() { return Err("release needs a dated, nonempty changelog section".into()); } Ok(()) }
+        Some("check-release") if args.len()==2 => { let meta=metadata(None)?; if version(&meta)?!=args[1] { return Err("workspace version differs from requested release".into()); } let text=fs::read_to_string("CHANGELOG.md")?; release_notes(&text,&args[1])?; Ok(()) }
         Some("notices") if args.len()==4 => { let meta=metadata(Some(&args[2]))?; fs::write(&args[3],about(&args[1],&args[2],&meta)?)?; Ok(()) }
         _=>Err("use cargo xtask dist --target TARGET [--out DIR], notes VERSION, or check-release VERSION".into()),
     }
@@ -400,6 +452,33 @@ mod tests {
         let text = readme("0.4.0", true, "aarch64-unknown-linux-gnu");
         assert!(text.contains("Desktop") && text.contains("xdg-desktop-portal"));
         assert!(!text.contains("{version}"));
+    }
+    #[test]
+    fn release_checks_reject_malformed_dates_and_version_headings() {
+        for date in ["2026-10-19", "2028-02-29", "2000-02-29"] {
+            let text = format!("## [0.4.0] - {date}\n\nA change.\n");
+            assert_eq!(release_notes(&text, "0.4.0").unwrap(), "A change.");
+        }
+        for date in [
+            "2026-99-99",
+            "2026-02-29",
+            "2100-02-29",
+            "2026-04-31",
+            "0000-01-01",
+            "2026-1-01",
+            "+026-01-01",
+            "2026-+1-01",
+        ] {
+            assert!(release_notes(&format!("## [0.4.0] - {date}\nA change."), "0.4.0").is_err());
+        }
+        for text in [
+            "## [0.4.0]extra - 2026-10-19\nA change.",
+            "prefix ## [0.4.0] - 2026-10-19\nA change.",
+            "## [0.4.0] - 2026-10-19\n\n## [0.3.0]\nOlder.",
+            "## [0.4.0] - 2026-10-19\n## [0.3.0]\nOlder.",
+        ] {
+            assert!(release_notes(text, "0.4.0").is_err());
+        }
     }
     #[test]
     fn changelog_extraction_keeps_only_the_requested_version() {

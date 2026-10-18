@@ -2,7 +2,7 @@
 use auditorylab::{Cancel, OutputInfo, Preset, Progress, Sound};
 use std::{
     path::PathBuf,
-    sync::mpsc::{self, Receiver},
+    sync::mpsc::{self, Receiver, TryRecvError},
     thread::{self, JoinHandle},
 };
 pub(crate) enum Message {
@@ -18,7 +18,7 @@ pub(crate) enum Work {
 pub(crate) struct Worker {
     pub(crate) cancel: Cancel,
     pub(crate) progress: Progress,
-    pub(crate) messages: Receiver<Message>,
+    messages: Receiver<Message>,
     handle: Option<JoinHandle<()>>,
 }
 impl Worker {
@@ -64,6 +64,15 @@ impl Worker {
             handle,
         }
     }
+    pub(crate) fn receive(&self) -> Result<Option<Message>, String> {
+        match self.messages.try_recv() {
+            Ok(message) => Ok(Some(message)),
+            Err(TryRecvError::Empty) => Ok(None),
+            Err(TryRecvError::Disconnected) => {
+                Err("The operation thread ended without a result.".into())
+            }
+        }
+    }
     pub(crate) fn join(mut self) -> Result<(), String> {
         self.handle.take().map_or(Ok(()), |h| {
             h.join().map_err(|_| "The operation thread failed.".into())
@@ -73,6 +82,31 @@ impl Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_panicked_worker_reports_disconnection_and_can_be_joined() {
+        let (tx, messages) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            let _sender = tx;
+            panic!("injected operation failure");
+        });
+        let worker = Worker {
+            cancel: Cancel::default(),
+            progress: Progress::default(),
+            messages,
+            handle: Some(handle),
+        };
+        assert!(matches!(
+            worker
+                .messages
+                .recv_timeout(std::time::Duration::from_secs(5)),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        ));
+        assert_eq!(
+            worker.receive().err().as_deref(),
+            Some("The operation thread ended without a result.")
+        );
+        assert_eq!(worker.join(), Err("The operation thread failed.".into()));
+    }
     #[test]
     fn cancelled_export_joins_and_removes_the_partial_file() {
         let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");

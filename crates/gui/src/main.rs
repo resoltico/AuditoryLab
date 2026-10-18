@@ -39,7 +39,18 @@ impl Desktop {
         self.updating.set(true);
         let mut done = false;
         if let Some(worker) = self.worker.borrow().as_ref() {
-            while let Ok(message) = worker.messages.try_recv() {
+            loop {
+                let message = match worker.receive() {
+                    Ok(Some(message)) => message,
+                    Ok(None) => break,
+                    Err(error) => {
+                        if !done {
+                            self.app.borrow_mut().status = error;
+                        }
+                        done = true;
+                        break;
+                    }
+                };
                 let mut app = self.app.borrow_mut();
                 match message {
                     Message::Ready(info, sound) => {

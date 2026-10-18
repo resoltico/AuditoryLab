@@ -124,9 +124,11 @@ impl Callback {
 
         let frames = (output.len() / self.device_channels) as u64;
         let latency = time.playback.duration_since(time.callback);
-        let latency_frames =
-            u64::try_from(latency.as_nanos() * u128::from(self.sample_rate_hz) / 1_000_000_000)
-                .unwrap_or(u64::MAX);
+        // floor(cursor - latency*rate) = cursor - ceil(latency*rate).
+        let latency_frames = u64::try_from(
+            (latency.as_nanos() * u128::from(self.sample_rate_hz)).div_ceil(1_000_000_000),
+        )
+        .unwrap_or(u64::MAX);
         self.progress
             .set(self.cursor.saturating_sub(latency_frames));
         let active = self.render(output, convert);
@@ -262,6 +264,18 @@ mod tests {
         assert_eq!(progress.frames(), 400);
         fill(&mut callback, 800, time(200, 200));
         assert_eq!(progress.frames(), 1600);
+    }
+
+    #[test]
+    fn fractional_latency_never_reports_a_frame_before_it_is_audible() {
+        let progress = crate::Progress::default();
+        let mut callback = callback(8000, 8000).with_progress(progress.clone());
+        fill(&mut callback, 800, nanos(0, 1));
+        assert_eq!(progress.frames(), 0);
+        fill(&mut callback, 800, nanos(100_000_000, 100_000_001));
+        assert_eq!(progress.frames(), 799);
+        fill(&mut callback, 800, nanos(200_000_000, 200_125_001));
+        assert_eq!(progress.frames(), 1598);
     }
 
     #[test]
