@@ -1,0 +1,175 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_call:
+    inputs:
+      source-revision:
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+env:
+  RUST_BACKTRACE: '1'
+  AUDITORYLAB_SOURCE_REVISION: ${{ inputs.source-revision || github.sha }}
+  CARGO_DENY_VERSION: '0.20.2'
+  CARGO_ABOUT_VERSION: '0.9.2'
+  CARGO_MUTANTS_VERSION: '27.1.0'
+  CARGO_HOME: ${{ github.workspace }}/target/cargo-home
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      core-changed: ${{ steps.changes.outputs.core-changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Prepare temporary directory
+        run: |
+          mkdir -p target/tmp
+          echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+      - run: rustup toolchain install
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
+        with:
+          tool: cargo-deny@${{ env.CARGO_DENY_VERSION }}
+      - name: Weekly advisory check
+        if: github.event_name == 'schedule'
+        run: cargo deny check advisories
+      - name: Install Linux build prerequisites
+        if: github.event_name != 'schedule'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev
+      - if: github.event_name != 'schedule'
+        run: cargo fmt --all -- --check
+      - if: github.event_name != 'schedule'
+        run: cargo doc --workspace --no-deps --locked
+      - if: github.event_name != 'schedule'
+        run: cargo deny check
+      - name: Detect core source changes
+        id: changes
+        if: github.event_name != 'schedule'
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+        run: |
+          base="$BASE_REVISION"
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD^)"
+          fi
+          git diff --name-only "$base" HEAD -- crates/core/src > target/core-changes.txt
+          if [[ -s target/core-changes.txt ]]; then
+            echo 'core-changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'core-changed=false' >> "$GITHUB_OUTPUT"
+          fi
+  test:
+    if: github.event_name != 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: universal-apple-darwin
+            platform: macos-universal
+            upload: true
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            platform: macos-x86_64
+            upload: false
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            platform: linux-x86_64
+            upload: true
+          - runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            platform: linux-aarch64
+            upload: true
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
+            upload: true
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            platform: windows-aarch64
+            upload: true
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare temporary directory
+        run: |
+          mkdir -p target/tmp
+          for name in TMPDIR TMP TEMP; do
+            echo "${name}=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+          done
+      - name: Install Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev
+      - run: rustup toolchain install
+      - name: Install Intel macOS target
+        if: matrix.target == 'universal-apple-darwin'
+        run: rustup target add x86_64-apple-darwin
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
+        with:
+          tool: cargo-about@${{ env.CARGO_ABOUT_VERSION }}
+      - run: cargo clippy --workspace --all-targets --locked
+      - run: cargo test --workspace --locked
+      - run: cargo test -p auditorylab-core --release --locked
+      - name: Build archives and run host smoke tests
+        env:
+          DIST_TARGET: ${{ matrix.target }}
+        run: cargo xtask dist --target "$DIST_TARGET"
+      - name: Upload distributions
+        if: matrix.upload && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_call')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.platform }}
+          path: target/dist/*
+          if-no-files-found: error
+          compression-level: 0
+  mutation:
+    needs: lint
+    if: github.event_name != 'schedule' && needs.lint.outputs.core-changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          mkdir -p target/tmp
+          echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+      - run: rustup toolchain install
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
+        with:
+          tool: cargo-mutants@${{ env.CARGO_MUTANTS_VERSION }}
+      - name: Mutate only synthesis.rs
+        # OR/XOR are equal on the clear mantissa bit. At line 40, both branches return 1.
+        # Keep that boundary exclusion location-specific so the Nyquist guard is still mutated.
+        run: >-
+          cargo mutants --file crates/core/src/synthesis.rs --package auditorylab-core
+          --test-workspace=false --timeout 60 --cargo-arg=--locked --output target/mutations
+          --exclude-re 'replace \| with \^ in (step|times_at_most)$'
+          --exclude-re 'synthesis\.rs:40:22: replace < with <= in step$'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: synthesis-mutations
+          path: target/mutations/mutants.out/
+          if-no-files-found: error
