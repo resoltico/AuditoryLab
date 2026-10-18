@@ -1,0 +1,2 @@
+//! Auditory Lab.
+fn main() {}

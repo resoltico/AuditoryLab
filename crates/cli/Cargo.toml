@@ -1,0 +1,27 @@
+[package]
+name = "auditorylab-cli"
+autobins = false
+description = "Command-line discovery, inspection, WAV export and playback of auditory presets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+auditorylab.workspace = true
+ctrlc.workspace = true
+clap.workspace = true
+textwrap.workspace = true
+unicode-width.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "auditorylab"
+path = "src/main.rs"

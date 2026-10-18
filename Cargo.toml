@@ -1,17 +1,9 @@
 [workspace]
 resolver = "3"
-exclude = ["vendor/slint-winit", "vendor/sctk-adwaita"]
-members = [
-    "crates/auditory-core",
-    "crates/auditory-wav",
-    "crates/auditory-device",
-    "crates/auditory-cli",
-    "crates/auditory-app",
-    "crates/auditory-gui",
-]
+members = ["crates/core", "crates/lib", "crates/cli", "crates/gui", "xtask"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.99"
 license = "MPL-2.0"
@@ -20,33 +12,34 @@ publish = false
 
 [workspace.dependencies]
 allocation-counter = "0.8.1"
-auditory-app = { path = "crates/auditory-app" }
-auditory-core = { path = "crates/auditory-core" }
-auditory-wav = { path = "crates/auditory-wav" }
-auditory-device = { path = "crates/auditory-device" }
+auditorylab = { path = "crates/lib" }
+auditorylab-core = { path = "crates/core" }
 cpal = "0.18.2"
 ctrlc = { version = "3.5.2", features = ["termination"] }
 # Keep portable arithmetic even when GUI transitive dependencies enable `arch`.
 # libm's maintained override disables architecture intrinsics after feature unification.
 libm = { version = "0.2.16", default-features = false, features = ["force-soft-floats"] }
-lexopt = "0.3.2"
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 serde = { version = "1.0.229", default-features = false, features = ["alloc", "derive"] }
 tempfile = "3.27.0"
 toml = { version = "1.1.8", default-features = false, features = ["parse", "serde"] }
-unicode-segmentation = "1.13.3"
 unicode-width = { version = "0.2.2", default-features = false }
 waveadapter = "0.3.1"
 winapi-util = "0.1.11"
-slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-18", "backend-winit", "renderer-software", "renderer-femtovg-wgpu", "accessibility", "raw-window-handle-06", "unstable-winit-030"] }
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-18", "backend-winit", "renderer-software", "accessibility", "raw-window-handle-06"] }
 slint-build = { version = "=1.18.1", default-features = false, features = ["compat-1-18"] }
-rtrb = "=0.4.0"
 libc = "0.2"
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
 
+clap = { version = "4", features = ["derive"] }
+textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }
+zip = { version = "6", default-features = false, features = ["deflate"] }
+tar = "0.4"
+flate2 = "1"
+
 [workspace.lints.rust]
 warnings = "deny"
-unsafe_code = "forbid"
+unsafe_code = "deny"
 missing_docs = "deny"
 unreachable_pub = "deny"
 unused_lifetimes = "deny"
@@ -89,7 +82,9 @@ overflow-checks = true
 inherits = "test"
 debug = false
 
-[patch.crates-io]
-i-slint-backend-winit = { path = "vendor/slint-winit" }
 
-sctk-adwaita = { path = "vendor/sctk-adwaita" }
+[profile.dist]
+inherits = "release"
+lto = "thin"
+codegen-units = 1
+strip = true
