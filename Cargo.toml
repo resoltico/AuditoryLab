@@ -31,7 +31,7 @@ slint-build = { version = "=1.18.1", default-features = false, features = ["comp
 libc = "0.2"
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
 
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "string"] }
 textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }
 zip = { version = "6", default-features = false, features = ["deflate"] }
 tar = "0.4"
