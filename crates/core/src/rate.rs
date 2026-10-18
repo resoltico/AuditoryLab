@@ -1,7 +1,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::{Session, numeric};
+use crate::{Signal, numeric};
 use core::fmt::{self, Display, Formatter};
 
 /// Frames per second, from [`SampleRate::MIN_HZ`] to [`SampleRate::MAX_HZ`].
@@ -67,11 +67,11 @@ impl SampleRate {
 
     /// The whole number of frames nearest to `seconds`, halfway cases away
     /// from zero; `None` unless `seconds` is finite, non-negative and spans
-    /// at most [`Session::MAX_FRAMES`].
+    /// at most [`Signal::MAX_FRAMES`].
     pub(crate) fn frames_in(self, seconds: f64) -> Option<u64> {
         let frames = libm::round(seconds * self.as_f64());
         // NaN fails both comparisons, so the accepted range is stated positively.
-        (seconds >= 0.0 && frames <= numeric::frames_to_f64(Session::MAX_FRAMES))
+        (seconds >= 0.0 && frames <= numeric::frames_to_f64(Signal::MAX_FRAMES))
             .then(|| numeric::whole_to_frames(frames))
     }
 
@@ -118,7 +118,7 @@ mod tests {
             assert_eq!(rate(48_000).frames_in(seconds), None, "{seconds}");
         }
         let unit = rate(1);
-        assert_eq!(unit.frames_in(68_719_476_736.0), Some(Session::MAX_FRAMES));
+        assert_eq!(unit.frames_in(68_719_476_736.0), Some(Signal::MAX_FRAMES));
         assert_eq!(unit.frames_in(68_719_476_736.5), None);
         assert_eq!(rate(48_000).seconds_in(72_000), 1.5);
     }

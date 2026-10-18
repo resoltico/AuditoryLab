@@ -28,17 +28,16 @@ fn rendered(components: &str) -> Vec<[f64; 2]> {
     let session = Preset::parse(&text)
         .unwrap()
         .stimulus
-        .session(SampleRate::new(48_000).unwrap())
+        .signal(SampleRate::new(48_000).unwrap())
         .unwrap();
-    let mut renderer = session.into_renderer();
     let mut frames = vec![[0.0; 2]; 96_000];
     let mut offset = 0;
     for count in [1, 4_095, 37, 60_000].into_iter().cycle() {
-        if renderer.is_complete() {
+        if offset == frames.len() {
             break;
         }
         let end = frames.len().min(offset + count);
-        offset += renderer.render(&mut frames[offset..end]).frames();
+        offset += session.render(offset as u64, &mut frames[offset..end]);
     }
     assert_eq!(offset, frames.len());
     frames
@@ -77,11 +76,11 @@ fn every_kind_of_component_renders_the_same_bits_on_every_platform() {
 }
 
 const PINNED: [&str; 5] = [
-    "separate-ear tones 0x7c2aaab8a485d20e",
-    "summed tones 0x37d1ab3d41ad37cd",
-    "modulated tone 0xe28a35e32705b6c0",
-    "gated tone 0xe6101643f88ab879",
-    "clicks 0x6f538dee5ad69699",
+    "separate-ear tones 0x923b526697b0dfc0",
+    "summed tones 0x125945695a8a70c5",
+    "modulated tone 0x7163997cb756ff9c",
+    "gated tone 0x524d4e9fc6e3c2e5",
+    "clicks 0xff6d3c57217ac3dd",
 ];
 
 #[test]

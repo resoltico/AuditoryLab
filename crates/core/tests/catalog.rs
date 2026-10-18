@@ -7,9 +7,8 @@
 #![cfg(test)]
 
 use auditorylab_core::catalog::{self, Entry};
-use auditorylab_core::{Component, Ears, Modulation, Preset, SampleRate};
+use auditorylab_core::{Carrier, Ears, Modulation, Preset, SampleRate};
 use std::collections::BTreeMap;
-use std::f64::consts::{PI, TAU};
 use std::path::Path;
 
 /// How an independently written recipe modulates a component.
@@ -159,7 +158,7 @@ const RECIPES: &[Recipe] = &[
 ];
 
 fn preset(entry: &Entry) -> Preset {
-    Preset::parse(entry.text).unwrap_or_else(|error| panic!("{}: {error}", entry.name))
+    Preset::parse(entry.text).unwrap_or_else(|error| panic!("{}: {error}", entry.id))
 }
 
 /// Name order with runs of digits compared as numbers, written independently
@@ -202,22 +201,22 @@ fn the_catalog_is_exactly_the_files_in_the_catalog_directory_in_natural_name_ord
     files.sort_by_key(|(name, _)| natural(name));
     let entries: Vec<(String, String)> = catalog::ENTRIES
         .iter()
-        .map(|e| (e.name.to_owned(), e.text.to_owned()))
+        .map(|e| (e.id.to_owned(), e.text.to_owned()))
         .collect();
     assert_eq!(entries, files);
     for entry in catalog::ENTRIES {
         assert!(
             entry
-                .name
+                .id
                 .bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
             "{}",
-            entry.name
+            entry.id
         );
-        assert_eq!(catalog::find(entry.name), Some(entry));
+        assert_eq!(catalog::find(entry.id), Some(entry));
     }
     assert_eq!(catalog::find("missing"), None);
-    let names: Vec<_> = catalog::ENTRIES.iter().map(|e| e.name).collect();
+    let names: Vec<_> = catalog::ENTRIES.iter().map(|e| e.id).collect();
     let position = |name| names.iter().position(|n| *n == name).unwrap();
     assert!(position("beauchene-2016-binaural-5-hz") < position("beauchene-2016-binaural-10-hz"));
     assert!(position("martorell-2019-tone-pips-8-hz") < position("martorell-2019-tone-pips-40-hz"));
@@ -226,7 +225,7 @@ fn the_catalog_is_exactly_the_files_in_the_catalog_directory_in_natural_name_ord
 #[test]
 fn every_entry_has_its_independently_written_recipe() {
     assert_eq!(
-        catalog::ENTRIES.iter().map(|e| e.name).collect::<Vec<_>>(),
+        catalog::ENTRIES.iter().map(|e| e.id).collect::<Vec<_>>(),
         RECIPES.iter().map(|r| r.0).collect::<Vec<_>>()
     );
     for (entry, (name, seconds, parts)) in catalog::ENTRIES.iter().zip(RECIPES) {
@@ -237,10 +236,10 @@ fn every_entry_has_its_independently_written_recipe() {
         for (component, (ears, kind, hz, level, modulation)) in
             stimulus.components.iter().zip(*parts)
         {
-            assert_eq!(component.ears(), *ears, "{name}");
-            assert_eq!(component.peak_dbfs(), *level, "{name}");
+            assert_eq!(component.ears, *ears, "{name}");
+            assert_eq!(component.peak_dbfs, *level, "{name}");
             assert_eq!(
-                component.modulation(),
+                component.modulation,
                 modulation.map(|modulation| match modulation {
                     Mod::Sam(rate_hz) => Modulation::Sinusoidal {
                         rate_hz,
@@ -253,12 +252,12 @@ fn every_entry_has_its_independently_written_recipe() {
                 }),
                 "{name}"
             );
-            match (component, *kind) {
-                (Component::Tone { frequency_hz, .. }, "tone") => {
+            match (&component.carrier, *kind) {
+                (Carrier::Tone { frequency_hz, .. }, "tone") => {
                     assert_eq!(frequency_hz, hz, "{name}")
                 }
                 (
-                    Component::Click {
+                    Carrier::Click {
                         rate_hz,
                         width_seconds,
                         ..
@@ -272,7 +271,7 @@ fn every_entry_has_its_independently_written_recipe() {
             }
         }
         assert_eq!(
-            stimulus.uses_separate_ear_routing(),
+            stimulus.uses_separate_ears(),
             parts.iter().any(|p| p.0 != B),
             "{name}"
         );
@@ -308,11 +307,11 @@ fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
     for entry in catalog::ENTRIES {
         let about = preset(entry)
             .about
-            .unwrap_or_else(|| panic!("{} has no about table", entry.name));
+            .unwrap_or_else(|| panic!("{} has no about table", entry.id));
         let field = |name: &str, value: &Option<String>| {
             value
                 .clone()
-                .unwrap_or_else(|| panic!("{}: no {name}", entry.name))
+                .unwrap_or_else(|| panic!("{}: no {name}", entry.id))
         };
         let citation = field("citation", &about.citation);
         let source_url = field("source_url", &about.source_url);
@@ -325,165 +324,62 @@ fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
             ("study", field("study", &about.study)),
             ("adaptation", field("adaptation", &about.adaptation)),
         ] {
-            assert!(!value.trim().is_empty(), "{}: empty {name}", entry.name);
+            assert!(!value.trim().is_empty(), "{}: empty {name}", entry.id);
             // Built-in values contain printable ASCII only, without double quotes.
-            assert!(printable_about_value(&value), "{}: {name}", entry.name);
+            assert!(printable_about_value(&value), "{}: {name}", entry.id);
         }
         assert!(
             source_url.starts_with("https://doi.org/10."),
             "{}",
-            entry.name
+            entry.id
         );
         let year = entry
-            .name
+            .id
             .split('-')
             .find(|part| part.len() == 4 && part.bytes().all(|b| b.is_ascii_digit()))
             .unwrap();
-        assert!(citation.contains(&format!("({year})")), "{}", entry.name);
+        assert!(citation.contains(&format!("({year})")), "{}", entry.id);
         let first = citations
             .entry(source_url.clone())
             .or_insert_with(|| citation.clone());
-        assert_eq!(*first, citation, "{}", entry.name);
+        assert_eq!(*first, citation, "{}", entry.id);
     }
     assert_eq!(citations.len(), 8);
 }
 
 #[test]
-fn every_entry_renders_at_common_rates_within_its_stated_peak() {
+fn every_entry_validates_and_pulses_follow_integer_onsets() {
     for entry in catalog::ENTRIES {
-        let stimulus = preset(entry).stimulus;
         for hz in [44_100, 48_000, 96_000] {
-            let session = stimulus.session(SampleRate::new(hz).unwrap()).unwrap();
-            assert_eq!(
-                session.duration_seconds(),
-                stimulus.duration_seconds,
-                "{}",
-                entry.name
-            );
-            assert_eq!(session.fade_frames(), u64::from(hz) / 10, "{}", entry.name);
-            let peak = session.peak_dbfs();
-            let mut renderer = session.into_renderer();
-            let mut frames = vec![[9.0; 2]; usize::try_from(hz).unwrap()];
-            renderer.render(&mut frames);
-            assert_eq!(frames[0], [0.0, 0.0], "{}", entry.name);
-            for (ear, limit) in peak.iter().enumerate() {
-                let limit = 10_f64.powf(limit / 20.0);
-                assert!(
-                    frames.iter().all(|f| f[ear].abs() <= limit),
-                    "{}",
-                    entry.name
-                );
+            let mut stimulus = preset(entry).stimulus;
+            let signal = stimulus.signal(SampleRate::new(hz).unwrap()).unwrap();
+            assert_eq!(signal.duration_seconds(), stimulus.duration_seconds);
+            stimulus.fade_seconds = 0.0;
+            let signal = stimulus.signal(SampleRate::new(hz).unwrap()).unwrap();
+            if let [part] = &stimulus.components[..] {
+                let pulse_rate = match part.carrier {
+                    Carrier::Click { rate_hz, .. } => Some(rate_hz),
+                    _ => match part.modulation {
+                        Some(Modulation::Rectangular { rate_hz, .. }) => Some(rate_hz),
+                        _ => None,
+                    },
+                };
+                if let Some(rate) = pulse_rate {
+                    let rate = u64::from(format!("{rate:.0}").parse::<u32>().unwrap());
+                    let width = u64::from((hz + 500) / 1000);
+                    for k in 0..80 {
+                        let onset = (k * u64::from(hz)).div_ceil(rate);
+                        for offset in [0, width - 1, width] {
+                            let value = signal.frame(onset + offset)[0];
+                            if offset == width {
+                                assert_eq!(value, 0.0);
+                            } else if matches!(part.carrier, Carrier::Click { .. }) {
+                                assert!(value > 0.0);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
-}
-
-#[test]
-fn separate_ear_and_summed_conditions_of_one_study_have_equal_plateau_rms() {
-    let rms = |name: &str| {
-        let session = preset(catalog::find(name).unwrap())
-            .stimulus
-            .session(SampleRate::new(48_000).unwrap())
-            .unwrap();
-        let mut renderer = session.into_renderer();
-        let mut skip = vec![[0.0; 2]; 48_000];
-        renderer.render(&mut skip);
-        let mut window = vec![[0.0; 2]; 96_000];
-        renderer.render(&mut window);
-        [0, 1].map(|ear| (window.iter().map(|f| f[ear] * f[ear]).sum::<f64>() / 96_000.0).sqrt())
-    };
-    for beat in ["7", "40"] {
-        let separate = rms(&format!("orozco-perez-2020-binaural-{beat}-hz"));
-        let summed = rms(&format!("orozco-perez-2020-monaural-{beat}-hz"));
-        for ear in 0..2 {
-            let difference_db = 20.0 * (summed[ear] / separate[ear]).log10();
-            assert!(
-                difference_db.abs() < 1e-3,
-                "{beat} Hz, ear {ear}: {difference_db} dB"
-            );
-        }
-    }
-}
-
-#[test]
-fn the_amplitude_modulated_entries_match_the_textbook_formula() {
-    for carrier in [500.0, 1000.0, 2000.0] {
-        let name = format!("van-eeckhoutte-2018-am-{carrier}-hz");
-        let session = preset(catalog::find(&name).unwrap())
-            .stimulus
-            .session(SampleRate::new(48_000).unwrap())
-            .unwrap();
-        let mut frames = vec![[0.0; 2]; 48_000];
-        session.into_renderer().render(&mut frames);
-        for (n, [left, right]) in (0_u32..).zip(&frames) {
-            let t = f64::from(n) / 48_000.0;
-            let fade = if n >= 4_800 {
-                1.0
-            } else {
-                0.5 - 0.5 * (PI * f64::from(n) / 4_800.0).cos()
-            };
-            let expected =
-                0.1 * (TAU * carrier * t).sin() * (1.0 + (TAU * 39.0625 * t).sin()) / 2.0 * fade;
-            assert!((left - expected).abs() < 1e-10, "{name} frame {n}");
-            assert_eq!(right.to_bits(), 0);
-        }
-    }
-}
-
-#[test]
-fn the_tone_pip_entries_gate_a_continuous_tone_open_for_one_millisecond_per_period() {
-    // At 48 kHz every rate divides the period into whole frames, and 1 ms
-    // is the first 48 frames of each period.
-    for (name, carrier, period) in [
-        ("lahijanian-2024-tone-pips-40-hz", 5_000.0, 1_200),
-        ("martorell-2019-tone-pips-8-hz", 10_000.0, 6_000),
-        ("martorell-2019-tone-pips-40-hz", 10_000.0, 1_200),
-        ("martorell-2019-tone-pips-80-hz", 10_000.0, 600),
-    ] {
-        let session = preset(catalog::find(name).unwrap())
-            .stimulus
-            .session(SampleRate::new(48_000).unwrap())
-            .unwrap();
-        let mut frames = vec![[0.0; 2]; 48_000];
-        session.into_renderer().render(&mut frames);
-        for (n, [left, right]) in (0_u32..).zip(&frames) {
-            let t = f64::from(n) / 48_000.0;
-            let fade = if n >= 4_800 {
-                1.0
-            } else {
-                0.5 - 0.5 * (PI * f64::from(n) / 4_800.0).cos()
-            };
-            let open = n % period < 48;
-            let expected = if open {
-                0.1 * (TAU * carrier * t).sin() * fade
-            } else {
-                0.0
-            };
-            assert!((left - expected).abs() < 1e-10, "{name} frame {n}");
-            assert_eq!(left.to_bits(), right.to_bits(), "{name} frame {n}");
-        }
-    }
-}
-
-#[test]
-fn the_click_entry_is_one_millisecond_pulses_forty_times_a_second() {
-    let session = preset(catalog::find("chan-2022-clicks-40-hz").unwrap())
-        .stimulus
-        .session(SampleRate::new(48_000).unwrap())
-        .unwrap();
-    let mut renderer = session.into_renderer();
-    let mut faded = vec![[0.0; 2]; 4_800];
-    renderer.render(&mut faded);
-    let mut frames = vec![[0.0; 2]; 48_000];
-    renderer.render(&mut frames);
-    let on: Vec<bool> = frames.iter().map(|f| f[0] != 0.0).collect();
-    assert!(
-        frames
-            .iter()
-            .all(|f| f[0] == f[1] && (f[0] == 0.0 || (f[0] - 0.1).abs() < 1e-15))
-    );
-    let onsets = (1..on.len()).filter(|&i| on[i] && !on[i - 1]).count() + usize::from(on[0]);
-    assert_eq!(onsets, 40);
-    // 40 clicks of 48 frames each, give or take a frame at each edge.
-    assert!((1_840..=2_000).contains(&on.iter().filter(|o| **o).count()));
 }

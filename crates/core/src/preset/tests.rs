@@ -42,17 +42,21 @@ fn a_preset_reads_into_its_stimulus_in_file_order() {
     assert_eq!(
         preset.stimulus.components,
         vec![
-            Component::Tone {
+            Component {
                 ears: Ears::Left,
-                frequency_hz: 250.0,
                 peak_dbfs: -20.0,
-                modulation: None
+                modulation: None,
+                carrier: crate::Carrier::Tone {
+                    frequency_hz: 250.0
+                }
             },
-            Component::Tone {
+            Component {
                 ears: Ears::Right,
-                frequency_hz: 256.0,
                 peak_dbfs: -20.0,
-                modulation: None
+                modulation: None,
+                carrier: crate::Carrier::Tone {
+                    frequency_hz: 256.0
+                }
             },
         ]
     );
@@ -65,15 +69,17 @@ fn every_kind_and_modulation_reads_and_whole_numbers_are_accepted_as_reals() {
     assert_eq!(stimulus.duration_seconds, 3.0);
     assert_eq!(
         stimulus.components,
-        vec![Component::Click {
+        vec![Component {
             ears: Ears::Both,
-            rate_hz: 40.0,
-            width_seconds: 0.001,
             peak_dbfs: -20.0,
             modulation: Some(Modulation::Sinusoidal {
                 rate_hz: 2.0,
                 depth: 1.0
-            })
+            }),
+            carrier: crate::Carrier::Click {
+                rate_hz: 40.0,
+                width_seconds: 0.001
+            }
         }]
     );
 }
@@ -83,7 +89,7 @@ fn a_preset_without_components_is_silence() {
     let preset =
         Preset::parse("schema_version = 2\nduration_seconds = 1.0\nfade_seconds = 0.0\n").unwrap();
     assert!(preset.stimulus.components.is_empty());
-    assert!(!preset.stimulus.uses_separate_ear_routing());
+    assert!(!preset.stimulus.uses_separate_ears());
 }
 
 #[test]

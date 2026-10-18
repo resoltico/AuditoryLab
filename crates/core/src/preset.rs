@@ -1,7 +1,8 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::{Component, Stimulus};
+use crate::Stimulus;
+use crate::stimulus::DocumentComponent;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
@@ -11,7 +12,7 @@ use serde::Deserialize;
 ///
 /// A preset is strict TOML of at most [`Preset::MAX_BYTES`]. Unknown,
 /// missing required, duplicated and mistyped fields are errors. Values are checked
-/// when the stimulus is given a sample rate by [`Stimulus::session`].
+/// when the stimulus is given a sample rate by [`Stimulus::signal`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Preset {
     /// The sound.
@@ -106,7 +107,7 @@ struct Document {
     fade_seconds: f64,
     about: Option<About>,
     #[serde(default)]
-    component: Vec<Component>,
+    component: Vec<DocumentComponent>,
 }
 
 impl Preset {
@@ -157,7 +158,7 @@ impl Preset {
             stimulus: Stimulus {
                 duration_seconds: document.duration_seconds,
                 fade_seconds: document.fade_seconds,
-                components: document.component,
+                components: document.component.into_iter().map(Into::into).collect(),
             },
             about: document.about,
         })
