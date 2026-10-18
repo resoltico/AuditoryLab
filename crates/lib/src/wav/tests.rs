@@ -232,7 +232,7 @@ fn cancellation_requested_by_the_writer_stops_before_the_next_sample_block() {
         }
     }
     // First stop immediately after the header, then after the first sample
-    // block. A missing between-block observation would write the whole session.
+    // block. A missing between-block cancellation check would write the whole signal.
     for trigger in [1, 2] {
         let cancel = never();
         let mut writer = CancelAfterWrite {

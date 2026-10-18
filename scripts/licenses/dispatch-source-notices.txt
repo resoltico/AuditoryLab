@@ -1,8 +1,0 @@
-dispatch 0.2.0
-Author declaration: Steven Sheldon
-License declaration: MIT
-Published upstream commit: 82d6c7a5b75dc0c71c3f46f87bb6c16a476f7748
-Source: https://raw.githubusercontent.com/SSheldon/rust-dispatch/82d6c7a5b75dc0c71c3f46f87bb6c16a476f7748/Cargo.toml
-The upstream tree has no separate license/copyright file. The declaration
-and author above are retained from its published manifest; the standard
-MIT text accompanies this notice. No missing copyright year is invented.
