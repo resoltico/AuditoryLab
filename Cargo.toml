@@ -33,7 +33,7 @@ rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", 
 
 clap = { version = "4", features = ["derive", "string"] }
 textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }
-zip = { version = "6", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
 
