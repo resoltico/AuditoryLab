@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::playback::shared::{Shared, Terminal};
-use auditorylab_core::Renderer;
+use auditorylab_core::Signal;
 use cpal::{OutputStreamTimestamp, StreamInstant};
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Session frames rendered at a time within one device buffer.
-const SCRATCH_FRAMES: usize = crate::playback::OBSERVATION_FRAMES;
+/// Signal frames rendered at a time within one device buffer.
+const SCRATCH_FRAMES: usize = 1_024;
 
 #[derive(Clone, Copy)]
 pub(crate) enum Rounding {
@@ -33,8 +33,9 @@ pub(crate) fn frame_duration(frames: u64, rate_hz: u32, rounding: Rounding) -> D
 /// end is played. Estimates can only move the expected time later, and
 /// playback is complete once a callback runs at or after it.
 pub(crate) struct Callback {
-    renderer: Renderer,
-    observation: Option<crate::playback::ObservationProducer>,
+    signal: Arc<Signal>,
+    cursor: u64,
+    progress: crate::Progress,
     shared: Arc<Shared>,
     scratch: Vec<[f64; 2]>,
     device_channels: usize,
@@ -49,11 +50,17 @@ pub(crate) struct Callback {
 }
 
 impl Callback {
-    pub(crate) fn new(renderer: Renderer, device_channels: u16, shared: Arc<Shared>) -> Self {
-        let sample_rate_hz = renderer.sample_rate().hz();
+    pub(crate) fn new(
+        signal: impl Into<Arc<Signal>>,
+        device_channels: u16,
+        shared: Arc<Shared>,
+    ) -> Self {
+        let signal = signal.into();
+        let sample_rate_hz = signal.sample_rate().hz();
         Self {
-            renderer,
-            observation: None,
+            signal,
+            cursor: 0,
+            progress: crate::Progress::default(),
             shared,
             scratch: vec![[0.0; 2]; SCRATCH_FRAMES],
             device_channels: usize::from(device_channels),
@@ -65,8 +72,16 @@ impl Callback {
         }
     }
 
-    pub(crate) fn observe(&mut self, observation: Option<crate::playback::ObservationProducer>) {
-        self.observation = observation;
+    pub(crate) fn with_progress(mut self, progress: crate::Progress) -> Self {
+        self.progress = progress;
+        self
+    }
+    #[cfg(test)]
+    fn remaining(&self) -> u64 {
+        self.signal.frames() - self.cursor
+    }
+    fn complete(&self) -> bool {
+        self.cursor == self.signal.frames()
     }
 
     /// Fill one backend buffer. A terminal result observed before or after
@@ -108,11 +123,17 @@ impl Callback {
         self.last_callback = Some(time.callback);
 
         let frames = (output.len() / self.device_channels) as u64;
+        let latency = time.playback.duration_since(time.callback);
+        let latency_frames =
+            u64::try_from(latency.as_nanos() * u128::from(self.sample_rate_hz) / 1_000_000_000)
+                .unwrap_or(u64::MAX);
+        self.progress
+            .set(self.cursor.saturating_sub(latency_frames));
         let active = self.render(output, convert);
         if active > 0 {
             self.shared.mark_progress();
         }
-        if self.end.is_none() && self.renderer.is_complete() {
+        if self.end.is_none() && self.complete() {
             self.end = Some(self.submitted + active);
         }
         if let Some(end) = self.end {
@@ -148,11 +169,9 @@ impl Callback {
         for chunk in output.chunks_mut(SCRATCH_FRAMES * self.device_channels) {
             let frames = chunk.len() / self.device_channels;
             let scratch = &mut self.scratch[..frames];
-            let span = self.renderer.render(scratch);
-            active += span.frames() as u64;
-            if let Some(observation) = &mut self.observation {
-                observation.publish(span, scratch);
-            }
+            let count = self.signal.render(self.cursor, scratch);
+            self.cursor += count as u64;
+            active += count as u64;
             for (device_frame, session_frame) in chunk
                 .chunks_exact_mut(self.device_channels)
                 .zip(scratch.iter())
@@ -174,29 +193,31 @@ fn place<T>(device_frame: &mut [T], session_frame: &[f64; 2], convert: &impl Fn(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auditorylab_core::{Component, Ears, SampleRate, Session, Stimulus};
+    use auditorylab_core::{Component, Ears, SampleRate, Signal, Stimulus};
     use proptest::{prelude::*, test_runner::TestRunner};
 
     fn rate(hz: u32) -> SampleRate {
         SampleRate::new(hz).unwrap()
     }
 
-    fn session(frames: u64, hz: u32) -> Session {
+    fn session(frames: u64, hz: u32) -> Signal {
         Stimulus {
             duration_seconds: f64::from(u32::try_from(frames).unwrap()) / f64::from(hz),
             fade_seconds: 0.0,
-            components: vec![Component::Tone {
+            components: vec![Component {
                 ears: Ears::Both,
-                frequency_hz: 100.0,
                 peak_dbfs: -20.0,
                 modulation: None,
+                carrier: crate::Carrier::Tone {
+                    frequency_hz: 100.0,
+                },
             }],
         }
-        .session(rate(hz))
+        .signal(rate(hz))
         .unwrap()
     }
     fn callback(frames: u64, hz: u32) -> Callback {
-        Callback::new(session(frames, hz).into_renderer(), 2, Arc::default())
+        Callback::new(session(frames, hz), 2, Arc::default())
     }
 
     fn time(callback: u64, playback: u64) -> OutputStreamTimestamp {
@@ -232,9 +253,21 @@ mod tests {
     }
 
     #[test]
+    fn progress_subtracts_device_latency_from_the_buffer_start() {
+        let progress = crate::Progress::default();
+        let mut callback = callback(8000, 8000).with_progress(progress.clone());
+        fill(&mut callback, 800, time(0, 50));
+        assert_eq!(progress.frames(), 0);
+        fill(&mut callback, 800, time(100, 150));
+        assert_eq!(progress.frames(), 400);
+        fill(&mut callback, 800, time(200, 200));
+        assert_eq!(progress.frames(), 1600);
+    }
+
+    #[test]
     fn a_stereo_session_ending_in_the_second_scratch_block_drains_without_rounding_early() {
         let session = session(1_537, 44_100);
-        let mut callback = Callback::new(session.into_renderer(), 2, Arc::default());
+        let mut callback = Callback::new(session, 2, Arc::default());
         let output = fill(&mut callback, 2_048, nanos(0, 10_000_000));
         assert_eq!(callback.end, Some(1_537));
         // 10 ms + ceil(1537 * 1e9 / 44100), independently calculated.
@@ -288,7 +321,7 @@ mod tests {
     #[test]
     fn the_session_is_rendered_in_order_across_buffers_and_followed_by_silence() {
         let mut expected = [[0.0; 2]; 3_000];
-        session(3_000, 8_000).into_renderer().render(&mut expected);
+        session(3_000, 8_000).render(0, &mut expected);
         let mut c = callback(3_000, 8_000);
         // The first buffer spans more than two scratch blocks.
         let mut actual = fill(&mut c, 2_500, time(0, 10));
@@ -407,7 +440,7 @@ mod tests {
             assert!(running(&c));
             assert_eq!(fill(&mut c, 1, at), [0.0; 2]);
             assert!(terminal_is(&c, &Terminal::InvalidTiming));
-            assert_eq!(c.renderer.frames_remaining(), 99);
+            assert_eq!(c.remaining(), 99);
         }
         // An equal callback time is not a regression.
         let mut c = callback(100, 8_000);
@@ -477,11 +510,7 @@ mod tests {
             Terminal::StreamSetupFailed,
         ] {
             let shared = Arc::new(Shared::default());
-            let mut c = Callback::new(
-                session(8_000, 8_000).into_renderer(),
-                2,
-                Arc::clone(&shared),
-            );
+            let mut c = Callback::new(session(8_000, 8_000), 2, Arc::clone(&shared));
             let calls = std::cell::Cell::new(0);
             let mut output = vec![1.0; 8_192];
             c.fill(&mut output, time(0, 0), &|value| {
@@ -493,9 +522,9 @@ mod tests {
             });
             assert!(output.iter().all(|s| *s == 0.0));
             assert!(terminal_is(&c, &terminal));
-            let remaining = c.renderer.frames_remaining();
+            let remaining = c.remaining();
             assert_eq!(fill(&mut c, 4_096, time(1, 1)), vec![0.0; 8_192]);
-            assert_eq!(c.renderer.frames_remaining(), remaining);
+            assert_eq!(c.remaining(), remaining);
         }
     }
 
@@ -524,47 +553,51 @@ mod tests {
     #[test]
     fn a_buffer_holding_a_partial_frame_is_silenced_and_ends_playback() {
         let session = session(8, 8_000);
-        let mut c = Callback::new(session.into_renderer(), 2, Arc::default());
+        let mut c = Callback::new(session, 2, Arc::default());
         let mut partial = [1.0; 3];
         c.fill(&mut partial, time(0, 0), &|sample| sample);
         assert_eq!(partial, [0.0; 3]);
         assert!(terminal_is(&c, &Terminal::MisalignedBuffer));
-        assert_eq!(c.renderer.frames_remaining(), 8);
+        assert_eq!(c.remaining(), 8);
         let mut aligned = [1.0; 4];
         c.fill(&mut aligned, time(1, 1), &|sample| sample);
         assert_eq!(aligned, [0.0; 4]);
-        assert_eq!(c.renderer.frames_remaining(), 8);
+        assert_eq!(c.remaining(), 8);
     }
 
-    fn routed(frames: u32) -> Session {
+    fn routed(frames: u32) -> Signal {
         Stimulus {
             duration_seconds: f64::from(frames) / 8_000.0,
             fade_seconds: 0.0,
             components: vec![
-                Component::Tone {
+                Component {
                     ears: Ears::Left,
-                    frequency_hz: 257.3,
                     peak_dbfs: -20.0,
                     modulation: None,
+                    carrier: crate::Carrier::Tone {
+                        frequency_hz: 257.3,
+                    },
                 },
-                Component::Click {
+                Component {
                     ears: Ears::Right,
-                    rate_hz: 37.0,
-                    width_seconds: 0.001,
                     peak_dbfs: -14.0,
                     modulation: None,
+                    carrier: crate::Carrier::Click {
+                        rate_hz: 37.0,
+                        width_seconds: 0.001,
+                    },
                 },
             ],
         }
-        .session(rate(8_000))
+        .signal(rate(8_000))
         .unwrap()
     }
     #[test]
     fn stereo_routes_are_placed_and_timed_by_frames_on_wide_devices() {
         let mut expected = vec![[0.0; 2]; 3_000];
-        routed(3_000).into_renderer().render(&mut expected);
+        routed(3_000).render(0, &mut expected);
         for channels in [2, 3, 5] {
-            let mut c = Callback::new(routed(3_000).into_renderer(), channels, Arc::default());
+            let mut c = Callback::new(routed(3_000), channels, Arc::default());
             let mut output = fill(&mut c, 2_500, time(0, 10));
             assert_eq!(c.submitted, 2_500);
             assert_eq!(c.end, None);
@@ -604,9 +637,7 @@ mod tests {
                 |(frames, steps): (u64, Vec<Step>)| {
                     let mut c = callback(frames, 8_000);
                     let mut reference = vec![[0.0; 2]; usize::try_from(frames).unwrap()];
-                    session(frames, 8_000)
-                        .into_renderer()
-                        .render(&mut reference);
+                    session(frames, 8_000).render(0, &mut reference);
                     let expected: Vec<_> = reference.into_iter().flatten().collect();
                     let mut played = Vec::new();
                     let mut clock = 0;
@@ -630,7 +661,7 @@ mod tests {
                         if complete(&c) {
                             // Completion needs the whole session rendered, and a callback at or
                             // after the instant the backend first gave for its end.
-                            prop_assert!(c.renderer.is_complete());
+                            prop_assert!(c.complete());
                             prop_assert!(c.target.is_some_and(|target| at.callback >= target));
                         }
                     }
@@ -647,8 +678,7 @@ mod tests {
     fn callback_paths_allocate_nothing_including_terminal_buffers() {
         for channels in [2, 3, 5] {
             for hz in [44_100, 48_000] {
-                let mut c =
-                    Callback::new(session(2053, hz).into_renderer(), channels, Arc::default());
+                let mut c = Callback::new(session(2053, hz), channels, Arc::default());
                 let mut buffer = vec![1.0; usize::from(channels) * 4099];
                 let count = allocation_counter::measure(|| {
                     c.fill(&mut [], time(0, 10), &|x| x);
@@ -697,7 +727,7 @@ mod tests {
             Terminal::StreamSetupFailed,
         ] {
             let mut callback = callback(10, 48_000);
-            let remaining = callback.renderer.frames_remaining();
+            let remaining = callback.remaining();
             callback.shared.finish(terminal);
             let mut buffer = [1.0; 18];
             let count = allocation_counter::measure(|| {
@@ -705,7 +735,7 @@ mod tests {
             });
             assert_eq!(count.count_total, 0);
             assert_eq!(count.bytes_total, 0);
-            assert_eq!(callback.renderer.frames_remaining(), remaining);
+            assert_eq!(callback.remaining(), remaining);
             assert_eq!(buffer, [0.0; 18]);
         }
     }
@@ -722,520 +752,5 @@ mod tests {
         });
         assert!(count.count_total > 0);
         assert!(count.bytes_total > 0);
-    }
-}
-
-#[cfg(test)]
-mod render_budget {
-    use super::*;
-    use auditorylab_core::{Component, Ears, Modulation, SampleRate, Stimulus};
-    use cpal::Sample;
-    use std::{
-        hint::black_box,
-        time::{Duration, Instant},
-    };
-
-    fn workload(hz: u32, frames: u32, voices: usize, shape: &str, channels: u16) -> Callback {
-        assert!((1..=16).contains(&voices));
-        let components = (0..voices)
-            .map(|index| Component::Tone {
-                ears: match index % 3 {
-                    0 => Ears::Both,
-                    1 => Ears::Left,
-                    _ => Ears::Right,
-                },
-                frequency_hz: f64::from(hz) / 64.0,
-                peak_dbfs: -36.0,
-                modulation: match shape {
-                    "plain" => None,
-                    "sam" => Some(Modulation::Sinusoidal {
-                        rate_hz: f64::from(hz) / 512.0,
-                        depth: 1.0,
-                    }),
-                    "gated" => Some(Modulation::Rectangular {
-                        rate_hz: f64::from(hz) / 512.0,
-                        width_seconds: 128.0 / f64::from(hz),
-                    }),
-                    _ => panic!("unknown workload"),
-                },
-            })
-            .collect();
-        let session = Stimulus {
-            duration_seconds: f64::from(frames) / f64::from(hz),
-            fade_seconds: 0.0,
-            components,
-        }
-        .session(SampleRate::new(hz).unwrap())
-        .unwrap();
-        assert_eq!(session.frames(), u64::from(frames));
-        Callback::new(session.into_renderer(), channels, Arc::default())
-    }
-    fn active_block<T: Copy>(
-        callback: &mut Callback,
-        output: &mut [T],
-        offset: u64,
-        convert: &impl Fn(f64) -> T,
-    ) -> Result<Duration, &'static str> {
-        let block = output.len() / callback.device_channels;
-        if block == 0 || !output.len().is_multiple_of(callback.device_channels) {
-            return Err("empty or partial block");
-        }
-        if callback.renderer.frames_remaining() < u64::try_from(block).unwrap() {
-            return Err("insufficient active frames; completed/silent tails cannot count");
-        }
-        let before = callback.renderer.frames_remaining();
-        let nanos = frame_duration(offset, callback.sample_rate_hz, Rounding::Down).as_nanos();
-        let instant = cpal::StreamInstant::from_nanos(u64::try_from(nanos).unwrap());
-        let time = cpal::OutputStreamTimestamp {
-            callback: instant,
-            playback: instant,
-        };
-        let started = Instant::now();
-        callback.fill(black_box(output), time, black_box(convert));
-        let elapsed = started.elapsed();
-        if before - callback.renderer.frames_remaining() != u64::try_from(block).unwrap()
-            || callback.shared.terminal() != Terminal::Running
-        {
-            return Err("callback did not render a complete active block");
-        }
-        Ok(elapsed)
-    }
-    #[test]
-    fn offline_measurement_rejects_empty_partial_and_completed_workloads() {
-        let mut callback = workload(48_000, 64, 1, "plain", 2);
-        assert!(active_block(&mut callback, &mut [] as &mut [f64], 0, &|x| x).is_err());
-        assert!(active_block(&mut callback, &mut [0.0; 3], 0, &|x| x).is_err());
-        assert!(active_block(&mut callback, &mut [0.0; 128], 0, &|x| x).is_ok());
-        assert!(active_block(&mut callback, &mut [0.0; 128], 64, &|x| x).is_err());
-    }
-    fn measure<T: Copy + PartialEq>(
-        hz: u32,
-        block: u32,
-        voices: usize,
-        shape: &str,
-        channels: u16,
-        format: &str,
-        mode: &str,
-        convert: impl Fn(f64) -> T,
-    ) {
-        const ITERATIONS: u32 = 128;
-        let transport = if matches!(mode, "legacy" | "disabled") {
-            None
-        } else {
-            Some(crate::playback::observation_channel(SampleRate::new(hz).unwrap()))
-        };
-        let warmup = if mode == "full" {
-            16.max(u32::try_from(transport.as_ref().unwrap().1.packet_capacity()).unwrap() + 1)
-        } else {
-            16
-        };
-        let frames = (warmup + ITERATIONS + 1) * block;
-        let mut callback = workload(hz, frames, voices, shape, channels);
-        let mut consumer = None;
-        if let Some((producer, receiver)) = transport {
-            callback.observe(Some(producer));
-            if mode != "disconnected" {
-                consumer = Some(receiver);
-            }
-        }
-        let drain = |consumer: &mut Option<crate::playback::ObservationConsumer>| {
-            if mode == "drained"
-                && let Some(consumer) = consumer
-            {
-                for _ in 0..consumer.packet_capacity() {
-                    if let Some(packet) = consumer.pop() {
-                        black_box(packet);
-                    } else {
-                        break;
-                    }
-                }
-            }
-        };
-        let mut output =
-            vec![convert(0.0); usize::try_from(block).unwrap() * usize::from(channels)];
-        for index in 0..warmup {
-            active_block(
-                &mut callback,
-                &mut output,
-                u64::from(index * block),
-                &convert,
-            )
-            .unwrap();
-            drain(&mut consumer);
-        }
-        if mode == "full" {
-            assert!(callback.observation.as_ref().unwrap().queue_full());
-        }
-        let mut timings = Vec::with_capacity(usize::try_from(ITERATIONS).unwrap());
-        let mut nonzero_blocks = 0;
-        let initial = callback.renderer.frames_remaining();
-        for index in warmup..warmup + ITERATIONS {
-            timings.push(
-                active_block(
-                    &mut callback,
-                    &mut output,
-                    u64::from(index * block),
-                    &convert,
-                )
-                .unwrap(),
-            );
-            if output.iter().any(|sample| *sample != convert(0.0)) {
-                nonzero_blocks += 1;
-            }
-            for frame in output.chunks_exact(usize::from(channels)) {
-                assert!(frame[2..].iter().all(|sample| *sample == convert(0.0)));
-            }
-            black_box(&output);
-            drain(&mut consumer);
-        }
-        let active = initial - callback.renderer.frames_remaining();
-        assert_eq!(active, u64::from(ITERATIONS * block));
-        assert!(active > 0 && nonzero_blocks > 0);
-        timings.sort_unstable();
-        let median = timings[64];
-        let p95 = timings[121];
-        let maximum = timings[127];
-        let buffer = f64::from(block) / f64::from(hz);
-        let total: Duration = timings.iter().sum();
-        let label = if mode == "legacy" {
-            "BENCH".to_owned()
-        } else {
-            format!("OBS_BENCH,{mode}")
-        };
-        println!(
-            "{label},{hz},{block},{voices},{shape},{channels},{format},{ITERATIONS},{active},{nonzero_blocks},{},{},{},{},{},{}",
-            total.as_nanos(),
-            timings[0].as_nanos(),
-            median.as_nanos(),
-            p95.as_nanos(),
-            maximum.as_nanos(),
-            p95.as_secs_f64() / buffer
-        );
-    }
-    #[test]
-    #[ignore = "offline timing report, no threshold; run explicitly with --release --nocapture"]
-    fn warmed_production_callback_render_and_conversion_budget() {
-        report_environment();
-        println!(
-            "COLUMNS,hz,block,voices,shape,channels,format,iterations,active_frames,nonzero_blocks,total_ns,min_ns,median_ns,p95_ns,max_ns,p95_buffer_ratio"
-        );
-        for hz in [44_100, 48_000, 96_000] {
-            for block in [64, 256, 1_024] {
-                for voices in [1, 4, 16] {
-                    for shape in ["plain", "sam", "gated"] {
-                        for channels in [2, 6] {
-                            measure(
-                                hz,
-                                block,
-                                voices,
-                                shape,
-                                channels,
-                                "f64",
-                                "legacy",
-                                core::convert::identity,
-                            );
-                            measure(
-                                hz,
-                                block,
-                                voices,
-                                shape,
-                                channels,
-                                "f32",
-                                "legacy",
-                                f32::from_sample,
-                            );
-                            measure(
-                                hz,
-                                block,
-                                voices,
-                                shape,
-                                channels,
-                                "i32",
-                                "legacy",
-                                i32::from_sample,
-                            );
-                            measure(
-                                hz,
-                                block,
-                                voices,
-                                shape,
-                                channels,
-                                "i24",
-                                "legacy",
-                                crate::playback::output::to_i24,
-                            );
-                            measure(
-                                hz,
-                                block,
-                                voices,
-                                shape,
-                                channels,
-                                "i16",
-                                "legacy",
-                                i16::from_sample,
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-    fn report_environment() {
-        let profile = if cfg!(debug_assertions) {
-            "debug"
-        } else {
-            "release"
-        };
-        assert_eq!(profile, "release", "measure the release profile");
-        println!(
-            "PROFILE,release; overflow-checks=true; target={}-{}; version={}",
-            std::env::consts::ARCH,
-            std::env::consts::OS,
-            env!("CARGO_PKG_VERSION")
-        );
-        println!(
-            "SOURCE,{}",
-            std::env::var("AUDITORYLAB_BENCH_SOURCE").unwrap_or_else(|_| {
-                "unqualified working tree; retain source-file identities with the report".into()
-            })
-        );
-        let rust = std::process::Command::new("rustc")
-            .arg("-vV")
-            .output()
-            .unwrap();
-        assert!(rust.status.success());
-        println!(
-            "TOOLCHAIN,{}",
-            String::from_utf8(rust.stdout).unwrap().replace('\n', "; ")
-        );
-        #[cfg(target_os = "macos")]
-        {
-            let cpu = std::process::Command::new("/usr/sbin/sysctl")
-                .args(["-n", "machdep.cpu.brand_string"])
-                .output()
-                .unwrap();
-            assert!(cpu.status.success());
-            println!("CPU,{}", String::from_utf8(cpu.stdout).unwrap().trim());
-        }
-        #[cfg(target_os = "linux")]
-        {
-            let info = std::fs::read_to_string("/proc/cpuinfo").unwrap();
-            println!(
-                "CPU,{}",
-                info.lines()
-                    .find(|line| line.starts_with("model name") || line.starts_with("Hardware"))
-                    .unwrap_or("not exposed by /proc/cpuinfo")
-            );
-        }
-        #[cfg(windows)]
-        println!(
-            "CPU,{}",
-            std::env::var("PROCESSOR_IDENTIFIER").unwrap_or_else(|_| "unavailable".into())
-        );
-    }
-    #[test]
-    #[ignore = "offline enabled/disabled transport timing, no threshold or audio"]
-    fn observed_production_callback_budget() {
-        report_environment();
-        println!(
-            "OBS_COLUMNS,mode,hz,block,voices,shape,channels,format,iterations,active_frames,nonzero_blocks,total_ns,min_ns,median_ns,p95_ns,max_ns,p95_buffer_ratio"
-        );
-        for hz in [44_100, 48_000, 96_000, 768_000] {
-            for block in [64, 256, 1024] {
-                for voices in [1, 4, 16] {
-                    for shape in ["plain", "sam", "gated"] {
-                        for channels in [2, 6] {
-                            for mode in ["disabled", "drained", "full", "disconnected"] {
-                                measure(
-                                    hz,
-                                    block,
-                                    voices,
-                                    shape,
-                                    channels,
-                                    "f64",
-                                    mode,
-                                    core::convert::identity,
-                                );
-                                measure(
-                                    hz,
-                                    block,
-                                    voices,
-                                    shape,
-                                    channels,
-                                    "f32",
-                                    mode,
-                                    f32::from_sample,
-                                );
-                                measure(
-                                    hz,
-                                    block,
-                                    voices,
-                                    shape,
-                                    channels,
-                                    "i32",
-                                    mode,
-                                    i32::from_sample,
-                                );
-                                measure(
-                                    hz,
-                                    block,
-                                    voices,
-                                    shape,
-                                    channels,
-                                    "i24",
-                                    mode,
-                                    crate::playback::output::to_i24,
-                                );
-                                measure(
-                                    hz,
-                                    block,
-                                    voices,
-                                    shape,
-                                    channels,
-                                    "i16",
-                                    mode,
-                                    i16::from_sample,
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod observation_tests {
-    use super::*;
-    use auditorylab_core::{Component, Ears, SampleRate, Stimulus};
-    fn callback() -> Callback {
-        let session = Stimulus {
-            duration_seconds: 1537.0 / 44100.0,
-            fade_seconds: 5.0 / 44100.0,
-            components: vec![
-                Component::Tone {
-                    ears: Ears::Left,
-                    frequency_hz: 1000.0,
-                    peak_dbfs: -20.0,
-                    modulation: None,
-                },
-                Component::Tone {
-                    ears: Ears::Right,
-                    frequency_hz: 1003.0,
-                    peak_dbfs: -26.0,
-                    modulation: None,
-                },
-            ],
-        }
-        .session(SampleRate::new(44100).unwrap())
-        .unwrap();
-        Callback::new(session.into_renderer(), 6, Arc::default())
-    }
-    fn time(ms: u64) -> OutputStreamTimestamp {
-        OutputStreamTimestamp {
-            callback: StreamInstant::from_millis(ms),
-            playback: StreamInstant::from_millis(ms),
-        }
-    }
-    #[test]
-    fn observation_never_changes_pcm_routing_tails_or_terminal_arbitration() {
-        for mode in 0..4 {
-            let mut baseline = callback();
-            let mut observed = callback();
-            let (producer, consumer) = crate::playback::observation_channel(
-                SampleRate::new(if mode == 2 { 1 } else { 44100 }).unwrap(),
-            );
-            observed.observe(Some(producer));
-            let mut consumer = Some(consumer);
-            if mode == 3 {
-                consumer.take();
-            }
-            for (index, frames) in [0, 1, 1025, 2049, 16, 4097].into_iter().enumerate() {
-                let mut expected = vec![1.0; frames * 6];
-                let mut actual = expected.clone();
-                baseline.fill(&mut expected, time(index as u64 * 100), &|x| x);
-                let count = allocation_counter::measure(|| {
-                    observed.fill(&mut actual, time(index as u64 * 100), &|x| x)
-                });
-                assert_eq!((count.count_total, count.bytes_total), (0, 0));
-                assert_eq!(
-                    actual.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
-                    expected.iter().map(|x| x.to_bits()).collect::<Vec<_>>()
-                );
-                assert_eq!(observed.shared.terminal(), baseline.shared.terminal());
-                assert_eq!(observed.end, baseline.end);
-                assert_eq!(observed.target, baseline.target);
-                assert_eq!(observed.submitted, baseline.submitted);
-                if mode == 0
-                    && let Some(consumer) = &mut consumer
-                {
-                    for _ in 0..consumer.packet_capacity() {
-                        let Some(packet) = consumer.pop() else { break };
-                        assert!(packet.start() + packet.samples().len() as u64 <= 1537);
-                    }
-                }
-            }
-            assert_eq!(observed.shared.terminal(), Terminal::Complete);
-            if let Some(mut consumer) = consumer {
-                assert_eq!(consumer.latest_generated(), 1537);
-                if mode == 2 {
-                    let packet = consumer.pop().unwrap();
-                    assert_eq!(packet.samples().len(), 1);
-                    assert!(consumer.pop().is_none());
-                }
-            }
-        }
-    }
-    #[test]
-    fn enabled_full_cancelled_malformed_timing_and_tail_paths_allocate_nothing() {
-        for case in 0..6 {
-            let mut c = callback();
-            let (producer, consumer) = crate::playback::observation_channel(SampleRate::new(1).unwrap());
-            c.observe(Some(producer));
-            if case == 1 {
-                drop(consumer);
-            } // disconnected
-            let mut output = vec![1.0; 4099 * 6];
-            if case == 2 {
-                c.shared.finish(Terminal::Cancelled);
-            }
-            if case == 3 {
-                output.pop();
-            }
-            let timestamp = if case == 4 {
-                OutputStreamTimestamp {
-                    callback: StreamInstant::from_millis(2),
-                    playback: StreamInstant::from_millis(1),
-                }
-            } else {
-                time(0)
-            };
-            let count = allocation_counter::measure(|| {
-                c.fill(&mut output, timestamp, &|x| x);
-                c.fill(&mut output, time(100), &|x| x);
-            });
-            assert_eq!((count.count_total, count.bytes_total), (0, 0));
-            assert!(c.shared.terminal() != Terminal::Running);
-        }
-    }
-    #[test]
-    fn generation_observation_does_not_claim_a_cancelled_device_buffer_was_played() {
-        let mut c = callback();
-        let (producer, mut consumer) = crate::playback::observation_channel(SampleRate::new(44100).unwrap());
-        c.observe(Some(producer));
-        let shared = Arc::clone(&c.shared);
-        let mut output = [1.0; 6144];
-        c.fill(&mut output, time(0), &|x| {
-            shared.finish(Terminal::Cancelled);
-            x
-        });
-        assert!(output.iter().all(|x| *x == 0.0));
-        assert_eq!(c.shared.terminal(), Terminal::Cancelled);
-        let packet = consumer.pop().unwrap();
-        assert_eq!(packet.start(), 0);
-        assert_eq!(packet.samples().len(), 1024);
-        assert!(packet.samples().iter().flatten().any(|x| *x != 0.0));
-        assert_eq!(consumer.latest_generated(), 1024);
     }
 }

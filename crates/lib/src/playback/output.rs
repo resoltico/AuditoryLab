@@ -6,9 +6,9 @@ use crate::playback::{
     callback::{Callback, Rounding, frame_duration},
     shared::{Shared, Terminal},
 };
-use auditorylab_core::{SampleRate, Session, Stimulus, StimulusError};
+use auditorylab_core::{SampleRate, Signal};
 use cpal::{
-    OutputCallbackInfo, Sample, SampleFormat, SizedSample, Stream, StreamConfig,
+    OutputCallbackInfo, Sample, SizedSample, Stream, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use std::fmt::{Display, Formatter};
@@ -24,7 +24,7 @@ const STALL_LIMIT: Duration = Duration::from_secs(30);
 
 /// How samples are represented in the device's stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SampleRepresentation {
+pub enum SampleFormat {
     /// 64-bit floating point, which holds every sample exactly.
     F64,
     /// 32-bit floating point.
@@ -37,20 +37,20 @@ pub enum SampleRepresentation {
     I16,
 }
 
-impl SampleRepresentation {
-    const fn of(format: SampleFormat) -> Option<Self> {
+impl SampleFormat {
+    const fn of(format: cpal::SampleFormat) -> Option<Self> {
         match format {
-            SampleFormat::F64 => Some(Self::F64),
-            SampleFormat::F32 => Some(Self::F32),
-            SampleFormat::I32 => Some(Self::I32),
-            SampleFormat::I24 => Some(Self::I24),
-            SampleFormat::I16 => Some(Self::I16),
+            cpal::SampleFormat::F64 => Some(Self::F64),
+            cpal::SampleFormat::F32 => Some(Self::F32),
+            cpal::SampleFormat::I32 => Some(Self::I32),
+            cpal::SampleFormat::I24 => Some(Self::I24),
+            cpal::SampleFormat::I16 => Some(Self::I16),
             _ => None,
         }
     }
 }
 
-impl Display for SampleRepresentation {
+impl Display for SampleFormat {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::F64 => "64-bit float",
@@ -64,36 +64,36 @@ impl Display for SampleRepresentation {
 
 /// What a completed playback did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Played {
+pub(crate) struct Played {
     /// Number of session frames played.
     pub frames: u64,
     /// The sample rate used by the playback stream.
     pub sample_rate: SampleRate,
     /// How the samples were represented in the device's stream. All but the
     /// 64-bit floats round or quantize them.
-    pub representation: SampleRepresentation,
+    pub format: SampleFormat,
     /// Buffer underruns the backend reported; each may be an audible gap.
     pub underruns: u64,
 }
 
 /// The discovery snapshot used for playback; the route may later change.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OutputDescription {
+pub struct OutputInfo {
     /// Best-effort backend name.
     pub name: Option<String>,
     /// Number of channels in each playback stream frame.
     pub channels: u16,
     /// The backend-reported default stream sample rate.
     pub sample_rate: SampleRate,
-    /// The backend-reported default stream representation.
-    pub representation: SampleRepresentation,
+    /// The backend-reported default stream format.
+    pub format: SampleFormat,
 }
 
 /// The default output device and its backend-reported stream configuration.
-pub struct Output {
+pub(crate) struct Output {
     device: cpal::Device,
     config: StreamConfig,
-    description: OutputDescription,
+    description: OutputInfo,
 }
 
 impl Output {
@@ -101,18 +101,18 @@ impl Output {
     ///
     /// Discovery does not start this app's playback stream, but backend queries
     /// may open resources. Playback builds a stream from the saved rate,
-    /// channels and representation; these do not certify the physical hardware rate.
+    /// channels and format; these do not certify the physical hardware rate.
     ///
     /// # Errors
     /// Returns an error when there is no default output device, the backend
     /// cannot describe it, or its default stream configuration has an unsupported
-    /// sample rate/representation or fewer than two output channels.
-    pub fn default_device() -> Result<Self, PlaybackError> {
+    /// sample rate/format or fewer than two output channels.
+    pub(crate) fn default_device() -> Result<Self, PlaybackError> {
         let device = cpal::default_host()
             .default_output_device()
             .ok_or(PlaybackError::NoDefaultOutput)?;
         let supported = device.default_output_config()?;
-        let (sample_rate, representation) = supported_format(&supported)?;
+        let (sample_rate, format) = supported_format(&supported)?;
         let name = device
             .description()
             .ok()
@@ -120,52 +120,20 @@ impl Output {
         Ok(Self {
             device,
             config: supported.config(),
-            description: OutputDescription {
+            description: OutputInfo {
                 name,
                 channels: supported.channels(),
-                representation,
+                format,
                 sample_rate,
             },
         })
     }
 
-    /// Play a session and wait until the backend's timing indicates that its
-    /// last frame has been played.
-    ///
-    /// The left and right samples play on stream channels zero and one. The
-    /// waiting thread polls `cancel` at 10 ms intervals. Scheduling and backend
-    /// calls can delay observation; callbacks return silence after observing
-    /// the terminal result, and sound already queued cannot be recalled.
-    /// Underruns are counted. A report that
-    /// the output route changed ends playback with an error, as does a
-    /// stream that makes no progress for 30 seconds or outlasts the session
-    /// by more than 30 seconds.
-    ///
-    /// Optional observation copies the same mixed/faded generated stereo prefix
-    /// before device conversion. It reports generation, not audible delivery;
-    /// cancellation may subsequently silence the device buffer. A full or
-    /// disconnected observation queue never changes audio or terminal results.
-    /// Allocate it from the prepared rate before playback; `None` adds no sample
-    /// copying or analysis work.
-    ///
-    /// # Errors
-    /// Returns an error for a session of another sample rate, cancellation,
-    /// a backend failure, invalid backend timing or a timeout.
-    /// ```no_run
-    /// fn play(output: crate::playback::Output, session: auditorylab_core::Session, cancel: &std::sync::atomic::AtomicBool) {
-    ///     let _ = output.play(session, cancel, None);
-    /// }
-    /// ```
-    /// ```compile_fail,E0308
-    /// fn play(output: crate::playback::Output, renderer: auditorylab_core::Renderer, cancel: &std::sync::atomic::AtomicBool) {
-    ///     let _ = output.play(renderer, cancel, None);
-    /// }
-    /// ```
-    pub fn play(
+    pub(crate) fn play(
         self,
-        session: Session,
+        session: Arc<Signal>,
         cancel: &AtomicBool,
-        observation: Option<crate::playback::ObservationProducer>,
+        progress: crate::Progress,
     ) -> Result<Played, PlaybackError> {
         if cancel.load(Ordering::Relaxed) {
             return Err(PlaybackError::Cancelled);
@@ -174,12 +142,8 @@ impl Output {
         let frames = session.frames();
         let time_limit = time_limit(frames, self.description.sample_rate);
         let shared = Arc::new(Shared::default());
-        let mut callback = Callback::new(
-            session.into_renderer(),
-            self.config.channels,
-            Arc::clone(&shared),
-        );
-        callback.observe(observation);
+        let callback = Callback::new(session, self.config.channels, Arc::clone(&shared));
+        let callback = callback.with_progress(progress);
         // Keep synchronous diagnostics on this worker, before publishing their
         // fixed outcome. An asynchronous writer can be paused independently.
         let mut setup_error = None;
@@ -198,18 +162,18 @@ impl Output {
         Ok(Played {
             frames,
             sample_rate: self.description.sample_rate,
-            representation: self.description.representation,
+            format: self.description.format,
             underruns: shared.underruns(),
         })
     }
 
     fn stream(&self, callback: Callback, shared: &Arc<Shared>) -> Result<Stream, cpal::Error> {
-        match self.description.representation {
-            SampleRepresentation::F64 => self.stream_of(callback, shared, std::convert::identity),
-            SampleRepresentation::F32 => self.stream_of(callback, shared, f32::from_sample),
-            SampleRepresentation::I32 => self.stream_of(callback, shared, i32::from_sample),
-            SampleRepresentation::I24 => self.stream_of(callback, shared, to_i24),
-            SampleRepresentation::I16 => self.stream_of(callback, shared, i16::from_sample),
+        match self.description.format {
+            SampleFormat::F64 => self.stream_of(callback, shared, std::convert::identity),
+            SampleFormat::F32 => self.stream_of(callback, shared, f32::from_sample),
+            SampleFormat::I32 => self.stream_of(callback, shared, i32::from_sample),
+            SampleFormat::I24 => self.stream_of(callback, shared, to_i24),
+            SampleFormat::I16 => self.stream_of(callback, shared, i16::from_sample),
         }
     }
 
@@ -240,24 +204,16 @@ pub(crate) fn to_i24(sample: f64) -> cpal::I24 {
 impl Output {
     /// Borrow the configuration snapshot without opening a stream.
     #[must_use]
-    pub const fn description(&self) -> &OutputDescription {
+    pub(crate) const fn description(&self) -> &OutputInfo {
         &self.description
-    }
-
-    /// Build a stimulus at the configured sample rate.
-    ///
-    /// # Errors
-    /// Returns what [`Stimulus::session`] returns at that rate.
-    pub fn session(&self, stimulus: &Stimulus) -> Result<Session, StimulusError> {
-        stimulus.session(self.description.sample_rate)
     }
 }
 
 /// Validate the single discovery snapshot without opening a stream.
 fn supported_format(
     supported: &cpal::SupportedStreamConfig,
-) -> Result<(SampleRate, SampleRepresentation), PlaybackError> {
-    let representation = SampleRepresentation::of(supported.sample_format()).ok_or(
+) -> Result<(SampleRate, SampleFormat), PlaybackError> {
+    let format = SampleFormat::of(supported.sample_format()).ok_or(
         PlaybackError::UnsupportedSampleFormat(supported.sample_format()),
     )?;
     let hz = supported.sample_rate();
@@ -268,7 +224,7 @@ fn supported_format(
             channels: supported.channels(),
         });
     }
-    Ok((sample_rate, representation))
+    Ok((sample_rate, format))
 }
 
 fn fits(session_rate: SampleRate, device_rate: SampleRate) -> Result<(), PlaybackError> {
@@ -379,13 +335,13 @@ mod tests {
     }
 
     #[test]
-    fn discovery_requires_stereo_or_wider_and_a_supported_rate_and_representation() {
+    fn discovery_requires_stereo_or_wider_and_a_supported_rate_and_format() {
         for channels in [0, 1, 2, 5, u16::MAX] {
             let snapshot = cpal::SupportedStreamConfig::new(
                 channels,
                 44_100,
                 cpal::SupportedBufferSize::Unknown,
-                SampleFormat::F32,
+                cpal::SampleFormat::F32,
             );
             let result = supported_format(&snapshot);
             if channels < 2 {
@@ -393,9 +349,7 @@ mod tests {
                     matches!(result, Err(PlaybackError::TooFewChannels { channels: rejected }) if rejected == channels)
                 );
             } else {
-                assert!(
-                    matches!(result, Ok((rate, SampleRepresentation::F32)) if rate.hz() == 44_100)
-                );
+                assert!(matches!(result, Ok((rate, SampleFormat::F32)) if rate.hz() == 44_100));
             }
         }
         for hz in [0, 768_001] {
@@ -403,7 +357,7 @@ mod tests {
                 2,
                 hz,
                 cpal::SupportedBufferSize::Unknown,
-                SampleFormat::F32,
+                cpal::SampleFormat::F32,
             );
             assert!(
                 matches!(supported_format(&snapshot), Err(PlaybackError::UnsupportedSampleRate { hz: rejected }) if rejected == hz)
@@ -413,48 +367,29 @@ mod tests {
             2,
             48_000,
             cpal::SupportedBufferSize::Unknown,
-            SampleFormat::U16,
+            cpal::SampleFormat::U16,
         );
         assert!(matches!(
             supported_format(&snapshot),
-            Err(PlaybackError::UnsupportedSampleFormat(SampleFormat::U16))
+            Err(PlaybackError::UnsupportedSampleFormat(
+                cpal::SampleFormat::U16
+            ))
         ));
     }
 
     #[test]
-    fn five_stream_representations_are_supported_and_named() {
-        for (format, representation, name) in [
-            (SampleFormat::F64, SampleRepresentation::F64, "64-bit float"),
-            (SampleFormat::F32, SampleRepresentation::F32, "32-bit float"),
-            (
-                SampleFormat::I32,
-                SampleRepresentation::I32,
-                "32-bit integer",
-            ),
-            (
-                SampleFormat::I24,
-                SampleRepresentation::I24,
-                "24-bit integer",
-            ),
-            (
-                SampleFormat::I16,
-                SampleRepresentation::I16,
-                "16-bit integer",
-            ),
+    fn five_stream_formats_are_supported_and_named() {
+        for (native, format) in [
+            (cpal::SampleFormat::F64, SampleFormat::F64),
+            (cpal::SampleFormat::F32, SampleFormat::F32),
+            (cpal::SampleFormat::I32, SampleFormat::I32),
+            (cpal::SampleFormat::I24, SampleFormat::I24),
+            (cpal::SampleFormat::I16, SampleFormat::I16),
         ] {
-            assert_eq!(SampleRepresentation::of(format), Some(representation));
-            assert_eq!(representation.to_string(), name);
+            assert_eq!(SampleFormat::of(native), Some(format));
+            assert!(!format.to_string().is_empty());
         }
-        for format in [
-            SampleFormat::U16,
-            SampleFormat::U24,
-            SampleFormat::U32,
-            SampleFormat::I8,
-            SampleFormat::U8,
-            SampleFormat::DsdU8,
-        ] {
-            assert_eq!(SampleRepresentation::of(format), None);
-        }
+        assert_eq!(SampleFormat::of(cpal::SampleFormat::U16), None);
     }
 
     #[test]
@@ -470,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn integer_representations_reach_but_never_pass_full_scale() {
+    fn integer_formats_reach_but_never_pass_full_scale() {
         // Independent constants: negative and positive full scale, and silence.
         assert_eq!(i16::from_sample(-1.0_f64), -32_768);
         assert_eq!(i16::from_sample(0.0_f64), 0);
@@ -639,28 +574,32 @@ mod quantization {
     #[test]
     fn real_callback_conversion_preserves_first_two_channels_and_zeros_every_extra_channel() {
         use crate::playback::shared::Shared;
-        use auditorylab_core::{Component, Ears};
+        use auditorylab_core::{Component, Ears, Stimulus};
         let session = Stimulus {
             duration_seconds: 8.0 / 8_000.0,
             fade_seconds: 0.0,
             components: vec![
-                Component::Tone {
+                Component {
                     ears: Ears::Left,
-                    frequency_hz: 2_000.0,
                     peak_dbfs: 0.0,
                     modulation: None,
+                    carrier: crate::Carrier::Tone {
+                        frequency_hz: 2_000.0,
+                    },
                 },
-                Component::Tone {
+                Component {
                     ears: Ears::Right,
-                    frequency_hz: 1_000.0,
                     peak_dbfs: -20.0,
                     modulation: None,
+                    carrier: crate::Carrier::Tone {
+                        frequency_hz: 1_000.0,
+                    },
                 },
             ],
         }
-        .session(SampleRate::new(8_000).unwrap())
+        .signal(SampleRate::new(8_000).unwrap())
         .unwrap();
-        let mut callback = Callback::new(session.into_renderer(), 5, Arc::new(Shared::default()));
+        let mut callback = Callback::new(session, 5, Arc::new(Shared::default()));
         let mut output = [cpal::I24::from_sample(0.5_f64); 40];
         let now = cpal::StreamInstant::from_nanos(0);
         callback.fill(

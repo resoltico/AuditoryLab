@@ -6,7 +6,7 @@ use std::{
 };
 /// Why stream encoding stopped.
 #[derive(Debug)]
-pub enum ExportError {
+pub(crate) enum ExportError {
     /// Writer failure.
     Io(io::Error),
     /// Cooperative cancellation.

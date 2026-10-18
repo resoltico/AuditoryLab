@@ -70,14 +70,8 @@ mod tests {
             .unwrap()
             .write_all(&vec![b' '; 65_537])
             .unwrap();
-        let error = crate::load_reader(file, crate::Origin::File(path)).unwrap_err();
-        assert!(matches!(
-            error.diagnostic(),
-            crate::Diagnostic::Input(crate::InputDiagnostic::TooLarge {
-                limit: 65_536,
-                observed_bytes: 65_537
-            })
-        ));
+        let error = crate::load_reader(file, "grown recipe").unwrap_err();
+        assert_eq!(error.kind(), crate::ErrorKind::InvalidPreset);
     }
 
     #[test]

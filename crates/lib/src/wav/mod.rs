@@ -7,6 +7,10 @@ mod error;
 mod export;
 mod header;
 
-pub use error::ExportError;
-pub use export::{Exported, encode};
+pub(crate) use error::ExportError;
+pub use export::Exported;
+pub(crate) use export::encode;
 pub use header::Container;
+
+#[cfg(test)]
+mod tests;

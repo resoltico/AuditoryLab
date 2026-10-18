@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter};
 
 /// Why a session was not played to its end.
 #[derive(Debug, Clone)]
-pub enum PlaybackError {
+pub(crate) enum PlaybackError {
     /// Cancellation was observed before playback completed.
     Cancelled,
     /// No default output device is available.

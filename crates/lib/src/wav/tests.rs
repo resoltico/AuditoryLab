@@ -1,18 +1,21 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-//! Independently decode caller-owned encoded streams and test writer boundaries.
+// Independently decode caller-owned encoded streams and test writer boundaries.
 
-#![cfg(test)]
-
-use auditorylab_core::{Component, Ears, Preset, SampleRate, Session, Stimulus, catalog};
 use crate::wav::{Container, Exported, encode};
+use auditorylab_core::{Component, Ears, Preset, SampleRate, Signal, Stimulus, catalog};
 fn export(
-    session: Session,
+    session: Signal,
     path: &Path,
     cancel: &AtomicBool,
 ) -> Result<Exported, crate::wav::ExportError> {
-    encode(session, &mut fs::File::create(path).unwrap(), cancel)
+    encode(
+        &session,
+        &mut fs::File::create(path).unwrap(),
+        cancel,
+        &crate::Progress::default(),
+    )
 }
 use std::fs;
 use std::path::Path;
@@ -22,18 +25,20 @@ fn rate() -> SampleRate {
     SampleRate::new(8_000).unwrap()
 }
 
-fn tone_session(frames: u32, sample_rate: SampleRate) -> Session {
+fn tone_session(frames: u32, sample_rate: SampleRate) -> Signal {
     Stimulus {
         duration_seconds: f64::from(frames) / f64::from(sample_rate.hz()),
         fade_seconds: 0.001,
-        components: vec![Component::Tone {
+        components: vec![Component {
             ears: Ears::Both,
-            frequency_hz: 500.0,
             peak_dbfs: -20.0,
             modulation: None,
+            carrier: crate::Carrier::Tone {
+                frequency_hz: 500.0,
+            },
         }],
     }
-    .session(sample_rate)
+    .signal(sample_rate)
     .unwrap()
 }
 
@@ -89,10 +94,7 @@ fn an_independent_decoder_reads_the_format_length_and_nearest_f32_samples() {
         let decoded = decoded_frames(&path, frames, sample_rate);
         let mut expected = vec![[0.0; 2]; usize::try_from(frames).unwrap()];
         assert_eq!(
-            tone_session(frames, sample_rate)
-                .into_renderer()
-                .render(&mut expected)
-                .frames(),
+            tone_session(frames, sample_rate).render(0, &mut expected),
             usize::try_from(frames).unwrap()
         );
         for (file, rendered) in decoded.iter().zip(&expected) {
@@ -118,7 +120,7 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
         fade_seconds: 0.0,
         components: vec![],
     }
-    .session(rate())
+    .signal(rate())
     .unwrap();
     export(silence, &path, &never()).unwrap();
     let bytes = fs::read(&path).unwrap();
@@ -140,11 +142,11 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
     assert_eq!(&bytes[58..], &[0; 40]);
 }
 
-fn short_catalog_session(name: &str) -> Session {
+fn short_catalog_session(name: &str) -> Signal {
     let mut preset = Preset::parse(catalog::find(name).unwrap().text).unwrap();
     preset.stimulus.duration_seconds = 0.125;
     preset.stimulus.fade_seconds = 0.01;
-    preset.stimulus.session(rate()).unwrap()
+    preset.stimulus.signal(rate()).unwrap()
 }
 
 fn edge_gain(frame: u32) -> f64 {
@@ -239,7 +241,12 @@ fn cancellation_requested_by_the_writer_stops_before_the_next_sample_block() {
             writes: 0,
             bytes: vec![],
         };
-        let result = encode(tone_session(20_000, rate()), &mut writer, &cancel);
+        let result = encode(
+            &tone_session(20_000, rate()),
+            &mut writer,
+            &cancel,
+            &crate::Progress::default(),
+        );
         assert!(matches!(result, Err(crate::wav::ExportError::Cancelled)));
         assert_eq!(writer.writes, trigger);
         assert!(writer.bytes.starts_with(b"RIFF"));

@@ -6,7 +6,7 @@
 //! A session's length is known before its first sample, so the header is
 //! written once, complete, and the file needs no later correction.
 
-use auditorylab_core::{SampleRate, Session};
+use auditorylab_core::{SampleRate, Signal};
 use std::fmt::{Display, Formatter};
 
 const BYTES_PER_SAMPLE: u16 = 4;
@@ -19,7 +19,7 @@ const DS64_BYTES: u64 = 28;
 /// The largest values the core's bounds give the header's fields.
 const MAX_BLOCK_ALIGN: u64 = 2 * BYTES_PER_SAMPLE as u64;
 const MAX_BYTE_RATE: u64 = SampleRate::MAX_HZ as u64 * MAX_BLOCK_ALIGN;
-const MAX_PAYLOAD_BYTES: u64 = Session::MAX_FRAMES * MAX_BLOCK_ALIGN;
+const MAX_PAYLOAD_BYTES: u64 = Signal::MAX_FRAMES * MAX_BLOCK_ALIGN;
 
 // Every format and length the core accepts fits its header field, and the
 // file's size fits 64 bits with room for the header.
@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn the_largest_session_has_consistent_64_bit_sizes() {
         let rate = SampleRate::new(SampleRate::MAX_HZ).unwrap();
-        let layout = layout(rate, Session::MAX_FRAMES);
+        let layout = layout(rate, Signal::MAX_FRAMES);
         assert_eq!(layout.container, Container::Rf64);
         let header = &layout.header;
         // 12-byte prologue, 36-byte ds64 chunk, 26-byte fmt chunk, 8-byte data header.

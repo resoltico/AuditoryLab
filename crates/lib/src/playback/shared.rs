@@ -194,10 +194,10 @@ mod tests {
                     fade_seconds: 0.0,
                     components: vec![],
                 }
-                .session(auditorylab_core::SampleRate::new(8_000).unwrap())
+                .signal(auditorylab_core::SampleRate::new(8_000).unwrap())
                 .unwrap();
                 let mut callback =
-                    crate::playback::callback::Callback::new(session.into_renderer(), 2, Arc::clone(&shared));
+                    crate::playback::callback::Callback::new(session, 2, Arc::clone(&shared));
                 let mut buffer = [1.0; 2];
                 for millis in [0, 1] {
                     let now = cpal::StreamInstant::from_millis(millis);
@@ -294,13 +294,22 @@ mod tests {
                     matches!(result, Err(crate::playback::PlaybackError::Backend(error)) if error.to_string() == "asynchronous winner")
                 ),
                 Terminal::Cancelled => {
-                    assert!(matches!(result, Err(crate::playback::PlaybackError::Cancelled)))
+                    assert!(matches!(
+                        result,
+                        Err(crate::playback::PlaybackError::Cancelled)
+                    ))
                 }
                 Terminal::TimedOut => {
-                    assert!(matches!(result, Err(crate::playback::PlaybackError::TimedOut)))
+                    assert!(matches!(
+                        result,
+                        Err(crate::playback::PlaybackError::TimedOut)
+                    ))
                 }
                 Terminal::InvalidTiming => {
-                    assert!(matches!(result, Err(crate::playback::PlaybackError::InvalidTiming)))
+                    assert!(matches!(
+                        result,
+                        Err(crate::playback::PlaybackError::InvalidTiming)
+                    ))
                 }
                 Terminal::MisalignedBuffer => assert!(matches!(
                     result,
