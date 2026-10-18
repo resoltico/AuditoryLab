@@ -1,170 +1,58 @@
-// Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
-import { AboutSlint, Button, ComboBox, LineEdit, TextEdit, VerticalBox, HorizontalBox, GroupBox, CheckBox, ScrollView } from "std-widgets.slint";
-
+import { AboutSlint, Button, ComboBox, TextEdit, VerticalBox, HorizontalBox, CheckBox, StandardListView } from "std-widgets.slint";
 export component AboutWindow inherits Window {
-    title: "About Auditory Lab";
-    preferred-width: 560px;
-    preferred-height: 440px;
+    title: "About Auditory Lab"; preferred-width: 560px; preferred-height: 420px;
     in property <string> identity;
-    VerticalBox {
-        Text { text: "Auditory Lab — MPL-2.0"; }
-        TextEdit { read-only: true; text: root.identity; accessible-label: "Product and build identity"; }
-        AboutSlint {}
-    }
+    VerticalBox { Text { text: "Auditory Lab"; font-size: 24px; } TextEdit { text: root.identity; read-only: true; accessible-label: "Version and licenses"; } AboutSlint {} }
 }
-component SignalLane inherits Rectangle {
-    in property <string> label;
-    in property <string> trace;
-    in property <string> start-label;
-    in property <string> end-label;
-    background: #131d2b;
-    border-radius: 4px;
-    height: 120px;
-    Text { x: 8px; y: 6px; width: parent.width - 16px; height: 16px; text: root.label; color: white; font-size: 12px; }
-    // Path fit subtracts one stroke width and offsets by half a stroke. All
-    // reference centers use those same bounds, including the source endpoints.
-    plot := Rectangle {
-        x: 54px; y: 30px; width: parent.width - self.x - 10px; height: 48px;
-        clip: true;
-        Rectangle { x: 0.5px; y: parent.height / 2 - 0.5px; width: parent.width - 1px; height: 1px; background: #43536b; }
+component Lane inherits Rectangle {
+    in property <string> label; in property <string> trace;
+    background: #131d2b; height: 110px; border-radius: 4px;
+    accessible-role: image; accessible-label: root.label;
+    Text { x: 8px; y: 4px; text: root.label; color: white; font-size: 12px; }
+    Text { x: 5px; y: 21px; height: 14px; text: "+1"; color: #bac7d7; font-size: 12px; }
+    Text { x: 5px; y: 56px; height: 14px; text: "0"; color: #bac7d7; font-size: 12px; }
+    Text { x: 5px; y: 91px; height: 14px; text: "−1"; color: #bac7d7; font-size: 12px; }
+    Rectangle { x: 38px; y: 28px; width: parent.width - 48px; height: 70px; clip: true;
+        Rectangle { y: parent.height / 2; height: 1px; width: parent.width; background: #43536b; }
         Path { width: parent.width; height: parent.height; viewbox-width: 1024; viewbox-height: 100; fit: fill; commands: root.trace; stroke: #77d4ef; stroke-width: 1px; }
     }
-    Text { x: 8px; y: plot.y + 0.5px - self.height / 2; width: 36px; height: 14px; text: "+1"; color: #aebdce; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
-    Text { x: 8px; y: plot.y + plot.height / 2 - self.height / 2; width: 36px; height: 14px; text: "0"; color: #aebdce; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
-    Text { x: 8px; y: plot.y + plot.height - 0.5px - self.height / 2; width: 36px; height: 14px; text: "−1"; color: #aebdce; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
-    Rectangle { x: plot.x - 6px; y: plot.y; width: 6px; height: 1px; background: #43536b; }
-    Rectangle { x: plot.x - 6px; y: plot.y + plot.height / 2 - 0.5px; width: 6px; height: 1px; background: #43536b; }
-    Rectangle { x: plot.x - 6px; y: plot.y + plot.height - 1px; width: 6px; height: 1px; background: #43536b; }
-    Text { x: plot.x + 0.5px; y: 86px; width: (plot.width - 1px) / 2; height: 28px; text: root.start-label; color: #aebdce; font-size: 10px; overflow: elide; }
-    Text { x: plot.x + plot.width / 2; y: 86px; width: (plot.width - 1px) / 2; height: 28px; text: root.end-label; color: #aebdce; font-size: 10px; overflow: elide; horizontal-alignment: right; }
 }
 export component MainWindow inherits Window {
-    title: "Auditory Lab";
-    preferred-width: 900px;
-    preferred-height: 800px;
-    min-width: 600px;
-    min-height: 640px;
-    in property <[string]> catalog;
+    title: "Auditory Lab"; preferred-width: 1040px; preferred-height: 820px; min-width: 850px; min-height: 700px;
+    in property <[StandardListViewItem]> catalog;
     in-out property <int> selected: 0;
-    in property <string> source-title;
-    in property <string> description;
-    in property <string> activity;
-    in property <string> status;
-    in property <bool> busy;
-    in property <bool> selection-locked;
-    in property <bool> stoppable;
-    in-out property <string> input-path;
-    in property <bool> input-editing;
-    in-out property <string> folder-path;
-    in property <bool> folder-editing;
-    in-out property <string> filename: "sound.wav";
-    in-out property <string> rate;
-    in property <bool> monitoring;
-    in property <bool> frozen;
-    in property <string> signal-through: "No observed samples";
-    in property <string> signal-context: "No live trace. Play starts a new operation at frame zero.";
-    in property <string> peak-context;
-    in property <string> detail-context;
-    in property <string> peak-start;
-    in property <string> peak-end;
-    in property <string> detail-start;
-    in property <string> detail-end;
-    in property <string> peak-left;
-    in property <string> peak-right;
-    in property <string> detail-left;
-    in property <string> detail-right;
-    in-out property <bool> reduced-motion;
-    in-out property <bool> detail-visible: false;
-    in-out property <int> detail-index: 2;
-    private property <bool> show-research: false;
-    private property <bool> show-files: false;
-    callback select(int);
-    callback browse-input(); callback edit-input(); callback input-changed(string); callback cancel-input-edit(); callback import-recipe();
-    callback browse-folder(); callback edit-folder(); callback folder-changed(string); callback cancel-folder-edit();
-    callback inspect(); callback play(); callback stop(); callback export-wav(); callback about();
-    callback freeze-display(); callback refresh-display(); callback motion-changed(bool); callback detail-window(int);
-    callback detail-visibility-changed();
+    in property <string> sound-title; in property <string> studied; in property <string> summary; in property <string> details;
+    in property <string> status; in property <bool> busy; in property <bool> can-export;
+    in property <string> elapsed; in property <float> progress;
+    in property <string> left-path; in property <string> right-path;
+    in-out property <int> window-index: 2; in-out property <int> rate-index: 1;
+    in-out property <bool> research: false;
+    callback select(int); callback open-recipe(); callback play-stop(); callback export-wav(); callback about(); callback rate-changed(int); callback window-changed();
     MenuBar {
-        Menu { title: "Help"; MenuItem { title: "About Auditory Lab"; activated => { root.about(); } } }
+        Menu { title: "File"; MenuItem { title: "Open Recipe…"; enabled: !root.busy; activated => { root.open-recipe(); } } MenuItem { title: "Export WAV…"; enabled: !root.busy && root.can-export; activated => { root.export-wav(); } } }
+        Menu { title: "Help"; MenuItem { title: "About"; activated => { root.about(); } } }
     }
     VerticalBox {
-        HorizontalBox { vertical-stretch: 0;
-            Text { text: "Selected sound"; }
-            ComboBox { model: root.catalog; current-index <=> root.selected; enabled: !root.selection-locked; selected(value) => { root.select(root.selected); } accessible-label: "Built-in sound, identifier and duration"; }
-        }
-        Text { text: root.source-title; font-size: 20px; wrap: no-wrap; overflow: elide; vertical-stretch: 0; }
-        HorizontalBox { vertical-stretch: 0;
-            Text { text: root.status; wrap: word-wrap; accessible-label: "Operation state"; accessible-value: root.status; }
-            Button { text: "Play"; enabled: !root.busy; clicked => { root.play(); } }
-            Button { text: "Stop"; enabled: root.stoppable; clicked => { root.stop(); } }
-        }
-        HorizontalBox { vertical-stretch: 0;
-            Text { text: "Signal through"; }
-            Text { text: root.signal-through; wrap: word-wrap; accessible-label: "Last observed signal coverage, not an audible playhead"; accessible-value: root.signal-through; }
-        }
-        ScrollView {
-            content-width: self.visible-width;
+        HorizontalBox {
+            VerticalBox { min-width: 280px; max-width: 320px;
+                StandardListView { model: root.catalog; current-item <=> root.selected; enabled: !root.busy; current-item-changed(index) => { root.select(index); } accessible-label: "Sounds, research topics and durations"; }
+                Button { text: "Open Recipe…"; enabled: !root.busy; clicked => { root.open-recipe(); } }
+            }
             VerticalBox {
-                padding: 0px;
-                Text { text: "Generated signal · recent peak range · fixed digital amplitude ±1"; wrap: word-wrap; }
-                Text { text: root.peak-context; wrap: word-wrap; }
-                SignalLane { label: "Left"; trace: root.peak-left; start-label: root.peak-start; end-label: root.peak-end; }
-                SignalLane { label: "Right"; trace: root.peak-right; start-label: root.peak-start; end-label: root.peak-end; }
-                Text { text: root.signal-context; wrap: word-wrap; accessible-label: "Generated signal source, rate, observation state and gaps"; accessible-value: root.signal-context; }
-                HorizontalBox {
-                    Button { text: root.frozen ? "Resume display" : "Freeze display"; enabled: root.monitoring; clicked => { root.freeze-display(); } }
-                    Button { text: "Refresh display"; enabled: root.monitoring && (root.frozen || root.reduced-motion); clicked => { root.refresh-display(); } }
-                    CheckBox { text: "Reduced motion"; checked <=> root.reduced-motion; toggled => { root.motion-changed(self.checked); } }
-                }
-                Text { text: "Before device conversion; generated samples may be silenced before submission. Not microphone input, sound pressure or an audible playhead. Freeze display leaves sound running."; wrap: word-wrap; }
-                Button { text: root.detail-visible ? "Hide waveform detail" : "Show waveform detail"; clicked => { root.detail-visible = !root.detail-visible; root.detail-visibility-changed(); } }
-                if root.detail-visible: VerticalBox {
-                    HorizontalBox {
-                        Text { text: "Waveform detail"; }
-                        ComboBox { model: ["2 ms", "10 ms", "40 ms", "100 ms"]; current-index <=> root.detail-index; selected(value) => { root.detail-window(root.detail-index); } accessible-label: "Requested waveform detail window"; }
-                    }
-                    Text { text: root.detail-context; wrap: word-wrap; }
-                    Text { text: "Window requests apply to new live observations; stopped views retain their captured extent."; wrap: word-wrap; }
-                    if root.frozen || root.reduced-motion: Text { text: "Window changes take effect with the next refreshed observation."; wrap: word-wrap; }
-                    SignalLane { label: "Left"; trace: root.detail-left; start-label: root.detail-start; end-label: root.detail-end; }
-                    SignalLane { label: "Right"; trace: root.detail-right; start-label: root.detail-start; end-label: root.detail-end; }
-                }
-                Button { text: root.show-research ? "Hide research context and recipe" : "Research context and recipe"; clicked => { root.show-research = !root.show-research; } }
-                if root.show-research: TextEdit { text: root.description; read-only: true; min-height: 220px; accessible-label: "Selected sound and full research context"; }
-                Button { text: root.show-files ? "Hide recipe and WAV controls" : "Open recipe, validate or export WAV"; clicked => { root.show-files = !root.show-files; } }
-                if root.show-files: VerticalBox {
-                    GroupBox { title: "Open immutable recipe snapshot"; VerticalBox {
-                        LineEdit { text <=> root.input-path; read-only: !root.input-editing; enabled: !root.busy; edited(text) => { root.input-changed(text); } accessible-label: "Recipe path"; }
-                        HorizontalBox {
-                            Button { text: "Browse…"; enabled: !root.busy; clicked => { root.browse-input(); } }
-                            Button { text: "Edit path"; enabled: !root.busy && !root.input-editing; clicked => { root.edit-input(); } }
-                            Button { text: "Cancel edit"; enabled: !root.busy && root.input-editing; clicked => { root.cancel-input-edit(); } }
-                            Button { text: "Open Recipe"; enabled: !root.busy; clicked => { root.import-recipe(); } }
-                        }
-                    } }
-                    HorizontalBox {
-                        Text { text: "Validation/export rate (Hz):"; }
-                        LineEdit { text <=> root.rate; enabled: !root.busy; accessible-label: "Validation and export sample rate in whole hertz"; }
-                        Button { text: "Validate"; enabled: !root.busy; clicked => { root.inspect(); } }
-                    }
-                    GroupBox { title: "Export WAV — new files only, never replace"; VerticalBox {
-                        LineEdit { text <=> root.folder-path; read-only: !root.folder-editing; enabled: !root.busy; edited(text) => { root.folder-changed(text); } accessible-label: "Existing export folder"; }
-                        HorizontalBox {
-                            Button { text: "Browse folder…"; enabled: !root.busy; clicked => { root.browse-folder(); } }
-                            Button { text: "Edit folder"; enabled: !root.busy && !root.folder-editing; clicked => { root.edit-folder(); } }
-                            Button { text: "Cancel edit"; enabled: !root.busy && root.folder-editing; clicked => { root.cancel-folder-edit(); } }
-                        }
-                        HorizontalBox {
-                            Text { text: "New filename:"; }
-                            LineEdit { text <=> root.filename; enabled: !root.busy; accessible-label: "New WAV filename, one path component"; }
-                            Button { text: "Export WAV"; enabled: !root.busy; clicked => { root.export-wav(); } }
-                        }
-                    } }
-                }
-                TextEdit { text: root.activity; read-only: true; min-height: 180px; accessible-label: "Preparation, result and selectable technical diagnostics"; }
+                Text { text: root.sound-title; font-size: 24px; wrap: word-wrap; vertical-stretch: 0; }
+                Text { text: root.studied; wrap: word-wrap; vertical-stretch: 0; }
+                Text { text: root.summary; wrap: word-wrap; vertical-stretch: 0; }
+                HorizontalBox { vertical-stretch: 0; Button { text: root.busy ? "Stop" : "Play"; accessible-label: "Play or stop selected sound"; clicked => { root.play-stop(); } } Text { text: root.elapsed; } }
+                Rectangle { height: 8px; background: #d4dce5; accessible-role: progress-indicator; accessible-label: "Operation progress"; accessible-value: root.elapsed; Rectangle { height: parent.height; width: parent.width * root.progress; background: #327ca9; } }
+                HorizontalBox { vertical-stretch: 0; Text { text: "Waveform window"; } ComboBox { model: ["2 ms", "10 ms", "40 ms", "100 ms"]; current-index <=> root.window-index; selected(value) => { root.window-changed(); } } }
+                Lane { label: "Left ear"; trace: root.left-path; }
+                Lane { label: "Right ear"; trace: root.right-path; }
+                CheckBox { text: "Research details"; checked <=> root.research; }
+                if root.research: TextEdit { text: root.details; read-only: true; min-height: 130px; accessible-label: "Selectable citation and research details"; }
+                HorizontalBox { vertical-stretch: 0; Text { text: "Export rate"; } ComboBox { model: ["44100 Hz", "48000 Hz", "88200 Hz", "96000 Hz", "192000 Hz"]; current-index <=> root.rate-index; enabled: !root.busy; selected(value) => { root.rate-changed(root.rate-index); } } Button { text: "Export WAV…"; enabled: !root.busy && root.can-export; clicked => { root.export-wav(); } } }
+                TextEdit { text: root.status; read-only: true; min-height: 45px; max-height: 70px; accessible-label: "Selectable operation status"; }
             }
         }
-        Text { text: "Keep output volume low; digital levels do not limit sound pressure."; wrap: word-wrap; vertical-stretch: 0; }
+        Text { text: "Turn the volume down before playing. Use headphones for sounds that differ between the ears."; wrap: word-wrap; vertical-stretch: 0; }
     }
 }
