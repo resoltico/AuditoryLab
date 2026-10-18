@@ -100,7 +100,7 @@ fn rms_matched_two_tone_and_separate_ear_stimuli_have_equal_plateau_rms() {
 }
 
 #[test]
-fn a_session_states_its_frames_fades_and_peaks() {
+fn a_signal_states_its_frames_fades_and_peaks() {
     let mut pair = stimulus(vec![
         tone(Ears::Left, 250.0, -20.0),
         tone(Ears::Both, 256.0, -26.0),
@@ -133,7 +133,7 @@ fn silence_renders_zeros_for_its_duration() {
     );
 }
 
-fn session_error(stimulus: &Stimulus, hz: u32) -> StimulusError {
+fn signal_error(stimulus: &Stimulus, hz: u32) -> StimulusError {
     stimulus.signal(rate(hz)).unwrap_err()
 }
 
@@ -143,7 +143,7 @@ fn durations_and_fades_must_give_whole_frames_that_fit() {
     for seconds in [f64::NAN, f64::INFINITY, -1.0, 0.0, 0.000_01] {
         s.duration_seconds = seconds;
         assert!(
-            matches!(session_error(&s, 48_000), StimulusError::Duration { .. }),
+            matches!(signal_error(&s, 48_000), StimulusError::Duration { .. }),
             "{seconds}"
         );
     }
@@ -151,13 +151,13 @@ fn durations_and_fades_must_give_whole_frames_that_fit() {
     for seconds in [f64::NAN, -0.1, f64::INFINITY] {
         s.fade_seconds = seconds;
         assert!(
-            matches!(session_error(&s, 48_000), StimulusError::Fade { .. }),
+            matches!(signal_error(&s, 48_000), StimulusError::Fade { .. }),
             "{seconds}"
         );
     }
     s.fade_seconds = 0.5;
     assert_eq!(
-        session_error(&s, 48_000),
+        signal_error(&s, 48_000),
         StimulusError::FadesOverlap {
             fade_frames: 24_000,
             frames: 48_000
@@ -224,4 +224,71 @@ fn guards_accept_and_reject_neighbours() {
     assert!(s.signal(rate(48_000)).is_ok());
     s.duration_seconds = rate(48_000).seconds_in(Signal::MAX_FRAMES + 1);
     assert!(s.signal(rate(48_000)).is_err());
+}
+#[test]
+fn peak_and_pulse_width_guards_reject_invalid_values() {
+    let mut s = stimulus(vec![tone(Ears::Both, 1000.0, 0.0)]);
+    assert!(s.signal(rate(48000)).is_ok());
+    for peak in [
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::MIN_POSITIVE,
+    ] {
+        s.components[0].peak_dbfs = peak;
+        assert!(matches!(
+            s.signal(rate(48000)),
+            Err(StimulusError::Component {
+                error: ComponentError::PeakDbfs { .. },
+                ..
+            })
+        ));
+    }
+    s.components[0].peak_dbfs = -20.0;
+    for width in [f64::NAN, f64::INFINITY, -1.0, 0.0, 0.4 / 48000.0] {
+        s.components[0].carrier = Carrier::Click {
+            rate_hz: 40.0,
+            width_seconds: width,
+        };
+        assert!(matches!(
+            s.signal(rate(48000)),
+            Err(StimulusError::Component {
+                error: ComponentError::PulseWidth { .. },
+                ..
+            })
+        ));
+    }
+    s.components[0].carrier = Carrier::Click {
+        rate_hz: 40.0,
+        width_seconds: 0.5 / 48000.0,
+    };
+    assert!(s.signal(rate(48000)).is_ok());
+}
+
+#[test]
+fn click_nyquist_rejection_is_not_masked_by_the_closed_frame_rule() {
+    let mut s = stimulus(vec![Component {
+        ears: Ears::Both,
+        peak_dbfs: -20.0,
+        carrier: Carrier::Click {
+            rate_hz: 24000.0,
+            width_seconds: 1.0 / 48000.0,
+        },
+        modulation: None,
+    }]);
+    assert!(matches!(
+        s.signal(rate(48000)),
+        Err(StimulusError::Component {
+            error: ComponentError::Frequency {
+                parameter: Parameter::Rate,
+                ..
+            },
+            ..
+        })
+    ));
+    s.components[0].carrier = Carrier::Click {
+        rate_hz: 24000.0_f64.next_down(),
+        width_seconds: 1.0 / 48000.0,
+    };
+    assert!(s.signal(rate(48000)).is_ok());
 }

@@ -53,13 +53,7 @@ impl Desktop {
                         app.playback = Some(sound);
                     }
                     Message::Imported(result) => {
-                        match result {
-                            Ok(preset) => {
-                                app.imported(preset);
-                                self.catalog_dirty.set(true);
-                            }
-                            Err(e) => app.status = e.to_string(),
-                        }
+                        self.catalog_dirty.set(app.imported(result));
                         done = true;
                     }
                     Message::Done(result) => {
@@ -111,8 +105,14 @@ impl Desktop {
         );
         ui.set_details(app::details(app.preset(), app.rate).into());
         ui.set_busy(app.operation.is_some());
-        ui.set_can_export(app.preset().at(app.rate).is_ok());
-        ui.set_status(app.status.as_str().into());
+        let validation = app.preset().at(app.rate);
+        ui.set_can_export(validation.is_ok());
+        let status = match validation {
+            Ok(_) => app.status.clone(),
+            Err(error) if app.status.is_empty() => error.to_string(),
+            Err(error) => format!("{}\n{error}", app.status),
+        };
+        ui.set_status(status.into());
         let started = Instant::now();
         if let Ok(sound) = app.sound() {
             let signal = sound.signal();
@@ -153,6 +153,8 @@ impl Desktop {
         } else {
             ui.set_left_path("".into());
             ui.set_right_path("".into());
+            ui.set_elapsed("".into());
+            ui.set_progress(0.0);
         }
         self.updating.set(false);
         Duration::from_millis(50).max(started.elapsed() * 20)
@@ -188,6 +190,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .renderer_name("femtovg".into())
         .select()?;
     let ui = MainWindow::new()?;
+    ui.set_guidance(
+        format!(
+            "{} {}",
+            auditorylab::Notice::LowStartingVolume,
+            auditorylab::Notice::HeadphonesForSeparateEars
+        )
+        .into(),
+    );
     let about = AboutWindow::new()?;
     about.set_identity(format!("{}\n\nhttps://github.com/resoltico/AuditoryLab\n\nAuditory Lab: MPL-2.0\nSlint: Royalty-free Desktop, Mobile, and Web Applications License 2.0\nThird-party licenses: THIRD-PARTY-NOTICES.txt in the download.",auditorylab::version_line("auditorylab-gui")).into());
     let desktop = Rc::new(Desktop {
@@ -240,6 +250,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .pick_file()
         {
             d.start(Operation::Import, Work::Import(path));
+        } else {
+            d.app.borrow_mut().status =
+                "No recipe selected. If no dialog opened, use auditorylab inspect --file PATH."
+                    .into();
+            d.refresh();
         }
     });
     let d = desktop.clone();

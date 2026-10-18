@@ -48,7 +48,15 @@ impl App {
         self.operation = None;
         self.playback = None;
     }
-    pub(crate) fn imported(&mut self, preset: Preset) {
+    pub(crate) fn imported(&mut self, result: Result<Preset, auditorylab::Error>) -> bool {
+        let preset = match result {
+            Ok(preset) => preset,
+            Err(error) => {
+                self.status = error.to_string();
+                return false;
+            }
+        };
+        self.status.clear();
         if let Some(index) = self
             .presets
             .iter()
@@ -60,6 +68,7 @@ impl App {
             self.selected = self.presets.len();
             self.presets.push(preset);
         }
+        true
     }
     pub(crate) fn sound(&self) -> Result<Sound, auditorylab::Error> {
         self.playback
@@ -133,7 +142,20 @@ pub(crate) fn details(preset: &Preset, rate: SampleRate) -> String {
 mod tests {
     use super::*;
     #[test]
-    fn selection_operations_import_failure_and_close() {
+    fn failed_import_preserves_the_selected_recipe_and_list() {
+        let mut app = App::new(auditorylab::catalog().unwrap());
+        app.select(3);
+        let origin = app.preset().origin().clone();
+        let count = app.presets.len();
+        let error = auditorylab::load_reader(b"not a recipe".as_slice(), "bad import").unwrap_err();
+        assert!(!app.imported(Err(error)));
+        assert_eq!(app.selected, 3);
+        assert_eq!(app.preset().origin(), &origin);
+        assert_eq!(app.presets.len(), count);
+        assert!(app.status.contains("bad import"));
+    }
+    #[test]
+    fn selection_is_locked_and_close_waits_for_the_active_operation() {
         let mut app = App::new(auditorylab::catalog().unwrap());
         app.select(3);
         assert_eq!(app.selected, 3);
@@ -155,8 +177,8 @@ mod tests {
             "import",
         )
         .unwrap();
-        app.imported(preset.clone());
-        app.imported(preset);
+        app.imported(Ok(preset.clone()));
+        app.imported(Ok(preset));
         assert_eq!(app.presets.len(), 20);
         let sound = app.sound().unwrap();
         assert_eq!(scope_start(&sound, true, 1000, 480), 520);

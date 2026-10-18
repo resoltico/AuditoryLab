@@ -262,3 +262,37 @@ fn cancellation_requested_by_the_writer_stops_before_the_next_sample_block() {
         }
     }
 }
+#[test]
+fn writer_failures_in_the_header_and_payload_keep_the_original_error() {
+    struct Failing {
+        calls: usize,
+        fail_on: usize,
+    }
+    impl std::io::Write for Failing {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.calls += 1;
+            if self.calls == self.fail_on {
+                Err(std::io::Error::other("injected writer failure"))
+            } else {
+                Ok(bytes.len())
+            }
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    for fail_on in [1, 2, 3] {
+        let mut writer = Failing { calls: 0, fail_on };
+        let error = encode(
+            &tone_session(20000, rate()),
+            &mut writer,
+            &never(),
+            &crate::Progress::default(),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(error,crate::wav::ExportError::Io(ref e) if e.to_string()=="injected writer failure")
+        );
+        assert_eq!(writer.calls, fail_on);
+    }
+}

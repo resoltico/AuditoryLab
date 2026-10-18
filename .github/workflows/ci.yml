@@ -140,7 +140,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-${{ matrix.platform }}
-          path: target/dist/*
+          path: |
+            target/dist/*.tar.gz
+            target/dist/*.zip
           if-no-files-found: error
           compression-level: 0
   mutation:
@@ -160,13 +162,15 @@ jobs:
         with:
           tool: cargo-mutants@${{ env.CARGO_MUTANTS_VERSION }}
       - name: Mutate only synthesis.rs
-        # OR/XOR are equal on the clear mantissa bit. At line 40, both branches return 1.
-        # Keep that boundary exclusion location-specific so the Nyquist guard is still mutated.
+        # Bit 52 is clear in the fraction. At line 33 both branches return 1;
+        # at line 62 the enclosing != guard excludes equality.
+        # Location-specific exclusions keep the Nyquist and pulse-width guards mutated.
         run: >-
           cargo mutants --file crates/core/src/synthesis.rs --package auditorylab-core
           --test-workspace=false --timeout 60 --cargo-arg=--locked --output target/mutations
-          --exclude-re 'replace \| with \^ in (step|times_at_most)$'
-          --exclude-re 'synthesis\.rs:40:22: replace < with <= in step$'
+          --exclude-re 'replace \| with \^ in parts$'
+          --exclude-re 'synthesis\.rs:33:22: replace < with <= in step$'
+          --exclude-re 'synthesis\.rs:62:15: replace < with <= in times_at_most$'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

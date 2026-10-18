@@ -19,7 +19,6 @@ slint-build.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-allocation-counter.workspace = true
 
 [[bin]]
 name = "auditorylab-gui"

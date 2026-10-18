@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::signal::{Envelope, Signal};
-use crate::synthesis::{self, Carrier as Generator, Modulator, Voice};
+use crate::synthesis::{self, Carrier as Generator, Modulator, Pulse, Voice};
 use crate::{SampleRate, numeric};
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
@@ -183,16 +183,12 @@ impl Component {
             Carrier::Click {
                 rate_hz,
                 width_seconds,
-                ..
-            } => {
-                let (step, open) = pulse_train(
-                    (Parameter::Rate, Parameter::Width),
-                    rate_hz,
-                    width_seconds,
-                    rate,
-                )?;
-                Generator::Pulse { step, open }
-            }
+            } => Generator::Pulse(pulse_train(
+                (Parameter::Rate, Parameter::Width),
+                rate_hz,
+                width_seconds,
+                rate,
+            )?),
         };
         let modulation = match self.modulation {
             None => None,
@@ -215,15 +211,12 @@ impl Component {
             Some(Modulation::Rectangular {
                 rate_hz,
                 width_seconds,
-            }) => {
-                let (step, open) = pulse_train(
-                    (Parameter::ModulationRate, Parameter::ModulationWidth),
-                    rate_hz,
-                    width_seconds,
-                    rate,
-                )?;
-                Some(Modulator::Rectangular { step, open })
-            }
+            }) => Some(Modulator::Rectangular(pulse_train(
+                (Parameter::ModulationRate, Parameter::ModulationWidth),
+                rate_hz,
+                width_seconds,
+                rate,
+            )?)),
         };
         let ears = self.ears;
         Ok(Voice {
@@ -237,30 +230,25 @@ impl Component {
 }
 
 fn frequency_step(parameter: Parameter, hz: f64, rate: SampleRate) -> Result<u64, ComponentError> {
-    synthesis::step(hz, rate.hz())
-        .filter(|_| hz > 0.0)
-        .ok_or(ComponentError::Frequency {
-            parameter,
-            hz,
-            sample_rate_hz: rate.hz(),
-        })
+    synthesis::step(hz, rate.hz()).ok_or(ComponentError::Frequency {
+        parameter,
+        hz,
+        sample_rate_hz: rate.hz(),
+    })
 }
 fn pulse_train(
     (rate_parameter, width_parameter): (Parameter, Parameter),
     rate_hz: f64,
     width_seconds: f64,
     rate: SampleRate,
-) -> Result<(u64, u64), ComponentError> {
-    let step = frequency_step(rate_parameter, rate_hz, rate)?;
-    let open = synthesis::open(width_seconds, rate_hz, step, rate.hz()).ok_or(
-        ComponentError::PulseWidth {
-            parameter: width_parameter,
-            width_seconds,
-            rate_hz,
-            sample_rate_hz: rate.hz(),
-        },
-    )?;
-    Ok((step, open))
+) -> Result<Pulse, ComponentError> {
+    frequency_step(rate_parameter, rate_hz, rate)?;
+    synthesis::pulse(width_seconds, rate_hz, rate.hz()).ok_or(ComponentError::PulseWidth {
+        parameter: width_parameter,
+        width_seconds,
+        rate_hz,
+        sample_rate_hz: rate.hz(),
+    })
 }
 
 impl Stimulus {

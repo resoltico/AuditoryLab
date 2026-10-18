@@ -26,6 +26,7 @@ impl Envelope {
     }
 
     /// The gain of `frame`, within `[0, 1]`; zero past the end.
+    #[inline]
     pub(crate) fn gain_at(self, frame: u64) -> f64 {
         if frame >= self.frames {
             return 0.0;
@@ -109,6 +110,7 @@ impl Signal {
 
     /// Evaluate one frame; the tail is silence.
     #[must_use]
+    #[inline]
     pub fn frame(&self, n: u64) -> [f64; 2] {
         if n >= self.frames() {
             return [0.0; 2];

@@ -112,10 +112,10 @@ Within `[about]`, only `title` is required; the other text fields are optional f
 
 ## Waveforms
 
-For frame `n` at sample rate `fs`, every periodic generator uses a 64-bit integer phase: one cycle is `2^64` units. Its step is `ceil(hz × 2^64 / fs)`, computed exactly from the binary64 frequency. Frame `n` uses `n × step` modulo `2^64`. The frequency resolution is `fs / 2^64`; any finite positive frequency below Nyquist has a positive step.
+For frame `n` at sample rate `fs`, tones and sinusoidal modulation use a 64-bit integer phase: one cycle is `2^64` units. Its step is `ceil(hz × 2^64 / fs)`, computed exactly from the binary64 frequency. Frame `n` uses `n × step` modulo `2^64`. The frequency resolution is `fs / 2^64`; any finite positive frequency below Nyquist has a positive step.
 
 - Tone: `sin(2π × c)`, where `c` is the signed top 53 phase bits converted exactly to cycles in `[-0.5, 0.5)`.
-- Click: let `W = round(width_seconds × fs)`, halves away from zero. A pulse starts on the first frame at or after each period's onset and stays open for exactly `W` frames. It is open while `phase < W × step`.
+- Click: let `W = round(width_seconds × fs)`, halves away from zero. A pulse starts on the first frame at or after each period's onset and stays open for exactly `W` frames. Pulses use the exact binary64 rate: with `K(n) = floor(n × rate_hz / fs)`, a frame after the initial open span is open exactly when `K(n) > K(n − W)`.
 - Sinusoidal modulation: multiply by `(1 + depth × sin(2π × c_m)) / (1 + depth)` at the modulation phase.
 - Rectangular modulation: multiply by the click waveform at its rate and width. A tone keeps its phase across closed gates.
 - Peak: multiply each component by `10^(peak_dbfs / 20)`.
@@ -132,7 +132,7 @@ A recipe can be valid at one sample rate and invalid at another. `inspect`, `exp
 - Duration and fade are finite and not negative, duration gives at least one frame within [`Signal::MAX_FRAMES`](../crates/core/src/signal.rs), and the fades leave at least one frame between them (`2F < N`).
 - Component count stays within [`Stimulus::MAX_COMPONENTS`](../crates/core/src/stimulus.rs), and each component has a finite `peak_dbfs` of at most 0.
 - Every frequency and rate is finite, positive and below half the sample rate. A tone with sinusoidal modulation also needs `frequency_hz + rate_hz` below half the sample rate.
-- Pulse widths must give `W ≥ 1` and satisfy `(W + 1) × rate_hz ≤ fs`, compared exactly. This leaves at least one closed frame in every period, including fractional-frame periods.
+- Pulse widths must give a finite whole-frame count `W ≥ 1` and satisfy `(W + 1) × rate_hz ≤ fs`, compared exactly. This leaves at least one closed frame in every period, including fractional-frame periods.
 - Each ear's summed component peaks are at most full scale, so no sample ever needs clipping.
 
 `inspect` reports these summed peaks per ear. They are bounds, not measured or necessarily reached maxima.

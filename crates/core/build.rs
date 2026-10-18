@@ -1,23 +1,23 @@
 //! Embed catalog files in natural order.
 use std::{env, fs, path::PathBuf};
+fn number(run: &str) -> String {
+    let digits = run.trim_start_matches('0');
+    format!("{:020}{digits}", digits.len())
+}
 fn key(s: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut run = String::new();
     let mut digit = false;
     for c in s.chars() {
         if c.is_ascii_digit() != digit && !run.is_empty() {
-            out.push(if digit {
-                format!("{:0>20}", run)
-            } else {
-                run.clone()
-            });
+            out.push(if digit { number(&run) } else { run.clone() });
             run.clear();
         }
         digit = c.is_ascii_digit();
         run.push(c);
     }
     if !run.is_empty() {
-        out.push(if digit { format!("{:0>20}", run) } else { run });
+        out.push(if digit { number(&run) } else { run });
     }
     out
 }
@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ids.push(id);
         }
     }
-    ids.sort_by_key(|s| key(s));
+    ids.sort_by(|a, b| key(a).cmp(&key(b)).then_with(|| a.cmp(b)));
     let mut text = String::from(
         "/// Built-in recipes in natural ID order.\npub const ENTRIES: &[Entry] = &[\n",
     );
@@ -57,4 +57,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     text.push_str("];\n");
     fs::write(PathBuf::from(env::var("OUT_DIR")?).join("catalog.rs"), text)?;
     Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::key;
+    #[test]
+    fn numeric_runs_compare_by_value_beyond_machine_integer_width() {
+        assert!(key("a-8-hz") < key("a-40-hz"));
+        assert!(key("a-99999999999999999999-hz") < key("a-100000000000000000000-hz"));
+        assert_eq!(key("a-0008-hz"), key("a-8-hz"));
+    }
 }

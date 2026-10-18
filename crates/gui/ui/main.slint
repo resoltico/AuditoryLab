@@ -22,6 +22,7 @@ export component MainWindow inherits Window {
     in property <[StandardListViewItem]> catalog;
     in-out property <int> selected: 0;
     in property <string> sound-title; in property <string> studied; in property <string> summary; in property <string> details;
+    in property <string> guidance;
     in property <string> status; in property <bool> busy; in property <bool> can-export;
     in property <string> elapsed; in property <float> progress;
     in property <string> left-path; in property <string> right-path;
@@ -53,6 +54,6 @@ export component MainWindow inherits Window {
                 TextEdit { text: root.status; read-only: true; min-height: 45px; max-height: 70px; accessible-label: "Selectable operation status"; }
             }
         }
-        Text { text: "Turn the volume down before playing. Use headphones for sounds that differ between the ears."; wrap: word-wrap; vertical-stretch: 0; }
+        Text { text: root.guidance; wrap: word-wrap; vertical-stretch: 0; }
     }
 }

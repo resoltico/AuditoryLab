@@ -23,7 +23,6 @@ proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 serde = { version = "1.0.229", default-features = false, features = ["alloc", "derive"] }
 tempfile = "3.27.0"
 toml = { version = "1.1.8", default-features = false, features = ["parse", "serde"] }
-unicode-width = { version = "0.2.2", default-features = false }
 waveadapter = "0.3.1"
 winapi-util = "0.1.11"
 slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-18", "backend-winit", "renderer-femtovg", "accessibility", "raw-window-handle-06"] }

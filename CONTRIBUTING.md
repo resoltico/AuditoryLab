@@ -32,7 +32,7 @@ TMPDIR="$PWD/target/tmp" cargo mutants --file crates/core/src/synthesis.rs \
   --timeout 60 --cargo-arg=--locked --output target/mutations
 ```
 
-Use `--re` to focus a smaller selection. Investigate survivors against an independent oracle. The CI command excludes three equivalent integer-phase mutations with their reasons beside the command. Keep the Nyquist guard in the selection.
+Use `--re` to focus a smaller selection. Investigate survivors against an independent oracle. The CI command excludes equivalent integer-phase mutations with their reasons beside the command. Keep the Nyquist guard in the selection.
 
 ## Dependencies
 
@@ -46,7 +46,7 @@ Open the built window. Check selection, static previews, waveform windows, selec
 
 ## Packaging and releases
 
-Install cargo-about, cargo-deny and cargo-mutants at the versions defined in [CI](.github/workflows/ci.yml). `cargo xtask dist --target TARGET` builds both products with the distribution profile, generates notices and README files, writes archives under `target/dist`, and runs host smoke checks. Supported target arguments are defined in [xtask](xtask/src/main.rs). Universal macOS packaging needs both Apple Rust targets plus `lipo` and `codesign` from Xcode Command Line Tools.
+Install cargo-about, cargo-deny and cargo-mutants at the versions defined in [CI](.github/workflows/ci.yml). When installing cargo-about from source, enable its `cli` feature. `cargo xtask dist --target TARGET` builds both products with the distribution profile, generates notices and README files, writes archives under `target/dist`, and runs host smoke checks. Supported target arguments are defined in [xtask](xtask/src/main.rs). Universal macOS packaging needs both Apple Rust targets plus `lipo` and `codesign` from Xcode Command Line Tools.
 
 To inspect notices without building archives, use `cargo xtask notices cli TARGET target/cli-notices.txt` or substitute `gui`. The checks reject missing dependency identities and missing license sections. For ZIP and tar archives, xtask writes members in-process and preserves executable permissions.
 

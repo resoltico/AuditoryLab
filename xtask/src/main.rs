@@ -63,7 +63,7 @@ fn platform(target: &str) -> Result<&'static str> {
     })
 }
 fn readme(version: &str, gui: bool, target: &str) -> String {
-    include_str!("../templates/archive-readme.txt").replace("{version}",version).replace("{product}",if gui {"Desktop"} else {"CLI"}).replace("{start}",if gui {"Open Auditory Lab.app on macOS, auditorylab-gui.exe on Windows, or auditorylab-gui on Linux. Select a sound, read its summary, then use Play or Export WAV…."} else {"Run auditorylab --help, then auditorylab list. Use auditorylab describe ID to read about a sound, and auditorylab recipe ID --output recipe.toml to edit one."}).replace("{platform_needs}",if target.contains("apple") {"macOS 15 or later. On first launch, use Finder's Open command or Privacy & Security to allow the download."} else if target.contains("windows") {if gui { "Windows 10 or later on x86_64; Windows 11 on ARM64. Desktop drawing needs an OpenGL-capable graphics driver." } else { "Windows 10 or later on x86_64; Windows 11 on ARM64." }} else {if gui { "Linux with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, xkbcommon, fonts, OpenGL and an xdg-desktop-portal for file dialogs." } else { "Linux with glibc 2.35 or later and ALSA." }})
+    include_str!("../templates/archive-readme.txt").replace("{version}",version).replace("{product}",if gui {"Desktop"} else {"CLI"}).replace("{start}",if gui {"Open Auditory Lab.app on macOS, auditorylab-gui.exe on Windows, or auditorylab-gui on Linux. Select a sound, read its summary, then use Play or Export WAV…."} else {"Run auditorylab --help, then auditorylab list. Use auditorylab describe ID to read about a sound, and auditorylab recipe ID --output recipe.toml to edit one."}).replace("{platform_needs}",if target.contains("apple") {"macOS 15 or later. If first launch is blocked, use System Settings > Privacy & Security > Open Anyway after trying to open the app. Apple instructions: https://support.apple.com/en-us/102445"} else if target.contains("windows") {if gui { "Windows 10 or later on x86_64; Windows 11 on ARM64. Desktop drawing needs an OpenGL-capable graphics driver." } else { "Windows 10 or later on x86_64; Windows 11 on ARM64." }} else {if gui { "Linux with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, xkbcommon, fonts, OpenGL and an xdg-desktop-portal for file dialogs." } else { "Linux with glibc 2.35 or later and ALSA." }})
 }
 fn section<'a>(changelog: &'a str, version: &str) -> Result<(&'a str, &'a str)> {
     let marker = format!("## [{version}]");
@@ -254,6 +254,8 @@ fn bundle(binary: &Path, root: &Path, version: &str) -> Result<PathBuf> {
 }
 fn dist(target: &str, out: &Path) -> Result<()> {
     let platform = platform(target)?;
+    capture(Command::new("cargo").args(["about","--version"]))
+        .map_err(|error| format!("cargo-about is required for dist; install it with its cli feature (see CONTRIBUTING.md).\n{error}"))?;
     let universal = target == "universal-apple-darwin";
     let targets = if universal {
         vec!["aarch64-apple-darwin", "x86_64-apple-darwin"]

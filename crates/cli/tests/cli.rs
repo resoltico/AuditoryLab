@@ -93,15 +93,44 @@ fn stdin_export_and_no_clobber() {
 #[test]
 fn broken_pipe_is_quiet_success() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_auditorylab"))
-        .arg("list")
+        .args(["inspect", "--stdin"])
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
+    // Input cannot finish until after the output reader has closed.
     drop(child.stdout.take());
+    child.stdin.take().unwrap().write_all(SILENCE).unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(out.status.success());
     assert!(out.stderr.is_empty());
+}
+#[test]
+#[ignore = "plays one second of component-free silence on the default output"]
+fn play_reads_stdin_and_reports_native_silent_playback() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_auditorylab"))
+        .args(["play", "--stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"schema_version=2\nduration_seconds=1\nfade_seconds=0\n")
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("Played "));
+    let start = String::from_utf8(out.stderr).unwrap();
+    assert!(start.contains("Press Ctrl-C to stop") && start.contains("Turn the volume down"));
 }
 #[cfg(unix)]
 #[test]

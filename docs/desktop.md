@@ -22,7 +22,7 @@ Closing the window cancels an active operation and waits for its worker to finis
 
 ## Platforms and menus
 
-macOS downloads require macOS 15 or later. For a downloaded app blocked on first launch, use Finder's **Open** command or the app's entry in **System Settings → Privacy & Security**.
+macOS downloads require macOS 15 or later. For a downloaded app blocked on first launch, try opening it, then use **System Settings → Privacy & Security → Open Anyway**. [Apple's instructions](https://support.apple.com/en-us/102445) describe the confirmation.
 
 Linux needs X11 or Wayland, fontconfig, xkbcommon, fonts and OpenGL. Native file dialogs need an xdg-desktop-portal and a portal backend for the desktop environment. Install those packages when dialogs are unavailable; the CLI's `--file` option reads recipes directly.
 
