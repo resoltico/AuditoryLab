@@ -24,7 +24,7 @@ Notable changes to this project are documented in this file. The format is based
 - Desktop Open and Export use native dialogs. Save replaces an existing file only after native confirmation; CLI output keeps existing files untouched. Closing the window waits for worker cleanup; macOS Cmd-Q can leave a hidden `.NAME.RANDOM.partial` export file beside the destination.
 - The plot is computed from the same seekable signal as playback and export.
 - Preset files retain `schema_version = 2`; existing catalog parameters are unchanged.
-- Packaging uses `cargo xtask`; reusable CI builds the release archives. cargo-deny gates dependency policy, and packaging checks dependency and license-text coverage.
+- Packaging uses `cargo xtask`; reusable CI builds the release archives. Release dispatch defaults to non-publishing verification with downloadable checksums, notes and provenance; publication requires `publish: true` on main. cargo-deny gates dependency policy, and packaging checks dependency and license-text coverage.
 
 ### Removed
 

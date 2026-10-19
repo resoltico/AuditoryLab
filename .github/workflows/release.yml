@@ -6,6 +6,11 @@ on:
         description: Version matching Cargo.toml and a dated CHANGELOG.md section
         required: true
         type: string
+      publish:
+        description: Create a GitHub release after verification
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -25,9 +30,13 @@ jobs:
           mkdir -p target/tmp
           echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
       - run: rustup toolchain install
-      - name: Check main, version, notes and absent tag
+      - name: Check ref, version, notes and absent tag
+        env:
+          PUBLISH: ${{ inputs.publish }}
         run: |
-          [[ "$GITHUB_REF" == refs/heads/main ]]
+          if [[ "$PUBLISH" == true ]]; then
+            [[ "$GITHUB_REF" == refs/heads/main ]]
+          fi
           cargo xtask check-release "$RELEASE_VERSION"
           existing="$(git ls-remote --tags origin "refs/tags/v${RELEASE_VERSION}")"
           if [[ -n "$existing" ]]; then
@@ -41,12 +50,12 @@ jobs:
       source-revision: ${{ github.sha }}
     permissions:
       contents: read
-  publish:
+  prepare:
     needs: [check, build]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
-      contents: write
+      contents: read
       attestations: write
       id-token: write
     env:
@@ -69,9 +78,75 @@ jobs:
         run: |
           (cd target/assets && sha256sum -- * > SHA256SUMS)
           cargo xtask notes "$RELEASE_VERSION" > target/notes.md
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      - id: provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: target/assets/*
+      - name: Save provenance bundle
+        env:
+          BUNDLE_PATH: ${{ steps.provenance.outputs.bundle-path }}
+        run: cp "$BUNDLE_PATH" target/provenance.jsonl
+      - name: Upload verification bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-verification
+          path: |
+            target/assets/*
+            target/notes.md
+            target/provenance.jsonl
+          if-no-files-found: error
+          compression-level: 0
+  verify:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Prepare temporary directory
+        run: |
+          mkdir -p target/tmp
+          echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-verification
+          path: target
+          digest-mismatch: error
+      - name: Verify downloaded checksums and provenance
+        run: |
+          (cd target/assets && sha256sum --check SHA256SUMS)
+          for asset in target/assets/*; do
+            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY" \
+              --bundle target/provenance.jsonl \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF"
+          done
+  publish:
+    if: inputs.publish && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare temporary directory
+        run: |
+          mkdir -p target/tmp
+          echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-verification
+          path: target
+          digest-mismatch: error
+      - name: Verify downloaded checksums
+        run: (cd target/assets && sha256sum --check SHA256SUMS)
       - name: Create draft, compare uploaded bytes, then publish
         run: |
           tag="v${RELEASE_VERSION}"
