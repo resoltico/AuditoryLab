@@ -72,7 +72,7 @@ impl Target {
                     number: index + 1,
                     error,
                 })?;
-            target.facts[index] = Some(crate::ComponentFacts::new(component, &voice, rate));
+            target.facts[index] = Some(crate::ComponentFacts::from_voice(component, &voice, rate));
             target.voices[index] = Some((*id, voice));
         }
         for (_, voice) in target.voices.iter().flatten() {
@@ -446,7 +446,7 @@ impl Engine {
         {
             let mut facts = slot.facts;
             if let crate::CarrierFacts::Tone(ref mut rate) = facts.carrier {
-                *rate = crate::PhaseRate::new(
+                *rate = crate::PhaseRate::from_step(
                     rate.requested_hz,
                     glide(slot.carrier_step.0, slot.carrier_step.1, p),
                     self.rate,
@@ -457,7 +457,7 @@ impl Engine {
                 ref mut depth,
             }) = facts.modulation
             {
-                *rate = crate::PhaseRate::new(
+                *rate = crate::PhaseRate::from_step(
                     rate.requested_hz,
                     glide(slot.modulation_step.0, slot.modulation_step.1, p),
                     self.rate,

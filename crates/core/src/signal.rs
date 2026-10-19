@@ -67,7 +67,7 @@ impl Signal {
         let facts = components
             .iter()
             .zip(&voices)
-            .map(|(c, v)| crate::ComponentFacts::new(c, v, sample_rate))
+            .map(|(c, v)| crate::ComponentFacts::from_voice(c, v, sample_rate))
             .collect();
         Self {
             facts,

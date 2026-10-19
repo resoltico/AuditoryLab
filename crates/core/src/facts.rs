@@ -13,7 +13,7 @@ pub struct PhaseRate {
     pub realized_hz: f64,
 }
 impl PhaseRate {
-    pub(crate) fn new(requested_hz: f64, step: u64, rate: SampleRate) -> Self {
+    pub(crate) fn from_step(requested_hz: f64, step: u64, rate: SampleRate) -> Self {
         Self {
             requested_hz,
             realized_hz: step as f64 * f64::from(rate.hz()) / 18_446_744_073_709_551_616.0,
@@ -70,11 +70,11 @@ impl Component {
     /// Returns the component validation error for this sample rate.
     pub fn facts(&self, rate: SampleRate) -> Result<ComponentFacts, ComponentError> {
         self.voice(rate)
-            .map(|voice| ComponentFacts::new(self, &voice, rate))
+            .map(|voice| ComponentFacts::from_voice(self, &voice, rate))
     }
 }
 impl ComponentFacts {
-    pub(crate) fn new(c: &Component, v: &crate::synthesis::Voice, rate: SampleRate) -> Self {
+    pub(crate) fn from_voice(c: &Component, v: &crate::synthesis::Voice, rate: SampleRate) -> Self {
         let pulse = |rate_hz, width_seconds, frames| PulseFacts {
             rate_hz,
             width_seconds,
@@ -82,7 +82,7 @@ impl ComponentFacts {
         };
         let carrier = match (c.carrier, v.carrier) {
             (Carrier::Tone { frequency_hz }, crate::synthesis::Carrier::Tone { step }) => {
-                CarrierFacts::Tone(PhaseRate::new(frequency_hz, step, rate))
+                CarrierFacts::Tone(PhaseRate::from_step(frequency_hz, step, rate))
             }
             (
                 Carrier::Click {
@@ -98,7 +98,7 @@ impl ComponentFacts {
                 Some(Modulation::Sinusoidal { rate_hz, depth }),
                 Some(crate::synthesis::Modulator::Sinusoidal { step, .. }),
             ) => Some(ModulationFacts::Sinusoidal {
-                rate: PhaseRate::new(rate_hz, step, rate),
+                rate: PhaseRate::from_step(rate_hz, step, rate),
                 depth,
             }),
             (
