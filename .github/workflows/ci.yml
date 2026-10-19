@@ -38,10 +38,10 @@ jobs:
         run: |
           mkdir -p target/tmp
           echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
       - run: rustup toolchain install
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
-        with:
-          tool: cargo-deny@${{ env.CARGO_DENY_VERSION }}
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked --target-dir target
       - name: Weekly advisory check
         if: github.event_name == 'schedule'
         run: cargo deny check advisories
@@ -117,6 +117,7 @@ jobs:
           for name in TMPDIR TMP TEMP; do
             echo "${name}=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
           done
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
       - name: Install Linux build prerequisites
         if: runner.os == 'Linux'
         run: |
@@ -126,9 +127,8 @@ jobs:
       - name: Install Intel macOS target
         if: matrix.target == 'universal-apple-darwin'
         run: rustup target add x86_64-apple-darwin
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
-        with:
-          tool: cargo-about@${{ env.CARGO_ABOUT_VERSION }}
+      - name: Install cargo-about
+        run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --target-dir target --features cli
       - run: cargo clippy --workspace --all-targets --locked
       - run: cargo test --workspace --locked
       - run: cargo test -p auditorylab-core --release --locked
@@ -158,10 +158,10 @@ jobs:
       - run: |
           mkdir -p target/tmp
           echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
       - run: rustup toolchain install
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
-        with:
-          tool: cargo-mutants@${{ env.CARGO_MUTANTS_VERSION }}
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --version "$CARGO_MUTANTS_VERSION" --locked --target-dir target
       - name: Mutate only synthesis.rs
         # Bit 52 is clear in the fraction. At line 33 both branches return 1;
         # at line 62 the enclosing != guard excludes equality.
