@@ -1,4 +1,4 @@
-import { AboutSlint, Button, ComboBox, TextEdit, VerticalBox, HorizontalBox, CheckBox, StandardListView } from "std-widgets.slint";
+import { AboutSlint, Button, ComboBox, TextEdit, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView } from "std-widgets.slint";
 export component AboutWindow inherits Window {
     title: "About Auditory Lab"; preferred-width: 560px; preferred-height: 420px;
     in property <string> identity;
@@ -39,19 +39,21 @@ export component MainWindow inherits Window {
                 StandardListView { model: root.catalog; current-item <=> root.selected; enabled: !root.busy; current-item-changed(index) => { root.select(index); } accessible-label: "Sounds, research topics and durations"; }
                 Button { text: "Open Recipe…"; enabled: !root.busy; clicked => { root.open-recipe(); } }
             }
-            VerticalBox {
-                Text { text: root.sound-title; font-size: 24px; wrap: word-wrap; vertical-stretch: 0; }
-                Text { text: root.studied; wrap: word-wrap; vertical-stretch: 0; }
-                Text { text: root.summary; wrap: word-wrap; vertical-stretch: 0; }
-                HorizontalBox { vertical-stretch: 0; Button { text: root.busy ? "Stop" : "Play"; accessible-label: "Play or stop selected sound"; clicked => { root.play-stop(); } } Text { text: root.elapsed; } }
-                Rectangle { height: 8px; background: #d4dce5; accessible-role: progress-indicator; accessible-label: "Operation progress"; accessible-value: root.elapsed; Rectangle { height: parent.height; width: parent.width * root.progress; background: #327ca9; } }
-                HorizontalBox { vertical-stretch: 0; Text { text: "Waveform window"; } ComboBox { model: ["2 ms", "10 ms", "40 ms", "100 ms"]; current-index <=> root.window-index; selected(value) => { root.window-changed(); } } }
-                Lane { label: "Left ear"; trace: root.left-path; }
-                Lane { label: "Right ear"; trace: root.right-path; }
-                CheckBox { text: "Research details"; checked <=> root.research; }
-                if root.research: TextEdit { text: root.details; read-only: true; min-height: 130px; accessible-label: "Selectable citation and research details"; }
-                HorizontalBox { vertical-stretch: 0; Text { text: "Export rate"; } ComboBox { model: ["44100 Hz", "48000 Hz", "88200 Hz", "96000 Hz", "192000 Hz"]; current-index <=> root.rate-index; enabled: !root.busy; selected(value) => { root.rate-changed(root.rate-index); } } Button { text: "Export WAV…"; enabled: !root.busy && root.can-export; clicked => { root.export-wav(); } } }
-                TextEdit { text: root.status; read-only: true; min-height: 45px; max-height: 70px; accessible-label: "Selectable operation status"; }
+            ScrollView {
+                VerticalBox {
+                    Text { text: root.sound-title; font-size: 24px; wrap: word-wrap; vertical-stretch: 0; }
+                    Text { text: root.studied; wrap: word-wrap; vertical-stretch: 0; }
+                    Text { text: root.summary; wrap: word-wrap; vertical-stretch: 0; }
+                    HorizontalBox { vertical-stretch: 0; Button { text: root.busy ? "Stop" : "Play"; accessible-label: "Play or stop selected sound"; clicked => { root.play-stop(); } } Text { text: root.elapsed; } }
+                    Rectangle { height: 8px; background: #d4dce5; accessible-role: progress-indicator; accessible-label: "Operation progress"; accessible-value: root.elapsed; Rectangle { height: parent.height; width: parent.width * root.progress; background: #327ca9; } }
+                    HorizontalBox { vertical-stretch: 0; Text { text: "Waveform window"; } ComboBox { model: ["2 ms", "10 ms", "40 ms", "100 ms"]; current-index <=> root.window-index; selected(value) => { root.window-changed(); } } }
+                    Lane { label: "Left ear"; trace: root.left-path; }
+                    Lane { label: "Right ear"; trace: root.right-path; }
+                    CheckBox { text: "Research details"; checked <=> root.research; }
+                    if root.research: TextEdit { text: root.details; read-only: true; min-height: 130px; accessible-label: "Selectable citation and research details"; }
+                    HorizontalBox { vertical-stretch: 0; Text { text: "Export rate"; } ComboBox { model: ["44100 Hz", "48000 Hz", "88200 Hz", "96000 Hz", "192000 Hz"]; current-index <=> root.rate-index; enabled: !root.busy; selected(value) => { root.rate-changed(root.rate-index); } } Button { text: "Export WAV…"; enabled: !root.busy && root.can-export; clicked => { root.export-wav(); } } }
+                    TextEdit { text: root.status; read-only: true; min-height: 45px; max-height: 70px; accessible-label: "Selectable operation status"; }
+                }
             }
         }
         Text { text: root.guidance; wrap: word-wrap; vertical-stretch: 0; }

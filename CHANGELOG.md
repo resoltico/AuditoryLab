@@ -14,7 +14,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Added
 
-- Desktop progress and elapsed time, waveform previews before playback and a waveform window following the latency-compensated playback position.
+- Desktop progress and elapsed time, waveform previews before playback and a waveform window following the latency-compensated playback position. The sound panel scrolls to keep its controls accessible while listening guidance stays visible.
 - CLI `-V` as an alias for `--version`.
 - Positive frequencies previously rejected as too small to advance the phase are accepted.
 

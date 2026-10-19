@@ -4,7 +4,7 @@ Start `auditorylab-gui` without arguments. On macOS, open **Auditory Lab.app**; 
 
 ## The window
 
-The sound list shows titles, research topics and durations. Selecting a sound displays its summary and a waveform preview. **Research details** expands selectable citation, source, study, adaptations, components and facts resolved at the export rate. Validation errors appear with those facts.
+The sound list shows titles, research topics and durations. Selecting a sound displays its summary and a waveform preview. **Research details** expands selectable citation, source, study, adaptations, components and facts resolved at the export rate. Validation errors appear with those facts. The sound panel scrolls when its contents exceed the available height; listening guidance stays visible below it.
 
 **Open Recipe…** uses a native file dialog. Imported recipes appear as **Imported: TITLE**. Reopening the same path replaces its list entry. A failed import keeps the selected sound and shows the error in selectable status text.
 
@@ -24,7 +24,7 @@ Closing the window cancels an active operation and waits for its worker to finis
 
 macOS downloads require macOS 15 or later. For a downloaded app blocked on first launch, try opening it, then use **System Settings → Privacy & Security → Open Anyway**. [Apple's instructions](https://support.apple.com/en-us/102445) describe the confirmation.
 
-Linux needs X11 or Wayland, fontconfig, xkbcommon, fonts and OpenGL. Native file dialogs need an xdg-desktop-portal and a portal backend for the desktop environment. Install those packages when dialogs are unavailable; the CLI's `--file` option reads recipes directly.
+Linux needs X11 or Wayland, fontconfig, xkbcommon, fonts and OpenGL. X11 also needs the xkbcommon X11 library (`libxkbcommon-x11-0` on Debian/Ubuntu). Native file dialogs need an xdg-desktop-portal and a portal backend for the desktop environment. Install those packages when dialogs are unavailable; the CLI's `--file` option reads recipes directly.
 
 Windows requires the matching system architecture and an OpenGL-capable graphics driver. Source-build prerequisites are in the [README](../README.md#build-from-source).
 
