@@ -90,7 +90,7 @@ pub fn range(setting: Setting, rate: SampleRate) -> Range {
         Setting::ClickWidth | Setting::GateWidth => (0.1, 50.0, 1.0, Logarithmic, "ms"),
         Setting::Level => (-80.0, 0.0, -30.0, Linear, "dBFS"),
         Setting::ModulationRate => (0.1, 100.0, 40.0, Logarithmic, "Hz"),
-        Setting::Depth => (0.0, 1.0, 1.0, Linear, ""),
+        Setting::Depth => (0.0, 100.0, 100.0, Linear, "%"),
         Setting::GateRate => (0.5, 100.0, 40.0, Logarithmic, "Hz"),
     };
     Range {
@@ -118,6 +118,118 @@ pub fn default_component(kind: SourceKind) -> Component {
         modulation: None,
     }
 }
+/// Envelope kinds offered by component editors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModulationKind {
+    /// Sinusoidal amplitude modulation.
+    Sinusoidal,
+    /// Rectangular gating.
+    Gate,
+}
+/// Default parameters for an envelope kind, in the core model's units.
+pub fn default_modulation(kind: ModulationKind, rate: SampleRate) -> Modulation {
+    match kind {
+        ModulationKind::Sinusoidal => Modulation::Sinusoidal {
+            rate_hz: range(Setting::ModulationRate, rate).default,
+            depth: range(Setting::Depth, rate).default / 100.0,
+        },
+        ModulationKind::Gate => Modulation::Rectangular {
+            rate_hz: range(Setting::GateRate, rate).default,
+            width_seconds: range(Setting::GateWidth, rate).default / 1000.0,
+        },
+    }
+}
+/// Read a control value in its display unit (widths in ms, depth in percent).
+pub fn setting_value(c: &Component, s: Setting) -> Option<f64> {
+    match (s, c.carrier, c.modulation) {
+        (Setting::Level, _, _) => Some(c.peak_dbfs),
+        (Setting::Frequency, Carrier::Tone { frequency_hz }, _) => Some(frequency_hz),
+        (Setting::ClickRate, Carrier::Click { rate_hz, .. }, _) => Some(rate_hz),
+        (Setting::ClickWidth, Carrier::Click { width_seconds, .. }, _) => {
+            Some(width_seconds * 1000.0)
+        }
+        (Setting::ModulationRate, _, Some(Modulation::Sinusoidal { rate_hz, .. }))
+        | (Setting::GateRate, _, Some(Modulation::Rectangular { rate_hz, .. })) => Some(rate_hz),
+        (Setting::Depth, _, Some(Modulation::Sinusoidal { depth, .. })) => Some(depth * 100.0),
+        (Setting::GateWidth, _, Some(Modulation::Rectangular { width_seconds, .. })) => {
+            Some(width_seconds * 1000.0)
+        }
+        _ => None,
+    }
+}
+/// Set a control value in its display unit; unrelated source/envelope shapes remain unchanged. Validation occurs when applying a whole target.
+pub fn set_setting(c: &mut Component, s: Setting, value: f64) {
+    match s {
+        Setting::Level => c.peak_dbfs = value,
+        Setting::Frequency => {
+            if let Carrier::Tone { frequency_hz } = &mut c.carrier {
+                *frequency_hz = value;
+            }
+        }
+        Setting::ClickRate => {
+            if let Carrier::Click { rate_hz, .. } = &mut c.carrier {
+                *rate_hz = value;
+            }
+        }
+        Setting::ClickWidth => {
+            if let Carrier::Click { width_seconds, .. } = &mut c.carrier {
+                *width_seconds = value / 1000.0;
+            }
+        }
+        Setting::ModulationRate => {
+            if let Some(Modulation::Sinusoidal { rate_hz, .. }) = &mut c.modulation {
+                *rate_hz = value;
+            }
+        }
+        Setting::Depth => {
+            if let Some(Modulation::Sinusoidal { depth, .. }) = &mut c.modulation {
+                *depth = value / 100.0;
+            }
+        }
+        Setting::GateRate => {
+            if let Some(Modulation::Rectangular { rate_hz, .. }) = &mut c.modulation {
+                *rate_hz = value;
+            }
+        }
+        Setting::GateWidth => {
+            if let Some(Modulation::Rectangular { width_seconds, .. }) = &mut c.modulation {
+                *width_seconds = value / 1000.0;
+            }
+        }
+    }
+}
+/// Map a normalized slider position to the shared comfortable range; nonfinite input uses its default.
+pub fn slider_value(setting: Setting, rate: SampleRate, position: f64) -> f64 {
+    let r = range(setting, rate);
+    if !position.is_finite() {
+        return r.default;
+    }
+    match r.scale {
+        Scale::Linear => r.min + (r.max - r.min) * position.clamp(0.0, 1.0),
+        Scale::Logarithmic => r.min * (r.max / r.min).powf(position.clamp(0.0, 1.0)),
+    }
+}
+/// Map a control value to a clamped slider position; invalid nonfinite values leave the knob at zero without changing the exact field.
+pub fn slider_position(setting: Setting, rate: SampleRate, value: f64) -> f64 {
+    let r = range(setting, rate);
+    if !value.is_finite() {
+        return 0.0;
+    }
+    match r.scale {
+        Scale::Linear => (value - r.min) / (r.max - r.min),
+        Scale::Logarithmic => (value.clamp(r.min, r.max) / r.min).ln() / (r.max / r.min).ln(),
+    }
+    .clamp(0.0, 1.0)
+}
+fn component_message(error: auditorylab_core::ComponentError) -> String {
+    match error {
+        auditorylab_core::ComponentError::Depth { depth } => format!(
+            "Depth {}% must be finite and between 0 and 100%",
+            depth * 100.0
+        ),
+        _ => error.to_string(),
+    }
+}
 /// Row-specific messages and overall live validity.
 pub struct DraftCheck {
     /// Each component's own error, independently of other rows.
@@ -134,6 +246,7 @@ pub struct Draft {
     fade: f64,
     components: Vec<(ComponentId, Component)>,
     next_id: u32,
+    based_on: Option<Preset>,
 }
 impl Default for Draft {
     fn default() -> Self {
@@ -144,6 +257,7 @@ impl Default for Draft {
             fade: 0.1,
             components: Vec::new(),
             next_id: 0,
+            based_on: None,
         }
     }
 }
@@ -152,14 +266,11 @@ impl Draft {
     pub fn new() -> Self {
         Self::default()
     }
-    /// Copy a recipe for editing, keeping only its title and summary text.
+    /// Copy sound parameters; retain attributed source context separately from blank custom notes.
     pub fn from_preset(preset: &Preset) -> Self {
         let mut draft = Self::new();
         draft.title = format!("{} (edited)", preset.title());
-        draft.summary = preset
-            .about()
-            .and_then(|a| a.summary.clone())
-            .unwrap_or_default();
+        draft.based_on = Some(preset.clone());
         draft.duration = preset.stimulus().duration_seconds;
         draft.fade = preset.stimulus().fade_seconds;
         for component in &preset.stimulus().components {
@@ -170,6 +281,23 @@ impl Draft {
             draft.next_id += 1;
         }
         draft
+    }
+    /// Attributed source recipe, excluded from serialized custom recipe metadata.
+    pub fn based_on(&self) -> Option<&Preset> {
+        self.based_on.as_ref()
+    }
+    /// Compare saved content, excluding component identities and transient source context.
+    pub fn same_content(&self, other: &Self) -> bool {
+        self.title == other.title
+            && self.summary == other.summary
+            && self.duration.to_bits() == other.duration.to_bits()
+            && self.fade.to_bits() == other.fade.to_bits()
+            && self.components.len() == other.components.len()
+            && self
+                .components
+                .iter()
+                .zip(&other.components)
+                .all(|((_, a), (_, b))| a == b)
     }
     /// Components and their stable identities in display order.
     pub fn components(&self) -> &[(ComponentId, Component)] {
@@ -265,7 +393,7 @@ impl Draft {
             components: self
                 .components
                 .iter()
-                .map(|(id, c)| (*id, c.validate(rate).err().map(|e| e.to_string())))
+                .map(|(id, c)| (*id, c.validate(rate).err().map(component_message)))
                 .collect(),
             sound: self
                 .target(rate)
@@ -276,8 +404,15 @@ impl Draft {
     /// Validate a complete live target at the stream's sample rate.
     pub fn target(&self, rate: SampleRate) -> Result<Target, Error> {
         let components: Vec<_> = self.components.iter().map(|(id, c)| (id.0, *c)).collect();
-        Target::new(rate, &components)
-            .map_err(|e| Error::caused(ErrorKind::InvalidSound, e.to_string(), e))
+        Target::new(rate, &components).map_err(|e| {
+            let message = match &e {
+                auditorylab_core::StimulusError::Component { number, error } => {
+                    format!("component {number}: {}", component_message(error.clone()))
+                }
+                _ => e.to_string(),
+            };
+            Error::caused(ErrorKind::InvalidSound, message, e)
+        })
     }
     /// Save finite recipe numbers within the reader's byte limit, using staged publication.
     /// Rate-dependent invalid components may be saved for further editing.
@@ -332,6 +467,22 @@ impl Draft {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn slider_mappings_round_trip_every_setting_at_all_supported_rates() {
+        for hz in [1, 22_050, 44_100, 48_000, 96_000] {
+            let rate = SampleRate::new(hz).unwrap();
+            for setting in Setting::ALL {
+                for position in [0.0, 0.001, 0.25, 0.5, 0.99, 1.0] {
+                    let value = slider_value(setting, rate, position);
+                    assert!(
+                        (slider_position(setting, rate, value) - position).abs() < 1e-12,
+                        "{hz} {setting:?}"
+                    );
+                }
+            }
+        }
+    }
+
     use super::*;
     #[test]
     fn identities_are_never_reused_and_operations_address_the_right_row() {
@@ -355,7 +506,7 @@ mod tests {
         assert!(d.add(SourceKind::Clicks).is_err());
     }
     #[test]
-    fn editing_keeps_parameters_and_only_title_and_summary() {
+    fn editing_keeps_sound_and_source_context_without_copying_research_claims() {
         let p = crate::catalog().unwrap().remove(0);
         let d = Draft::from_preset(&p);
         assert_eq!(d.title(), format!("{} (edited)", p.title()));
@@ -364,7 +515,8 @@ mod tests {
         assert_eq!(d.preset().stimulus().components, p.stimulus().components);
         let saved = d.preset();
         let a = saved.about().unwrap();
-        assert_eq!(a.summary, p.about().unwrap().summary);
+        assert_eq!(a.summary.as_deref(), Some(""));
+        assert_eq!(d.based_on().unwrap().origin(), p.origin());
         assert!(
             a.citation.is_none()
                 && a.study.is_none()
@@ -474,7 +626,7 @@ mod tests {
                     Setting::Depth => {
                         component.modulation = Some(Modulation::Sinusoidal {
                             rate_hz: 40.0,
-                            depth: r.default,
+                            depth: r.default / 100.0,
                         })
                     }
                     Setting::GateRate => {
@@ -523,7 +675,9 @@ mod tests {
     #[test]
     fn invalid_updates_preserve_the_waiting_live_target() {
         let rate = SampleRate::DEFAULT;
-        let mailbox = Arc::new(std::sync::Mutex::new(None));
+        let mailbox = Arc::new(std::sync::Mutex::new(
+            crate::playback::source::Updates::default(),
+        ));
         let control = crate::LiveControl {
             rate,
             mailbox: mailbox.clone(),
@@ -542,7 +696,14 @@ mod tests {
         );
         assert!(control.update(&d).is_err());
         assert_eq!(
-            mailbox.lock().unwrap().as_ref().unwrap().peak_dbfs(),
+            mailbox
+                .lock()
+                .unwrap()
+                .pending
+                .as_ref()
+                .unwrap()
+                .1
+                .peak_dbfs(),
             [f64::NEG_INFINITY; 2]
         );
     }

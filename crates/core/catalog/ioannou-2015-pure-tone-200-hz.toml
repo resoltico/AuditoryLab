@@ -7,7 +7,7 @@ fade_seconds = 0.1
 
 [about]
 title = "200 Hz pure tone"
-studied_for = "Comparison sound in a brain-rhythm study"
+studied_for = "Human study: Comparison sound in a brain-rhythm study"
 summary = "A steady 200 Hz tone in both ears: the comparison minute that came before every binaural beat in a study of 32 adults' brain responses while they watched a silent film. The comparison helped researchers measure responses to the beats; responses were strongest for beats near 10 per second. The study did not test a wellbeing benefit."
 citation = "Ioannou CI, Pereda E, Lindsen JP, Bhattacharya J (2015). Electrical brain responses to an auditory illusion and the impact of musical expertise. PLoS ONE 10(6): e0129486."
 source_url = "https://doi.org/10.1371/journal.pone.0129486"

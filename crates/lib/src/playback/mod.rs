@@ -1,6 +1,7 @@
 //! Default output discovery and callback playback.
 mod callback;
 mod error;
+pub(crate) mod monitor;
 pub(crate) mod output;
 mod shared;
 pub(crate) mod source;

@@ -7,7 +7,7 @@ fade_seconds = 0.1
 
 [about]
 title = "40 Hz train of 1 ms 10 kHz tones"
-studied_for = "Alzheimer's disease research in mice"
+studied_for = "Mouse study: Alzheimer's disease research"
 summary = "Very short 10 kHz beeps, 40 per second, heard as a high buzz. In mice bred to develop Alzheimer's-like changes, one hour a day for a week was associated with less amyloid in hearing and memory areas: 19 mice heard the sound and 19 were unstimulated controls. Recognition-memory tests used 20 mice per group; a water-maze test used 28 sound-exposed mice and 25 controls, with better performance in the sound groups. Each memory experiment also included 9 mice hearing random-interval beeps. The 8- and 80-per-second comparisons did not significantly reduce amyloid. These are mouse findings, and the sound is not an established treatment."
 citation = "Martorell AJ, Paulson AL, Suk HJ, Abdurrob F, Drummond GT, Guan W, et al. (2019). Multi-sensory gamma stimulation ameliorates Alzheimer's-associated pathology and improves cognition. Cell 177(2): 256-271.e22."
 source_url = "https://doi.org/10.1016/j.cell.2019.02.014"

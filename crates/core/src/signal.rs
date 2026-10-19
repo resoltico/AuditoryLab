@@ -48,6 +48,7 @@ pub struct Signal {
     envelope: Envelope,
     voices: Vec<Voice>,
     peak: [f64; 2],
+    facts: Vec<crate::ComponentFacts>,
 }
 
 impl Signal {
@@ -56,13 +57,20 @@ impl Signal {
     /// exact in binary64.
     pub const MAX_FRAMES: u64 = 1 << 36;
 
-    pub(crate) const fn new(
+    pub(crate) fn new(
         sample_rate: SampleRate,
         envelope: Envelope,
         voices: Vec<Voice>,
         peak: [f64; 2],
+        components: &[crate::Component],
     ) -> Self {
+        let facts = components
+            .iter()
+            .zip(&voices)
+            .map(|(c, v)| crate::ComponentFacts::new(c, v, sample_rate))
+            .collect();
         Self {
+            facts,
             sample_rate,
             envelope,
             voices,
@@ -106,6 +114,38 @@ impl Signal {
     #[must_use]
     pub fn peak_dbfs(&self) -> [f64; 2] {
         self.peak.map(numeric::dbfs)
+    }
+
+    /// Validated requested and realized component quantities.
+    pub fn facts(&self) -> &[crate::ComponentFacts] {
+        &self.facts
+    }
+
+    /// Observe a generated frame's finite-source quantities, or None outside the signal.
+    pub fn observation(&self, frame: u64) -> Option<crate::Observation> {
+        if frame >= self.frames() {
+            return None;
+        }
+        let mut voices = [None; 32];
+        for (i, (facts, voice)) in self.facts.iter().zip(&self.voices).enumerate() {
+            let gain = self.envelope.gain_at(frame) * voice.amplitude;
+            voices[i] = Some(crate::VoiceObservation {
+                id: u32::try_from(i).unwrap_or(u32::MAX),
+                role: crate::SlotRole::Continuing,
+                facts: *facts,
+                gains: [
+                    if voice.left { gain } else { 0.0 },
+                    if voice.right { gain } else { 0.0 },
+                ],
+            });
+        }
+        Some(crate::Observation {
+            frame,
+            active_revision: 1,
+            settled_revision: 1,
+            transitioning: false,
+            voices,
+        })
     }
 
     /// Evaluate one frame; the tail is silence.

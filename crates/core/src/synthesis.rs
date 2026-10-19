@@ -73,6 +73,9 @@ pub(crate) struct Pulse {
     frames: u64,
 }
 impl Pulse {
+    pub(crate) const fn frames(self) -> u64 {
+        self.frames
+    }
     /// floor(n × rate/fs), with n below Signal::MAX_FRAMES.
     #[inline]
     fn periods(self, n: u64) -> u64 {
@@ -124,7 +127,7 @@ pub(crate) enum Modulator {
     Sinusoidal { step: u64, depth: f64 },
     Rectangular(Pulse),
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Voice {
     pub(crate) left: bool,
     pub(crate) right: bool,

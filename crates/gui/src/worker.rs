@@ -1,13 +1,14 @@
 //! One operation thread and its progress channel.
-use auditorylab::{Cancel, Draft, LiveControl, OutputInfo, Preset, Progress, Sound};
+use auditorylab::{Cancel, Draft, LiveControl, Preset, Progress, Sound};
 use std::{
     path::PathBuf,
     sync::mpsc::{self, Receiver, TryRecvError},
     thread::{self, JoinHandle},
 };
 pub(crate) enum Message {
-    Ready(OutputInfo, Sound),
-    LiveReady(OutputInfo, LiveControl),
+    Ready(auditorylab::MonitorReader),
+    LiveReady(LiveControl, auditorylab::MonitorReader),
+    Saved(Result<(Draft, PathBuf), auditorylab::Error>),
     Imported(Result<Preset, auditorylab::Error>),
     Done(Result<String, auditorylab::Error>),
 }
@@ -37,11 +38,11 @@ impl Worker {
             }
             Work::Play(preset) => {
                 let result = auditorylab::prepare_playback(&preset)
-                    .and_then(|playback| {
-                        let _ = tx.send(Message::Ready(
-                            playback.output().clone(),
-                            playback.sound().clone(),
-                        ));
+                    .and_then(|mut playback| {
+                        let reader = playback
+                            .monitor(auditorylab::MonitorDetail::Waveform)
+                            .reader();
+                        let _ = tx.send(Message::Ready(reader));
                         playback.play(&c, &p)
                     })
                     .map(|played| {
@@ -55,8 +56,9 @@ impl Worker {
             }
             Work::Live(draft) => {
                 let result = auditorylab::prepare_live(&draft)
-                    .and_then(|live| {
-                        let _ = tx.send(Message::LiveReady(live.output().clone(), live.control()));
+                    .and_then(|mut live| {
+                        let reader = live.monitor(auditorylab::MonitorDetail::Waveform).reader();
+                        let _ = tx.send(Message::LiveReady(live.control(), reader));
                         live.play(&c, &p)
                     })
                     .map(|played| {
@@ -71,8 +73,8 @@ impl Worker {
             Work::Save(draft, path) => {
                 let result = draft
                     .save(&path, auditorylab::Replace::Allowed)
-                    .map(|()| format!("Saved recipe to {path:?}."));
-                let _ = tx.send(Message::Done(result));
+                    .map(|()| (draft, path));
+                let _ = tx.send(Message::Saved(result));
             }
             Work::Export(sound, path) => {
                 let result =

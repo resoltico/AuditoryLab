@@ -34,6 +34,7 @@ pub(crate) fn frame_duration(frames: u64, rate_hz: u32, rounding: Rounding) -> D
 /// playback is complete once a callback runs at or after it.
 pub(crate) struct Callback {
     source: Source,
+    monitor: Option<super::monitor::PlaybackMonitor>,
     progress: crate::Progress,
     shared: Arc<Shared>,
     scratch: Vec<[f64; 2]>,
@@ -58,6 +59,7 @@ impl Callback {
         let sample_rate_hz = source.rate().hz();
         Self {
             source,
+            monitor: None,
             progress: crate::Progress::default(),
             shared,
             scratch: vec![[0.0; 2]; SCRATCH_FRAMES],
@@ -70,6 +72,10 @@ impl Callback {
         }
     }
 
+    pub(crate) fn with_monitor(mut self, monitor: Option<super::monitor::PlaybackMonitor>) -> Self {
+        self.monitor = monitor;
+        self
+    }
     pub(crate) fn with_progress(mut self, progress: crate::Progress) -> Self {
         self.progress = progress;
         self
@@ -174,11 +180,16 @@ impl Callback {
 
     /// Render the next signal frames and place them on the device's channels.
     fn render<T: Copy>(&mut self, output: &mut [T], convert: &impl Fn(f64) -> T) -> u64 {
+        let mut publication = self.monitor.as_ref().and_then(|m| m.try_publish());
         let mut active = 0;
         for chunk in output.chunks_mut(SCRATCH_FRAMES * self.device_channels) {
             let frames = chunk.len() / self.device_channels;
             let scratch = &mut self.scratch[..frames];
+            let start = self.source.frame();
             let count = self.source.render(scratch);
+            if let Some(publication) = publication.as_mut() {
+                publication.append(start, &scratch[..count]);
+            }
             active += count as u64;
             for (device_frame, signal_frame) in chunk
                 .chunks_exact_mut(self.device_channels)
@@ -186,6 +197,13 @@ impl Callback {
             {
                 place(device_frame, signal_frame, convert);
             }
+        }
+        if let Some(publication) = publication.as_mut() {
+            publication.finish(
+                self.source.frame(),
+                self.source.observation(),
+                self.source.finished(),
+            );
         }
         active
     }
@@ -643,12 +661,15 @@ mod tests {
         }
     }
     fn live_callback() -> (Callback, crate::playback::source::Mailbox) {
-        let mailbox = Arc::new(std::sync::Mutex::new(None));
-        *mailbox.lock().unwrap() = Some(auditorylab_core::live::Target::silence(rate(8_000)));
-        let source = Source::Live {
-            engine: Box::new(auditorylab_core::live::Engine::new(rate(8_000))),
+        let mailbox = Arc::new(std::sync::Mutex::new(
+            super::super::source::Updates::default(),
+        ));
+        mailbox.lock().unwrap().pending =
+            Some((1, auditorylab_core::live::Target::silence(rate(8_000))));
+        let source = Source::Live(Box::new(crate::LiveGenerator {
+            engine: auditorylab_core::live::Engine::new(rate(8_000)),
             mailbox: mailbox.clone(),
-        };
+        }));
         (Callback::new(source, 2, Arc::default()), mailbox)
     }
     #[test]
@@ -673,7 +694,7 @@ mod tests {
         let calls = std::cell::Cell::new(0);
         c.fill(&mut output, time(0, 0), &|v| {
             if calls.replace(calls.get() + 1) == 0 {
-                *mailbox.lock().unwrap() = Some(target);
+                mailbox.lock().unwrap().pending = Some((2, target));
             }
             v
         });

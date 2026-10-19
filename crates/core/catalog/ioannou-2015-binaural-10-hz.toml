@@ -7,7 +7,7 @@ fade_seconds = 0.1
 
 [about]
 title = "10 Hz binaural beat"
-studied_for = "Brain-rhythm response"
+studied_for = "Human study: Brain-rhythm response"
 summary = "200 Hz in the left ear and 210 Hz in the right, heard through headphones as a 10-per-second binaural beat. In one study, 32 adults, half of them musicians, listened while watching a silent film; their brain recordings followed beats near 10 per second most strongly. The study measured brain responses, not effects such as relaxation or focus. Reviews of binaural-beat research report mixed results."
 citation = "Ioannou CI, Pereda E, Lindsen JP, Bhattacharya J (2015). Electrical brain responses to an auditory illusion and the impact of musical expertise. PLoS ONE 10(6): e0129486."
 source_url = "https://doi.org/10.1371/journal.pone.0129486"

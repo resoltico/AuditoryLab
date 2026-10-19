@@ -1,7 +1,7 @@
 //! Desktop selection, editing, validation and operation transitions.
 use auditorylab::{
-    Carrier, Component, ComponentId, Draft, Ears, LiveControl, Modulation, Origin, Preset,
-    SampleRate, Scale, Setting, Sound, SourceKind, format_dbfs, human_duration, range,
+    ComponentId, Draft, Ears, LiveControl, Origin, Preset, SampleRate, Setting, SourceKind,
+    format_dbfs, human_duration, set_setting, setting_value,
 };
 use std::collections::HashMap;
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -14,18 +14,19 @@ pub(crate) enum Operation {
 }
 trait TargetControl {
     fn sample_rate(&self) -> SampleRate;
-    fn update(&self, draft: &Draft) -> Result<(), auditorylab::Error>;
+    fn update(&self, draft: &Draft) -> Result<u64, auditorylab::Error>;
 }
 impl TargetControl for LiveControl {
     fn sample_rate(&self) -> SampleRate {
         self.sample_rate()
     }
-    fn update(&self, draft: &Draft) -> Result<(), auditorylab::Error> {
+    fn update(&self, draft: &Draft) -> Result<u64, auditorylab::Error> {
         self.update(draft)
     }
 }
 pub(crate) struct Workbench {
     pub(crate) draft: Draft,
+    pub(crate) saved: Draft,
     control: Option<Box<dyn TargetControl>>,
     pub(crate) messages: HashMap<ComponentId, String>,
     pub(crate) parse_errors: HashMap<(ComponentId, Setting), String>,
@@ -33,12 +34,13 @@ pub(crate) struct Workbench {
     pub(crate) pending_metadata: HashMap<String, String>,
     pub(crate) metadata_errors: HashMap<&'static str, String>,
     pub(crate) peak: String,
-    pub(crate) preview: Option<Sound>,
+    pub(crate) application_error: Option<String>,
 }
 impl Workbench {
     pub(crate) fn new(draft: Draft, rate: SampleRate) -> Self {
         let mut this = Self {
             draft,
+            saved: Draft::new(),
             control: None,
             messages: HashMap::new(),
             parse_errors: HashMap::new(),
@@ -46,10 +48,16 @@ impl Workbench {
             pending: HashMap::new(),
             pending_metadata: HashMap::new(),
             peak: String::new(),
-            preview: None,
+            application_error: None,
         };
         this.refresh(rate);
         this
+    }
+    pub(crate) fn dirty(&self) -> bool {
+        !self.draft.same_content(&self.saved)
+            || self.has_pending()
+            || !self.parse_errors.is_empty()
+            || !self.metadata_errors.is_empty()
     }
     pub(crate) fn rate(&self, export: SampleRate) -> SampleRate {
         self.control
@@ -66,6 +74,7 @@ impl Workbench {
     }
     pub(crate) fn refresh(&mut self, export: SampleRate) {
         let rate = self.rate(export);
+        self.application_error = None;
         let check = self.draft.check(rate);
         self.messages = check
             .components
@@ -83,19 +92,10 @@ impl Workbench {
         }
         self.peak = match check.sound {
             Ok(peak) if self.parse_errors.is_empty() => {
-                let mut preview = self.draft.clone();
-                // Match the live engine's entire frame lifetime, without export edge fades.
-                #[allow(
-                    clippy::cast_precision_loss,
-                    reason = "MAX_FRAMES is an exactly representable power of two"
-                )]
-                let duration = auditorylab::Signal::MAX_FRAMES as f64 / f64::from(rate.hz());
-                preview.set_duration_seconds(duration);
-                preview.set_fade_seconds(0.0);
-                self.preview = preview.preset().at(rate).ok();
                 if let Some(control) = &self.control {
                     // Validated above at this exact rate; a poisoned mailbox is still actionable.
                     if let Err(error) = control.update(&self.draft) {
+                        self.application_error = Some(error.to_string());
                         return self.peak = error.to_string();
                     }
                 }
@@ -118,11 +118,15 @@ impl Workbench {
             .map(|(id, _)| *id)
     }
     pub(crate) fn edit(&mut self, id: ComponentId, setting: Setting, text: &str, rate: SampleRate) {
+        self.apply_text(id, setting, text);
+        self.refresh(rate);
+    }
+    fn apply_text(&mut self, id: ComponentId, setting: Setting, text: &str) {
         if !self
             .draft
             .components()
             .iter()
-            .any(|(key, c)| *key == id && value(c, setting).is_some())
+            .any(|(key, c)| *key == id && setting_value(c, setting).is_some())
         {
             return;
         }
@@ -134,7 +138,7 @@ impl Workbench {
                     self.draft.components().iter().find(|(key, _)| *key == id)
                 {
                     let mut component = *component;
-                    set_value(&mut component, setting, value);
+                    set_setting(&mut component, setting, value);
                     self.draft.replace(id, component);
                 }
             }
@@ -143,7 +147,6 @@ impl Workbench {
                     .insert((id, setting), format!("{setting:?}: enter a finite number"));
             }
         }
-        self.refresh(rate);
     }
     pub(crate) fn choice(&mut self, id: ComponentId, choice: i32, index: i32, rate: SampleRate) {
         let Some((_, component)) = self.draft.components().iter().find(|(key, _)| *key == id)
@@ -169,14 +172,14 @@ impl Workbench {
             }
             2 => {
                 c.modulation = match index {
-                    1 => Some(Modulation::Sinusoidal {
-                        rate_hz: range(Setting::ModulationRate, rate).default,
-                        depth: range(Setting::Depth, rate).default,
-                    }),
-                    2 => Some(Modulation::Rectangular {
-                        rate_hz: range(Setting::GateRate, rate).default,
-                        width_seconds: range(Setting::GateWidth, rate).default / 1000.0,
-                    }),
+                    1 => Some(auditorylab::default_modulation(
+                        auditorylab::ModulationKind::Sinusoidal,
+                        rate,
+                    )),
+                    2 => Some(auditorylab::default_modulation(
+                        auditorylab::ModulationKind::Gate,
+                        rate,
+                    )),
                     _ => None,
                 }
             }
@@ -184,9 +187,9 @@ impl Workbench {
         }
         // Discard parser errors only for controls that the kind change removes.
         self.parse_errors
-            .retain(|(key, setting), _| *key != id || value(&c, *setting).is_some());
+            .retain(|(key, setting), _| *key != id || setting_value(&c, *setting).is_some());
         self.pending
-            .retain(|(key, setting), _| *key != id || value(&c, *setting).is_some());
+            .retain(|(key, setting), _| *key != id || setting_value(&c, *setting).is_some());
         self.draft.replace(id, c);
         self.refresh(rate);
     }
@@ -227,11 +230,12 @@ impl Workbench {
     }
     pub(crate) fn commit_pending(&mut self, rate: SampleRate) {
         for ((id, setting), text) in std::mem::take(&mut self.pending) {
-            self.edit(id, setting, &text, rate);
+            self.apply_text(id, setting, &text);
         }
         for (key, text) in std::mem::take(&mut self.pending_metadata) {
             self.metadata(&key, &text);
         }
+        self.refresh(rate);
     }
     pub(crate) fn has_pending(&self) -> bool {
         !self.pending.is_empty() || !self.pending_metadata.is_empty()
@@ -240,89 +244,14 @@ impl Workbench {
         self.parse_errors.is_empty() && self.metadata_errors.is_empty()
     }
 }
-pub(crate) fn value(c: &Component, s: Setting) -> Option<f64> {
-    match (s, c.carrier, c.modulation) {
-        (Setting::Level, _, _) => Some(c.peak_dbfs),
-        (Setting::Frequency, Carrier::Tone { frequency_hz }, _) => Some(frequency_hz),
-        (Setting::ClickRate, Carrier::Click { rate_hz, .. }, _) => Some(rate_hz),
-        (Setting::ClickWidth, Carrier::Click { width_seconds, .. }, _) => {
-            Some(width_seconds * 1000.0)
-        }
-        (Setting::ModulationRate, _, Some(Modulation::Sinusoidal { rate_hz, .. }))
-        | (Setting::GateRate, _, Some(Modulation::Rectangular { rate_hz, .. })) => Some(rate_hz),
-        (Setting::Depth, _, Some(Modulation::Sinusoidal { depth, .. })) => Some(depth),
-        (Setting::GateWidth, _, Some(Modulation::Rectangular { width_seconds, .. })) => {
-            Some(width_seconds * 1000.0)
-        }
-        _ => None,
-    }
-}
-fn set_value(c: &mut Component, s: Setting, value: f64) {
-    match s {
-        Setting::Level => c.peak_dbfs = value,
-        Setting::Frequency => {
-            if let Carrier::Tone { frequency_hz } = &mut c.carrier {
-                *frequency_hz = value;
-            }
-        }
-        Setting::ClickRate => {
-            if let Carrier::Click { rate_hz, .. } = &mut c.carrier {
-                *rate_hz = value;
-            }
-        }
-        Setting::ClickWidth => {
-            if let Carrier::Click { width_seconds, .. } = &mut c.carrier {
-                *width_seconds = value / 1000.0;
-            }
-        }
-        Setting::ModulationRate => {
-            if let Some(Modulation::Sinusoidal { rate_hz, .. }) = &mut c.modulation {
-                *rate_hz = value;
-            }
-        }
-        Setting::Depth => {
-            if let Some(Modulation::Sinusoidal { depth, .. }) = &mut c.modulation {
-                *depth = value;
-            }
-        }
-        Setting::GateRate => {
-            if let Some(Modulation::Rectangular { rate_hz, .. }) = &mut c.modulation {
-                *rate_hz = value;
-            }
-        }
-        Setting::GateWidth => {
-            if let Some(Modulation::Rectangular { width_seconds, .. }) = &mut c.modulation {
-                *width_seconds = value / 1000.0;
-            }
-        }
-    }
-}
-pub(crate) fn slider_value(setting: Setting, rate: SampleRate, position: f64) -> f64 {
-    let r = range(setting, rate);
-    match r.scale {
-        Scale::Linear => r.min + (r.max - r.min) * position.clamp(0.0, 1.0),
-        Scale::Logarithmic => r.min * (r.max / r.min).powf(position.clamp(0.0, 1.0)),
-    }
-}
-pub(crate) fn slider_position(setting: Setting, rate: SampleRate, value: f64) -> f64 {
-    let r = range(setting, rate);
-    match r.scale {
-        Scale::Linear => (value - r.min) / (r.max - r.min),
-        Scale::Logarithmic => (value.clamp(r.min, r.max) / r.min).ln() / (r.max / r.min).ln(),
-    }
-    .clamp(0.0, 1.0)
-}
 pub(crate) struct App {
     pub(crate) presets: Vec<Preset>,
     pub(crate) selected: usize,
     pub(crate) rate: SampleRate,
     pub(crate) operation: Option<Operation>,
-    pub(crate) closing: bool,
-    pub(crate) playback: Option<Sound>,
     pub(crate) status: String,
     pub(crate) workbench: Workbench,
     pub(crate) editing: bool,
-    pub(crate) operation_editing: bool,
 }
 impl App {
     pub(crate) fn new(presets: Vec<Preset>) -> Self {
@@ -331,47 +260,41 @@ impl App {
             selected: 0,
             rate: SampleRate::DEFAULT,
             operation: None,
-            closing: false,
-            playback: None,
             status: String::new(),
             workbench: Workbench::new(Draft::new(), SampleRate::DEFAULT),
             editing: false,
-            operation_editing: false,
         }
     }
     pub(crate) fn preset(&self) -> &Preset {
         &self.presets[self.selected]
     }
     pub(crate) fn select(&mut self, index: usize) {
-        if self.operation.is_none() && index < self.presets.len() {
+        if index < self.presets.len() {
             self.selected = index;
-            self.status.clear();
         }
     }
     pub(crate) fn start(&mut self, op: Operation) -> bool {
-        if self.operation.is_some() || self.closing {
+        if self.operation.is_some() {
             return false;
         }
         self.operation = Some(op);
-        self.operation_editing = self.editing;
         self.status.clear();
         true
     }
     pub(crate) fn finish(&mut self) {
         self.operation = None;
-        self.playback = None;
         self.workbench.control = None;
         self.workbench.refresh(self.rate);
     }
-    pub(crate) fn open_workbench(&mut self) {
+    pub(crate) fn open_workbench(&mut self, preset: &Preset) {
         if self.operation.is_some() {
             return;
         }
-        if self.preset().stimulus().components.len() > 16 {
+        if preset.stimulus().components.len() > 16 {
             self.status="Workbench supports at most 16 components; edit the recipe file to reduce its component count.".into();
             return;
         }
-        self.workbench = Workbench::new(Draft::from_preset(self.preset()), self.rate);
+        self.workbench = Workbench::new(Draft::from_preset(preset), self.rate);
         self.editing = true;
     }
     pub(crate) fn imported(&mut self, result: Result<Preset, auditorylab::Error>) -> bool {
@@ -396,36 +319,29 @@ impl App {
         }
         true
     }
-    pub(crate) fn sound(&self) -> Result<Sound, auditorylab::Error> {
-        self.playback
-            .clone()
-            .map_or_else(|| self.preset().at(self.rate), Ok)
-    }
 }
-pub(crate) fn label(p: &Preset) -> String {
+pub(crate) fn label(p: &Preset, rate: SampleRate) -> String {
+    let structure = p.at(rate).map_or_else(
+        |_| "Recipe needs validation".into(),
+        |sound| auditorylab::sound_brief(&sound),
+    );
     format!(
-        "{}{}\n{} · {}",
+        "{}{}\n{}\n{} · {}",
         if matches!(p.origin(), Origin::File(_)) {
-            "Imported: "
+            "Imported · "
         } else {
             ""
         },
         p.title(),
+        structure,
         p.about()
             .and_then(|a| a.studied_for.as_deref())
             .unwrap_or("Custom recipe"),
         human_duration(p.stimulus().duration_seconds)
     )
 }
-pub(crate) fn scope_start(sound: &Sound, playing: bool, position: u64, frames: u64) -> u64 {
-    if playing {
-        position.saturating_sub(frames)
-    } else {
-        sound.signal().fade_frames()
-    }
-}
 pub(crate) fn details(p: &Preset, rate: SampleRate) -> String {
-    let mut text = String::new();
+    let mut text = format!("Source: {}\n\n", p.origin());
     for (name, value) in p.research() {
         text.push_str(&format!("{name}: {value}\n\n"));
     }
@@ -435,6 +351,7 @@ pub(crate) fn details(p: &Preset, rate: SampleRate) -> String {
     match p.at(rate) {
         Ok(sound) => {
             let s = sound.signal();
+            text.push_str(&auditorylab::sound_description(&sound, true));
             text.push_str(&format!(
                 "\n{} Hz · {} frames · {}\nFade: {} frames\nPeak bounds: {} / {} dBFS",
                 rate.hz(),
@@ -466,22 +383,21 @@ mod tests {
         assert!(app.status.contains("bad import"));
     }
     #[test]
-    fn selection_is_locked_and_close_waits_for_the_active_operation() {
+    fn browsing_continues_while_worker_operations_remain_serialized() {
         let mut app = App::new(auditorylab::catalog().unwrap());
         app.select(3);
         assert_eq!(app.selected, 3);
         assert!(app.start(Operation::Play));
         assert!(!app.start(Operation::Export));
         app.select(4);
-        assert_eq!(app.selected, 3);
-        app.closing = true;
+        assert_eq!(app.selected, 4);
         assert!(app.operation.is_some());
         app.finish();
-        assert!(!app.start(Operation::Play));
-        assert_eq!(app.selected, 3);
+        assert!(app.start(Operation::Play));
+        assert_eq!(app.selected, 4);
     }
     #[test]
-    fn imports_replace_the_same_origin_and_scope_tracks_the_sound_rate() {
+    fn imports_replace_the_same_origin_without_duplicating_library_rows() {
         let mut app = App::new(auditorylab::catalog().unwrap());
         let preset = auditorylab::load_reader(
             b"schema_version=2\nduration_seconds=1\nfade_seconds=0\n".as_slice(),
@@ -491,25 +407,6 @@ mod tests {
         app.imported(Ok(preset.clone()));
         app.imported(Ok(preset));
         assert_eq!(app.presets.len(), 20);
-        let sound = app.sound().unwrap();
-        assert_eq!(scope_start(&sound, true, 1000, 480), 520);
-        assert_eq!(scope_start(&sound, true, 10, 480), 0);
-        assert_eq!(scope_start(&sound, false, 1000, 480), 0);
-    }
-    #[test]
-    fn slider_mappings_round_trip_every_setting_at_all_supported_rates() {
-        for hz in [1, 22_050, 44_100, 48_000, 96_000] {
-            let rate = SampleRate::new(hz).unwrap();
-            for setting in Setting::ALL {
-                for position in [0.0, 0.001, 0.25, 0.5, 0.99, 1.0] {
-                    let value = slider_value(setting, rate, position);
-                    assert!(
-                        (slider_position(setting, rate, value) - position).abs() < 1e-12,
-                        "{hz} {setting:?}"
-                    );
-                }
-            }
-        }
     }
     type Sent = std::rc::Rc<std::cell::RefCell<Vec<Draft>>>;
     struct Recorder {
@@ -520,10 +417,10 @@ mod tests {
         fn sample_rate(&self) -> SampleRate {
             self.rate
         }
-        fn update(&self, draft: &Draft) -> Result<(), auditorylab::Error> {
+        fn update(&self, draft: &Draft) -> Result<u64, auditorylab::Error> {
             draft.target(self.rate)?;
             self.sent.borrow_mut().push(draft.clone());
-            Ok(())
+            Ok(u64::try_from(self.sent.borrow().len()).unwrap())
         }
     }
     #[test]
@@ -542,25 +439,12 @@ mod tests {
         );
         assert_eq!(sent.borrow().len(), 1);
         assert_eq!(
-            value(&sent.borrow()[0].components()[0].1, Setting::Frequency),
+            setting_value(&sent.borrow()[0].components()[0].1, Setting::Frequency),
             Some(1000.0)
         );
-        assert_eq!(w.preview.as_ref().unwrap().signal().sample_rate(), rate);
-        let expected = w
-            .preview
-            .as_ref()
-            .unwrap()
-            .preset()
-            .stimulus()
-            .components
-            .clone();
         w.edit(id, Setting::Frequency, "23000", SampleRate::DEFAULT);
         assert!(w.messages[&id].contains("frequency"));
         assert_eq!(sent.borrow().len(), 1);
-        assert_eq!(
-            w.preview.as_ref().unwrap().preset().stimulus().components,
-            expected
-        );
         w.edit(id, Setting::Frequency, "1e-", SampleRate::DEFAULT);
         assert!(w.messages[&id].contains("finite number"));
         assert_eq!(sent.borrow().len(), 1);
@@ -568,10 +452,13 @@ mod tests {
         assert!(w.messages.is_empty());
         assert_eq!(sent.borrow().len(), 2);
         assert_eq!(
-            value(&w.draft.components()[0].1, Setting::Frequency),
+            setting_value(&w.draft.components()[0].1, Setting::Frequency),
             Some(10.0)
         );
-        assert_eq!(slider_position(Setting::Frequency, rate, 10.0), 0.0);
+        assert_eq!(
+            auditorylab::slider_position(Setting::Frequency, rate, 10.0),
+            0.0
+        );
     }
     #[test]
     fn invalid_draft_before_ready_leaves_initial_target_unchanged() {
@@ -590,29 +477,9 @@ mod tests {
         assert!(!w.messages.is_empty());
     }
     #[test]
-    fn preview_spans_the_live_lifetime_instead_of_ending_at_one_hour() {
-        for hz in [44_100, 48_000, 96_000] {
-            let rate = SampleRate::new(hz).unwrap();
-            let mut draft = Draft::new();
-            draft.add(SourceKind::Tone).unwrap();
-            let w = Workbench::new(draft, rate);
-            let signal = w.preview.as_ref().unwrap().signal();
-            assert_eq!(signal.frames(), auditorylab::Signal::MAX_FRAMES);
-            assert_eq!(signal.fade_frames(), 0);
-            let mut bins = Vec::new();
-            for start in [u64::from(hz) * 3601, signal.frames() - 1000] {
-                auditorylab::trace(signal, start, 480, 64, &mut bins);
-                assert!(
-                    bins.iter()
-                        .any(|bin| bin[0].min != 0.0 || bin[0].max != 0.0)
-                );
-            }
-        }
-    }
-    #[test]
     fn row_identity_limit_removal_and_cross_tab_operation_ownership() {
         let mut app = App::new(auditorylab::catalog().unwrap());
-        app.open_workbench();
+        app.open_workbench(&app.preset().clone());
         let original = app.workbench.draft.components()[0].0;
         app.workbench
             .edit(original, Setting::Level, "bad", app.rate);
@@ -623,11 +490,10 @@ mod tests {
         }
         assert!(app.workbench.draft.add(SourceKind::Tone).is_err());
         assert!(app.start(Operation::Live));
-        assert!(app.operation_editing);
         app.editing = false;
         assert!(!app.start(Operation::Play));
         let before = app.workbench.draft.components().len();
-        app.open_workbench();
+        app.open_workbench(&app.preset().clone());
         assert_eq!(app.workbench.draft.components().len(), before);
         app.finish();
         assert!(app.workbench.control.is_none());
@@ -647,7 +513,7 @@ mod tests {
         assert_eq!(w.draft.duration_seconds(), 0.05);
         assert_eq!(w.draft.fade_seconds(), 0.0);
         assert_eq!(
-            value(&w.draft.components()[0].1, Setting::Frequency),
+            setting_value(&w.draft.components()[0].1, Setting::Frequency),
             Some(1234.0)
         );
         assert!(w.can_save());
@@ -655,7 +521,7 @@ mod tests {
         w.commit_pending(SampleRate::DEFAULT);
         assert!(!w.can_save());
         assert_eq!(
-            value(&w.draft.components()[0].1, Setting::Frequency),
+            setting_value(&w.draft.components()[0].1, Setting::Frequency),
             Some(1234.0)
         );
     }
@@ -685,11 +551,49 @@ mod tests {
         );
         app.imported(auditorylab::load_reader(text.as_bytes(), "oversized"));
         let origin = app.preset().origin().clone();
-        app.open_workbench();
+        app.open_workbench(&app.preset().clone());
         assert!(!app.editing);
         assert!(app.workbench.draft.components().is_empty());
         assert_eq!(app.preset().origin(), &origin);
         assert_eq!(app.preset().stimulus().components.len(), 17);
         assert!(app.status.contains("at most 16"));
+    }
+    #[test]
+    fn dirty_state_uses_the_saved_snapshot_and_keeps_later_edits() {
+        let mut w = Workbench::new(Draft::new(), SampleRate::DEFAULT);
+        assert!(!w.dirty());
+        w.metadata("title", "saved title");
+        assert!(w.dirty());
+        let snapshot = w.draft.clone();
+        w.metadata("title", "later title");
+        w.saved = snapshot.clone();
+        assert!(w.dirty());
+        w.draft = snapshot;
+        assert!(!w.dirty());
+        w.pending_metadata
+            .insert("title".into(), "pending title".into());
+        assert!(w.dirty());
+        w.commit_pending(SampleRate::DEFAULT);
+        assert_eq!(w.draft.title(), "pending title");
+    }
+    #[test]
+    fn a_pending_batch_with_a_parser_error_never_sends_a_partial_target() {
+        let mut w = Workbench::new(Draft::new(), SampleRate::DEFAULT);
+        let a = w.draft.add(SourceKind::Tone).unwrap();
+        let b = w.draft.add(SourceKind::Tone).unwrap();
+        let sent = Sent::default();
+        w.attach(
+            Box::new(Recorder {
+                rate: SampleRate::DEFAULT,
+                sent: sent.clone(),
+            }),
+            SampleRate::DEFAULT,
+        );
+        assert_eq!(sent.borrow().len(), 1);
+        w.pending.insert((a, Setting::Frequency), "1000".into());
+        w.pending.insert((b, Setting::Level), "bad".into());
+        w.commit_pending(SampleRate::DEFAULT);
+        assert_eq!(sent.borrow().len(), 1);
+        assert!(!w.parse_errors.is_empty());
     }
 }

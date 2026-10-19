@@ -79,13 +79,13 @@ jobs:
       matrix:
         include:
           - runner: macos-15
-            target: universal-apple-darwin
-            platform: macos-universal
+            target: aarch64-apple-darwin
+            platform: macos-aarch64
             upload: true
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             platform: macos-x86_64
-            upload: false
+            upload: true
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             platform: linux-x86_64
@@ -124,9 +124,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev
       - run: rustup toolchain install
-      - name: Install Intel macOS target
-        if: matrix.target == 'universal-apple-darwin'
-        run: rustup target add x86_64-apple-darwin
       - name: Install cargo-about
         run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --target-dir target --features cli
       - run: cargo clippy --workspace --all-targets --locked
@@ -150,7 +147,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: [synthesis, live]
+        source: [synthesis, live, facts]
     needs: lint
     if: github.event_name != 'schedule' && needs.lint.outputs.core-changed == 'true'
     runs-on: ubuntu-24.04

@@ -51,3 +51,11 @@ Turn the volume down before `play`. Its start line gives the title, source, dura
 Recipe saving and WAV export never replace an existing file. Choose another output path when a destination exists. The library writes a hidden `.NAME.RANDOM.partial` file beside the destination, syncs it, then publishes it. WAV uses RIFF when its sizes fit, otherwise RF64. Cancellation or write failure removes the partial file; a cleanup error identifies any leftover. Unix output permissions follow ordinary file creation and the inherited umask.
 
 During export/play, the first Ctrl-C requests cancellation and the second exits immediately with 130. On Unix, SIGTERM and SIGHUP also request cancellation. Export checks before creating the partial file, between blocks and before publication. Playback checks cancellation every 10 ms, then fades over 30 ms of generated sound (or the remaining frames near the end) and exits 130. Sound already queued by the device drains according to its backend. A completed publication stays successful if cancellation arrives afterward. Forced termination can leave the hidden partial file beside the destination.
+
+## Generated status and identity
+
+`auditorylab --version` and `-V` print `auditorylab 0.4.0 (build 1)`, followed by a short source revision when supplied at build time. They open no audio device.
+
+Describe and Inspect use shared typed carrier, modulation, pulse-width and routing facts. Inspect distinguishes requested rates from integer-phase realized rates. Interaural difference appears only for one unmodulated left-only tone and one right-only tone, with no additional active generator.
+
+Play prints source facts at the bound device rate. When stderr is a terminal, a compact status line updates at 4 Hz with estimated output elapsed time and last-generated-frame quantities. Completion, errors and Ctrl-C clear the line; Ctrl-C retains exit 130. Redirected stderr contains start/final text and meaningful warnings without carriage-return animation. Recipe stdout remains byte-preserving and export remains no-clobber. The CLI has no interactive live-edit grammar; reusable library callers can use `LiveGenerator`, its revisioned control and generated observations directly.

@@ -362,6 +362,7 @@ impl Stimulus {
             Envelope::new(frames, fade_frames),
             voices,
             peak,
+            &self.components,
         ))
     }
 
@@ -403,6 +404,11 @@ pub enum StimulusError {
         fade_frames: u64,
         /// The stimulus length.
         frames: u64,
+    },
+    /// Caller supplied an ambiguous live component identity.
+    DuplicateComponentId {
+        /// The duplicated identity.
+        id: u32,
     },
     /// More than [`Stimulus::MAX_COMPONENTS`] components.
     TooManyComponents {
@@ -498,6 +504,9 @@ pub enum ComponentError {
 impl Display for StimulusError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::DuplicateComponentId { id } => {
+                write!(f, "duplicate live component identity {id}")
+            }
             Self::Duration {
                 seconds,
                 sample_rate_hz,

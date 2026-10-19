@@ -7,7 +7,7 @@ fade_seconds = 0.1
 
 [about]
 title = "240 Hz pure tone"
-studied_for = "Comparison sound in a working-memory study"
+studied_for = "Human study: Comparison sound in a working-memory study"
 summary = "A steady 240 Hz tone in both ears: the study's comparison sound, the binaural beats' tone without a beat. In one study, 28 adults heard it for 5 minutes during a visual memory task, and their accuracy fell slightly; only the 15 Hz binaural beat improved it. Reaction times did not differ significantly between the study's sounds."
 citation = "Beauchene C, Abaid N, Moran R, Diana RA, Leonessa A (2016). The effect of binaural beats on visuospatial working memory and cortical connectivity. PLoS ONE 11(11): e0166630."
 source_url = "https://doi.org/10.1371/journal.pone.0166630"
