@@ -76,7 +76,7 @@ impl SampleRate {
     }
 
     /// The duration of `frames` in seconds, for presentation; division can round.
-    pub(crate) fn seconds_in(self, frames: u64) -> f64 {
+    pub fn seconds_in(self, frames: u64) -> f64 {
         numeric::frames_to_f64(frames) / self.as_f64()
     }
 }

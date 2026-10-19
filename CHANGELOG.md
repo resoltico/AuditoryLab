@@ -4,15 +4,12 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-10-19
-
 ### Breaking
 
 - Desktop drawing requires an OpenGL-capable graphics driver; software-renderer recovery is removed.
 - Integer-phase oscillators and exact frame-quantized pulse timing replace the synthesis model. Click and rectangular-gate pulses last exactly `round(width_seconds × sample rate)` frames and start on the first frame at or after each onset; edges can move by one frame against 0.3.0. Recipes that leave no closed frame in a period, or whose pulse widths exceed 2^36 frames at the selected rate, are rejected. Reduce such widths to the supported frame limit. Tone and modulation sample bits also change.
 - Rust packages are `auditorylab-core`, `auditorylab`, `auditorylab-cli` and `auditorylab-gui`, under `crates/core`, `crates/lib`, `crates/cli` and `crates/gui`. WAV and device APIs move into the library. Callers use `Stimulus::signal`, immutable seekable `Signal`, and the library's loading/export/playback API; update Rust imports and exhaustive error matches. Install the CLI with `cargo install --locked --path crates/cli`.
 - Windows source builds require MSVC Visual Studio Build Tools. Downloads statically link the Microsoft C runtime. Linux builds use distribution fontconfig without the former font-library patch or root-directory build requirement.
-- Each macOS product has one universal archive instead of separate processor archives. Notices are generated per product and target inside downloads.
 
 ### Added
 
@@ -23,10 +20,15 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Changed
 
+- One desktop player retains its session across Library browsing and Workbench edits. Generated rates, crossfade roles, actual stereo traces and window sample peak/RMS distinguish accepted controls from generated output; freeze, gaps and staleness are labeled.
+- Library search covers titles, IDs, research and sound parameters. Wrapped results, compact component controls and collapsible notes/saved-audio settings keep sound actions accessible. Edited source research stays attributed separately from custom notes.
+- New, draft replacement, window close and File/app-menu Quit protect unsaved content with Save/Discard/Cancel and wait for worker cleanup, including native macOS Cmd-Q. Late saves preserve later edits as dirty.
+- CLI/GUI version output and About distinguish product version, numeric native build counter and optional source revision. CLI Play renders start, generated status and final results on stderr; redirected text stays static.
+
 - Stop fades finite playback over 30 ms, shortened at the end; live Stop finishes any current transition before its 30 ms fade. CLI Ctrl-C retains exit 130.
 - CLI and desktop durations read as hours, minutes and seconds; desktop peak bounds use one decimal and silence reads −∞.
 - CLI help and usage use clap. Commands, options, explicit source selection and exit codes stay the same. Version output is `auditorylab VERSION`, with a short commit ID for CI builds.
-- Desktop Open and Export use native dialogs. Save replaces an existing file only after native confirmation; CLI output keeps existing files untouched. Closing the window waits for worker cleanup; macOS Cmd-Q can leave a hidden `.NAME.RANDOM.partial` export file beside the destination.
+- Desktop Open and Export use native dialogs. Save replaces an existing file only after native confirmation; CLI output keeps existing files untouched. Closing the window waits for worker cleanup; forced termination can leave a hidden `.NAME.RANDOM.partial` export file beside the destination.
 - Library waveform previews use the same seekable signal as finite playback and export; Workbench previews show the current valid settings.
 - Preset files retain `schema_version = 2`; existing catalog parameters are unchanged.
 - Packaging uses `cargo xtask`; reusable CI builds the release archives. Release dispatch defaults to non-publishing verification with downloadable checksums, notes and provenance; publication requires `publish: true` on main. cargo-deny gates dependency policy, and packaging checks dependency and license-text coverage.
@@ -35,6 +37,11 @@ Notable changes to this project are documented in this file. The format is based
 
 - `--build-info` output, build kinds, the sample observation transport, display memory budgets and vendored backend patches.
 - Python build/release tooling and committed generated third-party notices.
+
+### Internal
+
+- macOS CLI and GUI artifacts are separately built for Apple silicon and Intel, with extracted thin-architecture, identity, plist, signature and executable checks. Product/target notices are generated inside each archive. Release asset collection rejects incomplete, duplicate or unexpected archive sets before checksums and attestation.
+- Public library live generation/control/observation and bounded mixed-output monitoring share the device callback's generator boundary. Core rendering and generated-state observation allocate nothing; device monitoring uses a preallocated nonblocking lock attempt per buffer.
 
 ## [0.3.0] - 2026-10-16
 

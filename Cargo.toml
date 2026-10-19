@@ -10,6 +10,9 @@ license = "MPL-2.0"
 repository = "https://github.com/resoltico/AuditoryLab"
 publish = false
 
+[workspace.metadata.auditorylab]
+build-number = 1
+
 [workspace.dependencies]
 allocation-counter = "0.8.1"
 auditorylab = { path = "crates/lib" }

@@ -1,5 +1,7 @@
 //! Build, license and package Auditory Lab downloads.
 mod notices;
+mod package;
+mod targets;
 use serde_json::Value;
 use std::{
     env, fs,
@@ -7,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
+use targets::platform;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 fn run(command: &mut Command) -> Result<()> {
     let status = command.status()?;
@@ -42,6 +45,26 @@ fn version(metadata: &Value) -> Result<&str> {
         .and_then(|p| p["version"].as_str())
         .ok_or_else(|| "workspace version missing".into())
 }
+fn build_number(metadata: &Value) -> Result<u32> {
+    metadata["metadata"]["auditorylab"]["build-number"]
+        .as_u64()
+        .filter(|n| (1..=9999).contains(n))
+        .and_then(|n| u32::try_from(n).ok())
+        .ok_or_else(|| {
+            "workspace.metadata.auditorylab.build-number must be an integer in 1..9999".into()
+        })
+}
+fn native_version(version: &str) -> Result<()> {
+    let parts: Vec<_> = version.split('.').collect();
+    if parts.len() != 3
+        || parts
+            .iter()
+            .any(|p| p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err("macOS marketing version must contain three decimal components; prerelease versions are unsupported".into());
+    }
+    Ok(())
+}
 fn rust_version() -> Result<String> {
     let source = fs::read_to_string("rust-toolchain.toml")?;
     source
@@ -49,18 +72,6 @@ fn rust_version() -> Result<String> {
         .find_map(|l| l.strip_prefix("channel = "))
         .map(|v| v.trim_matches('"').to_owned())
         .ok_or_else(|| "pinned Rust version missing".into())
-}
-fn platform(target: &str) -> Result<&'static str> {
-    Ok(match target {
-        "universal-apple-darwin" => "macos-universal",
-        "aarch64-apple-darwin" => "macos-aarch64",
-        "x86_64-apple-darwin" => "macos-x86_64",
-        "x86_64-unknown-linux-gnu" => "linux-x86_64",
-        "aarch64-unknown-linux-gnu" => "linux-aarch64",
-        "x86_64-pc-windows-msvc" => "windows-x86_64",
-        "aarch64-pc-windows-msvc" => "windows-aarch64",
-        _ => return Err(format!("unsupported distribution target {target}").into()),
-    })
 }
 fn readme(version: &str, gui: bool, target: &str) -> String {
     include_str!("../templates/archive-readme.txt").replace("{version}",version).replace("{product}",if gui {"Desktop"} else {"CLI"}).replace("{start}",if gui {"Open Auditory Lab.app on macOS, auditorylab-gui.exe on Windows, or auditorylab-gui on Linux. Select a sound, read its summary, then use Play or Export WAV…."} else {"Run auditorylab --help, then auditorylab list. Use auditorylab describe ID to read about a sound, and auditorylab recipe ID --output recipe.toml to edit one."}).replace("{platform_needs}",if target.contains("apple") {"macOS 15 or later. If first launch is blocked, use System Settings > Privacy & Security > Open Anyway after trying to open the app. Apple instructions: https://support.apple.com/en-us/102445"} else if target.contains("windows") {if gui { "Windows 10 or later on x86_64; Windows 11 on ARM64. Desktop drawing needs an OpenGL-capable graphics driver." } else { "Windows 10 or later on x86_64; Windows 11 on ARM64." }} else {if gui { "Linux with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, OpenGL and an xdg-desktop-portal for file dialogs." } else { "Linux with glibc 2.35 or later and ALSA." }})
@@ -227,19 +238,25 @@ fn archive(folder: &Path, out: &Path, windows: bool) -> Result<()> {
     }
     Ok(())
 }
-fn version_line(binary: &str, version: &str) -> String {
-    match env::var("AUDITORYLAB_SOURCE_REVISION")
+fn version_line(binary: &str, version: &str, build: u32) -> Result<String> {
+    let source = match env::var("AUDITORYLAB_SOURCE_REVISION")
         .ok()
         .filter(|s| !s.is_empty())
     {
-        Some(rev) => format!("{binary} {version} ({})", &rev[..rev.len().min(12)]),
-        None => format!("{binary} {version}"),
-    }
+        Some(rev) => {
+            if !matches!(rev.len(), 40 | 64) || !rev.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err("AUDITORYLAB_SOURCE_REVISION must be a full 40- or 64-character ASCII hex commit ID".into());
+            }
+            format!(" · {}", &rev[..12])
+        }
+        None => String::new(),
+    };
+    Ok(format!("{binary} {version} (build {build}){source}"))
 }
-fn smoke(cli: &Path, gui: &Path, version: &str, scratch: &Path) -> Result<()> {
+fn smoke(cli: &Path, gui: &Path, version: &str, build: u32, scratch: &Path) -> Result<()> {
     for (path, name) in [(cli, "auditorylab"), (gui, "auditorylab-gui")] {
         let actual = String::from_utf8(capture(Command::new(path).arg("--version"))?)?;
-        if actual.trim() != version_line(name, version) {
+        if actual.trim() != version_line(name, version, build)? {
             return Err(format!("version mismatch: {actual:?}").into());
         }
     }
@@ -288,7 +305,8 @@ fn smoke(cli: &Path, gui: &Path, version: &str, scratch: &Path) -> Result<()> {
     println!("Smoke checks passed: versions, catalog, one-frame RIFF, no-clobber.");
     Ok(())
 }
-fn bundle(binary: &Path, root: &Path, version: &str) -> Result<PathBuf> {
+fn bundle(binary: &Path, root: &Path, version: &str, build: u32) -> Result<PathBuf> {
+    native_version(version)?;
     let app = root.join("Auditory Lab.app");
     let contents = app.join("Contents");
     fs::create_dir_all(contents.join("MacOS"))?;
@@ -296,7 +314,7 @@ fn bundle(binary: &Path, root: &Path, version: &str) -> Result<PathBuf> {
     fs::write(
         contents.join("Info.plist"),
         format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>org.resoltico.auditorylab</string><key>CFBundleName</key><string>Auditory Lab</string><key>CFBundleDisplayName</key><string>Auditory Lab</string><key>CFBundleExecutable</key><string>auditorylab-gui</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleShortVersionString</key><string>{version}</string><key>CFBundleVersion</key><string>{version}</string><key>LSMinimumSystemVersion</key><string>15.0</string><key>NSHighResolutionCapable</key><true/></dict></plist>"#
+            r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>org.resoltico.auditorylab</string><key>CFBundleName</key><string>Auditory Lab</string><key>CFBundleDisplayName</key><string>Auditory Lab</string><key>CFBundleExecutable</key><string>auditorylab-gui</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleShortVersionString</key><string>{version}</string><key>CFBundleVersion</key><string>{build}</string><key>LSMinimumSystemVersion</key><string>15.0</string><key>NSHighResolutionCapable</key><true/></dict></plist>"#
         ),
     )?;
     run(Command::new("codesign")
@@ -308,33 +326,26 @@ fn dist(target: &str, out: &Path) -> Result<()> {
     let platform = platform(target)?;
     capture(Command::new("cargo").args(["about","--version"]))
         .map_err(|error| format!("cargo-about is required for dist; install it with its cli feature (see CONTRIBUTING.md).\n{error}"))?;
-    let universal = target == "universal-apple-darwin";
-    let targets = if universal {
-        vec!["aarch64-apple-darwin", "x86_64-apple-darwin"]
-    } else {
-        vec![target]
-    };
-    for target in &targets {
-        let mut command = Command::new("cargo");
-        command.args([
-            "build",
-            "--locked",
-            "--profile",
-            "dist",
-            "-p",
-            "auditorylab-cli",
-            "-p",
-            "auditorylab-gui",
-            "--target",
-            target,
-        ]);
-        if target.contains("apple") {
-            command.env("MACOSX_DEPLOYMENT_TARGET", "15.0");
-        }
-        run(&mut command)?;
+    let mut command = Command::new("cargo");
+    command.args([
+        "build",
+        "--locked",
+        "--profile",
+        "dist",
+        "-p",
+        "auditorylab-cli",
+        "-p",
+        "auditorylab-gui",
+        "--target",
+        target,
+    ]);
+    if target.contains("apple") {
+        command.env("MACOSX_DEPLOYMENT_TARGET", "15.0");
     }
-    let meta = metadata(Some(targets[0]))?;
+    run(&mut command)?;
+    let meta = metadata(Some(target))?;
     let version = version(&meta)?.to_owned();
+    let build = build_number(&meta)?;
     let target_dir = PathBuf::from(
         meta["target_directory"]
             .as_str()
@@ -348,7 +359,7 @@ fn dist(target: &str, out: &Path) -> Result<()> {
     fs::create_dir_all(out)?;
     let result: Result<()> = (|| {
         let mut executables = Vec::new();
-        for (product, binary) in [("cli", "auditorylab"), ("gui", "auditorylab-gui")] {
+        for (product, binary) in targets::PRODUCTS {
             let folder = scratch.join(format!("{binary}-{version}-{platform}"));
             fs::create_dir_all(&folder)?;
             let exe = if target.contains("windows") {
@@ -356,40 +367,24 @@ fn dist(target: &str, out: &Path) -> Result<()> {
             } else {
                 binary.into()
             };
-            let built = target_dir.join(targets[0]).join("dist").join(&exe);
+            let built = target_dir.join(target).join("dist").join(&exe);
             let destination = folder.join(&exe);
-            if universal {
-                run(Command::new("lipo")
-                    .arg("-create")
-                    .arg(&built)
-                    .arg(target_dir.join(targets[1]).join("dist").join(&exe))
-                    .arg("-output")
-                    .arg(&destination))?;
-            } else {
-                fs::copy(built, &destination)?;
-            }
+            fs::copy(built, &destination)?;
             let actual = if product == "gui" && target.contains("apple") {
-                let executable = bundle(&destination, &folder, &version)?;
+                let executable = bundle(&destination, &folder, &version, build)?;
                 fs::remove_file(&destination)?;
                 executable
             } else {
                 destination
             };
-            executables.push(actual);
+            let _ = actual;
             if product == "gui" && target.contains("linux") {
                 fs::write(
                     folder.join("auditorylab-gui.desktop"),
                     "[Desktop Entry]\nType=Application\nName=Auditory Lab\nExec=auditorylab-gui\nTerminal=false\nCategories=Science;\n",
                 )?;
             }
-            let notice = about(product, targets[0], &meta)?;
-            if universal {
-                let intel = metadata(Some(targets[1]))?;
-                let intel_notice = about(product, targets[1], &intel)?;
-                if intel_notice != notice {
-                    return Err("universal slices have different license notices; combine license sets explicitly".into());
-                }
-            }
+            let notice = about(product, target, &meta)?;
             println!("{product} notices: {} bytes", notice.len());
             fs::write(folder.join("THIRD-PARTY-NOTICES.txt"), notice)?;
             fs::write(
@@ -410,9 +405,16 @@ fn dist(target: &str, out: &Path) -> Result<()> {
                 }
             ));
             archive(&folder, &archive_path, target.contains("windows"))?;
+            executables.push(package::inspect(
+                &archive_path,
+                &scratch.join("extracted"),
+                target,
+                &version,
+                build,
+            )?);
             println!("Wrote {}", archive_path.display());
         }
-        smoke(&executables[0], &executables[1], &version, &scratch)?;
+        smoke(&executables[0], &executables[1], &version, build, &scratch)?;
         Ok(())
     })();
     let cleanup = fs::remove_dir_all(&scratch);
@@ -429,10 +431,12 @@ fn main() -> Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("dist") => { let mut target=None; let mut out=PathBuf::from("target/dist"); let mut i=1; while i<args.len() { let value=args.get(i+1).ok_or("missing option value")?; match args[i].as_str() { "--target"=>target=Some(value.as_str()),"--out"=>out=PathBuf::from(value),_=>return Err("use dist --target TARGET [--out DIR]".into()) } i+=2; } dist(target.ok_or("dist requires --target")?,&out) }
+        Some("inspect-package") if args.len()==3 => { let meta=metadata(None)?; let _=package::inspect(Path::new(&args[2]), Path::new("target/package-inspection"), &args[1], version(&meta)?, build_number(&meta)?)?; Ok(()) },
+        Some("collect-assets") if args.len()==4 => targets::collect(&args[1], Path::new(&args[2]), Path::new(&args[3])),
         Some("notes") if args.len()==2 => { println!("{}",section(&fs::read_to_string("CHANGELOG.md")?,&args[1])?.1); Ok(()) }
         Some("check-release") if args.len()==2 => { let meta=metadata(None)?; if version(&meta)?!=args[1] { return Err("workspace version differs from requested release".into()); } let text=fs::read_to_string("CHANGELOG.md")?; release_notes(&text,&args[1])?; Ok(()) }
         Some("notices") if args.len()==4 => { let meta=metadata(Some(&args[2]))?; fs::write(&args[3],about(&args[1],&args[2],&meta)?)?; Ok(()) }
-        _=>Err("use cargo xtask dist --target TARGET [--out DIR], notes VERSION, or check-release VERSION".into()),
+        _=>Err("use cargo xtask dist --target TARGET [--out DIR], inspect-package TARGET ARCHIVE, collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT, notes VERSION, or check-release VERSION".into()),
     }
 }
 #[cfg(test)]
@@ -440,10 +444,7 @@ mod tests {
     use super::*;
     #[test]
     fn archive_names_and_readmes_follow_the_product_and_platform() {
-        assert_eq!(
-            platform("universal-apple-darwin").unwrap(),
-            "macos-universal"
-        );
+        assert!(platform("universal-apple-darwin").is_err());
         assert_eq!(
             platform("aarch64-pc-windows-msvc").unwrap(),
             "windows-aarch64"
@@ -452,6 +453,34 @@ mod tests {
         let text = readme("0.4.0", true, "aarch64-unknown-linux-gnu");
         assert!(text.contains("Desktop") && text.contains("xdg-desktop-portal"));
         assert!(!text.contains("{version}"));
+    }
+    #[test]
+    fn identity_metadata_rejects_missing_invalid_counters_and_prereleases() {
+        for value in [
+            serde_json::json!(null),
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(10000),
+            serde_json::json!(1.5),
+            serde_json::json!("1"),
+        ] {
+            assert!(
+                build_number(
+                    &serde_json::json!({"metadata":{"auditorylab":{"build-number":value}}})
+                )
+                .is_err()
+            );
+        }
+        assert!(build_number(&serde_json::json!({})).is_err());
+        assert_eq!(
+            build_number(&serde_json::json!({"metadata":{"auditorylab":{"build-number":1}}}))
+                .unwrap(),
+            1
+        );
+        assert!(native_version("0.4.0").is_ok());
+        for v in ["0.4.0-beta.1", "0.4", "", "1.a.0"] {
+            assert!(native_version(v).is_err());
+        }
     }
     #[test]
     fn release_checks_reject_malformed_dates_and_version_headings() {

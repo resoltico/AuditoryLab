@@ -12,7 +12,7 @@ Most of the studies behind these sounds are small, and their results are mixed. 
 
 ## Download
 
-Choose a CLI or desktop archive from [Releases](https://github.com/resoltico/AuditoryLab/releases/latest). macOS downloads are universal and require macOS 15 or later. Follow the archive's README for platform requirements and launch instructions.
+Choose a CLI or desktop archive from [Releases](https://github.com/resoltico/AuditoryLab/releases/latest). Choose **Mac · Apple silicon** (`macos-aarch64`) or **Mac · Intel** (`macos-x86_64`); both require macOS 15 or later. CLI and desktop archives are separate, and every macOS executable contains exactly one architecture. Follow the archive's README for platform requirements and launch instructions.
 
 Download `SHA256SUMS` alongside the archive and compare its entry before extracting. On macOS use `shasum -a 256 ARCHIVE`; on Linux use `sha256sum ARCHIVE`; in PowerShell use `Get-FileHash ARCHIVE -Algorithm SHA256`.
 
@@ -45,7 +45,7 @@ Choose a built-in ID, `--file PATH` for a regular recipe file or `--stdin` for a
 
 ## Desktop
 
-Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `auditorylab-gui` on Linux. Select a sound to see its description and waveform. **Play/Stop** controls playback; elapsed time and progress follow its playback position. **Open Recipe…** imports a file, and **Export WAV…** chooses a destination through the native Save dialog. The **Workbench** builds sounds from up to 16 tone or click components. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or open a Library sound for editing, then **Save Recipe…** or export a finite WAV. See the [desktop guide](docs/desktop.md).
+Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `auditorylab-gui` on Linux. Search and select a sound to see its description and explicitly labeled preview. **Play recipe** starts finite audio; the persistent player names the actual session while you browse. Stop, estimated elapsed time, generated component rates, actual sample traces and digital meters remain available across screens. **Open Recipe…** imports a file, and **Export WAV…** chooses a destination through the native Save dialog. The **Workbench** builds sounds from up to 16 tone or click components. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or **Edit a copy** from Library, then **Save Recipe…** or export a finite WAV. Source research stays attributed separately from your custom notes; dirty drafts are protected on New and Quit. See the [desktop guide](docs/desktop.md).
 
 ## Build from source
 

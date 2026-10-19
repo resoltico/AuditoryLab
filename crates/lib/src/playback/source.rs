@@ -5,7 +5,13 @@ use auditorylab_core::{
 };
 use std::sync::{Arc, Mutex};
 
-pub(crate) type Mailbox = Arc<Mutex<Option<Target>>>;
+#[derive(Default)]
+pub(crate) struct Updates {
+    pub(crate) pending: Option<(u64, Target)>,
+    pub(crate) last: Option<Target>,
+    pub(crate) revision: u64,
+}
+pub(crate) type Mailbox = Arc<Mutex<Updates>>;
 
 pub(crate) enum Source {
     Finite {
@@ -14,10 +20,7 @@ pub(crate) enum Source {
         fade: Option<u64>,
         ramp_frames: u64,
     },
-    Live {
-        engine: Box<Engine>,
-        mailbox: Mailbox,
-    },
+    Live(Box<crate::LiveGenerator>),
 }
 impl From<Signal> for Source {
     fn from(signal: Signal) -> Self {
@@ -36,22 +39,46 @@ impl From<Arc<Signal>> for Source {
     }
 }
 impl Source {
+    pub(crate) fn observation(&self) -> Option<auditorylab_core::Observation> {
+        match self {
+            Self::Live(generator) => generator.engine.observation(),
+            Self::Finite {
+                signal,
+                cursor,
+                fade,
+                ramp_frames,
+            } => {
+                let frame = cursor.checked_sub(1)?;
+                let mut observation = signal.observation(frame)?;
+                if let Some(start) = fade {
+                    let ramp = Self::fade_frames(signal, *start, *ramp_frames);
+                    let gain = 1.0
+                        - f64::from(u32::try_from(cursor - start).unwrap_or(u32::MAX))
+                            / f64::from(u32::try_from(ramp).unwrap_or(u32::MAX));
+                    for v in observation.voices.iter_mut().flatten() {
+                        v.gains = v.gains.map(|g| g * gain);
+                    }
+                }
+                Some(observation)
+            }
+        }
+    }
     pub(crate) fn rate(&self) -> SampleRate {
         match self {
             Self::Finite { signal, .. } => signal.sample_rate(),
-            Self::Live { engine, .. } => engine.sample_rate(),
+            Self::Live(generator) => generator.engine.sample_rate(),
         }
     }
     pub(crate) fn frame(&self) -> u64 {
         match self {
             Self::Finite { cursor, .. } => *cursor,
-            Self::Live { engine, .. } => engine.frame(),
+            Self::Live(generator) => generator.engine.frame(),
         }
     }
     pub(crate) fn frames(&self) -> Option<u64> {
         match self {
             Self::Finite { signal, .. } => Some(signal.frames()),
-            Self::Live { .. } => None,
+            Self::Live(_) => None,
         }
     }
     pub(crate) fn cancelled(&self) -> bool {
@@ -70,7 +97,7 @@ impl Source {
                         *cursor - start >= Self::fade_frames(signal, start, *ramp_frames)
                     })
             }
-            Self::Live { engine, .. } => engine.is_finished(),
+            Self::Live(generator) => generator.engine.is_finished(),
         }
     }
     fn fade_frames(signal: &Signal, start: u64, ramp_frames: u64) -> u64 {
@@ -84,21 +111,12 @@ impl Source {
                     *fade = Some(*cursor);
                 }
             }
-            Self::Live { engine, mailbox } => {
-                if stop {
-                    engine.stop();
-                } else {
-                    let target = mailbox.try_lock().ok().and_then(|mut slot| slot.take());
-                    if let Some(target) = target {
-                        engine.set(&target);
-                    }
-                }
-            }
+            Self::Live(generator) => generator.begin_buffer(stop),
         }
     }
     pub(crate) fn render(&mut self, out: &mut [[f64; 2]]) -> usize {
         match self {
-            Self::Live { engine, .. } => engine.render(out),
+            Self::Live(generator) => generator.engine.render(out),
             Self::Finite {
                 signal,
                 cursor,

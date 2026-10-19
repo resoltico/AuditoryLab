@@ -120,18 +120,24 @@ impl Output {
         source: impl Into<Source>,
         cancel: &AtomicBool,
         progress: crate::Progress,
+        monitor: Option<super::monitor::PlaybackMonitor>,
     ) -> Result<Played, PlaybackError> {
         let source = source.into();
         if cancel.load(Ordering::Relaxed) {
+            if let Some(monitor) = &monitor {
+                monitor.shared().finish(Terminal::Cancelled);
+            }
             return stopped_before_start(&source);
         }
         fits(source.rate(), self.description.sample_rate)?;
         let time_limit = source
             .frames()
             .map(|frames| time_limit(frames, self.description.sample_rate));
-        let shared = Arc::new(Shared::default());
+        let shared = monitor
+            .as_ref()
+            .map_or_else(|| Arc::new(Shared::default()), |m| m.shared());
         let callback = Callback::new(source, self.config.channels, Arc::clone(&shared));
-        let callback = callback.with_progress(progress);
+        let callback = callback.with_progress(progress).with_monitor(monitor);
         // Keep synchronous diagnostics on this worker, before publishing their
         // fixed outcome. An asynchronous writer can be paused independently.
         let mut setup_error = None;
@@ -360,10 +366,9 @@ mod tests {
 
     #[test]
     fn a_prestart_stop_is_successful_only_for_live_playback() {
-        let live = Source::Live {
-            engine: Box::new(auditorylab_core::live::Engine::new(rate(48_000))),
-            mailbox: Arc::new(std::sync::Mutex::new(None)),
-        };
+        let live = Source::Live(Box::new(
+            crate::LiveGenerator::new(&crate::Draft::new(), rate(48000)).unwrap(),
+        ));
         assert_eq!(stopped_before_start(&live).unwrap().frames, 0);
         let signal = auditorylab_core::Stimulus {
             duration_seconds: 1.0,

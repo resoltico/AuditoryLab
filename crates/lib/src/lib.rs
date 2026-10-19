@@ -1,6 +1,8 @@
 //! Recipe loading, WAV publication and playback for Auditory Lab frontends.
 #![forbid(unsafe_code)]
 mod draft;
+mod identity;
+pub use identity::{BUILD_IDENTITY, BuildIdentity, SOURCE_URL, version_line};
 mod error;
 mod input_admission;
 mod playback;
@@ -11,12 +13,26 @@ pub use auditorylab_core::waveform::trace;
 pub use auditorylab_core::{
     About, Carrier, Component, Ear, Ears, Extent, Modulation, SampleRate, Signal, Stimulus,
 };
+pub use auditorylab_core::{
+    CarrierFacts, ComponentFacts, ModulationFacts, Observation, PhaseRate, PulseFacts, SlotRole,
+    VoiceObservation,
+};
 pub use draft::{
-    ComponentId, Draft, DraftCheck, Range, Scale, Setting, SourceKind, default_component, range,
+    ComponentId, Draft, DraftCheck, ModulationKind, Range, Scale, Setting, SourceKind,
+    default_component, default_modulation, range, set_setting, setting_value, slider_position,
+    slider_value,
 };
 pub use error::{Error, ErrorKind};
+pub use playback::monitor::{
+    GeneratedStatus, Meter, MonitorDetail, MonitorReader, ObservationFreshness, PlaybackMonitor,
+    PlaybackPhase, SessionDescriptor, sample_meters, sample_trace,
+};
 pub use playback::output::{OutputInfo, SampleFormat};
-pub use presentation::{format_dbfs, human_duration};
+pub use presentation::{
+    InterauralPair, catalog_matches, component_description, format_dbfs, format_hz,
+    generated_description, generated_details, human_duration, interaural_pair, playback_elapsed,
+    sound_brief, sound_description, window_cycle_hint,
+};
 use std::{
     io::Read,
     path::{Path, PathBuf},
@@ -249,12 +265,25 @@ pub fn save_builtin(id: &str, path: &Path, replace: Replace) -> Result<(), Error
 pub struct Playback {
     output: playback::Output,
     sound: Sound,
+    descriptor: SessionDescriptor,
+    monitor: Option<PlaybackMonitor>,
 }
 /// Discover the default output and validate the recipe at its rate.
 pub fn prepare_playback(preset: &Preset) -> Result<Playback, Error> {
     let output = playback::Output::default_device().map_err(device_error)?;
     let sound = preset.at(output.description().sample_rate)?;
-    Ok(Playback { output, sound })
+    let descriptor = SessionDescriptor::new(
+        preset.title(),
+        preset.origin().clone(),
+        output.description().clone(),
+        Some(sound.signal().frames()),
+    );
+    Ok(Playback {
+        output,
+        sound,
+        descriptor,
+        monitor: None,
+    })
 }
 /// Completed playback statistics.
 #[derive(Debug, Clone, Copy)]
@@ -276,6 +305,17 @@ fn device_error(e: playback::PlaybackError) -> Error {
     )
 }
 impl Playback {
+    /// Captured identity independent of frontend navigation.
+    pub fn descriptor(&self) -> &SessionDescriptor {
+        &self.descriptor
+    }
+    /// Enable bounded observation before playback. The first call fixes the detail mode; later calls reuse that same monitor.
+    pub fn monitor(&mut self, detail: MonitorDetail) -> PlaybackMonitor {
+        self.monitor
+            .get_or_insert_with(|| PlaybackMonitor::new(self.descriptor.clone(), detail, None))
+            .clone()
+    }
+
     /// Default device snapshot.
     pub fn output(&self) -> &OutputInfo {
         self.output.description()
@@ -287,7 +327,7 @@ impl Playback {
     /// Run playback on this thread until completion or cancellation.
     pub fn play(self, cancel: &Cancel, progress: &Progress) -> Result<Played, Error> {
         self.output
-            .play(self.sound.signal, &cancel.0, progress.clone())
+            .play(self.sound.signal, &cancel.0, progress.clone(), self.monitor)
             .map_err(device_error)
     }
 }
@@ -312,22 +352,71 @@ impl std::fmt::Display for Notice {
         }
     }
 }
-/// Product version and optional source revision.
-pub fn version_line(binary: &str) -> String {
-    match option_env!("AUDITORYLAB_SOURCE_REVISION").filter(|s| !s.is_empty()) {
-        Some(revision) => format!(
-            "{binary} {} ({})",
-            env!("CARGO_PKG_VERSION"),
-            &revision[..revision.len().min(12)]
-        ),
-        None => format!("{binary} {}", env!("CARGO_PKG_VERSION")),
+/// Prepared live generation at a caller-supplied rate, also used by device playback.
+/// Owns the validated latest-wins control boundary without requiring an audio device.
+pub struct LiveGenerator {
+    engine: auditorylab_core::live::Engine,
+    mailbox: playback::source::Mailbox,
+}
+impl LiveGenerator {
+    /// Prepare a live generator and its initial whole target. Allocation happens here.
+    pub fn new(draft: &Draft, rate: SampleRate) -> Result<Self, Error> {
+        let mailbox = Arc::new(std::sync::Mutex::new(playback::source::Updates::default()));
+        let control = LiveControl {
+            rate,
+            mailbox: Arc::clone(&mailbox),
+        };
+        control.update(draft)?;
+        Ok(Self {
+            engine: auditorylab_core::live::Engine::new(rate),
+            mailbox,
+        })
+    }
+    /// Handle for accepted, monotonically revisioned whole-target changes.
+    pub fn control(&self) -> LiveControl {
+        LiveControl {
+            rate: self.engine.sample_rate(),
+            mailbox: Arc::clone(&self.mailbox),
+        }
+    }
+    /// Poll once for a new target and generate a caller-owned mixed stereo buffer.
+    /// Takes one nonblocking mailbox lock attempt and allocates nothing.
+    pub fn render(&mut self, out: &mut [[f64; 2]]) -> usize {
+        self.begin_buffer(false);
+        self.engine.render(out)
+    }
+    /// Last-generated-frame state, without advancing the generator.
+    pub fn observation(&self) -> Option<Observation> {
+        self.engine.observation()
+    }
+    /// Finish the current transition and fade to silence; subsequent updates cannot win over Stop.
+    pub fn stop(&mut self) {
+        self.engine.stop();
+    }
+    /// Whether the generator's Stop fade or frame lifetime has ended.
+    pub fn is_finished(&self) -> bool {
+        self.engine.is_finished()
+    }
+    fn begin_buffer(&mut self, stop: bool) {
+        if stop {
+            self.engine.stop();
+        } else if let Some((revision, target)) = self
+            .mailbox
+            .try_lock()
+            .ok()
+            .and_then(|mut state| state.pending.take())
+        {
+            self.engine.set_revision(&target, revision);
+        }
     }
 }
 
 /// A device-bound open-ended sound with a validated target mailbox.
 pub struct Live {
     output: playback::Output,
-    control: LiveControl,
+    generator: Box<LiveGenerator>,
+    descriptor: SessionDescriptor,
+    monitor: Option<PlaybackMonitor>,
 }
 /// Producer-side live updates at the device's fixed sample rate.
 #[derive(Clone)]
@@ -341,43 +430,75 @@ impl LiveControl {
         self.rate
     }
     /// Validate and replace the waiting target; invalid edits leave it untouched.
-    pub fn update(&self, draft: &Draft) -> Result<(), Error> {
+    pub fn update(&self, draft: &Draft) -> Result<u64, Error> {
         let target = draft.target(self.rate)?;
-        *self
+        let mut updates = self
             .mailbox
             .lock()
-            .map_err(|_| Error::new(ErrorKind::Device, "live control is unavailable"))? =
-            Some(target);
-        Ok(())
+            .map_err(|_| Error::new(ErrorKind::Device, "live control is unavailable"))?;
+        if updates.last.as_ref() == Some(&target) {
+            return Ok(updates.revision);
+        }
+        updates.revision = updates.revision.checked_add(1).ok_or_else(|| {
+            Error::new(
+                ErrorKind::InvalidSound,
+                "live target revision limit reached",
+            )
+        })?;
+        updates.last = Some(target);
+        updates.pending = Some((updates.revision, target));
+        Ok(updates.revision)
     }
 }
 /// Discover the default device and validate the initial draft at its rate.
 pub fn prepare_live(draft: &Draft) -> Result<Live, Error> {
     let output = playback::Output::default_device().map_err(device_error)?;
     let rate = output.description().sample_rate;
-    let mailbox = Arc::new(std::sync::Mutex::new(None));
-    let control = LiveControl { rate, mailbox };
-    // First lock and store happen before any device callback can run.
-    control.update(draft)?;
-    Ok(Live { output, control })
+    let generator = Box::new(LiveGenerator::new(draft, rate)?);
+    let descriptor = SessionDescriptor::new(
+        draft.title().into(),
+        Origin::Draft(draft.title().into()),
+        output.description().clone(),
+        None,
+    );
+    Ok(Live {
+        output,
+        generator,
+        descriptor,
+        monitor: None,
+    })
 }
 impl Live {
+    /// Captured source and device identity.
+    pub fn descriptor(&self) -> &SessionDescriptor {
+        &self.descriptor
+    }
+    /// Enable bounded generated observation before playback. The first call fixes its detail mode.
+    pub fn monitor(&mut self, detail: MonitorDetail) -> PlaybackMonitor {
+        self.monitor
+            .get_or_insert_with(|| {
+                PlaybackMonitor::new(
+                    self.descriptor.clone(),
+                    detail,
+                    Some(Arc::clone(&self.generator.mailbox)),
+                )
+            })
+            .clone()
+    }
+
     /// Snapshot of the default output used for this stream.
     pub fn output(&self) -> &OutputInfo {
         self.output.description()
     }
     /// A handle for validated updates while playback runs.
     pub fn control(&self) -> LiveControl {
-        self.control.clone()
+        self.generator.control()
     }
     /// Play until Stop, the frame limit, or an output failure.
     pub fn play(self, stop: &Cancel, progress: &Progress) -> Result<Played, Error> {
-        let source = playback::source::Source::Live {
-            engine: Box::new(auditorylab_core::live::Engine::new(self.control.rate)),
-            mailbox: self.control.mailbox,
-        };
+        let source = playback::source::Source::Live(self.generator);
         self.output
-            .play(source, &stop.0, progress.clone())
+            .play(source, &stop.0, progress.clone(), self.monitor)
             .map_err(device_error)
     }
 }

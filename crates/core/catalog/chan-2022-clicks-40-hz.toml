@@ -7,7 +7,7 @@ fade_seconds = 0.1
 
 [about]
 title = "40 Hz clicks"
-studied_for = "Alzheimer's disease research"
+studied_for = "Human study: Alzheimer's disease research"
 summary = "Short clicks 40 times a second, heard as a steady buzz: the sound of a light-and-sound device studied for Alzheimer's disease. In study sessions the device was well tolerated and brain recordings followed the 40 Hz rhythm. A pilot enrolled 15 patients for daily combined light and sound. At 3 months, brain scans from 7 active and 6 control participants showed less enlargement of fluid-filled spaces in the active group; total brain volume did not significantly change. One face-name memory test favored the active group, with only 4 active and 5 control participants analyzed, while standard cognitive tests did not differ significantly. The authors call these results preliminary. The sound is not an established treatment."
 citation = "Chan D, Suk HJ, Jackson BL, Milman NP, Stark D, Klerman EB, et al. (2022). Gamma frequency sensory stimulation in mild probable Alzheimer's dementia patients: results of feasibility and pilot studies. PLoS ONE 17(12): e0278412."
 source_url = "https://doi.org/10.1371/journal.pone.0278412"

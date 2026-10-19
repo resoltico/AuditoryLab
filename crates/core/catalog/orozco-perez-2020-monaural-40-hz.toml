@@ -7,7 +7,7 @@ fade_seconds = 0.1
 
 [about]
 title = "40 Hz monaural beat"
-studied_for = "Relaxation and brain-rhythm response"
+studied_for = "Human study: Relaxation and brain-rhythm response"
 summary = "380 Hz and 420 Hz mixed together in both ears, so the 40-per-second beat is in the sound itself and loudspeakers work too. It was the comparison for the binaural version in a study of 16 adults: this mixed version produced the stronger brain response, and neither made listeners feel more relaxed or absorbed."
 citation = "Orozco Perez HD, Dumas G, Lehmann A (2020). Binaural beats through the auditory pathway: from brainstem to connectivity patterns. eNeuro 7(2): ENEURO.0232-19.2020."
 source_url = "https://doi.org/10.1523/ENEURO.0232-19.2020"

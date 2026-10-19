@@ -7,7 +7,7 @@ fade_seconds = 0.1
 
 [about]
 title = "5 Hz binaural beat"
-studied_for = "Visual working memory"
+studied_for = "Human study: Visual working memory"
 summary = "Two steady low tones, 245 Hz in the left ear and 240 Hz in the right, which the brain hears as a 5-per-second pulsing (a binaural beat); use headphones. In one study, 28 adults heard it for 5 minutes during a visual memory task, and their accuracy fell slightly, as it did with most of the study's sounds; only the 15 Hz beat improved it. Reaction times did not differ significantly between the study's sounds. Reviews of binaural-beat research report mixed results."
 citation = "Beauchene C, Abaid N, Moran R, Diana RA, Leonessa A (2016). The effect of binaural beats on visuospatial working memory and cortical connectivity. PLoS ONE 11(11): e0166630."
 source_url = "https://doi.org/10.1371/journal.pone.0166630"

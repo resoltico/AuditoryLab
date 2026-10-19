@@ -71,11 +71,12 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: dist-*
-          path: target/assets
-          merge-multiple: true
+          path: target/distributions
+          merge-multiple: false
           digest-mismatch: error
       - name: Write checksums and release notes
         run: |
+          cargo xtask collect-assets "$RELEASE_VERSION" target/distributions target/assets
           (cd target/assets && sha256sum -- * > SHA256SUMS)
           cargo xtask notes "$RELEASE_VERSION" > target/notes.md
       - id: provenance

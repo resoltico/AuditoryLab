@@ -2,7 +2,7 @@
 
 A preset is a UTF-8 TOML recipe for a stereo sound, in hertz, seconds and dBFS. It has no sample rate: `inspect` and `export` choose one, and playback uses the device's. `auditorylab recipe PRESET_ID --output PATH` saves any built-in preset as a starting point.
 
-The desktop [Workbench](desktop.md#library-and-workbench) also writes schema-2 recipes. Its saved files contain the edited title and summary; study and citation fields are not copied. Inspect them with `auditorylab inspect --file PATH` before playback or export.
+The desktop [Workbench](desktop.md#workbench) also writes schema-2 recipes. Its saved files contain the edited title and summary; study and citation fields are not copied. Inspect them with `auditorylab inspect --file PATH` before playback or export.
 
 ## Examples
 

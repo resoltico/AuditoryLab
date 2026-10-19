@@ -7,7 +7,7 @@ fade_seconds = 0.1
 
 [about]
 title = "39.0625 Hz amplitude-modulated 2000 Hz tone, left ear"
-studied_for = "Hearing measurement"
+studied_for = "Human study: Hearing measurement"
 summary = "A 2000 Hz tone that swells and fades about 40 times a second, in the left ear only. In a study of 38 young adults with normal hearing, 19 heard this carrier while researchers compared brain-recording estimates of equal loudness between ears with listeners' judgments. Across the study's carriers, sound levels and electrode selections, estimates were within 5 dB of those judgments in 59% of cases and within 10 dB in 85%; some individual errors were larger. These aggregate results do not establish accuracy for this carrier alone. This was hearing-measurement research, not a study of wellbeing."
 citation = "Van Eeckhoutte M, Wouters J, Francart T (2018). Objective binaural loudness balancing based on 40-Hz auditory steady-state responses. Part I: Normal hearing. Trends in Hearing 22: 2331216518805352."
 source_url = "https://doi.org/10.1177/2331216518805352"

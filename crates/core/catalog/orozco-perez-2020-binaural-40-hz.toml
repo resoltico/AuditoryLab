@@ -7,7 +7,7 @@ fade_seconds = 0.1
 
 [about]
 title = "40 Hz binaural beat"
-studied_for = "Relaxation and brain-rhythm response"
+studied_for = "Human study: Relaxation and brain-rhythm response"
 summary = "380 Hz in the left ear and 420 Hz in the right: a 40-per-second binaural beat for headphones. In one study, 16 adults listened for 8 minutes: their brain recordings followed the beat weakly, the same two tones mixed together in both ears produced a stronger response, and they felt no more relaxed or absorbed than without the beat. Reviews of binaural-beat research report mixed results."
 citation = "Orozco Perez HD, Dumas G, Lehmann A (2020). Binaural beats through the auditory pathway: from brainstem to connectivity patterns. eNeuro 7(2): ENEURO.0232-19.2020."
 source_url = "https://doi.org/10.1523/ENEURO.0232-19.2020"

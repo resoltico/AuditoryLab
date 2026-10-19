@@ -114,11 +114,33 @@ fn cancel_on_interrupt() -> Result<Cancel, Box<dyn std::error::Error>> {
     let handler = cancel.clone();
     ctrlc::set_handler(move || {
         if handler.is_requested() {
+            if io::stderr().is_terminal() {
+                let _ = write!(io::stderr(), "\r\x1b[2K");
+                let _ = io::stderr().flush();
+            }
             std::process::exit(130);
         }
         handler.request();
     })?;
     Ok(cancel)
+}
+struct StatusLine {
+    active: bool,
+}
+impl StatusLine {
+    fn draw(&mut self, text: &str) {
+        self.active = true;
+        let _ = write!(io::stderr(), "\r\x1b[2K{}", escape(text));
+        let _ = io::stderr().flush();
+    }
+}
+impl Drop for StatusLine {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = write!(io::stderr(), "\r\x1b[2K");
+            let _ = io::stderr().flush();
+        }
+    }
 }
 fn describe(preset: &Preset) -> String {
     let s = preset.stimulus();
@@ -132,8 +154,16 @@ fn describe(preset: &Preset) -> String {
     for (label, value) in preset.research() {
         out.push_str(&format!("{label}: {value}\n"));
     }
-    for (i, component) in s.components.iter().enumerate() {
-        out.push_str(&format!("Component {}: {component}\n", i + 1));
+    if let Ok(sound) = preset.at(SampleRate::DEFAULT) {
+        out.push_str(&format!(
+            "Description at {} Hz:\n{}\n",
+            SampleRate::DEFAULT.hz(),
+            lab::sound_description(&sound, false)
+        ));
+    } else {
+        for (i, component) in s.components.iter().enumerate() {
+            out.push_str(&format!("Component {}: {component}\n", i + 1));
+        }
     }
     out
 }
@@ -188,6 +218,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 signal.peak_dbfs()[0],
                 signal.peak_dbfs()[1]
             ))?;
+            say(&lab::sound_description(&sound, true))?;
         }
         Some(Command::Export {
             source,
@@ -214,12 +245,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Some(Command::Play(source)) => {
             let preset = read(source)?;
             let cancel = cancel_on_interrupt()?;
-            let playback = lab::prepare_playback(&preset)?;
+            let mut playback = lab::prepare_playback(&preset)?;
             let info = playback.output();
             eprintln!(
                 "{}",
                 prose(&format!(
-                    "Playing {}\nSource: {}\nDuration: {}\nDevice: {}\n{} Hz, {} channels, {}\n{}\nPress Ctrl-C to stop.",
+                    "Preparing {}\nSource: {}\nDuration: {}\nDevice: {}\n{} Hz, {} channels, {}\n{}\nPress Ctrl-C to stop.",
                     preset.title(),
                     preset.origin(),
                     lab::human_duration(playback.sound().signal().duration_seconds()),
@@ -235,8 +266,47 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         .join("\n")
                 ))
             );
-            let result = playback.play(&cancel, &Progress::default())?;
-            completed(&format!("Played {} frames.", result.frames));
+            eprintln!(
+                "{}",
+                prose(&lab::sound_description(playback.sound(), false))
+            );
+            let tty = io::stderr().is_terminal();
+            let result = if tty {
+                let mut reader = playback.monitor(lab::MonitorDetail::Quantities).reader();
+                let progress = Progress::default();
+                let done = std::sync::atomic::AtomicBool::new(false);
+                std::thread::scope(|scope| -> Result<lab::Played, Box<dyn std::error::Error>> {
+                    let printer = scope.spawn(|| {
+                        let mut terminal = StatusLine { active: false };
+                        while !done.load(std::sync::atomic::Ordering::Acquire) {
+                            reader.poll(0);
+                            let state = reader.status();
+                            terminal.draw(&format!(
+                                "{} · {:?} · {:?} · {}",
+                                lab::playback_elapsed(
+                                    reader.descriptor().output.sample_rate,
+                                    progress.frames()
+                                ),
+                                state.phase,
+                                reader.freshness(),
+                                lab::generated_description(state.observation.as_ref())
+                            ));
+                            std::thread::sleep(std::time::Duration::from_millis(250));
+                        }
+                    });
+                    // Keep the discovered device on its caller thread; only plain
+                    // shared status crosses to the terminal renderer.
+                    let result = playback.play(&cancel, &progress);
+                    done.store(true, std::sync::atomic::Ordering::Release);
+                    printer
+                        .join()
+                        .map_err(|_| io::Error::other("status renderer failed"))?;
+                    Ok(result?)
+                })?
+            } else {
+                playback.play(&cancel, &Progress::default())?
+            };
+            eprintln!("Played {} frames.", result.frames);
             if result.underruns > 0 {
                 eprintln!("{}", lab::Notice::Underruns(result.underruns));
             }

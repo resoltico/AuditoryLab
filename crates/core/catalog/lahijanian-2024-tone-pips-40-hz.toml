@@ -7,7 +7,7 @@ fade_seconds = 0.1
 
 [about]
 title = "40 Hz train of 1 ms 5 kHz tones"
-studied_for = "Dementia research"
+studied_for = "Human study: Dementia research"
 summary = "A 5 kHz beep 40 times a second, each beep 1 ms long: a high buzz. One session recruited 35 older adults with memory complaints, some with dementia; 33 were included in the analysis. They heard 40-second stretches from loudspeakers. Brain recordings showed a group response at 40 Hz and stronger synchronization between front and back regions during sound, with responses varying between people. The study did not test memory or treatment effects. It is not an established treatment."
 citation = "Lahijanian M, Aghajan H, Vahabi Z (2024). Auditory gamma-band entrainment enhances default mode network connectivity in dementia patients. Scientific Reports 14: 13153."
 source_url = "https://doi.org/10.1038/s41598-024-63727-z"
