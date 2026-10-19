@@ -24,3 +24,5 @@ workspace = true
 [[bin]]
 name = "auditorylab"
 path = "src/main.rs"
+# The library owns the auditorylab API documentation output directory.
+doc = false
