@@ -588,7 +588,17 @@ impl Desktop {
                 .into(),
             );
         } else {
-            ui.set_waveform_caption("Waiting for waveform samples".into());
+            ui.set_left_path("".into());
+            ui.set_right_path("".into());
+            ui.set_meters("".into());
+            ui.set_waveform_caption(
+                if audio {
+                    "Waiting for generated waveform samples"
+                } else {
+                    "No waveform capture available. Preview a valid draft or recipe."
+                }
+                .into(),
+            );
         }
         let model_target = if let Some(reader) = monitor.as_ref() {
             let (revision, target) = reader.model_target();
@@ -633,7 +643,9 @@ impl Desktop {
                             .map(|r| model.generation_note(r.status()))
                             .unwrap_or_default(),
                         model.summary.description(),
-                        if ui.get_retained_warning().is_empty() {
+                        if ui.get_retained_warning().is_empty()
+                            || matches!(model.source, auditorylab::ModelSource::Recipe)
+                        {
                             ""
                         } else {
                             " · edits not applied"
@@ -659,6 +671,7 @@ impl Desktop {
                 }
             }
         } else {
+            *self.model.borrow_mut() = None;
             ui.set_model_caption("No valid timing model available".into());
             ui.set_model_rows(ModelRc::default());
         }
