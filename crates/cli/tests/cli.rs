@@ -49,7 +49,12 @@ fn commands_sources_and_exit_codes() {
     let unknown = cli(&["inspect", "unknown"]);
     assert_eq!(unknown.status.code(), Some(2));
     let text = String::from_utf8(unknown.stderr).unwrap();
-    assert!(text.contains("list") && text.contains("--file"));
+    assert_eq!(
+        text,
+        "unknown preset \"unknown\"; run `auditorylab list`, or use --file PATH\n"
+    );
+    let list = String::from_utf8(cli(&["list"]).stdout).unwrap();
+    assert!(list.contains("1 h") && list.contains("5 min 7.2 s"));
     assert_eq!(
         cli(&["inspect", "--file", "/missing/auditorylab.toml"])
             .status
