@@ -1,4 +1,4 @@
-//! Bridge Cocoa's asynchronous termination request into the ordinary close policy.
+//! Cocoa application-menu actions and asynchronous termination policy.
 //! Keeps winit's delegate, menu routing and context-menu event handler intact.
 use objc2::{
     Encode, MainThreadMarker,
@@ -12,7 +12,7 @@ use std::{
 };
 thread_local! {
     static WINDOW:RefCell<Option<slint::Weak<super::MainWindow>>> = const {RefCell::new(None)};
-    static PENDING:Cell<bool> = const {Cell::new(false)};
+    static TERMINATION_PENDING:Cell<bool> = const {Cell::new(false)};
 }
 #[allow(
     unsafe_code,
@@ -26,7 +26,7 @@ unsafe extern "C-unwind" fn should_terminate(
     if MainThreadMarker::new().is_none() {
         return NSApplicationTerminateReply::TerminateCancel;
     }
-    if PENDING.with(|pending| pending.replace(true)) {
+    if TERMINATION_PENDING.with(|pending| pending.replace(true)) {
         return NSApplicationTerminateReply::TerminateLater;
     }
     if slint::invoke_from_event_loop(|| {
@@ -34,12 +34,12 @@ unsafe extern "C-unwind" fn should_terminate(
         if let Some(window) = window {
             window.invoke_quit();
         } else {
-            reply(false);
+            reply_to_termination(false);
         }
     })
     .is_err()
     {
-        PENDING.with(|pending| pending.set(false));
+        TERMINATION_PENDING.with(|pending| pending.set(false));
         return NSApplicationTerminateReply::TerminateCancel;
     }
     NSApplicationTerminateReply::TerminateLater
@@ -154,13 +154,18 @@ pub(super) fn refresh_about_menu() -> Result<(), Box<dyn std::error::Error>> {
     let Some(menu) = application.mainMenu() else {
         return Ok(());
     };
-    let app_menu = menu
-        .itemAtIndex(0)
+    // Menus may be empty during AppKit launch/recovery or a Slint rebuild.
+    // itemAtIndex throws for an empty menu despite its nullable return type.
+    let Some(app_menu) = menu
+        .itemArray()
+        .firstObject()
         .and_then(|item| item.submenu())
-        .ok_or("missing native application menu")?;
-    let about = app_menu
-        .itemAtIndex(0)
-        .ok_or("missing native About entry")?;
+    else {
+        return Ok(());
+    };
+    let Some(about) = app_menu.itemArray().firstObject() else {
+        return Ok(());
+    };
     if !about.title().to_string().starts_with("About ")
         || !matches!(about.action(), Some(action) if action == sel!(fireMenuItemAction:) || action == sel!(auditorylabShowAbout:))
     {
@@ -175,11 +180,11 @@ pub(super) fn refresh_about_menu() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 /// Complete Cocoa's outstanding request only after the shared policy resolves.
-pub(super) fn reply(approve: bool) -> bool {
+pub(super) fn reply_to_termination(approve: bool) -> bool {
     let Some(mtm) = MainThreadMarker::new() else {
         return false;
     };
-    if !PENDING.with(|pending| pending.replace(false)) {
+    if !TERMINATION_PENDING.with(|pending| pending.replace(false)) {
         return false;
     }
     NSApplication::sharedApplication(mtm).replyToApplicationShouldTerminate(approve);

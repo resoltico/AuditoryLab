@@ -5,7 +5,7 @@ mod app;
 mod dialogs;
 mod motion;
 #[cfg(target_os = "macos")]
-mod native_quit;
+mod native_application;
 mod scope;
 mod typography;
 mod worker;
@@ -58,7 +58,7 @@ struct Desktop {
 impl Desktop {
     fn refresh_typography(&self) {
         #[cfg(target_os = "macos")]
-        if let Err(error) = native_quit::refresh_about_menu() {
+        if let Err(error) = native_application::refresh_about_menu() {
             eprintln!("Native About: {error}");
         }
         let Some(ui) = self.ui.upgrade() else {
@@ -1122,7 +1122,7 @@ fn open_web(url: &str) {
 fn reply_native_quit(approve: bool) -> bool {
     #[cfg(target_os = "macos")]
     {
-        native_quit::reply(approve)
+        native_application::reply_to_termination(approve)
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -1541,7 +1541,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "macos")]
     {
         ui.show()?;
-        native_quit::install(ui.as_weak())?;
+        native_application::install(ui.as_weak())?;
     }
     // Native preference delivery also runs while idle. Queries stay on the
     // listener thread; this drains only its coalesced value and repairs rebuilt menus.
