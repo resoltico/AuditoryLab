@@ -6,7 +6,7 @@ use crate::stimulus::DocumentComponent;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A preset: a stimulus and, optionally, what it is about.
 ///
@@ -24,24 +24,30 @@ pub struct Preset {
 /// What a preset's sound is, for listeners and for researchers. Parsing
 /// checks the field structure and string types; sources are not fetched or
 /// certified. This descriptive text does not affect the samples.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct About {
     /// A short name for the sound.
     pub title: String,
     /// What the source studied the sound for, in a few plain words.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub studied_for: Option<String>,
     /// For listeners: what the sound is, what was studied and what was found,
     /// in plain language.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
     /// The source: authors, year, title and publication.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub citation: Option<String>,
     /// A link to the source.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub source_url: Option<String>,
     /// For researchers: the stimulus's role in the source and what the source
     /// reports about it.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub study: Option<String>,
     /// How the preset differs from, or adds to, the source's description.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub adaptation: Option<String>,
 }
 
@@ -95,18 +101,15 @@ struct Version {
     schema_version: Option<u32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Document {
-    #[expect(
-        dead_code,
-        reason = "checked through `Version` before the document is read"
-    )]
     schema_version: u32,
     duration_seconds: f64,
     fade_seconds: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     about: Option<About>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     component: Vec<DocumentComponent>,
 }
 
@@ -161,6 +164,25 @@ impl Preset {
                 components: document.component.into_iter().map(Into::into).collect(),
             },
             about: document.about,
+        })
+    }
+
+    /// Serialize the preset in the schema-2 TOML recipe layout.
+    ///
+    /// # Errors
+    /// Returns the TOML writer's error; finite values always serialize.
+    pub fn to_toml(&self) -> Result<String, toml::ser::Error> {
+        toml::to_string(&Document {
+            schema_version: Self::SCHEMA_VERSION,
+            duration_seconds: self.stimulus.duration_seconds,
+            fade_seconds: self.stimulus.fade_seconds,
+            about: self.about.clone(),
+            component: self
+                .stimulus
+                .components
+                .iter()
+                .map(|c| (*c).into())
+                .collect(),
         })
     }
 }

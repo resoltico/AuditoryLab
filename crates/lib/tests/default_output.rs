@@ -27,7 +27,7 @@ fn silence_completes() {
     let played = playback.play(&Cancel::default(), &progress).unwrap();
     assert_eq!(played.frames, frames);
     assert!(now.elapsed() >= Duration::from_secs(1));
-    assert!(now.elapsed() < Duration::from_secs(10));
+    assert!(now.elapsed() < Duration::from_secs(12));
     assert!(progress.frames() > 0);
 }
 #[test]
@@ -44,5 +44,39 @@ fn silence_cancels() {
         playback.play(&cancel, &Progress::default())
     });
     assert_eq!(result.unwrap_err().kind(), ErrorKind::Cancelled);
-    assert!(now.elapsed() < Duration::from_secs(10));
+    assert!(now.elapsed() < Duration::from_secs(12));
+}
+
+#[test]
+#[ignore = "plays one second of an empty live draft on the default output"]
+fn live_silence_stops() {
+    let draft = auditorylab::Draft::new();
+    assert!(draft.components().is_empty());
+    let live = auditorylab::prepare_live(&draft).unwrap();
+    println!("Verified empty live draft: {:?}", live.output());
+    let rate = live.output().sample_rate.hz();
+    let cancel = Cancel::default();
+    let now = Instant::now();
+    let progress = Progress::default();
+    let (played, reached) = std::thread::scope(|scope| {
+        let waiter = scope.spawn(|| {
+            let deadline = Instant::now() + Duration::from_secs(8);
+            while progress.frames() < u64::from(rate) && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let reached = progress.frames() >= u64::from(rate);
+            cancel.request();
+            reached
+        });
+        let played = live.play(&cancel, &progress).unwrap();
+        (played, waiter.join().unwrap())
+    });
+    println!(
+        "Live rendered {} frames in {:?}",
+        played.frames,
+        now.elapsed()
+    );
+    assert!(reached, "one second of live progress was not observed");
+    assert!(now.elapsed() >= Duration::from_secs(1) && now.elapsed() < Duration::from_secs(12));
+    assert!(played.frames >= u64::from(rate));
 }

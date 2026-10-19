@@ -2,6 +2,8 @@
 
 A preset is a UTF-8 TOML recipe for a stereo sound, in hertz, seconds and dBFS. It has no sample rate: `inspect` and `export` choose one, and playback uses the device's. `auditorylab recipe PRESET_ID --output PATH` saves any built-in preset as a starting point.
 
+The desktop [Workbench](desktop.md#library-and-workbench) also writes schema-2 recipes. Its saved files contain the edited title and summary; study and citation fields are not copied. Inspect them with `auditorylab inspect --file PATH` before playback or export.
+
 ## Examples
 
 Save an example as `custom.toml` in UTF-8, then run `auditorylab inspect --file ./custom.toml` to validate it without opening an audio device.
@@ -132,7 +134,7 @@ A recipe can be valid at one sample rate and invalid at another. `inspect`, `exp
 - Duration and fade are finite and not negative, duration gives at least one frame within [`Signal::MAX_FRAMES`](../crates/core/src/signal.rs), and the fades leave at least one frame between them (`2F < N`).
 - Component count stays within [`Stimulus::MAX_COMPONENTS`](../crates/core/src/stimulus.rs), and each component has a finite `peak_dbfs` of at most 0.
 - Every frequency and rate is finite, positive and below half the sample rate. A tone with sinusoidal modulation also needs `frequency_hz + rate_hz` below half the sample rate.
-- Pulse widths must give a finite whole-frame count `W ≥ 1` and satisfy `(W + 1) × rate_hz ≤ fs`, compared exactly. This leaves at least one closed frame in every period, including fractional-frame periods.
+- Pulse widths must give a whole-frame count `1 ≤ W ≤ Signal::MAX_FRAMES` (2^36 frames) and satisfy `(W + 1) × rate_hz ≤ fs`, compared exactly. This leaves at least one closed frame in every period, including fractional-frame periods.
 - Each ear's summed component peaks are at most full scale, so no sample ever needs clipping.
 
 `inspect` reports these summed peaks per ear. They are bounds, not measured or necessarily reached maxima.

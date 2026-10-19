@@ -1,61 +1,695 @@
-import { AboutSlint, Button, ComboBox, TextEdit, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView } from "std-widgets.slint";
+import { AboutSlint, Button, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, TabWidget, ProgressIndicator } from "std-widgets.slint";
+export struct Row {
+    id: string,
+    number: int,
+    ears: int,
+    source: int,
+    modulation: int,
+    error: string,
+    text0: string,
+    pos0: float,
+    text1: string,
+    pos1: float,
+    text2: string,
+    pos2: float,
+    text3: string,
+    pos3: float,
+    text4: string,
+    pos4: float,
+    text5: string,
+    pos5: float,
+    text6: string,
+    pos6: float,
+    text7: string,
+    pos7: float,
+}
+// Keep uncommitted text and focus local; model refreshes only replace unfocused text.
+component NumericField inherits LineEdit {
+    in property <string> canonical;
+    private property <bool> dirty: false;
+    in property <int> reset-key;
+    changed reset-key => {
+        self.text = root.canonical;
+        root.dirty = false;
+    }
+    callback stage(string);
+    callback commit(string);
+    init => {
+        self.text = root.canonical;
+    }
+    changed canonical => {
+        if !self.has-focus {
+            self.text = root.canonical;
+        }
+    }
+    edited(value) => {
+        root.dirty = true;
+        root.stage(value);
+    }
+    accepted(value) => {
+        root.dirty = false;
+        root.commit(value);
+    }
+    changed has-focus => {
+        if !self.has-focus && root.dirty {
+            root.dirty = false;
+            root.commit(self.text);
+        }
+    }
+}
+component NumericControl inherits HorizontalBox {
+    in property <string> label;
+    in property <string> canonical;
+    in property <float> position;
+    in property <bool> edit-enabled: true;
+    callback stage(string);
+    callback commit(string);
+    callback slide(float);
+    vertical-stretch: 0;
+    Text {
+        text: root.label;
+        min-width: 165px;
+    }
+    Slider {
+        enabled: root.edit-enabled;
+        minimum: 0;
+        maximum: 1;
+        step: 0.001;
+        value: root.position;
+        accessible-label: root.label + " slider";
+        changed(value) => {
+            root.slide(value);
+        }
+    }
+    NumericField {
+        enabled: root.edit-enabled;
+        canonical: root.canonical;
+        preferred-width: 150px;
+        accessible-label: root.label;
+        stage(value) => {
+            root.stage(value);
+        }
+        commit(value) => {
+            root.commit(value);
+        }
+    }
+}
 export component AboutWindow inherits Window {
-    title: "About Auditory Lab"; preferred-width: 560px; preferred-height: 420px;
+    title: "About Auditory Lab";
+    preferred-width: 560px;
+    preferred-height: 420px;
     in property <string> identity;
-    VerticalBox { Text { text: "Auditory Lab"; font-size: 24px; } TextEdit { text: root.identity; read-only: true; accessible-label: "Version and licenses"; } AboutSlint {} }
+    VerticalBox {
+        Text {
+            text: "Auditory Lab";
+            font-size: 24px;
+        }
+        TextEdit {
+            text: root.identity;
+            read-only: true;
+            accessible-label: "Version and licenses";
+        }
+        AboutSlint {
+        }
+    }
 }
 component Lane inherits Rectangle {
-    in property <string> label; in property <string> trace;
-    background: #131d2b; height: 110px; border-radius: 4px;
-    accessible-role: image; accessible-label: root.label;
-    Text { x: 8px; y: 4px; text: root.label; color: white; font-size: 12px; }
-    Text { x: 5px; y: 21px; height: 14px; text: "+1"; color: #bac7d7; font-size: 12px; }
-    Text { x: 5px; y: 56px; height: 14px; text: "0"; color: #bac7d7; font-size: 12px; }
-    Text { x: 5px; y: 91px; height: 14px; text: "−1"; color: #bac7d7; font-size: 12px; }
-    Rectangle { x: 38px; y: 28px; width: parent.width - 48px; height: 70px; clip: true;
-        Rectangle { y: parent.height / 2; height: 1px; width: parent.width; background: #43536b; }
-        Path { width: parent.width; height: parent.height; viewbox-width: 1024; viewbox-height: 100; fit: fill; commands: root.trace; stroke: #77d4ef; stroke-width: 1px; }
+    in property <string> label;
+    in property <string> trace;
+    background: #131d2b;
+    height: 100px;
+    border-radius: 4px;
+    accessible-role: image;
+    accessible-label: root.label;
+    Text {
+        x: 8px;
+        y: 4px;
+        text: root.label;
+        color: white;
+        font-size: 12px;
+    }
+    Text {
+        x: 5px;
+        y: 21px;
+        text: "+1";
+        color: #bac7d7;
+        font-size: 12px;
+    }
+    Text {
+        x: 5px;
+        y: 54px;
+        text: "0";
+        color: #bac7d7;
+        font-size: 12px;
+    }
+    Text {
+        x: 5px;
+        y: 83px;
+        text: "−1";
+        color: #bac7d7;
+        font-size: 12px;
+    }
+    Rectangle {
+        x: 38px;
+        y: 28px;
+        width: parent.width - 48px;
+        height: 62px;
+        clip: true;
+        Rectangle {
+            y: parent.height / 2;
+            height: 1px;
+            width: parent.width;
+            background: #43536b;
+        }
+        Path {
+            width: parent.width;
+            height: parent.height;
+            viewbox-width: 1024;
+            viewbox-height: 100;
+            fit: fill;
+            commands: root.trace;
+            stroke: #77d4ef;
+            stroke-width: 1px;
+        }
     }
 }
 export component MainWindow inherits Window {
-    title: "Auditory Lab"; preferred-width: 1040px; preferred-height: 820px; min-width: 850px; min-height: 700px;
+    title: "Auditory Lab";
+    preferred-width: 1100px;
+    preferred-height: 900px;
+    min-width: 850px;
+    min-height: 700px;
     in property <[StandardListViewItem]> catalog;
     in-out property <int> selected: 0;
-    in property <string> sound-title; in property <string> studied; in property <string> summary; in property <string> details;
+    in property <[Row]> rows;
+    in property <string> sound-title;
+    in property <string> studied;
+    in property <string> summary;
+    in property <string> details;
     in property <string> guidance;
-    in property <string> status; in property <bool> busy; in property <bool> can-export;
-    in property <string> elapsed; in property <float> progress;
-    in property <string> left-path; in property <string> right-path;
-    in-out property <int> window-index: 2; in-out property <int> rate-index: 1;
+    in property <string> status;
+    in property <bool> busy;
+    in property <bool> live;
+    in property <bool> can-export;
+    in property <bool> can-play;
+    in property <bool> can-save;
+    in property <string> elapsed;
+    in property <float> progress;
+    in property <string> left-path;
+    in property <string> right-path;
+    in property <int> draft-reset;
+    in-out property <length> editor-scroll-y;
+    in property <string> draft-title;
+    in property <string> draft-summary;
+    in property <string> duration;
+    in property <string> fade;
+    in property <string> metadata-error;
+    in property <string> peak;
+    in-out property <int> tab-index: 0;
+    in-out property <int> window-index: 2;
+    in-out property <int> rate-index: 1;
     in-out property <bool> research: false;
-    callback select(int); callback open-recipe(); callback play-stop(); callback export-wav(); callback about(); callback rate-changed(int); callback window-changed();
+    callback select(int);
+    callback open-recipe();
+    callback play-stop();
+    callback export-wav();
+    callback about();
+    callback rate-changed(int);
+    callback window-changed();
+    callback tab-changed(int);
+    callback open-workbench();
+    callback new-draft();
+    callback add-component(int);
+    callback remove-component(string);
+    callback choice(string, int, int);
+    callback edit(string, int, string);
+    callback slide(string, int, float);
+    callback metadata(string, string);
+    callback stage-metadata(string, string);
+    callback stage(string, int, string);
+    callback save-recipe();
     MenuBar {
-        Menu { title: "File"; MenuItem { title: "Open Recipe…"; enabled: !root.busy; activated => { root.open-recipe(); } } MenuItem { title: "Export WAV…"; enabled: !root.busy && root.can-export; activated => { root.export-wav(); } } }
-        Menu { title: "Help"; MenuItem { title: "About"; activated => { root.about(); } } }
-    }
-    VerticalBox {
-        HorizontalBox {
-            VerticalBox { min-width: 280px; max-width: 320px;
-                StandardListView { model: root.catalog; current-item <=> root.selected; enabled: !root.busy; current-item-changed(index) => { root.select(index); } accessible-label: "Sounds, research topics and durations"; }
-                Button { text: "Open Recipe…"; enabled: !root.busy; clicked => { root.open-recipe(); } }
+        Menu {
+            title: "File";
+            MenuItem {
+                title: "New Sound";
+                enabled: !root.busy;
+                activated => {
+                    root.new-draft();
+                }
             }
-            ScrollView {
-                VerticalBox {
-                    Text { text: root.sound-title; font-size: 24px; wrap: word-wrap; vertical-stretch: 0; }
-                    Text { text: root.studied; wrap: word-wrap; vertical-stretch: 0; }
-                    Text { text: root.summary; wrap: word-wrap; vertical-stretch: 0; }
-                    HorizontalBox { vertical-stretch: 0; Button { text: root.busy ? "Stop" : "Play"; accessible-label: "Play or stop selected sound"; clicked => { root.play-stop(); } } Text { text: root.elapsed; } }
-                    Rectangle { height: 8px; background: #d4dce5; accessible-role: progress-indicator; accessible-label: "Operation progress"; accessible-value: root.elapsed; Rectangle { height: parent.height; width: parent.width * root.progress; background: #327ca9; } }
-                    HorizontalBox { vertical-stretch: 0; Text { text: "Waveform window"; } ComboBox { model: ["2 ms", "10 ms", "40 ms", "100 ms"]; current-index <=> root.window-index; selected(value) => { root.window-changed(); } } }
-                    Lane { label: "Left ear"; trace: root.left-path; }
-                    Lane { label: "Right ear"; trace: root.right-path; }
-                    CheckBox { text: "Research details"; checked <=> root.research; }
-                    if root.research: TextEdit { text: root.details; read-only: true; min-height: 130px; accessible-label: "Selectable citation and research details"; }
-                    HorizontalBox { vertical-stretch: 0; Text { text: "Export rate"; } ComboBox { model: ["44100 Hz", "48000 Hz", "88200 Hz", "96000 Hz", "192000 Hz"]; current-index <=> root.rate-index; enabled: !root.busy; selected(value) => { root.rate-changed(root.rate-index); } } Button { text: "Export WAV…"; enabled: !root.busy && root.can-export; clicked => { root.export-wav(); } } }
-                    TextEdit { text: root.status; read-only: true; min-height: 45px; max-height: 70px; accessible-label: "Selectable operation status"; }
+            MenuItem {
+                title: "Open Recipe…";
+                enabled: !root.busy;
+                activated => {
+                    root.open-recipe();
+                }
+            }
+            MenuItem {
+                title: "Save Recipe…";
+                enabled: !root.busy && root.tab-index == 1 && root.can-save;
+                activated => {
+                    root.save-recipe();
+                }
+            }
+            MenuItem {
+                title: "Export WAV…";
+                enabled: !root.busy && root.can-export;
+                activated => {
+                    root.export-wav();
                 }
             }
         }
-        Text { text: root.guidance; wrap: word-wrap; vertical-stretch: 0; }
+        Menu {
+            title: "Help";
+            MenuItem {
+                title: "About";
+                activated => {
+                    root.about();
+                }
+            }
+        }
+    }
+    VerticalBox {
+        TabWidget {
+            current-index <=> root.tab-index;
+            changed current-index => {
+                root.tab-changed(self.current-index);
+            }
+            Tab {
+                title: "Library";
+                HorizontalBox {
+                    VerticalBox {
+                        min-width: 250px;
+                        max-width: 300px;
+                        StandardListView {
+                            model: root.catalog;
+                            current-item <=> root.selected;
+                            enabled: !root.busy;
+                            current-item-changed(index) => {
+                                root.select(index);
+                            } accessible-label: "Sounds, research topics and durations";
+                        }
+                        Button {
+                            text: "Open Recipe…";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.open-recipe();
+                            }
+                        }
+                        Button {
+                            text: "Open in Workbench";
+                            enabled: !root.busy;
+                            clicked => {
+                                root.open-workbench();
+                            }
+                        }
+                    }
+                    ScrollView {
+                        VerticalBox {
+                            Text {
+                                text: root.sound-title;
+                                font-size: 24px;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                            }
+                            Text {
+                                text: root.studied;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                            }
+                            Text {
+                                text: root.summary;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                            }
+                            CheckBox {
+                                text: "Research details";
+                                checked <=> root.research;
+                            }
+                            if root.research: TextEdit {
+                                text: root.details;
+                                read-only: true;
+                                min-height: 200px;
+                                accessible-label: "Selectable citation and research details";
+                            }
+                        }
+                    }
+                }
+            }
+            Tab {
+                title: "Workbench";
+                ScrollView {
+                    content-y <=> root.editor-scroll-y;
+                    VerticalBox {
+                        HorizontalBox {
+                            vertical-stretch: 0;
+                            Text {
+                                text: "Title";
+                            }
+                            NumericField {
+                                reset-key: root.draft-reset;
+                                enabled: !root.busy || root.live;
+                                canonical: root.draft-title;
+                                stage(value) => {
+                                    root.stage-metadata("title",value);
+                                } accessible-label: "Sound title";
+                                commit(value) => {
+                                    root.metadata("title", value);
+                                }
+                            }
+                            Button {
+                                text: "New";
+                                enabled: !root.busy;
+                                clicked => {
+                                    root.new-draft();
+                                }
+                            }
+                        }
+                        HorizontalBox {
+                            vertical-stretch: 0;
+                            Text {
+                                text: "Summary";
+                            }
+                            NumericField {
+                                reset-key: root.draft-reset;
+                                enabled: !root.busy || root.live;
+                                canonical: root.draft-summary;
+                                stage(value) => {
+                                    root.stage-metadata("summary",value);
+                                } accessible-label: "Sound summary";
+                                commit(value) => {
+                                    root.metadata("summary", value);
+                                }
+                            }
+                        }
+                        HorizontalBox {
+                            vertical-stretch: 0;
+                            Text {
+                                text: "Saved/exported duration (s)";
+                            }
+                            NumericField {
+                                reset-key: root.draft-reset;
+                                enabled: !root.busy || root.live;
+                                canonical: root.duration;
+                                stage(value) => {
+                                    root.stage-metadata("duration",value);
+                                } accessible-label: "Saved and exported duration seconds";
+                                commit(value) => {
+                                    root.metadata("duration", value);
+                                }
+                            }
+                            Text {
+                                text: "Fade (s)";
+                            }
+                            NumericField {
+                                reset-key: root.draft-reset;
+                                enabled: !root.busy || root.live;
+                                canonical: root.fade;
+                                stage(value) => {
+                                    root.stage-metadata("fade",value);
+                                } accessible-label: "Saved and exported fade seconds";
+                                commit(value) => {
+                                    root.metadata("fade", value);
+                                }
+                            }
+                        }
+                        Text {
+                            text: root.metadata-error;
+                            color: #b03030;
+                            wrap: word-wrap;
+                            vertical-stretch: 0;
+                        }
+                        for row in root.rows: VerticalBox {
+                            vertical-stretch: 0;
+                            HorizontalBox {
+                                vertical-stretch: 0;
+                                Text {
+                                    text: "Component " + row.number;
+                                    font-weight: 700;
+                                }
+                                ComboBox {
+                                    enabled: !root.busy || root.live;
+                                    model: ["Both", "Left", "Right"];
+                                    current-index: row.ears;
+                                    accessible-label: "Component " + row.number + " ears";
+                                    selected(value) => {
+                                        root.choice(row.id, 0, self.current-index);
+                                    }
+                                }
+                                ComboBox {
+                                    enabled: !root.busy || root.live;
+                                    model: ["Tone", "Clicks"];
+                                    current-index: row.source;
+                                    accessible-label: "Component " + row.number + " source";
+                                    selected(value) => {
+                                        root.choice(row.id, 1, self.current-index);
+                                    }
+                                }
+                                ComboBox {
+                                    enabled: !root.busy || root.live;
+                                    model: ["None", "Sinusoidal", "Gate"];
+                                    current-index: row.modulation;
+                                    accessible-label: "Component " + row.number + " modulation";
+                                    selected(value) => {
+                                        root.choice(row.id, 2, self.current-index);
+                                    }
+                                }
+                                Button {
+                                    text: "Remove";
+                                    enabled: !root.busy || root.live;
+                                    accessible-label: "Remove component " + row.number;
+                                    clicked => {
+                                        root.remove-component(row.id);
+                                    }
+                                }
+                            }
+                            if row.source == 0: NumericControl {
+                                label: "Component " + row.number + " Frequency (Hz)";
+                                edit-enabled: !root.busy || root.live;
+                                canonical: row.text0;
+                                position: row.pos0;
+                                stage(value) => {
+                                    root.stage(row.id, 0, value);
+                                }
+                                commit(value) => {
+                                    root.edit(row.id, 0, value);
+                                }
+                                slide(value) => {
+                                    root.slide(row.id, 0, value);
+                                }
+                            }
+                            if row.source == 1: NumericControl {
+                                label: "Component " + row.number + " Click rate (Hz)";
+                                edit-enabled: !root.busy || root.live;
+                                canonical: row.text1;
+                                position: row.pos1;
+                                stage(value) => {
+                                    root.stage(row.id, 1, value);
+                                }
+                                commit(value) => {
+                                    root.edit(row.id, 1, value);
+                                }
+                                slide(value) => {
+                                    root.slide(row.id, 1, value);
+                                }
+                            }
+                            if row.source == 1: NumericControl {
+                                label: "Component " + row.number + " Click width (ms)";
+                                edit-enabled: !root.busy || root.live;
+                                canonical: row.text2;
+                                position: row.pos2;
+                                stage(value) => {
+                                    root.stage(row.id, 2, value);
+                                }
+                                commit(value) => {
+                                    root.edit(row.id, 2, value);
+                                }
+                                slide(value) => {
+                                    root.slide(row.id, 2, value);
+                                }
+                            }
+                            NumericControl {
+                                label: "Component " + row.number + " Level (dBFS)";
+                                edit-enabled: !root.busy || root.live;
+                                canonical: row.text3;
+                                position: row.pos3;
+                                stage(value) => {
+                                    root.stage(row.id, 3, value);
+                                }
+                                commit(value) => {
+                                    root.edit(row.id, 3, value);
+                                }
+                                slide(value) => {
+                                    root.slide(row.id, 3, value);
+                                }
+                            }
+                            if row.modulation == 1: NumericControl {
+                                label: "Component " + row.number + " Modulation rate (Hz)";
+                                edit-enabled: !root.busy || root.live;
+                                canonical: row.text4;
+                                position: row.pos4;
+                                stage(value) => {
+                                    root.stage(row.id, 4, value);
+                                }
+                                commit(value) => {
+                                    root.edit(row.id, 4, value);
+                                }
+                                slide(value) => {
+                                    root.slide(row.id, 4, value);
+                                }
+                            }
+                            if row.modulation == 1: NumericControl {
+                                label: "Component " + row.number + " Depth";
+                                edit-enabled: !root.busy || root.live;
+                                canonical: row.text5;
+                                position: row.pos5;
+                                stage(value) => {
+                                    root.stage(row.id, 5, value);
+                                }
+                                commit(value) => {
+                                    root.edit(row.id, 5, value);
+                                }
+                                slide(value) => {
+                                    root.slide(row.id, 5, value);
+                                }
+                            }
+                            if row.modulation == 2: NumericControl {
+                                label: "Component " + row.number + " Gate rate (Hz)";
+                                edit-enabled: !root.busy || root.live;
+                                canonical: row.text6;
+                                position: row.pos6;
+                                stage(value) => {
+                                    root.stage(row.id, 6, value);
+                                }
+                                commit(value) => {
+                                    root.edit(row.id, 6, value);
+                                }
+                                slide(value) => {
+                                    root.slide(row.id, 6, value);
+                                }
+                            }
+                            if row.modulation == 2: NumericControl {
+                                label: "Component " + row.number + " Gate width (ms)";
+                                edit-enabled: !root.busy || root.live;
+                                canonical: row.text7;
+                                position: row.pos7;
+                                stage(value) => {
+                                    root.stage(row.id, 7, value);
+                                }
+                                commit(value) => {
+                                    root.edit(row.id, 7, value);
+                                }
+                                slide(value) => {
+                                    root.slide(row.id, 7, value);
+                                }
+                            }
+                            Text {
+                                text: row.error;
+                                color: #b03030;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                            }
+                        }
+                        HorizontalBox {
+                            vertical-stretch: 0;
+                            Button {
+                                text: "Add Tone";
+                                enabled: (!root.busy || root.live) && root.rows.length < 16;
+                                clicked => {
+                                    root.add-component(0);
+                                }
+                            }
+                            Button {
+                                text: "Add Clicks";
+                                enabled: (!root.busy || root.live) && root.rows.length < 16;
+                                clicked => {
+                                    root.add-component(1);
+                                }
+                            }
+                            Button {
+                                text: "Save Recipe…";
+                                enabled: !root.busy && root.can-save;
+                                clicked => {
+                                    root.save-recipe();
+                                }
+                            }
+                        }
+                        Text {
+                            text: root.peak;
+                            wrap: word-wrap;
+                            vertical-stretch: 0;
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalBox {
+            vertical-stretch: 0;
+            Button {
+                text: root.busy ? "Stop" : "Play";
+                enabled: root.busy || root.can-play;
+                accessible-label: "Play or stop sound";
+                clicked => {
+                    root.play-stop();
+                }
+            }
+            Text {
+                text: root.elapsed;
+            }
+            Text {
+                text: "Waveform window";
+            }
+            ComboBox {
+                model: ["2 ms", "10 ms", "40 ms", "100 ms"];
+                current-index <=> root.window-index;
+                selected(value) => {
+                    root.window-changed();
+                }
+            }
+            Text {
+                text: "Export rate";
+            }
+            ComboBox {
+                model: ["44100 Hz", "48000 Hz", "88200 Hz", "96000 Hz", "192000 Hz"];
+                current-index <=> root.rate-index;
+                enabled: !root.busy;
+                selected(value) => {
+                    root.rate-changed(root.rate-index);
+                }
+            }
+            Button {
+                text: "Export WAV…";
+                enabled: !root.busy && root.can-export;
+                clicked => {
+                    root.export-wav();
+                }
+            }
+        }
+        ProgressIndicator {
+            progress: root.progress;
+            visible: !root.live;
+            accessible-label: "Operation progress";
+        }
+        Lane {
+            label: "Left ear";
+            trace: root.left-path;
+        }
+        Lane {
+            label: "Right ear";
+            trace: root.right-path;
+        }
+        TextEdit {
+            text: root.status;
+            read-only: true;
+            min-height: 45px;
+            max-height: 60px;
+            accessible-label: "Selectable operation status";
+        }
+        Text {
+            text: root.guidance;
+            wrap: word-wrap;
+            vertical-stretch: 0;
+        }
     }
 }

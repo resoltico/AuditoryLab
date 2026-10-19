@@ -147,6 +147,10 @@ jobs:
           if-no-files-found: error
           compression-level: 0
   mutation:
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [synthesis, live]
     needs: lint
     if: github.event_name != 'schedule' && needs.lint.outputs.core-changed == 'true'
     runs-on: ubuntu-24.04
@@ -162,19 +166,24 @@ jobs:
       - run: rustup toolchain install
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --version "$CARGO_MUTANTS_VERSION" --locked --target-dir target
-      - name: Mutate only synthesis.rs
-        # Bit 52 is clear in the fraction. At line 33 both branches return 1;
-        # at line 62 the enclosing != guard excludes equality.
-        # Location-specific exclusions keep the Nyquist and pulse-width guards mutated.
-        run: >-
-          cargo mutants --file crates/core/src/synthesis.rs --package auditorylab-core
-          --test-workspace=false --timeout 60 --cargo-arg=--locked --output target/mutations
-          --exclude-re 'replace \| with \^ in parts$'
-          --exclude-re 'synthesis\.rs:33:22: replace < with <= in step$'
-          --exclude-re 'synthesis\.rs:62:15: replace < with <= in times_at_most$'
+      - name: Mutate one synthesis source file
+        env:
+          MUTATION_SOURCE: ${{ matrix.source }}
+        run: |
+          args=(--file "crates/core/src/${MUTATION_SOURCE}.rs" --package auditorylab-core
+                --test-workspace=false --timeout 60 --cargo-arg=--locked --output target/mutations)
+          if [[ "$MUTATION_SOURCE" == synthesis ]]; then
+            # Bit 52 is clear in the fraction. At line 33 both branches return 1;
+            # at line 62 the enclosing != guard excludes equality.
+            # Location-specific exclusions keep the Nyquist and pulse-width guards mutated.
+            args+=(--exclude-re 'replace \| with \^ in parts$'
+                   --exclude-re 'synthesis\.rs:33:22: replace < with <= in step$'
+                   --exclude-re 'synthesis\.rs:62:15: replace < with <= in times_at_most$')
+          fi
+          cargo mutants "${args[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: synthesis-mutations
+          name: ${{ matrix.source }}-mutations
           path: target/mutations/mutants.out/
           if-no-files-found: error

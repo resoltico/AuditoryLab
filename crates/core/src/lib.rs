@@ -1,10 +1,11 @@
-//! Auditory recipes, validation and pure seekable stereo synthesis.
+//! Auditory recipes, validation and pure seekable and live stereo synthesis.
 #![no_std]
 #![forbid(unsafe_code)]
 extern crate alloc;
 #[cfg(test)]
 extern crate std;
 pub mod catalog;
+pub mod live;
 mod numeric;
 mod preset;
 mod rate;

@@ -120,33 +120,17 @@ fn cancel_on_interrupt() -> Result<Cancel, Box<dyn std::error::Error>> {
     })?;
     Ok(cancel)
 }
-fn title(preset: &Preset) -> String {
-    preset
-        .about()
-        .map_or_else(|| preset.origin().to_string(), |a| a.title.clone())
-}
 fn describe(preset: &Preset) -> String {
     let s = preset.stimulus();
     let mut out = format!(
-        "{}\nSource: {}\nDuration: {} s\nFade: {} s at each edge\n",
-        title(preset),
+        "{}\nSource: {}\nDuration: {}\nFade: {} at each edge\n",
+        preset.title(),
         preset.origin(),
-        s.duration_seconds,
-        s.fade_seconds
+        lab::human_duration(s.duration_seconds),
+        lab::human_duration(s.fade_seconds)
     );
-    if let Some(a) = preset.about() {
-        for (label, value) in [
-            ("Studied for", &a.studied_for),
-            ("Summary", &a.summary),
-            ("Citation", &a.citation),
-            ("Source", &a.source_url),
-            ("Study", &a.study),
-            ("Adaptation", &a.adaptation),
-        ] {
-            if let Some(value) = value {
-                out.push_str(&format!("{label}: {value}\n"));
-            }
-        }
+    for (label, value) in preset.research() {
+        out.push_str(&format!("{label}: {value}\n"));
     }
     for (i, component) in s.components.iter().enumerate() {
         out.push_str(&format!("Component {}: {component}\n", i + 1));
@@ -163,9 +147,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             for preset in lab::catalog()? {
                 if let Origin::BuiltIn(id) = preset.origin() {
                     text.push_str(&format!(
-                        "{id}\n  {} ({} s)\n",
-                        title(&preset),
-                        preset.stimulus().duration_seconds
+                        "{id}\n  {} ({})\n",
+                        preset.title(),
+                        lab::human_duration(preset.stimulus().duration_seconds)
                     ));
                     if let Some(a) = preset.about().and_then(|a| a.studied_for.as_deref()) {
                         text.push_str(&format!("  {a}\n"));
@@ -194,11 +178,11 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let sound = preset.at(sample_rate)?;
             let signal = sound.signal();
             say(&format!(
-                "{}\nSample rate: {} Hz\nFrames: {}\nDuration: {} s\nFade: {} frames ({} s)\nPeak bounds: left {} dBFS, right {} dBFS",
+                "{}\nSample rate: {} Hz\nFrames: {}\nDuration: {}\nFade: {} frames ({} s)\nPeak bounds: left {} dBFS, right {} dBFS",
                 describe(&preset),
                 sample_rate.hz(),
                 signal.frames(),
-                signal.duration_seconds(),
+                lab::human_duration(signal.duration_seconds()),
                 signal.fade_frames(),
                 signal.fade_seconds(),
                 signal.peak_dbfs()[0],
@@ -217,7 +201,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 "{}",
                 prose(&format!(
                     "Exporting {} to {path:?} at {} Hz. Press Ctrl-C to stop.",
-                    title(&preset),
+                    preset.title(),
                     sample_rate.hz()
                 ))
             );
@@ -235,10 +219,10 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             eprintln!(
                 "{}",
                 prose(&format!(
-                    "Playing {}\nSource: {}\nDuration: {} s\nDevice: {}\n{} Hz, {} channels, {}\n{}\nPress Ctrl-C to stop.",
-                    title(&preset),
+                    "Playing {}\nSource: {}\nDuration: {}\nDevice: {}\n{} Hz, {} channels, {}\n{}\nPress Ctrl-C to stop.",
+                    preset.title(),
                     preset.origin(),
-                    playback.sound().signal().duration_seconds(),
+                    lab::human_duration(playback.sound().signal().duration_seconds()),
                     info.name.as_deref().unwrap_or("default output"),
                     info.sample_rate.hz(),
                     info.channels,
@@ -280,7 +264,13 @@ fn main() -> ExitCode {
     match run(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("{}", prose(&e.to_string()));
+            let mut message = e.to_string();
+            if e.downcast_ref::<lab::Error>()
+                .is_some_and(|e| e.kind() == ErrorKind::UnknownPreset)
+            {
+                message.push_str("; run `auditorylab list`, or use --file PATH");
+            }
+            eprintln!("{}", prose(&message));
             ExitCode::from(
                 e.downcast_ref::<lab::Error>()
                     .map_or(1, |e| exit_code(e.kind())),

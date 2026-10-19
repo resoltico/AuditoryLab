@@ -7,22 +7,25 @@ Notable changes to this project are documented in this file. The format is based
 ### Breaking
 
 - Desktop drawing requires an OpenGL-capable graphics driver; software-renderer recovery is removed.
-- Integer-phase oscillators and exact frame-quantized pulse timing replace the synthesis model. Click and rectangular-gate pulses last exactly `round(width_seconds × sample rate)` frames and start on the first frame at or after each onset; edges can move by one frame against 0.3.0. Recipes that leave no closed frame in a period are rejected. Tone and modulation sample bits also change.
+- Integer-phase oscillators and exact frame-quantized pulse timing replace the synthesis model. Click and rectangular-gate pulses last exactly `round(width_seconds × sample rate)` frames and start on the first frame at or after each onset; edges can move by one frame against 0.3.0. Recipes that leave no closed frame in a period, or whose pulse widths exceed 2^36 frames at the selected rate, are rejected. Reduce such widths to the supported frame limit. Tone and modulation sample bits also change.
 - Rust packages are `auditorylab-core`, `auditorylab`, `auditorylab-cli` and `auditorylab-gui`, under `crates/core`, `crates/lib`, `crates/cli` and `crates/gui`. WAV and device APIs move into the library. Callers use `Stimulus::signal`, immutable seekable `Signal`, and the library's loading/export/playback API; update Rust imports and exhaustive error matches. Install the CLI with `cargo install --locked --path crates/cli`.
 - Windows source builds require MSVC Visual Studio Build Tools. Downloads statically link the Microsoft C runtime. Linux builds use distribution fontconfig without the former font-library patch or root-directory build requirement.
 - Each macOS product has one universal archive instead of separate processor archives. Notices are generated per product and target inside downloads.
 
 ### Added
 
+- A desktop Workbench builds and changes up to 16 tone/click components live, with sliders, exact numeric fields, ear routing, level and modulation controls. Smooth ramps, glides and crossfades connect valid settings; drafts save as schema-2 recipes with title/summary text or export as finite WAV files. The Rust library supplies draft editing, shared control ranges and live playback.
 - Desktop progress and elapsed time, waveform previews before playback and a waveform window following the latency-compensated playback position. The sound panel scrolls to keep its controls accessible while listening guidance stays visible.
 - CLI `-V` as an alias for `--version`.
 - Positive frequencies previously rejected as too small to advance the phase are accepted.
 
 ### Changed
 
+- Stop fades finite playback over 30 ms, shortened at the end; live Stop finishes any current transition before its 30 ms fade. CLI Ctrl-C retains exit 130.
+- CLI and desktop durations read as hours, minutes and seconds; desktop peak bounds use one decimal and silence reads −∞.
 - CLI help and usage use clap. Commands, options, explicit source selection and exit codes stay the same. Version output is `auditorylab VERSION`, with a short commit ID for CI builds.
 - Desktop Open and Export use native dialogs. Save replaces an existing file only after native confirmation; CLI output keeps existing files untouched. Closing the window waits for worker cleanup; macOS Cmd-Q can leave a hidden `.NAME.RANDOM.partial` export file beside the destination.
-- The plot is computed from the same seekable signal as playback and export.
+- Library waveform previews use the same seekable signal as finite playback and export; Workbench previews show the current valid settings.
 - Preset files retain `schema_version = 2`; existing catalog parameters are unchanged.
 - Packaging uses `cargo xtask`; reusable CI builds the release archives. Release dispatch defaults to non-publishing verification with downloadable checksums, notes and provenance; publication requires `publish: true` on main. cargo-deny gates dependency policy, and packaging checks dependency and license-text coverage.
 
@@ -65,7 +68,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Breaking
 
-- Windows source builds use the native Rust GNU LLVM host (`x86_64-pc-windows-gnullvm` or `aarch64-pc-windows-gnullvm`) with bundled startup libraries and linker, replacing the MSVC build route. Install the host and `rust-mingw` component using the [source setup](README.md#install-from-source), and pass the native `--target` when building. Windows x86_64 executables require SSE3, CMPXCHG16B and LAHF/SAHF instructions.
+- Windows source builds use the native Rust GNU LLVM host (`x86_64-pc-windows-gnullvm` or `aarch64-pc-windows-gnullvm`) with bundled startup libraries and linker, replacing the MSVC build route. Install the host and `rust-mingw` component using the [source setup](https://github.com/resoltico/AuditoryLab/blob/v0.2.0/README.md#install-from-source), and pass the native `--target` when building. Windows x86_64 executables require SSE3, CMPXCHG16B and LAHF/SAHF instructions.
 - Presets use `schema_version = 2`. Component levels are named `peak_dbfs`, and the optional `[provenance]` table is replaced by `[about]`, in which only `title` is required and `description` is renamed `study`. Schema 1 and the old names are rejected. Built-in schema 2 recipes can be saved with `show NAME --output FILE` and edited.
 - Rust callers must replace `Provenance` and `Preset.provenance` with `About` and `Preset.about`, rename `description` to `study`, and handle the optional descriptive fields. `Component` fields and its `level_dbfs()` accessor become `peak_dbfs` and `peak_dbfs()`. `ComponentError::Level`, `ClickRateTooSmall` and `ClickWidth` become `PeakDbfs`, `PulseRateTooSmall` and `PulseWidth`; the pulse errors include a `field` name. Update exhaustive matches for the added modulation and preset-error variants.
 - `inspect` retains the preset title but no longer prints citation, source URL, study description or adaptation. Use `about PRESET` for that text, and update consumers of the inspection output.
@@ -86,7 +89,7 @@ Notable changes to this project are documented in this file. The format is based
 - macOS executables are built for macOS 11 or later (Apple silicon) and 10.12 or later (Intel), where 0.1.0 required macOS 15. Release testing runs on macOS 15 and does not establish execution on those older minimum versions.
 - Windows executables use open-source MinGW startup/support and static LLVM unwind code instead of the MSVC runtime, with UCRT supplied by Windows 10 or later on x86_64, or Windows 11 on ARM64. Release archives include the complete reviewed MinGW and LLVM runtime notices; Windows archive platform names are unchanged.
 - Contributor release tools require Python 3.9 or later instead of 3.11, using only the standard library.
-- Release publication checks uploaded asset digests before making a draft public and no longer resumes a partially uploaded draft automatically. Follow the [failure recovery procedure](docs/releasing.md#when-publishing-fails) before retrying; published versions must never be replaced.
+- Release publication checks uploaded asset digests before making a draft public and no longer resumes a partially uploaded draft automatically. Follow the [failure recovery procedure](https://github.com/resoltico/AuditoryLab/blob/v0.2.0/docs/releasing.md#when-publishing-fails) before retrying; published versions must never be replaced.
 
 ### Internal
 

@@ -1,5 +1,5 @@
 //! One operation thread and its progress channel.
-use auditorylab::{Cancel, OutputInfo, Preset, Progress, Sound};
+use auditorylab::{Cancel, Draft, LiveControl, OutputInfo, Preset, Progress, Sound};
 use std::{
     path::PathBuf,
     sync::mpsc::{self, Receiver, TryRecvError},
@@ -7,12 +7,15 @@ use std::{
 };
 pub(crate) enum Message {
     Ready(OutputInfo, Sound),
+    LiveReady(OutputInfo, LiveControl),
     Imported(Result<Preset, auditorylab::Error>),
     Done(Result<String, auditorylab::Error>),
 }
 pub(crate) enum Work {
     Import(PathBuf),
     Play(Preset),
+    Live(Draft),
+    Save(Draft, PathBuf),
     Export(Sound, PathBuf),
 }
 pub(crate) struct Worker {
@@ -48,6 +51,27 @@ impl Worker {
                             "Playback complete.".into()
                         }
                     });
+                let _ = tx.send(Message::Done(result));
+            }
+            Work::Live(draft) => {
+                let result = auditorylab::prepare_live(&draft)
+                    .and_then(|live| {
+                        let _ = tx.send(Message::LiveReady(live.output().clone(), live.control()));
+                        live.play(&c, &p)
+                    })
+                    .map(|played| {
+                        if played.underruns > 0 {
+                            auditorylab::Notice::Underruns(played.underruns).to_string()
+                        } else {
+                            "Stopped.".into()
+                        }
+                    });
+                let _ = tx.send(Message::Done(result));
+            }
+            Work::Save(draft, path) => {
+                let result = draft
+                    .save(&path, auditorylab::Replace::Allowed)
+                    .map(|()| format!("Saved recipe to {path:?}."));
                 let _ = tx.send(Message::Done(result));
             }
             Work::Export(sound, path) => {

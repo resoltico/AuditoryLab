@@ -1,12 +1,14 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
+use super::source::Source;
+use crate::Played;
 use crate::playback::{
     PlaybackError,
     callback::{Callback, Rounding, frame_duration},
     shared::{Shared, Terminal},
 };
-use auditorylab_core::{SampleRate, Signal};
+use auditorylab_core::SampleRate;
 use cpal::{
     OutputCallbackInfo, Sample, SizedSample, Stream, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
@@ -19,7 +21,7 @@ use std::time::{Duration, Instant};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// How long a stream may go without progress, and how long playback may take
-/// beyond the session's length to start up and drain.
+/// beyond the signal's length to start up and drain.
 const STALL_LIMIT: Duration = Duration::from_secs(30);
 
 /// How samples are represented in the device's stream.
@@ -60,20 +62,6 @@ impl Display for SampleFormat {
             Self::I16 => "16-bit integer",
         })
     }
-}
-
-/// What a completed playback did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Played {
-    /// Number of session frames played.
-    pub frames: u64,
-    /// The sample rate used by the playback stream.
-    pub sample_rate: SampleRate,
-    /// How the samples were represented in the device's stream. All but the
-    /// 64-bit floats round or quantize them.
-    pub format: SampleFormat,
-    /// Buffer underruns the backend reported; each may be an audible gap.
-    pub underruns: u64,
 }
 
 /// The discovery snapshot used for playback; the route may later change.
@@ -129,18 +117,20 @@ impl Output {
 
     pub(crate) fn play(
         self,
-        session: Arc<Signal>,
+        source: impl Into<Source>,
         cancel: &AtomicBool,
         progress: crate::Progress,
     ) -> Result<Played, PlaybackError> {
+        let source = source.into();
         if cancel.load(Ordering::Relaxed) {
-            return Err(PlaybackError::Cancelled);
+            return stopped_before_start(&source);
         }
-        fits(session.sample_rate(), self.description.sample_rate)?;
-        let frames = session.frames();
-        let time_limit = time_limit(frames, self.description.sample_rate);
+        fits(source.rate(), self.description.sample_rate)?;
+        let time_limit = source
+            .frames()
+            .map(|frames| time_limit(frames, self.description.sample_rate));
         let shared = Arc::new(Shared::default());
-        let callback = Callback::new(session, self.config.channels, Arc::clone(&shared));
+        let callback = Callback::new(source, self.config.channels, Arc::clone(&shared));
         let callback = callback.with_progress(progress);
         // Keep synchronous diagnostics on this worker, before publishing their
         // fixed outcome. An asynchronous writer can be paused independently.
@@ -158,9 +148,7 @@ impl Output {
         };
         resolve(&shared, terminal, setup_error)?;
         Ok(Played {
-            frames,
-            sample_rate: self.description.sample_rate,
-            format: self.description.format,
+            frames: shared.frames(),
             underruns: shared.underruns(),
         })
     }
@@ -190,6 +178,17 @@ impl Output {
             move |error| reports.report(error),
             Some(STALL_LIMIT),
         )
+    }
+}
+
+fn stopped_before_start(source: &Source) -> Result<Played, PlaybackError> {
+    if source.frames().is_none() {
+        Ok(Played {
+            frames: 0,
+            underruns: 0,
+        })
+    } else {
+        Err(PlaybackError::Cancelled)
     }
 }
 
@@ -225,17 +224,17 @@ fn supported_format(
     Ok((sample_rate, format))
 }
 
-fn fits(session_rate: SampleRate, device_rate: SampleRate) -> Result<(), PlaybackError> {
-    if session_rate != device_rate {
+fn fits(signal_rate: SampleRate, device_rate: SampleRate) -> Result<(), PlaybackError> {
+    if signal_rate != device_rate {
         return Err(PlaybackError::SampleRateMismatch {
-            session_hz: session_rate.hz(),
+            signal_hz: signal_rate.hz(),
             device_hz: device_rate.hz(),
         });
     }
     Ok(())
 }
 
-/// The session's length, rounded up to a nanosecond, plus the stall limit.
+/// The signal's length, rounded up to a nanosecond, plus the stall limit.
 fn time_limit(frames: u64, rate: SampleRate) -> Duration {
     frame_duration(frames, rate.hz(), Rounding::Up) + STALL_LIMIT
 }
@@ -243,15 +242,15 @@ fn time_limit(frames: u64, rate: SampleRate) -> Duration {
 /// Decides from the elapsed time and the progress count when a stream has
 /// stalled or outlasted its limit.
 struct Watchdog {
-    time_limit: Duration,
+    time_limit: Option<Duration>,
     last_progress: u64,
     last_progress_at: Duration,
 }
 
 impl Watchdog {
-    const fn new(time_limit: Duration) -> Self {
+    fn new(time_limit: impl Into<Option<Duration>>) -> Self {
         Self {
-            time_limit,
+            time_limit: time_limit.into(),
             last_progress: 0,
             last_progress_at: Duration::ZERO,
         }
@@ -262,27 +261,54 @@ impl Watchdog {
             self.last_progress = progress;
             self.last_progress_at = elapsed;
         }
-        elapsed >= self.time_limit || elapsed.saturating_sub(self.last_progress_at) >= STALL_LIMIT
+        self.time_limit.is_some_and(|limit| elapsed >= limit)
+            || elapsed.saturating_sub(self.last_progress_at) >= STALL_LIMIT
     }
 }
 
 /// Wait until playback has a result, recording cancellation or a timeout
 /// when that comes first.
-fn supervise(shared: &Shared, time_limit: Duration, cancel: &AtomicBool) -> Terminal {
-    let started = Instant::now();
-    let mut watchdog = Watchdog::new(time_limit);
-    loop {
-        let terminal = shared.terminal();
-        if terminal != Terminal::Running {
-            return terminal;
+struct Supervision {
+    watchdog: Watchdog,
+    stop_at: Option<Duration>,
+}
+impl Supervision {
+    fn new(limit: impl Into<Option<Duration>>) -> Self {
+        Self {
+            watchdog: Watchdog::new(limit),
+            stop_at: None,
         }
-        if cancel.load(Ordering::Relaxed) {
-            shared.finish(Terminal::Cancelled);
-            return shared.terminal();
+    }
+    fn poll(&mut self, shared: &Shared, elapsed: Duration, cancel: bool) -> Option<Terminal> {
+        if shared.terminal() != Terminal::Running {
+            return Some(shared.terminal());
         }
-        if watchdog.expired(started.elapsed(), shared.progress()) {
+        if cancel && self.stop_at.is_none() {
+            shared.request_stop();
+            self.stop_at = Some(elapsed);
+        }
+        if let Some(start) = self.stop_at {
+            if elapsed.saturating_sub(start) >= Duration::from_secs(2) {
+                shared.finish(Terminal::Cancelled);
+            }
+        } else if self.watchdog.expired(elapsed, shared.progress()) {
             shared.finish(Terminal::TimedOut);
-            return shared.terminal();
+        }
+        (shared.terminal() != Terminal::Running).then(|| shared.terminal())
+    }
+}
+fn supervise(
+    shared: &Shared,
+    time_limit: impl Into<Option<Duration>>,
+    cancel: &AtomicBool,
+) -> Terminal {
+    let started = Instant::now();
+    let mut state = Supervision::new(time_limit);
+    loop {
+        if let Some(terminal) =
+            state.poll(shared, started.elapsed(), cancel.load(Ordering::Relaxed))
+        {
+            return terminal;
         }
         thread::sleep(POLL_INTERVAL);
     }
@@ -330,6 +356,26 @@ mod tests {
 
     fn rate(hz: u32) -> SampleRate {
         SampleRate::new(hz).unwrap()
+    }
+
+    #[test]
+    fn a_prestart_stop_is_successful_only_for_live_playback() {
+        let live = Source::Live {
+            engine: Box::new(auditorylab_core::live::Engine::new(rate(48_000))),
+            mailbox: Arc::new(std::sync::Mutex::new(None)),
+        };
+        assert_eq!(stopped_before_start(&live).unwrap().frames, 0);
+        let signal = auditorylab_core::Stimulus {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components: vec![],
+        }
+        .signal(rate(48_000))
+        .unwrap();
+        assert!(matches!(
+            stopped_before_start(&signal.into()),
+            Err(PlaybackError::Cancelled)
+        ));
     }
 
     #[test]
@@ -391,12 +437,12 @@ mod tests {
     }
 
     #[test]
-    fn a_session_must_use_the_device_rate() {
+    fn a_signal_must_use_the_device_rate() {
         assert!(fits(rate(44_100), rate(44_100)).is_ok());
         assert!(matches!(
             fits(rate(44_100), rate(48_000)),
             Err(PlaybackError::SampleRateMismatch {
-                session_hz: 44_100,
+                signal_hz: 44_100,
                 device_hz: 48_000
             })
         ));
@@ -441,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    fn the_time_limit_is_the_session_length_rounded_up_plus_the_stall_limit() {
+    fn the_time_limit_is_the_signal_length_rounded_up_plus_the_stall_limit() {
         assert_eq!(time_limit(1, rate(8_001)), Duration::new(30, 124_985));
         assert_eq!(time_limit(480_000, rate(48_000)), Duration::from_secs(40));
         assert_eq!(
@@ -477,13 +523,39 @@ mod tests {
     #[test]
     fn supervision_records_cancellation_and_leaves_an_earlier_result_alone() {
         let shared = Shared::default();
-        supervise(&shared, Duration::from_secs(3_600), &AtomicBool::new(true));
-        assert!(matches!(shared.terminal(), Terminal::Cancelled));
+        let mut state = Supervision::new(Duration::from_secs(3_600));
+        assert!(state.poll(&shared, Duration::ZERO, true).is_none());
+        assert!(shared.stop_requested());
+        assert!(
+            state
+                .poll(&shared, Duration::from_millis(1_999), true)
+                .is_none()
+        );
+        assert_eq!(
+            state.poll(&shared, Duration::from_secs(2), true),
+            Some(Terminal::Cancelled)
+        );
 
         let shared = Shared::default();
         shared.finish(Terminal::Complete);
         supervise(&shared, Duration::ZERO, &AtomicBool::new(true));
         assert!(shared.terminal() == Terminal::Complete);
+    }
+
+    #[test]
+    fn live_watchdog_has_no_total_limit_but_requires_progress() {
+        let mut watchdog = Watchdog::new(None);
+        for i in 0..200_u64 {
+            assert!(!watchdog.expired(Duration::from_secs(i * 29), i + 1));
+        }
+        assert!(watchdog.expired(Duration::from_secs(199 * 29 + 30), 200));
+        let shared = Shared::default();
+        let mut state = Supervision::new(Duration::ZERO);
+        assert!(state.poll(&shared, Duration::ZERO, true).is_none());
+        assert_eq!(
+            state.poll(&shared, Duration::from_secs(2), false),
+            Some(Terminal::Cancelled)
+        );
     }
 
     #[test]
@@ -573,7 +645,7 @@ mod quantization {
     fn real_callback_conversion_preserves_first_two_channels_and_zeros_every_extra_channel() {
         use crate::playback::shared::Shared;
         use auditorylab_core::{Component, Ears, Stimulus};
-        let session = Stimulus {
+        let signal = Stimulus {
             duration_seconds: 8.0 / 8_000.0,
             fade_seconds: 0.0,
             components: vec![
@@ -597,7 +669,7 @@ mod quantization {
         }
         .signal(SampleRate::new(8_000).unwrap())
         .unwrap();
-        let mut callback = Callback::new(session, 5, Arc::new(Shared::default()));
+        let mut callback = Callback::new(signal, 5, Arc::new(Shared::default()));
         let mut output = [cpal::I24::from_sample(0.5_f64); 40];
         let now = cpal::StreamInstant::from_nanos(0);
         callback.fill(
