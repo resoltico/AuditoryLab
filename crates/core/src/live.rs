@@ -974,6 +974,16 @@ mod tests {
         let mut out = vec![[1.0; 2]; usize::try_from(expected + 1).unwrap()];
         assert_eq!(engine.render(&mut out), usize::try_from(expected).unwrap());
         assert!(engine.is_finished());
+        let observation = engine.observation().unwrap();
+        assert_eq!(observation.frame, expected);
+        assert!(!observation.transitioning);
+        assert!(
+            observation
+                .voices
+                .iter()
+                .flatten()
+                .all(|voice| voice.gains == [0.0; 2])
+        );
         assert!(
             out[usize::try_from(expected - 1).unwrap()..]
                 .iter()
@@ -989,9 +999,12 @@ mod tests {
         assert_eq!(engine.render(&mut out), 2);
         assert_eq!(engine.frame(), Signal::MAX_FRAMES);
         assert!(engine.is_finished());
+        let observation = engine.observation().unwrap();
+        assert_eq!(observation.frame, Signal::MAX_FRAMES - 1);
         assert_eq!(out, [[0.0; 2]; 5]);
         assert_eq!(engine.render(&mut out), 0);
         assert_eq!(engine.frame(), Signal::MAX_FRAMES);
+        assert_eq!(engine.observation(), Some(observation));
     }
 
     #[test]
