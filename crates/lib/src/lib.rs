@@ -1,5 +1,6 @@
 //! Recipe loading, WAV publication and playback for Auditory Lab frontends.
 #![forbid(unsafe_code)]
+mod draft;
 mod error;
 mod input_admission;
 mod playback;
@@ -9,6 +10,7 @@ pub use auditorylab_core::waveform::trace;
 pub use auditorylab_core::{
     About, Carrier, Component, Ear, Ears, Extent, Modulation, SampleRate, Signal, Stimulus,
 };
+pub use draft::{ComponentId, Draft};
 pub use error::{Error, ErrorKind};
 pub use playback::output::{OutputInfo, SampleFormat};
 use std::{
@@ -263,14 +265,9 @@ impl Playback {
     }
     /// Run playback on this thread until completion or cancellation.
     pub fn play(self, cancel: &Cancel, progress: &Progress) -> Result<Played, Error> {
-        let report = self
-            .output
+        self.output
             .play(self.sound.signal, &cancel.0, progress.clone())
-            .map_err(device_error)?;
-        Ok(Played {
-            frames: report.frames,
-            underruns: report.underruns,
-        })
+            .map_err(device_error)
     }
 }
 /// Shared listening guidance.
@@ -303,5 +300,63 @@ pub fn version_line(binary: &str) -> String {
             &revision[..revision.len().min(12)]
         ),
         None => format!("{binary} {}", env!("CARGO_PKG_VERSION")),
+    }
+}
+
+/// A device-bound open-ended sound with a validated target mailbox.
+pub struct Live {
+    output: playback::Output,
+    control: LiveControl,
+}
+/// Producer-side live updates at the device's fixed sample rate.
+#[derive(Clone)]
+pub struct LiveControl {
+    rate: SampleRate,
+    mailbox: playback::source::Mailbox,
+}
+impl LiveControl {
+    /// Rate used to validate every update.
+    pub const fn sample_rate(&self) -> SampleRate {
+        self.rate
+    }
+    /// Validate and replace the waiting target; invalid edits leave it untouched.
+    pub fn update(&self, draft: &Draft) -> Result<(), Error> {
+        let target = draft.target(self.rate)?;
+        *self
+            .mailbox
+            .lock()
+            .map_err(|_| Error::new(ErrorKind::Device, "live control is unavailable"))? =
+            Some(target);
+        Ok(())
+    }
+}
+/// Discover the default device and validate the initial draft at its rate.
+pub fn prepare_live(draft: &Draft) -> Result<Live, Error> {
+    let output = playback::Output::default_device().map_err(device_error)?;
+    let rate = output.description().sample_rate;
+    let mailbox = Arc::new(std::sync::Mutex::new(None));
+    let control = LiveControl { rate, mailbox };
+    // First lock and store happen before any device callback can run.
+    control.update(draft)?;
+    Ok(Live { output, control })
+}
+impl Live {
+    /// Snapshot of the default output used for this stream.
+    pub fn output(&self) -> &OutputInfo {
+        self.output.description()
+    }
+    /// A handle for validated updates while playback runs.
+    pub fn control(&self) -> LiveControl {
+        self.control.clone()
+    }
+    /// Play until Stop, the frame limit, or an output failure.
+    pub fn play(self, stop: &Cancel, progress: &Progress) -> Result<Played, Error> {
+        let source = playback::source::Source::Live {
+            engine: Box::new(auditorylab_core::live::Engine::new(self.control.rate)),
+            mailbox: self.control.mailbox,
+        };
+        self.output
+            .play(source, &stop.0, progress.clone())
+            .map_err(device_error)
     }
 }

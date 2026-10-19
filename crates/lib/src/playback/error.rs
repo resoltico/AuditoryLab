@@ -4,7 +4,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-/// Why a session was not played to its end.
+/// Why a signal was not played to its end.
 #[derive(Debug, Clone)]
 pub(crate) enum PlaybackError {
     /// Cancellation was observed before playback completed.
@@ -16,15 +16,15 @@ pub(crate) enum PlaybackError {
     Backend(cpal::Error),
     /// The device's stream uses a sample representation playback cannot fill.
     UnsupportedSampleFormat(cpal::SampleFormat),
-    /// The device runs at a sample rate sessions cannot have.
+    /// The device runs at a sample rate signals cannot have.
     UnsupportedSampleRate {
         /// The device's sample rate in frames per second.
         hz: u32,
     },
-    /// The session was built for another sample rate than the device's.
+    /// The signal was built for another sample rate than the device's.
     SampleRateMismatch {
-        /// The session's sample rate in frames per second.
-        session_hz: u32,
+        /// The signal's sample rate in frames per second.
+        signal_hz: u32,
         /// The device's sample rate in frames per second.
         device_hz: u32,
     },
@@ -60,11 +60,11 @@ impl Display for PlaybackError {
                 "the output device's {hz} Hz sample rate is not supported"
             ),
             Self::SampleRateMismatch {
-                session_hz,
+                signal_hz,
                 device_hz,
             } => write!(
                 f,
-                "the session was built for {session_hz} Hz but the output device runs at {device_hz} Hz"
+                "the signal was built for {signal_hz} Hz but the output device runs at {device_hz} Hz"
             ),
             Self::TooFewChannels { channels } => write!(
                 f,
@@ -130,11 +130,11 @@ mod tests {
         );
         assert_eq!(
             PlaybackError::SampleRateMismatch {
-                session_hz: 48_000,
+                signal_hz: 48_000,
                 device_hz: 44_100
             }
             .to_string(),
-            "the session was built for 48000 Hz but the output device runs at 44100 Hz"
+            "the signal was built for 48000 Hz but the output device runs at 44100 Hz"
         );
         assert_eq!(
             PlaybackError::TooFewChannels { channels: 1 }.to_string(),

@@ -1,8 +1,8 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
+use super::source::Source;
 use crate::playback::shared::{Shared, Terminal};
-use auditorylab_core::Signal;
 use cpal::{OutputStreamTimestamp, StreamInstant};
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,17 +24,16 @@ pub(crate) fn frame_duration(frames: u64, rate_hz: u32, rounding: Rounding) -> D
     Duration::from_secs(frames / rate) + Duration::from_nanos(scaled / rate + u64::from(round_up))
 }
 
-/// Fills the backend's buffers from a session and decides when the session's
+/// Fills the backend's buffers from a signal and decides when the signal's
 /// last frame has been played.
 ///
 /// The backend states, for each buffer, when the callback runs and when the
-/// buffer's first frame will be played. From the position of the session's
+/// buffer's first frame will be played. From the position of the signal's
 /// end in the stream, each buffer therefore gives an estimate of when that
 /// end is played. Estimates can only move the expected time later, and
 /// playback is complete once a callback runs at or after it.
 pub(crate) struct Callback {
-    signal: Arc<Signal>,
-    cursor: u64,
+    source: Source,
     progress: crate::Progress,
     shared: Arc<Shared>,
     scratch: Vec<[f64; 2]>,
@@ -42,7 +41,7 @@ pub(crate) struct Callback {
     sample_rate_hz: u32,
     /// Frames returned to the backend by earlier callbacks.
     submitted: u64,
-    /// The position in the stream, in frames, just past the session's last frame.
+    /// The position in the stream, in frames, just past the signal's last frame.
     end: Option<u64>,
     /// The latest estimate of when the frame at `end` is played.
     target: Option<StreamInstant>,
@@ -51,15 +50,14 @@ pub(crate) struct Callback {
 
 impl Callback {
     pub(crate) fn new(
-        signal: impl Into<Arc<Signal>>,
+        source: impl Into<Source>,
         device_channels: u16,
         shared: Arc<Shared>,
     ) -> Self {
-        let signal = signal.into();
-        let sample_rate_hz = signal.sample_rate().hz();
+        let source = source.into();
+        let sample_rate_hz = source.rate().hz();
         Self {
-            signal,
-            cursor: 0,
+            source,
             progress: crate::Progress::default(),
             shared,
             scratch: vec![[0.0; 2]; SCRATCH_FRAMES],
@@ -78,10 +76,13 @@ impl Callback {
     }
     #[cfg(test)]
     fn remaining(&self) -> u64 {
-        self.signal.frames() - self.cursor
+        self.source
+            .frames()
+            .unwrap_or(0)
+            .saturating_sub(self.source.frame())
     }
     fn complete(&self) -> bool {
-        self.cursor == self.signal.frames()
+        self.source.finished()
     }
 
     /// Fill one backend buffer. A terminal result observed before or after
@@ -130,8 +131,10 @@ impl Callback {
         )
         .unwrap_or(u64::MAX);
         self.progress
-            .set(self.cursor.saturating_sub(latency_frames));
+            .set(self.source.frame().saturating_sub(latency_frames));
+        self.source.begin_buffer(self.shared.stop_requested());
         let active = self.render(output, convert);
+        self.shared.set_frames(self.source.frame());
         if active > 0 {
             self.shared.mark_progress();
         }
@@ -158,27 +161,30 @@ impl Callback {
                     self.shared.mark_progress();
                 }
                 if self.target.is_some_and(|target| time.callback >= target) {
-                    self.shared.finish(Terminal::Complete);
+                    self.shared.finish(if self.source.cancelled() {
+                        Terminal::Cancelled
+                    } else {
+                        Terminal::Complete
+                    });
                 }
             }
         }
         self.submitted += frames;
     }
 
-    /// Render the next session frames and place them on the device's channels.
+    /// Render the next signal frames and place them on the device's channels.
     fn render<T: Copy>(&mut self, output: &mut [T], convert: &impl Fn(f64) -> T) -> u64 {
         let mut active = 0;
         for chunk in output.chunks_mut(SCRATCH_FRAMES * self.device_channels) {
             let frames = chunk.len() / self.device_channels;
             let scratch = &mut self.scratch[..frames];
-            let count = self.signal.render(self.cursor, scratch);
-            self.cursor += count as u64;
+            let count = self.source.render(scratch);
             active += count as u64;
-            for (device_frame, session_frame) in chunk
+            for (device_frame, signal_frame) in chunk
                 .chunks_exact_mut(self.device_channels)
                 .zip(scratch.iter())
             {
-                place(device_frame, session_frame, convert);
+                place(device_frame, signal_frame, convert);
             }
         }
         active
@@ -186,9 +192,9 @@ impl Callback {
 }
 
 /// Put left/right on the leading channels and silence on the rest.
-fn place<T>(device_frame: &mut [T], session_frame: &[f64; 2], convert: &impl Fn(f64) -> T) {
+fn place<T>(device_frame: &mut [T], signal_frame: &[f64; 2], convert: &impl Fn(f64) -> T) {
     for (channel, slot) in device_frame.iter_mut().enumerate() {
-        *slot = convert(session_frame.get(channel).copied().unwrap_or(0.0));
+        *slot = convert(signal_frame.get(channel).copied().unwrap_or(0.0));
     }
 }
 
@@ -202,7 +208,7 @@ mod tests {
         SampleRate::new(hz).unwrap()
     }
 
-    fn session(frames: u64, hz: u32) -> Signal {
+    fn signal(frames: u64, hz: u32) -> Signal {
         Stimulus {
             duration_seconds: f64::from(u32::try_from(frames).unwrap()) / f64::from(hz),
             fade_seconds: 0.0,
@@ -219,7 +225,7 @@ mod tests {
         .unwrap()
     }
     fn callback(frames: u64, hz: u32) -> Callback {
-        Callback::new(session(frames, hz), 2, Arc::default())
+        Callback::new(signal(frames, hz), 2, Arc::default())
     }
 
     fn time(callback: u64, playback: u64) -> OutputStreamTimestamp {
@@ -279,9 +285,9 @@ mod tests {
     }
 
     #[test]
-    fn a_stereo_session_ending_in_the_second_scratch_block_drains_without_rounding_early() {
-        let session = session(1_537, 44_100);
-        let mut callback = Callback::new(session, 2, Arc::default());
+    fn a_stereo_signal_ending_in_the_second_scratch_block_drains_without_rounding_early() {
+        let signal = signal(1_537, 44_100);
+        let mut callback = Callback::new(signal, 2, Arc::default());
         let output = fill(&mut callback, 2_048, nanos(0, 10_000_000));
         assert_eq!(callback.end, Some(1_537));
         // 10 ms + ceil(1537 * 1e9 / 44100), independently calculated.
@@ -321,7 +327,7 @@ mod tests {
                 Duration::from_millis(1_500)
             );
         }
-        // The longest session at the lowest and at the highest sample rate.
+        // The longest signal at the lowest and at the highest sample rate.
         assert_eq!(
             frame_duration(1 << 36, 1, Rounding::Up),
             Duration::from_secs(1 << 36)
@@ -333,9 +339,9 @@ mod tests {
     }
 
     #[test]
-    fn the_session_is_rendered_in_order_across_buffers_and_followed_by_silence() {
+    fn the_signal_is_rendered_in_order_across_buffers_and_followed_by_silence() {
         let mut expected = [[0.0; 2]; 3_000];
-        session(3_000, 8_000).render(0, &mut expected);
+        signal(3_000, 8_000).render(0, &mut expected);
         let mut c = callback(3_000, 8_000);
         // The first buffer spans more than two scratch blocks.
         let mut actual = fill(&mut c, 2_500, time(0, 10));
@@ -366,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn a_session_that_ends_exactly_at_a_buffer_boundary_completes_in_a_later_buffer() {
+    fn a_signal_that_ends_exactly_at_a_buffer_boundary_completes_in_a_later_buffer() {
         // A steady stream: an 8-frame buffer every millisecond, played 5 ms later.
         let mut c = callback(16, 8_000);
         fill(&mut c, 8, time(0, 5));
@@ -497,7 +503,7 @@ mod tests {
         assert_eq!(active.shared.progress(), 0);
         fill(&mut active, 8, time(0, 0));
         assert_eq!(active.shared.progress(), 1);
-        // A frozen clock still rendered session frames.
+        // A frozen clock still rendered signal frames.
         fill(&mut active, 8, time(0, 0));
         assert_eq!(active.shared.progress(), 2);
 
@@ -524,7 +530,7 @@ mod tests {
             Terminal::StreamSetupFailed,
         ] {
             let shared = Arc::new(Shared::default());
-            let mut c = Callback::new(session(8_000, 8_000), 2, Arc::clone(&shared));
+            let mut c = Callback::new(signal(8_000, 8_000), 2, Arc::clone(&shared));
             let calls = std::cell::Cell::new(0);
             let mut output = vec![1.0; 8_192];
             c.fill(&mut output, time(0, 0), &|value| {
@@ -566,8 +572,8 @@ mod tests {
 
     #[test]
     fn a_buffer_holding_a_partial_frame_is_silenced_and_ends_playback() {
-        let session = session(8, 8_000);
-        let mut c = Callback::new(session, 2, Arc::default());
+        let signal = signal(8, 8_000);
+        let mut c = Callback::new(signal, 2, Arc::default());
         let mut partial = [1.0; 3];
         c.fill(&mut partial, time(0, 0), &|sample| sample);
         assert_eq!(partial, [0.0; 3]);
@@ -577,6 +583,144 @@ mod tests {
         c.fill(&mut aligned, time(1, 1), &|sample| sample);
         assert_eq!(aligned, [0.0; 4]);
         assert_eq!(c.remaining(), 8);
+    }
+
+    #[test]
+    fn finite_stop_fades_then_waits_for_the_device_to_drain() {
+        let mut c = callback(1_000, 8_000);
+        fill(&mut c, 32, time(0, 0));
+        c.shared.request_stop();
+        let out = fill(&mut c, 512, time(4, 54));
+        assert!(out[..478].iter().any(|s| *s != 0.0));
+        assert!(out[478..].iter().all(|s| *s == 0.0));
+        assert_eq!(c.end, Some(272));
+        assert_eq!(c.shared.frames(), 272);
+        assert!(running(&c));
+        fill(&mut c, 8, time(83, 114));
+        assert!(running(&c));
+        fill(&mut c, 8, time(84, 115));
+        assert!(terminal_is(&c, &Terminal::Cancelled));
+        assert!(matches!(
+            crate::playback::output::resolve(&c.shared, c.shared.terminal(), None),
+            Err(crate::playback::PlaybackError::Cancelled)
+        ));
+    }
+    #[test]
+    fn the_finite_envelope_matches_an_independent_ramp_across_chunks_and_buffers() {
+        for (total, before, rate_hz) in [(10_000, 500, 48_000), (640, 600, 8_000)] {
+            let reference = signal(total, rate_hz);
+            let mut c = callback(total, rate_hz);
+            fill(&mut c, usize::try_from(before).unwrap(), time(0, 0));
+            c.shared.request_stop();
+            let ramp = (u64::from(rate_hz) * 3 / 100).max(1).min(total - before);
+            let mut actual = fill(&mut c, 1_100, time(100, 150));
+            actual.extend(fill(&mut c, 512, time(120, 180)));
+            for (t, frame) in actual.as_chunks::<2>().0.iter().enumerate() {
+                let expected = if (t as u64) < ramp {
+                    reference.frame(before + t as u64).map(|v| {
+                        v * (1.0
+                            - f64::from(u32::try_from(t + 1).unwrap())
+                                / f64::from(u32::try_from(ramp).unwrap()))
+                    })
+                } else {
+                    [0.0; 2]
+                };
+                assert_eq!(*frame, expected, "frame {t}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_finite_stop_uses_only_the_remaining_frames() {
+        for remaining in [1, 40] {
+            let mut c = callback(20 + remaining, 8_000);
+            fill(&mut c, 20, time(0, 0));
+            c.shared.request_stop();
+            let out = fill(&mut c, 64, time(3, 3));
+            let last = usize::try_from(remaining - 1).unwrap() * 2;
+            assert!(out[last..].iter().all(|s| *s == 0.0));
+            assert_eq!(c.end, Some(20 + remaining));
+        }
+    }
+    fn live_callback() -> (Callback, crate::playback::source::Mailbox) {
+        let mailbox = Arc::new(std::sync::Mutex::new(None));
+        *mailbox.lock().unwrap() = Some(auditorylab_core::live::Target::silence(rate(8_000)));
+        let source = Source::Live {
+            engine: Box::new(auditorylab_core::live::Engine::new(rate(8_000))),
+            mailbox: mailbox.clone(),
+        };
+        (Callback::new(source, 2, Arc::default()), mailbox)
+    }
+    #[test]
+    fn mailbox_is_polled_once_per_buffer_and_updates_wait_for_the_next_buffer() {
+        let (mut c, mailbox) = live_callback();
+        let target = auditorylab_core::live::Target::new(
+            rate(8_000),
+            &[(
+                1,
+                Component {
+                    ears: Ears::Both,
+                    peak_dbfs: -30.0,
+                    carrier: crate::Carrier::Tone {
+                        frequency_hz: 440.0,
+                    },
+                    modulation: None,
+                },
+            )],
+        )
+        .unwrap();
+        let mut output = [1.0; 4_096];
+        let calls = std::cell::Cell::new(0);
+        c.fill(&mut output, time(0, 0), &|v| {
+            if calls.replace(calls.get() + 1) == 0 {
+                *mailbox.lock().unwrap() = Some(target);
+            }
+            v
+        });
+        assert!(output.iter().all(|v| *v == 0.0));
+        let out = fill(&mut c, 512, time(256, 256));
+        assert!(out.iter().any(|v| *v != 0.0));
+    }
+    #[test]
+    fn live_stop_completes_and_reports_the_rendered_frame_count() {
+        let (mut c, _) = live_callback();
+        fill(&mut c, 512, time(0, 0));
+        c.shared.request_stop();
+        let out = fill(&mut c, 512, time(100, 100));
+        assert!(out.iter().all(|v| *v == 0.0));
+        assert_eq!(c.shared.frames(), 752);
+        assert!(running(&c));
+        fill(&mut c, 512, time(131, 131));
+        assert!(complete(&c));
+        assert!(crate::playback::output::resolve(&c.shared, c.shared.terminal(), None).is_ok());
+    }
+    #[test]
+    fn live_callbacks_do_not_allocate_or_wait_for_a_busy_or_poisoned_mailbox() {
+        let (mut c, mailbox) = live_callback();
+        let guard = mailbox.lock().unwrap();
+        let mut out = [1.0; 1_024];
+        let measured = allocation_counter::measure(|| c.fill(&mut out, time(0, 0), &|v| v));
+        assert_eq!(measured.count_total, 0);
+        assert!(out.iter().all(|v| *v == 0.0));
+        drop(guard);
+        let measured = allocation_counter::measure(|| {
+            c.fill(&mut out, time(64, 64), &|v| v);
+            c.shared.request_stop();
+            c.fill(&mut out, time(128, 128), &|v| v);
+        });
+        assert_eq!(measured.count_total, 0);
+        let (mut c, mailbox) = live_callback();
+        assert!(
+            std::thread::spawn(move || {
+                let _guard = mailbox.lock().unwrap();
+                panic!("injected poisoned control");
+            })
+            .join()
+            .is_err()
+        );
+        let measured = allocation_counter::measure(|| c.fill(&mut out, time(0, 0), &|v| v));
+        assert_eq!(measured.count_total, 0);
+        assert!(out.iter().all(|v| *v == 0.0));
     }
 
     fn routed(frames: u32) -> Signal {
@@ -635,7 +779,7 @@ mod tests {
     type Step = (usize, u64, u64);
 
     #[test]
-    fn any_sequence_of_buffers_plays_the_session_once_and_completes_only_after_its_end() {
+    fn any_sequence_of_buffers_plays_the_signal_once_and_completes_only_after_its_end() {
         let config = proptest::test_runner::Config {
             cases: 256,
             max_shrink_iters: 1_024,
@@ -651,7 +795,7 @@ mod tests {
                 |(frames, steps): (u64, Vec<Step>)| {
                     let mut c = callback(frames, 8_000);
                     let mut reference = vec![[0.0; 2]; usize::try_from(frames).unwrap()];
-                    session(frames, 8_000).render(0, &mut reference);
+                    signal(frames, 8_000).render(0, &mut reference);
                     let expected: Vec<_> = reference.into_iter().flatten().collect();
                     let mut played = Vec::new();
                     let mut clock = 0;
@@ -673,7 +817,7 @@ mod tests {
                             played.extend(output);
                         }
                         if complete(&c) {
-                            // Completion needs the whole session rendered, and a callback at or
+                            // Completion needs the whole signal rendered, and a callback at or
                             // after the instant the backend first gave for its end.
                             prop_assert!(c.complete());
                             prop_assert!(c.target.is_some_and(|target| at.callback >= target));
@@ -692,7 +836,7 @@ mod tests {
     fn callback_paths_allocate_nothing_including_terminal_buffers() {
         for channels in [2, 3, 5] {
             for hz in [44_100, 48_000] {
-                let mut c = Callback::new(session(2053, hz), channels, Arc::default());
+                let mut c = Callback::new(signal(2053, hz), channels, Arc::default());
                 let mut buffer = vec![1.0; usize::from(channels) * 4099];
                 let count = allocation_counter::measure(|| {
                     c.fill(&mut [], time(0, 10), &|x| x);

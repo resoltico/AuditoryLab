@@ -19,11 +19,13 @@ pub(crate) enum Terminal {
     StreamSetupFailed,
 }
 
-/// The first terminal publication wins. Sample processing only touches atomics;
+/// The first terminal publication wins. Terminal publication only touches atomics;
 /// a backend reporter may still be preparing an unused diagnostic afterwards.
 #[derive(Default)]
 pub(crate) struct Shared {
     terminal: AtomicU8,
+    stop: AtomicBool,
+    frames: AtomicU64,
     backend_claimed: AtomicBool,
     backend_error: OnceLock<cpal::Error>,
     progress: AtomicU64,
@@ -31,6 +33,19 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
+    pub(crate) fn request_stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+    pub(crate) fn stop_requested(&self) -> bool {
+        self.stop.load(Ordering::Relaxed)
+    }
+    pub(crate) fn set_frames(&self, frames: u64) {
+        self.frames.store(frames, Ordering::Relaxed);
+    }
+    pub(crate) fn frames(&self) -> u64 {
+        self.frames.load(Ordering::Relaxed)
+    }
+
     pub(crate) fn finish(&self, terminal: Terminal) {
         debug_assert_ne!(terminal, Terminal::Running);
         let _ = self.terminal.compare_exchange(
@@ -189,7 +204,7 @@ mod tests {
             claimed.wait();
             shared.report(cpal::Error::new(ErrorKind::DeviceBusy));
             if outcome == Terminal::Complete {
-                let session = auditorylab_core::Stimulus {
+                let signal = auditorylab_core::Stimulus {
                     duration_seconds: 1.0 / 8_000.0,
                     fade_seconds: 0.0,
                     components: vec![],
@@ -197,7 +212,7 @@ mod tests {
                 .signal(auditorylab_core::SampleRate::new(8_000).unwrap())
                 .unwrap();
                 let mut callback =
-                    crate::playback::callback::Callback::new(session, 2, Arc::clone(&shared));
+                    crate::playback::callback::Callback::new(signal, 2, Arc::clone(&shared));
                 let mut buffer = [1.0; 2];
                 for millis in [0, 1] {
                     let now = cpal::StreamInstant::from_millis(millis);

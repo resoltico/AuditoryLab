@@ -865,6 +865,23 @@ mod tests {
     }
 
     #[test]
+    fn stop_waits_for_the_active_ramp_then_fades_for_one_ramp() {
+        let mut engine = Engine::new(rate());
+        engine.set(&Target::new(rate(), &[(1, tone(440.0, -30.0, Ears::Both))]).unwrap());
+        render(&mut engine, 1);
+        engine.stop();
+        let expected = 2 * engine.ramp_frames() - 1;
+        let mut out = vec![[1.0; 2]; usize::try_from(expected + 1).unwrap()];
+        assert_eq!(engine.render(&mut out), usize::try_from(expected).unwrap());
+        assert!(engine.is_finished());
+        assert!(
+            out[usize::try_from(expected - 1).unwrap()..]
+                .iter()
+                .all(|frame| *frame == [0.0; 2])
+        );
+    }
+
+    #[test]
     fn the_frame_limit_ends_and_zeros_the_remainder() {
         let mut engine = Engine::new(rate());
         engine.frame = Signal::MAX_FRAMES - 2;
