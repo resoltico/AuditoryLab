@@ -2,23 +2,43 @@
 
 Start `auditorylab-gui` without arguments. On macOS, open **Auditory Lab.app**; Windows downloads contain `auditorylab-gui.exe`. `auditorylab-gui --version` prints the version and, for CI builds, a short commit ID.
 
-## The window
+## Library and Workbench
 
-The sound list shows titles, research topics and durations. Selecting a sound displays its summary and a waveform preview. **Research details** expands selectable citation, source, study, adaptations, components and facts resolved at the export rate. Validation errors appear with those facts. The sound panel scrolls when its contents exceed the available height; listening guidance stays visible below it.
+The **Library** lists titles, research topics and readable durations. Selecting a sound displays its summary and waveform. **Research details** expands selectable study text, components and facts at the export rate, including rounded per-ear peak bounds. The panels scroll while listening guidance stays visible below them.
 
-**Open Recipe…** uses a native file dialog. Imported recipes appear as **Imported: TITLE**. Reopening the same path replaces its list entry. A failed import keeps the selected sound and shows the error in selectable status text.
+**Open Recipe…** uses a native file dialog. Imports appear as **Imported: TITLE**; reopening the same path replaces its entry. A failed import preserves the selection and shows its error in selectable status text. **Open in Workbench** copies the sound's components, duration and fade, with a title ending in “(edited)” and its summary. Recipes with more than 16 components stay in the Library; reduce their component count in the file before opening them in the Workbench.
 
-## Listening
+The **Workbench** starts with a silent, component-free draft. **New** creates another empty draft. Edit its title and summary, then use **Add Tone** or **Add Clicks** to add up to 16 components. New components start at −30 dBFS, in both ears, without modulation. Each row offers:
 
-Turn the volume down before playing. Use headphones for sounds that differ between the ears. **Play** uses the default output device and validates at its sample rate. **Stop** requests cancellation. The list and export controls are disabled while an operation runs.
+- **Ears:** Both, Left or Right.
+- **Source:** Tone with Frequency, or Clicks with repetition Rate and pulse Width.
+- **Level:** the component's peak in dBFS.
+- **Modulation:** None, Sinusoidal with Rate and Depth, or Gate with Rate and Width.
+- **Remove:** removes that component.
 
-Elapsed time and progress follow the latency-compensated playback position. The two scope lanes use a fixed ±1 scale and show the same computed signal as playback. Choose a 2, 10, 40 or 100 ms window. While playing, the window ends at the playback position; when stopped, the preview begins after the fade-in. Selecting a sound never plays it.
+Every numeric component control has a slider and an exact-value field. Frequency, rate and width sliders are logarithmic; level and depth are linear. Width fields use milliseconds. Sliders apply while moving. Fields apply on Enter or loss of focus; actions commit pending field text before taking their sound snapshot. Typing remains intact while another control or playback readout updates. Typed values may lie outside the slider span when the core accepts them.
 
-## Export
+Row messages identify invalid component values. The peak readout reports the per-ear sum or its validation error. An invalid edit keeps the last valid live target and scope preview. Validation uses the device rate while live playback runs, and the export rate otherwise. Duration and fade errors appear beside those fields.
 
-Choose an export rate and **Export WAV…**. The native Save dialog supplies the destination and asks before replacing an existing file. The app writes and syncs a hidden partial file, then publishes the completed stereo float WAV. Use **Stop** to cancel; normal cancellation removes the partial file.
+## Listening and live edits
 
-Closing the window cancels an active operation and waits for its worker to finish before quitting. macOS Cmd-Q and forced termination end the process immediately; an interrupted export can leave a hidden `.NAME.RANDOM.partial` file next to the chosen destination. Remove that file when it is no longer needed.
+Turn the volume down before playing. Use headphones for sounds that differ between ears. Selecting, importing or editing a sound never starts playback. **Play** uses the default output and validates at its rate.
+
+Library playback follows the recipe duration. Workbench playback is open-ended: **Duration** and **Fade** affect saved recipes and WAV export. Live components fade in over 30 ms. Changes to level, ear routing and depth ramp smoothly; tone and sinusoidal-modulation frequencies glide with continuous phase. Changes of source/modulation kind or pulse rate/width crossfade. Each transition takes 30 ms. An edit arriving during a transition waits, and only the newest waiting target is kept.
+
+**Stop** fades finite playback over 30 ms, shortened to the remaining frames near its end, then reports “Stopped.” Live Stop finishes the current transition before its 30 ms fade, taking up to about 60 ms of generated sound. Device buffering adds its output latency. A live stream ends automatically at `Signal::MAX_FRAMES` (2^36 frames: about 16 days at 48 kHz, or 24.8 hours at 768 kHz).
+
+There is one operation across both tabs. Stop acts on that operation after switching tabs. Library selection, opening, New, saving, export and rate changes are disabled during operations. Workbench components and metadata remain editable during live playback.
+
+Elapsed time follows the latency-compensated playback position. Live playback shows elapsed time alone; finite playback and WAV export also show progress. The two scope lanes use a fixed ±1 scale. Choose a 2, 10, 40 or 100 ms window. During playback it ends at the playback position; stopped Library previews begin after the fade-in. Workbench previews show current valid settings without saved edge fades.
+
+## Save and export
+
+**Save Recipe…** writes a schema-2 TOML recipe through the native Save dialog. It keeps the Workbench title and summary; citation, study and adaptation text are removed when opening a sound for editing. The result can be opened in the Library or used with CLI `--file`. Finite invalid values can be saved for later editing. Save rejects unparseable/non-finite numeric fields and files over the recipe reader's 64 KiB limit.
+
+Choose **Duration**, **Fade**, an export rate and **Export WAV…** for a finite stereo float WAV. Core validation must pass at that rate. Both Save dialogs ask before replacing an existing file. Output is written and synced in a hidden partial file before publication. Stop cancels WAV export; normal cancellation removes the partial file.
+
+Closing the window requests Stop and waits for its worker before quitting. macOS Cmd-Q and forced termination end the process immediately; an interrupted publication can leave a hidden `.NAME.RANDOM.partial` file beside the destination. Remove that file when it is no longer needed.
 
 ## Platforms and menus
 
@@ -28,4 +48,4 @@ Linux needs X11 or Wayland, fontconfig, xkbcommon, fonts and OpenGL. X11 also ne
 
 Windows requires the matching system architecture and an OpenGL-capable graphics driver. Source-build prerequisites are in the [README](../README.md#build-from-source).
 
-**File** offers Open and Export. **Help → About** shows the version, source link, licenses and Slint attribution. UI drawing uses Slint's OpenGL renderer; synthesis remains on the CPU. Idle windows stop polling; active operations refresh the waveform and progress through a timer.
+**File** offers New Sound, Open Recipe, Save Recipe and Export WAV. **Help → About** shows the version, source link, licenses and Slint attribution. UI drawing uses Slint's OpenGL renderer; synthesis remains on the CPU. Idle windows stop polling; active operations refresh the waveform and progress through a timer.

@@ -4,8 +4,8 @@ Auditory Lab has a pure synthesis core, one shared application library and two f
 
 | Package | Responsibility |
 |---|---|
-| [`auditorylab-core`](../crates/core) | Recipe schema, model, validation, catalog, seekable synthesis and waveform extrema. |
-| [`auditorylab`](../crates/lib) | Loading, contextual errors, notices, WAV export, atomic publication and default-device playback. |
+| [`auditorylab-core`](../crates/core) | Recipe schema, model, validation, catalog, seekable and live synthesis, recipe writing and waveform extrema. |
+| [`auditorylab`](../crates/lib) | Loading, contextual errors, notices, WAV export, editable drafts, control ranges, shared presentation, atomic publication and default-device playback. |
 | [`auditorylab-cli`](../crates/cli) | clap grammar, terminal layout, exit codes and interrupts; binary `auditorylab`. |
 | [`auditorylab-gui`](../crates/gui) | Slint controls, native dialogs, operation worker and scope paths. |
 | [`xtask`](../xtask) | Archives, notices, smoke checks and release notes. |
@@ -22,20 +22,32 @@ Tones and sinusoidal modulation have a 64-bit integer phase step, rounded upward
 
 Catalog source files are embedded by the core build script in natural ID order. The public catalog table is generated from the directory. `waveform::trace` renders every frame of a clipped window into fixed stack scratch and reduces equal partitions to per-ear minima/maxima. Its caller reuses the output vector. Single-frame pulses reach their bins' extrema.
 
+## Live synthesis
+
+`live::Target` holds up to 16 validated components and caller-chosen stable identities at one rate. `Component::validate` supplies individual row errors; target validation also checks the total peak sum. `Engine` uses 32 fixed slots so all 16 old generators can crossfade with their replacements. It allocates nothing while setting targets, rendering or stopping.
+
+Tone and sinusoidal-modulation oscillators advance integer phase accumulators. Constant settings match the seekable signal after the start ramp. A 30 ms transition interpolates per-ear levels, phase steps and depth. Matching component identities and generator kinds retain phase; pulse or kind changes crossfade generators. Each transition connects validated endpoints with shared progress, bounding the per-ear sum. Changes during a transition coalesce to the newest waiting target. Stop queues silence after the current transition; its fade takes 30 ms and the request can span almost two ramps. The engine ends at `Signal::MAX_FRAMES`.
+
 ## Library boundaries
 
 A loaded library `Preset` holds an origin and an `Arc` to the core recipe. `Preset::at(rate)` returns a `Sound` with an `Arc<Signal>`. Files are opened nonblocking on Unix, and admission checks the opened handle before bounded reading. Explicit readers retain stream semantics. Errors carry a category, contextual message, original cause and an optional leftover path; frontends branch on the category.
 
 WAV encoding renders blocks and rounds to stereo binary32 samples. Header size arithmetic chooses RIFF or RF64. Export updates shared progress after each written block. Publication stages output in the destination directory, syncs it, checks cancellation and persists it with or without replacement. Failure cleanup owns only that partial file and names it if removal fails. CLI publication always refuses replacement; GUI replacement follows native Save confirmation.
 
-Playback preparation binds the default device snapshot to the recipe validated at that device's rate. The prepared value and stream remain on the executing worker thread. The callback owns a signal, cursor and preallocated scratch, converts samples to the backend format, places left/right on channels 0/1 and silences extra channels. Completion uses backend timestamps. Shared terminal atomics use first publication wins; supervision polls cancellation and watches for stalls. Backend diagnostic storage stays separate from sample processing.
+Playback preparation binds the default device snapshot to values validated at that device's rate. The callback owns a `Source`: a finite `Arc<Signal>` with a cursor and optional stop fade, or a boxed live engine with a target mailbox. The box is allocated before stream creation. Both sources render into preallocated scratch, report completion by returning fewer frames than requested, and preserve the backend-timestamp drain logic. Output conversion uses channels 0/1 for left/right and silences additional channels.
+
+`prepare_live` stores the first whole target in an `Arc<Mutex<Option<Target>>>` before starting the stream. `LiveControl::update` validates a draft at the device rate before replacing the waiting target. The callback uses `try_lock` once per buffer, skips busy or poisoned locks, and copies the newest target into the engine. It never blocks or frees memory. Whole-target replacement preserves the previous valid sound when an edit is invalid.
+
+Supervision turns cancellation into an atomic stop request. A finite source fades with gain `1 − (t+1)/R`, with R capped at its remaining frames, and reports Cancelled after draining; the CLI retains exit130. A stopped live source reports Played. If completion does not follow Stop within two seconds, supervision forces silence and returns Cancelled. Both sources retain the 30-second stall watchdog; live playback has no overall deadline apart from the core's frame limit. Terminal atomics use first publication wins, and backend diagnostics stay outside sample processing.
+
+`Draft` owns editable metadata and components with identities that are never reused within that draft. Slider ranges and default components live in the library. Saving serializes finite values through the core's schema-2 writer, checks the reader's byte limit, then uses staged publication. Shared title, research, duration and dBFS helpers keep frontend presentation consistent.
 
 Progress stores the callback's starting source frame minus the reported output latency, floored at zero. Export uses the same progress type for written frames. Listening notices and version wording live in the library.
 
 ## Frontend threads and packaging
 
-The CLI uses clap for source exclusivity and command grammar, textwrap for prose, and a byte-preserving recipe writer. Interrupt handling begins after input loading. One mapping from library error category selects the exit code.
+The CLI uses clap for source exclusivity and command grammar, textwrap for prose, and a byte-preserving catalog recipe writer. Interrupt handling begins after input loading. One mapping from library error category selects the exit code.
 
-The GUI's plain `App` state is separate from Slint wiring. One worker performs import, play or export; an mpsc channel returns the prepared playback sound and terminal result. A timer reads progress and traces the playback signal at the device rate, or the stopped preview at the export rate. Scope paths connect bin extrema on a fixed scale. Timer intervals account for trace cost, and idle operation stops the timer. Ordinary close cancels and joins the worker. Native dialogs own path selection and overwrite confirmation.
+The GUI's plain `App` state is separate from Slint wiring. One worker performs import, finite or live playback, recipe saving or export; an mpsc channel returns the prepared sound/live control and terminal result. The Workbench keeps parser errors and pending field text separately from core validation. Enter and blur commit values; actions commit pending text before taking their snapshot. Incremental row models preserve focused fields, and a whole-draft replacement resets editors. Live Ready sends the current valid draft, including edits made while the device was preparing. A timer reads progress and traces the playback signal at the device rate, or the stopped preview at the export rate. Scope paths connect bin extrema on a fixed scale. Timer intervals account for trace cost, and idle operation stops the timer. Ordinary close requests cancellation and joins the worker. Native dialogs own path selection and overwrite confirmation.
 
 `cargo xtask dist` builds the distribution profile, assembles product notices, creates archives and smoke-tests versions, catalog listing and a silent export. macOS packaging joins the two slices and signs the app ad hoc. The reusable [CI workflow](../.github/workflows/ci.yml) supplies the release builds; [contributing](../CONTRIBUTING.md#packaging-and-releases) describes publication.

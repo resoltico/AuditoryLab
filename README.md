@@ -1,6 +1,6 @@
 # Auditory Lab
 
-Auditory Lab plays and exports sounds used in hearing and brain-rhythm research: binaural and monaural beats, steady and amplitude-modulated tones, click trains and pulsed tones. Each built-in sound describes what its published study tested and found, with a citation and the recipe's adaptations. You can edit these sounds as TOML text files.
+Auditory Lab plays and exports sounds used in hearing and brain-rhythm research: binaural and monaural beats, steady and amplitude-modulated tones, click trains and pulsed tones. Each built-in sound describes what its published study tested and found, with a citation and the recipe's adaptations. You can edit these sounds in the desktop Workbench or as TOML text files.
 
 Use the `auditorylab` CLI or the `auditorylab-gui` desktop app. Both load the same recipes, validate them at the chosen sample rate, export stereo float WAV files and play through the default audio output.
 
@@ -45,7 +45,7 @@ Choose a built-in ID, `--file PATH` for a regular recipe file or `--stdin` for a
 
 ## Desktop
 
-Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `auditorylab-gui` on Linux. Select a sound to see its description and waveform. **Play/Stop** controls playback; elapsed time and progress follow its playback position. **Open Recipe…** imports a file, and **Export WAV…** chooses a destination through the native Save dialog. See the [desktop guide](docs/desktop.md).
+Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `auditorylab-gui` on Linux. Select a sound to see its description and waveform. **Play/Stop** controls playback; elapsed time and progress follow its playback position. **Open Recipe…** imports a file, and **Export WAV…** chooses a destination through the native Save dialog. The **Workbench** builds sounds from up to 16 tone or click components. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or open a Library sound for editing, then **Save Recipe…** or export a finite WAV. See the [desktop guide](docs/desktop.md).
 
 ## Build from source
 

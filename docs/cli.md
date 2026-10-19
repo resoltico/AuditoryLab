@@ -40,7 +40,7 @@ Help, version, list, descriptions, inspection, recipe bytes and completion lines
 | 2 | Usage, unknown ID, recipe format or signal validation error. |
 | 130 | Cooperative cancellation. |
 
-TOML errors retain line, column and snippet text. Validation errors identify the parameter and component. Failed cleanup names the partial file that remains.
+Durations use hours, minutes and seconds, such as `1 h` or `5 min 7.2 s`; `~` marks rounding. Unknown IDs include the `auditorylab list` and `--file PATH` hints. TOML errors retain line, column and snippet text. Validation errors identify the parameter and component. Failed cleanup names the partial file that remains.
 
 ## Playback
 
@@ -50,4 +50,4 @@ Turn the volume down before `play`. Its start line gives the title, source, dura
 
 Recipe saving and WAV export never replace an existing file. Choose another output path when a destination exists. The library writes a hidden `.NAME.RANDOM.partial` file beside the destination, syncs it, then publishes it. WAV uses RIFF when its sizes fit, otherwise RF64. Cancellation or write failure removes the partial file; a cleanup error identifies any leftover. Unix output permissions follow ordinary file creation and the inherited umask.
 
-During export/play, the first Ctrl-C requests cancellation and the second exits immediately with 130. On Unix, SIGTERM and SIGHUP also request cancellation. Export checks before creating the partial file, between blocks and before publication. Playback checks cancellation every 10 ms. Sound already queued by the device drains according to its backend. A completed publication stays successful if cancellation arrives afterward. Forced termination can leave the hidden partial file beside the destination.
+During export/play, the first Ctrl-C requests cancellation and the second exits immediately with 130. On Unix, SIGTERM and SIGHUP also request cancellation. Export checks before creating the partial file, between blocks and before publication. Playback checks cancellation every 10 ms, then fades over 30 ms of generated sound (or the remaining frames near the end) and exits 130. Sound already queued by the device drains according to its backend. A completed publication stays successful if cancellation arrives afterward. Forced termination can leave the hidden partial file beside the destination.
