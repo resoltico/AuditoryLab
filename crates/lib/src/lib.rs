@@ -4,15 +4,19 @@ mod draft;
 mod error;
 mod input_admission;
 mod playback;
+mod presentation;
 mod publish;
 mod wav;
 pub use auditorylab_core::waveform::trace;
 pub use auditorylab_core::{
     About, Carrier, Component, Ear, Ears, Extent, Modulation, SampleRate, Signal, Stimulus,
 };
-pub use draft::{ComponentId, Draft};
+pub use draft::{
+    ComponentId, Draft, DraftCheck, Range, Scale, Setting, SourceKind, default_component, range,
+};
 pub use error::{Error, ErrorKind};
 pub use playback::output::{OutputInfo, SampleFormat};
+pub use presentation::{format_dbfs, human_duration};
 use std::{
     io::Read,
     path::{Path, PathBuf},
@@ -31,13 +35,15 @@ pub enum Origin {
     File(PathBuf),
     /// Label for a stream.
     Stream(String),
+    /// An editable sound title.
+    Draft(String),
 }
 impl std::fmt::Display for Origin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::BuiltIn(id) => write!(f, "{id}"),
             Self::File(path) => write!(f, "{path:?}"),
-            Self::Stream(label) => write!(f, "{label}"),
+            Self::Stream(label) | Self::Draft(label) => write!(f, "{label}"),
         }
     }
 }
@@ -59,6 +65,27 @@ impl Preset {
     /// Declared sound parameters.
     pub fn stimulus(&self) -> &Stimulus {
         &self.recipe.stimulus
+    }
+    /// Sound title, falling back to its origin.
+    pub fn title(&self) -> String {
+        self.about()
+            .map_or_else(|| self.origin.to_string(), |a| a.title.clone())
+    }
+    /// Available research text in its shared display order.
+    pub fn research(&self) -> Vec<(&'static str, &str)> {
+        self.about().map_or_else(Vec::new, |a| {
+            [
+                ("Studied for", &a.studied_for),
+                ("Summary", &a.summary),
+                ("Citation", &a.citation),
+                ("Source", &a.source_url),
+                ("Study", &a.study),
+                ("Adaptation", &a.adaptation),
+            ]
+            .into_iter()
+            .filter_map(|(label, value)| value.as_deref().map(|text| (label, text)))
+            .collect()
+        })
     }
     /// Guidance shown before playback.
     pub fn notices(&self) -> Vec<Notice> {
@@ -103,14 +130,8 @@ pub fn catalog() -> Result<Vec<Preset>, Error> {
         .collect()
 }
 fn entry(id: &str) -> Result<&'static auditorylab_core::catalog::Entry, Error> {
-    auditorylab_core::catalog::find(id).ok_or_else(|| {
-        Error::new(
-            ErrorKind::UnknownPreset,
-            format!(
-                "unknown preset {id:?}; use list to see built-ins, or --file PATH to read a recipe"
-            ),
-        )
-    })
+    auditorylab_core::catalog::find(id)
+        .ok_or_else(|| Error::new(ErrorKind::UnknownPreset, format!("unknown preset {id:?}")))
 }
 /// Load a catalog recipe by exact ID.
 pub fn builtin(id: &str) -> Result<Preset, Error> {
