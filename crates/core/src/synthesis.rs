@@ -86,6 +86,24 @@ impl Pulse {
             .unwrap_or(0) as u64;
         whole / u64::from(self.fs)
     }
+    /// Extrema over every discrete frame of [start,end), without enumerating pulses.
+    pub(crate) fn extent(self, start: u64, end: u64) -> crate::Extent {
+        let first = self.sample(start);
+        let last = self.sample(end - 1);
+        let crosses_onset = self.periods(end - 1) > self.periods(start);
+        crate::Extent {
+            min: if first == 0.0 || last == 0.0 || crosses_onset {
+                0.0
+            } else {
+                1.0
+            },
+            max: if first == 1.0 || last == 1.0 || crosses_onset {
+                1.0
+            } else {
+                0.0
+            },
+        }
+    }
     #[inline]
     pub(crate) fn sample(self, n: u64) -> f64 {
         // A pulse starts at ceil(k*fs/rate). For n ≥ W it is open exactly
@@ -162,6 +180,29 @@ mod tests {
         u64::try_from((p << 64).div_ceil(denominator)).unwrap()
     }
 
+    #[test]
+    fn pulse_extrema_match_every_sample_across_interval_boundaries() {
+        for (hz, width, fs) in [
+            (8.0, 0.001, 44100),
+            (39.0625, 0.001, 48000),
+            (16000.0, 1.0 / 48000.0, 48000),
+        ] {
+            let p = pulse(width, hz, fs).unwrap();
+            for start in [0, 1, 42, 43, 44, 45, 1198, 1199, 1200, 1201, 6000] {
+                for span in [1, 2, 3, 43, 44, 45, 1199, 1200, 1201, 1300] {
+                    let actual = p.extent(start, start + span);
+                    let mut min = 1.0_f64;
+                    let mut max = 0.0_f64;
+                    for n in start..start + span {
+                        let x = p.sample(n);
+                        min = min.min(x);
+                        max = max.max(x);
+                    }
+                    assert_eq!(actual, crate::Extent { min, max }, "{hz} {start} {span}");
+                }
+            }
+        }
+    }
     #[test]
     fn steps_are_exactly_rounded_for_representable_frequencies() {
         for rate in [1_u32, 8_000, 44_100, 48_000, 96_000, 768_000] {

@@ -21,6 +21,8 @@ pub struct SessionDescriptor {
     pub output: OutputInfo,
     /// Finite source length, or None for live playback.
     pub frames: Option<u64>,
+    /// Initial validated source, independent of navigation and terminal fade silence.
+    pub target: auditorylab_core::live::Target,
 }
 impl SessionDescriptor {
     pub(crate) fn new(
@@ -28,6 +30,7 @@ impl SessionDescriptor {
         origin: Origin,
         output: OutputInfo,
         frames: Option<u64>,
+        target: auditorylab_core::live::Target,
     ) -> Self {
         Self {
             id: NEXT_SESSION.fetch_add(1, Ordering::Relaxed),
@@ -35,6 +38,7 @@ impl SessionDescriptor {
             origin,
             output,
             frames,
+            target,
         }
     }
 }
@@ -219,7 +223,9 @@ impl PlaybackMonitor {
         } else {
             0
         };
+        let revision = u64::from(self.0.revisions.is_some());
         MonitorReader {
+            accepted: (revision, self.descriptor().target),
             monitor: self.clone(),
             samples: vec![[0.0; 2]; count],
             len: 0,
@@ -227,7 +233,7 @@ impl PlaybackMonitor {
                 session_id: self.0.descriptor.id,
                 sequence: 0,
                 generated_frames: 0,
-                accepted_revision: 1,
+                accepted_revision: revision,
                 observation: None,
                 window_start: 0,
                 window_end: 0,
@@ -265,6 +271,7 @@ pub struct MonitorReader {
     len: usize,
     status: GeneratedStatus,
     received: Option<Instant>,
+    accepted: (u64, auditorylab_core::live::Target),
 }
 impl MonitorReader {
     /// Immutable identity of this reader's session.
@@ -316,8 +323,10 @@ impl MonitorReader {
         }
         if let Some(revisions) = &self.monitor.0.revisions
             && let Ok(revisions) = revisions.try_lock()
+            && let Some(target) = revisions.last
         {
             self.status.accepted_revision = revisions.revision;
+            self.accepted = (revisions.revision, target);
         }
         let shared = &self.monitor.0.shared;
         self.status.generated_frames = self.status.generated_frames.max(shared.frames());
@@ -367,6 +376,38 @@ impl MonitorReader {
             ObservationFreshness::Current
         }
     }
+    /// Last observed accepted target/revision, refreshed by poll. No second mailbox lock.
+    /// It is a model snapshot, not a claim that the revision has been generated.
+    pub fn model_target(&self) -> (u64, auditorylab_core::live::Target) {
+        self.accepted
+    }
+    /// Complete a missing terminal publication only after the supervising worker
+    /// has exited with an error and its stream has been dropped. Existing outcomes win.
+    pub fn worker_exited_with_error(&self) {
+        self.monitor.0.shared.finish(Terminal::StreamSetupFailed);
+    }
+    /// Coherent shared session wording; a Stop fade's terminal zeros do not rename its recipe.
+    pub fn description(&self) -> String {
+        if matches!(
+            self.status.phase,
+            PlaybackPhase::Completed | PlaybackPhase::Stopped | PlaybackPhase::Failed
+        ) {
+            format!(
+                "{} · {}",
+                if self.descriptor().frames.is_some() {
+                    "Captured recipe"
+                } else {
+                    "Last accepted target"
+                },
+                crate::SoundSummary::target(&self.accepted.1).description()
+            )
+        } else {
+            format!(
+                "Generated audio · {}",
+                crate::generated_description(self.status.observation.as_ref())
+            )
+        }
+    }
     /// Copied actual mixed samples. They are not microphone samples or an acoustic playhead.
     pub fn samples(&self) -> &[[f64; 2]] {
         &self.samples[..self.len]
@@ -384,11 +425,18 @@ pub struct Meter {
 #[allow(clippy::cast_precision_loss, reason = "bounded monitor sample count")]
 pub fn sample_meters(samples: &[[f64; 2]]) -> [Meter; 2] {
     let mut peak = [0.0_f64; 2];
-    let mut squares = [0.0; 2];
-    for f in samples {
+    for frame in samples {
         for ear in 0..2 {
-            peak[ear] = peak[ear].max(f[ear].abs());
-            squares[ear] += f[ear] * f[ear];
+            peak[ear] = peak[ear].max(frame[ear].abs());
+        }
+    }
+    let mut normalized = [0.0; 2];
+    for frame in samples {
+        for ear in 0..2 {
+            if peak[ear] > 0.0 {
+                let ratio = frame[ear] / peak[ear];
+                normalized[ear] += ratio * ratio;
+            }
         }
     }
     let db = |v: f64| {
@@ -400,31 +448,14 @@ pub fn sample_meters(samples: &[[f64; 2]]) -> [Meter; 2] {
     };
     std::array::from_fn(|ear| Meter {
         peak_dbfs: db(peak[ear]),
-        rms_dbfs: db((squares[ear] / samples.len().max(1) as f64).sqrt()),
+        rms_dbfs: if peak[ear] == 0.0 {
+            f64::NEG_INFINITY
+        } else {
+            db(peak[ear]) + 10.0 * (normalized[ear] / samples.len().max(1) as f64).log10()
+        },
     })
 }
-/// Reduce every copied sample into fixed-scale per-ear extrema; no sparse decimation.
-pub fn sample_trace(samples: &[[f64; 2]], bins: usize, out: &mut Vec<[crate::Extent; 2]>) {
-    out.clear();
-    let bins = bins.min(samples.len());
-    if bins == 0 {
-        return;
-    }
-    out.resize(
-        bins,
-        [crate::Extent {
-            min: f64::INFINITY,
-            max: f64::NEG_INFINITY,
-        }; 2],
-    );
-    for (i, frame) in samples.iter().enumerate() {
-        let bin = i * bins / samples.len();
-        for ear in 0..2 {
-            out[bin][ear].min = out[bin][ear].min.min(frame[ear]);
-            out[bin][ear].max = out[bin][ear].max.max(frame[ear]);
-        }
-    }
-}
+pub use auditorylab_core::waveform::sample_trace;
 
 #[cfg(test)]
 mod tests {
@@ -442,6 +473,7 @@ mod tests {
                 format: SampleFormat::F64,
             },
             Some(u64::from(hz)),
+            auditorylab_core::live::Target::silence(SampleRate::new(hz).unwrap()),
         )
     }
     fn signal(hz: u32) -> crate::Signal {
@@ -465,6 +497,19 @@ mod tests {
         cpal::OutputStreamTimestamp {
             callback: at,
             playback: at,
+        }
+    }
+    #[test]
+    fn rms_of_one_impulse_in_four_is_half_the_peak_at_tiny_and_large_levels() {
+        for level in [1.0_f64, 1e-200, 1e200] {
+            let samples = [[level, -level], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]];
+            let meters = sample_meters(&samples);
+            let expected_peak = 20.0 * level.log10();
+            let expected_rms = expected_peak - 6.020599913279624;
+            for meter in meters {
+                assert!((meter.peak_dbfs - expected_peak).abs() < 1e-10);
+                assert!((meter.rms_dbfs - expected_rms).abs() < 1e-10);
+            }
         }
     }
     #[test]
@@ -597,7 +642,7 @@ mod tests {
         let mut data = [[0.0; 2]; 1024];
         data[500][0] = 1.0;
         let mut bins = Vec::new();
-        sample_trace(&data, 16, &mut bins);
+        sample_trace(&data, 16, &mut bins).unwrap();
         assert!(bins.iter().any(|b| b[0].max == 1.0));
     }
     #[test]

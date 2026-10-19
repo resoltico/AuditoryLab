@@ -102,48 +102,47 @@ pub struct InterauralPair {
 }
 /// Interpret exactly one unmodulated tone exclusively in each ear, with no other active voice.
 pub fn interaural_pair(observation: &crate::Observation) -> Option<InterauralPair> {
-    let mut left = None;
-    let mut right = None;
-    let mut count = 0;
-    for voice in observation
-        .voices
-        .iter()
-        .flatten()
-        .filter(|v| v.gains.iter().any(|g| *g > 0.0))
-    {
-        count += 1;
-        let crate::CarrierFacts::Tone(rate) = voice.facts.carrier else {
-            return None;
-        };
-        if voice.facts.modulation.is_some() {
-            return None;
-        }
-        match voice.gains {
-            [l, 0.0] if l > 0.0 && left.is_none() => left = Some(rate.realized_hz),
-            [0.0, r] if r > 0.0 && right.is_none() => right = Some(rate.realized_hz),
-            _ => return None,
-        }
-    }
-    if count != 2 {
+    let Some(crate::ToneRelationship::Interaural { left, right }) =
+        crate::SoundSummary::generated(observation).relationship
+    else {
         return None;
-    }
-    let (left_hz, right_hz) = (left?, right?);
+    };
     Some(InterauralPair {
-        left_hz,
-        right_hz,
-        difference_hz: (left_hz - right_hz).abs(),
+        left_hz: left,
+        right_hz: right,
+        difference_hz: (left - right).abs(),
     })
 }
-/// Concise Hz value, preserving positive rates too small for ordinary decimal rounding.
-pub fn format_hz(value: f64) -> String {
-    if value != 0.0 && value.abs() < 0.000001 {
-        format!("{value:e}")
+/// Compact six-significant-digit number; approximation is explicit and positive tiny values never become zero.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "bounded decimal-place count for presentation only"
+)]
+pub fn compact_number(value: f64) -> String {
+    if !value.is_finite() || value == 0.0 {
+        return value.to_string();
+    }
+    let decimals = (5.0 - value.abs().log10().floor()).clamp(0.0, 12.0) as usize;
+    let text = if value.abs() < 1e-6 || value.abs() >= 1e6 {
+        format!("{value:.5e}")
+    } else if decimals == 0 {
+        format!("{value:.0}")
     } else {
-        format!("{value:.6}")
+        format!("{value:.decimals$}")
             .trim_end_matches('0')
             .trim_end_matches('.')
             .to_owned()
-    }
+    };
+    let rounded = text.parse::<f64>().unwrap_or(value);
+    format!(
+        "{}{text}",
+        if (rounded - value).abs() > value.abs() * 1e-12 {
+            "≈"
+        } else {
+            ""
+        }
+    )
 }
 /// Shared requested/realized carrier, modulation, route and width description.
 fn generator_description(facts: &crate::ComponentFacts, exact: bool) -> String {
@@ -154,16 +153,25 @@ fn generator_description(facts: &crate::ComponentFacts, exact: bool) -> String {
                 p.requested_hz, p.realized_hz
             )
         } else {
-            format!("{} Hz", format_hz(p.realized_hz))
+            format!("{} Hz", compact_number(p.realized_hz))
         }
     };
     let pulse = |p: crate::PulseFacts| {
-        format!(
-            "{} Hz · {} ms ({} frames)",
-            format_hz(p.rate_hz),
-            p.width_seconds * 1000.0,
-            p.width_frames
-        )
+        if exact {
+            format!(
+                "{} Hz · requested {} ms · realized {} frames",
+                p.rate_hz,
+                p.width_seconds * 1000.0,
+                p.width_frames
+            )
+        } else {
+            format!(
+                "{} repetitions/s · nominal {} ms between onsets · {} ms open",
+                compact_number(p.rate_hz),
+                compact_number(1000.0 / p.rate_hz),
+                compact_number(p.width_seconds * 1000.0)
+            )
+        }
     };
     let carrier = match facts.carrier {
         crate::CarrierFacts::Tone(rate) => format!("Tone {}", phase(rate)),
@@ -224,32 +232,7 @@ pub fn generated_description(observation: Option<&crate::Observation>) -> String
     let Some(observation) = observation else {
         return "Waiting for generated audio".into();
     };
-    let active: Vec<_> = observation
-        .voices
-        .iter()
-        .flatten()
-        .filter(|v| v.gains.iter().any(|g| *g > 0.0))
-        .collect();
-    let heading = if let Some(pair) = interaural_pair(observation) {
-        format!(
-            "Interaural difference: {} Hz · Left tone {} Hz · Right tone {} Hz",
-            format_hz(pair.difference_hz),
-            format_hz(pair.left_hz),
-            format_hz(pair.right_hz)
-        )
-    } else if active.is_empty() {
-        "Silence · no active generators".into()
-    } else if active.len() > 1 {
-        format!("Multiple components · {} active generators", active.len())
-    } else {
-        voice_description(active[0])
-    };
-    let transition = if observation.transitioning {
-        "Transitioning · "
-    } else {
-        ""
-    };
-    format!("{transition}{heading}")
+    crate::SoundSummary::generated(observation).description()
 }
 /// Full generated voice list, including role and actual per-ear gains.
 pub fn generated_details(observation: &crate::Observation) -> String {
@@ -272,11 +255,15 @@ pub fn generated_details(observation: &crate::Observation) -> String {
 }
 /// Preview/inspection facts shared by the CLI and GUI.
 pub fn sound_description(sound: &crate::Sound, exact: bool) -> String {
-    let observation = sound
-        .signal()
-        .observation(sound.signal().fade_frames())
-        .or_else(|| sound.signal().observation(0));
-    let mut text = generated_description(observation.as_ref());
+    let mut text = sound_brief(sound);
+    if exact && let Ok(target) = crate::recipe_target(sound.preset(), sound.signal().sample_rate())
+    {
+        text.push_str(&format!(
+            "\n{}",
+            crate::ModelView::new(target, sound.preset().title(), crate::ModelSource::Recipe)
+                .caption()
+        ));
+    }
     for (i, facts) in sound.signal().facts().iter().enumerate() {
         text.push_str(&format!(
             "\nComponent {}: {}",
@@ -288,49 +275,11 @@ pub fn sound_description(sound: &crate::Sound, exact: bool) -> String {
 }
 /// Compact catalog structure, with full generator quantities available in the detail description.
 pub fn sound_brief(sound: &crate::Sound) -> String {
-    if let Some(observation) = sound.signal().observation(sound.signal().fade_frames())
-        && let Some(pair) = interaural_pair(&observation)
-    {
-        return format!(
-            "{} Hz left · {} Hz right",
-            format_hz(pair.left_hz),
-            format_hz(pair.right_hz)
-        );
-    }
-    let facts = sound.signal().facts();
-    if facts.is_empty() {
-        return "Silence · no components".into();
-    }
-    if facts.len() != 1 {
-        return format!("Multiple components ({})", facts.len());
-    }
-    let f = facts[0];
-    let carrier = match f.carrier {
-        crate::CarrierFacts::Tone(rate) => format!("Tone {} Hz", format_hz(rate.realized_hz)),
-        crate::CarrierFacts::Clicks(p) => format!(
-            "Clicks {} Hz · {} ms",
-            format_hz(p.rate_hz),
-            p.width_seconds * 1000.0
-        ),
-    };
-    let description = match f.modulation {
-        Some(crate::ModulationFacts::Sinusoidal { rate, depth }) if depth > 0.0 => {
-            format!("AM {} Hz · {carrier}", format_hz(rate.realized_hz))
-        }
-        Some(crate::ModulationFacts::Gate(p)) => {
-            format!("Gate {} Hz · {carrier}", format_hz(p.rate_hz))
-        }
-        _ => carrier,
-    };
-    format!(
-        "{description} · {}",
-        match f.ears {
-            crate::Ears::Left => "Left",
-            crate::Ears::Right => "Right",
-            crate::Ears::Both => "Both ears",
-        }
-    )
+    crate::recipe_target(sound.preset(), sound.signal().sample_rate())
+        .map(|t| crate::SoundSummary::target(&t).description())
+        .unwrap_or_else(|e| e.to_string())
 }
+
 /// Search source identity, title, research text and component meaning together.
 pub fn catalog_matches(preset: &crate::Preset, query: &str) -> bool {
     let query = query.trim().to_lowercase();
@@ -388,5 +337,5 @@ pub fn window_cycle_hint(
     }
     let rate = rates.into_iter().reduce(f64::min)?;
     (window_ms * rate < 1000.0)
-        .then(|| format!("Window shorter than one {} Hz cycle", format_hz(rate)))
+        .then(|| format!("Window shorter than one {} Hz cycle", compact_number(rate)))
 }

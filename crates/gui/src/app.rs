@@ -28,6 +28,7 @@ pub(crate) struct Workbench {
     pub(crate) draft: Draft,
     pub(crate) saved: Draft,
     control: Option<Box<dyn TargetControl>>,
+    pub(crate) last_target: Option<auditorylab::Target>,
     pub(crate) messages: HashMap<ComponentId, String>,
     pub(crate) parse_errors: HashMap<(ComponentId, Setting), String>,
     pub(crate) pending: HashMap<(ComponentId, Setting), String>,
@@ -42,6 +43,7 @@ impl Workbench {
             draft,
             saved: Draft::new(),
             control: None,
+            last_target: None,
             messages: HashMap::new(),
             parse_errors: HashMap::new(),
             metadata_errors: HashMap::new(),
@@ -92,6 +94,7 @@ impl Workbench {
         }
         self.peak = match check.sound {
             Ok(peak) if self.parse_errors.is_empty() => {
+                self.last_target = self.draft.target(rate).ok();
                 if let Some(control) = &self.control {
                     // Validated above at this exact rate; a poisoned mailbox is still actionable.
                     if let Err(error) = control.update(&self.draft) {
@@ -143,6 +146,7 @@ impl Workbench {
                 }
             }
             _ => {
+                self.pending.insert((id, setting), text.to_owned());
                 self.parse_errors
                     .insert((id, setting), format!("{setting:?}: enter a finite number"));
             }
@@ -220,6 +224,8 @@ impl Workbench {
                         }
                     }
                     _ => {
+                        self.pending_metadata
+                            .insert(key.to_owned(), text.to_owned());
                         self.metadata_errors
                             .insert(key, format!("{key}: enter a finite number"));
                     }

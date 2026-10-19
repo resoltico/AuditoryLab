@@ -17,6 +17,7 @@ mod rate;
 mod signal;
 mod stimulus;
 mod synthesis;
+pub mod timing;
 pub mod waveform;
 pub use preset::{About, Preset, PresetError};
 pub use rate::{SampleRate, SampleRateError};

@@ -97,6 +97,29 @@ impl Target {
         self.rate
     }
 
+    /// Validated target quantities at model origin zero, not generated engine observations.
+    pub fn voices(&self) -> impl Iterator<Item = crate::VoiceObservation> + '_ {
+        self.voices
+            .iter()
+            .zip(&self.facts)
+            .filter_map(|(voice, facts)| {
+                let (id, v) = voice.as_ref()?;
+                Some(crate::VoiceObservation {
+                    id: *id,
+                    role: crate::SlotRole::Continuing,
+                    facts: (*facts)?,
+                    gains: [
+                        if v.left { v.amplitude } else { 0.0 },
+                        if v.right { v.amplitude } else { 0.0 },
+                    ],
+                })
+            })
+    }
+    /// Bounded, origin-zero timing/envelope projection; never advances an engine.
+    pub fn timing_model(&self, bins: usize) -> crate::timing::TimingModel {
+        crate::timing::project(self.rate, &self.voices, &self.facts, bins)
+    }
+
     /// Each ear's summed amplitude bound in dBFS; silence is negative infinity.
     #[must_use]
     pub fn peak_dbfs(&self) -> [f64; 2] {

@@ -289,7 +289,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                                 ),
                                 state.phase,
                                 reader.freshness(),
-                                lab::generated_description(state.observation.as_ref())
+                                reader.description()
                             ));
                             std::thread::sleep(std::time::Duration::from_millis(250));
                         }

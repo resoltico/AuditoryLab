@@ -82,9 +82,7 @@ fn editor_units_and_ranges_have_independent_boundary_oracles() {
     let rate = SampleRate::DEFAULT;
     assert_eq!(slider_value(Setting::Level, rate, 0.5), -40.0);
     assert_eq!(slider_value(Setting::Depth, rate, 0.5), 50.0);
-    assert!(
-        (slider_value(Setting::Frequency, rate, 0.5) - (20.0_f64 * 20000.0).sqrt()).abs() < 1e-10
-    );
+    assert_eq!(slider_value(Setting::Frequency, rate, 0.5), 632.0);
     assert_eq!(slider_position(Setting::Frequency, rate, f64::NAN), 0.0);
     let mut c = default_component(SourceKind::Tone);
     c.modulation = Some(default_modulation(ModulationKind::Sinusoidal, rate));
@@ -120,16 +118,17 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
         facts,
         gains: [0.05, 0.05],
     });
-    let text = generated_description(Some(&Observation {
+    let observation = Observation {
         frame: 100,
         active_revision: 2,
         settled_revision: 1,
         transitioning: true,
         voices,
-    }));
+    };
+    let text = generated_description(Some(&observation));
     assert!(text.contains("Both ears"), "{text}");
-    assert!(text.contains("gain L -26.0 / R -26.0 dBFS"), "{text}");
-    assert!(text.starts_with("Transitioning"));
-    assert_eq!(auditorylab::format_hz(39.0625), "39.0625");
-    assert_ne!(auditorylab::format_hz(1e-20), "0");
+    assert!(auditorylab::generated_details(&observation).contains("gain L -26.0 / R -26.0 dBFS"));
+    assert!(text.starts_with("Changing"));
+    assert_eq!(auditorylab::compact_number(39.0625), "39.0625");
+    assert_ne!(auditorylab::compact_number(1e-20), "0");
 }

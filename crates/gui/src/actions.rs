@@ -148,6 +148,7 @@ impl Desktop {
                 if let Some(ui) = self.ui.upgrade() {
                     ui.set_tab_index(1);
                 }
+                self.reset_metadata();
             }
             Continuation::Action(Action::Copy(preset)) => {
                 self.reset_editors();
@@ -157,6 +158,7 @@ impl Desktop {
                 {
                     ui.set_tab_index(1);
                 }
+                self.reset_metadata();
             }
             Continuation::Playback(work) => {
                 let operation = if matches!(work, Work::Live(_)) {

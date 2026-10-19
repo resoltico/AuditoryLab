@@ -49,7 +49,7 @@ jobs:
         if: github.event_name != 'schedule'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libpango-1.0-0 libgtk-3-0
       - if: github.event_name != 'schedule'
         run: cargo fmt --all -- --check
       - if: github.event_name != 'schedule'
@@ -122,7 +122,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libpango-1.0-0 libgtk-3-0
       - run: rustup toolchain install
       - name: Install cargo-about
         run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --target-dir target --features cli
@@ -147,7 +147,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: [synthesis, live, facts]
+        source: [synthesis, live, facts, timing, waveform]
     needs: lint
     if: github.event_name != 'schedule' && needs.lint.outputs.core-changed == 'true'
     runs-on: ubuntu-24.04
@@ -163,7 +163,7 @@ jobs:
       - run: rustup toolchain install
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --version "$CARGO_MUTANTS_VERSION" --locked --target-dir target
-      - name: Mutate one synthesis source file
+      - name: Mutate one core source file
         env:
           MUTATION_SOURCE: ${{ matrix.source }}
         run: |

@@ -7,8 +7,18 @@ mod error;
 mod input_admission;
 mod playback;
 mod presentation;
+mod sound_summary;
+mod waveform_view;
+pub use sound_summary::{
+    Rhythm, RhythmKind, SoundSummary, ToneRelationship, component_role, recipe_target,
+};
+pub use waveform_view::{
+    CaptureError, ModelSource, ModelView, WaveformCapture, WaveformScale, phase_text,
+};
 mod publish;
 mod wav;
+pub use auditorylab_core::live::Target;
+pub use auditorylab_core::timing::{ModelKind, ModelLane, TimingModel};
 pub use auditorylab_core::waveform::trace;
 pub use auditorylab_core::{
     About, Carrier, Component, Ear, Ears, Extent, Modulation, SampleRate, Signal, Stimulus,
@@ -19,8 +29,8 @@ pub use auditorylab_core::{
 };
 pub use draft::{
     ComponentId, Draft, DraftCheck, ModulationKind, Range, Scale, Setting, SourceKind,
-    default_component, default_modulation, range, set_setting, setting_value, slider_position,
-    slider_value,
+    default_component, default_modulation, quantize_setting, range, set_setting, setting_value,
+    slider_position, slider_value,
 };
 pub use error::{Error, ErrorKind};
 pub use playback::monitor::{
@@ -29,7 +39,7 @@ pub use playback::monitor::{
 };
 pub use playback::output::{OutputInfo, SampleFormat};
 pub use presentation::{
-    InterauralPair, catalog_matches, component_description, format_dbfs, format_hz,
+    InterauralPair, catalog_matches, compact_number, component_description, format_dbfs,
     generated_description, generated_details, human_duration, interaural_pair, playback_elapsed,
     sound_brief, sound_description, window_cycle_hint,
 };
@@ -277,6 +287,7 @@ pub fn prepare_playback(preset: &Preset) -> Result<Playback, Error> {
         preset.origin().clone(),
         output.description().clone(),
         Some(sound.signal().frames()),
+        recipe_target(preset, sound.signal().sample_rate())?,
     );
     Ok(Playback {
         output,
@@ -460,6 +471,7 @@ pub fn prepare_live(draft: &Draft) -> Result<Live, Error> {
         Origin::Draft(draft.title().into()),
         output.description().clone(),
         None,
+        draft.target(rate)?,
     );
     Ok(Live {
         output,

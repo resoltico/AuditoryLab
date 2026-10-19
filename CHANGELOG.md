@@ -20,7 +20,10 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Changed
 
-- One desktop player retains its session across Library browsing and Workbench edits. Generated rates, crossfade roles, actual stereo traces and window sample peak/RMS distinguish accepted controls from generated output; freeze, gaps and staleness are labeled.
+- Native desktop fonts follow San Francisco on macOS, Windows UI font/text scaling and configured Linux desktop family/size. About is available through the application/Help menu, with identity and licenses retained.
+- Library prioritizes physical sound meaning and study context; Workbench groups component controls, with notes and saved/exported audio under Recipe settings. Exact fields preserve committed precision; slider gestures use three significant digits, 0.1 dB levels and whole-percent depths.
+- Bounded core timing/envelope projections distinguish static recipe/accepted-target models from generated waveforms. Click/gate/AM summaries retain independent rhythms and steady companions; narrow interaural and monaural pairs retain their physical meaning.
+- One desktop player retains its session across Library browsing and Workbench edits. Generated rates, crossfade roles, actual stereo traces and window sample peak/RMS distinguish accepted controls from generated output; Fixed/Fit share a truthful stereo scale, and freeze retains complete source/rate/span/scale/meter context; gaps and staleness are labeled.
 - Library search covers titles, IDs, research and sound parameters. Wrapped results, compact component controls and collapsible notes/saved-audio settings keep sound actions accessible. Edited source research stays attributed separately from custom notes.
 - New, draft replacement, window close and File/app-menu Quit protect unsaved content with Save/Discard/Cancel and wait for worker cleanup, including native macOS Cmd-Q. Late saves preserve later edits as dirty.
 - CLI/GUI version output and About distinguish product version, numeric native build counter and optional source revision. CLI Play renders start, generated status and final results on stderr; redirected text stays static.
