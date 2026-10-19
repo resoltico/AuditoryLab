@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-19
+
 ### Breaking
 
 - Desktop drawing requires an OpenGL-capable graphics driver; software-renderer recovery is removed.
