@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use alloc::vec;
+use alloc::{string::ToString, vec};
 use core::f64::consts::TAU;
 
 fn rate(hz: u32) -> SampleRate {
@@ -291,4 +291,195 @@ fn click_nyquist_rejection_is_not_masked_by_the_closed_frame_rule() {
         width_seconds: 1.0 / 48000.0,
     };
     assert!(s.signal(rate(48000)).is_ok());
+}
+
+mod validate {
+    use crate::{Carrier, Component, ComponentError, Ears, Modulation, SampleRate, Stimulus};
+    use alloc::vec;
+
+    #[test]
+    fn each_guard_accepts_and_rejects_like_signal() {
+        let rate = SampleRate::new(48_000).unwrap();
+        let base = Component {
+            ears: Ears::Both,
+            peak_dbfs: -20.0,
+            carrier: Carrier::Tone {
+                frequency_hz: 440.0,
+            },
+            modulation: None,
+        };
+        let cases = [
+            (base, true),
+            (
+                Component {
+                    peak_dbfs: 0.0,
+                    ..base
+                },
+                true,
+            ),
+            (
+                Component {
+                    peak_dbfs: 0.1,
+                    ..base
+                },
+                false,
+            ),
+            (
+                Component {
+                    carrier: Carrier::Tone {
+                        frequency_hz: 23_999.0,
+                    },
+                    ..base
+                },
+                true,
+            ),
+            (
+                Component {
+                    carrier: Carrier::Tone {
+                        frequency_hz: 24_000.0,
+                    },
+                    ..base
+                },
+                false,
+            ),
+            (
+                Component {
+                    modulation: Some(Modulation::Sinusoidal {
+                        rate_hz: 40.0,
+                        depth: 1.0,
+                    }),
+                    ..base
+                },
+                true,
+            ),
+            (
+                Component {
+                    modulation: Some(Modulation::Sinusoidal {
+                        rate_hz: 40.0,
+                        depth: 1.01,
+                    }),
+                    ..base
+                },
+                false,
+            ),
+            (
+                Component {
+                    carrier: Carrier::Tone {
+                        frequency_hz: 23_959.0,
+                    },
+                    modulation: Some(Modulation::Sinusoidal {
+                        rate_hz: 40.0,
+                        depth: 1.0,
+                    }),
+                    ..base
+                },
+                true,
+            ),
+            (
+                Component {
+                    carrier: Carrier::Tone {
+                        frequency_hz: 23_960.0,
+                    },
+                    modulation: Some(Modulation::Sinusoidal {
+                        rate_hz: 40.0,
+                        depth: 1.0,
+                    }),
+                    ..base
+                },
+                false,
+            ),
+            (
+                Component {
+                    carrier: Carrier::Click {
+                        rate_hz: 40.0,
+                        width_seconds: 0.001,
+                    },
+                    ..base
+                },
+                true,
+            ),
+            (
+                Component {
+                    carrier: Carrier::Click {
+                        rate_hz: 40.0,
+                        width_seconds: 0.000_001,
+                    },
+                    ..base
+                },
+                false,
+            ),
+            (
+                Component {
+                    modulation: Some(Modulation::Rectangular {
+                        rate_hz: 40.0,
+                        width_seconds: 1_199.0 / 48_000.0,
+                    }),
+                    ..base
+                },
+                true,
+            ),
+            (
+                Component {
+                    modulation: Some(Modulation::Rectangular {
+                        rate_hz: 40.0,
+                        width_seconds: 1_200.0 / 48_000.0,
+                    }),
+                    ..base
+                },
+                false,
+            ),
+        ];
+        for (component, valid) in cases {
+            let own = component.validate(rate);
+            assert_eq!(own.is_ok(), valid, "{component:?}");
+            let whole = Stimulus {
+                duration_seconds: 1.0,
+                fade_seconds: 0.0,
+                components: vec![component],
+            }
+            .signal(rate);
+            match (own, whole) {
+                (Ok(()), Ok(_)) => {}
+                (
+                    Err(error),
+                    Err(crate::StimulusError::Component {
+                        number: 1,
+                        error: same,
+                    }),
+                ) => {
+                    assert_eq!(error, same);
+                }
+                (own, whole) => panic!("{own:?} vs {whole:?}"),
+            }
+        }
+        assert!(matches!(
+            Component {
+                peak_dbfs: f64::NAN,
+                ..base
+            }
+            .validate(rate),
+            Err(ComponentError::PeakDbfs { .. })
+        ));
+    }
+}
+
+#[test]
+fn excessive_width_names_the_signal_frame_limit() {
+    let component = crate::Component {
+        ears: crate::Ears::Both,
+        peak_dbfs: -30.0,
+        carrier: crate::Carrier::Click {
+            rate_hz: 1e-12,
+            width_seconds: 68_719_476_737.0 / 48_000.0,
+        },
+        modulation: None,
+    };
+    let message = component
+        .validate(crate::SampleRate::DEFAULT)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.contains(&crate::Signal::MAX_FRAMES.to_string()),
+        "{message}"
+    );
 }

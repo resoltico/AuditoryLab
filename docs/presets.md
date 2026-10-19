@@ -132,7 +132,7 @@ A recipe can be valid at one sample rate and invalid at another. `inspect`, `exp
 - Duration and fade are finite and not negative, duration gives at least one frame within [`Signal::MAX_FRAMES`](../crates/core/src/signal.rs), and the fades leave at least one frame between them (`2F < N`).
 - Component count stays within [`Stimulus::MAX_COMPONENTS`](../crates/core/src/stimulus.rs), and each component has a finite `peak_dbfs` of at most 0.
 - Every frequency and rate is finite, positive and below half the sample rate. A tone with sinusoidal modulation also needs `frequency_hz + rate_hz` below half the sample rate.
-- Pulse widths must give a finite whole-frame count `W ≥ 1` and satisfy `(W + 1) × rate_hz ≤ fs`, compared exactly. This leaves at least one closed frame in every period, including fractional-frame periods.
+- Pulse widths must give a whole-frame count `1 ≤ W ≤ Signal::MAX_FRAMES` and satisfy `(W + 1) × rate_hz ≤ fs`, compared exactly. This leaves at least one closed frame in every period, including fractional-frame periods.
 - Each ear's summed component peaks are at most full scale, so no sample ever needs clipping.
 
 `inspect` reports these summed peaks per ear. They are bounds, not measured or necessarily reached maxima.

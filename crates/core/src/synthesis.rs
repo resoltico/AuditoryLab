@@ -38,7 +38,7 @@ pub(crate) fn step(hz: f64, fs: u32) -> Option<u64> {
     u64::try_from(quotient).ok()
 }
 #[inline]
-fn sine(phase: u64) -> f64 {
+pub(crate) fn sine(phase: u64) -> f64 {
     let cycles = ((phase as i64) >> 11) as f64 / 9_007_199_254_740_992.0;
     libm::sin(TAU * cycles)
 }
@@ -65,31 +65,7 @@ pub(crate) fn times_at_most(x: f64, k: u64, fs: u32) -> bool {
         product == fs << shift
     }
 }
-/// Compare (frames + 1) × rate ≤ fs when frames is an integral binary64 ≥ 2^64.
-/// Splitting the product keeps its two mantissas within u128, even for huge widths.
-fn wide_width_leaves_closed_frame(frames: f64, rate: f64, fs: u32) -> bool {
-    let (width_mantissa, width_exponent) = parts(frames);
-    let (rate_mantissa, rate_exponent) = parts(rate);
-    let exponent = width_exponent + rate_exponent;
-    if exponent >= 0 {
-        return false;
-    }
-    let Some(scale) = 1_u128.checked_shl((-exponent) as u32) else {
-        return true;
-    };
-    let Some(bound) = u128::from(fs).checked_mul(scale) else {
-        return true;
-    };
-    let product = u128::from(width_mantissa) * u128::from(rate_mantissa);
-    let Some(margin) = bound.checked_sub(product) else {
-        return false;
-    };
-    let width_scale = 1_u128
-        .checked_shl(width_exponent as u32)
-        .unwrap_or(u128::MAX);
-    margin >= u128::from(rate_mantissa).div_ceil(width_scale)
-}
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Pulse {
     mantissa: u64,
     shift: u32,
@@ -108,7 +84,7 @@ impl Pulse {
         whole / u64::from(self.fs)
     }
     #[inline]
-    fn sample(self, n: u64) -> f64 {
+    pub(crate) fn sample(self, n: u64) -> f64 {
         // A pulse starts at ceil(k*fs/rate). For n ≥ W it is open exactly
         // when that onset lies after n-W: K(n) > K(n-W), K(t)=floor(t*rate/fs).
         if n < self.frames || self.periods(n) > self.periods(n - self.frames) {
@@ -119,24 +95,17 @@ impl Pulse {
     }
 }
 /// Resolve pulse width and the exact closed-frame rule for a validated rate.
+/// A width beyond [`Signal::MAX_FRAMES`](crate::Signal::MAX_FRAMES) frames
+/// would leave every realizable signal inside its first pulse, so it is rejected.
 pub(crate) fn pulse(width_seconds: f64, rate_hz: f64, fs: u32) -> Option<Pulse> {
     let frames = libm::round(width_seconds * f64::from(fs));
-    if !(frames >= 1.0 && frames.is_finite()) {
+    if !(frames >= 1.0 && frames <= crate::numeric::frames_to_f64(crate::Signal::MAX_FRAMES)) {
         return None;
     }
-    let frames = if frames < 18_446_744_073_709_551_616.0 {
-        let count = frames as u64;
-        if !times_at_most(rate_hz, count + 1, fs) {
-            return None;
-        }
-        count
-    } else {
-        if !wide_width_leaves_closed_frame(frames, rate_hz, fs) {
-            return None;
-        }
-        // Every realizable signal lies inside this pulse's initial open span.
-        u64::MAX
-    };
+    let frames = frames as u64;
+    if !times_at_most(rate_hz, frames + 1, fs) {
+        return None;
+    }
     let (mantissa, exponent) = parts(rate_hz);
     Some(Pulse {
         mantissa,
@@ -145,12 +114,12 @@ pub(crate) fn pulse(width_seconds: f64, rate_hz: f64, fs: u32) -> Option<Pulse> 
         frames,
     })
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Carrier {
     Tone { step: u64 },
     Pulse(Pulse),
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Modulator {
     Sinusoidal { step: u64, depth: f64 },
     Rectangular(Pulse),
@@ -387,41 +356,16 @@ mod pulses {
         assert!(!times_at_most(0.1, u64::MAX, 1));
     }
     #[test]
-    fn huge_widths_are_compared_exactly_and_cover_the_whole_realizable_signal() {
-        let fs = 8192;
-        let width = 2.0_f64.powi(57); // exactly 2^70 frames
-        let edge_rate = 2.0_f64.powi(-57);
-        assert!(pulse(width, edge_rate, fs).is_none()); // W*rate=fs, but (W+1)*rate>fs
-        assert!(pulse(width, edge_rate.next_up(), fs).is_none());
-        for (width, rate) in [
-            (width, edge_rate.next_down()),
-            (2.0_f64.powi(51), 2.0_f64.powi(-52)),
-            (
-                (2.0_f64.powi(64).next_down()) / f64::from(fs),
-                2.0_f64.powi(-52),
-            ),
-            (width, 2.0_f64.powi(-86)),
-            (width, 2.0_f64.powi(-166)),
-            (width, f64::from_bits(1)),
-            (2.0_f64.powi(187), 2.0_f64.powi(-200)),
-        ] {
-            let clock = pulse(width, rate, fs).unwrap();
-            for n in [0, 1, (1 << 36) - 1] {
-                assert_eq!(clock.sample(n), 1.0);
-            }
+    fn widths_beyond_the_longest_signal_are_rejected() {
+        let longest = crate::numeric::frames_to_f64(crate::Signal::MAX_FRAMES);
+        // One frame per second: the width in seconds is the width in frames.
+        let slow = 1.0 / (longest + 1.0);
+        assert!(pulse(longest, slow, 1).is_some());
+        assert!(pulse(longest + 1.0, slow, 1).is_none());
+        assert!(pulse(2.0_f64.powi(57), 2.0_f64.powi(-86), 8192).is_none());
+        let clock = pulse(longest, slow, 1).unwrap();
+        for n in [0, 1, crate::Signal::MAX_FRAMES - 1] {
+            assert_eq!(clock.sample(n), 1.0);
         }
-        assert!(pulse(width, 1.0, fs).is_none());
-        assert!(pulse(2.0_f64.powi(187), 1.0, fs).is_none());
-        // B=2^105, R=2^52+1 and M=2^53-2 give B-M*R=2=ceil(R/2^52).
-        // The accepted margin is just above the exact (W+1)*rate boundary.
-        let frames = (2.0_f64.powi(53) - 2.0) * 2.0_f64.powi(52);
-        let narrow_rate = (2.0_f64.powi(52) + 1.0) * 2.0_f64.powi(-144);
-        assert!(pulse(frames / f64::from(fs), narrow_rate, fs).is_some());
-        assert!(pulse(frames / f64::from(fs), narrow_rate.next_up(), fs).is_none());
-        let frames = 2.0_f64.powi(63);
-        let width = frames / f64::from(fs);
-        let rate = f64::from(fs) / frames;
-        assert!(pulse(width, rate, fs).is_none());
-        assert!(pulse(width, rate.next_down(), fs).is_some());
     }
 }

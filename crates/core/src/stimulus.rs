@@ -6,7 +6,7 @@ use crate::synthesis::{self, Carrier as Generator, Modulator, Pulse, Voice};
 use crate::{SampleRate, numeric};
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A sound for the two ears, described in physical units and independent
 /// of any sample rate.
@@ -52,7 +52,7 @@ pub enum Carrier {
         width_seconds: f64,
     },
 }
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum DocumentComponent {
     /// A sine wave starting at phase zero.
@@ -64,6 +64,7 @@ pub(crate) enum DocumentComponent {
         /// Peak amplitude in dBFS.
         peak_dbfs: f64,
         /// Optional amplitude modulation.
+        #[serde(skip_serializing_if = "Option::is_none")]
         modulation: Option<Modulation>,
     },
     /// Unipolar rectangular pulses, the first starting at time zero.
@@ -77,8 +78,38 @@ pub(crate) enum DocumentComponent {
         /// Pulse height in dBFS.
         peak_dbfs: f64,
         /// Optional amplitude modulation.
+        #[serde(skip_serializing_if = "Option::is_none")]
         modulation: Option<Modulation>,
     },
+}
+
+impl From<Component> for DocumentComponent {
+    fn from(value: Component) -> Self {
+        let Component {
+            ears,
+            peak_dbfs,
+            carrier,
+            modulation,
+        } = value;
+        match carrier {
+            Carrier::Tone { frequency_hz } => Self::Tone {
+                ears,
+                frequency_hz,
+                peak_dbfs,
+                modulation,
+            },
+            Carrier::Click {
+                rate_hz,
+                width_seconds,
+            } => Self::Click {
+                ears,
+                rate_hz,
+                width_seconds,
+                peak_dbfs,
+                modulation,
+            },
+        }
+    }
 }
 
 impl From<DocumentComponent> for Component {
@@ -115,7 +146,7 @@ impl From<DocumentComponent> for Component {
 }
 
 /// Which ears hear a component.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Ears {
     /// The left ear only.
@@ -137,7 +168,7 @@ pub enum Ear {
 
 /// A periodic change of a component's amplitude. Every modulation's gain
 /// lies within `[0, 1]`, so it never raises the component's peak.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Modulation {
     /// Nominal gain follows `(1 + depth * sin(2π rate_hz t)) / (1 + depth)`,
@@ -170,8 +201,18 @@ impl Ears {
 }
 
 impl Component {
+    /// Check every value at `rate`, with the same rules and errors as
+    /// [`Stimulus::signal`] applies to each component.
+    ///
+    /// # Errors
+    /// Returns the first [`ComponentError`] in the order level, carrier,
+    /// modulation.
+    pub fn validate(&self, rate: SampleRate) -> Result<(), ComponentError> {
+        self.voice(rate).map(|_| ())
+    }
+
     /// Check every value at `rate` and build the generator.
-    fn voice(&self, rate: SampleRate) -> Result<Voice, ComponentError> {
+    pub(crate) fn voice(&self, rate: SampleRate) -> Result<Voice, ComponentError> {
         let peak_dbfs = self.peak_dbfs;
         if !(peak_dbfs.is_finite() && peak_dbfs <= 0.0) {
             return Err(ComponentError::PeakDbfs { peak_dbfs });
@@ -431,7 +472,7 @@ pub enum ComponentError {
         /// The sample rate in frames per second.
         sample_rate_hz: u32,
     },
-    /// A pulse rounds to no open frame or leaves no closed frame.
+    /// A pulse width lies outside the signal frame limit or leaves no closed frame.
     PulseWidth {
         /// The parameter holding it.
         parameter: Parameter,
@@ -531,7 +572,8 @@ impl Display for ComponentError {
                 sample_rate_hz,
             } => write!(
                 f,
-                "{parameter} {width_seconds} must give at least one frame at {sample_rate_hz} Hz and leave at least one closed frame in each 1/{rate_hz} s period"
+                "{parameter} {width_seconds} must give 1 to {} frames at {sample_rate_hz} Hz and leave at least one closed frame in each 1/{rate_hz} s period",
+                crate::Signal::MAX_FRAMES
             ),
             Self::PeakDbfs { peak_dbfs } => {
                 write!(f, "peak_dbfs {peak_dbfs} must be finite and at most 0")

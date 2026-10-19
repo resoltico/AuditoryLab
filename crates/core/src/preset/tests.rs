@@ -287,3 +287,145 @@ fn messages_say_what_is_wrong_with_the_preset() {
     assert!(format.source().is_some());
     assert!(PresetError::TooLarge.source().is_none());
 }
+
+mod writing {
+    use crate::{About, Carrier, Component, Ears, Modulation, Preset, Stimulus};
+    use alloc::string::String;
+    use alloc::vec::Vec;
+    use proptest::{prelude::*, test_runner::Config, test_runner::TestRunner};
+
+    #[test]
+    fn every_catalog_recipe_reads_back_equal_after_writing() {
+        for entry in crate::catalog::ENTRIES {
+            let preset = Preset::parse(entry.text).unwrap();
+            let text = preset.to_toml().unwrap();
+            assert!(text.starts_with("schema_version = 2\n"), "{}", entry.id);
+            assert_eq!(Preset::parse(&text).unwrap(), preset, "{}", entry.id);
+        }
+    }
+
+    #[test]
+    fn written_presets_read_back_equal() {
+        let number = prop_oneof![
+            any::<f64>().prop_filter("finite", |x| x.is_finite()),
+            Just(5e-324),
+            Just(-0.0),
+            Just(0.1),
+        ];
+        let text = prop_oneof![
+            Just(String::new()),
+            "[ -~]{0,40}",
+            Just(String::from(
+                "quote \" backslash \\ newline\n tab\t é 🎧 \u{7}"
+            )),
+        ];
+        let modulation = prop_oneof![
+            Just(None),
+            (number.clone(), number.clone())
+                .prop_map(|(rate_hz, depth)| Some(Modulation::Sinusoidal { rate_hz, depth })),
+            (number.clone(), number.clone()).prop_map(|(rate_hz, width_seconds)| Some(
+                Modulation::Rectangular {
+                    rate_hz,
+                    width_seconds
+                }
+            )),
+        ];
+        let component = (
+            0_u8..3,
+            any::<bool>(),
+            number.clone(),
+            number.clone(),
+            number.clone(),
+            modulation,
+        )
+            .prop_map(|(ears, click, a, b, peak_dbfs, modulation)| Component {
+                ears: [Ears::Left, Ears::Right, Ears::Both][usize::from(ears)],
+                peak_dbfs,
+                carrier: if click {
+                    Carrier::Click {
+                        rate_hz: a,
+                        width_seconds: b,
+                    }
+                } else {
+                    Carrier::Tone { frequency_hz: a }
+                },
+                modulation,
+            });
+        let about = prop::option::of((
+            text.clone(),
+            prop::option::of(text.clone()),
+            prop::option::of(text),
+        ))
+        .prop_map(|about| {
+            about.map(|(title, summary, citation)| About {
+                title,
+                studied_for: None,
+                summary,
+                citation,
+                source_url: None,
+                study: None,
+                adaptation: None,
+            })
+        });
+        let preset = (
+            number.clone(),
+            number,
+            prop::collection::vec(component, 0..5),
+            about,
+        )
+            .prop_map(
+                |(duration_seconds, fade_seconds, components, about)| Preset {
+                    stimulus: Stimulus {
+                        duration_seconds,
+                        fade_seconds,
+                        components,
+                    },
+                    about,
+                },
+            );
+        let config = Config {
+            cases: 256,
+            failure_persistence: None,
+            max_shrink_iters: 256,
+            ..Config::default()
+        };
+        TestRunner::new(config)
+            .run(&preset, |preset| {
+                let text = preset.to_toml().unwrap();
+                let back = Preset::parse(&text).unwrap();
+                // Bitwise equality keeps signed zeros and subnormals honest.
+                let bits = |p: &Preset| -> Vec<u64> {
+                    let s = &p.stimulus;
+                    let mut out =
+                        alloc::vec![s.duration_seconds.to_bits(), s.fade_seconds.to_bits()];
+                    for c in &s.components {
+                        out.push(c.peak_dbfs.to_bits());
+                        match c.carrier {
+                            Carrier::Tone { frequency_hz } => out.push(frequency_hz.to_bits()),
+                            Carrier::Click {
+                                rate_hz,
+                                width_seconds,
+                            } => {
+                                out.extend([rate_hz.to_bits(), width_seconds.to_bits()]);
+                            }
+                        }
+                        match c.modulation {
+                            None => {}
+                            Some(Modulation::Sinusoidal { rate_hz, depth }) => {
+                                out.extend([rate_hz.to_bits(), depth.to_bits()])
+                            }
+                            Some(Modulation::Rectangular {
+                                rate_hz,
+                                width_seconds,
+                            }) => out.extend([rate_hz.to_bits(), width_seconds.to_bits()]),
+                        }
+                    }
+                    out
+                };
+                prop_assert_eq!(bits(&back), bits(&preset));
+                prop_assert_eq!(back, preset);
+                Ok(())
+            })
+            .unwrap();
+    }
+}
