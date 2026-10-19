@@ -134,7 +134,8 @@ fn play_reads_stdin_and_reports_native_silent_playback() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert!(String::from_utf8_lossy(&out.stdout).contains("Played "));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Played "));
+    assert!(out.stdout.is_empty());
     let start = String::from_utf8(out.stderr).unwrap();
     assert!(start.contains("Press Ctrl-C to stop") && start.contains("Turn the volume down"));
 }

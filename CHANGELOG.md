@@ -23,7 +23,7 @@ Notable changes to this project are documented in this file. The format is based
 - One desktop player retains its session across Library browsing and Workbench edits. Generated rates, crossfade roles, actual stereo traces and window sample peak/RMS distinguish accepted controls from generated output; freeze, gaps and staleness are labeled.
 - Library search covers titles, IDs, research and sound parameters. Wrapped results, compact component controls and collapsible notes/saved-audio settings keep sound actions accessible. Edited source research stays attributed separately from custom notes.
 - New, draft replacement, window close and File/app-menu Quit protect unsaved content with Save/Discard/Cancel and wait for worker cleanup, including native macOS Cmd-Q. Late saves preserve later edits as dirty.
-- CLI/GUI version output and About distinguish product version, numeric native build counter and optional source revision. CLI Play renders shared generated status on terminal stderr; redirected text stays static.
+- CLI/GUI version output and About distinguish product version, numeric native build counter and optional source revision. CLI Play renders start, generated status and final results on stderr; redirected text stays static.
 
 - Stop fades finite playback over 30 ms, shortened at the end; live Stop finishes any current transition before its 30 ms fade. CLI Ctrl-C retains exit 130.
 - CLI and desktop durations read as hours, minutes and seconds; desktop peak bounds use one decimal and silence reads −∞.

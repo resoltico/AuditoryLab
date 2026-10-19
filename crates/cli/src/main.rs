@@ -306,7 +306,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 playback.play(&cancel, &Progress::default())?
             };
-            completed(&format!("Played {} frames.", result.frames));
+            eprintln!("Played {} frames.", result.frames);
             if result.underruns > 0 {
                 eprintln!("{}", lab::Notice::Underruns(result.underruns));
             }
