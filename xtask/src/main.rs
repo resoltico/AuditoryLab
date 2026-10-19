@@ -207,13 +207,13 @@ fn archive(folder: &Path, out: &Path, windows: bool) -> Result<()> {
         files(parent, folder, &mut entries)?;
         for path in entries {
             let mut file = fs::File::open(parent.join(&path))?;
-            let mut options = zip::write::SimpleFileOptions::default()
+            let options = zip::write::SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated);
             #[cfg(unix)]
-            {
+            let options = {
                 use std::os::unix::fs::PermissionsExt;
-                options = options.unix_permissions(file.metadata()?.permissions().mode());
-            }
+                options.unix_permissions(file.metadata()?.permissions().mode())
+            };
             zip.start_file(path.to_string_lossy().replace('\\', "/"), options)?;
             std::io::copy(&mut file, &mut zip)?;
         }
