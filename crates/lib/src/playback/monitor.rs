@@ -534,6 +534,14 @@ mod tests {
                 .map(|f| [f[0], f[1]])
                 .collect::<Vec<_>>()
         );
+        let frozen = crate::WaveformCapture::monitored(&reader, crate::WaveformScale::Fit)
+            .unwrap()
+            .unwrap();
+        let caption = frozen.caption(true, false);
+        let captured_meters = frozen.meters();
+        let captured_id = frozen.session().unwrap().id;
+        assert_eq!(frozen.span(), (0, 512));
+        assert_eq!(frozen.observation().unwrap().frame, 511);
         let guard = monitor.0.history.lock().unwrap();
         a.fill(&mut x, time(64_000_000), &|v| v);
         b.fill(&mut y, time(64_000_000), &|v| v);
@@ -562,6 +570,30 @@ mod tests {
         assert_eq!(x, y);
         reader.poll(100);
         assert_eq!(reader.status().phase, PlaybackPhase::Stopped);
+        let latest = crate::WaveformCapture::monitored(&reader, crate::WaveformScale::Fixed)
+            .unwrap()
+            .unwrap();
+        assert_ne!(latest.span(), frozen.span());
+        assert!(latest.sequence() > frozen.sequence());
+        assert_eq!(frozen.caption(true, false), caption);
+        assert_eq!(frozen.meters(), captured_meters);
+        assert_eq!(frozen.rate().hz(), 8000);
+        assert_eq!(frozen.session().unwrap().id, captured_id);
+        assert_eq!(frozen.scale(), crate::WaveformScale::Fit);
+    }
+    #[test]
+    fn supervising_worker_error_fills_only_a_missing_terminal_outcome() {
+        let monitor = PlaybackMonitor::new(descriptor(8000), MonitorDetail::Quantities, None);
+        let mut reader = monitor.reader();
+        reader.worker_exited_with_error();
+        reader.poll(100);
+        assert_eq!(reader.status().phase, PlaybackPhase::Failed);
+        let monitor = PlaybackMonitor::new(descriptor(8000), MonitorDetail::Quantities, None);
+        monitor.shared().finish(Terminal::Complete);
+        let mut reader = monitor.reader();
+        reader.worker_exited_with_error();
+        reader.poll(100);
+        assert_eq!(reader.status().phase, PlaybackPhase::Completed);
     }
     #[test]
     fn ring_limits_wrap_large_writes_and_age_are_bounded() {
