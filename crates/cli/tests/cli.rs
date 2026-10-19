@@ -1,10 +1,11 @@
 //! CLI contracts through the shipped executable.
 #![cfg(test)]
+#[cfg(unix)]
+use std::time::{Duration, Instant};
 use std::{
     fs,
     io::Write,
     process::{Command, Stdio},
-    time::{Duration, Instant},
 };
 fn cli(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_auditorylab"))
