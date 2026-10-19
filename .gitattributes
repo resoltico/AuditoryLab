@@ -1,4 +1,1 @@
 * text=auto eol=lf
-# Preserve the official legal blocks' exact preformatted whitespace.
-THIRD-PARTY-NOTICES.txt whitespace=-blank-at-eol,-space-before-tab
-/scripts/licenses/mingw-* whitespace=-blank-at-eol,-space-before-tab

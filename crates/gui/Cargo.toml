@@ -1,0 +1,29 @@
+[package]
+name = "auditorylab-gui"
+autobins = false
+description = "Native desktop frontend for Auditory Lab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+auditorylab.workspace = true
+slint.workspace = true
+rfd.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "auditorylab-gui"
+path = "src/main.rs"
+
+
+[lints]
+workspace = true

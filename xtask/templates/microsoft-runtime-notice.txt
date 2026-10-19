@@ -1,0 +1,11 @@
+================================================================================
+Microsoft C and C++ runtime (Windows builds)
+--------------------------------------------------------------------------------
+The Windows executables are built with Microsoft Visual C++ and statically
+include parts of the Microsoft C and C++ runtime libraries. Microsoft licenses
+these as Distributable Code under its Visual Studio license terms. Copyright (c)
+Microsoft Corporation.
+
+If you redistribute these executables, you must follow Microsoft's requirements
+for Distributable Code, including requiring distributors and end users to agree
+to terms that protect it at least as much as those requirements do.

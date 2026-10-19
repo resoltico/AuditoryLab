@@ -1,0 +1,61 @@
+import { AboutSlint, Button, ComboBox, TextEdit, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView } from "std-widgets.slint";
+export component AboutWindow inherits Window {
+    title: "About Auditory Lab"; preferred-width: 560px; preferred-height: 420px;
+    in property <string> identity;
+    VerticalBox { Text { text: "Auditory Lab"; font-size: 24px; } TextEdit { text: root.identity; read-only: true; accessible-label: "Version and licenses"; } AboutSlint {} }
+}
+component Lane inherits Rectangle {
+    in property <string> label; in property <string> trace;
+    background: #131d2b; height: 110px; border-radius: 4px;
+    accessible-role: image; accessible-label: root.label;
+    Text { x: 8px; y: 4px; text: root.label; color: white; font-size: 12px; }
+    Text { x: 5px; y: 21px; height: 14px; text: "+1"; color: #bac7d7; font-size: 12px; }
+    Text { x: 5px; y: 56px; height: 14px; text: "0"; color: #bac7d7; font-size: 12px; }
+    Text { x: 5px; y: 91px; height: 14px; text: "−1"; color: #bac7d7; font-size: 12px; }
+    Rectangle { x: 38px; y: 28px; width: parent.width - 48px; height: 70px; clip: true;
+        Rectangle { y: parent.height / 2; height: 1px; width: parent.width; background: #43536b; }
+        Path { width: parent.width; height: parent.height; viewbox-width: 1024; viewbox-height: 100; fit: fill; commands: root.trace; stroke: #77d4ef; stroke-width: 1px; }
+    }
+}
+export component MainWindow inherits Window {
+    title: "Auditory Lab"; preferred-width: 1040px; preferred-height: 820px; min-width: 850px; min-height: 700px;
+    in property <[StandardListViewItem]> catalog;
+    in-out property <int> selected: 0;
+    in property <string> sound-title; in property <string> studied; in property <string> summary; in property <string> details;
+    in property <string> guidance;
+    in property <string> status; in property <bool> busy; in property <bool> can-export;
+    in property <string> elapsed; in property <float> progress;
+    in property <string> left-path; in property <string> right-path;
+    in-out property <int> window-index: 2; in-out property <int> rate-index: 1;
+    in-out property <bool> research: false;
+    callback select(int); callback open-recipe(); callback play-stop(); callback export-wav(); callback about(); callback rate-changed(int); callback window-changed();
+    MenuBar {
+        Menu { title: "File"; MenuItem { title: "Open Recipe…"; enabled: !root.busy; activated => { root.open-recipe(); } } MenuItem { title: "Export WAV…"; enabled: !root.busy && root.can-export; activated => { root.export-wav(); } } }
+        Menu { title: "Help"; MenuItem { title: "About"; activated => { root.about(); } } }
+    }
+    VerticalBox {
+        HorizontalBox {
+            VerticalBox { min-width: 280px; max-width: 320px;
+                StandardListView { model: root.catalog; current-item <=> root.selected; enabled: !root.busy; current-item-changed(index) => { root.select(index); } accessible-label: "Sounds, research topics and durations"; }
+                Button { text: "Open Recipe…"; enabled: !root.busy; clicked => { root.open-recipe(); } }
+            }
+            ScrollView {
+                VerticalBox {
+                    Text { text: root.sound-title; font-size: 24px; wrap: word-wrap; vertical-stretch: 0; }
+                    Text { text: root.studied; wrap: word-wrap; vertical-stretch: 0; }
+                    Text { text: root.summary; wrap: word-wrap; vertical-stretch: 0; }
+                    HorizontalBox { vertical-stretch: 0; Button { text: root.busy ? "Stop" : "Play"; accessible-label: "Play or stop selected sound"; clicked => { root.play-stop(); } } Text { text: root.elapsed; } }
+                    Rectangle { height: 8px; background: #d4dce5; accessible-role: progress-indicator; accessible-label: "Operation progress"; accessible-value: root.elapsed; Rectangle { height: parent.height; width: parent.width * root.progress; background: #327ca9; } }
+                    HorizontalBox { vertical-stretch: 0; Text { text: "Waveform window"; } ComboBox { model: ["2 ms", "10 ms", "40 ms", "100 ms"]; current-index <=> root.window-index; selected(value) => { root.window-changed(); } } }
+                    Lane { label: "Left ear"; trace: root.left-path; }
+                    Lane { label: "Right ear"; trace: root.right-path; }
+                    CheckBox { text: "Research details"; checked <=> root.research; }
+                    if root.research: TextEdit { text: root.details; read-only: true; min-height: 130px; accessible-label: "Selectable citation and research details"; }
+                    HorizontalBox { vertical-stretch: 0; Text { text: "Export rate"; } ComboBox { model: ["44100 Hz", "48000 Hz", "88200 Hz", "96000 Hz", "192000 Hz"]; current-index <=> root.rate-index; enabled: !root.busy; selected(value) => { root.rate-changed(root.rate-index); } } Button { text: "Export WAV…"; enabled: !root.busy && root.can-export; clicked => { root.export-wav(); } } }
+                    TextEdit { text: root.status; read-only: true; min-height: 45px; max-height: 70px; accessible-label: "Selectable operation status"; }
+                }
+            }
+        }
+        Text { text: root.guidance; wrap: word-wrap; vertical-stretch: 0; }
+    }
+}

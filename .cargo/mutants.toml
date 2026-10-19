@@ -1,4 +1,4 @@
-# cargo-mutants configuration. See docs/verification.md for scoped invocation.
+# cargo-mutants configuration. See CONTRIBUTING.md for scoped invocation.
 
 # The report goes under target/, which is ignored and which `cargo clean` removes.
 output = "target"
