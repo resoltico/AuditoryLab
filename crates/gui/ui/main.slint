@@ -339,10 +339,13 @@ export component AudioControlsWindow inherits Window {
     in property <string> ui-family;in property <length> ui-size:13px;
     default-font-family:root.ui-family;default-font-size:root.ui-size;
     in property <string> source;in property <string> elapsed;in property <bool> active;
-    preferred-width:400px;preferred-height:150px;
+    min-width:max(320px,controls.min-width);
+    min-height:controls.preferred-height;
+    preferred-width:400px;preferred-height:max(150px,self.min-height);
     callback stop();
-    VerticalBox {
-        Text {text:root.source;wrap:word-wrap;}
+    controls := VerticalBox {
+        padding:16px;spacing:8px;
+        Text {min-width:0px;text:root.source;overflow:elide;accessible-label:root.source;}
         Text {text:root.elapsed;}
         Button {text:"Stop audio";enabled:root.active;clicked=>{root.stop();}}
     }

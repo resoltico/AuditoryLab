@@ -1998,16 +1998,58 @@ mod action_wiring_tests {
     #[test]
     fn corrected_pending_frequency_enables_the_actual_transport_and_save_properties() {
         use slint::platform::{
-            Platform, PlatformError, WindowAdapter,
-            software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
+            LayoutConstraints, Platform, PlatformError, Renderer, WindowAdapter, WindowProperties,
+            software_renderer::SoftwareRenderer,
         };
-        struct Offscreen;
-        impl Platform for Offscreen {
-            fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
-                Ok(MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer))
+        struct Offscreen {
+            audio_constraints: Rc<RefCell<Option<LayoutConstraints>>>,
+        }
+        struct OffscreenWindow {
+            window: slint::Window,
+            renderer: SoftwareRenderer,
+            size: Cell<slint::PhysicalSize>,
+            audio_constraints: Rc<RefCell<Option<LayoutConstraints>>>,
+        }
+        impl WindowAdapter for OffscreenWindow {
+            fn window(&self) -> &slint::Window {
+                &self.window
+            }
+            fn renderer(&self) -> &dyn Renderer {
+                &self.renderer
+            }
+            fn size(&self) -> slint::PhysicalSize {
+                self.size.get()
+            }
+            fn set_size(&self, size: slint::WindowSize) {
+                let scale = self.window.scale_factor();
+                self.size.set(size.to_physical(scale));
+                self.window
+                    .dispatch_event(slint::platform::WindowEvent::Resized {
+                        size: size.to_logical(scale),
+                    });
+            }
+            fn update_window_properties(&self, properties: WindowProperties<'_>) {
+                if properties.title() == "Audio controls" {
+                    *self.audio_constraints.borrow_mut() = Some(properties.layout_constraints());
+                }
             }
         }
-        slint::platform::set_platform(Box::new(Offscreen)).unwrap();
+        impl Platform for Offscreen {
+            fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
+                Ok(Rc::new_cyclic(|weak| OffscreenWindow {
+                    window: slint::Window::new(weak.clone()),
+                    renderer: SoftwareRenderer::new(),
+                    size: Cell::default(),
+                    audio_constraints: self.audio_constraints.clone(),
+                }))
+            }
+        }
+        let audio_constraints = Rc::new(RefCell::new(None));
+        slint::platform::set_platform(Box::new(Offscreen {
+            audio_constraints: audio_constraints.clone(),
+        }))
+        .unwrap();
+        assert_audio_controls_keep_stop_visible(&audio_constraints);
         #[cfg(target_os = "macos")]
         assert_native_font_metrics();
         let ui = MainWindow::new().unwrap();
@@ -2101,6 +2143,70 @@ mod action_wiring_tests {
         );
         assert_monitor_handoff_preserves_numeric_entry(&ui);
         ui.hide().unwrap();
+    }
+
+    fn assert_audio_controls_keep_stop_visible(
+        constraints: &Rc<RefCell<Option<slint::platform::LayoutConstraints>>>,
+    ) {
+        use slint::platform::{PointerEventButton, WindowEvent};
+        let controls = AudioControlsWindow::new().unwrap();
+        controls.set_ui_family(typography::resolve().family.into());
+        controls.set_active(true);
+        controls.set_elapsed("59:59:59 / 99:59:59".into());
+        let stops = Rc::new(Cell::new(0));
+        let calls = stops.clone();
+        controls.on_stop(move || calls.set(calls.get() + 1));
+        let mut previous_height = 0.0;
+        for (index, size) in [13.0, 26.0, 40.0].into_iter().enumerate() {
+            controls.set_ui_size(size);
+            controls.set_source("Short source".into());
+            controls.show().unwrap();
+            let short = constraints.borrow().unwrap().min.unwrap();
+            controls.hide().unwrap();
+            controls.set_source(
+                "A long playing source with a detailed session description "
+                    .repeat(80)
+                    .into(),
+            );
+            controls.show().unwrap();
+            let minimum = constraints.borrow().unwrap().min.unwrap();
+            eprintln!("Audio controls at {size}px: native minimum {minimum:?}");
+            assert!(
+                minimum.width >= 320.0,
+                "native minimum must keep the audio controls usable"
+            );
+            assert_eq!(
+                minimum, short,
+                "source length must not force an unbounded window"
+            );
+            assert!(
+                minimum.height > previous_height,
+                "content minimum must grow with native text metrics"
+            );
+            previous_height = minimum.height;
+            controls.window().set_size(minimum);
+            slint::platform::update_timers_and_animations();
+            // Click inside the bottom row of the actual generated window at its native minimum.
+            let position = slint::LogicalPosition::new(minimum.width / 2.0, minimum.height - 24.0);
+            controls
+                .window()
+                .dispatch_event(WindowEvent::PointerPressed {
+                    position,
+                    button: PointerEventButton::Left,
+                });
+            controls
+                .window()
+                .dispatch_event(WindowEvent::PointerReleased {
+                    position,
+                    button: PointerEventButton::Left,
+                });
+            assert_eq!(
+                stops.get(),
+                index + 1,
+                "Stop must be clickable inside the visible client bounds"
+            );
+            controls.hide().unwrap();
+        }
     }
 
     fn assert_monitor_handoff_preserves_numeric_entry(ui: &MainWindow) {
