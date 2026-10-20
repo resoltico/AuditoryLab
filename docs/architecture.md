@@ -81,3 +81,5 @@ The macOS text stack applies logical-size optical variants and tracking consiste
 On X11 desktops using GTK font settings, resolved GDK window scaling drives window DPI while text/font DPI drives font size. This keeps text enlargement out of minimum/preferred window geometry. The pinned Winit adapter retains Xft/RandR fallback and explicit scale overrides.
 
 Pango absolute-pixel descriptions retain their units: window backing scale applies, while point-font DPI/text scaling does not multiply an absolute pixel size.
+
+Viewport changes coalesce into a deferred UI refresh. Native auxiliary windows open or close after layout/drawing callbacks return, so creating another graphics context cannot interrupt the current frame. Shutdown stops that pending refresh before draining workers.

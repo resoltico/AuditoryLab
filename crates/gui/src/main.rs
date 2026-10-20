@@ -1472,10 +1472,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             d.refresh();
         }
     });
+    let viewport_refresh = Rc::new(slint::Timer::default());
     let d = desktop.clone();
+    let deferred_refresh = viewport_refresh.clone();
     ui.on_window_changed(move || {
         if !d.updating.get() {
-            d.refresh();
+            let d = Rc::downgrade(&d);
+            // Layout change handlers also run inside drawing. Native window
+            // transitions must wait until the current graphics frame completes.
+            deferred_refresh.start(slint::TimerMode::SingleShot, Duration::ZERO, move || {
+                if let Some(d) = d.upgrade() {
+                    d.refresh();
+                }
+            });
         }
     });
     let d = desktop.clone();
@@ -1901,6 +1910,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     desktop.refresh();
     let result = ui.run();
     native_ui_timer.stop();
+    viewport_refresh.stop();
     for slot in [&desktop.audio_worker, &desktop.file_worker] {
         if let Some(worker) = slot.borrow().as_ref() {
             worker.cancel.request();

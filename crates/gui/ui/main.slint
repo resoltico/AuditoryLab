@@ -1297,7 +1297,7 @@ export component MainWindow inherits Window {
             }
         }
         Rectangle {
-            min-height:root.ui-size*5.5;max-height:root.ui-size*7;
+            min-height:root.ui-size*5.5;max-height:root.ui-size*9;
             vertical-stretch:0;
             background:Palette.control-background;border-width:1px;border-color:Palette.border;
             VerticalBox {padding:8px;spacing:3px;
@@ -1310,7 +1310,7 @@ export component MainWindow inherits Window {
                     Text {text:root.elapsed;vertical-alignment:center;}
                     Button {text:"Details…";accessible-label:"Audio details";clicked=>{root.show-diagnostics();}}
                 }
-                Text {text:root.guidance;overflow:elide;max-height:root.ui-size*1.5;}
+                Text {text:root.guidance;wrap:word-wrap;vertical-stretch:0;}
             }
         }
     }
