@@ -23,14 +23,25 @@ fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
         .signal(SampleRate::new(8000).unwrap())
         .unwrap();
     let mut out = Vec::new();
-    for (start, frames, bins) in [
-        (0, 10000, 3),
-        (123, 4567, 1000),
-        (9990, 50, 3),
-        (10000, 30, 0),
+    for (start, frames, bins, expected_bins) in [
+        (0, 10000, 3, 3),
+        (123, 4567, 1000, 1000),
+        (9990, 50, 3, 3),
+        (9998, 50, 8, 2),
+        (123, 4567, 0, 0),
+        (123, 0, 3, 0),
+        (10000, 30, 3, 0),
+        (10001, 30, 3, 0),
+        (u64::MAX, 30, 3, 0),
     ] {
+        // Reuse nonempty storage so empty windows must clear an earlier trace.
+        out.push([waveform::Extent { min: 9.0, max: 9.0 }; 2]);
         waveform::trace(&signal, start, frames, bins, &mut out);
-        let span = (start + frames).min(signal.frames()) - start;
+        assert_eq!(out.len(), expected_bins, "window {start}/{frames}/{bins}");
+        let span = start
+            .saturating_add(frames)
+            .min(signal.frames())
+            .saturating_sub(start);
         for (bin, extents) in out.iter().enumerate() {
             let lo = start + (bin as u64 * span).div_ceil(out.len() as u64);
             let hi = start + ((bin as u64 + 1) * span).div_ceil(out.len() as u64);
@@ -42,6 +53,7 @@ fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
         }
     }
     waveform::trace(&signal, 0, 10000, 3, &mut out);
+    assert_eq!(out.len(), 3);
     assert!(out.iter().all(|bin| bin[0].max == 0.1));
 }
 #[test]

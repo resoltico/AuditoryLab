@@ -5,8 +5,9 @@ mod app;
 mod dialogs;
 mod motion;
 #[cfg(target_os = "macos")]
-mod native_quit;
+mod native_application;
 mod scope;
+mod typography;
 mod worker;
 use actions::{Action, Continuation};
 #[allow(
@@ -20,7 +21,8 @@ mod generated {
     slint::include_modules!();
 }
 use app::{App, Operation};
-use generated::{AboutWindow, MainWindow, Row};
+use generated::{AboutWindow, MainWindow, ModelRow, Row};
+use slint::winit_030::{EventResult as WinitEventResult, WinitWindowAccessor, winit};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use std::{
     cell::{Cell, RefCell},
@@ -36,7 +38,12 @@ struct Desktop {
     worker: RefCell<Option<Worker>>,
     ui: slint::Weak<MainWindow>,
     timer: slint::Timer,
-    bins: RefCell<Vec<[auditorylab::Extent; 2]>>,
+    capture: RefCell<Option<auditorylab::WaveformCapture>>,
+    model: RefCell<Option<auditorylab::ModelView>>,
+    typography: RefCell<typography::TypographyService>,
+    font: RefCell<typography::Typography>,
+    about: slint::Weak<AboutWindow>,
+    preparation_failed: Cell<bool>,
     rows: Rc<VecModel<Row>>,
     monitor: RefCell<Option<auditorylab::MonitorReader>>,
     catalog_indices: RefCell<Vec<usize>>,
@@ -44,12 +51,46 @@ struct Desktop {
     after: RefCell<Option<Continuation>>,
     session_position: Cell<u64>,
     session_title: RefCell<String>,
-    frozen_span: Cell<Option<(u64, u64)>>,
+
     dialog_active: Cell<bool>,
     operation_frames: Cell<u64>,
 }
 impl Desktop {
+    fn refresh_typography(&self) {
+        #[cfg(target_os = "macos")]
+        if let Err(error) = native_application::refresh_about_menu() {
+            eprintln!("Native About: {error}");
+        }
+        let Some(ui) = self.ui.upgrade() else {
+            return;
+        };
+        if let Some(font) = self.typography.borrow().latest()
+            && *self.font.borrow() != font
+        {
+            eprintln!(
+                "Typography: {} · {} logical px · {}",
+                font.family, font.size, font.origin
+            );
+            ui.set_ui_family(font.family.as_str().into());
+            ui.set_ui_size(font.size);
+            if let Some(about) = self.about.upgrade() {
+                about.set_ui_family(font.family.as_str().into());
+                about.set_ui_size(font.size);
+            }
+            *self.font.borrow_mut() = font;
+        }
+        ui.set_typography_origin(
+            format!(
+                "{} · {} logical px · {}",
+                self.font.borrow().family,
+                self.font.borrow().size,
+                self.font.borrow().origin
+            )
+            .into(),
+        );
+    }
     fn refresh(self: &Rc<Self>) -> Duration {
+        self.refresh_typography();
         let Some(ui) = self.ui.upgrade() else {
             return Duration::from_millis(50);
         };
@@ -74,7 +115,7 @@ impl Desktop {
                 match message {
                     Message::Ready(reader) => {
                         *self.monitor.borrow_mut() = Some(reader);
-                        self.frozen_span.set(None);
+                        *self.capture.borrow_mut() = None;
                         ui.set_left_path("".into());
                         ui.set_right_path("".into());
                     }
@@ -82,7 +123,7 @@ impl Desktop {
                         let rate = app.rate;
                         app.workbench.ready(control, rate);
                         *self.monitor.borrow_mut() = Some(reader);
-                        self.frozen_span.set(None);
+                        *self.capture.borrow_mut() = None;
                         ui.set_left_path("".into());
                         ui.set_right_path("".into());
                     }
@@ -138,6 +179,18 @@ impl Desktop {
                 self.app.borrow_mut().status = error;
                 success = false;
             }
+            if !success
+                && matches!(
+                    self.app.borrow().operation,
+                    Some(Operation::Play | Operation::Live)
+                )
+            {
+                if let Some(reader) = self.monitor.borrow().as_ref() {
+                    reader.worker_exited_with_error();
+                } else {
+                    self.preparation_failed.set(true);
+                }
+            }
             self.app.borrow_mut().finish();
             let after = self.after.borrow_mut().take();
             if success && let Some(after) = after {
@@ -178,12 +231,11 @@ impl Desktop {
                 .unwrap_or(-1),
         );
         ui.set_sound_title(app.preset().title().into());
-        ui.set_source_origin(
-            match app.preset().origin() {
-                auditorylab::Origin::File(_) => format!("Imported · {}", app.preset().origin()),
-                origin => origin.to_string(),
-            }
-            .into(),
+        ui.set_can_open_study(
+            app.preset()
+                .about()
+                .and_then(|a| a.source_url.as_deref())
+                .is_some_and(|url| url.starts_with("https://") || url.starts_with("http://")),
         );
         ui.set_recipe_timing(
             format!(
@@ -210,10 +262,7 @@ impl Desktop {
         ui.set_structure(
             app.preset()
                 .at(app.rate)
-                .map_or_else(
-                    |e| e.to_string(),
-                    |s| auditorylab::sound_description(&s, false),
-                )
+                .map_or_else(|e| e.to_string(), |s| auditorylab::sound_brief(&s))
                 .into(),
         );
         ui.set_details(app::details(app.preset(), app.rate).into());
@@ -237,10 +286,7 @@ impl Desktop {
                 && self.after.borrow().is_none()
                 && !self.dialog_active.get(),
         );
-        ui.set_draft_title(app.workbench.draft.title().into());
-        ui.set_draft_summary(app.workbench.draft.summary().into());
-        ui.set_duration(app.workbench.draft.duration_seconds().to_string().into());
-        ui.set_fade(app.workbench.draft.fade_seconds().to_string().into());
+        self.sync_metadata(&ui, &app.workbench);
         ui.set_dirty(app.workbench.dirty());
         ui.set_based_on_title(
             app.workbench
@@ -351,19 +397,33 @@ impl Desktop {
             let status = reader.status();
             let descriptor = reader.descriptor();
             let phase = status.phase;
+            if audio && phase == auditorylab::PlaybackPhase::Preparing {
+                ui.set_operation_control("Cancel".into());
+            }
             ui.set_player_title(
                 format!(
-                    "{phase:?} · {} · {}",
+                    "{} · {} · {}",
+                    auditorylab::phase_text(phase),
                     descriptor.title,
                     if descriptor.frames.is_none() {
-                        "Live · until stopped"
+                        if matches!(
+                            phase,
+                            auditorylab::PlaybackPhase::Preparing
+                                | auditorylab::PlaybackPhase::Running
+                                | auditorylab::PlaybackPhase::Stopping
+                                | auditorylab::PlaybackPhase::Draining
+                        ) {
+                            "Live · until stopped"
+                        } else {
+                            "Last live session"
+                        }
                     } else {
                         "Finite recipe"
                     }
                 )
                 .into(),
             );
-            ui.set_player_state(format!("{phase:?}").into());
+            ui.set_player_state(auditorylab::phase_text(phase).into());
             let position = if phase == auditorylab::PlaybackPhase::Completed {
                 descriptor.frames.unwrap_or(self.session_position.get())
             } else {
@@ -387,13 +447,7 @@ impl Desktop {
                     )
                     .into(),
             );
-            ui.set_generated(
-                format!(
-                    "Generated audio · {}",
-                    auditorylab::generated_description(status.observation.as_ref())
-                )
-                .into(),
-            );
+            ui.set_generated(reader.description().into());
             ui.set_generated_details(status.observation.map_or(String::new(),|o|format!("Observed generated frame {} · accepted revision {} · active revision {} · settled revision {}\n{}",o.frame,status.accepted_revision,o.active_revision,o.settled_revision,auditorylab::generated_details(&o))).into());
             ui.set_device(
                 format!(
@@ -409,81 +463,46 @@ impl Desktop {
                 )
                 .into(),
             );
-            if !ui.get_frozen() || self.frozen_span.get().is_none() {
-                auditorylab::sample_trace(reader.samples(), 512, &mut self.bins.borrow_mut());
-                let [left, right] = scope::paths(&self.bins.borrow());
-                ui.set_left_path(left.into());
-                ui.set_right_path(right.into());
-                if reader.samples().is_empty() {
-                    ui.set_meters("Waiting for window samples".into());
-                } else {
-                    let meters = auditorylab::sample_meters(reader.samples());
-                    ui.set_meters(
-                        format!(
-                            "Window sample peak L {} / R {} dBFS · RMS L {} / R {} dBFS",
-                            auditorylab::format_dbfs(meters[0].peak_dbfs),
-                            auditorylab::format_dbfs(meters[1].peak_dbfs),
-                            auditorylab::format_dbfs(meters[0].rms_dbfs),
-                            auditorylab::format_dbfs(meters[1].rms_dbfs)
-                        )
-                        .into(),
-                    );
-                }
-                if !reader.samples().is_empty() {
-                    self.frozen_span
-                        .set(Some((status.window_start, status.window_end)));
+            let scale = if ui.get_scale_index() == 1 {
+                auditorylab::WaveformScale::Fit
+            } else {
+                auditorylab::WaveformScale::Fixed
+            };
+            let mut capture_error = None;
+            if !ui.get_frozen() || self.capture.borrow().is_none() {
+                match auditorylab::WaveformCapture::monitored(reader, scale) {
+                    Ok(Some(capture)) => *self.capture.borrow_mut() = Some(capture),
+                    Ok(None) => {}
+                    Err(error) => {
+                        capture_error = Some(format!(
+                            "Invalid waveform capture ({error:?}); retaining the last valid window"
+                        ))
+                    }
                 }
             }
-            let (start, end) = self.frozen_span.get().unwrap_or((0, 0));
-            let coverage = descriptor
-                .output
-                .sample_rate
-                .seconds_in(end.saturating_sub(start))
-                * 1000.0;
-            ui.set_cycle_hint(
-                auditorylab::window_cycle_hint(status.observation.as_ref(), coverage)
-                    .unwrap_or_default()
-                    .into(),
-            );
-            let stale = reader.freshness() == auditorylab::ObservationFreshness::Stale;
-            let label = if status.disabled {
-                "Monitoring unavailable (poisoned lock)"
-            } else if status.sequence == 0 {
-                if matches!(
-                    phase,
-                    auditorylab::PlaybackPhase::Completed
-                        | auditorylab::PlaybackPhase::Stopped
-                        | auditorylab::PlaybackPhase::Failed
-                ) {
-                    "No generated window captured"
-                } else {
-                    "Waiting for samples"
-                }
-            } else if matches!(
-                phase,
-                auditorylab::PlaybackPhase::Completed
-                    | auditorylab::PlaybackPhase::Draining
-                    | auditorylab::PlaybackPhase::Stopped
-                    | auditorylab::PlaybackPhase::Failed
-            ) {
-                if ui.get_frozen() {
-                    "Frozen retained window"
-                } else {
-                    "Last generated window"
-                }
-            } else if ui.get_frozen() {
-                "Frozen"
-            } else if stale {
-                "Stale"
-            } else if status.gaps > 0 && coverage < f64::from(window) {
-                "Display gap"
+            let warning = if let Some(error) = capture_error {
+                error
+            } else if status.disabled {
+                "Monitoring unavailable; generated audio continues independently".into()
+            } else if reader.freshness() == auditorylab::ObservationFreshness::Stale && audio {
+                "Monitoring is stale; the retained window is not current output".into()
+            } else if status.underruns > 0 {
+                format!("Output underruns: {} · see audio details", status.underruns)
+            } else if status.gaps > 0 {
+                format!(
+                    "Monitoring gaps: {} · distinct from output underruns",
+                    status.gaps
+                )
             } else {
-                "Live"
+                String::new()
             };
-            ui.set_monitor_state(format!("{label} · {coverage:.2} ms · source frames {start}..{end} · status age {} ms · gaps {} · backend underruns {}",reader.age().map_or(0,|age|age.as_millis()),status.gaps,status.underruns).into());
+            ui.set_monitor_warning(warning.into());
+            ui.set_monitor_state(format!("Current status: observed frame {:?} · status age {:?} · gaps {} · output underruns {}",status.observation.map(|o|o.frame),reader.age(),status.gaps,status.underruns).into());
         } else {
             ui.set_player_title(
-                if audio {
+                if self.preparation_failed.get() {
+                    format!("Failed · {}", self.session_title.borrow())
+                } else if audio {
                     format!("Preparing · {}", self.session_title.borrow())
                 } else {
                     if app.editing {
@@ -494,43 +513,195 @@ impl Desktop {
                 }
                 .into(),
             );
-            ui.set_player_state(if audio { "Preparing" } else { "Stopped" }.into());
+            ui.set_player_state(
+                if self.preparation_failed.get() {
+                    "Failed"
+                } else if audio {
+                    "Preparing"
+                } else {
+                    "Stopped"
+                }
+                .into(),
+            );
             ui.set_elapsed("".into());
             ui.set_generated("".into());
             ui.set_generated_details("".into());
             ui.set_meters("".into());
             ui.set_cycle_hint("".into());
             ui.set_device(format!("Preview/export sample rate: {} Hz", app.rate.hz()).into());
-            if audio {
-                ui.set_left_path("".into());
-                ui.set_right_path("".into());
-            } else {
-                if let Ok(sound) = validation {
-                    let signal = sound.signal();
-                    let frames = u64::from(window) * u64::from(signal.sample_rate().hz()) / 1000;
-                    auditorylab::trace(
-                        signal,
-                        signal.fade_frames(),
-                        frames,
-                        512,
-                        &mut self.bins.borrow_mut(),
-                    );
-                    let [left, right] = scope::paths(&self.bins.borrow());
-                    ui.set_left_path(left.into());
-                    ui.set_right_path(right.into());
+            if !audio
+                && !self.preparation_failed.get()
+                && (!ui.get_frozen() || self.capture.borrow().is_none())
+                && let Ok(sound) = validation
+            {
+                let scale = if ui.get_scale_index() == 1 {
+                    auditorylab::WaveformScale::Fit
                 } else {
-                    ui.set_left_path("".into());
-                    ui.set_right_path("".into());
-                }
+                    auditorylab::WaveformScale::Fixed
+                };
+                *self.capture.borrow_mut() =
+                    Some(auditorylab::WaveformCapture::preview(&sound, window, scale));
             }
+            ui.set_monitor_warning("".into());
             ui.set_monitor_state(
                 if audio {
                     "Waiting for generated samples"
                 } else {
-                    "Static preview · not playing"
+                    "Seekable preview; not generated playback"
                 }
                 .into(),
             );
+        }
+        let ended = monitor.as_ref().is_some_and(|r| {
+            matches!(
+                r.status().phase,
+                auditorylab::PlaybackPhase::Stopped
+                    | auditorylab::PlaybackPhase::Completed
+                    | auditorylab::PlaybackPhase::Failed
+            )
+        });
+        if let Some(capture) = self.capture.borrow().as_ref() {
+            let [left, right] = scope::paths(capture.bins(), capture.limit());
+            ui.set_left_path(left.into());
+            ui.set_right_path(right.into());
+            ui.set_scale_label(auditorylab::compact_number(capture.limit()).into());
+            if capture.clipped() {
+                ui.set_monitor_warning("Waveform exceeds the fixed display range; exact levels are retained. Use Fit to view the full extent.".into());
+            }
+            ui.set_waveform_caption(capture.label(ui.get_frozen(), ended).into());
+            ui.set_meters(
+                format!(
+                    "Captured sample peak L {} / R {} dBFS · RMS L {} / R {} dBFS",
+                    auditorylab::format_dbfs(capture.meters()[0].peak_dbfs),
+                    auditorylab::format_dbfs(capture.meters()[1].peak_dbfs),
+                    auditorylab::format_dbfs(capture.meters()[0].rms_dbfs),
+                    auditorylab::format_dbfs(capture.meters()[1].rms_dbfs)
+                )
+                .into(),
+            );
+            ui.set_monitor_state(
+                format!(
+                    "{}\n{}",
+                    capture.caption(ui.get_frozen(), ended),
+                    ui.get_monitor_state()
+                )
+                .into(),
+            );
+        } else {
+            ui.set_left_path("".into());
+            ui.set_right_path("".into());
+            ui.set_meters("".into());
+            ui.set_waveform_caption(
+                if audio {
+                    "Waiting for generated waveform samples"
+                } else {
+                    "No waveform capture available. Preview a valid draft or recipe."
+                }
+                .into(),
+            );
+        }
+        let model_target = if let Some(reader) = monitor.as_ref() {
+            let (revision, target) = reader.model_target();
+            Some((
+                target,
+                reader.descriptor().title.clone(),
+                if reader.descriptor().frames.is_some() {
+                    auditorylab::ModelSource::Recipe
+                } else {
+                    auditorylab::ModelSource::Accepted(revision)
+                },
+            ))
+        } else if app.editing {
+            app.workbench.last_target.map(|t| {
+                (
+                    t,
+                    app.workbench.draft.title().to_owned(),
+                    auditorylab::ModelSource::Draft,
+                )
+            })
+        } else {
+            auditorylab::recipe_target(app.preset(), app.rate)
+                .ok()
+                .map(|t| (t, app.preset().title(), auditorylab::ModelSource::Recipe))
+        };
+        if let Some((target, title, source)) = model_target {
+            let changed = self
+                .model
+                .borrow()
+                .as_ref()
+                .is_none_or(|m| m.target != target || m.source != source || m.title != title);
+            if changed {
+                *self.model.borrow_mut() = Some(auditorylab::ModelView::new(target, title, source));
+            }
+            if let Some(model) = self.model.borrow().as_ref() {
+                ui.set_model_caption(
+                    format!(
+                        "{}{}\n{}{}",
+                        model.caption(),
+                        monitor
+                            .as_ref()
+                            .map(|r| model.generation_note(r.status()))
+                            .unwrap_or_default(),
+                        model.summary.description(),
+                        if ui.get_retained_warning().is_empty()
+                            || matches!(model.source, auditorylab::ModelSource::Recipe)
+                        {
+                            ""
+                        } else {
+                            " · edits not applied"
+                        }
+                    )
+                    .into(),
+                );
+                if changed {
+                    ui.set_model_rows(ModelRc::new(VecModel::from(
+                        model
+                            .projection
+                            .lanes
+                            .iter()
+                            .map(|l| {
+                                let stereo: Vec<_> = l.columns.iter().map(|e| [*e; 2]).collect();
+                                ModelRow {
+                                    label: auditorylab::ModelView::lane_label(l).into(),
+                                    trace: scope::paths(&stereo, 1.0)[0].clone().into(),
+                                }
+                            })
+                            .collect::<Vec<_>>(),
+                    )));
+                }
+            }
+        } else {
+            *self.model.borrow_mut() = None;
+            ui.set_model_caption("No valid timing model available".into());
+            ui.set_model_rows(ModelRc::default());
+        }
+        ui.set_draft_brief(
+            app.workbench
+                .last_target
+                .map(|t| auditorylab::SoundSummary::target(&t).description())
+                .unwrap_or_else(|| "No valid draft model; correct the fields".into())
+                .into(),
+        );
+        ui.set_retained_session(monitor.is_some() || self.capture.borrow().is_some());
+        if app.operation.is_none() {
+            ui.set_operation_control(
+                if app.editing {
+                    "Play live"
+                } else {
+                    "Play selected recipe"
+                }
+                .into(),
+            );
+            ui.set_can_cancel(if app.editing {
+                app.workbench.parse_errors.is_empty()
+                    && app
+                        .workbench
+                        .draft
+                        .target(app.workbench.rate(app.rate))
+                        .is_ok()
+            } else {
+                app.preset().at(app.rate).is_ok()
+            });
         }
         let progress = self
             .worker
@@ -552,10 +723,78 @@ impl Desktop {
         self.updating.set(false);
         Duration::from_millis(50)
     }
+    fn sync_metadata(&self, ui: &MainWindow, w: &app::Workbench) {
+        let display =
+            |key: &str, value: String| w.pending_metadata.get(key).cloned().unwrap_or(value);
+        ui.set_title_staged(w.pending_metadata.contains_key("title"));
+        ui.set_summary_staged(w.pending_metadata.contains_key("summary"));
+        ui.set_duration_staged(w.pending_metadata.contains_key("duration"));
+        ui.set_fade_staged(w.pending_metadata.contains_key("fade"));
+        ui.set_draft_title(display("title", w.draft.title().to_owned()).into());
+        ui.set_draft_summary(display("summary", w.draft.summary().to_owned()).into());
+        ui.set_duration(display("duration", w.draft.duration_seconds().to_string()).into());
+        ui.set_fade(display("fade", w.draft.fade_seconds().to_string()).into());
+    }
+    fn reset_metadata(&self) {
+        if let Some(ui) = self.ui.upgrade() {
+            self.sync_metadata(&ui, &self.app.borrow().workbench);
+            ui.set_draft_reset(ui.get_draft_reset().wrapping_add(1));
+        }
+    }
+    fn restore_field(self: &Rc<Self>, text: &str, index: i32) -> String {
+        let value = {
+            let mut app = self.app.borrow_mut();
+            let Some(id) = app.workbench.id(text) else {
+                return String::new();
+            };
+            let Some(setting) = usize::try_from(index)
+                .ok()
+                .and_then(|i| auditorylab::Setting::ALL.get(i))
+                .copied()
+            else {
+                return String::new();
+            };
+            app.workbench.pending.remove(&(id, setting));
+            app.workbench.parse_errors.remove(&(id, setting));
+            let value = app
+                .workbench
+                .draft
+                .components()
+                .iter()
+                .find(|(key, _)| *key == id)
+                .and_then(|(_, c)| auditorylab::setting_value(c, setting))
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let rate = app.rate;
+            app.workbench.refresh(rate);
+            value
+        };
+        self.refresh();
+        value
+    }
+    fn restore_metadata(self: &Rc<Self>, key: &str) -> String {
+        {
+            let mut app = self.app.borrow_mut();
+            app.workbench.pending_metadata.remove(key);
+            if key == "duration" {
+                app.workbench.metadata_errors.remove("duration");
+            } else if key == "fade" {
+                app.workbench.metadata_errors.remove("fade");
+            }
+        }
+        self.refresh();
+        let app = self.app.borrow();
+        match key {
+            "title" => app.workbench.draft.title().to_owned(),
+            "summary" => app.workbench.draft.summary().to_owned(),
+            "duration" => app.workbench.draft.duration_seconds().to_string(),
+            "fade" => app.workbench.draft.fade_seconds().to_string(),
+            _ => String::new(),
+        }
+    }
     fn reset_editors(&self) {
         self.rows.set_vec(Vec::new());
         if let Some(ui) = self.ui.upgrade() {
-            ui.set_draft_reset(ui.get_draft_reset().wrapping_add(1));
             ui.set_editor_scroll_y(0.0);
         }
     }
@@ -583,7 +822,6 @@ impl Desktop {
             let rate = app.workbench.rate(app.rate);
             let mut row = Row {
                 id: id.get().to_string().into(),
-                number: i32::try_from(index + 1).unwrap_or(16),
                 ears: match c.ears {
                     auditorylab::Ears::Both => 0,
                     auditorylab::Ears::Left => 1,
@@ -601,67 +839,169 @@ impl Desktop {
                     .get(id)
                     .map_or("", String::as_str)
                     .into(),
+                heading: auditorylab::component_role(c).into(),
+                context: c
+                    .facts(rate)
+                    .map(|f| auditorylab::component_description(&f, false))
+                    .unwrap_or_else(|e| e.to_string())
+                    .into(),
                 ..Row::default()
             };
-            row.text0 = auditorylab::setting_value(c, auditorylab::Setting::ALL[0])
-                .map_or_else(String::new, |v| v.to_string())
+            row.text0 = app
+                .workbench
+                .pending
+                .get(&(*id, auditorylab::Setting::ALL[0]))
+                .cloned()
+                .unwrap_or_else(|| {
+                    auditorylab::setting_value(c, auditorylab::Setting::ALL[0])
+                        .map(|v| v.to_string())
+                        .unwrap_or_default()
+                })
                 .into();
+            row.staged0 = app
+                .workbench
+                .pending
+                .contains_key(&(*id, auditorylab::Setting::ALL[0]));
             row.pos0 = position(
                 auditorylab::Setting::ALL[0],
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[0]).unwrap_or(0.0),
             );
-            row.text1 = auditorylab::setting_value(c, auditorylab::Setting::ALL[1])
-                .map_or_else(String::new, |v| v.to_string())
+            row.text1 = app
+                .workbench
+                .pending
+                .get(&(*id, auditorylab::Setting::ALL[1]))
+                .cloned()
+                .unwrap_or_else(|| {
+                    auditorylab::setting_value(c, auditorylab::Setting::ALL[1])
+                        .map(|v| v.to_string())
+                        .unwrap_or_default()
+                })
                 .into();
+            row.staged1 = app
+                .workbench
+                .pending
+                .contains_key(&(*id, auditorylab::Setting::ALL[1]));
             row.pos1 = position(
                 auditorylab::Setting::ALL[1],
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[1]).unwrap_or(0.0),
             );
-            row.text2 = auditorylab::setting_value(c, auditorylab::Setting::ALL[2])
-                .map_or_else(String::new, |v| v.to_string())
+            row.text2 = app
+                .workbench
+                .pending
+                .get(&(*id, auditorylab::Setting::ALL[2]))
+                .cloned()
+                .unwrap_or_else(|| {
+                    auditorylab::setting_value(c, auditorylab::Setting::ALL[2])
+                        .map(|v| v.to_string())
+                        .unwrap_or_default()
+                })
                 .into();
+            row.staged2 = app
+                .workbench
+                .pending
+                .contains_key(&(*id, auditorylab::Setting::ALL[2]));
             row.pos2 = position(
                 auditorylab::Setting::ALL[2],
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[2]).unwrap_or(0.0),
             );
-            row.text3 = auditorylab::setting_value(c, auditorylab::Setting::ALL[3])
-                .map_or_else(String::new, |v| v.to_string())
+            row.text3 = app
+                .workbench
+                .pending
+                .get(&(*id, auditorylab::Setting::ALL[3]))
+                .cloned()
+                .unwrap_or_else(|| {
+                    auditorylab::setting_value(c, auditorylab::Setting::ALL[3])
+                        .map(|v| v.to_string())
+                        .unwrap_or_default()
+                })
                 .into();
+            row.staged3 = app
+                .workbench
+                .pending
+                .contains_key(&(*id, auditorylab::Setting::ALL[3]));
             row.pos3 = position(
                 auditorylab::Setting::ALL[3],
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[3]).unwrap_or(0.0),
             );
-            row.text4 = auditorylab::setting_value(c, auditorylab::Setting::ALL[4])
-                .map_or_else(String::new, |v| v.to_string())
+            row.text4 = app
+                .workbench
+                .pending
+                .get(&(*id, auditorylab::Setting::ALL[4]))
+                .cloned()
+                .unwrap_or_else(|| {
+                    auditorylab::setting_value(c, auditorylab::Setting::ALL[4])
+                        .map(|v| v.to_string())
+                        .unwrap_or_default()
+                })
                 .into();
+            row.staged4 = app
+                .workbench
+                .pending
+                .contains_key(&(*id, auditorylab::Setting::ALL[4]));
             row.pos4 = position(
                 auditorylab::Setting::ALL[4],
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[4]).unwrap_or(0.0),
             );
-            row.text5 = auditorylab::setting_value(c, auditorylab::Setting::ALL[5])
-                .map_or_else(String::new, |v| v.to_string())
+            row.text5 = app
+                .workbench
+                .pending
+                .get(&(*id, auditorylab::Setting::ALL[5]))
+                .cloned()
+                .unwrap_or_else(|| {
+                    auditorylab::setting_value(c, auditorylab::Setting::ALL[5])
+                        .map(|v| v.to_string())
+                        .unwrap_or_default()
+                })
                 .into();
+            row.staged5 = app
+                .workbench
+                .pending
+                .contains_key(&(*id, auditorylab::Setting::ALL[5]));
             row.pos5 = position(
                 auditorylab::Setting::ALL[5],
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[5]).unwrap_or(0.0),
             );
-            row.text6 = auditorylab::setting_value(c, auditorylab::Setting::ALL[6])
-                .map_or_else(String::new, |v| v.to_string())
+            row.text6 = app
+                .workbench
+                .pending
+                .get(&(*id, auditorylab::Setting::ALL[6]))
+                .cloned()
+                .unwrap_or_else(|| {
+                    auditorylab::setting_value(c, auditorylab::Setting::ALL[6])
+                        .map(|v| v.to_string())
+                        .unwrap_or_default()
+                })
                 .into();
+            row.staged6 = app
+                .workbench
+                .pending
+                .contains_key(&(*id, auditorylab::Setting::ALL[6]));
             row.pos6 = position(
                 auditorylab::Setting::ALL[6],
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[6]).unwrap_or(0.0),
             );
-            row.text7 = auditorylab::setting_value(c, auditorylab::Setting::ALL[7])
-                .map_or_else(String::new, |v| v.to_string())
+            row.text7 = app
+                .workbench
+                .pending
+                .get(&(*id, auditorylab::Setting::ALL[7]))
+                .cloned()
+                .unwrap_or_else(|| {
+                    auditorylab::setting_value(c, auditorylab::Setting::ALL[7])
+                        .map(|v| v.to_string())
+                        .unwrap_or_default()
+                })
                 .into();
+            row.staged7 = app
+                .workbench
+                .pending
+                .contains_key(&(*id, auditorylab::Setting::ALL[7]));
             row.pos7 = position(
                 auditorylab::Setting::ALL[7],
                 rate,
@@ -711,6 +1051,10 @@ impl Desktop {
         }
     }
     fn start(self: &Rc<Self>, op: Operation, work: Work) {
+        if matches!(op, Operation::Play | Operation::Live) {
+            self.preparation_failed.set(false);
+        }
+
         if self.app.borrow_mut().start(op) {
             self.app.borrow_mut().status = match &work {
                 Work::Export(sound, path) => {
@@ -731,7 +1075,7 @@ impl Desktop {
                     _ => String::new(),
                 };
                 *self.monitor.borrow_mut() = None;
-                self.frozen_span.set(None);
+                *self.capture.borrow_mut() = None;
                 self.session_position.set(0);
             }
             *self.worker.borrow_mut() = Some(Worker::start(work));
@@ -758,6 +1102,9 @@ fn about_identity() -> String {
     )
 }
 fn open_source() {
+    open_web(auditorylab::SOURCE_URL);
+}
+fn open_web(url: &str) {
     #[cfg(target_os = "macos")]
     let mut command = std::process::Command::new("open");
     #[cfg(target_os = "windows")]
@@ -768,14 +1115,14 @@ fn open_source() {
     };
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let mut command = std::process::Command::new("xdg-open");
-    if let Err(error) = command.arg(auditorylab::SOURCE_URL).spawn() {
+    if let Err(error) = command.arg(url).spawn() {
         eprintln!("Cannot open source link: {error}");
     }
 }
 fn reply_native_quit(approve: bool) -> bool {
     #[cfg(target_os = "macos")]
     {
-        native_quit::reply(approve)
+        native_application::reply_to_termination(approve)
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -821,7 +1168,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into(),
     );
     let about = AboutWindow::new()?;
-    ui.set_about_identity(about_identity().into());
+    let font = typography::resolve();
+    ui.set_ui_family(font.family.as_str().into());
+    ui.set_ui_size(font.size);
+    about.set_ui_family(font.family.as_str().into());
+    about.set_ui_size(font.size);
+    ui.set_native_mac(cfg!(target_os = "macos"));
     ui.set_frozen(motion::reduced());
     about.set_identity(about_identity().into());
     let desktop = Rc::new(Desktop {
@@ -831,7 +1183,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         worker: RefCell::new(None),
         ui: ui.as_weak(),
         timer: slint::Timer::default(),
-        bins: RefCell::new(Vec::new()),
+        capture: RefCell::new(None),
+        model: RefCell::new(None),
+        typography: RefCell::new(typography::TypographyService::start()),
+        font: RefCell::new(font),
+        about: about.as_weak(),
+        preparation_failed: Cell::new(false),
         rows: Rc::new(VecModel::default()),
         monitor: RefCell::new(None),
         catalog_indices: RefCell::new(Vec::new()),
@@ -839,7 +1196,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         after: RefCell::new(None),
         session_position: Cell::new(0),
         session_title: RefCell::new(String::new()),
-        frozen_span: Cell::new(None),
+
         dialog_active: Cell::new(false),
         operation_frames: Cell::new(0),
     });
@@ -880,13 +1237,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         d.refresh();
     });
     let d = desktop.clone();
-    ui.on_play_stop(move || {
-        {
+    ui.on_stop_audio({
+        let d = desktop.clone();
+        move || {
             if let Some(worker) = d.worker.borrow().as_ref() {
                 worker.cancel.request();
             }
         }
-        d.refresh();
+    });
+    ui.on_play_stop(move || {
+        let cancelled = {
+            let worker = d.worker.borrow();
+            if let Some(worker) = worker.as_ref() {
+                worker.cancel.request();
+                true
+            } else {
+                false
+            }
+        };
+        if cancelled {
+            d.refresh();
+            return;
+        }
+        let work = {
+            let mut app = d.app.borrow_mut();
+            if app.editing {
+                let rate = app.rate;
+                app.workbench.commit_pending(rate);
+                Work::Live(app.workbench.draft.clone())
+            } else {
+                Work::Play(app.preset().clone())
+            }
+        };
+        d.replace_playback(work);
     });
     let d = desktop.clone();
     ui.on_open_recipe(move || d.choose_import());
@@ -1043,11 +1426,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let d = desktop.clone();
     ui.on_save_recipe(move || d.choose_save());
     let weak = about.as_weak();
+    let main_weak = ui.as_weak();
     ui.on_about(move || {
+        if let Some(ui) = main_weak.upgrade() {
+            ui.set_edits_suspended(true);
+        }
         if let Some(about) = weak.upgrade() {
-            let _ = about.show();
+            if let Err(error) = about.show() {
+                eprintln!("About: {error}");
+            }
+            about.invoke_focus_close();
         }
     });
+    let weak = about.as_weak();
+    about.on_dismiss(move || {
+        if let Some(about) = weak.upgrade() {
+            let _ = about.hide();
+        }
+    });
+    ui.window().on_winit_window_event({
+        let weak = ui.as_weak();
+        move |_, event| {
+            if let winit::event::WindowEvent::Focused(focused) = event
+                && let Some(ui) = weak.upgrade()
+            {
+                ui.set_edits_suspended(!focused);
+            }
+            WinitEventResult::Propagate
+        }
+    });
+    let d = desktop.clone();
+    ui.on_restore(move |id, setting| d.restore_field(&id, setting).into());
+    let d = desktop.clone();
+    ui.on_restore_metadata(move |key| d.restore_metadata(&key).into());
     let d = desktop.clone();
     ui.window().on_close_requested(move || {
         d.request_action(Action::Close);
@@ -1056,6 +1467,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let d = desktop.clone();
     ui.on_quit(move || {
         d.request_action(Action::Close);
+    });
+    let d = desktop.clone();
+    ui.on_open_study(move || {
+        if let Some(url) = d
+            .app
+            .borrow()
+            .preset()
+            .about()
+            .and_then(|a| a.source_url.as_deref())
+            && (url.starts_with("https://") || url.starts_with("http://"))
+        {
+            open_web(url);
+        }
     });
     let d = desktop.clone();
     ui.on_search(move |query| {
@@ -1077,6 +1501,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.on_preview_selected(move || {
         if d.worker.borrow().is_none() {
             *d.monitor.borrow_mut() = None;
+            d.preparation_failed.set(false);
+            *d.capture.borrow_mut() = None;
             d.refresh();
         }
     });
@@ -1084,15 +1510,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.on_play_recipe(move || {
         let preset = d.app.borrow().preset().clone();
         d.replace_playback(Work::Play(preset));
-    });
-    let d = desktop.clone();
-    ui.on_play_live(move || {
-        let mut app = d.app.borrow_mut();
-        let rate = app.rate;
-        app.workbench.commit_pending(rate);
-        let draft = app.workbench.draft.clone();
-        drop(app);
-        d.replace_playback(Work::Live(draft));
     });
     let d = desktop.clone();
     ui.on_based_on_source(move || {
@@ -1119,14 +1536,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             d.refresh();
         }
     });
-    ui.on_open_source(open_source);
+
     about.on_open_source(open_source);
     #[cfg(target_os = "macos")]
     {
         ui.show()?;
-        native_quit::install(ui.as_weak())?;
+        native_application::install(ui.as_weak())?;
     }
+    // Native preference delivery also runs while idle. Queries stay on the
+    // listener thread; this drains only its coalesced value and repairs rebuilt menus.
+    let native_ui_timer = slint::Timer::default();
+    let d = desktop.clone();
+    native_ui_timer.start(
+        slint::TimerMode::Repeated,
+        Duration::from_millis(200),
+        move || d.refresh_typography(),
+    );
     desktop.refresh();
-    ui.run()?;
+    let result = ui.run();
+    native_ui_timer.stop();
+    desktop.timer.stop();
+    desktop.typography.borrow_mut().shutdown();
+    result?;
     Ok(())
 }

@@ -2,13 +2,16 @@ import {
     Palette, AboutSlint, Button, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, TabWidget, ProgressIndicator
 }
 from "std-widgets.slint";
+export struct ModelRow { label: string, trace: string }
 export struct Row {
     id: string,
-    number: int,
+
     ears: int,
     source: int,
     modulation: int,
     error: string,
+    heading: string,
+    context: string,
     text0: string,
     pos0: float,
     text1: string,
@@ -24,77 +27,106 @@ export struct Row {
     text6: string,
     pos6: float,
     text7: string,
+    staged0:bool,
+    staged1:bool,
+    staged2:bool,
+    staged3:bool,
+    staged4:bool,
+    staged5:bool,
+    staged6:bool,
+    staged7:bool,
+
     pos7: float,
 }
 // Keep uncommitted text and focus local; model refreshes only replace unfocused text.
 component NumericField inherits LineEdit {
-    in property <string> canonical;
+    in property <string> display-text;
+    in property <bool> edits-suspended:false;
+    in property <bool> staged:false;
     private property <bool> dirty: false;
     in property <int> reset-key;
     changed reset-key => {
-        self.text = root.canonical;
-        root.dirty = false;
+        self.text = root.display-text;
+        root.dirty = root.staged;
     }
+    changed staged => {root.dirty=root.staged;}
     callback stage(string);
     callback commit(string);
-    init => {
-        self.text = root.canonical;
-    }
-    changed canonical => {
+    callback restore()->string;
+    init => {self.text=root.display-text;root.dirty=root.staged;}
+    changed display-text => {
         if !self.has-focus {
-            self.text = root.canonical;
+            self.text = root.display-text;
+            root.dirty=root.staged;
         }
     }
     edited(value) => {
         root.dirty = true;
         root.stage(value);
     }
+    key-pressed(event) => {
+        if event.text == Key.Escape {
+            self.text=root.restore();
+            root.dirty=false;
+            return accept;
+        }
+        return reject;
+    }
     accepted(value) => {
         root.dirty = false;
         root.commit(value);
     }
     changed has-focus => {
-        if !self.has-focus && root.dirty {
+        if !self.has-focus && root.dirty && !root.edits-suspended {
             root.dirty = false;
             root.commit(self.text);
         }
     }
 }
 component NumericControl inherits HorizontalBox {
+    in property <string> context;
+    in property <bool> compact:false;
+    in property <length> ui-size:13px;
     padding: 0px;
     in property <string> label;
-    in property <string> canonical;
+    in property <string> display-text;
+    in property <bool> edits-suspended:false;
+    in property <bool> staged:false;
     in property <float> position;
     in property <string> diagnostic;
     in property <bool> edit-enabled: true;
     callback stage(string);
     callback commit(string);
+    callback restore()->string;
     callback slide(float);
     vertical-stretch: 0;
     Text {
         text: root.label;
-        min-width: 165px;
-        max-width: 210px;
+        min-width:root.ui-size*(root.compact ? 4 : 12.5);
+        max-width:root.ui-size*(root.compact ? 7 : 16);
         wrap: word-wrap;
     }
-    Slider {
+    if !root.compact: Slider {
         enabled: root.edit-enabled;
         minimum: 0;
         maximum: 1;
         step: 0.001;
         value: root.position;
-        accessible-label: root.label + " slider";
+        accessible-label: root.context+": "+root.label + " slider";
         changed(value) => {
             root.slide(value);
         }
     }
     NumericField {
         enabled: root.edit-enabled;
-        canonical: root.canonical;
-        preferred-width: 150px;
-        max-width: 150px;
+        display-text: root.display-text;
+        edits-suspended:root.edits-suspended;
+        staged:root.staged;
+        restore=>{return root.restore();}
+        preferred-width:root.ui-size*(root.compact ? 7 : 12);
+        max-width:root.ui-size*(root.compact ? 7 : 12);
         horizontal-stretch: 0;
-        accessible-label: root.label;
+        accessible-label: root.context+": "+root.label;
         accessible-description: root.diagnostic;
         stage(value) => {
             root.stage(value);
@@ -125,70 +157,77 @@ component ExportRate inherits HorizontalBox {
 }
 export component AboutWindow inherits Window {
     title: "About Auditory Lab";
+    in property <string> ui-family;
+    in property <length> ui-size: 13px;
+    default-font-family: root.ui-family;
+    default-font-size: root.ui-size;
     preferred-width: 560px;
-    preferred-height: 420px;
+    preferred-height: 560px;
+    min-width:360px;min-height:360px;
     in property <string> identity;
     callback open-source();
-    VerticalBox {
-        Text {
-            text: "Auditory Lab";
-            font-size: 24px;
-        }
-        TextEdit {
-            text: root.identity;
-            read-only: true;
-            accessible-label: "Version and licenses";
-        }
-        Button {
-            text: "Source and issue tracker";
-            clicked => {
-                root.open-source();
+    callback dismiss();
+    callback focus-close();
+    focus-close => {close.focus();}
+    forward-focus: about-focus;
+    about-focus := FocusScope {
+        key-pressed(event)=>{if event.text==Key.Escape {root.dismiss();return accept;}return reject;}
+        VerticalBox {
+            ScrollView {min-height:0px;
+                VerticalBox {
+                    Text {text:"Auditory Lab";font-size:root.ui-size*1.85;vertical-stretch:0;}
+                    TextEdit {text:root.identity;read-only:true;min-height:root.ui-size*12;preferred-height:root.ui-size*14;accessible-label:"Version and licenses";}
+                    Button {text:"Source and issue tracker";vertical-stretch:0;clicked=>{root.open-source();}}
+                    AboutSlint {min-height:root.ui-size*7;max-height:root.ui-size*10;}
+                }
             }
-        }
-        AboutSlint {
+            close := Button {text:"Close";vertical-stretch:0;clicked=>{root.dismiss();}}
         }
     }
 }
+
 component Lane inherits Rectangle {
     in property <string> label;
     in property <string> trace;
+    in property <string> limit: "1";
+    in property <length> ui-size:13px;
     background: #131d2b;
-    height: 64px;
+    height: root.ui-size*5.2;
     accessible-role: image;
-    accessible-label: root.label + " generated samples, fixed ±1 scale";
+    accessible-label: root.label + " samples, common symmetric scale ±" + root.limit;
     Text {
         x: 6px;
         y: 0px;
         text: root.label;
         color: #e1eaf6;
-        font-size: 12px;
+        font-size: root.ui-size*0.93;
     }
     Text {
         x: 6px;
-        y: 17px;
-        text: "+1";
+        y: root.ui-size*1.3;
+        text: "+"+root.limit;
         color: #c6d0df;
-        font-size: 10px;
+        font-size: root.ui-size*0.85;
     }
     Text {
         x: 6px;
-        y: 32px;
+        y:root.ui-size*2.5;
         text: "0";
         color: #c6d0df;
-        font-size: 10px;
+        font-size: root.ui-size*0.85;
     }
     Text {
         x: 6px;
-        y: 48px;
-        text: "−1";
+        y:root.ui-size*3.8;
+        text: "−"+root.limit;
         color: #c6d0df;
-        font-size: 10px;
+        font-size: root.ui-size*0.85;
     }
     Rectangle {
         x: 42px;
-        y: 17px;
+        y: root.ui-size*1.3;
         width: parent.width - 50px;
-        height: 42px;
+        height:root.ui-size*3.2;
         clip: true;
         Rectangle {
             y: parent.height / 2;
@@ -210,6 +249,30 @@ component Lane inherits Rectangle {
 }
 export component MainWindow inherits Window {
     title: "Auditory Lab";
+    in-out property <bool> edits-suspended:false;
+    callback restore(string,int)->string;
+    callback restore-metadata(string)->string;
+    in-out property <bool> show-visualization:true;
+    in property <bool> native-mac: false;
+    in property <string> draft-brief;
+    in property <bool> title-staged;
+    in property <bool> summary-staged;
+    in property <bool> duration-staged;
+    in property <bool> fade-staged;
+
+    in property <string> waveform-caption;
+    in property <string> scale-label: "1";
+    in property <string> model-caption;
+    in property <[ModelRow]> model-rows;
+    in property <string> monitor-warning;
+    in property <string> typography-origin;
+    in-out property <int> view-index: 0;
+    in-out property <int> scale-index: 0;
+    in-out property <bool> show-audio-details: false;
+    in property <string> ui-family;
+    in property <length> ui-size: 13px;
+    default-font-family: root.ui-family;
+    default-font-size: root.ui-size;
     preferred-width: 1100px;
     preferred-height: 900px;
     min-width: 680px;
@@ -219,7 +282,8 @@ export component MainWindow inherits Window {
     in property <[Row]> rows;
     in property <string> sound-title;
     in property <string> studied;
-    in property <string> source-origin;
+    in property <bool> can-open-study;
+    callback open-study();
     in property <string> recipe-timing;
     in property <[string]> export-rates;
     in property <string> summary;
@@ -250,7 +314,7 @@ export component MainWindow inherits Window {
     in property <string> device;
     in property <string> cycle-hint;
     in property <bool> retained-session;
-    in property <string> about-identity;
+
     in property <string> elapsed;
     in property <float> progress;
     in property <string> left-path;
@@ -281,19 +345,19 @@ export component MainWindow inherits Window {
     in-out property <string> query;
     in property <bool> has-results;
     in-out property <bool> compact: false;
+    changed ui-size => {root.compact = root.width < root.ui-size*70;}
     changed width => {
-        root.compact = self.width < 900px;
+        root.compact = self.width < root.ui-size*70;
     }
     callback select(int);
     callback search(string);
     callback open-recipe();
     callback play-stop();
+    callback stop-audio();
     callback play-recipe();
-    callback play-live();
     callback preview-selected();
     callback export-wav();
     callback about();
-    callback open-source();
     callback based-on-source();
     callback quit();
     callback rate-changed(int);
@@ -340,6 +404,7 @@ export component MainWindow inherits Window {
                     root.export-wav();
                 }
             }
+            MenuItem {title:"Stop audio";enabled:root.playback-busy;activated=>{root.stop-audio();}}
             MenuItem {
                 title: "Quit";
                 activated => {
@@ -347,10 +412,11 @@ export component MainWindow inherits Window {
                 }
             }
         }
-        Menu {
+        if !root.native-mac: Menu {
             title: "Help";
             MenuItem {
                 title: "About Auditory Lab";
+
                 activated => {
                     root.about();
                 }
@@ -360,6 +426,7 @@ export component MainWindow inherits Window {
     VerticalBox {
         spacing: 6px;
         TabWidget {
+            min-height:0px;
             current-index <=> root.tab-index;
             changed current-index => {
                 root.tab-changed(self.current-index);
@@ -394,13 +461,24 @@ export component MainWindow inherits Window {
                                 root.search("");
                             }
                         }
-                        ScrollView {
+                        catalog-scroll := ScrollView {
                             VerticalBox {
                                 spacing: 4px;
                                 for item[index] in root.catalog: Rectangle {
-                                    height: max(94px, label.preferred-height + 20px);
+                                    property <bool> selected-row: root.selected==index;
+                                    function reveal() {
+                                        if self.selected-row {
+                                            if self.y + catalog-scroll.content-y < 0px {catalog-scroll.content-y=-self.y;}
+                                            else if self.y+self.height+catalog-scroll.content-y > catalog-scroll.visible-height {catalog-scroll.content-y=catalog-scroll.visible-height - self.y - self.height;}
+                                        }
+                                    }
+                                    changed selected-row => {self.reveal();}
+                                    changed y => {self.reveal();}
+                                    changed height => {self.reveal();}
+
+                                    height: max(root.ui-size*4.5, label.preferred-height + 16px);
                                     background: root.selected == index ? Palette.selection-background : Palette.control-background;
-                                    border-width: focus.has-focus ? 2px : 1px;
+                                    border-width: focus.has-focus ? 2px : 0px;
                                     border-color: root.selected == index ? Palette.accent-background : Palette.border;
                                     accessible-role: button;
                                     accessible-label: item.text;
@@ -505,27 +583,18 @@ export component MainWindow inherits Window {
                                 vertical-stretch: 0;
                                 Text {
                                     text:root.sound-title;
-                                    font-size:24px;
+                                    font-size:root.ui-size*1.85;
+                                    font-weight:600;
                                     wrap:word-wrap;
                                     vertical-stretch:0;
                                 }
-                                Text {
-                                    text:root.studied;
-                                    wrap:word-wrap;
-                                    vertical-stretch:0;
-                                }
-                                Text {
-                                    text:root.source-origin;
-                                    wrap:word-wrap;
-                                    min-width:0px;
-                                    vertical-stretch:0;
-                                    font-size:12px;
-                                }
+
                                 Text {
                                     text:root.structure;
                                     wrap:word-wrap;
                                     vertical-stretch:0;
                                 }
+                                Text {text:root.studied;wrap:word-wrap;vertical-stretch:0;}
                                 Text {
                                     text:root.recipe-timing;
                                     wrap:word-wrap;
@@ -540,7 +609,7 @@ export component MainWindow inherits Window {
                                     padding: 0px;
                                     vertical-stretch: 0;
                                     Button {
-                                        text:root.playback-busy ? "Stop and play this recipe" : "Play recipe";
+                                        text:root.playback-busy ? "Stop current & play recipe" : "Listen";
                                         enabled:root.can-play && (!root.busy || root.playback-busy);
                                         clicked=> {
                                             root.play-recipe();
@@ -565,6 +634,7 @@ export component MainWindow inherits Window {
                                     text:"Research, citation and recipe adaptations";
                                     checked <=> root.research;
                                 }
+                                if root.research && root.can-open-study: Button {text:"Open study source";clicked=>{root.open-study();}}
                                 if root.research: TextEdit {
                                     text:root.details;
                                     read-only:true;
@@ -603,7 +673,10 @@ export component MainWindow inherits Window {
                         NumericField {
                             reset-key:root.draft-reset;
                             enabled:root.can-edit;
-                            canonical:root.draft-title;
+                            display-text:root.draft-title;
+                            staged:root.title-staged;
+                            edits-suspended:root.edits-suspended;
+                            restore=>{return root.restore-metadata("title");}
                             accessible-label:"Sound title";
                             stage(v)=> {
                                 root.stage-metadata("title",v);
@@ -612,8 +685,11 @@ export component MainWindow inherits Window {
                                 root.metadata("title",v);
                             }
                         }
+                    }
+                    HorizontalBox {vertical-stretch:0;
                         Text {
                             text:root.dirty ? "Unsaved changes" : "Unmodified draft";
+                            wrap:word-wrap;max-width:root.compact ? root.ui-size*6 : 300px;
                         }
                         Button {
                             text:"New";
@@ -622,31 +698,21 @@ export component MainWindow inherits Window {
                                 root.new-draft();
                             }
                         }
-                    }
-                    HorizontalBox {
-                        padding: 0px;
-                        vertical-stretch: 0;
-                        Button {
-                            text:"Play live";
-                            enabled:root.can-play && (!root.busy || root.playback-busy);
-                            clicked=> {
-                                root.play-live();
-                            }
-                        }
-                        Button {
-                            text:"Save Recipe…";
+Button {
+                            text:root.compact ? "Save…" : "Save Recipe…";
                             enabled:!root.busy && root.can-save;
                             clicked=> {
                                 root.save-recipe();
                             }
                         }
-                        Button {
-                            text:"Export WAV…";
-                            enabled:!root.busy && root.can-export;
-                            clicked=> {
-                                root.export-wav();
-                            }
-                        }
+
+                    }
+                    HorizontalBox {
+                        padding: 0px;
+                        vertical-stretch: 0;
+
+
+
                         Button {
                             text:"Add Tone";
                             enabled:root.can-edit && root.rows.length<16;
@@ -662,12 +728,6 @@ export component MainWindow inherits Window {
                             }
                         }
                     }
-                    if root.based-on-title != "": Text {
-                        text:root.based-on-title;
-                        wrap:word-wrap;
-                        font-size:12px;
-                        vertical-stretch:0;
-                    }
                     if root.retained-warning != "": Text {
                         text:root.retained-warning;
                         color:Palette.foreground;
@@ -680,6 +740,13 @@ export component MainWindow inherits Window {
                     ScrollView {
                         content-y <=> root.editor-scroll-y;
                         VerticalBox {
+                    Text {text:root.draft-brief; font-size:root.ui-size*1.5; font-weight:600; wrap:word-wrap; vertical-stretch:0;}
+                    if root.based-on-title != "": Text {
+                        text:root.based-on-title;
+                        wrap:word-wrap;
+                        font-size:root.ui-size*0.93;
+                        vertical-stretch:0;
+                    }
                             for row in root.rows: VerticalBox {
                                 spacing: 4px;
                                 Rectangle {
@@ -691,11 +758,13 @@ export component MainWindow inherits Window {
                                     padding: 0px;
                                     vertical-stretch: 0;
                                     Text {
-                                        text: "Component " + row.number + " · Requested settings";
+                                        text: row.heading + " · Component " + row.id;
                                         font-weight: 700;
                                     }
                                 }
-                                HorizontalBox {
+                                Text {text:row.context; wrap:word-wrap; vertical-stretch:0;}
+                                component-options := CheckBox {text:"Routing, modulation and component options";}
+                                if component-options.checked: VerticalBox {
                                     padding: 0px;
                                     vertical-stretch: 0;
                                     Text {
@@ -705,7 +774,7 @@ export component MainWindow inherits Window {
                                         enabled: root.can-edit;
                                         model: ["Both ears", "Left", "Right"];
                                         current-index: row.ears;
-                                        accessible-label: "Component " + row.number + " ears";
+                                        accessible-label: "ears";
                                         selected(value) => {
                                             root.choice(row.id, 0, self.current-index);
                                         }
@@ -717,7 +786,7 @@ export component MainWindow inherits Window {
                                         enabled: root.can-edit;
                                         model: ["Tone", "Clicks"];
                                         current-index: row.source;
-                                        accessible-label: "Component " + row.number + " source";
+                                        accessible-label: "source";
                                         selected(value) => {
                                             root.choice(row.id, 1, self.current-index);
                                         }
@@ -729,7 +798,7 @@ export component MainWindow inherits Window {
                                         enabled: root.can-edit;
                                         model: ["None", "Sinusoidal", "Gate"];
                                         current-index: row.modulation;
-                                        accessible-label: "Component " + row.number + " modulation";
+                                        accessible-label: "modulation";
                                         selected(value) => {
                                             root.choice(row.id, 2, self.current-index);
                                         }
@@ -737,18 +806,24 @@ export component MainWindow inherits Window {
                                     Button {
                                         text: "Remove";
                                         enabled: root.can-edit;
-                                        accessible-label: "Remove component " + row.number;
+                                        accessible-label: "Remove component " + row.id;
                                         clicked => {
                                             root.remove-component(row.id);
                                         }
                                     }
                                 }
                                 if row.source == 0: NumericControl {
-                                    label: "Component " + row.number + " Tone frequency (Hz)";
+                                    compact:root.compact;
+                                    ui-size:root.ui-size;
+                                    label: "Tone frequency (Hz)";
                                     edit-enabled: root.can-edit;
                                     diagnostic: row.error;
-                                    canonical: row.text0;
+                                    display-text: row.text0;
+                                    staged:row.staged0;
+                                    context:row.heading+" · Component "+row.id;
                                     position: row.pos0;
+                                    edits-suspended:root.edits-suspended;
+                                    restore=>{return root.restore(row.id,0);}
                                     stage(value) => {
                                         root.stage(row.id, 0, value);
                                     }
@@ -760,11 +835,17 @@ export component MainWindow inherits Window {
                                     }
                                 }
                                 if row.source == 1: NumericControl {
-                                    label: "Component " + row.number + " Click rate (Hz)";
+                                    compact:root.compact;
+                                    ui-size:root.ui-size;
+                                    label: "Click rate (Hz)";
                                     edit-enabled: root.can-edit;
                                     diagnostic: row.error;
-                                    canonical: row.text1;
+                                    display-text: row.text1;
+                                    staged:row.staged1;
+                                    context:row.heading+" · Component "+row.id;
                                     position: row.pos1;
+                                    edits-suspended:root.edits-suspended;
+                                    restore=>{return root.restore(row.id,1);}
                                     stage(value) => {
                                         root.stage(row.id, 1, value);
                                     }
@@ -776,11 +857,17 @@ export component MainWindow inherits Window {
                                     }
                                 }
                                 if row.source == 1: NumericControl {
-                                    label: "Component " + row.number + " Click width (ms)";
+                                    compact:root.compact;
+                                    ui-size:root.ui-size;
+                                    label: "Click width (ms)";
                                     edit-enabled: root.can-edit;
                                     diagnostic: row.error;
-                                    canonical: row.text2;
+                                    display-text: row.text2;
+                                    staged:row.staged2;
+                                    context:row.heading+" · Component "+row.id;
                                     position: row.pos2;
+                                    edits-suspended:root.edits-suspended;
+                                    restore=>{return root.restore(row.id,2);}
                                     stage(value) => {
                                         root.stage(row.id, 2, value);
                                     }
@@ -792,11 +879,17 @@ export component MainWindow inherits Window {
                                     }
                                 }
                                 NumericControl {
-                                    label: "Component " + row.number + " Peak level (dBFS)";
+                                    compact:root.compact;
+                                    ui-size:root.ui-size;
+                                    label: "Peak level (dBFS)";
                                     edit-enabled: root.can-edit;
                                     diagnostic: row.error;
-                                    canonical: row.text3;
+                                    display-text: row.text3;
+                                    staged:row.staged3;
+                                    context:row.heading+" · Component "+row.id;
                                     position: row.pos3;
+                                    edits-suspended:root.edits-suspended;
+                                    restore=>{return root.restore(row.id,3);}
                                     stage(value) => {
                                         root.stage(row.id, 3, value);
                                     }
@@ -808,11 +901,17 @@ export component MainWindow inherits Window {
                                     }
                                 }
                                 if row.modulation == 1: NumericControl {
-                                    label: "Component " + row.number + " Modulation rate (Hz)";
+                                    compact:root.compact;
+                                    ui-size:root.ui-size;
+                                    label: "Modulation rate (Hz)";
                                     edit-enabled: root.can-edit;
                                     diagnostic: row.error;
-                                    canonical: row.text4;
+                                    display-text: row.text4;
+                                    staged:row.staged4;
+                                    context:row.heading+" · Component "+row.id;
                                     position: row.pos4;
+                                    edits-suspended:root.edits-suspended;
+                                    restore=>{return root.restore(row.id,4);}
                                     stage(value) => {
                                         root.stage(row.id, 4, value);
                                     }
@@ -824,11 +923,17 @@ export component MainWindow inherits Window {
                                     }
                                 }
                                 if row.modulation == 1: NumericControl {
-                                    label: "Component " + row.number + " Depth (%)";
+                                    compact:root.compact;
+                                    ui-size:root.ui-size;
+                                    label: "Depth (%)";
                                     edit-enabled: root.can-edit;
                                     diagnostic: row.error;
-                                    canonical: row.text5;
+                                    display-text: row.text5;
+                                    staged:row.staged5;
+                                    context:row.heading+" · Component "+row.id;
                                     position: row.pos5;
+                                    edits-suspended:root.edits-suspended;
+                                    restore=>{return root.restore(row.id,5);}
                                     stage(value) => {
                                         root.stage(row.id, 5, value);
                                     }
@@ -840,11 +945,17 @@ export component MainWindow inherits Window {
                                     }
                                 }
                                 if row.modulation == 2: NumericControl {
-                                    label: "Component " + row.number + " Gate rate (Hz)";
+                                    compact:root.compact;
+                                    ui-size:root.ui-size;
+                                    label: "Gate rate (Hz)";
                                     edit-enabled: root.can-edit;
                                     diagnostic: row.error;
-                                    canonical: row.text6;
+                                    display-text: row.text6;
+                                    staged:row.staged6;
+                                    context:row.heading+" · Component "+row.id;
                                     position: row.pos6;
+                                    edits-suspended:root.edits-suspended;
+                                    restore=>{return root.restore(row.id,6);}
                                     stage(value) => {
                                         root.stage(row.id, 6, value);
                                     }
@@ -856,11 +967,17 @@ export component MainWindow inherits Window {
                                     }
                                 }
                                 if row.modulation == 2: NumericControl {
-                                    label: "Component " + row.number + " Gate width (ms)";
+                                    compact:root.compact;
+                                    ui-size:root.ui-size;
+                                    label: "Gate width (ms)";
                                     edit-enabled: root.can-edit;
                                     diagnostic: row.error;
-                                    canonical: row.text7;
+                                    display-text: row.text7;
+                                    staged:row.staged7;
+                                    context:row.heading+" · Component "+row.id;
                                     position: row.pos7;
+                                    edits-suspended:root.edits-suspended;
+                                    restore=>{return root.restore(row.id,7);}
                                     stage(value) => {
                                         root.stage(row.id, 7, value);
                                     }
@@ -884,6 +1001,15 @@ export component MainWindow inherits Window {
                                 wrap:word-wrap;
                                 vertical-stretch:0;
                             }
+                            settings := CheckBox {text:"Recipe settings · notes and saved/exported audio";}
+                            if settings.checked: VerticalBox {
+                        Button {
+                            text:"Export WAV…";
+                            enabled:!root.busy && root.can-export;
+                            clicked=> {
+                                root.export-wav();
+                            }
+                        }
                             CheckBox {
                                 text:"Recipe notes";
                                 checked <=> root.notes;
@@ -907,7 +1033,10 @@ export component MainWindow inherits Window {
                                 NumericField {
                                     reset-key:root.draft-reset;
                                     enabled:root.can-edit;
-                                    canonical:root.draft-summary;
+                                    display-text:root.draft-summary;
+                            staged:root.summary-staged;
+                            edits-suspended:root.edits-suspended;
+                            restore=>{return root.restore-metadata("summary");}
                                     accessible-label:"Custom recipe notes";
                                     stage(v)=> {
                                         root.stage-metadata("summary",v);
@@ -936,7 +1065,10 @@ export component MainWindow inherits Window {
                                     NumericField {
                                         reset-key:root.draft-reset;
                                         enabled:root.can-edit;
-                                        canonical:root.duration;
+                                        display-text:root.duration;
+                            staged:root.duration-staged;
+                            edits-suspended:root.edits-suspended;
+                            restore=>{return root.restore-metadata("duration");}
                                         accessible-label:"Saved duration seconds";
                                         stage(v)=> {
                                             root.stage-metadata("duration",v);
@@ -951,7 +1083,10 @@ export component MainWindow inherits Window {
                                     NumericField {
                                         reset-key:root.draft-reset;
                                         enabled:root.can-edit;
-                                        canonical:root.fade;
+                                        display-text:root.fade;
+                            staged:root.fade-staged;
+                            edits-suspended:root.edits-suspended;
+                            restore=>{return root.restore-metadata("fade");}
                                         accessible-label:"Saved fade seconds";
                                         stage(v)=> {
                                             root.stage-metadata("fade",v);
@@ -977,6 +1112,7 @@ export component MainWindow inherits Window {
                                     vertical-stretch:0;
                                 }
                             }
+                            }
                             Rectangle {
                                 vertical-stretch:1;
                             }
@@ -984,59 +1120,28 @@ export component MainWindow inherits Window {
                     }
                 }
             }
-            Tab {
-                title:"About";
-                ScrollView {
-                    VerticalBox {
-                        Text {
-                            text:"Auditory Lab";
-                            font-size:26px;
-                            vertical-stretch:0;
-                        }
-                        TextEdit {
-                            text:root.about-identity;
-                            read-only:true;
-                            min-height:180px;
-                            accessible-label:"Product version, build, source and licenses";
-                        }
-                        Button {
-                            text:"Source and issue tracker";
-                            clicked=> {
-                                root.open-source();
-                            }
-                        }
-                        Button {
-                            text:"Toolkit attribution";
-                            clicked=> {
-                                root.about();
-                            }
-                        }
-                        Rectangle {
-                            vertical-stretch:1;
-                        }
-                    }
-                }
-            }
+
         }
         if root.operation-reason != "": Text {
             text:root.operation-reason;
             wrap:word-wrap;
             vertical-stretch:0;
         }
+        if root.monitor-warning!="": Text {text:root.monitor-warning;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
         HorizontalBox {
             padding: 0px;
             vertical-stretch: 0;
             Button {
-                text:root.busy ? root.operation-control : root.player-state;
+                text:root.operation-control;primary:true;vertical-stretch:0;max-height:root.ui-size*3;
                 enabled:root.can-cancel;
-                accessible-label:root.busy ? root.operation-control : root.player-state;
+                accessible-label:root.operation-control;
                 clicked=> {
                     root.play-stop();
                 }
             }
             Text {
                 text:root.player-title;
-                wrap:word-wrap;
+                wrap:word-wrap;max-height:root.ui-size*3;overflow:elide;
                 horizontal-stretch:1;
             }
             Text {
@@ -1051,67 +1156,56 @@ export component MainWindow inherits Window {
         }
         if root.generated != "": Text {
             text:root.generated;
-            wrap:word-wrap;
+            wrap:word-wrap;max-height:root.ui-size*3;overflow:elide;
             vertical-stretch:0;
         }
-        if root.retained-session: CheckBox {
-            text:"Generated component details";
-            checked <=> root.show-generators;
+        CheckBox {text:"Visualization and audio details";checked <=> root.show-visualization;}
+        if root.show-visualization: ScrollView {
+            min-height:0px;preferred-height:root.compact ? 180px : 270px;max-height:root.compact ? 220px : 380px;
+            VerticalBox {
+        HorizontalBox {vertical-stretch:0;
+            Button {vertical-stretch:0;max-height:root.ui-size*2.5;text:"Timing model";primary:root.view-index==0;clicked=>{root.view-index=0;root.window-changed();}}
+            Button {vertical-stretch:0;max-height:root.ui-size*2.5;text:"Audio waveform";primary:root.view-index==1;clicked=>{root.view-index=1;root.window-changed();}}
         }
-        if root.show-generators && root.retained-session: TextEdit {
-            text:root.generated-details;
-            read-only:true;
-            min-height:100px;
-            max-height:130px;
-            accessible-label:"Generated component rates, roles and gains";
+        if root.view-index==1: HorizontalBox {vertical-stretch:0;
+            Button {text:"Fixed ±1";primary:root.scale-index==0;enabled:!root.frozen;clicked=>{root.scale-index=0;root.window-changed();}}
+            Button {text:"Fit signal";primary:root.scale-index==1;enabled:!root.frozen;clicked=>{root.scale-index=1;root.window-changed();}}
+            Button {text:root.frozen ? "Resume waveform" : "Freeze waveform";clicked=>{root.frozen=!root.frozen;root.window-changed();}}
         }
-        HorizontalBox {
-            padding: 0px;
-            vertical-stretch: 0;
-            Text {
-                text:root.monitor-state;
-                horizontal-stretch:1;
-            }
-            Text {
-                text:"Window";
-            }
-            ComboBox {
-                model:["2 ms","10 ms","40 ms","100 ms"];
-                current-index <=> root.window-index;
-                selected(v)=> {
-                    root.window-changed();
-                }
-            }
-            CheckBox {
-                text:"Freeze display";
-                checked <=> root.frozen;
-                toggled=> {
-                    root.window-changed();
-                }
-            }
+        if root.view-index==1: HorizontalBox {vertical-stretch:0;
+            Button {text:"2 ms";enabled:!root.frozen;clicked=>{root.window-index=0;root.window-changed();}}
+            Button {text:"10 ms";enabled:!root.frozen;clicked=>{root.window-index=1;root.window-changed();}}
+            Button {text:"40 ms";enabled:!root.frozen;clicked=>{root.window-index=2;root.window-changed();}}
+            Button {text:"100 ms";enabled:!root.frozen;clicked=>{root.window-index=3;root.window-changed();}}
         }
-        Lane {
-            label:"Left";
-            trace:root.left-path;
-        }
-        Lane {
-            label:"Right";
-            trace:root.right-path;
-        }
-        if root.meters != "": Text {
-            text:root.meters;
-            wrap:word-wrap;
+        if root.view-index==0: VerticalBox {
             vertical-stretch:0;
+            Text {text:root.model-caption;wrap:word-wrap;}
+            ScrollView {min-height:90px;max-height:140px;
+                VerticalBox {for lane in root.model-rows: HorizontalBox {
+                    vertical-stretch:0;
+                    Text {text:lane.label;max-width:240px;wrap:word-wrap;}
+                    Rectangle {min-width:150px;horizontal-stretch:1;height:24px;background:Palette.control-background;
+                        accessible-role:image;accessible-label:lane.label+" model occupancy/envelope";
+                        Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
+                    }
+                }}
+            }
         }
-        if root.cycle-hint != "": Text {
-            text:root.cycle-hint;
-            wrap:word-wrap;
+        if root.view-index==1: VerticalBox {
             vertical-stretch:0;
+            Text {text:root.waveform-caption;wrap:word-wrap;}
+            Lane {label:"Left";trace:root.left-path;limit:root.scale-label;ui-size:root.ui-size;}
+            Lane {label:"Right";trace:root.right-path;limit:root.scale-label;ui-size:root.ui-size;}
+            Text {text:root.meters;wrap:word-wrap;}
         }
-        Text {
-            text:root.device;
-            wrap:word-wrap;
-            vertical-stretch:0;
+        CheckBox {text:"Audio details and diagnostics";checked <=> root.show-audio-details;}
+        if root.show-audio-details: TextEdit {
+            text:root.generated-details+"\n"+root.monitor-state+"\n"+root.device+"\nTypography: "+root.typography-origin;
+            read-only:true;min-height:100px;max-height:140px;
+            accessible-label:"Generated components, exact capture provenance, output device and monitoring diagnostics";
+        }
+            }
         }
         if root.busy && root.can-cancel && !root.playback-busy: ProgressIndicator {
             progress:root.progress;
@@ -1126,7 +1220,7 @@ export component MainWindow inherits Window {
             accessible-live-region:polite;
             text:root.status;
             wrap:word-wrap;
-            max-height:36px;
+            max-height:root.ui-size*3;
             vertical-stretch:0;
         }
         if root.show-errors && root.status != "": TextEdit {

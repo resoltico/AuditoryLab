@@ -204,10 +204,24 @@ pub fn slider_value(setting: Setting, rate: SampleRate, position: f64) -> f64 {
     if !position.is_finite() {
         return r.default;
     }
-    match r.scale {
+    let value = match r.scale {
         Scale::Linear => r.min + (r.max - r.min) * position.clamp(0.0, 1.0),
         Scale::Logarithmic => r.min * (r.max / r.min).powf(position.clamp(0.0, 1.0)),
+    };
+    quantize_setting(setting, value).clamp(r.min, r.max)
+}
+/// Deliberate slider gestures: 3 significant digits for logarithmic quantities,
+/// 0.1 dB for level, and whole percentage points for depth. Exact entry never calls this.
+pub fn quantize_setting(setting: Setting, value: f64) -> f64 {
+    if !value.is_finite() || value == 0.0 {
+        return value;
     }
+    let rounded = match setting {
+        Setting::Depth => value.round(),
+        Setting::Level => format!("{value:.1}").parse().unwrap_or(value),
+        _ => format!("{value:.2e}").parse().unwrap_or(value),
+    };
+    if rounded.is_finite() { rounded } else { value }
 }
 /// Map a control value to a clamped slider position; invalid nonfinite values leave the knob at zero without changing the exact field.
 pub fn slider_position(setting: Setting, rate: SampleRate, value: f64) -> f64 {
@@ -467,23 +481,46 @@ impl Draft {
 }
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[test]
-    fn slider_mappings_round_trip_every_setting_at_all_supported_rates() {
-        for hz in [1, 22_050, 44_100, 48_000, 96_000] {
+    fn slider_gestures_have_bounded_quantization_and_preserve_positive_endpoints() {
+        for hz in [1, 8000, 44100, 48000, 768000] {
             let rate = SampleRate::new(hz).unwrap();
             for setting in Setting::ALL {
-                for position in [0.0, 0.001, 0.25, 0.5, 0.99, 1.0] {
+                let r = range(setting, rate);
+                let mut last = r.min;
+                for i in 0..=1000 {
+                    let position = f64::from(i) / 1000.0;
+                    let raw = match r.scale {
+                        Scale::Linear => r.min + (r.max - r.min) * position,
+                        Scale::Logarithmic => r.min * (r.max / r.min).powf(position),
+                    };
                     let value = slider_value(setting, rate, position);
+                    let tolerance = match setting {
+                        Setting::Level => 0.0500001,
+                        Setting::Depth => 0.500001,
+                        _ => raw.abs() * 0.005 + 1e-12,
+                    };
                     assert!(
-                        (slider_position(setting, rate, value) - position).abs() < 1e-12,
-                        "{hz} {setting:?}"
+                        (raw - value).abs() <= tolerance,
+                        "{hz} {setting:?} {raw} -> {value}"
                     );
+                    assert!((r.min..=r.max).contains(&value) && value >= last);
+                    assert!((0.0..=1.0).contains(&slider_position(setting, rate, value)));
+                    last = value;
                 }
             }
         }
+        assert_eq!(
+            quantize_setting(Setting::ClickRate, 117.7690703440134),
+            118.0
+        );
+        assert_eq!(quantize_setting(Setting::ClickRate, 39.0625), 39.1);
+        assert_eq!(quantize_setting(Setting::ModulationRate, 0.123456), 0.123);
+        assert_eq!(quantize_setting(Setting::Level, -30.123), -30.1);
+        assert_eq!(quantize_setting(Setting::Depth, 39.6), 40.0);
     }
 
-    use super::*;
     #[test]
     fn identities_are_never_reused_and_operations_address_the_right_row() {
         let mut d = Draft::new();

@@ -45,14 +45,14 @@ Choose a built-in ID, `--file PATH` for a regular recipe file or `--stdin` for a
 
 ## Desktop
 
-Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `auditorylab-gui` on Linux. Search and select a sound to see its description and explicitly labeled preview. **Play recipe** starts finite audio; the persistent player names the actual session while you browse. Stop, estimated elapsed time, generated component rates, actual sample traces and digital meters remain available across screens. **Open Recipe…** imports a file, and **Export WAV…** chooses a destination through the native Save dialog. The **Workbench** builds sounds from up to 16 tone or click components. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or **Edit a copy** from Library, then **Save Recipe…** or export a finite WAV. Source research stays attributed separately from your custom notes; dirty drafts are protected on New and Quit. See the [desktop guide](docs/desktop.md).
+Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `auditorylab-gui` on Linux. Search and select a sound to see its description and explicitly labeled preview. **Listen** starts finite audio; the persistent player names the actual session while you browse. Stop, estimated elapsed time, generated component rates, actual sample traces and digital meters remain available across screens. **Open Recipe…** imports a file, and **Export WAV…** chooses a destination through the native Save dialog. The **Workbench** builds sounds from up to 16 tone or click components. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or **Edit a copy** from Library, then **Save Recipe…** or export a finite WAV. Source research stays attributed separately from your custom notes; dirty drafts are protected on New and Quit. See the [desktop guide](docs/desktop.md).
 
 ## Build from source
 
 Install [rustup](https://rustup.rs/). [rust-toolchain.toml](rust-toolchain.toml) selects the compiler and components.
 
 - macOS 15 or later: install Xcode Command Line Tools with `xcode-select --install`.
-- Debian/Ubuntu: `sudo apt-get install build-essential pkg-config libasound2-dev libfontconfig1-dev libxkbcommon-x11-0`.
+- Debian/Ubuntu: `sudo apt-get install build-essential pkg-config libasound2-dev libfontconfig1-dev libxkbcommon-x11-0 libpango-1.0-0 libgtk-3-0`.
 - Windows: install Visual Studio Build Tools with Desktop development with C++, including the MSVC tools and Windows SDK for your processor. Use the native MSVC Rust host. Windows 10 or later is required on x86_64; ARM64 requires Windows 11. The x86_64 target requires SSE3, CMPXCHG16B and LAHF/SAHF.
 
 From a clean checkout:
@@ -62,7 +62,7 @@ cargo install --locked --path crates/cli
 cargo run --release --locked -p auditorylab-gui
 ```
 
-Cargo installs the CLI into its bin directory, which must be on PATH. Linux desktop use needs X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, OpenGL and an xdg-desktop-portal for file dialogs. The desktop renderer uses OpenGL; sound synthesis runs on the CPU. Build commands also work with `--manifest-path` from another directory.
+Cargo installs the CLI into its bin directory, which must be on PATH. Linux desktop use needs X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, OpenGL and an xdg-desktop-portal for file dialogs. Native UI fonts follow macOS/Windows defaults and configured Linux desktop family/size. Linux uses Pango and GTK/GIO for desktop font preferences. The desktop renderer uses OpenGL; sound synthesis runs on the CPU. Build commands also work with `--manifest-path` from another directory.
 
 ## Guides
 

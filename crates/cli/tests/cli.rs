@@ -186,3 +186,46 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
     assert!(!output.exists());
     assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
 }
+
+#[test]
+fn public_cli_renders_shared_rhythms_and_rejects_pair_neighbors() {
+    let d = dir();
+    let file = d.path().join("meaning.toml");
+    let header = "schema_version=2\nduration_seconds=1\nfade_seconds=0\n";
+    let click = "[[component]]\nears=\"both\"\npeak_dbfs=-40\nkind=\"click\"\nrate_hz=40\nwidth_seconds=0.001\n";
+    let tone = |hz, ears: &str, level| {
+        format!(
+            "[[component]]\nears=\"{ears}\"\npeak_dbfs={level}\nkind=\"tone\"\nfrequency_hz={hz}\n"
+        )
+    };
+    for (body, needle, rejected) in [
+        (
+            format!("{click}{}", tone(440, "both", -40)),
+            "40 Hz clicks",
+            "400 Hz",
+        ),
+        (
+            format!("{}{}", tone(380, "left", -40), tone(420, "right", -40)),
+            "40 Hz interaural difference",
+            "monaural",
+        ),
+        (
+            format!("{}{}", tone(380, "both", -40), tone(420, "both", -40)),
+            "40 Hz monaural",
+            "interaural",
+        ),
+        (
+            format!("{}{}", tone(380, "both", -40), tone(420, "both", -41)),
+            "steady tone",
+            "monaural",
+        ),
+    ] {
+        fs::write(&file, format!("{header}{body}")).unwrap();
+        for command in ["describe", "inspect"] {
+            let out = cli(&[command, "--file", file.to_str().unwrap()]);
+            assert!(out.status.success(), "{:?}", out);
+            let text = String::from_utf8(out.stdout).unwrap();
+            assert!(text.contains(needle) && !text.contains(rejected), "{text}");
+        }
+    }
+}
