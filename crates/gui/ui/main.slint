@@ -902,15 +902,19 @@ export component MainWindow inherits Window {
                                 if pattern.expanded: VerticalBox {
                                     vertical-stretch:0;
                                     Text {text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
-                                    for lane in root.model-rows: VerticalBox {
-                                      if lane.id == row.id: VerticalBox {
-                                        vertical-stretch:0;
-                                        Text {text:lane.label;wrap:word-wrap;vertical-stretch:0;}
-                                        Rectangle {height:36px;background:Palette.control-background;
-                                            accessible-role:image;accessible-label:lane.label+" static model, origin zero";
-                                            Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
+                                    VerticalBox {
+                                      padding:0px; spacing:0px; vertical-stretch:0;
+                                      for lane in root.model-rows: VerticalBox {
+                                        padding:0px; spacing:0px; vertical-stretch:0;
+                                        if lane.id == row.id: VerticalBox {
+                                          vertical-stretch:0;
+                                          Text {text:lane.label;wrap:word-wrap;vertical-stretch:0;}
+                                          Rectangle {height:36px;background:Palette.control-background;
+                                              accessible-role:image;accessible-label:lane.label+" static model, origin zero";
+                                              Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
+                                          }
                                         }
-                                    }
+                                      }
                                     }
                                     Text {text:"Technical layer ID: "+row.id;vertical-stretch:0;}
                                 }
