@@ -26,8 +26,7 @@ pub fn trace(signal: &Signal, start: u64, frames: u64, bins: usize, out: &mut Ve
         }; 2],
     );
     let mut block = [[0.0; 2]; 256];
-    let mut at = start;
-    while at < end {
+    for at in (start..end).step_by(block.len()) {
         let count = usize::try_from((end - at).min(256)).unwrap_or(256);
         signal.render(at, &mut block[..count]);
         for (offset, frame) in block[..count].iter().enumerate() {
@@ -35,7 +34,6 @@ pub fn trace(signal: &Signal, start: u64, frames: u64, bins: usize, out: &mut Ve
                 as usize;
             merge(&mut out[bin], frame);
         }
-        at += count as u64;
     }
 }
 
