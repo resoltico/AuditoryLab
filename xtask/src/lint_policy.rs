@@ -467,13 +467,15 @@ pub(super) fn check(root: &Path) -> Result<()> {
         .as_array()
         .ok_or("workspace packages missing")?
         .iter()
-        .map(|v| {
-            v["manifest_path"]
+        .map(|v| -> Result<PathBuf> {
+            let path = v["manifest_path"]
                 .as_str()
-                .map(PathBuf::from)
-                .ok_or("package manifest missing")
+                .ok_or("package manifest missing")?;
+            // Match discovered files in the same namespace, including Windows
+            // extended-length prefixes and symlink-resolved workspace roots.
+            Ok(fs::canonicalize(path)?)
         })
-        .collect::<std::result::Result<_, _>>()?;
+        .collect::<Result<_>>()?;
     let mut paths = Vec::new();
     walk(root, root, &mut paths)?;
     paths.sort();
