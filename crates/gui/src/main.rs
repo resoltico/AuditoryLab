@@ -260,18 +260,6 @@ impl Desktop {
             app.status = status;
         }
     }
-    fn continuation_ready(&self) -> bool {
-        self.after.borrow().as_ref().is_some_and(|next| match next {
-            Continuation::Playback(_) => self.audio_worker.borrow().is_none(),
-            Continuation::Request(Action::Close)
-            | Continuation::Action(Action::Close)
-            | Continuation::Save {
-                action: Action::Close,
-                ..
-            } => self.audio_worker.borrow().is_none() && self.file_worker.borrow().is_none(),
-            _ => self.file_worker.borrow().is_none(),
-        })
-    }
     fn refresh(self: &Rc<Self>) -> Duration {
         if self.updating.replace(true) {
             return Duration::from_millis(50);
@@ -283,14 +271,19 @@ impl Desktop {
         };
         let audio_result = self.poll_task(true, &ui);
         let file_result = self.poll_task(false, &ui);
-        if audio_result == Some(false) || file_result == Some(false) {
-            self.after.borrow_mut().take();
-            reply_native_quit(false);
-        } else if self.continuation_ready() {
-            let after = self.after.borrow_mut().take();
-            if let Some(after) = after {
-                self.continue_with(after);
+        let continuation = actions::poll_continuation(
+            &mut self.after.borrow_mut(),
+            self.audio_worker.borrow().is_some(),
+            self.file_worker.borrow().is_some(),
+            audio_result,
+            file_result,
+        );
+        match continuation {
+            actions::ContinuationPoll::Failed => {
+                reply_native_quit(false);
             }
+            actions::ContinuationPoll::Ready(after) => self.continue_with(after),
+            actions::ContinuationPoll::Waiting => {}
         }
         let app = self.app.borrow();
         if self.catalog_dirty.replace(false) {

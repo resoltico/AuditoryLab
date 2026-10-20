@@ -20,6 +20,54 @@ pub(super) enum Continuation {
     },
     Playback(Work),
 }
+impl Continuation {
+    fn required_tasks(&self) -> (bool, bool) {
+        match self {
+            Self::Playback(_) => (true, false),
+            Self::Request(Action::Close)
+            | Self::Action(Action::Close)
+            | Self::AfterSave(Action::Close, _)
+            | Self::Save {
+                action: Action::Close,
+                ..
+            } => (true, true),
+            _ => (false, true),
+        }
+    }
+}
+#[allow(
+    clippy::large_enum_variant,
+    reason = "one queued GUI action is moved by value; boxing would add an unnecessary allocation"
+)]
+pub(super) enum ContinuationPoll {
+    Waiting,
+    Failed,
+    Ready(Continuation),
+}
+/// Resolve the queued action against only the task lifetimes it requires.
+pub(super) fn poll_continuation(
+    pending: &mut Option<Continuation>,
+    audio_busy: bool,
+    file_busy: bool,
+    audio_result: Option<bool>,
+    file_result: Option<bool>,
+) -> ContinuationPoll {
+    let Some(next) = pending.as_ref() else {
+        return ContinuationPoll::Waiting;
+    };
+    let (audio, file) = next.required_tasks();
+    if audio && audio_result == Some(false) || file && file_result == Some(false) {
+        pending.take();
+        ContinuationPoll::Failed
+    } else if !(audio && audio_busy || file && file_busy) {
+        match pending.take() {
+            Some(next) => ContinuationPoll::Ready(next),
+            None => ContinuationPoll::Waiting,
+        }
+    } else {
+        ContinuationPoll::Waiting
+    }
+}
 impl Desktop {
     pub(super) fn request_action(self: &Rc<Self>, action: Action) {
         if self.after.borrow().is_some() || self.dialog_active.get() {
@@ -111,17 +159,7 @@ impl Desktop {
         self.refresh();
     }
     fn after_cleanup(self: &Rc<Self>, next: Continuation) {
-        let stop_audio = matches!(
-            &next,
-            Continuation::Action(Action::Close)
-                | Continuation::Request(Action::Close)
-                | Continuation::Save {
-                    action: Action::Close,
-                    ..
-                }
-                | Continuation::Playback(_)
-        );
-        let wait_file = !matches!(&next, Continuation::Playback(_));
+        let (stop_audio, wait_file) = next.required_tasks();
         if stop_audio && let Some(worker) = self.audio_worker.borrow().as_ref() {
             worker.cancel.request();
         }
@@ -222,5 +260,142 @@ impl Desktop {
         }
         self.after_cleanup(Continuation::Playback(work));
         self.refresh();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn replacement() -> Option<Continuation> {
+        let mut draft = Draft::new();
+        draft.set_title("Silent replacement B".into());
+        Some(Continuation::Playback(Work::Live(draft, Arc::new(()))))
+    }
+    fn assert_replacement(result: ContinuationPoll) {
+        let ContinuationPoll::Ready(Continuation::Playback(Work::Live(draft, _))) = result else {
+            panic!("the original queued playback must become ready");
+        };
+        assert_eq!(draft.title(), "Silent replacement B");
+        assert_eq!(draft.components().len(), 0);
+    }
+    #[test]
+    fn failed_independent_save_preserves_playback_until_audio_drains() {
+        let mut app = app::App::new(auditorylab::catalog().unwrap());
+        assert!(app.start(Operation::Live));
+        assert!(app.start(Operation::Save));
+        let mut pending = replacement();
+        app.finish(Operation::Save);
+        app.status = "Recipe write failed".into();
+        assert!(matches!(
+            poll_continuation(
+                &mut pending,
+                app.operation.is_some(),
+                app.file_operation.is_some(),
+                None,
+                Some(false)
+            ),
+            ContinuationPoll::Waiting
+        ));
+        assert!(pending.is_some());
+        app.finish(Operation::Live);
+        assert_replacement(poll_continuation(
+            &mut pending,
+            app.operation.is_some(),
+            app.file_operation.is_some(),
+            Some(true),
+            None,
+        ));
+        assert!(pending.is_none());
+        assert!(app.start(Operation::Live));
+        assert_eq!(
+            app.status, "Recipe write failed",
+            "starting replacement audio must retain the file error"
+        );
+    }
+    #[test]
+    fn playback_can_finish_draining_before_or_with_the_failed_save() {
+        for (file_busy, file_result) in [(true, None), (false, Some(false))] {
+            let mut pending = replacement();
+            assert_replacement(poll_continuation(
+                &mut pending,
+                false,
+                file_busy,
+                Some(true),
+                file_result,
+            ));
+            assert!(pending.is_none());
+        }
+    }
+    #[test]
+    fn failed_required_save_cannot_authorize_new_copy_or_close() {
+        for action in [
+            Action::New,
+            Action::Copy(auditorylab::catalog().unwrap().remove(0)),
+            Action::Close,
+        ] {
+            let mut pending = Some(Continuation::AfterSave(action, Arc::new(())));
+            assert!(matches!(
+                poll_continuation(&mut pending, false, false, None, Some(false)),
+                ContinuationPoll::Failed
+            ));
+            assert!(pending.is_none());
+            assert!(matches!(
+                poll_continuation(&mut pending, false, false, None, None),
+                ContinuationPoll::Waiting
+            ));
+        }
+    }
+    #[test]
+    fn unrelated_audio_failure_does_not_cancel_file_only_navigation() {
+        for next in [
+            Continuation::Request(Action::New),
+            Continuation::Action(Action::New),
+            Continuation::AfterSave(Action::New, Arc::new(())),
+            Continuation::Save {
+                draft: Draft::new(),
+                path: PathBuf::from("unused.toml"),
+                action: Action::New,
+                owner: Arc::new(()),
+            },
+        ] {
+            let mut pending = Some(next);
+            assert!(matches!(
+                poll_continuation(&mut pending, false, true, Some(false), None),
+                ContinuationPoll::Waiting
+            ));
+            assert!(matches!(
+                poll_continuation(&mut pending, false, false, None, Some(true)),
+                ContinuationPoll::Ready(_)
+            ));
+        }
+    }
+    #[test]
+    fn audio_failure_rejects_replacement_and_either_failure_rejects_close() {
+        let mut pending = replacement();
+        assert!(matches!(
+            poll_continuation(&mut pending, false, false, Some(false), Some(true)),
+            ContinuationPoll::Failed
+        ));
+        for failed in [(Some(false), None), (None, Some(false))] {
+            for next in [
+                Continuation::Request(Action::Close),
+                Continuation::Action(Action::Close),
+                Continuation::AfterSave(Action::Close, Arc::new(())),
+                Continuation::Save {
+                    draft: Draft::new(),
+                    path: PathBuf::from("unused.toml"),
+                    action: Action::Close,
+                    owner: Arc::new(()),
+                },
+            ] {
+                let mut pending = Some(next);
+                assert!(matches!(
+                    poll_continuation(&mut pending, false, false, failed.0, failed.1),
+                    ContinuationPoll::Failed
+                ));
+            }
+        }
     }
 }
