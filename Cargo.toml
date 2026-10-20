@@ -90,8 +90,9 @@ lto = "thin"
 codegen-units = 1
 strip = true
 
-# Keep native font shaping and window scaling in their own coordinate spaces.
+# Preserve native typography, window scaling and accessibility contracts.
 [patch.crates-io]
+accesskit_unix = { path = "third_party/accesskit_unix" }
 i-slint-core = { path = "third_party/i-slint-core" }
 parley = { path = "third_party/parley" }
 winit = { path = "third_party/winit" }
