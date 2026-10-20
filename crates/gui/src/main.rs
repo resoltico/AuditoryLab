@@ -2037,6 +2037,24 @@ mod action_wiring_tests {
         ui.window().set_size(slint::PhysicalSize::new(1100, 900));
         slint::platform::update_timers_and_animations();
         assert!(ui.get_drawer_fits());
+        ui.set_scale_label("≈0.0316228".into());
+        ui.set_waveform_caption(
+            "Preview · not playing · Untitled sound · 40.00 ms · Fit ±≈0.0316228".into(),
+        );
+        ui.set_meters("Captured sample peak L -30.0 / R -30.0 dBFS · RMS L -33.0 / R -33.0 dBFS".into());
+        ui.set_motion_reason(
+            "System motion preference permits live drawing. User chose Return to live.".into(),
+        );
+        ui.set_monitor_warning("Capture coverage is incomplete; waiting for fresh samples.".into());
+        ui.invoke_resize_monitor(240.0);
+        slint::platform::update_timers_and_animations();
+        assert!(ui.get_drawer_fits());
+        assert!(
+            ui.get_effective_drawer_height() > 240.0,
+            "readable axis labels and current explanations must raise the drawer's content minimum"
+        );
+        ui.set_motion_reason("".into());
+        ui.set_monitor_warning("".into());
         ui.window().set_size(slint::PhysicalSize::new(680, 700));
         slint::platform::update_timers_and_animations();
         // Minimum-height clients may clamp the drawer or use the focused window.

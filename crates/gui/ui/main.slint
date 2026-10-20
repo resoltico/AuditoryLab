@@ -208,43 +208,46 @@ component Lane inherits Rectangle {
     in property <string> trace;
     in property <string> limit: "1";
     in property <length> ui-size:13px;
+    property <length> axis-row-height: max(title.preferred-height, positive.preferred-height, zero.preferred-height, negative.preferred-height);
+    property <length> axis-width: max(title.preferred-width, positive.preferred-width, zero.preferred-width, negative.preferred-width) + 12px;
     background: #131d2b;
-    height: root.ui-size*4;
+    preferred-height: root.axis-row-height*4;
+    min-height: root.axis-row-height*4;
     accessible-role: image;
     accessible-label: root.label + " samples, common symmetric scale ±" + root.limit;
-    Text {
+    title := Text {
         x: 6px;
-        y: 0px;
+        y: (root.axis-row-height - self.preferred-height)/2;
         text: root.label;
         color: #e1eaf6;
         font-size: root.ui-size*0.93;
     }
-    Text {
+    positive := Text {
         x: 6px;
-        y: root.ui-size;
+        y: root.axis-row-height*1.5 - self.preferred-height/2;
         text: "+"+root.limit;
         color: #c6d0df;
         font-size: root.ui-size;
     }
-    Text {
+    zero := Text {
         x: 6px;
-        y:root.ui-size*2;
+        y:root.axis-row-height*2.5 - self.preferred-height/2;
         text: "0";
         color: #c6d0df;
         font-size: root.ui-size;
     }
-    Text {
+    negative := Text {
         x: 6px;
-        y:root.ui-size*3;
+        y:root.axis-row-height*3.5 - self.preferred-height/2;
         text: "−"+root.limit;
         color: #c6d0df;
         font-size: root.ui-size;
     }
     Rectangle {
-        x: root.ui-size*7;
-        y: root.ui-size*1.3;
-        width: max(1px, parent.width - root.ui-size*7 - 8px);
-        height:root.ui-size*2.5;
+        x: root.axis-width;
+        y: root.axis-row-height*1.5;
+        width: max(1px, parent.width - root.axis-width - 8px);
+        height:root.axis-row-height*2;
         clip: true;
         Rectangle {
             y: parent.height / 2;
@@ -364,13 +367,20 @@ export component MainWindow inherits Window {
     in property <string> motion-reason;
     in property <bool> motion-overridden;
     in-out property <length> monitor-height:270px;
-    out property <bool> drawer-fits:true;
-    out property <length> effective-drawer-height:270px;
+    // TabWidget does not expose its tab-strip metrics. Reserve three text rows,
+    // the outer layout's padding and 280px of document space beside measured chrome.
+    property <length> available-monitor-height:0px;
+    property <length> minimum-monitor-height: max(240px, drawer-content.preferred-height);
+    property <length> maximum-monitor-height: min(360px, root.available-monitor-height);
+    out property <bool> drawer-fits: root.minimum-monitor-height <= root.maximum-monitor-height;
+    out property <length> effective-drawer-height: max(root.minimum-monitor-height, min(root.monitor-height, root.maximum-monitor-height));
     function update-monitor-layout(){
-        root.drawer-fits=root.height >= 280px+root.ui-size*30;
-        root.effective-drawer-height=min(root.monitor-height,max(root.ui-size*19,root.height - 280px - root.ui-size*11));
+        // Snapshot viewport space on layout changes to avoid feeding the window's
+        // inferred minimum height back into its own layout constraint binding.
+        root.available-monitor-height=max(0px, root.height - toolbar.preferred-height - transport.preferred-height - root.ui-size*3 - 16px - 280px);
         root.window-changed();
     }
+    changed drawer-fits=>{root.update-monitor-layout();}
     changed height=>{root.update-monitor-layout();}
     changed monitor-height=>{root.update-monitor-layout();}
     public function resize-monitor(pixels:float){root.monitor-height=max(240px,min(360px,pixels*1px));}
@@ -466,6 +476,7 @@ export component MainWindow inherits Window {
     changed ui-size => {root.compact = root.width < root.ui-size*70;root.update-monitor-layout();}
     changed width => {
         root.compact = self.width < root.ui-size*70;
+        root.update-monitor-layout();
     }
     callback select(int);
     callback search(string);
@@ -544,6 +555,7 @@ export component MainWindow inherits Window {
     VerticalBox {
         spacing: 0px;
         toolbar := HorizontalBox {
+            changed preferred-height=>{root.update-monitor-layout();}
             vertical-stretch:0;
             min-height:root.ui-size*3;
             padding:4px;
@@ -1269,21 +1281,26 @@ export component MainWindow inherits Window {
             }
 
         }
-        if root.monitor-open && root.drawer-fits: Rectangle {
-            height:root.effective-drawer-height;
+        Rectangle {
+            visible:root.monitor-open && root.drawer-fits;
+            clip:true;
+            preferred-height:self.visible ? root.effective-drawer-height : 0px;
+            min-height:self.visible ? root.effective-drawer-height : 0px;
+            max-height:self.visible ? root.effective-drawer-height : 0px;
+            vertical-stretch:0;
             background:Palette.control-background;
             border-width:1px;border-color:Palette.border;
-            VerticalBox {padding:8px;spacing:3px;
+            drawer-content := VerticalBox {padding:8px;spacing:3px;
                 Rectangle {
                     height:6px;background:grip-touch.has-hover || grip-focus.has-focus ? Palette.accent-background : Palette.border;
                     accessible-role:slider;accessible-label:"Output monitor height";
-                    accessible-value:root.monitor-height/1px;accessible-value-minimum:240;accessible-value-maximum:360;accessible-value-step:16;
+                    accessible-value:root.effective-drawer-height/1px;accessible-value-minimum:root.minimum-monitor-height/1px;accessible-value-maximum:max(root.minimum-monitor-height,root.maximum-monitor-height)/1px;accessible-value-step:16;
                     accessible-action-set-value(v)=>{if v.is-float(){root.resize-monitor(v.to-float());}}
-                    accessible-action-increment=>{root.resize-monitor(root.monitor-height/1px+16);}
-                    accessible-action-decrement=>{root.resize-monitor(root.monitor-height/1px-16);}
+                    accessible-action-increment=>{root.resize-monitor(root.effective-drawer-height/1px+16);}
+                    accessible-action-decrement=>{root.resize-monitor(root.effective-drawer-height/1px-16);}
                     forward-focus:grip-focus;
-                    grip-touch := TouchArea {mouse-cursor:row-resize;moved=>{if self.pressed{root.resize-monitor((root.monitor-height + self.pressed-y - self.mouse-y)/1px);}}clicked=>{grip-focus.focus();}}
-                    grip-focus := FocusScope {key-pressed(e)=>{if e.text==Key.UpArrow{root.resize-monitor(root.monitor-height/1px+16);return accept;}if e.text==Key.DownArrow{root.resize-monitor(root.monitor-height/1px-16);return accept;}return reject;}}
+                    grip-touch := TouchArea {mouse-cursor:row-resize;moved=>{if self.pressed{root.resize-monitor((root.effective-drawer-height + self.pressed-y - self.mouse-y)/1px);}}clicked=>{grip-focus.focus();}}
+                    grip-focus := FocusScope {key-pressed(e)=>{if e.text==Key.UpArrow{root.resize-monitor(root.effective-drawer-height/1px+16);return accept;}if e.text==Key.DownArrow{root.resize-monitor(root.effective-drawer-height/1px-16);return accept;}return reject;}}
                 }
                 MonitorPanel {
                     data:root.monitor-data;ui-size:root.ui-size;
@@ -1296,7 +1313,8 @@ export component MainWindow inherits Window {
                 }
             }
         }
-        Rectangle {
+        transport := Rectangle {
+            changed preferred-height=>{root.update-monitor-layout();}
             min-height:root.ui-size*5.5;max-height:root.ui-size*9;
             vertical-stretch:0;
             background:Palette.control-background;border-width:1px;border-color:Palette.border;
