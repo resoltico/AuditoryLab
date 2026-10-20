@@ -2041,7 +2041,9 @@ mod action_wiring_tests {
         ui.set_waveform_caption(
             "Preview · not playing · Untitled sound · 40.00 ms · Fit ±≈0.0316228".into(),
         );
-        ui.set_meters("Captured sample peak L -30.0 / R -30.0 dBFS · RMS L -33.0 / R -33.0 dBFS".into());
+        ui.set_meters(
+            "Captured sample peak L -30.0 / R -30.0 dBFS · RMS L -33.0 / R -33.0 dBFS".into(),
+        );
         ui.set_motion_reason(
             "System motion preference permits live drawing. User chose Return to live.".into(),
         );
