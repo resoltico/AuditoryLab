@@ -220,3 +220,117 @@ fn maximum_rate_projection_has_fixed_storage_and_measured_cost() {
         model.frames
     );
 }
+
+#[test]
+fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
+    let rate = SampleRate::new(48000).unwrap();
+    let tone = Component {
+        carrier: Carrier::Tone {
+            frequency_hz: 1000.0,
+        },
+        ..clicks(40.0, 0.001)
+    };
+    for modulation in [
+        Modulation::Rectangular {
+            rate_hz: 2.0,
+            width_seconds: 0.001,
+        },
+        Modulation::Sinusoidal {
+            rate_hz: 2.0,
+            depth: 0.5,
+        },
+    ] {
+        let model = Target::new(
+            rate,
+            &[(
+                1,
+                Component {
+                    modulation: Some(modulation),
+                    ..tone
+                },
+            )],
+        )
+        .unwrap()
+        .timing_model(17);
+        assert_eq!(model.frames, 96000);
+        assert!(!model.insufficient_cycle);
+    }
+    for (hz, incomplete) in [(0.125, true), (0.25, false), (8.0, false)] {
+        let model = Target::new(rate, &[(1, clicks(hz, 0.001))])
+            .unwrap()
+            .timing_model(17);
+        assert_eq!(model.insufficient_cycle, incomplete, "{hz}");
+        assert_eq!(model.lanes.len(), 1);
+        assert_eq!(model.lanes[0].kind, ModelKind::Clicks);
+    }
+    let model = Target::new(
+        rate,
+        &[(
+            1,
+            Component {
+                modulation: Some(Modulation::Sinusoidal {
+                    rate_hz: 0.1,
+                    depth: 0.0,
+                }),
+                ..tone
+            },
+        )],
+    )
+    .unwrap()
+    .timing_model(17);
+    assert_eq!(model.frames, 12000);
+    assert!(!model.insufficient_cycle);
+    assert_eq!(model.lanes.len(), 1);
+    assert_eq!(model.lanes[0].kind, ModelKind::Steady);
+}
+
+#[test]
+fn envelope_bounds_match_endpoints_and_quarter_cycle_extrema() {
+    let rate = SampleRate::new(48000).unwrap();
+    // Eight cycles/second gives quarter-cycle extrema exactly every 1500 frames.
+    // Independent rational phases also constrain partial columns, not just inclusion.
+    for depth in [0.5, 1.0] {
+        let component = Component {
+            modulation: Some(Modulation::Sinusoidal {
+                rate_hz: 8.0,
+                depth,
+            }),
+            ..clicks(40.0, 0.001)
+        };
+        let model = Target::new(rate, &[(1, component)])
+            .unwrap()
+            .timing_model(37);
+        assert_eq!(model.frames, 24000);
+        assert_eq!(model.lanes.len(), 2);
+        let lane = &model.lanes[1];
+        assert_eq!(lane.kind, ModelKind::Envelope);
+        assert_eq!(lane.columns.len(), 37);
+        for (i, extent) in lane.columns.iter().enumerate() {
+            let i = u64::try_from(i).unwrap();
+            let start = (i * 24000).div_ceil(37);
+            let last = ((i + 1) * 24000).div_ceil(37) - 1;
+            let value = |n: u64| {
+                let phase =
+                    std::f64::consts::TAU * f64::from(u32::try_from(n % 6000).unwrap()) / 6000.0;
+                (1.0 + depth * phase.sin()) / (1.0 + depth)
+            };
+            let mut low = value(start).min(value(last));
+            let mut high = value(start).max(value(last));
+            for quarter in 0..16_u64 {
+                let frame = quarter * 1500;
+                if (start..=last).contains(&frame) {
+                    low = low.min(value(frame));
+                    high = high.max(value(frame));
+                }
+            }
+            assert!(
+                (extent.min - low).abs() < 1e-12,
+                "min {depth} {i}: {extent:?}/{low}"
+            );
+            assert!(
+                (extent.max - high).abs() < 1e-12,
+                "max {depth} {i}: {extent:?}/{high}"
+            );
+        }
+    }
+}
