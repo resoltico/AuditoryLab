@@ -1,10 +1,4 @@
 //! Seekable tones and exact frame-quantized pulse trains.
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss,
-    reason = "bounded IEEE bit fields, frame indices and independent rational test oracles"
-)]
 use core::f64::consts::TAU;
 #[cfg(test)]
 const UNITS_PER_CYCLE: f64 = 18_446_744_073_709_551_616.0;
@@ -38,11 +32,16 @@ pub(crate) fn step(hz: f64, fs: u32) -> Option<u64> {
     u64::try_from(quotient).ok()
 }
 #[inline]
+#[expect(clippy::cast_precision_loss, reason = "quality:core-synthesis-sine")]
 pub(crate) fn sine(phase: u64) -> f64 {
     let cycles = ((phase as i64) >> 11) as f64 / 9_007_199_254_740_992.0;
     libm::sin(TAU * cycles)
 }
 /// Whether x × k ≤ fs, exactly, for non-negative finite x, positive k and a valid sample rate.
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "quality:core-synthesis-times-at-most"
+)]
 pub(crate) fn times_at_most(x: f64, k: u64, fs: u32) -> bool {
     if !(x >= 0.0 && x.is_finite()) {
         return false;
@@ -78,6 +77,10 @@ impl Pulse {
     }
     /// floor(n × rate/fs), with n below Signal::MAX_FRAMES.
     #[inline]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "quality:core-synthesis-periods"
+    )]
     fn periods(self, n: u64) -> u64 {
         // floor(floor(n*m/2^shift)/fs) = floor(n*m/(2^shift*fs)).
         // n < 2^36 and rate < 2^19 keep the shifted value below 2^55.
@@ -118,6 +121,11 @@ impl Pulse {
 /// Resolve pulse width and the exact closed-frame rule for a validated rate.
 /// A width beyond [`Signal::MAX_FRAMES`](crate::Signal::MAX_FRAMES) frames
 /// would leave every realizable signal inside its first pulse, so it is rejected.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "quality:core-synthesis-pulse"
+)]
 pub(crate) fn pulse(width_seconds: f64, rate_hz: f64, fs: u32) -> Option<Pulse> {
     let frames = libm::round(width_seconds * f64::from(fs));
     if !(frames >= 1.0 && frames <= crate::numeric::frames_to_f64(crate::Signal::MAX_FRAMES)) {
@@ -204,6 +212,10 @@ mod tests {
         }
     }
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "quality:core-synthesis-steps-are-exactly-rounded-for-representable-frequencies"
+    )]
     fn steps_are_exactly_rounded_for_representable_frequencies() {
         for rate in [1_u32, 8_000, 44_100, 48_000, 96_000, 768_000] {
             for (p, q) in [
@@ -250,6 +262,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "quality:core-synthesis-phase-at-any-frame-matches-the-exact-rational-phase-within-a-constant"
+    )]
     fn phase_at_any_frame_matches_the_exact_rational_phase_within_a_constant() {
         // Phase error of n*step versus exact n*f/fs: less than n * 2^-64 cycles
         // from rounding step, independent of accumulation order.
@@ -288,6 +304,11 @@ mod pulses {
         u128::from(n) - onset < u128::from(width)
     }
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "quality:core-synthesis-pulses-match-independent-integer-onsets-at-early-and-late-frames"
+    )]
     fn pulses_match_independent_integer_onsets_at_early_and_late_frames() {
         for fs in [8000, 44100, 48000, 96000, 768000] {
             for rate in [8_u32, 40, 80, 1000] {
@@ -307,6 +328,12 @@ mod pulses {
         }
     }
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss,
+        reason = "quality:core-synthesis-fractional-and-slow-rates-do-not-open-before-the-exact-onset"
+    )]
     fn fractional_and_slow_rates_do_not_open_before_the_exact_onset() {
         for (p, q) in [
             (9007199254740991_u128, 1_u128 << 53),

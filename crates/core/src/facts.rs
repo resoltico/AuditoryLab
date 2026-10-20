@@ -1,8 +1,4 @@
 //! Typed requested and realized generator quantities.
-#![allow(
-    clippy::cast_precision_loss,
-    reason = "phase increments and bounded widths are presented as binary64 quantities"
-)]
 use crate::{Carrier, Component, ComponentError, Ears, Modulation, SampleRate};
 /// Requested rate and the rate represented by the renderer's phase increment.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -13,6 +9,7 @@ pub struct PhaseRate {
     pub realized_hz: f64,
 }
 impl PhaseRate {
+    #[expect(clippy::cast_precision_loss, reason = "quality:core-facts-from-step")]
     pub(crate) fn from_step(requested_hz: f64, step: u64, rate: SampleRate) -> Self {
         Self {
             requested_hz,

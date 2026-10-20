@@ -43,6 +43,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Internal
 
+- Authored Rust lint exceptions require an exact source scope and written rationale, checked in CI across inactive platform code and macro attributes. Package lint inheritance and production lint-weakening flags are checked; numerical and native unsafe exceptions are confined to their specific operations.
 - macOS CLI and GUI artifacts are separately built for Apple silicon and Intel, with extracted thin-architecture, identity, plist, signature and executable checks. Product/target notices are generated inside each archive. Release asset collection rejects incomplete, duplicate or unexpected archive sets before checksums and attestation.
 - Public library live generation/control/observation and bounded mixed-output monitoring share the device callback's generator boundary. Core rendering and generated-state observation allocate nothing; device monitoring uses a preallocated nonblocking lock attempt per buffer.
 

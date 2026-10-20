@@ -1,8 +1,4 @@
 //! Optional native Pango parser and GTK/XSettings listener; no font installation or settings writes.
-#![allow(
-    unsafe_code,
-    reason = "bounded native C ABI calls; symbols/objects remain live on one settings thread and owned strings/descriptions are freed"
-)]
 use super::*;
 use libloading::Library;
 use std::ffi::{CStr, CString, c_char, c_void};
@@ -12,6 +8,7 @@ static PANGO: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
 static GTK: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
 static GOBJECT: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
 static GLIB: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
+#[expect(unsafe_code, reason = "quality:gui-typography-linux-native-library")]
 fn library(
     slot: &'static std::sync::OnceLock<Option<Library>>,
     name: &str,
@@ -37,9 +34,10 @@ impl PangoFont {
     }
 }
 /// Parse with Pango itself: family names may contain spaces, digits and style words.
-#[allow(
+#[expect(
+    unsafe_code,
     clippy::cast_precision_loss,
-    reason = "native Pango scaled point size fits f32"
+    reason = "quality:gui-typography-linux-native-pango"
 )]
 pub(super) fn pango(text: &str) -> Option<PangoFont> {
     if text.len() > 4096 {
@@ -99,13 +97,15 @@ struct NativeValue {
     kind: usize,
     data: [u64; 2],
 }
+#[expect(unsafe_code, reason = "quality:gui-typography-linux-native-changed")]
 unsafe extern "C" fn changed(_: *mut c_void, _: *mut c_void, data: *mut c_void) {
     // SAFETY: a borrowed AtomicBool is connected only while its enclosing GTK listener lives.
     unsafe { &*data.cast::<AtomicBool>() }.store(true, Ordering::Relaxed);
 }
-#[allow(
+#[expect(
+    unsafe_code,
     clippy::cast_precision_loss,
-    reason = "validated native Xft DPI converts scaled pixels to logical pixels once"
+    reason = "quality:gui-typography-linux-native-gtk-listen"
 )]
 pub(super) fn gtk_listen(
     sender: &TypographySink,
@@ -293,9 +293,10 @@ pub(super) fn gtk_listen(
 }
 
 /// Native GNOME family/point-size/text-scale source when the portal lacks necessary keys.
-#[allow(
+#[expect(
+    unsafe_code,
     clippy::cast_possible_truncation,
-    reason = "validated native text scaling"
+    reason = "quality:gui-typography-linux-native-gnome-listen"
 )]
 pub(super) fn gnome_listen(
     sender: &TypographySink,

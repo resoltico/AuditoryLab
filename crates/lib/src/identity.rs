@@ -9,7 +9,6 @@ pub struct BuildIdentity {
     /// Validated full ASCII hexadecimal source revision, when supplied at build time.
     pub revision: Option<&'static str>,
 }
-#[allow(missing_docs, reason = "generated canonical build identity")]
 mod generated {
     use super::BuildIdentity;
     include!(concat!(env!("OUT_DIR"), "/identity.rs"));

@@ -19,9 +19,9 @@ thread_local! {
     static AUDIO_CANCEL:RefCell<Option<auditorylab::Cancel>> = const {RefCell::new(None)};
     static TERMINATION_PENDING:Cell<bool> = const {Cell::new(false)};
 }
-#[allow(
+#[expect(
     unsafe_code,
-    reason = "Objective-C callback ABI is registered with the matching protocol signature"
+    reason = "quality:gui-native-application-should-terminate"
 )]
 unsafe extern "C-unwind" fn should_terminate(
     _this: &AnyObject,
@@ -49,10 +49,7 @@ unsafe extern "C-unwind" fn should_terminate(
     }
     NSApplicationTerminateReply::TerminateLater
 }
-#[allow(
-    unsafe_code,
-    reason = "registered Cocoa menu action has the matching void/object ABI"
-)]
+#[expect(unsafe_code, reason = "quality:gui-native-application-show-about")]
 unsafe extern "C-unwind" fn show_about(_: &AnyObject, _: Sel, _: &AnyObject) {
     let _ = slint::invoke_from_event_loop(|| {
         if let Some(window) =
@@ -63,10 +60,7 @@ unsafe extern "C-unwind" fn show_about(_: &AnyObject, _: Sel, _: &AnyObject) {
     });
 }
 /// Extend only the known process-owned winit delegate, without replacing its object or methods.
-#[allow(
-    unsafe_code,
-    reason = "registers one optional Cocoa delegate method; no object layout or existing method is changed"
-)]
+#[expect(unsafe_code, reason = "quality:gui-native-application-install")]
 pub(super) fn install(
     window: slint::Weak<super::MainWindow>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -167,9 +161,9 @@ pub(super) fn install(
 }
 /// Slint creates and rebuilds the native menu asynchronously. Retarget only its
 /// application About item after creation; refreshes also cover menu replacement.
-#[allow(
+#[expect(
     unsafe_code,
-    reason = "retargets the process-owned native About item to its retained delegate action"
+    reason = "quality:gui-native-application-refresh-about-menu"
 )]
 pub(super) fn refresh_about_menu() -> Result<(), Box<dyn std::error::Error>> {
     let mtm = MainThreadMarker::new().ok_or("About needs the main thread")?;
@@ -222,10 +216,7 @@ pub(super) fn reply_to_termination(approve: bool) -> bool {
 pub(super) fn audio_cancel(cancel: Option<auditorylab::Cancel>) {
     AUDIO_CANCEL.with(|slot| *slot.borrow_mut() = cancel);
 }
-#[allow(
-    unsafe_code,
-    reason = "registered native action ABI; sender is checked before using NSButton methods"
-)]
+#[expect(unsafe_code, reason = "quality:gui-native-application-stop-audio")]
 unsafe extern "C-unwind" fn stop_audio(_: &AnyObject, _: Sel, sender: &AnyObject) {
     if MainThreadMarker::new().is_none() {
         return;
@@ -246,10 +237,10 @@ unsafe extern "C-unwind" fn stop_audio(_: &AnyObject, _: Sel, sender: &AnyObject
     }
 }
 /// A single native file panel. Its audio-only accessory remains usable within modal scope.
-#[allow(
+#[expect(
     unsafe_code,
     deprecated,
-    reason = "main-thread AppKit sheet/completion ABI; macOS 15-compatible extension filter and checked owned panel lifetime"
+    reason = "quality:gui-native-application-choose-file"
 )]
 pub(super) async fn choose_file(
     ui: &super::MainWindow,

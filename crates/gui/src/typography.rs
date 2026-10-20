@@ -19,9 +19,9 @@ pub(super) fn resolve() -> Typography {
     let mut fonts = fontique::Collection::new(fontique::CollectionOptions::default());
     #[cfg(target_os = "macos")]
     let (size, origin) = {
-        #[allow(
+        #[expect(
             clippy::cast_possible_truncation,
-            reason = "native UI point size fits f32"
+            reason = "quality:gui-typography-native-point-size"
         )]
         let size = objc2_app_kit::NSFont::systemFontSize() as f32;
         (size, "AppKit system UI / fontique SystemUi".to_owned())
@@ -110,11 +110,10 @@ impl Drop for TypographyService {
 }
 
 #[cfg(target_os = "windows")]
-#[allow(
+#[expect(
     unsafe_code,
-    clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
-    reason = "bounded read-only Win32 metrics and WinRT text scale; initialized ABI structure and UTF16 font name"
+    reason = "quality:gui-typography-windows-listener"
 )]
 fn windows_listener(sender: TypographySink, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
     use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize, RoUninitialize};
@@ -130,6 +129,7 @@ fn windows_listener(sender: TypographySink, stop: std::sync::Arc<std::sync::atom
         // SAFETY: NONCLIENTMETRICSW is a plain initialized C record; GET fills exactly cbSize.
         let mut metrics: NONCLIENTMETRICSW = unsafe { std::mem::zeroed() };
         metrics.cbSize = std::mem::size_of::<NONCLIENTMETRICSW>() as u32;
+        // SAFETY: the DPI-aware GET writes the initialized NONCLIENTMETRICSW record above.
         if unsafe {
             SystemParametersInfoForDpi(
                 SPI_GETNONCLIENTMETRICS,
@@ -178,6 +178,7 @@ fn windows_listener(sender: TypographySink, stop: std::sync::Arc<std::sync::atom
     }
     drop(settings);
     if initialized {
+        // SAFETY: balances this worker's successful RoInitialize after its WinRT objects drop.
         unsafe { RoUninitialize() };
     }
 }

@@ -6,7 +6,7 @@
 /// Convert a frame count to binary64, exact below 2^53 frames.
 #[expect(
     clippy::cast_precision_loss,
-    reason = "every frame count in a session is at most 2^36, which binary64 holds exactly"
+    reason = "quality:core-numeric-frames-to-f64"
 )]
 pub(crate) const fn frames_to_f64(frames: u64) -> f64 {
     frames as f64
@@ -16,7 +16,7 @@ pub(crate) const fn frames_to_f64(frames: u64) -> f64 {
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "the only caller has established that the value is whole and within 0..=2^36"
+    reason = "quality:core-numeric-whole-to-frames"
 )]
 pub(crate) const fn whole_to_frames(value: f64) -> u64 {
     value as u64

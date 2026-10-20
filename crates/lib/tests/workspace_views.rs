@@ -8,9 +8,9 @@ fn tone(hz: f64, ears: Ears) -> Component {
         modulation: None,
     }
 }
-#[allow(
+#[expect(
     clippy::unwrap_used,
-    reason = "bounded valid test fixtures with explicit panic diagnostics"
+    reason = "quality:lib-tests-workspace-views-summary"
 )]
 fn summary(components: &[Component]) -> SoundSummary {
     let pairs: Vec<_> = components

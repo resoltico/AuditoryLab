@@ -10,12 +10,11 @@ mod scope;
 mod typography;
 mod worker;
 use actions::{Action, Continuation};
-#[allow(
-    unsafe_code,
+#[expect(
     unreachable_pub,
     clippy::unwrap_used,
     clippy::todo,
-    reason = "Slint generated code"
+    reason = "quality:gui-main-generated"
 )]
 mod generated {
     slint::include_modules!();
@@ -784,10 +783,10 @@ impl Desktop {
             .borrow()
             .as_ref()
             .map_or(0, |w| w.progress.frames());
-        #[allow(
+        #[expect(
             clippy::cast_precision_loss,
             clippy::cast_possible_truncation,
-            reason = "bounded integral frame counts and presentation ratio"
+            reason = "quality:gui-main-progress-fraction"
         )]
         let progress_fraction =
             if app.file_operation == Some(Operation::Export) && self.operation_frames.get() > 0 {
@@ -1304,10 +1303,7 @@ fn sync_action_buttons(ui: &MainWindow, app: &App, dialog_active: bool) {
         .into(),
     );
 }
-#[allow(
-    clippy::cast_possible_truncation,
-    reason = "normalized slider positions fit f32"
-)]
+#[expect(clippy::cast_possible_truncation, reason = "quality:gui-main-position")]
 fn position(setting: auditorylab::Setting, rate: auditorylab::SampleRate, value: f64) -> f32 {
     auditorylab::slider_position(setting, rate, value) as f32
 }

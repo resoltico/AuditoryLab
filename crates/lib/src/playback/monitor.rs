@@ -422,7 +422,10 @@ pub struct Meter {
     pub rms_dbfs: f64,
 }
 /// Reduce a copied window outside the monitoring mutex. Silence uses negative infinity.
-#[allow(clippy::cast_precision_loss, reason = "bounded monitor sample count")]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "quality:lib-playback-monitor-sample-meters"
+)]
 pub fn sample_meters(samples: &[[f64; 2]]) -> [Meter; 2] {
     let mut peak = [0.0_f64; 2];
     for frame in samples {

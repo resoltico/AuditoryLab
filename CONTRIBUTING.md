@@ -12,6 +12,7 @@ Keep temporary files under `target/`. Set TMPDIR (and TEMP/TMP on Windows) to an
 mkdir -p target/tmp
 export TMPDIR="$PWD/target/tmp"
 cargo fmt --all -- --check
+cargo xtask check-lints
 cargo clippy --workspace --all-targets --locked
 cargo test --workspace --locked
 cargo test -p auditorylab-core --release --locked
@@ -24,6 +25,16 @@ The toolchain is pinned in [rust-toolchain.toml](rust-toolchain.toml); the works
 Unit tests live beside code; integration tests use public APIs and the actual CLI executable. Check signal formulas against independent oracles. Give validation guards accepted and rejected neighbours. Change a [pinned digest](crates/core/tests/determinism.rs) only for a deliberate sample change and explain it in the commit. Property tests set bounded case/shrink budgets and disable persistence; turn minimized failures into regression tests. Allocation tests include a negative control. Device tests are ignored by default and use component-free silence; preserve the user's device, routing and volume.
 
 Frontends use the library for domain workflows. Keep rendering and validation in core, publication and playback in the library, and presentation in frontends. Core, library and CLI forbid unsafe code; the GUI confines unsafe code to generated Slint and audited native adapters. [Workspace lints](Cargo.toml) are shared.
+
+### Lint exceptions
+
+All authored packages inherit `[lints] workspace = true`. Cargo.toml owns lint levels; clippy.toml owns Clippy configuration. Argument count is a review signal: split unrelated responsibilities when that simplifies the whole design, and justify an irreducible ABI or cohesive operation locally rather than introducing a parameter bag to silence a lint. Test-function unwrap/expect panics deliberately fail the test; fixture helpers need their own narrow exception.
+
+There is no baseline exemption for existing code. First fix the code or remove an unnecessary allowance. When a conversion, generated-code boundary or native ABI genuinely requires an exception, use `#[expect(LINT, reason = "quality:meaningful-id")]` when supported consistently on the relevant targets. Use `allow` only when a conditional/generated diagnostic cannot be expected reliably, and explain that choice in the rationale. [lint-exceptions.toml](lint-exceptions.toml) owns the justification and exact file, parsed scope, attribute level and lint set; source attributes carry only the ID. Keep local `SAFETY` comments at unsafe operations as well. A changed bound or native lifetime requires fresh review, even when the registered scope stays the same.
+
+`cargo xtask check-lints` parses every authored Rust file on disk, including untracked files and inactive cfg branches; it rejects unknown, duplicate, stale, reasonless and scope/lint-set changes. It inspects macro token attributes and rejects suppression templates or uninspectable attribute interpolation; put a necessary exception on the named enclosing Rust scope. New unsupported exception scopes reject explicitly. It also checks authored manifests, Cargo/workflow flag text, current Rust flag environment variables, literal command arguments/environment values and literal Cargo build directives. Mutation testing's `cap_lints` is confined to cargo-mutants configuration; ordinary builds and docs may not cap or lower lints.
+
+This is a structural check, not proof of a rationale or arbitrary code generation, dynamically assembled commands, external scripts or user/global Cargo settings. Compiler/Clippy/rustdoc checks on all supported targets remain required. `third_party/` contains upstream dependency sources governed by [its patch policy](third_party/README.md); it is not an authored-package exception baseline. Review our patches there at their native boundary rather than claiming this scan validates an upstream codebase. Generated `OUT_DIR` output is checked by its compiler/generator boundary, not this source scan. Syn, quote, proc-macro2 and TOML parsing are build-tool dependencies only; packaged CLI/GUI runtime dependencies do not gain them from xtask.
 
 Mutation testing stays short and scoped to one file:
 

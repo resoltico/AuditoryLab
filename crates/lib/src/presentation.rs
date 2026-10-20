@@ -114,10 +114,10 @@ pub fn interaural_pair(observation: &crate::Observation) -> Option<InterauralPai
     })
 }
 /// Compact six-significant-digit number; approximation is explicit and positive tiny values never become zero.
-#[allow(
+#[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "bounded decimal-place count for presentation only"
+    reason = "quality:lib-presentation-compact-number"
 )]
 pub fn compact_number(value: f64) -> String {
     if !value.is_finite() || value == 0.0 {

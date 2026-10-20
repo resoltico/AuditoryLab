@@ -121,7 +121,7 @@ fn rf64(fmt: &[u8], payload: u64, frames: u64) -> Vec<u8> {
 
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "the chunk bodies built in this module are at most 40 bytes"
+    reason = "quality:lib-wav-header-chunk"
 )]
 fn chunk(header: &mut Vec<u8>, id: [u8; 4], body: &[u8]) {
     header.extend_from_slice(&id);

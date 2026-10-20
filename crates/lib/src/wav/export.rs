@@ -77,7 +77,7 @@ fn write(
 /// Round a binary64 sample within full scale to the nearest binary32.
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "the file holds binary32 samples; the cast rounds to the nearest one"
+    reason = "quality:lib-wav-export-nearest-f32"
 )]
 const fn nearest_f32(sample: f64) -> f32 {
     sample as f32

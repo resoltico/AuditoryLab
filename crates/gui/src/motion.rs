@@ -84,10 +84,7 @@ fn query() -> Preference {
     ))
 }
 #[cfg(target_os = "windows")]
-#[allow(
-    unsafe_code,
-    reason = "read-only Win32 GET fills one initialized, exclusively borrowed BOOL"
-)]
+#[expect(unsafe_code, reason = "quality:gui-motion-query")]
 fn query() -> Preference {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW,
@@ -150,10 +147,7 @@ fn query() -> Preference {
     }
 }
 #[cfg(target_os = "linux")]
-#[allow(
-    unsafe_code,
-    reason = "checked native GSettings C ABI; schema/key admission precedes reading, owned references are released"
-)]
+#[expect(unsafe_code, reason = "quality:gui-motion-gnome-reduced")]
 fn gnome_reduced() -> Option<bool> {
     use std::ffi::{c_char, c_void};
     // Keep native registration code mapped for process lifetime, matching the font adapter.

@@ -156,9 +156,9 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
                             .filter(|scale| scale.is_finite() && (0.5..=4.0).contains(scale))
                     };
                     has_scale = scale.is_some();
-                    #[allow(
+                    #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "validated native text scale"
+                        reason = "quality:gui-typography-linux-portal-text-scale"
                     )]
                     font.map(|font| font.at_font_scale(scale.unwrap_or(1.0) as f32))
                 };
