@@ -1,4 +1,8 @@
 //! Build, license and package Auditory Lab downloads.
+// Exercise the exact native policy source without pulling Winit's example/dev graph.
+#[cfg(test)]
+#[path = "../../third_party/winit/src/platform_impl/linux/x11/xsettings/gtk_scaling.rs"]
+mod gtk_scaling;
 mod notices;
 mod package;
 mod targets;

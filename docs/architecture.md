@@ -77,3 +77,7 @@ GUI typography resolves the native SystemUi face and platform size. Windows mess
 Native motion adapters coalesce enabled/disabled/unknown states off audio processing. AppKit accessibility, Win32 animation and GNOME GSettings/KDE portal queries supply effective preferences. Unknown uses diagnosed live drawing; explicit Hold/Return overrides survive later preference changes until Follow system. Pending action admission and typed setting diagnostics are shared with whole-candidate commit/validation; GUI fields never reuse an unrelated row error.
 
 The macOS text stack applies logical-size optical variants and tracking consistently across shaping, metrics and drawing; [the pinned toolkit patches](../third_party/README.md) retain device-scale-independent spacing.
+
+On X11 desktops using GTK font settings, resolved GDK window scaling drives window DPI while text/font DPI drives font size. This keeps text enlargement out of minimum/preferred window geometry. The pinned Winit adapter retains Xft/RandR fallback and explicit scale overrides.
+
+Pango absolute-pixel descriptions retain their units: window backing scale applies, while point-font DPI/text scaling does not multiply an absolute pixel size.

@@ -22,12 +22,26 @@ fn library(
 }
 static GIO: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
 static GDK: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
+#[derive(Debug, PartialEq)]
+pub(super) struct PangoFont {
+    family: String,
+    pixels: f32,
+    pub(super) absolute: bool,
+}
+impl PangoFont {
+    pub(super) fn at_font_scale(self, scale: f32) -> (String, f32) {
+        (
+            self.family,
+            self.pixels * if self.absolute { 1.0 } else { scale },
+        )
+    }
+}
 /// Parse with Pango itself: family names may contain spaces, digits and style words.
 #[allow(
     clippy::cast_precision_loss,
     reason = "native Pango scaled point size fits f32"
 )]
-pub(super) fn pango(text: &str) -> Option<(String, f32)> {
+pub(super) fn pango(text: &str) -> Option<PangoFont> {
     if text.len() > 4096 {
         return None;
     }
@@ -66,17 +80,17 @@ pub(super) fn pango(text: &str) -> Option<(String, f32)> {
         } else {
             CStr::from_ptr(f).to_str().ok().map(str::to_owned)
         };
-        let pixels = size(desc) as f32 / 1024.0
-            * if absolute(desc) != 0 {
-                1.0
-            } else {
-                96.0 / 72.0
-            };
+        let absolute = absolute(desc) != 0;
+        let pixels = size(desc) as f32 / 1024.0 * if absolute { 1.0 } else { 96.0 / 72.0 };
         free(desc);
         family
             .filter(|s| !s.trim().is_empty())
             .filter(|_| pixels.is_finite() && (1.0..=256.0).contains(&pixels))
-            .map(|f| (f, pixels))
+            .map(|family| PangoFont {
+                family,
+                pixels,
+                absolute,
+            })
     }
 }
 // GValue's stable public ABI on the two supported 64-bit Linux architectures.
@@ -245,12 +259,18 @@ pub(super) fn gtk_listen(
                     free(text.cast());
                 }
                 let next = value
-                    .and_then(|mut p| {
-                        // Xft DPI includes GTK text scaling, not the Winit backing-store multiplier.
-                        if dpi > 0 {
-                            p.1 *= dpi as f32 / (1024.0 * 96.0);
-                        }
-                        super::resolved(fonts, p, "GTK native XSettings/Pango")
+                    .and_then(|font| {
+                        // GTK supplies font DPI independently of GDK window scaling.
+                        let scale = if dpi > 0 {
+                            dpi as f32 / (1024.0 * 96.0)
+                        } else {
+                            1.0
+                        };
+                        super::resolved(
+                            fonts,
+                            font.at_font_scale(scale),
+                            "GTK native XSettings/Pango",
+                        )
                     })
                     .unwrap_or_else(|| Typography {
                         family: system_family(fonts),
@@ -418,10 +438,10 @@ pub(super) fn gnome_listen(
                 }
                 let next = value
                     .filter(|_| scale.is_finite() && (0.5..=4.0).contains(&scale))
-                    .and_then(|(family, size)| {
+                    .and_then(|font| {
                         super::resolved(
                             fonts,
-                            (family, size * scale as f32),
+                            font.at_font_scale(scale as f32),
                             "GNOME native GSettings/Pango",
                         )
                     })
@@ -452,11 +472,21 @@ mod tests {
     #[test]
     fn native_pango_parses_family_style_points_and_absolute_pixels() {
         assert_eq!(
-            pango("DejaVu Serif Bold Italic 15"),
+            pango("DejaVu Serif Bold Italic 15").map(|font| font.at_font_scale(1.0)),
             Some(("DejaVu Serif".into(), 20.0))
         );
-        assert_eq!(pango("Noto Sans 11.25"), Some(("Noto Sans".into(), 15.0)));
-        assert_eq!(pango("Cantarell 16px"), Some(("Cantarell".into(), 16.0)));
+        assert_eq!(
+            pango("Noto Sans 11.25").map(|font| font.at_font_scale(1.0)),
+            Some(("Noto Sans".into(), 15.0))
+        );
+        assert_eq!(
+            pango("Cantarell 16px").map(|font| font.at_font_scale(1.75)),
+            Some(("Cantarell".into(), 16.0))
+        );
+        assert_eq!(
+            pango("DejaVu Sans 12").unwrap().at_font_scale(1.75),
+            ("DejaVu Sans".into(), 28.0)
+        );
         assert_eq!(pango("Cantarell"), None);
         assert_eq!(pango("Cantarell 0"), None);
         assert_eq!(pango("bad\0family 12"), None);

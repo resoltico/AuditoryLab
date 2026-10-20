@@ -91,7 +91,8 @@ lto = "thin"
 codegen-units = 1
 strip = true
 
-# Apply logical-size optical variations consistently to text layout and drawing.
+# Keep native font shaping and window scaling in their own coordinate spaces.
 [patch.crates-io]
 i-slint-core = { path = "third_party/i-slint-core" }
 parley = { path = "third_party/parley" }
+winit = { path = "third_party/winit" }

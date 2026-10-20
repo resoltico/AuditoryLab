@@ -137,14 +137,35 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
                 };
                 let value: Result<zbus::zvariant::OwnedValue, _> =
                     read(&proxy, namespace, key).await;
-                let preference = value
+                let description = value
                     .ok()
-                    .and_then(|v| v.downcast_ref::<&str>().ok().map(str::to_owned))
-                    .and_then(|v| if kde { qfont(&v) } else { native::pango(&v) });
-                let mut next = preference.and_then(|p| {
+                    .and_then(|v| v.downcast_ref::<&str>().ok().map(str::to_owned));
+                let mut has_scale = kde;
+                let preference = if kde {
+                    description.and_then(|value| qfont(&value))
+                } else {
+                    let font = description.and_then(|value| native::pango(&value));
+                    let scale = if font.as_ref().is_some_and(|font| font.absolute) {
+                        Some(1.0)
+                    } else {
+                        let scaling: Result<zbus::zvariant::OwnedValue, _> =
+                            read(&proxy, namespace, "text-scaling-factor").await;
+                        scaling
+                            .ok()
+                            .and_then(|value| value.downcast_ref::<f64>().ok())
+                            .filter(|scale| scale.is_finite() && (0.5..=4.0).contains(scale))
+                    };
+                    has_scale = scale.is_some();
+                    #[allow(
+                        clippy::cast_possible_truncation,
+                        reason = "validated native text scale"
+                    )]
+                    font.map(|font| font.at_font_scale(scale.unwrap_or(1.0) as f32))
+                };
+                let next = preference.and_then(|preference| {
                     resolved(
                         &mut fonts,
-                        p,
+                        preference,
                         if kde {
                             "KDE portal QFont"
                         } else {
@@ -152,27 +173,6 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
                         },
                     )
                 });
-                let mut has_scale = kde;
-                if let Some(font) = next.as_mut()
-                    && !kde
-                {
-                    let scaling: Result<zbus::zvariant::OwnedValue, _> =
-                        read(&proxy, namespace, "text-scaling-factor").await;
-                    if let Some(scale) = scaling
-                        .ok()
-                        .and_then(|v| v.downcast_ref::<f64>().ok())
-                        .filter(|s| s.is_finite() && (0.5..=4.0).contains(s))
-                    {
-                        #[allow(
-                            clippy::cast_possible_truncation,
-                            reason = "validated native text scale"
-                        )]
-                        {
-                            font.size *= scale as f32;
-                            has_scale = true;
-                        }
-                    }
-                }
                 if !kde
                     && (next.is_none() || !has_scale)
                     && native::gnome_listen(&sender, &stop, &mut fonts)
@@ -284,7 +284,12 @@ mod tests {
         assert!(set("font-name", "DejaVu Sans 12"));
         assert!(set("text-scaling-factor", "1.0"));
         let mut service = crate::typography::TypographyService::start();
-        for (scale, size) in [("1.0", 16.0), ("2.0", 32.0), ("1.0", 16.0)] {
+        for (description, scale, size) in [
+            ("DejaVu Sans 12", "1.0", 16.0),
+            ("DejaVu Sans 12", "2.0", 32.0),
+            ("DejaVu Sans 16px", "1.75", 16.0),
+        ] {
+            assert!(set("font-name", description));
             assert!(set("text-scaling-factor", scale));
             let deadline = std::time::Instant::now() + Duration::from_secs(3);
             loop {
