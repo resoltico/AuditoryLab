@@ -65,6 +65,12 @@ struct Desktop {
     dialog_active: Cell<bool>,
     operation_frames: Cell<u64>,
 }
+fn hide_monitor_window(ui: &MainWindow, monitor: &MonitorWindow, was_focused: bool) {
+    let _ = monitor.hide();
+    if was_focused {
+        ui.invoke_focus_monitor_opener();
+    }
+}
 impl Desktop {
     fn refresh_typography(&self) {
         #[cfg(target_os = "macos")]
@@ -807,8 +813,12 @@ impl Desktop {
                 if focused_monitor {
                     let _ = window.show();
                 } else {
-                    let _ = window.hide();
-                    ui.invoke_focus_monitor_opener();
+                    // Hiding can transfer native focus; sample ownership first.
+                    let was_focused = window
+                        .window()
+                        .with_winit_window(winit::window::Window::has_focus)
+                        .unwrap_or(false);
+                    hide_monitor_window(ui, &window, was_focused);
                 }
             }
         }
@@ -2076,6 +2086,121 @@ mod action_wiring_tests {
             ui.get_monitor_open(),
             "responsive fallback must preserve the user's open choice"
         );
+        assert_monitor_handoff_preserves_numeric_entry(&ui);
         ui.hide().unwrap();
+    }
+
+    fn assert_monitor_handoff_preserves_numeric_entry(ui: &MainWindow) {
+        use slint::platform::{Key, WindowEvent};
+        fn key(ui: &MainWindow, text: impl Into<slint::SharedString>) {
+            let text = text.into();
+            ui.window()
+                .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+            ui.window()
+                .dispatch_event(WindowEvent::KeyReleased { text });
+            slint::platform::update_timers_and_animations();
+        }
+        let pending = Rc::new(RefCell::new(None::<String>));
+        let commits = Rc::new(RefCell::new(Vec::<String>::new()));
+        let restores = Rc::new(Cell::new(0));
+        let p = pending.clone();
+        ui.on_stage(move |id, setting, value| {
+            if id == "focus-fixture" && setting == 0 {
+                *p.borrow_mut() = Some(value.to_string());
+            }
+        });
+        let c = commits.clone();
+        ui.on_edit(move |id, setting, value| {
+            if id == "focus-fixture" && setting == 0 {
+                c.borrow_mut().push(value.to_string());
+            }
+        });
+        let p = pending.clone();
+        let r = restores.clone();
+        ui.on_restore(move |id, setting| {
+            assert_eq!(id, "focus-fixture");
+            assert_eq!(setting, 0);
+            *p.borrow_mut() = None;
+            r.set(r.get() + 1);
+            "440".into()
+        });
+        ui.set_tab_index(1);
+        ui.set_can_edit(true);
+        ui.set_ui_size(13.0);
+        ui.window().set_size(slint::PhysicalSize::new(1100, 900));
+        ui.set_rows(ModelRc::new(VecModel::from(vec![Row {
+            id: "focus-fixture".into(),
+            text0: "440".into(),
+            text2: "0".into(),
+            text3: "0".into(),
+            text4: "0".into(),
+            ..Row::default()
+        }])));
+        ui.set_edits_suspended(false);
+        ui.window()
+            .dispatch_event(WindowEvent::WindowActiveChanged(true));
+        ui.invoke_focus_monitor_opener();
+        // Navigate the real component tree, proving the target by its stage callback.
+        for _ in 0..40 {
+            key(ui, Key::Tab);
+            for _ in 0..4 {
+                key(ui, Key::RightArrow);
+            }
+            key(ui, "1");
+            if pending.borrow().is_some() {
+                break;
+            }
+            key(ui, Key::Escape);
+        }
+        assert_eq!(pending.borrow().as_deref(), Some("4401"));
+        assert!(commits.borrow().is_empty());
+        let monitor = MonitorWindow::new().unwrap();
+        monitor.show().unwrap();
+        hide_monitor_window(ui, &monitor, false);
+        slint::platform::update_timers_and_animations();
+        assert!(
+            commits.borrow().is_empty(),
+            "hiding an unfocused monitor must not commit a main-window field"
+        );
+        key(ui, Key::Escape);
+        assert_eq!(restores.get(), 1);
+        assert!(pending.borrow().is_none());
+        for _ in 0..4 {
+            key(ui, Key::RightArrow);
+        }
+        key(ui, "e");
+        assert_eq!(pending.borrow().as_deref(), Some("440e"));
+        monitor.show().unwrap();
+        hide_monitor_window(ui, &monitor, false);
+        slint::platform::update_timers_and_animations();
+        assert!(
+            commits.borrow().is_empty(),
+            "incomplete numeric entry must survive responsive hiding"
+        );
+        key(ui, Key::Escape);
+        assert_eq!(restores.get(), 2);
+        assert!(pending.borrow().is_none());
+        // Native deactivation suspends edit commits before Slint delivers focus loss.
+        for _ in 0..4 {
+            key(ui, Key::RightArrow);
+        }
+        key(ui, "1");
+        ui.set_edits_suspended(true);
+        ui.window()
+            .dispatch_event(WindowEvent::WindowActiveChanged(false));
+        monitor.show().unwrap();
+        hide_monitor_window(ui, &monitor, true);
+        ui.window()
+            .dispatch_event(WindowEvent::WindowActiveChanged(true));
+        ui.set_edits_suspended(false);
+        slint::platform::update_timers_and_animations();
+        assert!(commits.borrow().is_empty());
+        let staged_before = pending.borrow().clone();
+        key(ui, "2");
+        assert_eq!(
+            *pending.borrow(),
+            staged_before,
+            "opener handoff must leave the numeric field unfocused"
+        );
     }
 }
