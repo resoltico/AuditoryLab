@@ -264,8 +264,14 @@ impl Workbench {
     }
     /// Evaluate the same complete candidate as an explicit action, without sending it to audio.
     pub(crate) fn action_draft(&self, rate: SampleRate) -> Option<Draft> {
+        let pending = self.pending_view(rate);
+        let candidate = pending.as_ref().unwrap_or(self);
+        candidate.input_valid().then(|| candidate.draft.clone())
+    }
+    /// Validate staged text for actions and diagnostics without changing the audio target.
+    pub(crate) fn pending_view(&self, rate: SampleRate) -> Option<Self> {
         if !self.has_pending() {
-            return self.input_valid().then(|| self.draft.clone());
+            return None;
         }
         let mut candidate = Self::new(self.draft.clone(), rate);
         candidate.pending = self.pending.clone();
@@ -273,7 +279,7 @@ impl Workbench {
         candidate.pending_metadata = self.pending_metadata.clone();
         candidate.metadata_errors = self.metadata_errors.clone();
         candidate.commit_pending(rate);
-        candidate.input_valid().then_some(candidate.draft)
+        Some(candidate)
     }
     pub(crate) fn field_error(
         &self,
@@ -750,6 +756,9 @@ mod tests {
         );
         assert!(w.field_error(id, Setting::Level, rate).is_empty());
         w.pending.insert((id, Setting::Frequency), "3750".into());
+        let pending = w.pending_view(rate).unwrap();
+        assert!(pending.field_error(id, Setting::Frequency, rate).is_empty());
+        assert!(!pending.peak.contains("Correct the numeric fields"));
         let draft = w.action_draft(rate).unwrap();
         assert_eq!(draft.title(), "A pending title");
         assert!(draft.target(rate).is_ok());

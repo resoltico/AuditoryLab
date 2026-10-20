@@ -400,21 +400,20 @@ impl Desktop {
                 })
                 .into(),
         );
-        let mut errors = app
-            .workbench
+        let pending = app.workbench.pending_view(app.workbench.rate(app.rate));
+        let input_view = pending.as_ref().unwrap_or(&app.workbench);
+        let mut errors = input_view
             .metadata_errors
             .values()
             .cloned()
             .collect::<Vec<_>>();
-        let timing = app.workbench.draft.saved_audio_diagnostics(app.rate);
-        let duration_error = app
-            .workbench
+        let timing = input_view.draft.saved_audio_diagnostics(app.rate);
+        let duration_error = input_view
             .metadata_errors
             .get("duration")
             .cloned()
             .or(timing.duration);
-        let fade_error = app
-            .workbench
+        let fade_error = input_view
             .metadata_errors
             .get("fade")
             .cloned()
@@ -427,8 +426,12 @@ impl Desktop {
         ui.set_duration_error(duration_error.unwrap_or_default().into());
         ui.set_fade_error(fade_error.unwrap_or_default().into());
         ui.set_metadata_error(errors.join("; ").into());
-        ui.set_peak(app.workbench.peak.as_str().into());
-        self.sync_rows(&app);
+        ui.set_peak(if pending.is_some() {
+            format!("Pending validation · {}", input_view.peak).into()
+        } else {
+            input_view.peak.as_str().into()
+        });
+        self.sync_rows(&app, input_view);
         let validation = if app.editing {
             app.workbench.draft.preset().at(app.rate)
         } else {
@@ -936,7 +939,7 @@ impl Desktop {
             ui.set_editor_scroll_y(0.0);
         }
     }
-    fn sync_rows(&self, app: &App) {
+    fn sync_rows(&self, app: &App, input_view: &app::Workbench) {
         let ids: Vec<_> = app
             .workbench
             .draft
@@ -971,8 +974,7 @@ impl Desktop {
                     Some(auditorylab::Modulation::Sinusoidal { .. }) => 1,
                     Some(auditorylab::Modulation::Rectangular { .. }) => 2,
                 },
-                error: app
-                    .workbench
+                error: input_view
                     .messages
                     .get(id)
                     .map_or("", String::as_str)
@@ -986,8 +988,7 @@ impl Desktop {
                     .into(),
                 ..Row::default()
             };
-            row.error0 = app
-                .workbench
+            row.error0 = input_view
                 .field_error(*id, auditorylab::Setting::ALL[0], rate)
                 .into();
             row.text0 = app
@@ -1010,8 +1011,7 @@ impl Desktop {
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[0]).unwrap_or(0.0),
             );
-            row.error1 = app
-                .workbench
+            row.error1 = input_view
                 .field_error(*id, auditorylab::Setting::ALL[1], rate)
                 .into();
             row.text1 = app
@@ -1034,8 +1034,7 @@ impl Desktop {
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[1]).unwrap_or(0.0),
             );
-            row.error2 = app
-                .workbench
+            row.error2 = input_view
                 .field_error(*id, auditorylab::Setting::ALL[2], rate)
                 .into();
             row.text2 = app
@@ -1058,8 +1057,7 @@ impl Desktop {
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[2]).unwrap_or(0.0),
             );
-            row.error3 = app
-                .workbench
+            row.error3 = input_view
                 .field_error(*id, auditorylab::Setting::ALL[3], rate)
                 .into();
             row.text3 = app
@@ -1082,8 +1080,7 @@ impl Desktop {
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[3]).unwrap_or(0.0),
             );
-            row.error4 = app
-                .workbench
+            row.error4 = input_view
                 .field_error(*id, auditorylab::Setting::ALL[4], rate)
                 .into();
             row.text4 = app
@@ -1106,8 +1103,7 @@ impl Desktop {
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[4]).unwrap_or(0.0),
             );
-            row.error5 = app
-                .workbench
+            row.error5 = input_view
                 .field_error(*id, auditorylab::Setting::ALL[5], rate)
                 .into();
             row.text5 = app
@@ -1130,8 +1126,7 @@ impl Desktop {
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[5]).unwrap_or(0.0),
             );
-            row.error6 = app
-                .workbench
+            row.error6 = input_view
                 .field_error(*id, auditorylab::Setting::ALL[6], rate)
                 .into();
             row.text6 = app
@@ -1154,8 +1149,7 @@ impl Desktop {
                 rate,
                 auditorylab::setting_value(c, auditorylab::Setting::ALL[6]).unwrap_or(0.0),
             );
-            row.error7 = app
-                .workbench
+            row.error7 = input_view
                 .field_error(*id, auditorylab::Setting::ALL[7], rate)
                 .into();
             row.text7 = app
