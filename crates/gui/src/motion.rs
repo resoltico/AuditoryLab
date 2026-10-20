@@ -138,10 +138,7 @@ fn query() -> Preference {
                         .await
                         .ok()?,
                 };
-                let duration = f64::try_from(value.try_clone().ok()?)
-                    .ok()
-                    .or_else(|| String::try_from(value).ok()?.parse().ok())?;
-                (duration.is_finite() && duration >= 0.0).then_some(duration == 0.0)
+                kde_reduced(&value)
             },
             async {
                 async_io::Timer::after(std::time::Duration::from_secs(2)).await;
@@ -153,6 +150,15 @@ fn query() -> Preference {
     Preference::Unknown
 }
 #[cfg(target_os = "linux")]
+fn kde_reduced(value: &zbus::zvariant::OwnedValue) -> Option<bool> {
+    // Read wraps the setting in a variant; ReadOne returns the setting directly.
+    let duration = value
+        .downcast_ref::<f64>()
+        .ok()
+        .or_else(|| value.downcast_ref::<&str>().ok()?.parse().ok())?;
+    (duration.is_finite() && duration >= 0.0).then_some(duration == 0.0)
+}
+#[cfg(target_os = "linux")]
 fn desktop_has(name: &str) -> bool {
     std::env::var("XDG_CURRENT_DESKTOP")
         .unwrap_or_default()
@@ -162,6 +168,34 @@ fn desktop_has(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn kde_duration_accepts_both_portal_reply_shapes_and_rejects_invalid_values() {
+        use zbus::zvariant::{OwnedValue, Value};
+        for (value, expected) in [
+            (0.0, Some(true)),
+            (1.0, Some(false)),
+            (0.5, Some(false)),
+            (-1.0, None),
+            (f64::NAN, None),
+        ] {
+            let direct = OwnedValue::from(value);
+            let wrapped = Value::Value(Box::new(Value::F64(value)))
+                .try_to_owned()
+                .unwrap();
+            assert_eq!(kde_reduced(&direct), expected);
+            assert_eq!(kde_reduced(&wrapped), expected);
+        }
+        for (text, expected) in [("0", Some(true)), ("1.5", Some(false)), ("bad", None)] {
+            let value = Value::from(text);
+            assert_eq!(kde_reduced(&value.try_to_owned().unwrap()), expected);
+            assert_eq!(
+                kde_reduced(&Value::Value(Box::new(value)).try_to_owned().unwrap()),
+                expected
+            );
+        }
+        assert_eq!(kde_reduced(&OwnedValue::from(true)), None);
+    }
     #[test]
     fn unknown_is_not_a_confirmed_reduced_motion_preference() {
         assert_eq!(from_reduced(None), Preference::Unknown);
