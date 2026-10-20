@@ -104,6 +104,11 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
         }
         return;
     }
+    // GNOME's own settings include effective text scaling. Older GTK portals
+    // can return a stale scale even while native GSettings has changed.
+    if gnome && native::gnome_listen(&sender, &stop, &mut fonts) {
+        return;
+    }
     async_io::block_on(async {
         let connect = async {
             zbus::connection::Builder::session()?
@@ -248,5 +253,65 @@ mod tests {
         ] {
             assert!(qfont(bad).is_none(), "{bad}");
         }
+    }
+    #[test]
+    #[ignore = "requires an explicitly isolated GNOME D-Bus session; changes its font and scale"]
+    fn native_gnome_font_and_scale_changes_reach_the_running_service() {
+        use std::process::Command;
+        assert_eq!(
+            std::env::var("AUDITORYLAB_FONT_TEST_SESSION").as_deref(),
+            Ok("isolated"),
+            "run only in a disposable desktop session"
+        );
+        fn get(key: &str) -> String {
+            let output = Command::new("gsettings")
+                .args(["get", "org.gnome.desktop.interface", key])
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            String::from_utf8(output.stdout).unwrap().trim().to_owned()
+        }
+        fn set(key: &str, value: &str) -> bool {
+            Command::new("gsettings")
+                .args(["set", "org.gnome.desktop.interface", key, value])
+                .status()
+                .is_ok_and(|s| s.success())
+        }
+        struct Restore(String, String);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                if !set("font-name", &self.0) || !set("text-scaling-factor", &self.1) {
+                    eprintln!("Failed to restore isolated GNOME typography");
+                }
+            }
+        }
+        let restore = Restore(get("font-name"), get("text-scaling-factor"));
+        assert!(set("font-name", "DejaVu Sans 12"));
+        assert!(set("text-scaling-factor", "1.0"));
+        let mut service = crate::typography::TypographyService::start();
+        for (scale, size) in [("1.0", 16.0), ("2.0", 32.0), ("1.0", 16.0)] {
+            assert!(set("text-scaling-factor", scale));
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            loop {
+                if let Some(font) = service.latest()
+                    && font.family == "DejaVu Sans"
+                    && (font.size - size).abs() < 0.01
+                {
+                    eprintln!(
+                        "Native GNOME font/scale delivered {} at {} logical px",
+                        font.family, font.size
+                    );
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "native GNOME font scale {scale} was not delivered"
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+        service.shutdown();
+        assert!(set("font-name", &restore.0));
+        assert!(set("text-scaling-factor", &restore.1));
     }
 }
