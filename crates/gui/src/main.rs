@@ -1358,6 +1358,19 @@ fn reply_native_quit(approve: bool) -> bool {
     }
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let result = run();
+    #[cfg(target_os = "windows")]
+    if let Err(error) = &result {
+        let _ = rfd::MessageDialog::new()
+            .set_title("Auditory Lab error")
+            .set_description(format!("Auditory Lab could not continue.\n\n{error}"))
+            .set_level(rfd::MessageLevel::Error)
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
+    }
+    result
+}
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if args == ["--version"] {
         println!("{}", auditorylab::version_line("auditorylab-gui"));

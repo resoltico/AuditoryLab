@@ -6,7 +6,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Breaking
 
-- Desktop drawing requires an OpenGL-capable graphics driver; software-renderer recovery is removed.
+- Desktop drawing requires an OpenGL-capable graphics driver (OpenGL 2.0 or newer on Windows); software-renderer recovery is removed. Fatal Windows application errors appear in a native dialog.
 - Integer-phase oscillators and exact frame-quantized pulse timing replace the synthesis model. Click and rectangular-gate pulses last exactly `round(width_seconds × sample rate)` frames and start on the first frame at or after each onset; edges can move by one frame against 0.3.0. Recipes that leave no closed frame in a period, or whose pulse widths exceed 2^36 frames at the selected rate, are rejected. Reduce such widths to the supported frame limit. Tone and modulation sample bits also change.
 - Rust packages are `auditorylab-core`, `auditorylab`, `auditorylab-cli` and `auditorylab-gui`, under `crates/core`, `crates/lib`, `crates/cli` and `crates/gui`. WAV and device APIs move into the library. Callers use `Stimulus::signal`, immutable seekable `Signal`, and the library's loading/export/playback API; update Rust imports and exhaustive error matches. Install the CLI with `cargo install --locked --path crates/cli`.
 - Windows source builds require MSVC Visual Studio Build Tools. Downloads statically link the Microsoft C runtime. Linux builds use distribution fontconfig without the former font-library patch or root-directory build requirement.

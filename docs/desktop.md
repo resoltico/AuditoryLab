@@ -60,7 +60,7 @@ New/copy/close/File Quit/native macOS Cmd-Q protect dirty content with Save/Disc
 
 A downloaded macOS app may require **System Settings → Privacy & Security → Open Anyway** after its first launch attempt; see [Apple’s instructions](https://support.apple.com/en-us/102445).
 
-Linux needs X11 or Wayland, fontconfig, xkbcommon, fonts, OpenGL and an xdg-desktop-portal with a desktop backend for native dialogs. X11 also needs `libxkbcommon-x11-0` on Debian/Ubuntu. Windows needs the matching architecture and an OpenGL driver. See [source prerequisites](../README.md#build-from-source).
+Linux needs X11 or Wayland, fontconfig, xkbcommon, fonts, OpenGL and an xdg-desktop-portal with a desktop backend for native dialogs. X11 also needs `libxkbcommon-x11-0` on Debian/Ubuntu. Windows needs the matching architecture and an OpenGL 2.0 or newer driver. Fatal Windows application errors appear in a native dialog, including failure to create a graphics context. See [source prerequisites](../README.md#build-from-source).
 
 Typography uses San Francisco on macOS, Windows message font/text scale (Segoe UI by default), and the configured Linux desktop family/size. GNOME uses its settings portal or native GSettings; KDE uses its QFont portal preference; other GTK desktops use XSettings. Pango/GTK/GIO support Linux parsing/fallbacks. Missing preference sources/families are diagnosed. Updates coalesce off audio/UI processing and reflow app-owned windows without submitting audio targets. Menu/context-menu routing retains ordinary backend handling.
 
