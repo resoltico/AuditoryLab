@@ -23,7 +23,7 @@ The toolchain is pinned in [rust-toolchain.toml](rust-toolchain.toml); the works
 
 Unit tests live beside code; integration tests use public APIs and the actual CLI executable. Check signal formulas against independent oracles. Give validation guards accepted and rejected neighbours. Change a [pinned digest](crates/core/tests/determinism.rs) only for a deliberate sample change and explain it in the commit. Property tests set bounded case/shrink budgets and disable persistence; turn minimized failures into regression tests. Allocation tests include a negative control. Device tests are ignored by default and use component-free silence; preserve the user's device, routing and volume.
 
-Frontends use the library for domain workflows. Keep rendering and validation in core, publication and playback in the library, and presentation in frontends. Core, library and CLI forbid unsafe code; the GUI's only unsafe allowance covers Slint-generated code. [Workspace lints](Cargo.toml) are shared.
+Frontends use the library for domain workflows. Keep rendering and validation in core, publication and playback in the library, and presentation in frontends. Core, library and CLI forbid unsafe code; the GUI confines unsafe code to generated Slint and audited native adapters. [Workspace lints](Cargo.toml) are shared.
 
 Mutation testing stays short and scoped to one file:
 
@@ -42,7 +42,7 @@ Use `--re` to focus a smaller selection. Investigate survivors against an indepe
 
 ## Desktop checks
 
-Open the built window. Check selection, static previews, waveform windows, selectable research text, native Open and Save, confirmed replacement, export cancellation, close during an operation and About. Play only a component-free recipe during development checks. Check progress and CPU use at the intended display scale. The UI uses OpenGL and synthesis runs on the CPU.
+Open an isolated built window. Check fixed toolbar/transport versus scrolling document, bounded drawer/large-text monitor window, document-local static patterns, selectable details, input recovery and field-specific accessibility messages. Save a component-free snapshot while audio continues; verify Stop inside the real native panel, later edits remaining dirty, cancellation/replacement and both-worker quit cleanup. Check native Open, export cancellation, monitor Live/Held/Stale/Last and About. Play only a component-free recipe during development checks. Check progress and CPU use at the intended display scale. The UI uses OpenGL and synthesis runs on the CPU.
 
 ## Packaging and releases
 

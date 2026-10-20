@@ -2,7 +2,7 @@ import {
     Palette, AboutSlint, Button, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, TabWidget, ProgressIndicator
 }
 from "std-widgets.slint";
-export struct ModelRow { label: string, trace: string }
+export struct ModelRow { id: string, label: string, trace: string }
 export struct Row {
     id: string,
 
@@ -11,21 +11,30 @@ export struct Row {
     modulation: int,
     error: string,
     heading: string,
+    name: string,
     context: string,
+    error0: string,
     text0: string,
     pos0: float,
+    error1: string,
     text1: string,
     pos1: float,
+    error2: string,
     text2: string,
     pos2: float,
+    error3: string,
     text3: string,
     pos3: float,
+    error4: string,
     text4: string,
     pos4: float,
+    error5: string,
     text5: string,
     pos5: float,
+    error6: string,
     text6: string,
     pos6: float,
+    error7: string,
     text7: string,
     staged0:bool,
     staged1:bool,
@@ -39,6 +48,14 @@ export struct Row {
     pos7: float,
 }
 // Keep uncommitted text and focus local; model refreshes only replace unfocused text.
+component Disclosure inherits Button {
+    in-out property <bool> expanded: false;
+    in property <string> label;
+    text: (root.expanded ? "▾ " : "▸ ") + root.label;
+    accessible-label: root.label + (root.expanded ? " · expanded" : " · collapsed");
+    accessible-expanded: root.expanded;
+    clicked => {root.expanded = !root.expanded;}
+}
 component NumericField inherits LineEdit {
     in property <string> display-text;
     in property <bool> edits-suspended:false;
@@ -192,7 +209,7 @@ component Lane inherits Rectangle {
     in property <string> limit: "1";
     in property <length> ui-size:13px;
     background: #131d2b;
-    height: root.ui-size*5.2;
+    height: root.ui-size*4;
     accessible-role: image;
     accessible-label: root.label + " samples, common symmetric scale ±" + root.limit;
     Text {
@@ -204,30 +221,30 @@ component Lane inherits Rectangle {
     }
     Text {
         x: 6px;
-        y: root.ui-size*1.3;
+        y: root.ui-size;
         text: "+"+root.limit;
         color: #c6d0df;
-        font-size: root.ui-size*0.85;
+        font-size: root.ui-size;
     }
     Text {
         x: 6px;
-        y:root.ui-size*2.5;
+        y:root.ui-size*2;
         text: "0";
         color: #c6d0df;
-        font-size: root.ui-size*0.85;
+        font-size: root.ui-size;
     }
     Text {
         x: 6px;
-        y:root.ui-size*3.8;
+        y:root.ui-size*3;
         text: "−"+root.limit;
         color: #c6d0df;
-        font-size: root.ui-size*0.85;
+        font-size: root.ui-size;
     }
     Rectangle {
-        x: 42px;
+        x: root.ui-size*7;
         y: root.ui-size*1.3;
-        width: parent.width - 50px;
-        height:root.ui-size*3.2;
+        width: max(1px, parent.width - root.ui-size*7 - 8px);
+        height:root.ui-size*2.5;
         clip: true;
         Rectangle {
             y: parent.height / 2;
@@ -247,12 +264,91 @@ component Lane inherits Rectangle {
         }
     }
 }
+export struct MonitorData {
+    state:string,age:string,caption:string,meters:string,warning:string,motion:string,
+    left:string,right:string,limit:string,spanlabel:string,spanchoice:int,scalechoice:int,held:bool,overridden:bool
+}
+component MonitorPanel inherits VerticalBox {
+    in property <MonitorData> data;
+    in property <length> ui-size:13px;
+    callback span(int);callback scale(int);callback hold();callback follow();callback details();callback collapse();
+    spacing:4px;padding:0px;
+    HorizontalBox {padding:0px;vertical-stretch:0;
+        Text {text:"Output monitor";font-weight:700;}
+        Text {text:root.data.state;font-weight:600;}
+        Text {min-width:0px;text:root.data.age;wrap:word-wrap;}
+        Button {text:"Hide";accessible-label:"Hide output monitor";clicked=>{root.collapse();}}
+    }
+    HorizontalBox {padding:0px;spacing:12px;
+        VerticalBox {padding:0px;spacing:3px;
+            Text {min-width:0px;text:root.data.caption;max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
+            Lane {label:"Left";trace:root.data.left;limit:root.data.limit;ui-size:root.ui-size;}
+            Lane {label:"Right";trace:root.data.right;limit:root.data.limit;ui-size:root.ui-size;}
+            HorizontalBox {padding:0px;vertical-stretch:0;Text {text:"−"+root.data.spanlabel;}Rectangle {horizontal-stretch:1;}Text {text:"Captured end";}}
+        }
+        VerticalBox {padding:0px;spacing:4px;preferred-width:root.ui-size*21;max-width:root.ui-size*25;
+            ComboBox {model:["2 ms","10 ms","40 ms","100 ms"];current-index:root.data.spanchoice;enabled:!root.data.held;accessible-label:"Waveform time window";selected(v)=>{root.span(self.current-index);}}
+            ComboBox {model:["Fixed ±1","Fit signal"];current-index:root.data.scalechoice;enabled:!root.data.held;accessible-label:"Waveform amplitude scale";selected(v)=>{root.scale(self.current-index);}}
+            Button {text:root.data.held ? "Return to live" : "Hold display";clicked=>{root.hold();}}
+            Button {text:"Details…";accessible-label:"Full audio diagnostics and capture source";clicked=>{root.details();}}
+            if root.data.overridden: Button {text:"Follow system motion";clicked=>{root.follow();}}
+            Text {text:root.data.meters;max-height:root.ui-size*4;wrap:word-wrap;overflow:elide;}
+        }
+    }
+    Text {text:root.data.motion;wrap:word-wrap;vertical-stretch:0;max-height:root.ui-size*2.5;overflow:elide;}
+    if root.data.warning!="": Text {text:root.data.warning;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
+}
+export component MonitorWindow inherits Window {
+    title:"Output monitor";
+    in property <string> ui-family;in property <length> ui-size:13px;
+    default-font-family:root.ui-family;default-font-size:root.ui-size;
+    preferred-width:950px;preferred-height:max(420px,root.ui-size*26);min-width:680px;min-height:400px;
+    in property <MonitorData> data;
+    callback span(int);callback scale(int);callback hold();callback follow();callback details();callback dismiss();
+    VerticalBox {
+        MonitorPanel {data:root.data;ui-size:root.ui-size;span(i)=>{root.span(i);}scale(i)=>{root.scale(i);}hold=>{root.hold();}follow=>{root.follow();}details=>{root.details();}collapse=>{root.dismiss();}}
+    }
+}
+export component DetailsWindow inherits Window {
+    in property <string> ui-family;in property <length> ui-size:13px;
+    default-font-family:root.ui-family;default-font-size:root.ui-size;
+    in property <string> heading;title:root.heading;
+    in property <string> content;
+    in property <bool> can-refresh;
+    public function focus-close(){close.focus();}
+    callback refresh-content();
+    preferred-width:750px;preferred-height:600px;min-width:500px;min-height:350px;
+    callback dismiss();
+    FocusScope {
+        key-pressed(e)=>{if e.text==Key.Escape{root.dismiss();return accept;}return reject;}
+    VerticalBox {
+        Text {text:root.heading;font-weight:700;vertical-stretch:0;}
+        TextEdit {text:root.content;read-only:true;accessible-label:root.heading;}
+        if root.can-refresh: Button {text:"Refresh diagnostics snapshot";clicked=>{root.refresh-content();}}
+        close := Button {text:"Close";clicked=>{root.dismiss();}}
+    }
+}
+}
+export component AudioControlsWindow inherits Window {
+    title:"Audio controls";
+    in property <string> ui-family;in property <length> ui-size:13px;
+    default-font-family:root.ui-family;default-font-size:root.ui-size;
+    in property <string> source;in property <string> elapsed;in property <bool> active;
+    preferred-width:400px;preferred-height:150px;
+    callback stop();
+    VerticalBox {
+        Text {text:root.source;wrap:word-wrap;}
+        Text {text:root.elapsed;}
+        Button {text:"Stop audio";enabled:root.active;clicked=>{root.stop();}}
+    }
+}
+
 export component MainWindow inherits Window {
     title: "Auditory Lab";
     in-out property <bool> edits-suspended:false;
     callback restore(string,int)->string;
     callback restore-metadata(string)->string;
-    in-out property <bool> show-visualization:true;
+    in-out property <bool> monitor-open:true;
     in property <bool> native-mac: false;
     in property <string> draft-brief;
     in property <bool> title-staged;
@@ -260,15 +356,35 @@ export component MainWindow inherits Window {
     in property <bool> duration-staged;
     in property <bool> fade-staged;
 
+    in property <string> output-state;
+    in property <string> receipt-age;
+    in property <string> capture-duration;
+    in property <string> motion-reason;
+    in property <bool> motion-overridden;
+    in-out property <length> monitor-height:270px;
+    out property <bool> drawer-fits:true;
+    out property <length> effective-drawer-height:270px;
+    function update-monitor-layout(){
+        root.drawer-fits=root.height >= 280px+root.ui-size*30;
+        root.effective-drawer-height=min(root.monitor-height,max(root.ui-size*19,root.height - 280px - root.ui-size*11));
+        root.window-changed();
+    }
+    changed height=>{root.update-monitor-layout();}
+    changed monitor-height=>{root.update-monitor-layout();}
+    public function resize-monitor(pixels:float){root.monitor-height=max(240px,min(360px,pixels*1px));}
+    public function focus-monitor-opener(){monitor-opener.focus();}
+    out property <MonitorData> monitor-data:{state:root.output-state,age:root.receipt-age,caption:root.waveform-caption,meters:root.meters,warning:root.monitor-warning,motion:root.motion-reason,left:root.left-path,right:root.right-path,limit:root.scale-label,spanlabel:root.capture-duration,spanchoice:root.window-index,scalechoice:root.scale-index,held:root.held,overridden:root.motion-overridden};
+    callback show-diagnostics();
+    callback show-research();
+    callback hold-changed();
+    callback follow-motion();
     in property <string> waveform-caption;
     in property <string> scale-label: "1";
     in property <string> model-caption;
     in property <[ModelRow]> model-rows;
     in property <string> monitor-warning;
     in property <string> typography-origin;
-    in-out property <int> view-index: 0;
     in-out property <int> scale-index: 0;
-    in-out property <bool> show-audio-details: false;
     in property <string> ui-family;
     in property <length> ui-size: 13px;
     default-font-family: root.ui-family;
@@ -291,12 +407,13 @@ export component MainWindow inherits Window {
     in property <string> details;
     in property <string> guidance;
     in property <string> status;
-    in property <string> operation-reason;
+    in property <string> file-activity;
     in property <bool> busy;
-    in property <bool> live;
+    in property <bool> exporting;
+    callback cancel-file();
     in property <bool> playback-busy;
-    in property <bool> can-cancel;
-    in property <string> operation-control;
+    in property <bool> transport-enabled;
+    in property <string> transport-action;
     in property <bool> can-edit;
     in property <bool> can-export;
     in property <bool> can-play;
@@ -306,14 +423,12 @@ export component MainWindow inherits Window {
     in property <string> based-on-title;
     in property <string> retained-warning;
     in property <string> player-title;
-    in property <string> player-state;
+    in property <string> play-target;
     in property <string> generated;
     in property <string> generated-details;
     in property <string> monitor-state;
     in property <string> meters;
     in property <string> device;
-    in property <string> cycle-hint;
-    in property <bool> retained-session;
 
     in property <string> elapsed;
     in property <float> progress;
@@ -326,16 +441,17 @@ export component MainWindow inherits Window {
     in property <string> duration;
     in property <string> fade;
     in property <string> metadata-error;
+    in property <string> duration-error;
+    in property <string> fade-error;
+    in property <string> save-reason;
     in property <string> peak;
     in-out property <int> tab-index: 0;
     in-out property <int> window-index: 2;
     in-out property <int> rate-index: 1;
     in-out property <bool> research: false;
-    in-out property <bool> frozen: false;
+    in-out property <bool> held: false;
     in-out property <bool> notes: false;
     in-out property <bool> saved-audio: false;
-    in-out property <bool> show-errors: false;
-    in-out property <bool> show-generators: false;
     in-out property <bool> library-detail: false;
     in-out property <bool> export-settings: false;
     in-out property <length> sidebar-width: 330px;
@@ -345,7 +461,7 @@ export component MainWindow inherits Window {
     in-out property <string> query;
     in property <bool> has-results;
     in-out property <bool> compact: false;
-    changed ui-size => {root.compact = root.width < root.ui-size*70;}
+    changed ui-size => {root.compact = root.width < root.ui-size*70;root.update-monitor-layout();}
     changed width => {
         root.compact = self.width < root.ui-size*70;
     }
@@ -391,7 +507,7 @@ export component MainWindow inherits Window {
                 }
             }
             MenuItem {
-                title: "Save Recipe…";
+                title: "Save sound…";
                 enabled: !root.busy && root.can-save && root.tab-index == 1;
                 activated => {
                     root.save-recipe();
@@ -424,7 +540,23 @@ export component MainWindow inherits Window {
         }
     }
     VerticalBox {
-        spacing: 6px;
+        spacing: 0px;
+        toolbar := HorizontalBox {
+            vertical-stretch:0;
+            min-height:root.ui-size*3;
+            padding:4px;
+            Text {text:"Auditory Lab";font-weight:600;vertical-alignment:center;}
+            Rectangle {horizontal-stretch:1;}
+            if root.status != "": Button {text:"Task details…";clicked=>{root.show-diagnostics();}}
+            if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:"WAV export progress";max-width:120px;}
+            if root.exporting: Button {text:"Cancel export";clicked=>{root.cancel-file();}}
+            if root.tab-index==1: Button {text:"Save sound…";enabled:!root.busy && root.can-save;accessible-description:root.save-reason;clicked=>{root.save-recipe();}}
+            monitor-opener := Button {
+                text:root.monitor-open ? "Hide monitor" : "Show monitor";
+                accessible-label:(root.monitor-open ? "Hide output monitor" : "Show output monitor");accessible-expanded:root.monitor-open;
+                clicked=>{root.monitor-open=!root.monitor-open;root.window-changed();}
+            }
+        }
         TabWidget {
             min-height:0px;
             current-index <=> root.tab-index;
@@ -581,6 +713,8 @@ export component MainWindow inherits Window {
                             }
                             if root.has-results: VerticalBox {
                                 vertical-stretch: 0;
+                                if root.status != "": Text {text:root.status;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
+                                if root.file-activity != "": Text {text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
                                 Text {
                                     text:root.sound-title;
                                     font-size:root.ui-size*1.85;
@@ -615,6 +749,7 @@ export component MainWindow inherits Window {
                                             root.play-recipe();
                                         }
                                     }
+                                    Button {text:"Preview waveform";enabled:!root.playback-busy;clicked=>{root.preview-selected();}}
                                     Button {
                                         text:"Edit a copy";
                                         enabled:!root.busy;
@@ -630,21 +765,23 @@ export component MainWindow inherits Window {
                                         }
                                     }
                                 }
-                                CheckBox {
-                                    text:"Research, citation and recipe adaptations";
-                                    checked <=> root.research;
-                                }
+                                Disclosure {label:"Research, citation and sound adaptations";expanded <=> root.research;}
                                 if root.research && root.can-open-study: Button {text:"Open study source";clicked=>{root.open-study();}}
-                                if root.research: TextEdit {
-                                    text:root.details;
-                                    read-only:true;
-                                    min-height:240px;
-                                    accessible-label:"Selectable research, citation and adaptations";
+                                if root.research: Button {text:"Read selectable research and recipe details…";clicked=>{root.show-research();}}
+                                library-pattern := Disclosure {label:"Pattern explained · static core model";}
+                                if library-pattern.expanded: VerticalBox {
+                                    vertical-stretch:0;
+                                    Text {text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
+                                    for lane in root.model-rows: VerticalBox {
+                                        vertical-stretch:0;
+                                        Text {text:lane.label;wrap:word-wrap;vertical-stretch:0;}
+                                        Rectangle {height:30px;background:Palette.control-background;
+                                            accessible-role:image;accessible-label:lane.label+" static model";
+                                            Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
+                                        }
+                                    }
                                 }
-                                CheckBox {
-                                    text:"Export settings";
-                                    checked <=> root.export-settings;
-                                }
+                                Disclosure {label:"Export settings";expanded <=> root.export-settings;}
                                 if root.export-settings: ExportRate {
                                     choices:root.export-rates;
                                     selected <=> root.rate-index;
@@ -663,7 +800,9 @@ export component MainWindow inherits Window {
             }
             Tab {
                 title:"Workbench";
-                VerticalBox {
+                ScrollView {
+                    content-y <=> root.editor-scroll-y;
+                    VerticalBox {
                     HorizontalBox {
                         padding: 0px;
                         vertical-stretch: 0;
@@ -698,13 +837,7 @@ export component MainWindow inherits Window {
                                 root.new-draft();
                             }
                         }
-Button {
-                            text:root.compact ? "Save…" : "Save Recipe…";
-                            enabled:!root.busy && root.can-save;
-                            clicked=> {
-                                root.save-recipe();
-                            }
-                        }
+
 
                     }
                     HorizontalBox {
@@ -714,14 +847,14 @@ Button {
 
 
                         Button {
-                            text:"Add Tone";
+                            text:"Add steady tone";
                             enabled:root.can-edit && root.rows.length<16;
                             clicked=> {
                                 root.add-component(0);
                             }
                         }
                         Button {
-                            text:"Add Clicks";
+                            text:"Add click rhythm";
                             enabled:root.can-edit && root.rows.length<16;
                             clicked=> {
                                 root.add-component(1);
@@ -737,9 +870,11 @@ Button {
                         accessible-label:root.retained-warning;
                         accessible-live-region:polite;
                     }
-                    ScrollView {
-                        content-y <=> root.editor-scroll-y;
-                        VerticalBox {
+
+                    if root.status != "": Text {text:root.status;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
+                    if root.file-activity != "": Text {text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
+                    if root.metadata-error != "": Text {text:root.metadata-error;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
+                    if root.save-reason != "": Text {text:root.save-reason;wrap:word-wrap;vertical-stretch:0;}
                     Text {text:root.draft-brief; font-size:root.ui-size*1.5; font-weight:600; wrap:word-wrap; vertical-stretch:0;}
                     if root.based-on-title != "": Text {
                         text:root.based-on-title;
@@ -758,13 +893,29 @@ Button {
                                     padding: 0px;
                                     vertical-stretch: 0;
                                     Text {
-                                        text: row.heading + " · Component " + row.id;
+                                        text: row.heading;
                                         font-weight: 700;
                                     }
                                 }
                                 Text {text:row.context; wrap:word-wrap; vertical-stretch:0;}
-                                component-options := CheckBox {text:"Routing, modulation and component options";}
-                                if component-options.checked: VerticalBox {
+                                pattern := Disclosure {label:"Pattern explained · static core model";}
+                                if pattern.expanded: VerticalBox {
+                                    vertical-stretch:0;
+                                    Text {text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
+                                    for lane in root.model-rows: VerticalBox {
+                                      if lane.id == row.id: VerticalBox {
+                                        vertical-stretch:0;
+                                        Text {text:lane.label;wrap:word-wrap;vertical-stretch:0;}
+                                        Rectangle {height:36px;background:Palette.control-background;
+                                            accessible-role:image;accessible-label:lane.label+" static model, origin zero";
+                                            Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
+                                        }
+                                    }
+                                    }
+                                    Text {text:"Technical layer ID: "+row.id;vertical-stretch:0;}
+                                }
+                                component-options := Disclosure {label:"Routing, modulation and layer options";}
+                                if component-options.expanded: VerticalBox {
                                     padding: 0px;
                                     vertical-stretch: 0;
                                     Text {
@@ -806,7 +957,7 @@ Button {
                                     Button {
                                         text: "Remove";
                                         enabled: root.can-edit;
-                                        accessible-label: "Remove component " + row.id;
+                                        accessible-label: "Remove layer · " + row.name;
                                         clicked => {
                                             root.remove-component(row.id);
                                         }
@@ -817,10 +968,10 @@ Button {
                                     ui-size:root.ui-size;
                                     label: "Tone frequency (Hz)";
                                     edit-enabled: root.can-edit;
-                                    diagnostic: row.error;
+                                    diagnostic: row.error0;
                                     display-text: row.text0;
                                     staged:row.staged0;
-                                    context:row.heading+" · Component "+row.id;
+                                    context:row.name;
                                     position: row.pos0;
                                     edits-suspended:root.edits-suspended;
                                     restore=>{return root.restore(row.id,0);}
@@ -839,10 +990,10 @@ Button {
                                     ui-size:root.ui-size;
                                     label: "Click rate (Hz)";
                                     edit-enabled: root.can-edit;
-                                    diagnostic: row.error;
+                                    diagnostic: row.error1;
                                     display-text: row.text1;
                                     staged:row.staged1;
-                                    context:row.heading+" · Component "+row.id;
+                                    context:row.name;
                                     position: row.pos1;
                                     edits-suspended:root.edits-suspended;
                                     restore=>{return root.restore(row.id,1);}
@@ -861,10 +1012,10 @@ Button {
                                     ui-size:root.ui-size;
                                     label: "Click width (ms)";
                                     edit-enabled: root.can-edit;
-                                    diagnostic: row.error;
+                                    diagnostic: row.error2;
                                     display-text: row.text2;
                                     staged:row.staged2;
-                                    context:row.heading+" · Component "+row.id;
+                                    context:row.name;
                                     position: row.pos2;
                                     edits-suspended:root.edits-suspended;
                                     restore=>{return root.restore(row.id,2);}
@@ -883,10 +1034,10 @@ Button {
                                     ui-size:root.ui-size;
                                     label: "Peak level (dBFS)";
                                     edit-enabled: root.can-edit;
-                                    diagnostic: row.error;
+                                    diagnostic: row.error3;
                                     display-text: row.text3;
                                     staged:row.staged3;
-                                    context:row.heading+" · Component "+row.id;
+                                    context:row.name;
                                     position: row.pos3;
                                     edits-suspended:root.edits-suspended;
                                     restore=>{return root.restore(row.id,3);}
@@ -905,10 +1056,10 @@ Button {
                                     ui-size:root.ui-size;
                                     label: "Modulation rate (Hz)";
                                     edit-enabled: root.can-edit;
-                                    diagnostic: row.error;
+                                    diagnostic: row.error4;
                                     display-text: row.text4;
                                     staged:row.staged4;
-                                    context:row.heading+" · Component "+row.id;
+                                    context:row.name;
                                     position: row.pos4;
                                     edits-suspended:root.edits-suspended;
                                     restore=>{return root.restore(row.id,4);}
@@ -927,10 +1078,10 @@ Button {
                                     ui-size:root.ui-size;
                                     label: "Depth (%)";
                                     edit-enabled: root.can-edit;
-                                    diagnostic: row.error;
+                                    diagnostic: row.error5;
                                     display-text: row.text5;
                                     staged:row.staged5;
-                                    context:row.heading+" · Component "+row.id;
+                                    context:row.name;
                                     position: row.pos5;
                                     edits-suspended:root.edits-suspended;
                                     restore=>{return root.restore(row.id,5);}
@@ -949,10 +1100,10 @@ Button {
                                     ui-size:root.ui-size;
                                     label: "Gate rate (Hz)";
                                     edit-enabled: root.can-edit;
-                                    diagnostic: row.error;
+                                    diagnostic: row.error6;
                                     display-text: row.text6;
                                     staged:row.staged6;
-                                    context:row.heading+" · Component "+row.id;
+                                    context:row.name;
                                     position: row.pos6;
                                     edits-suspended:root.edits-suspended;
                                     restore=>{return root.restore(row.id,6);}
@@ -971,10 +1122,10 @@ Button {
                                     ui-size:root.ui-size;
                                     label: "Gate width (ms)";
                                     edit-enabled: root.can-edit;
-                                    diagnostic: row.error;
+                                    diagnostic: row.error7;
                                     display-text: row.text7;
                                     staged:row.staged7;
-                                    context:row.heading+" · Component "+row.id;
+                                    context:row.name;
                                     position: row.pos7;
                                     edits-suspended:root.edits-suspended;
                                     restore=>{return root.restore(row.id,7);}
@@ -1001,8 +1152,8 @@ Button {
                                 wrap:word-wrap;
                                 vertical-stretch:0;
                             }
-                            settings := CheckBox {text:"Recipe settings · notes and saved/exported audio";}
-                            if settings.checked: VerticalBox {
+                            settings := Disclosure {label:"Sound settings · notes and saved/exported audio";}
+                            if settings.expanded: VerticalBox {
                         Button {
                             text:"Export WAV…";
                             enabled:!root.busy && root.can-export;
@@ -1010,10 +1161,7 @@ Button {
                                 root.export-wav();
                             }
                         }
-                            CheckBox {
-                                text:"Recipe notes";
-                                checked <=> root.notes;
-                            }
+                            Disclosure {label:"Sound notes";expanded <=> root.notes;}
                             if root.notes: VerticalBox {
                                 if root.based-on != "": Text {
                                     text:root.based-on;
@@ -1046,10 +1194,7 @@ Button {
                                     }
                                 }
                             }
-                            CheckBox {
-                                text:"Saved audio · duration, fades and export rate";
-                                checked <=> root.saved-audio;
-                            }
+                            Disclosure {label:"Saved audio · duration, fades and export rate";expanded <=> root.saved-audio;}
                             if root.saved-audio: VerticalBox {
                                 Text {
                                     text:"Live playback continues until Stop. These settings affect saved recipes and WAV export.";
@@ -1070,6 +1215,7 @@ Button {
                             edits-suspended:root.edits-suspended;
                             restore=>{return root.restore-metadata("duration");}
                                         accessible-label:"Saved duration seconds";
+                                        accessible-description:root.duration-error;
                                         stage(v)=> {
                                             root.stage-metadata("duration",v);
                                         }
@@ -1088,6 +1234,7 @@ Button {
                             edits-suspended:root.edits-suspended;
                             restore=>{return root.restore-metadata("fade");}
                                         accessible-label:"Saved fade seconds";
+                                        accessible-description:root.fade-error;
                                         stage(v)=> {
                                             root.stage-metadata("fade",v);
                                         }
@@ -1104,136 +1251,61 @@ Button {
                                         root.rate-changed(i);
                                     }
                                 }
-                                if root.metadata-error != "": Text {
-                                    text:root.metadata-error;
-                                    color:Palette.foreground;
-                                    accessible-live-region:polite;
-                                    wrap:word-wrap;
-                                    vertical-stretch:0;
-                                }
+
                             }
                             }
                             Rectangle {
                                 vertical-stretch:1;
                             }
-                        }
-                    }
+
+                                    }
                 }
             }
 
         }
-        if root.operation-reason != "": Text {
-            text:root.operation-reason;
-            wrap:word-wrap;
-            vertical-stretch:0;
-        }
-        if root.monitor-warning!="": Text {text:root.monitor-warning;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
-        HorizontalBox {
-            padding: 0px;
-            vertical-stretch: 0;
-            Button {
-                text:root.operation-control;primary:true;vertical-stretch:0;max-height:root.ui-size*3;
-                enabled:root.can-cancel;
-                accessible-label:root.operation-control;
-                clicked=> {
-                    root.play-stop();
+        if root.monitor-open && root.drawer-fits: Rectangle {
+            height:root.effective-drawer-height;
+            background:Palette.control-background;
+            border-width:1px;border-color:Palette.border;
+            VerticalBox {padding:8px;spacing:3px;
+                Rectangle {
+                    height:6px;background:grip-touch.has-hover || grip-focus.has-focus ? Palette.accent-background : Palette.border;
+                    accessible-role:slider;accessible-label:"Output monitor height";
+                    accessible-value:root.monitor-height/1px;accessible-value-minimum:240;accessible-value-maximum:360;accessible-value-step:16;
+                    accessible-action-set-value(v)=>{if v.is-float(){root.resize-monitor(v.to-float());}}
+                    accessible-action-increment=>{root.resize-monitor(root.monitor-height/1px+16);}
+                    accessible-action-decrement=>{root.resize-monitor(root.monitor-height/1px-16);}
+                    forward-focus:grip-focus;
+                    grip-touch := TouchArea {mouse-cursor:row-resize;moved=>{if self.pressed{root.resize-monitor((root.monitor-height + self.pressed-y - self.mouse-y)/1px);}}clicked=>{grip-focus.focus();}}
+                    grip-focus := FocusScope {key-pressed(e)=>{if e.text==Key.UpArrow{root.resize-monitor(root.monitor-height/1px+16);return accept;}if e.text==Key.DownArrow{root.resize-monitor(root.monitor-height/1px-16);return accept;}return reject;}}
                 }
-            }
-            Text {
-                text:root.player-title;
-                wrap:word-wrap;max-height:root.ui-size*3;overflow:elide;
-                horizontal-stretch:1;
-            }
-            Text {
-                text:root.elapsed;
-            }
-            if root.retained-session && !root.busy: Button {
-                text:"Preview selected sound";
-                clicked=> {
-                    root.preview-selected();
+                MonitorPanel {
+                    data:root.monitor-data;ui-size:root.ui-size;
+                    span(i)=>{root.window-index=i;root.window-changed();}
+                    scale(i)=>{root.scale-index=i;root.window-changed();}
+                    hold=>{root.held=!root.held;root.hold-changed();}
+                    follow=>{root.follow-motion();}
+                    details=>{root.show-diagnostics();}
+                    collapse=>{root.monitor-open=false;monitor-opener.focus();root.window-changed();}
                 }
             }
         }
-        if root.generated != "": Text {
-            text:root.generated;
-            wrap:word-wrap;max-height:root.ui-size*3;overflow:elide;
+        Rectangle {
+            min-height:root.ui-size*5.5;max-height:root.ui-size*7;
             vertical-stretch:0;
-        }
-        CheckBox {text:"Visualization and audio details";checked <=> root.show-visualization;}
-        if root.show-visualization: ScrollView {
-            min-height:0px;preferred-height:root.compact ? 180px : 270px;max-height:root.compact ? 220px : 380px;
-            VerticalBox {
-        HorizontalBox {vertical-stretch:0;
-            Button {vertical-stretch:0;max-height:root.ui-size*2.5;text:"Timing model";primary:root.view-index==0;clicked=>{root.view-index=0;root.window-changed();}}
-            Button {vertical-stretch:0;max-height:root.ui-size*2.5;text:"Audio waveform";primary:root.view-index==1;clicked=>{root.view-index=1;root.window-changed();}}
-        }
-        if root.view-index==1: HorizontalBox {vertical-stretch:0;
-            Button {text:"Fixed ±1";primary:root.scale-index==0;enabled:!root.frozen;clicked=>{root.scale-index=0;root.window-changed();}}
-            Button {text:"Fit signal";primary:root.scale-index==1;enabled:!root.frozen;clicked=>{root.scale-index=1;root.window-changed();}}
-            Button {text:root.frozen ? "Resume waveform" : "Freeze waveform";clicked=>{root.frozen=!root.frozen;root.window-changed();}}
-        }
-        if root.view-index==1: HorizontalBox {vertical-stretch:0;
-            Button {text:"2 ms";enabled:!root.frozen;clicked=>{root.window-index=0;root.window-changed();}}
-            Button {text:"10 ms";enabled:!root.frozen;clicked=>{root.window-index=1;root.window-changed();}}
-            Button {text:"40 ms";enabled:!root.frozen;clicked=>{root.window-index=2;root.window-changed();}}
-            Button {text:"100 ms";enabled:!root.frozen;clicked=>{root.window-index=3;root.window-changed();}}
-        }
-        if root.view-index==0: VerticalBox {
-            vertical-stretch:0;
-            Text {text:root.model-caption;wrap:word-wrap;}
-            ScrollView {min-height:90px;max-height:140px;
-                VerticalBox {for lane in root.model-rows: HorizontalBox {
-                    vertical-stretch:0;
-                    Text {text:lane.label;max-width:240px;wrap:word-wrap;}
-                    Rectangle {min-width:150px;horizontal-stretch:1;height:24px;background:Palette.control-background;
-                        accessible-role:image;accessible-label:lane.label+" model occupancy/envelope";
-                        Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
+            background:Palette.control-background;border-width:1px;border-color:Palette.border;
+            VerticalBox {padding:8px;spacing:3px;
+                HorizontalBox {vertical-stretch:0;padding:0px;
+                    Button {text:root.transport-action;primary:true;enabled:root.transport-enabled;accessible-label:root.transport-action+(root.playback-busy ? "" : " · "+root.play-target);clicked=>{root.play-stop();}}
+                    VerticalBox {padding:0px;spacing:2px;
+                        Text {min-width:0px;text:root.player-title+(root.playback-busy ? "" : " · Next Play: "+root.play-target);max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
+                        Text {min-width:0px;text:root.generated;max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
                     }
-                }}
+                    Text {text:root.elapsed;vertical-alignment:center;}
+                    Button {text:"Details…";accessible-label:"Audio details";clicked=>{root.show-diagnostics();}}
+                }
+                Text {text:root.guidance;overflow:elide;max-height:root.ui-size*1.5;}
             }
-        }
-        if root.view-index==1: VerticalBox {
-            vertical-stretch:0;
-            Text {text:root.waveform-caption;wrap:word-wrap;}
-            Lane {label:"Left";trace:root.left-path;limit:root.scale-label;ui-size:root.ui-size;}
-            Lane {label:"Right";trace:root.right-path;limit:root.scale-label;ui-size:root.ui-size;}
-            Text {text:root.meters;wrap:word-wrap;}
-        }
-        CheckBox {text:"Audio details and diagnostics";checked <=> root.show-audio-details;}
-        if root.show-audio-details: TextEdit {
-            text:root.generated-details+"\n"+root.monitor-state+"\n"+root.device+"\nTypography: "+root.typography-origin;
-            read-only:true;min-height:100px;max-height:140px;
-            accessible-label:"Generated components, exact capture provenance, output device and monitoring diagnostics";
-        }
-            }
-        }
-        if root.busy && root.can-cancel && !root.playback-busy: ProgressIndicator {
-            progress:root.progress;
-            accessible-label:"Operation progress";
-        }
-        if root.status != "": CheckBox {
-            text:"Operation details";
-            checked <=> root.show-errors;
-        }
-        if root.status != "": Text {
-            min-width:0px;
-            accessible-live-region:polite;
-            text:root.status;
-            wrap:word-wrap;
-            max-height:root.ui-size*3;
-            vertical-stretch:0;
-        }
-        if root.show-errors && root.status != "": TextEdit {
-            text:root.status;
-            read-only:true;
-            min-height:80px;
-            max-height:120px;
-            accessible-label:"Full selectable operation errors and paths";
-        }
-        Text {
-            text:root.guidance;
-            wrap:word-wrap;
-            vertical-stretch:0;
         }
     }
 }

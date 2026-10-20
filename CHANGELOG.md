@@ -14,18 +14,18 @@ Notable changes to this project are documented in this file. The format is based
 ### Added
 
 - A desktop Workbench builds and changes up to 16 tone/click components live, with sliders, exact numeric fields, ear routing, level and modulation controls. Smooth ramps, glides and crossfades connect valid settings; drafts save as schema-2 recipes with title/summary text or export as finite WAV files. The Rust library supplies draft editing, shared control ranges and live playback.
-- Desktop progress and elapsed time, waveform previews before playback and a waveform window following the latency-compensated playback position. The sound panel scrolls to keep its controls accessible while listening guidance stays visible.
+- An optional bounded output-monitor drawer sits above compact persistent transport, with fixed navigation/Save and a scrolling sound document. Large text/small space can use a focused monitor window; full selectable diagnostics open separately.
 - CLI `-V` as an alias for `--version`.
 - Positive frequencies previously rejected as too small to advance the phase are accepted.
 
 ### Changed
 
 - Native desktop fonts follow San Francisco on macOS, Windows UI font/text scaling and configured Linux desktop family/size. About is available through the application/Help menu, with identity and licenses retained.
-- Library prioritizes physical sound meaning and study context; Workbench groups component controls, with notes and saved/exported audio under Recipe settings. Exact fields preserve committed precision; slider gestures use three significant digits, 0.1 dB levels and whole-percent depths.
+- Library prioritizes sound meaning and attributed study context; Workbench groups directly editable layers with explicit routing/modulation disclosures and document-local static Pattern explained. Exact fields preserve precision, recover valid pending corrections without an extra blur, and report setting-specific errors. Slider gestures use three significant digits, 0.1 dB levels and whole-percent depths.
 - Bounded core timing/envelope projections distinguish static recipe/accepted-target models from generated waveforms. Click/gate/AM summaries retain independent rhythms and steady companions; narrow interaural and monaural pairs retain their physical meaning.
-- One desktop player retains its session across Library browsing and Workbench edits. Generated rates, crossfade roles, actual stereo traces and window sample peak/RMS distinguish accepted controls from generated output; Fixed/Fit share a truthful stereo scale, and freeze retains complete source/rate/span/scale/meter context; gaps and staleness are labeled.
+- One desktop player retains its session across Library browsing and Workbench edits. Generated rates, crossfade roles, actual stereo traces and window sample peak/RMS distinguish accepted controls from generated output; Fixed/Fit share a truthful stereo scale, and Hold retains complete source/session/rate/span/scale/meter context across playback changes. Live/Held/Stale/Waiting/Unavailable/Last states and receipt age distinguish current data from history; cumulative gaps remain in diagnostics. Native motion preferences use explicit enabled/disabled/unknown states with user override and diagnosed live fallback.
 - Library search covers titles, IDs, research and sound parameters. Wrapped results, compact component controls and collapsible notes/saved-audio settings keep sound actions accessible. Edited source research stays attributed separately from custom notes.
-- New, draft replacement, window close and File/app-menu Quit protect unsaved content with Save/Discard/Cancel and wait for worker cleanup, including native macOS Cmd-Q. Late saves preserve later edits as dirty.
+- New, draft replacement, window close and File/app-menu Quit protect unsaved content with Save/Discard/Cancel and wait for worker cleanup, including native macOS Cmd-Q. Sound snapshots save while audio continues; audio Stop and file-task cancellation are independent, both lifetimes are joined on quit, and late/obsolete save results preserve newer or replacement drafts. WAV export requires idle audio.
 - CLI/GUI version output and About distinguish product version, numeric native build counter and optional source revision. CLI Play renders start, generated status and final results on stderr; redirected text stays static.
 
 - Stop fades finite playback over 30 ms, shortened at the end; live Stop finishes any current transition before its 30 ms fade. CLI Ctrl-C retains exit 130.

@@ -90,3 +90,8 @@ inherits = "release"
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# Apply logical-size optical variations consistently to text layout and drawing.
+[patch.crates-io]
+i-slint-core = { path = "third_party/i-slint-core" }
+parley = { path = "third_party/parley" }

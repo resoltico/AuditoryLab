@@ -1,4 +1,4 @@
-//! Destructive navigation, native Save/Discard/Cancel and serialized worker continuations.
+//! Destructive navigation and Save/Discard/Cancel coordinated across audio and file lifetimes.
 use super::{Desktop, Operation, Work, app};
 use auditorylab::{Draft, Preset};
 use slint::ComponentHandle;
@@ -10,21 +10,31 @@ pub(super) enum Action {
 }
 pub(super) enum Continuation {
     Action(Action),
-    AfterSave(Action),
+    Request(Action),
+    AfterSave(Action, std::sync::Arc<()>),
     Save {
         draft: Draft,
         path: PathBuf,
         action: Action,
+        owner: std::sync::Arc<()>,
     },
     Playback(Work),
 }
 impl Desktop {
     pub(super) fn request_action(self: &Rc<Self>, action: Action) {
         if self.after.borrow().is_some() || self.dialog_active.get() {
+            self.app.borrow_mut().status =
+                "Finish or cancel the open dialog/task before closing or replacing this sound."
+                    .into();
             super::reply_native_quit(false);
             return;
         }
-        let (dirty, can_save, draft) = {
+        if self.file_worker.borrow().is_some() {
+            self.after_cleanup(Continuation::Request(action));
+            self.refresh();
+            return;
+        }
+        let (dirty, can_save, draft, owner) = {
             let mut app = self.app.borrow_mut();
             let rate = app.rate;
             app.workbench.commit_pending(rate);
@@ -32,6 +42,7 @@ impl Desktop {
                 app.workbench.dirty(),
                 app.workbench.can_save(),
                 app.workbench.draft.clone(),
+                app.workbench.identity.clone(),
             )
         };
         if !dirty {
@@ -67,17 +78,18 @@ impl Desktop {
                         "Correct the numeric fields before saving. The sound remains open.".into();
                     None
                 } else {
-                    rfd::AsyncFileDialog::new()
-                        .set_parent(&ui.window().window_handle())
-                        .set_file_name("sound.toml")
-                        .add_filter("TOML recipe", &["toml"])
-                        .save_file()
-                        .await
-                        .map(|file| Continuation::Save {
+                    match super::dialogs::file_path(&ui, Some("sound.toml"), "toml").await {
+                        Ok(path) => path.map(|path| Continuation::Save {
                             draft,
-                            path: file.path().to_owned(),
+                            path,
                             action,
-                        })
+                            owner,
+                        }),
+                        Err(error) => {
+                            d.app.borrow_mut().status = error;
+                            None
+                        }
+                    }
                 }
             } else if discard {
                 Some(Continuation::Action(action))
@@ -99,11 +111,26 @@ impl Desktop {
         self.refresh();
     }
     fn after_cleanup(self: &Rc<Self>, next: Continuation) {
-        let busy = self.worker.borrow().is_some();
+        let stop_audio = matches!(
+            &next,
+            Continuation::Action(Action::Close)
+                | Continuation::Request(Action::Close)
+                | Continuation::Save {
+                    action: Action::Close,
+                    ..
+                }
+                | Continuation::Playback(_)
+        );
+        let wait_file = !matches!(&next, Continuation::Playback(_));
+        if stop_audio && let Some(worker) = self.audio_worker.borrow().as_ref() {
+            worker.cancel.request();
+        }
+        if wait_file && let Some(worker) = self.file_worker.borrow().as_ref() {
+            worker.cancel.request();
+        }
+        let busy = stop_audio && self.audio_worker.borrow().is_some()
+            || wait_file && self.file_worker.borrow().is_some();
         if busy {
-            if let Some(worker) = self.worker.borrow().as_ref() {
-                worker.cancel.request();
-            }
             *self.after.borrow_mut() = Some(next);
         } else {
             self.continue_with(next);
@@ -111,16 +138,20 @@ impl Desktop {
     }
     pub(super) fn continue_with(self: &Rc<Self>, next: Continuation) {
         match next {
+            Continuation::Request(action) => self.request_action(action),
             Continuation::Save {
                 draft,
                 path,
                 action,
+                owner,
             } => {
-                *self.after.borrow_mut() = Some(Continuation::AfterSave(action));
-                self.start(Operation::Save, Work::Save(draft, path));
+                *self.after.borrow_mut() = Some(Continuation::AfterSave(action, owner.clone()));
+                self.start(Operation::Save, Work::Save(draft, path, owner));
             }
-            Continuation::AfterSave(action) => {
-                if self.app.borrow().workbench.dirty() {
+            Continuation::AfterSave(action, owner) => {
+                if !std::sync::Arc::ptr_eq(&owner, &self.app.borrow().workbench.identity)
+                    || self.app.borrow().workbench.dirty()
+                {
                     self.app.borrow_mut().status =
                         "Saved snapshot; newer edits remain unsaved. The sound remains open."
                             .into();
@@ -161,7 +192,7 @@ impl Desktop {
                 self.reset_metadata();
             }
             Continuation::Playback(work) => {
-                let operation = if matches!(work, Work::Live(_)) {
+                let operation = if matches!(work, Work::Live(..)) {
                     Operation::Live
                 } else {
                     Operation::Play
@@ -176,13 +207,14 @@ impl Desktop {
         }
         {
             let app = self.app.borrow();
-            if app.operation.is_some()
-                && !matches!(app.operation, Some(Operation::Play | Operation::Live))
-            {
+            if matches!(
+                app.file_operation,
+                Some(Operation::Export | Operation::Import)
+            ) {
                 return;
             }
-            if let Work::Live(draft) = &work
-                && (!app.workbench.parse_errors.is_empty()
+            if let Work::Live(draft, _) = &work
+                && (!app.workbench.input_valid()
                     || draft.target(app.workbench.rate(app.rate)).is_err())
             {
                 return;

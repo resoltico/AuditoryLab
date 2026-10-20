@@ -228,3 +228,95 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
         panic!()
     }
 }
+
+#[test]
+fn diagnostics_name_only_the_affected_settings_and_coupled_neighbors() {
+    let rate = SampleRate::DEFAULT;
+    let c = tone(30000.0, Ears::Both);
+    let errors = setting_diagnostics(&c, rate);
+    assert_eq!(
+        errors.iter().map(|e| e.0).collect::<Vec<_>>(),
+        [Setting::Frequency]
+    );
+    let c = Component {
+        carrier: Carrier::Click {
+            rate_hz: 160.0,
+            width_seconds: 0.010,
+        },
+        ..tone(440.0, Ears::Both)
+    };
+    assert_eq!(
+        setting_diagnostics(&c, rate)
+            .iter()
+            .map(|e| e.0)
+            .collect::<Vec<_>>(),
+        [Setting::ClickRate, Setting::ClickWidth]
+    );
+    let c = Component {
+        modulation: Some(Modulation::Sinusoidal {
+            rate_hz: 10000.0,
+            depth: 0.5,
+        }),
+        ..tone(16000.0, Ears::Both)
+    };
+    assert_eq!(
+        setting_diagnostics(&c, rate)
+            .iter()
+            .map(|e| e.0)
+            .collect::<Vec<_>>(),
+        [Setting::Frequency, Setting::ModulationRate]
+    );
+    let c = Component {
+        peak_dbfs: 1.0,
+        ..tone(440.0, Ears::Both)
+    };
+    assert_eq!(setting_diagnostics(&c, rate)[0].0, Setting::Level);
+    assert!(setting_diagnostics(&tone(440.0, Ears::Both), rate).is_empty());
+}
+
+#[test]
+fn save_admission_and_saved_timing_diagnostics_share_the_actual_serialization_contract() {
+    let mut draft = Draft::new();
+    let id = draft.add(SourceKind::Tone).unwrap();
+    draft.replace(id, tone(-1.0, Ears::Both));
+    assert!(
+        draft.to_toml().is_ok(),
+        "finite-invalid drafts remain saveable"
+    );
+    assert!(draft.target(SampleRate::DEFAULT).is_err());
+    draft.replace(
+        id,
+        Component {
+            peak_dbfs: f64::NEG_INFINITY,
+            ..tone(440.0, Ears::Both)
+        },
+    );
+    assert!(
+        draft.target(SampleRate::DEFAULT).is_err(),
+        "nonfinite component levels are invalid in the core too"
+    );
+    assert!(draft.to_toml().unwrap_err().to_string().contains("finite"));
+    draft.replace(id, tone(440.0, Ears::Both));
+    draft.set_summary("x".repeat(65536));
+    assert!(
+        draft.target(SampleRate::DEFAULT).is_ok(),
+        "metadata size is not an audio-target constraint"
+    );
+    assert!(draft.to_toml().is_err());
+    draft.set_summary(String::new());
+    draft.set_duration_seconds(0.001);
+    draft.set_fade_seconds(0.1);
+    let errors = draft.saved_audio_diagnostics(SampleRate::DEFAULT);
+    assert!(errors.duration.is_some() && errors.fade.is_some());
+    draft.set_duration_seconds(1.0);
+    draft.set_fade_seconds(-1.0);
+    let errors = draft.saved_audio_diagnostics(SampleRate::DEFAULT);
+    assert!(errors.duration.is_none() && errors.fade.is_some());
+    draft.set_duration_seconds(f64::NAN);
+    draft.set_fade_seconds(0.1);
+    let errors = draft.saved_audio_diagnostics(SampleRate::DEFAULT);
+    assert!(errors.duration.is_some() && errors.fade.is_none());
+    draft.set_duration_seconds(1.0);
+    let errors = draft.saved_audio_diagnostics(SampleRate::DEFAULT);
+    assert!(errors.duration.is_none() && errors.fade.is_none());
+}

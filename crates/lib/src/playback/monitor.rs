@@ -899,4 +899,159 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity() {
+        use crate::{
+            OutputMonitorState as State, WaveformCapture, WaveformScale, monitor_warning,
+            output_monitor_state,
+        };
+        let monitor = PlaybackMonitor::new(descriptor(48000), MonitorDetail::Waveform, None);
+        let mut reader = monitor.reader();
+        reader.poll(40);
+        assert_eq!(
+            output_monitor_state(Some(&reader), None, false, true),
+            State::Waiting
+        );
+        {
+            let mut writer = monitor.try_publish().unwrap();
+            writer.append(0, &[[0.0; 2]; 512]);
+            writer.finish(512, None, false);
+        }
+        reader.poll(40);
+        // A fresh status publication does not by itself provide a valid plotted capture.
+        assert_eq!(
+            output_monitor_state(Some(&reader), None, false, false),
+            State::Waiting
+        );
+        assert!(monitor_warning(&reader, 40).contains("Incomplete"));
+        // A missed span is history; enough subsequent contiguous data repairs current coverage.
+        {
+            let mut writer = monitor.try_publish().unwrap();
+            writer.append(1024, &[[0.0; 2]; 2400]);
+            writer.finish(3424, None, false);
+        }
+        reader.poll(40);
+        assert_eq!(reader.status().gaps, 1);
+        assert_eq!(reader.status().underruns, 0);
+        assert!(monitor_warning(&reader, 40).is_empty());
+        let held = WaveformCapture::monitored(&reader, WaveformScale::Fit)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            output_monitor_state(Some(&reader), Some(&held), false, false),
+            State::Live
+        );
+        reader.received = Some(Instant::now() - Duration::from_secs(1));
+        reader.poll(40);
+        assert_eq!(
+            output_monitor_state(Some(&reader), Some(&held), false, false),
+            State::Stale
+        );
+        assert!(monitor_warning(&reader, 40).contains("stale"));
+        let prior = held.caption(true, false);
+        let another = PlaybackMonitor::new(descriptor(48000), MonitorDetail::Waveform, None);
+        let mut other = another.reader();
+        other.poll(40);
+        assert_ne!(other.descriptor().id, held.session().unwrap().id);
+        assert_eq!(
+            output_monitor_state(Some(&other), Some(&held), true, true),
+            State::Held
+        );
+        assert_eq!(held.caption(true, false), prior);
+        {
+            let mut writer = monitor.try_publish().unwrap();
+            writer.append(3424, &[[0.0; 2]; 512]);
+            writer.finish(3936, None, false);
+        }
+        reader.poll(40);
+        assert!(monitor_warning(&reader, 40).is_empty());
+        assert_eq!(reader.status().gaps, 1);
+        monitor.0.shared.finish(Terminal::Complete);
+        reader.poll(40);
+        assert_eq!(
+            output_monitor_state(Some(&reader), Some(&held), false, false),
+            State::LastCapture
+        );
+        monitor.0.disabled.store(true, Ordering::Relaxed);
+        reader.poll(40);
+        assert!(monitor_warning(&reader, 40).contains("unavailable"));
+        assert_eq!(
+            output_monitor_state(None, Some(&held), false, false),
+            State::Preview
+        );
+        assert_eq!(
+            output_monitor_state(None, None, false, false),
+            State::Unavailable
+        );
+        assert_eq!(output_monitor_state(None, None, true, true), State::Waiting);
+        let unavailable = PlaybackMonitor::new(descriptor(48000), MonitorDetail::Waveform, None);
+        let mut absent = unavailable.reader();
+        unavailable.0.disabled.store(true, Ordering::Relaxed);
+        absent.poll(40);
+        assert_eq!(
+            output_monitor_state(Some(&absent), None, false, true),
+            State::Unavailable
+        );
+        let underrun = PlaybackMonitor::new(descriptor(48000), MonitorDetail::Waveform, None);
+        underrun
+            .0
+            .shared
+            .report(cpal::Error::new(cpal::ErrorKind::Xrun));
+        let mut reader = underrun.reader();
+        reader.poll(40);
+        assert!(monitor_warning(&reader, 40).contains("underruns: 1"));
+    }
+    #[test]
+    fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
+        for hz in [3750.0, 3751.0] {
+            let signal = Stimulus {
+                duration_seconds: 1.0,
+                fade_seconds: 0.0,
+                components: vec![Component {
+                    ears: Ears::Both,
+                    peak_dbfs: -15.3,
+                    carrier: Carrier::Tone { frequency_hz: hz },
+                    modulation: None,
+                }],
+            }
+            .signal(SampleRate::DEFAULT)
+            .unwrap();
+            assert_eq!(SampleRate::DEFAULT.hz(), 48000);
+            // Independent rational oracle: 3750*512/48000 = exactly 40 cycles.
+            assert_eq!(3750_u64 * 512, 48000 * 40);
+            let monitor = PlaybackMonitor::new(descriptor(48000), MonitorDetail::Waveform, None);
+            let mut reader = monitor.reader();
+            let mut samples = [[0.0; 2]; 512];
+            let mut before = Vec::new();
+            let mut old_sequence = 0;
+            for start in [0, 512] {
+                signal.render(start, &mut samples);
+                {
+                    let mut writer = monitor.try_publish().unwrap();
+                    writer.append(start, &samples);
+                    writer.finish(start + 512, signal.observation(start + 511), false);
+                }
+                reader.poll(2);
+                assert!(reader.status().sequence > old_sequence);
+                old_sequence = reader.status().sequence;
+                assert_eq!(reader.status().window_end, start + 512);
+                if start == 0 {
+                    before = reader.samples().to_vec();
+                } else if hz == 3750.0 {
+                    assert_eq!(reader.samples(), before);
+                } else {
+                    assert_ne!(reader.samples(), before);
+                }
+                let capture =
+                    crate::WaveformCapture::monitored(&reader, crate::WaveformScale::Fixed)
+                        .unwrap()
+                        .unwrap();
+                assert_eq!(
+                    crate::output_monitor_state(Some(&reader), Some(&capture), false, false),
+                    crate::OutputMonitorState::Live
+                );
+            }
+        }
+    }
 }

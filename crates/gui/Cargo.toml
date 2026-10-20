@@ -16,8 +16,10 @@ rfd.workspace = true
 fontique = "=0.11.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "=0.6.2"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "block2", "NSArray", "NSURL", "NSString", "NSGeometry"] }
 objc2 = "0.6.4"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSFont", "NSMenu", "NSMenuItem"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSFont", "NSWorkspace", "NSAccessibility", "NSButton", "NSControl", "NSView", "NSWindow", "NSSavePanel", "NSOpenPanel", "NSMenu", "NSMenuItem"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libloading = "=0.8.9"
@@ -33,6 +35,7 @@ windows-sys = { version = "0.61.2", features = ["Win32_UI_WindowsAndMessaging", 
 slint-build.workspace = true
 
 [dev-dependencies]
+slint = { workspace = true, features = ["renderer-software"] }
 tempfile.workspace = true
 
 [[bin]]
