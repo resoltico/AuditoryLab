@@ -289,14 +289,16 @@ component MonitorPanel inherits VerticalBox {
         VerticalBox {padding:0px;spacing:4px;preferred-width:root.ui-size*21;max-width:root.ui-size*25;
             ComboBox {model:["2 ms","10 ms","40 ms","100 ms"];current-index:root.data.spanchoice;enabled:!root.data.held;accessible-label:"Waveform time window";selected(v)=>{root.span(self.current-index);}}
             ComboBox {model:["Fixed ±1","Fit signal"];current-index:root.data.scalechoice;enabled:!root.data.held;accessible-label:"Waveform amplitude scale";selected(v)=>{root.scale(self.current-index);}}
-            Button {text:root.data.held ? "Return to live" : "Hold display";clicked=>{root.hold();}}
+            HorizontalBox {padding:0px;spacing:4px;
+                Button {text:root.data.held ? "Return to live" : "Hold display";clicked=>{root.hold();}}
+                if root.data.overridden: Button {text:"Follow system";accessible-label:"Follow system motion preference";clicked=>{root.follow();}}
+            }
             Button {text:"Details…";accessible-label:"Full audio diagnostics and capture source";clicked=>{root.details();}}
-            if root.data.overridden: Button {text:"Follow system motion";clicked=>{root.follow();}}
             Text {text:root.data.meters;max-height:root.ui-size*4;wrap:word-wrap;overflow:elide;}
         }
     }
     Text {text:root.data.motion;wrap:word-wrap;vertical-stretch:0;max-height:root.ui-size*2.5;overflow:elide;}
-    if root.data.warning!="": Text {text:root.data.warning;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
+    if root.data.warning!="": Text {text:root.data.warning;wrap:word-wrap;max-height:root.ui-size*2.5;overflow:elide;vertical-stretch:0;accessible-live-region:polite;}
 }
 export component MonitorWindow inherits Window {
     title:"Output monitor";

@@ -1,4 +1,6 @@
 //! Read-only native motion preferences, coalesced off UI and audio processing.
+#[cfg(target_os = "linux")]
+mod gnome;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -30,6 +32,10 @@ impl Service {
         let target = pending.clone();
         let stopped = stop.clone();
         let handle = std::thread::spawn(move || {
+            #[cfg(target_os = "linux")]
+            if desktop_has("GNOME") && !desktop_has("KDE") && gnome::listen(&target, &stopped) {
+                return;
+            }
             let mut last = None;
             while !stopped.load(Ordering::Relaxed) {
                 let next = query();
@@ -99,8 +105,7 @@ fn query() -> Preference {
 }
 #[cfg(target_os = "linux")]
 fn query() -> Preference {
-    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-    if desktop.split(':').any(|s| s.eq_ignore_ascii_case("KDE")) {
+    if desktop_has("KDE") {
         let reduced = async_io::block_on(futures_lite::future::race(
             async {
                 let connection = zbus::connection::Builder::session()
@@ -145,80 +150,14 @@ fn query() -> Preference {
         ));
         return from_reduced(reduced);
     }
-    if desktop.split(':').any(|s| s.eq_ignore_ascii_case("GNOME")) {
-        from_reduced(gnome_reduced())
-    } else {
-        Preference::Unknown
-    }
+    Preference::Unknown
 }
 #[cfg(target_os = "linux")]
-#[allow(
-    unsafe_code,
-    reason = "checked native GSettings C ABI; schema/key admission precedes reading, owned references are released"
-)]
-fn gnome_reduced() -> Option<bool> {
-    use std::ffi::{c_char, c_void};
-    // Keep native registration code mapped for process lifetime, matching the font adapter.
-    static GIO: std::sync::OnceLock<Option<libloading::Library>> = std::sync::OnceLock::new();
-    static OBJECT: std::sync::OnceLock<Option<libloading::Library>> = std::sync::OnceLock::new();
-    // SAFETY: fixed system libraries and exact public GIO signatures; all returned pointers checked.
-    unsafe {
-        let gio = GIO
-            .get_or_init(|| libloading::Library::new("libgio-2.0.so.0").ok())
-            .as_ref()?;
-        let object = OBJECT
-            .get_or_init(|| libloading::Library::new("libgobject-2.0.so.0").ok())
-            .as_ref()?;
-        let source = gio
-            .get::<unsafe extern "C" fn() -> *mut c_void>(b"g_settings_schema_source_get_default\0")
-            .ok()?;
-        let lookup = gio
-            .get::<unsafe extern "C" fn(*mut c_void, *const c_char, i32) -> *mut c_void>(
-                b"g_settings_schema_source_lookup\0",
-            )
-            .ok()?;
-        let has = gio
-            .get::<unsafe extern "C" fn(*mut c_void, *const c_char) -> i32>(
-                b"g_settings_schema_has_key\0",
-            )
-            .ok()?;
-        let schema_unref = gio
-            .get::<unsafe extern "C" fn(*mut c_void)>(b"g_settings_schema_unref\0")
-            .ok()?;
-        let create = gio
-            .get::<unsafe extern "C" fn(*mut c_void, *mut c_void, *const c_char) -> *mut c_void>(
-                b"g_settings_new_full\0",
-            )
-            .ok()?;
-        let get = gio
-            .get::<unsafe extern "C" fn(*mut c_void, *const c_char) -> i32>(
-                b"g_settings_get_boolean\0",
-            )
-            .ok()?;
-        let unref = object
-            .get::<unsafe extern "C" fn(*mut c_void)>(b"g_object_unref\0")
-            .ok()?;
-        let source = source();
-        if source.is_null() {
-            return None;
-        }
-        let schema = lookup(source, c"org.gnome.desktop.interface".as_ptr(), 1);
-        if schema.is_null() {
-            return None;
-        }
-        if has(schema, c"enable-animations".as_ptr()) == 0 {
-            schema_unref(schema);
-            return None;
-        }
-        let settings = create(schema, std::ptr::null_mut(), std::ptr::null());
-        schema_unref(schema);
-        if settings.is_null() {
-            return None;
-        }
-        let reduced = get(settings, c"enable-animations".as_ptr()) == 0;
-        unref(settings);
-        Some(reduced)
-    }
+fn desktop_has(name: &str) -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .unwrap_or_default()
+        .split(':')
+        .any(|value| value.eq_ignore_ascii_case(name))
 }
 #[cfg(test)]
 mod tests {
