@@ -104,11 +104,6 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
         }
         return;
     }
-    // GNOME's own settings include effective text scaling. Older GTK portals
-    // can return a stale scale even while native GSettings has changed.
-    if gnome && native::gnome_listen(&sender, &stop, &mut fonts) {
-        return;
-    }
     async_io::block_on(async {
         let connect = async {
             zbus::connection::Builder::session()?
