@@ -139,7 +139,7 @@ fn inspect_meta(meta: &Meta, scope: &str, sites: &mut Vec<Site>) -> Result<()> {
     Ok(())
 }
 
-// Macro templates and opaque expressions can hide attributes from syn's normal
+// Macro templates and opaque syntax can hide attributes from syn's normal
 // AST visitor. Inspect token trees too, including inactive macro arms, but never
 // interpret string/comment contents. Exceptions belong on a named Rust scope.
 fn unscoped_attributes(tokens: TokenStream) -> Result<()> {
@@ -290,13 +290,10 @@ impl<'ast> Visit<'ast> for Source {
         }
         // Meta tokens are handled above, not as executable Rust expressions.
     }
-    fn visit_expr(&mut self, expr: &'ast syn::Expr) {
-        if let syn::Expr::Verbatim(tokens) = expr
-            && let Err(error) = unscoped_attributes(tokens.clone())
-        {
+    fn visit_token_stream(&mut self, tokens: &'ast TokenStream) {
+        if let Err(error) = unscoped_attributes(tokens.clone()) {
             self.errors.push(error.to_string());
         }
-        visit::visit_expr(self, expr);
     }
     fn visit_macro(&mut self, mac: &'ast syn::Macro) {
         if let Err(error) = unscoped_attributes(mac.tokens.clone()) {
@@ -652,6 +649,25 @@ allow_attributes_without_reason = "deny"
         assert!(
             Source::parse(r##"fn helper() { become helper("#[allow(dead_code)]"); }"##).is_ok()
         );
+    }
+    #[test]
+    fn opaque_item_attributes_cannot_escape_review() {
+        for text in [
+            r#"#[cfg(any())] #[allow(dead_code, reason = "quality:fixture")] fn helper();"#,
+            r#"struct S; impl S { #[cfg(any())] #[allow(dead_code, reason = "quality:fixture")] fn helper(); }"#,
+            r#"unsafe extern "C" { #[cfg(any())] #[allow(dead_code, reason = "quality:fixture")] fn helper() {} }"#,
+        ] {
+            let error = Source::parse(text).unwrap_err().to_string();
+            assert!(error.contains("named Rust scope"), "{text}: {error}");
+        }
+        for text in [
+            "#[cfg(any())] fn helper();",
+            "struct S; impl S { #[cfg(any())] fn helper(); }",
+            r#"unsafe extern "C" { #[cfg(any())] fn helper() {} }"#,
+            r##"#[cfg(any())] #[doc = "#[allow(dead_code)]"] fn helper();"##,
+        ] {
+            assert!(Source::parse(text).unwrap().is_empty(), "{text}");
+        }
     }
     #[test]
     fn workspace_rules_and_package_inheritance_are_not_optional() {
