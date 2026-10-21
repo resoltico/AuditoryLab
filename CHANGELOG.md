@@ -4,12 +4,15 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
 ### Breaking
 
+- macOS CLI and desktop archives use `.tar.gz` instead of `.zip`; update automated download and extraction commands. Apple silicon and Intel packages remain separate.
 - Desktop drawing requires an OpenGL-capable graphics driver (OpenGL 2.0 or newer on Windows). Software-renderer recovery and `SLINT_BACKEND=winit-software` are unavailable; install a compatible graphics driver.
 - Integer-phase oscillators and exact frame-quantized pulse timing change generated sample bits. Click and rectangular-gate pulses last exactly `round(width_seconds × sample rate)` frames and start on the first frame at or after each onset. Recipes that leave no closed frame in a period, or whose pulse widths exceed 2^36 frames at the selected rate, are rejected; reduce those widths. Regenerate sample-exact reference audio and expectations. Recipe schema 2 and the built-in catalog's signal parameters are unchanged.
 - Rust packages are `auditorylab-core`, `auditorylab`, `auditorylab-cli` and `auditorylab-gui`, under `crates/core`, `crates/lib`, `crates/cli` and `crates/gui`. WAV, device and application APIs are consolidated in `auditorylab`; use `Stimulus::signal`, immutable seekable `Signal` and the library's loading/export/playback and monitoring APIs. Update imports, observation consumers and exhaustive error matches. Install the CLI with `cargo install --locked --path crates/cli`.
-- Windows source builds require the native MSVC Rust host and Visual Studio Build Tools; downloads statically link the Microsoft C runtime. Linux source builds use distribution fontconfig and work with `--manifest-path` outside the repository root. Linux desktop font preferences use Pango/GTK 3/GIO; Debian/Ubuntu users need `libpango-1.0-0 libgtk-3-0`. See [source prerequisites](README.md#build-from-source).
+- Windows source builds require the native MSVC Rust host and Visual Studio Build Tools; downloads statically link the Microsoft C runtime. Linux source builds use distribution fontconfig and work with `--manifest-path` outside the repository root. Linux desktop font preferences use Pango/GTK 3/GIO; Debian/Ubuntu users need `libpango-1.0-0 libgtk-3-0`. See [source prerequisites](https://github.com/resoltico/AuditoryLab/blob/v0.4.0/README.md#build-from-source).
 - Source builds require Rust 1.99.1 or newer; the repository toolchain pins 1.99.1.
 - `--build-info` and build-kind markers are removed. Use `--version` or desktop About for product version, numeric native build counter and optional source revision; update identity parsers.
 - CLI playback completion moves from stdout to stderr alongside start/status text and warnings; update redirected-output consumers. Redirected stderr remains static, while terminal stderr displays generated status at 4 Hz. Other report formats also change; CLI commands, explicit input selection and exit codes are unchanged.
@@ -48,7 +51,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Internal
 
 - Authored Rust lint exceptions require an exact source scope and written rationale, checked across inactive platform code, macro attributes and opaque Rust syntax. Package lint inheritance and production lint-weakening flags are checked; numerical and native unsafe exceptions stay confined to their operations.
-- Packaging and reusable CI generate separate native CLI/GUI archives and verify their identities, architectures, notices and license-text coverage. Asset collection rejects incomplete, duplicate or unexpected product/target sets. Release dispatch defaults to non-publishing verification with downloadable checksums, notes and provenance; publication requires `publish: true` on main.
+- Packaging and reusable CI generate separate native CLI/GUI archives and verify their identities, architectures, notices and license-text coverage. Asset collection rejects incomplete, duplicate or unexpected product/target sets. Release calls run every native target and all five scoped mutation suites. Dispatch defaults to non-publishing verification with downloadable checksums, notes and provenance; notes and assets are attested, and publication requires `publish: true` on the verified current main commit.
 - Core seekable/live rendering and generated-state observation allocate nothing. Device monitoring uses preallocated storage and one nonblocking lock attempt per buffer; observation does not determine playback completion.
 
 ## [0.3.0] - 2026-10-16
