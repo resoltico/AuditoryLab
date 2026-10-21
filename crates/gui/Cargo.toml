@@ -28,7 +28,6 @@ async-io = "=2.6.0"
 futures-lite = "=2.6.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "=0.62.2", features = ["UI_ViewManagement", "Win32_System_WinRT"] }
 windows-sys = { version = "0.61.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_HiDpi"] }
 
 [build-dependencies]
