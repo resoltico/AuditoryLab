@@ -31,7 +31,7 @@ When stdin is a terminal, the CLI prints an end-of-input cue before reading. Int
 
 ## Output and errors
 
-Help, version, list, descriptions, inspection, recipe bytes and completion lines go to stdout. Start lines, listening notices, underrun warnings and errors go to stderr. Human prose wraps at 78 columns, and control/bidi characters are escaped for terminal display. Raw recipe output preserves every original byte. A closed output pipe is quiet success. If completion reporting fails after saving, exporting or playing, the operation remains complete and stderr receives a warning.
+Help, version, list, descriptions, inspection, recipe bytes and recipe/export completion lines go to stdout. Playback start, status and completion lines, listening notices, underrun warnings and errors go to stderr. Human prose wraps at 78 columns, and control/bidi characters are escaped for terminal display. Raw recipe output preserves every original byte. A closed output pipe is quiet success. If completion reporting fails after saving, exporting or playing, the operation remains complete and stderr receives a warning.
 
 | Exit code | Meaning |
 |---|---|
@@ -54,7 +54,7 @@ During export/play, the first Ctrl-C requests cancellation and the second exits 
 
 ## Generated status and identity
 
-`auditorylab --version` and `-V` print `auditorylab 0.4.0 (build 1)`, followed by a short source revision when supplied at build time. They open no audio device.
+`auditorylab --version` and `-V` print `auditorylab VERSION (build BUILD)`, followed by ` · REVISION` when a source revision is supplied at build time. VERSION and BUILD come from the workspace metadata; REVISION is the first 12 hexadecimal characters of that source revision. They open no audio device.
 
 Describe and Inspect use shared typed carrier, modulation, pulse-width and routing facts. Inspect distinguishes requested rates from integer-phase realized rates. Interaural difference appears only for one unmodulated left-only tone and one right-only tone, with no additional active generator.
 

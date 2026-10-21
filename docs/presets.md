@@ -110,7 +110,7 @@ Within `[about]`, only `title` is required; the other text fields are optional f
 | `study` | For researchers: the sound's role in the source and the source's reported findings. |
 | `adaptation` | Every choice and difference between this preset and the source. |
 
-`[about]` text never affects the samples. The running program does not fetch or check source URLs; the [catalog reference](catalog-review.md) documents source comparisons and evidence limits.
+`[about]` text never affects the samples. The running program does not fetch or check source URLs; the [catalog reference](catalog.md) documents source comparisons and evidence limits.
 
 ## Waveforms
 
@@ -147,7 +147,7 @@ An ideal rectangular click train's RMS is its pulse peak plus `10 · log10(width
 
 ## Built-in catalog
 
-Each built-in preset is a parameterized audio adaptation of a selected condition from a published study. Its `[about]` table distinguishes stated source parameters, unspecified details and explicit synthesis or presentation choices. These recipes do not reproduce the original apparatus, calibrated acoustic levels or every waveform detail. The [catalog reference](catalog-review.md) documents the primary methods, supplements, adaptations and remaining evidence limits for all nineteen recipes. Built-in sounds use 0.1 s fades, phase-zero starts and a −20 dBFS peak per component unless the study's own level relationships require otherwise; those cases are explained in `adaptation`. Study procedures beyond the sound itself (baselines, condition order, tasks, recordings, calibration, light stimulation) are not part of a preset.
+Each built-in preset is a parameterized audio adaptation of a selected condition from a published study. Its `[about]` table distinguishes stated source parameters, unspecified details and explicit synthesis or presentation choices. These recipes do not reproduce the original apparatus, calibrated acoustic levels or every waveform detail. The [catalog reference](catalog.md) documents the primary methods, supplements, adaptations and remaining evidence limits for all nineteen recipes. Built-in sounds use 0.1 s fades, phase-zero starts and a −20 dBFS peak per component unless the study's own level relationships require otherwise; those cases are explained in `adaptation`. Study procedures beyond the sound itself (baselines, condition order, tasks, recordings, calibration, light stimulation) are not part of a preset.
 
 ### Adding a built-in preset
 

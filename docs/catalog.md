@@ -1,6 +1,6 @@
-# Scientific catalog review
+# Catalog sources and adaptations
 
-This reference compares the built-in recipes with their eight primary studies, recording source parameters and adaptations. Recipe content is authoritative in the [catalog source](../crates/core/catalog), and the [preset guide](presets.md#built-in-catalog) describes admission and fidelity requirements.
+This reference describes the source parameters and adaptations of the built-in recipes from eight primary studies. Recipe content is authoritative in the [catalog source](../crates/core/catalog), and the [preset guide](presets.md#built-in-catalog) describes admission and fidelity requirements.
 
 ## Primary sources and evidence limits
 
@@ -17,13 +17,13 @@ This reference compares the built-in recipes with their eight primary studies, r
 
 Check primary methods, relevant supplements and publisher corrections when revising a recipe. Required waveform parameters come from primary methods.
 
-Broader-literature caution is separate from checking individual source parameters. [Ingendoh, Posny and Heine (2023), PLOS ONE 18(5):e0286023](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0286023), Abstract, eligibility criteria and Discussion, reports inconsistent EEG entrainment findings across fourteen studies and substantial methodological heterogeneity. 
+Broader-literature caution is separate from checking individual source parameters. [Ingendoh, Posny and Heine (2023), PLOS ONE 18(5):e0286023](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0286023), Abstract, eligibility criteria and Discussion, reports inconsistent EEG entrainment findings across fourteen studies and substantial methodological heterogeneity.
 
 ## 1. Beauchene 2016 — four recipes
 
 **Locators:** Materials and Methods / Participants (`sec003`), Auditory Stimulus (`sec004`), Visuospatial Task (`sec006`); Fig 1; Results / Working Memory Task Performance (`sec015`), Fig 3; Statistical Methods; Discussion. S1 Fig is the OLS-metric correlation matrix, not an additional stimulus specification.
 
-| Recipe | Source ear assignment/carrier | Source continuous duration | Current recipe comparison |
+| Recipe | Source ear assignment/carrier | Source continuous duration | Recipe parameters |
 | --- | --- | --- | --- |
 | `beauchene-2016-binaural-5-hz` | L245/R240 Hz pure tones | 5 min | exact frequencies, routing and 300 s match |
 | `beauchene-2016-binaural-10-hz` | L250/R240 Hz pure tones | 5 min | exact frequencies, routing and 300 s match |
@@ -32,7 +32,7 @@ Broader-literature caution is separate from checking individual source parameter
 
 No pulse width or physical amplitude modulation is prescribed; binaural difference is a percept rather than an amplitude-modulator parameter. MATLAB generation and Sony MDR-NC7 stereo headphones are stated; participants selected volume. **Audio** sample rate, starting phases, digital amplitude and endpoint ramps are unspecified. The paper's 128 Hz number is EEG acquisition, not an audio rate. All four recipes explicitly add phase-zero starts, -20 dBFS component peaks and 0.1 s fades without claiming acoustic calibration.
 
-Twenty-eight adults performed a titrated visuospatial task; six sound/control conditions changed every five minutes in randomized order. The reported outcome is later-minus-earlier accuracy **within each condition**, not an established general cognitive benefit: only 15 Hz had positive change (about 3% in the discussion); all others were negative; reaction-time condition comparison was nonsignificant. The summaries preserve those directions, participant count, duration and null reaction-time result. The statistical analysis bootstrapped the 28-person behavioral data; its expanded analysis sample must not be described as hundreds of participants.
+Twenty-eight adults performed a titrated visuospatial task; six sound/control conditions changed every five minutes in randomized order. The reported outcome is later-minus-earlier accuracy **within each condition**, not an established general cognitive benefit: only 15 Hz had positive change (about 3% in the discussion); all others were negative; reaction-time condition comparison was nonsignificant. The recipe summaries state those directions, participant count, duration and null reaction-time result. The statistical analysis bootstrapped the 28-person behavioral data; its expanded analysis sample must not be described as hundreds of participants.
 
 ## 2. Chan 2022 — one recipe
 
@@ -40,7 +40,7 @@ Twenty-eight adults performed a titrated visuospatial task; six sound/control co
 
 `chan-2022-clicks-40-hz`: source 1 ms rectangular sound-control pulse per 25 ms (40 Hz, 4% duty), approximately three-minute sound-only EEG condition for cognitively normal adults. Thus rate 40, width 0.001 and duration 180 s are supported. Clinical/epilepsy EEG conditions were approximately one minute; chronic AD intervention was **combined** light/sound for one hour daily, not this standalone three-minute sound recipe. Loudspeakers/soundbar were approximately five feet away; article reports 78 dB in cognitively normal adults and 68 dB for mild AD/epilepsy, without enough information to recreate a calibrated dBFS setting. Fig 2B labels electrical on/off signals. The measured ear-canal waveform, phase, acoustic pulse polarity and headphone channel assignment are unspecified. Audio sample rate and endpoint ramps are unspecified; the 512 Hz EEG digitization is not audio. The adaptation explicitly identifies identical both-ear positive pulses, uncalibrated -20 dBFS, added 0.1 s fades and omitted light.
 
-The summary's conservative findings match the article: pilot enrolled 15; MRI comparison active 7/control 6; ventricular difference p = .024; no significant total-brain-volume change; FNA delayed recall active 4/control 5, between-group p = .027; standard cognitive tests nonsignificant. S5 Table gives total-brain-volume p = .419 and cortical-thickness p = .547. Small sample, missing data, exploratory underpowered outcomes and combined stimulation prevent inference of a sound-alone treatment.
+The recipe summary reports: pilot enrolled 15; MRI comparison active 7/control 6; ventricular difference p = .024; no significant total-brain-volume change; FNA delayed recall active 4/control 5, between-group p = .027; standard cognitive tests nonsignificant. S5 Table gives total-brain-volume p = .419 and cortical-thickness p = .547. Small sample, missing data, exploratory underpowered outcomes and combined stimulation prevent inference of a sound-alone treatment.
 
 The publisher supplements comprise S1 Checklist; S1–S7 figures (timeline, scalp/intracranial EEG, education/confounding, actigraphy); S1–S5 tables; and the three protocol PDFs. The statistical tables and protocols support the participant/outcome distinctions above; they do not supply the unspecified acoustic phase or audio sample-rate calibration.
 
@@ -50,7 +50,7 @@ The publisher supplements comprise S1 Checklist; S1–S7 figures (timeline, scal
 
 `ioannou-2015-binaural-10-hz`: 200 Hz left/210 Hz right, 60 s. `ioannou-2015-pure-tone-200-hz`: 200 Hz both ears, 60 s. Both match unambiguous source conditions. Blocks contain 20 s silence, then 60 s non-binaural control, then 60 s binaural stimulus. The recipes intentionally omit that sequence. Sixteen musicians plus sixteen non-musicians watched a silent subtitled film and ignored the sounds. Philips in-ear headphones and participant-adjusted constant-within-participant volume are stated. Absolute acoustic/digital level, audio sample rate, starting phase and ramps are not specified; EEG sampling (512 Hz, later 256 Hz) is distinct. The recipes' -20 dBFS, phase-zero and 0.1 s fade adaptations are disclosed.
 
-The strongest robust group frequency-following findings concern the alpha beat band (9–12 Hz), not proof that the individual 10 Hz recipe improves wellbeing. S1 File confirms only alpha SSR remained significant across five bands and a delta-stimulation/alpha-response cross-frequency finding. The summaries correctly describe neural response, not a benefit. Source limitations include individualized volume/possible cross-hearing, right-ear-only mismatch and no behavioral measure of the illusion. The source's per-band block-count sentence is internally inconsistent with its frequency-step schedule; neither ambiguity changes the explicitly specified 10 Hz or 200 Hz conditions, so do not “repair” those recipes or invent a corrected whole experimental schedule.
+The strongest robust group frequency-following findings concern the alpha beat band (9–12 Hz), not proof that the individual 10 Hz recipe improves wellbeing. S1 File confirms only alpha SSR remained significant across five bands and a delta-stimulation/alpha-response cross-frequency finding. The recipe summaries describe neural responses. Source limitations include individualized volume/possible cross-hearing, right-ear-only mismatch and no behavioral measure of the illusion. The source's per-band block-count sentence is internally inconsistent with its frequency-step schedule; neither ambiguity changes the explicitly specified 10 Hz or 200 Hz conditions, so do not “repair” those recipes or invent a corrected whole experimental schedule.
 
 ## 4. Jirakittayakorn 2017 — one recipe
 
@@ -58,7 +58,7 @@ The strongest robust group frequency-following findings concern the alpha beat b
 
 `jirakittayakorn-2017-binaural-6-hz`: source 250 Hz left/256 Hz right; Sound Forge Pro 11.0; 65 dB SPL; Monster Inspiration over-ear headphones; 30 min stimulus between 5 min baseline and 5 min post-stimulus. The recipe's 250L/256R and 1800 s match. No amplitude-modulator/pulse-width parameter is required. Starting phases, endpoint ramps and audio sample rate are unspecified. The recipe's phase-zero/-20 dBFS/0.1 s fade and omitted baseline/post periods are explicit adaptations; -20 dBFS cannot recreate 65 dB SPL.
 
-Source reports 17 experimental/11 control participants. Within-group theta increases were broad at 10 min; between-group results were limited by cortical location/time (Table 5), not uniform proof of improved attention. Mood analyses used p < .1 within groups and p < .05 between groups. Tables 6–8 distinguish decreased “worried” from increased negative items; fatigue/vigor changed in both groups. The summary is appropriately mixed and does not equate EEG resemblance to meditation with demonstrated wellbeing/performance improvement. Single exposure, restricted stimulus and timing of emotional evaluation are explicit source limitations.
+Source reports 17 experimental/11 control participants. Within-group theta increases were broad at 10 min; between-group results were limited by cortical location/time (Table 5), not uniform proof of improved attention. Mood analyses used p < .1 within groups and p < .05 between groups. Tables 6–8 distinguish decreased “worried” from increased negative items; fatigue/vigor changed in both groups. The recipe summary distinguishes EEG resemblance to meditation from demonstrated wellbeing or performance effects. Single exposure, restricted stimulus and timing of emotional evaluation are explicit source limitations.
 
 **Supplement:** The author/publisher-deposited `DataSheet1.docx` is available through [Europe PMC supplementaryFiles](https://www.ebi.ac.uk/europepmc/webservices/rest/PMC5487409/supplementaryFiles?includeInlineImage=false). It contains four standard-deviation tables and nine Word charts. Supplementary Figs 1/2 describe mean theta power by channel/time for experimental/control groups; Fig 3A–G gives baseline differences by group/time; Tables 1–4 are standard deviations (do not mistake them for the mean powers). They add no source audio phase/ramp/sample-rate prescription.
 
@@ -94,7 +94,7 @@ The following recipes use schema 2 and 0.1 s endpoint fades. All levels are unca
 
 **Source facts:** 1 ms/10 kHz tones repeat at 8/40/80 Hz or random intervals from overhead speakers; reported level is 60 dB, with calibration reference/method and audio phase/ramps/sample rate unstated in this protocol. Figure 3 specifies 1 h/day for seven days. Its amyloid groups are no-stimulation/40 Hz n=19 each, 8 Hz n=4, 80 Hz n=7. Memory groups use n=20/20/9 for recognition and n=25/28/9 for water maze. Reported benefits concern mouse models. S3A explicitly lacks hippocampal Aβ1-40 assays for 80 Hz/random; missing assays are not negative results.
 
-**Recipe adaptation:** All three carriers, rates, widths and per-session durations agree. Both routing, digital level, phase and fades remain adaptations; the daily schedule/random controls are not implemented. The summary sample counts agree with their respective experiments. Missing assays are not evidence of a null result.
+**Recipe adaptation:** All three carriers, rates, widths and per-session durations agree. Both routing, digital level, phase and fades remain adaptations; the daily schedule/random controls are not implemented. Recipe summaries give the sample counts for their respective experiments. Missing assays are not evidence of a null result.
 
 ## 7. Orozco Perez 2020 — four recipes
 
@@ -110,15 +110,15 @@ The following recipes use schema 2 and 0.1 s endpoint fades. All levels are unca
 
 **Source facts:** Full-depth SAM carriers are 500/1000/2000 Hz. EEG stimulation lasts 307.2 s at 96 kHz; nominal 40 Hz becomes 39.0625 Hz for integer periods in 1.024 s epochs. Ears alternate, separated by at least 10 s. ER3A inserts use a calibrated 2-cc coupler. EEG levels span 40-80 dB SPL in 10 dB steps, with extra 5 dB steps for 1000 Hz. Of 38 young participants labeled normal-hearing, 19 hear 500/2000 Hz and 19 hear 1000 Hz; one has a 35 dB HL threshold exception at 500 Hz. Relative/absolute carrier-modulator phase and ramps are unspecified. Across conditions, predicted-versus-behavioral balances differ by under 5 dB in 59%, under 10 dB in 85%; substantial individual errors remain.
 
-**Recipe adaptation:** All three EEG carrier/modulator/duration values agree, including the actual 39.0625 Hz modulation rate. Selecting Left, normalized `(1+sin)/2`, zero phases, one uncalibrated digital level and fades are disclosed adaptations. The summaries correctly qualify aggregate accuracy rather than promising carrier-specific or therapeutic performance.
+**Recipe adaptation:** All three EEG carrier/modulator/duration values agree, including the actual 39.0625 Hz modulation rate. Selecting Left, normalized `(1+sin)/2`, zero phases, one uncalibrated digital level and fades are disclosed adaptations. The recipe summaries describe aggregate hearing-measurement accuracy and its individual variation.
 
-## Admission and fidelity conclusions
+## Catalog scope
 
-Retained recipes preserve traceable stated carrier/pulse/modulation and duration parameters, while their chosen digital routing, phase, fades, rendering rates and uncalibrated digital levels remain explicit adaptations. Free-field speaker placement does not itself specify independent ear channels. Calibrated dB SPL, an unspecified dB reference and dBFS are different facts; none may stand in for another. Sources that leave required waveform parameters unstated cannot acquire invented values through descriptive text.
+Built-in recipes use stated carrier/pulse/modulation and duration parameters, while their chosen digital routing, phase, fades, rendering rates and uncalibrated digital levels remain explicit adaptations. Free-field speaker placement does not itself specify independent ear channels. Calibrated dB SPL, an unspecified dB reference and dBFS are different facts; none may stand in for another. Sources that leave required waveform parameters unstated cannot acquire invented values through descriptive text.
 
-Chan's pilot combined light and sound. Beauchene measured within-condition task changes; Ioannou measured EEG responses; Jirakittayakorn measured theta activity and mood. Martorell's mouse findings are not human treatment evidence, and its missing assays are not negative results. Orozco's internally inconsistent sentences are identified alongside the stimuli/statistics supporting the retained interpretation. Van Eeckhoutte's aggregate hearing-measurement accuracy is not per-carrier therapeutic performance.
+Chan's pilot combined light and sound. Beauchene measured within-condition task changes; Ioannou measured EEG responses; Jirakittayakorn measured theta activity and mood. Martorell's mouse findings are not human treatment evidence, and its missing assays are not negative results. Orozco's internally inconsistent sentences are identified alongside the stimuli/statistics supporting the recipe interpretation. Van Eeckhoutte's aggregate hearing-measurement accuracy is not per-carrier therapeutic performance.
 
-The running application neither downloads these sources nor checks custom metadata against parameters. Future substantive corrections require checking every affected description, independent signal oracle and digest rather than refreshing expected values to match an unexplained change.
+The running application neither downloads these sources nor checks custom metadata against parameters. When changing a recipe, check every affected description, independent signal oracle and digest; expected values must follow an explained signal change.
 
 ## Sampled pulse widths
 

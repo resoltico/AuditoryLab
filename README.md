@@ -45,7 +45,11 @@ Choose a built-in ID, `--file PATH` for a regular recipe file or `--stdin` for a
 
 ## Desktop
 
-Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `auditorylab-gui` on Linux. Search and select a sound to see its description and explicitly labeled preview. **Listen** starts finite audio; the persistent player names the actual session while you browse. Fixed toolbar/transport surround the scrolling document. An optional bounded Output monitor drawer shows actual captures, selected span/scale, digital levels and Live/Held/Stale/Last state; static Pattern explained stays beside the layers. Stop and estimated elapsed remain available across screens. **Open Recipe…** imports a file, and **Export WAV…** chooses a destination through the native Save dialog. The **Workbench** builds sounds from up to 16 tone or click components. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or **Edit a copy** from Library, then **Save sound…** while audio continues, or stop audio to export a finite WAV. Source research stays attributed separately from your custom notes; dirty drafts are protected on New and Quit. See the [desktop guide](docs/desktop.md).
+Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `auditorylab-gui` on Linux. Search and select a sound to see its description and explicitly labeled preview. **Listen** starts finite audio; the persistent player names the actual session while you browse. **Open Recipe…** imports a file, and **Export WAV…** chooses a destination through the native Save dialog.
+
+Fixed navigation and transport surround the scrolling document. The optional bounded Output monitor drawer shows actual captures, selected span/scale, digital levels and Live/Held/Stale/Last state; static Pattern explained stays beside the layers. Stop and estimated elapsed remain available across screens.
+
+The **Workbench** builds sounds from up to 16 tone or click components. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or **Edit a copy** from Library, then **Save sound…** while audio continues, or stop audio to export a finite WAV. Source research stays attributed separately from your custom notes; dirty drafts are protected on New and Quit. See the [desktop guide](docs/desktop.md).
 
 ## Build from source
 
@@ -69,7 +73,7 @@ Cargo installs the CLI into its bin directory, which must be on PATH. Linux desk
 - [CLI](docs/cli.md): commands, input, output, exit codes and Ctrl-C.
 - [Desktop](docs/desktop.md): window controls, dialogs and platform requirements.
 - [Presets](docs/presets.md): recipe fields, waveforms, validation and catalog additions.
-- [Catalog review](docs/catalog-review.md): study methods, parameters and adaptations.
+- [Catalog sources](docs/catalog.md): study methods, parameters and adaptations.
 - [Architecture](docs/architecture.md): crates, synthesis, playback and GUI threads.
 - [Contributing](CONTRIBUTING.md): checks, dependencies, packaging and releases.
 - [Changelog](CHANGELOG.md) and [security](SECURITY.md).

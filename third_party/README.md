@@ -8,7 +8,7 @@ The workspace patches pinned i-slint-core, i-slint-compiler and i-slint-backend-
 
 The GUI’s action-wiring test compares real Slint font metrics and 100-glyph advances against AppKit at 13, 26 and 40 points with 1× and 2× scale factors. Run `cargo test -p auditorylab-gui corrected_pending_frequency --locked -- --nocapture` on macOS. These patches need to remain until the corresponding toolkit paths preserve logical optical sizing and tracking.
 
-The pinned Winit 0.30.13 X11 backend uses GTK's positive resolved `Gdk/WindowScalingFactor` for window DPI. Font adapters apply independent text/font DPI scaling. KDE precedence, Wayland and explicit Winit/Slint scale overrides retain their existing paths. Missing, malformed or nonpositive resolved factors retain the toolkit's Xft/RandR fallback. The exact desktop-selection/factor policy source is included in xtask unit-test discovery; native qualification exercises real XSettings changes and final rendered scaling.
+The pinned Winit 0.30.13 X11 backend uses GTK's positive resolved `Gdk/WindowScalingFactor` for window DPI. Font adapters apply independent text/font DPI scaling. KDE precedence, Wayland and explicit Winit/Slint scale overrides retain their existing paths. Missing, malformed or nonpositive resolved factors retain the toolkit's Xft/RandR fallback. The exact desktop-selection/factor policy source is included in xtask unit-test discovery; native checks must exercise actual XSettings changes and rendered scaling.
 
 The Linux AccessKit bridge sends `org.a11y.atspi.Cache.AddAccessible` and `RemoveAccessible` with one structured D-Bus argument, as required by the [AT-SPI cache interface](https://github.com/GNOME/at-spi2-core/blob/main/xml/Cache.xml). These signals let assistive clients refresh controls that leave and re-enter the accessible tree, including scrolled fields and popup choices. Node identities, filtering and object lifetimes retain their existing policy.
 
@@ -20,7 +20,7 @@ The Winit backend requests a future redraw when showing a Wayland window. An ini
 
 On macOS, the Winit backend synchronizes Slint's logical keyboard modifiers from native aggregate flag reports, using the same Command/Control normalization as key events. Native aggregate flags remain separate from known physical sides, so flagged accessibility input does not require fabricated modifier-key presses. Ordinary input uses the latest native aggregate; actual modifier-key callbacks retain their immediate physical-family state. Losing window focus clears both sources. Other backends retain physical-key tracking and their existing AltGr handling.
 
-The GUI's existing action-wiring test exercises real text selection from aggregate-only flags, both physical/canonical event orders, side-key release, focus reset and Windows AltGr clearing. It runs with `cargo test -p auditorylab-gui corrected_pending_frequency --locked`.
+The GUI's action-wiring test exercises real text selection from aggregate-only flags, both physical/canonical event orders, side-key release, focus reset and Windows AltGr clearing. It runs with `cargo test -p auditorylab-gui corrected_pending_frequency --locked`.
 
 The shared TextEdit widget scrolls the complete shaped cursor rectangle into view. The core publishes its actual height before the existing cursor-position callback; the widget uses that height for both viewport edges and short viewports instead of a fixed 20px margin. Font leading and fallback shaping remain the renderer’s responsibility.
 

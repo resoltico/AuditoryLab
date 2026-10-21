@@ -297,7 +297,7 @@ impl Stimulus {
     /// for every frame, which playback does on the device's real-time thread.
     pub const MAX_COMPONENTS: usize = 16;
 
-    /// Check the stimulus at a sample rate and build its session.
+    /// Check the stimulus at a sample rate and build its seekable signal.
     ///
     /// Durations become whole frames at that rate. Each ear's components must
     /// add up to a peak of at most full scale, so no sample ever needs
