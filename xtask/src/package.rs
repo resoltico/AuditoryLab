@@ -50,6 +50,7 @@ pub(crate) fn inspect(
     target: &str,
     version: &str,
     build: u32,
+    rust_copyright: &[u8],
 ) -> Result<PathBuf> {
     let platform = crate::targets::platform(target)?;
     let name = archive
@@ -87,6 +88,13 @@ pub(crate) fn inspect(
         if fs::read(root.join(file))?.is_empty() {
             return Err(format!("empty package member {file}").into());
         }
+    }
+    let actual = fs::read(root.join("COPYRIGHT-library.html"))
+        .map_err(|error| format!("cannot read packaged Rust standard-library notices: {error}"))?;
+    if actual != rust_copyright {
+        return Err(
+            "packaged Rust standard-library notices differ from the compiler's original".into(),
+        );
     }
     let app = root.join("Auditory Lab.app");
     let executable = if binary == "auditorylab-gui" && target.contains("apple") {
@@ -153,6 +161,49 @@ pub(crate) fn inspect(
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn archives_require_the_complete_original_rust_component_notices() {
+        use std::fs;
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("auditorylab-0.4.0-windows-x86_64");
+        fs::create_dir(&folder).unwrap();
+        for name in [
+            "LICENSE",
+            "README.txt",
+            "THIRD-PARTY-NOTICES.txt",
+            "auditorylab.exe",
+        ] {
+            fs::write(folder.join(name), "fixture").unwrap();
+        }
+        let archive = temp.path().join("auditorylab-0.4.0-windows-x86_64.zip");
+        let expected = b"complete upstream Rust copyright fixture";
+        for contents in [
+            None,
+            Some(&b""[..]),
+            Some(&b"truncated"[..]),
+            Some(&expected[..]),
+        ] {
+            if let Some(contents) = contents {
+                fs::write(folder.join("COPYRIGHT-library.html"), contents).unwrap();
+            }
+            crate::archive(&folder, &archive, true).unwrap();
+            let error = super::inspect(
+                &archive,
+                &temp.path().join("extracted"),
+                "x86_64-pc-windows-msvc",
+                "0.4.0",
+                1,
+                expected,
+            )
+            .unwrap_err()
+            .to_string();
+            if contents == Some(&expected[..]) {
+                assert!(error.contains("executable header"), "{error}");
+            } else {
+                assert!(error.contains("Rust standard-library"), "{error}");
+            }
+        }
+    }
     #[test]
     fn elf_and_pe_headers_reject_emulated_wrong_architectures_and_truncation() {
         let x64_linux = "x86_64-unknown-linux-gnu";

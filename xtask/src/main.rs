@@ -78,6 +78,27 @@ fn rust_version() -> Result<String> {
         .map(|v| v.trim_matches('"').to_owned())
         .ok_or_else(|| "pinned Rust version missing".into())
 }
+fn rust_standard_library_copyright() -> Result<Vec<u8>> {
+    let compiler = env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    let actual = String::from_utf8(capture(Command::new(&compiler).arg("--version"))?)?;
+    if actual.split_whitespace().nth(1) != Some(rust_version()?.as_str()) {
+        return Err(
+            "distribution compiler differs from rust-toolchain.toml; use the pinned toolchain"
+                .into(),
+        );
+    }
+    let sysroot = String::from_utf8(capture(
+        Command::new(compiler).args(["--print", "sysroot"]),
+    )?)?;
+    let path = Path::new(sysroot.trim()).join("share/doc/rust/COPYRIGHT-library.html");
+    let bytes = fs::read(&path).map_err(|error| {
+        format!("cannot read Rust standard-library notices at {path:?}: {error}")
+    })?;
+    if bytes.is_empty() {
+        return Err("Rust standard-library copyright file is empty".into());
+    }
+    Ok(bytes)
+}
 fn readme(version: &str, gui: bool, target: &str) -> String {
     include_str!("../templates/archive-readme.txt").replace("{version}",version).replace("{product}",if gui {"Desktop"} else {"CLI"}).replace("{start}",if gui {"Open Auditory Lab.app on macOS, auditorylab-gui.exe on Windows, or auditorylab-gui on Linux. Select a sound, read its summary, then use Listen or Export WAV…."} else {"Run auditorylab --help, then auditorylab list. Use auditorylab describe ID to read about a sound, and auditorylab recipe ID --output recipe.toml to edit one."}).replace("{platform_needs}",if target.contains("apple") {"macOS 15 or later. If first launch is blocked, use System Settings > Privacy & Security > Open Anyway after trying to open the app. Apple instructions: https://support.apple.com/en-us/102445"} else if target.contains("windows") {if gui { "Windows 10 or later on x86_64; Windows 11 on ARM64. Desktop drawing needs an OpenGL 2.0 or newer graphics driver." } else { "Windows 10 or later on x86_64; Windows 11 on ARM64." }} else {if gui { "Linux with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, Pango/GTK 3/GIO for desktop font preferences, OpenGL and an xdg-desktop-portal for file dialogs." } else { "Linux with glibc 2.35 or later and ALSA." }})
 }
@@ -331,6 +352,7 @@ fn bundle(binary: &Path, root: &Path, version: &str, build: u32) -> Result<PathB
 }
 fn dist(target: &str, out: &Path) -> Result<()> {
     let platform = platform(target)?;
+    let rust_copyright = rust_standard_library_copyright()?;
     capture(Command::new("cargo").args(["about","--version"]))
         .map_err(|error| format!("cargo-about is required for dist; install it with its cli feature (see CONTRIBUTING.md).\n{error}"))?;
     let mut command = Command::new("cargo");
@@ -399,6 +421,7 @@ fn dist(target: &str, out: &Path) -> Result<()> {
                 readme(&version, product == "gui", target),
             )?;
             fs::copy("LICENSE", folder.join("LICENSE"))?;
+            fs::write(folder.join("COPYRIGHT-library.html"), &rust_copyright)?;
             let name = folder
                 .file_name()
                 .and_then(|s| s.to_str())
@@ -418,6 +441,7 @@ fn dist(target: &str, out: &Path) -> Result<()> {
                 target,
                 &version,
                 build,
+                &rust_copyright,
             )?);
             println!("Wrote {}", archive_path.display());
         }
@@ -439,10 +463,10 @@ fn main() -> Result<()> {
     match args.first().map(String::as_str) {
         Some("check-lints") if args.len()==1 => lint_policy::check(Path::new(".")),
         Some("dist") => { let mut target=None; let mut out=PathBuf::from("target/dist"); let mut i=1; while i<args.len() { let value=args.get(i+1).ok_or("missing option value")?; match args[i].as_str() { "--target"=>target=Some(value.as_str()),"--out"=>out=PathBuf::from(value),_=>return Err("use dist --target TARGET [--out DIR]".into()) } i+=2; } dist(target.ok_or("dist requires --target")?,&out) }
-        Some("inspect-package") if args.len()==3 => { let meta=metadata(None)?; let _=package::inspect(Path::new(&args[2]), Path::new("target/package-inspection"), &args[1], version(&meta)?, build_number(&meta)?)?; Ok(()) },
+        Some("inspect-package") if args.len()==3 => { let meta=metadata(None)?; let _=package::inspect(Path::new(&args[2]), Path::new("target/package-inspection"), &args[1], version(&meta)?, build_number(&meta)?, &rust_standard_library_copyright()?)?; Ok(()) },
         Some("collect-assets") if args.len()==4 => targets::collect(&args[1], Path::new(&args[2]), Path::new(&args[3])),
         Some("notes") if args.len()==2 => { println!("{}",section(&fs::read_to_string("CHANGELOG.md")?,&args[1])?.1); Ok(()) }
-        Some("check-release") if args.len()==2 => { let meta=metadata(None)?; if version(&meta)?!=args[1] { return Err("workspace version differs from requested release".into()); } let text=fs::read_to_string("CHANGELOG.md")?; release_notes(&text,&args[1])?; Ok(()) }
+        Some("check-release") if args.len()==2 => { let meta=metadata(None)?; if version(&meta)?!=args[1] { return Err("workspace version differs from requested release".into()); } let text=fs::read_to_string("CHANGELOG.md")?; release_notes(&text,&args[1])?; rust_standard_library_copyright()?; Ok(()) }
         Some("notices") if args.len()==4 => { let meta=metadata(Some(&args[2]))?; fs::write(&args[3],about(&args[1],&args[2],&meta)?)?; Ok(()) }
         _=>Err("use cargo xtask dist --target TARGET [--out DIR], inspect-package TARGET ARCHIVE, collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT, notes VERSION, check-release VERSION, or check-lints".into()),
     }

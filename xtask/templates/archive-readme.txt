@@ -12,3 +12,4 @@ Check the download with its SHA256SUMS entry before opening it.
 
 Source and guides: https://github.com/resoltico/AuditoryLab
 License: MPL-2.0. Dependency terms: THIRD-PARTY-NOTICES.txt.
+Rust standard-library component terms: COPYRIGHT-library.html.
