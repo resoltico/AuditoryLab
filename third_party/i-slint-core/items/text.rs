@@ -778,6 +778,8 @@ pub struct TextInput {
     pub line_height_factor: Property<f32>,
     pub width: Property<LogicalLength>,
     pub height: Property<LogicalLength>,
+    /// Height of the shaped cursor rectangle used by the multiline widget scroll policy.
+    pub cursor_height: Property<LogicalLength>,
     pub cursor_position_byte_offset: Property<i32>,
     pub anchor_position_byte_offset: Property<i32>,
     cursor_affinity: Cell<TextCursorAffinity>,
@@ -1749,14 +1751,14 @@ impl TextInput {
         self.cursor_position_byte_offset.set(new_position);
         self.cursor_affinity.set(affinity);
         if new_position >= 0 {
-            let pos = self
-                .cursor_rect_for_byte_offset(
-                    new_position as usize,
-                    affinity,
-                    window_adapter,
-                    self_rc,
-                )
-                .origin;
+            let rect = self.cursor_rect_for_byte_offset(
+                new_position as usize,
+                affinity,
+                window_adapter,
+                self_rc,
+            );
+            self.cursor_height.set(LogicalLength::new(rect.size.height));
+            let pos = rect.origin;
             if reset_preferred_x_pos {
                 self.preferred_x_pos.set(pos.x);
             }

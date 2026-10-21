@@ -90,10 +90,11 @@ lto = "thin"
 codegen-units = 1
 strip = true
 
-# Preserve native typography, window scaling and accessibility contracts.
+# Preserve native typography, input, window scaling and accessibility contracts.
 [patch.crates-io]
 accesskit_unix = { path = "third_party/accesskit_unix" }
 i-slint-core = { path = "third_party/i-slint-core" }
+i-slint-compiler = { path = "third_party/i-slint-compiler" }
 i-slint-backend-winit = { path = "third_party/i-slint-backend-winit" }
 parley = { path = "third_party/parley" }
 winit = { path = "third_party/winit" }

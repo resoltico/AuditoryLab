@@ -485,7 +485,24 @@ fn text_size_impl(
             text_overflow: TextOverflow::Clip,
         },
         window_adapter.window(),
-        |layout| PhysicalSize::from_lengths(layout.max_width, layout.height) / scale_factor,
+        |layout| {
+            // Fixed line advances can be shorter than a fallback font's cursor box.
+            // Multiline inputs must expose the complete extent to their scroll view.
+            let height = if item_rc.downcast::<crate::items::TextInput>().is_some() {
+                layout
+                    .paragraphs
+                    .iter()
+                    .flat_map(|paragraph| {
+                        paragraph.layout.lines().map(move |line| {
+                            paragraph.y.get() + line.metrics().block_max_coord
+                        })
+                    })
+                    .fold(layout.height.get(), f32::max)
+            } else {
+                layout.height.get()
+            };
+            PhysicalSize::new(layout.max_width.get(), height) / scale_factor
+        },
     )
 }
 

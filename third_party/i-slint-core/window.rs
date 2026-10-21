@@ -839,11 +839,12 @@ impl WindowInner {
         let item_tree = self.try_component()?;
         self.ensure_tree_instantiated();
 
-        // If the focused item became invisible (e.g. a TabWidget switched away from
+        // If the focused item became hidden (e.g. a TabWidget switched away from
         // the tab holding it), drop the focus so that input methods get torn down.
         // The key-event handler does the same, but a tab is switched with a pointer
-        // tap, not a key press, so it must also happen here.
-        if self.focus_item.borrow().upgrade().is_some_and(|i| !i.is_visible()) {
+        // tap, not a key press, so it must also happen here. Scroll clipping alone
+        // keeps the editing focus until an actual focus-changing interaction.
+        if self.focus_item.borrow().upgrade().is_some_and(|i| !i.is_visible_or_clipped_by_flickable()) {
             self.take_focus_item(&FocusEvent::FocusOut(FocusReason::TabNavigation));
         }
 
@@ -1292,10 +1293,12 @@ impl WindowInner {
             }
         }
 
-        if let Some(updated_modifier) = self.context().0.modifiers.get().state_update(
+        let modifier_update = self.context().0.modifiers.get().state_update(
             internal_key_event.event_type == KeyEventType::KeyPressed,
             &internal_key_event.key_event.text,
-        ) {
+        );
+        let is_modifier_event = modifier_update.is_some();
+        if let Some(updated_modifier) = modifier_update {
             self.set_modifier_state(updated_modifier);
         }
 
@@ -1312,8 +1315,8 @@ impl WindowInner {
 
         let mut item = self.focus_item.borrow().clone().upgrade();
 
-        if item.as_ref().is_some_and(|i| !i.is_visible()) {
-            // Reset the focus... not great, but better than keeping it.
+        if item.as_ref().is_some_and(|i| !i.is_visible_or_clipped_by_flickable()) {
+            // Hidden controls cannot receive keys; scroll-clipped editors still can.
             self.take_focus_item(&FocusEvent::FocusOut(FocusReason::TabNavigation));
             item = None;
         }
@@ -1341,6 +1344,18 @@ impl WindowInner {
         }
 
         drop(item_list);
+
+        // Editing a scroll-clipped control needs its context back, but captured
+        // shortcuts and pointer movement must leave the user's viewport alone.
+        let current_focus = self.focus_item.borrow().upgrade();
+        if internal_key_event.event_type == KeyEventType::KeyPressed
+            && !is_modifier_event
+            && let Some(focus_item) = item.as_ref()
+            && current_focus.as_ref() == Some(focus_item)
+            && !focus_item.is_visible()
+        {
+            focus_item.try_scroll_into_visible();
+        }
 
         // Deliver key_event (to focused item, going up towards the window):
         while let Some(focus_item) = item {

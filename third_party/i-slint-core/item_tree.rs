@@ -432,8 +432,44 @@ impl ItemRc {
         visibility_clips
     }
 
+    fn has_active_dynamic_ancestors(&self) -> bool {
+        let mut component = self.item_tree.clone();
+        loop {
+            let current = VRc::borrow_pin(&component);
+            let mut parent = ItemWeak::default();
+            current.as_ref().parent_node(&mut parent);
+            let Some(parent) = parent.upgrade() else {
+                // A real root is its existing window's canonical component. A
+                // retained child with an expired parent is not another root.
+                return Self::new_root(component.clone()).window_adapter()
+                    .and_then(|adapter| crate::window::WindowInner::from_pub(adapter.window()).try_component())
+                    .is_some_and(|root| VRc::ptr_eq(&root, &component));
+            };
+            let parent_component = VRc::borrow_pin(parent.item_tree());
+            let parent_nodes = ItemTreeNodeArray::new(&parent_component);
+            if let Some(ItemTreeNode::DynamicTree { index, .. }) = parent_nodes.get(parent.index()) {
+                let subtree_index = current.as_ref().subtree_index();
+                // Conditional and embedded components occupy the single slot 0.
+                let subtree_index = if subtree_index == usize::MAX { 0 } else { subtree_index };
+                let range = parent_component.as_ref().get_subtree_range(*index);
+                if subtree_index < range.start || subtree_index >= range.end {
+                    return false;
+                }
+                let mut active = ItemTreeWeak::default();
+                parent_component.as_ref().get_subtree(*index, subtree_index, &mut active);
+                if active.upgrade().is_none_or(|active| !VRc::ptr_eq(&active, &component)) {
+                    return false;
+                }
+            }
+            component = parent.item_tree().clone();
+        }
+    }
+
     /// Returns true if this item is visible or only clipped away by a `Flickable`.
     pub(crate) fn is_visible_or_clipped_by_flickable(&self) -> bool {
+        if !self.has_active_dynamic_ancestors() {
+            return false;
+        }
         if self.is_visible() {
             return true;
         }
@@ -445,8 +481,9 @@ impl ItemRc {
         let mut parent = self.parent_item(ParentItemTraversalMode::StopAtPopups);
         while let Some(ancestor) = parent {
             if ancestor.borrow().as_ref().clips_children() {
-                let (clip, ancestor_geo) = ancestor.absolute_clip_rect_and_geometry();
-                let clip = ancestor_geo.intersection(&clip).unwrap_or_default().to_box2d();
+                // Test this clip itself. An outer Flickable may have clipped both
+                // the item and this ancestor without changing their local relation.
+                let clip = ancestor.absolute_clip_rect_and_geometry().1.to_box2d();
                 let item_in_clip = !clip.is_empty()
                     && clip.max.x >= geometry.min.x
                     && clip.max.y >= geometry.min.y
@@ -1057,34 +1094,81 @@ impl ItemRc {
     }
 
     pub(crate) fn try_scroll_into_visible(&self) {
+        // Standard controls use a zero-width FocusScope to avoid intercepting
+        // pointer events. Reveal the owning control, not only that focus point.
+        let mut scroll_target = self.clone();
+        let focused_geometry = self.geometry();
+        if focused_geometry.width() <= 0. || focused_geometry.height() <= 0. {
+            let mut candidate = self.parent_item(ParentItemTraversalMode::StopAtPopups);
+            while let Some(owner) = candidate {
+                if owner.downcast::<crate::items::Flickable>().is_some()
+                    || owner.downcast::<crate::items::WindowItem>().is_some()
+                {
+                    break;
+                }
+                let geometry = owner.geometry();
+                if geometry.width() > 0.
+                    && geometry.height() > 0.
+                    && owner.is_visible_or_clipped_by_flickable()
+                    && matches!(
+                        owner.accessible_role(),
+                        crate::items::AccessibleRole::Button
+                            | crate::items::AccessibleRole::Checkbox
+                            | crate::items::AccessibleRole::Combobox
+                            | crate::items::AccessibleRole::Slider
+                            | crate::items::AccessibleRole::Spinbox
+                            | crate::items::AccessibleRole::Tab
+                            | crate::items::AccessibleRole::TextInput
+                            | crate::items::AccessibleRole::Switch
+                            | crate::items::AccessibleRole::ListItem
+                            | crate::items::AccessibleRole::RadioButton
+                    )
+                {
+                    scroll_target = owner;
+                    break;
+                }
+                candidate = owner.parent_item(ParentItemTraversalMode::StopAtPopups);
+            }
+        }
         let mut parent = self.parent_item(ParentItemTraversalMode::StopAtPopups);
         while let Some(item_rc) = parent.as_ref() {
             let item_ref = item_rc.borrow();
             if let Some(flickable) = vtable::VRef::downcast_pin::<crate::items::Flickable>(item_ref)
             {
-                let geo = self.geometry();
-
-                flickable.reveal_points(
-                    item_rc,
-                    &[
-                        self.map_to_ancestor(
+                let points = |item: &Self| {
+                    let geo = item.geometry();
+                    [
+                        item.map_to_ancestor(
                             LogicalPoint::new(
                                 geo.origin.x - flickable.content_x().0,
                                 geo.origin.y - flickable.content_y().0,
                             ),
                             item_rc,
                         ),
-                        self.map_to_ancestor(
+                        item.map_to_ancestor(
                             LogicalPoint::new(
                                 geo.max_x() - flickable.content_x().0,
                                 geo.max_y() - flickable.content_y().0,
                             ),
                             item_rc,
                         ),
-                    ],
-                );
+                    ]
+                };
+                let focused_points = points(self);
+                let mut target_points = points(&scroll_target);
+                let viewport = crate::items::Flickable::geometry_without_virtual_keyboard(item_rc);
+                // An oversized owner cannot fit. Keep the original focus extent
+                // on that axis instead of scrolling toward an unrelated edge.
+                if (target_points[1].x - target_points[0].x).abs() > viewport.width() {
+                    target_points[0].x = focused_points[0].x;
+                    target_points[1].x = focused_points[1].x;
+                }
+                if (target_points[1].y - target_points[0].y).abs() > viewport.height() {
+                    target_points[0].y = focused_points[0].y;
+                    target_points[1].y = focused_points[1].y;
+                }
+                flickable.reveal_points(item_rc, &target_points);
             }
-
             parent = item_rc.parent_item(ParentItemTraversalMode::StopAtPopups);
         }
     }

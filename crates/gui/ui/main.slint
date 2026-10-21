@@ -283,10 +283,10 @@ component MonitorPanel inherits VerticalBox {
     in property <length> ui-size:13px;
     callback span(int);callback scale(int);callback hold();callback follow();callback details();callback collapse();
     spacing:4px;padding:0px;
-    HorizontalBox {padding:0px;vertical-stretch:0;
-        Text {text:"Output monitor";font-weight:700;min-width:0px;wrap:word-wrap;}
-        Text {text:root.data.state;font-weight:600;min-width:0px;wrap:word-wrap;}
-        Text {min-width:0px;text:root.data.age;wrap:word-wrap;}
+    HorizontalBox {padding:0px;vertical-stretch:0;cross-axis-alignment:center;
+        Text {text:"Output monitor";font-weight:700;wrap:word-wrap;}
+        Text {text:root.data.state;font-weight:600;wrap:no-wrap;horizontal-stretch:0;}
+        Text {preferred-width:0px;horizontal-stretch:1;text:root.data.age;wrap:no-wrap;overflow:elide;accessible-label:root.data.age;}
         Button {text:"Details…";accessible-label:"Full audio diagnostics and capture source";clicked=>{root.details();}}
         Button {text:"Hide";accessible-label:"Hide output monitor";clicked=>{root.collapse();}}
     }
@@ -320,13 +320,41 @@ export component MonitorWindow inherits Window {
     title:"Output monitor";
     in property <string> ui-family;in property <length> ui-size:13px;
     default-font-family:root.ui-family;default-font-size:root.ui-size;
-    preferred-width:950px;preferred-height:max(420px,self.min-height);
-    min-width:max(680px,monitor-content.min-width);
-    min-height:max(400px,monitor-content.preferred-height);
+    preferred-width:950px;preferred-height:420px;
+    min-width:680px;min-height:400px;
     in property <MonitorData> data;
     callback span(int);callback scale(int);callback hold();callback follow();callback details();callback dismiss();
-    monitor-content := VerticalBox {
-        MonitorPanel {data:root.data;ui-size:root.ui-size;span(i)=>{root.span(i);}scale(i)=>{root.scale(i);}hold=>{root.hold();}follow=>{root.follow();}details=>{root.details();}collapse=>{root.dismiss();}}
+    forward-focus:monitor-keys;
+    monitor-keys := FocusScope {
+        width:parent.width;height:parent.height;
+        // These controls have fixed choices; selectable text lives in Details.
+        capture-key-pressed(event)=>{
+            if !event.modifiers.alt && !event.modifiers.meta && !event.modifiers.shift {
+                if !event.modifiers.control && event.text==Key.PageDown {
+                    monitor-scroll.content-y=max(min(0px,monitor-scroll.visible-height - monitor-scroll.content-height),monitor-scroll.content-y - monitor-scroll.visible-height);
+                    return accept;
+                }
+                if !event.modifiers.control && event.text==Key.PageUp {
+                    monitor-scroll.content-y=min(0px,monitor-scroll.content-y+monitor-scroll.visible-height);
+                    return accept;
+                }
+                if event.modifiers.control && event.text==Key.Home {
+                    monitor-scroll.content-x=0px;monitor-scroll.content-y=0px;
+                    return accept;
+                }
+                if event.modifiers.control && event.text==Key.End {
+                    monitor-scroll.content-x=min(0px,monitor-scroll.visible-width - monitor-scroll.content-width);
+                    monitor-scroll.content-y=min(0px,monitor-scroll.visible-height - monitor-scroll.content-height);
+                    return accept;
+                }
+            }
+            return reject;
+        }
+    monitor-scroll := ScrollView {
+        VerticalBox {padding:16px;
+            MonitorPanel {max-height:self.preferred-height;data:root.data;ui-size:root.ui-size;span(i)=>{root.span(i);}scale(i)=>{root.scale(i);}hold=>{root.hold();}follow=>{root.follow();}details=>{root.details();}collapse=>{root.dismiss();}}
+        }
+    }
     }
 }
 export component DetailsWindow inherits Window {

@@ -4,10 +4,16 @@ mod actions;
 mod app;
 mod details_parent;
 mod dialogs;
+#[cfg(test)]
+mod focus_reflow_tests;
+#[cfg(test)]
+mod focus_scroll_tests;
 mod motion;
 #[cfg(target_os = "macos")]
 mod native_application;
 mod scope;
+#[cfg(test)]
+mod text_edit_tests;
 mod typography;
 mod worker;
 use actions::{Action, Continuation};
@@ -2110,6 +2116,8 @@ mod action_wiring_tests {
         }))
         .unwrap();
         assert_audio_controls_keep_stop_visible(&auxiliary_constraints);
+        crate::text_edit_tests::assert_cursor_rect_scrolls_into_view();
+        crate::focus_scroll_tests::assert_control_focus_scrolls_into_view();
         assert_platform_modifiers_drive_text_shortcuts();
         #[cfg(target_os = "macos")]
         assert_native_font_metrics();
@@ -2214,9 +2222,10 @@ mod action_wiring_tests {
             "responsive fallback must preserve the user's open choice"
         );
         assert_monitor_handoff_preserves_numeric_entry(&ui);
+        crate::focus_reflow_tests::assert_pending_entry_survives_font_reflow(&ui);
         assert_monitor_warning_accessibility(&ui);
-        assert_monitor_layout_survives_warning_changes(&ui);
         assert_monitor_lane_geometry(&ui, &auxiliary_constraints);
+        assert_monitor_layout_survives_warning_changes(&ui);
         ui.hide().unwrap();
     }
 
@@ -2324,14 +2333,17 @@ mod action_wiring_tests {
             let mut lanes = Vec::new();
             let mut controls = 0;
             let _ = root.visit_descendants(|item| {
-                if !item.is_visible() { return ControlFlow::<()>::Continue(()) }
+                if context == "drawer" && !item.is_visible() { return ControlFlow::<()>::Continue(()) }
                 if let Some(label) = item.accessible_string_property(AccessibleStringProperty::Label) {
                     if label.starts_with("Left samples,") || label.starts_with("Right samples,") {
                         lanes.push(item.clone());
                     }
-                    if matches!(label.as_str(), "Output monitor" | "Waveform time window" | "Waveform amplitude scale" | "Hold display" | "Return to live" | "Full audio diagnostics and capture source" | "Hide output monitor") {
+                    if matches!(label.as_str(), "Output monitor" | "Waveform time window" | "Waveform amplitude scale" | "Hold display" | "Return to live" | "Full audio diagnostics and capture source" | "Hide output monitor" | "Follow system motion preference") {
                         let (x,y,width,height) = bounds(item);
-                        assert!(x >= 0.0 && y >= 0.0 && x+width <= viewport.width+0.01 && y+height <= viewport.height+0.01, "{context} at{size}px: {label} must remain inside its window, got{:?} in{viewport:?}", (x,y,width,height));
+                        assert!(width > 0.0 && height > 0.0, "{context}: {label} needs a usable extent");
+                        if context == "drawer" {
+                            assert!(x >= 0.0 && y >= 0.0 && x+width <= viewport.width+0.01 && y+height <= viewport.height+0.01, "{context} at{size}px: {label} must remain inside its window, got{:?} in{viewport:?}", (x,y,width,height));
+                        }
                         controls += 1;
                     }
                 }
@@ -2417,34 +2429,42 @@ mod action_wiring_tests {
                 "both ears must retain the same plot origin, time scale, and amplitude height"
             );
         }
+        ui.set_monitor_open(true);
+        ui.invoke_resize_monitor(270.0);
         let window = MonitorWindow::new().unwrap();
         window.set_ui_family(ui.get_ui_family());
-        window.set_data(ui.get_monitor_data());
         let mut drawer_cases = 0;
-        for size in [13.0, 26.0, 40.0] {
+        for size in [40.0, 32.666_668, 26.0, 13.0] {
             window.set_ui_size(size);
             window.show().unwrap();
+            settle(window.window());
             let minimum = constraints.borrow().unwrap().min.unwrap();
-            for requested_width in [680.0_f32, 1100.0] {
-                let width = requested_width.max(minimum.width).ceil();
+            assert_eq!(
+                minimum,
+                slint::LogicalSize::new(680.0, 400.0),
+                "focused content must not force a window beyond the desktop"
+            );
+            for (width, height) in [(680.0_f32, 700.0), (1280.0, 800.0)] {
                 window
                     .window()
-                    .set_size(slint::LogicalSize::new(width, 1200.0));
-                settle(window.window());
-                let at_width = constraints.borrow().unwrap().min.unwrap();
-                eprintln!(
-                    "Focused monitor at{size}px requested{requested_width}px: native minimum{at_width:?}"
-                );
-                for height in [at_width.height.ceil(), 1200.0] {
-                    window
-                        .window()
-                        .set_size(slint::LogicalSize::new(width, height));
+                    .set_size(slint::LogicalSize::new(width, height));
+                for state in ["Live", "Held", "Unavailable"] {
+                    let mut data = ui.get_monitor_data();
+                    data.state = state.into();
+                    data.age = "Current session receipt 123456 milliseconds ago; full receipt provenance remains accessible".into();
+                    data.held = state == "Held";
+                    data.overridden = true;
+                    data.motion =
+                        "System Reduce Motion is enabled: display held by default.".into();
+                    data.backendwarning =
+                        "Backend-reported output underruns: 8 · see details.".into();
+                    window.set_data(data.clone());
                     settle(window.window());
-                    check(window.window(), size, "focused", 6);
+                    check(window.window(), size, "focused", 7);
+                    assert_focused_monitor_reachable(&window, size, &data);
                 }
                 ui.set_ui_size(size);
-                ui.window()
-                    .set_size(slint::LogicalSize::new(requested_width, 1200.0));
+                ui.window().set_size(slint::LogicalSize::new(width, 1200.0));
                 settle(ui.window());
                 if ui.get_drawer_fits() {
                     drawer_cases += 1;
@@ -2466,11 +2486,334 @@ mod action_wiring_tests {
         ui.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
     }
 
+    fn assert_focused_monitor_reachable(
+        window: &MonitorWindow,
+        size: f32,
+        data: &generated::MonitorData,
+    ) {
+        use slint::platform::{Key, WindowEvent};
+        use slint::private_unstable_api::re_exports::{
+            AccessibleStringProperty, ItemRc, Orientation, WindowInner,
+        };
+        use std::collections::BTreeSet;
+        use std::ops::ControlFlow;
+        fn settle(window: &slint::Window) {
+            slint::platform::update_timers_and_animations();
+            WindowInner::from_pub(window).draw_contents(|_, _| ());
+            slint::platform::update_timers_and_animations();
+        }
+        fn bounds(item: &ItemRc) -> (f32, f32, f32, f32) {
+            let geometry = item.geometry();
+            let origin = item.map_to_window(geometry.origin);
+            (
+                origin.x,
+                origin.y,
+                geometry.size.width,
+                geometry.size.height,
+            )
+        }
+        fn key(window: &slint::Window, key: Key) {
+            let text: slint::SharedString = key.into();
+            window.dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+            window.dispatch_event(WindowEvent::KeyReleased { text });
+            settle(window);
+        }
+        let inner = WindowInner::from_pub(window.window());
+        let root = inner.window_item_rc().unwrap();
+        let find = |label: &str| {
+            let mut matches = Vec::new();
+            let _ = root.visit_descendants(|item| {
+                if item
+                    .accessible_string_property(AccessibleStringProperty::Label)
+                    .is_some_and(|value| value == label)
+                {
+                    matches.push(item.clone());
+                }
+                ControlFlow::<()>::Continue(())
+            });
+            assert_eq!(matches.len(), 1, "one actual monitor item for {label}");
+            matches.pop().unwrap()
+        };
+        let state = find(data.state.as_str());
+        let state_bounds = bounds(&state);
+        let state_intrinsic = state.borrow().as_ref().layout_info(
+            Orientation::Horizontal,
+            state_bounds.3,
+            &inner.window_adapter(),
+            &state,
+        );
+        assert!(
+            state_bounds.2 + 0.1 >= state_intrinsic.preferred,
+            "{} must retain its complete shaped width {} at {size}px: {state_bounds:?}",
+            data.state,
+            state_intrinsic.preferred
+        );
+        assert!(
+            state_bounds.3 > size * 0.8,
+            "monitor state cannot collapse vertically"
+        );
+        let age = find(data.age.as_str());
+        let age_bounds = bounds(&age);
+        let age_intrinsic = age.borrow().as_ref().layout_info(
+            Orientation::Horizontal,
+            age_bounds.3,
+            &inner.window_adapter(),
+            &age,
+        );
+        assert!(
+            age_bounds.2 > 0.0 && age_bounds.2 + 0.1 >= age_intrinsic.min,
+            "receipt age retains at least its shaped elision marker"
+        );
+        let age_line = age.borrow().as_ref().layout_info(
+            Orientation::Vertical,
+            age_bounds.2,
+            &inner.window_adapter(),
+            &age,
+        );
+        assert!(
+            age_line.preferred <= size * 1.7 && age_bounds.3 + 0.1 >= age_line.preferred,
+            "receipt age must fit its complete single shaped line at {size}px: {age_bounds:?}, {age_line:?}"
+        );
+        let labels = [
+            "Full audio diagnostics and capture source",
+            "Hide output monitor",
+            "Waveform time window",
+            "Waveform amplitude scale",
+            if data.held {
+                "Return to live"
+            } else {
+                "Hold display"
+            },
+            "Follow system motion preference",
+        ];
+        let controls: Vec<_> = labels.iter().map(|label| (*label, find(label))).collect();
+        slint::slint! {
+            import { Button } from "std-widgets.slint";
+            export component MonitorButtonMeasure inherits Window {
+                in property <string> family;
+                in property <length> size;
+                default-font-family:root.family;default-font-size:root.size;
+                out property <length> natural-height:max(measure.min-height,measure.preferred-height);
+                out property <length> widget-minimum-height:measure.min-height;
+                out property <length> widget-preferred-height:measure.preferred-height;
+                measure := Button {text:"Details…";}
+            }
+        }
+        let measure = MonitorButtonMeasure::new().unwrap();
+        measure.set_family(window.get_ui_family());
+        measure.set_size(size);
+        let natural_height = measure.get_natural_height();
+        eprintln!(
+            "Actual widget height oracle {size}px: minimum={}, preferred={}, admitted={natural_height}",
+            measure.get_widget_minimum_height(),
+            measure.get_widget_preferred_height()
+        );
+        assert!(
+            natural_height > 0.0,
+            "standard button height oracle is meaningful"
+        );
+        for (label, item) in &controls[..2] {
+            assert!(
+                bounds(item).3 <= natural_height + 0.1,
+                "{label} must retain its natural height at {size}px: actual={:?}, preferred={natural_height}",
+                bounds(item)
+            );
+        }
+        let viewport = window
+            .window()
+            .size()
+            .to_logical(window.window().scale_factor());
+        let mut seen = BTreeSet::new();
+        for reverse in [false, true] {
+            let mut direction_seen = BTreeSet::new();
+            if reverse {
+                window.window().dispatch_event(WindowEvent::KeyPressed {
+                    text: Key::Shift.into(),
+                });
+            }
+            for _ in 0..18 {
+                key(window.window(), Key::Tab);
+                let focused = inner
+                    .focus_item
+                    .borrow()
+                    .upgrade()
+                    .expect("Tab focuses a monitor control");
+                for (label, item) in &controls {
+                    let mut contains_focus = *item == focused;
+                    let _ = item.visit_descendants(|child| {
+                        contains_focus |= *child == focused;
+                        ControlFlow::<()>::Continue(())
+                    });
+                    if contains_focus {
+                        let (x, y, width, height) = bounds(item);
+                        if x < -0.1
+                            || y < -0.1
+                            || x + width > viewport.width + 0.1
+                            || y + height > viewport.height + 0.1
+                        {
+                            eprintln!(
+                                "Focus reveal diagnostic: focused={:?}, control={:?}",
+                                bounds(&focused),
+                                bounds(item)
+                            );
+                            let _ = root.visit_descendants(|candidate| {
+                                if let Some(flick) = candidate.downcast::<slint::private_unstable_api::re_exports::Flickable>() {
+                                    let flick = flick.as_pin_ref();
+                                    eprintln!("Flickable {:?} content={:?}x{:?}, offset={:?},{:?}", bounds(candidate), flick.content_width(), flick.content_height(), flick.content_x(), flick.content_y());
+                                }
+                                ControlFlow::<()>::Continue(())
+                            });
+                        }
+                        assert!(
+                            x >= -0.1
+                                && y >= -0.1
+                                && x + width <= viewport.width + 0.1
+                                && y + height <= viewport.height + 0.1,
+                            "Tab reverse={reverse} must reveal {label} at {size}px: {:?} in {viewport:?}",
+                            (x, y, width, height)
+                        );
+                        seen.insert(*label);
+                        direction_seen.insert(*label);
+                    }
+                }
+            }
+            for (label, _) in &controls {
+                if data.held
+                    && matches!(*label, "Waveform time window" | "Waveform amplitude scale")
+                {
+                    continue;
+                }
+                assert!(
+                    direction_seen.contains(label),
+                    "Tab reverse={reverse} must reach {label}"
+                );
+            }
+            if reverse {
+                window.window().dispatch_event(WindowEvent::KeyReleased {
+                    text: Key::Shift.into(),
+                });
+            }
+        }
+        for (label, _) in &controls {
+            if data.held && matches!(*label, "Waveform time window" | "Waveform amplitude scale") {
+                continue;
+            }
+            assert!(
+                seen.contains(label),
+                "actual Tab traversal must reach {label}"
+            );
+        }
+        let flickable = root
+            .visit_descendants(|item| {
+                item.downcast::<slint::private_unstable_api::re_exports::Flickable>()
+                    .map_or(ControlFlow::Continue(()), |flickable| {
+                        ControlFlow::Break(flickable)
+                    })
+            })
+            .unwrap();
+        let flickable = flickable.as_pin_ref();
+        let bottom = (viewport.height - flickable.content_height().get()).min(0.0);
+        for _ in 0..8 {
+            let before = flickable.content_y().get();
+            key(window.window(), Key::PageDown);
+            let after = flickable.content_y().get();
+            assert!(
+                after >= bottom - 0.1 && after <= before + 0.1 && after <= 0.1,
+                "PageDown must advance within its actual scroll bounds"
+            );
+            if (after - before).abs() < 0.1 {
+                break;
+            }
+        }
+        assert!(
+            (flickable.content_y().get() - bottom).abs() < 0.1,
+            "keyboard paging must reach the warning end of the focused monitor"
+        );
+        key(window.window(), Key::PageUp);
+        assert!(flickable.content_y().get() >= bottom - 0.1 && flickable.content_y().get() <= 0.1);
+        window.window().dispatch_event(WindowEvent::KeyPressed {
+            text: Key::Control.into(),
+        });
+        key(window.window(), Key::End);
+        window.window().dispatch_event(WindowEvent::KeyReleased {
+            text: Key::Control.into(),
+        });
+        settle(window.window());
+        for text in [&data.motion, &data.backendwarning] {
+            let (x, y, width, height) = bounds(&find(text.as_str()));
+            assert!(
+                width > 0.0
+                    && height > 0.0
+                    && x < viewport.width
+                    && x + width > 0.0
+                    && y >= -0.1
+                    && y + height <= viewport.height + 0.1,
+                "Ctrl/Cmd End must reach warning text with only the keyboard"
+            );
+        }
+        window.window().dispatch_event(WindowEvent::KeyPressed {
+            text: Key::Control.into(),
+        });
+        key(window.window(), Key::Home);
+        window.window().dispatch_event(WindowEvent::KeyReleased {
+            text: Key::Control.into(),
+        });
+        settle(window.window());
+        let (x, y, width, height) = bounds(&find(data.state.as_str()));
+        assert!(
+            x >= -0.1
+                && y >= -0.1
+                && x + width <= viewport.width + 0.1
+                && y + height <= viewport.height + 0.1,
+            "Ctrl/Cmd Home must return left/top to the complete monitor state"
+        );
+        window
+            .window()
+            .dispatch_event(WindowEvent::PointerScrolled {
+                position: slint::LogicalPosition::new(viewport.width / 2.0, viewport.height / 2.0),
+                delta_x: -100_000.0,
+                delta_y: -100_000.0,
+            });
+        settle(window.window());
+        for text in [&data.motion, &data.backendwarning] {
+            let (x, y, width, height) = bounds(&find(text.as_str()));
+            assert!(
+                width > 0.0
+                    && height > 0.0
+                    && x < viewport.width
+                    && x + width > 0.0
+                    && y >= -0.1
+                    && y + height <= viewport.height + 0.1,
+                "scrolling must reach the complete warning row at {size}px: {:?}",
+                (x, y, width, height)
+            );
+        }
+        eprintln!(
+            "Focused monitor {size}px {viewport:?} state={} reachable controls={seen:?}",
+            data.state
+        );
+    }
+
     fn assert_monitor_warning_accessibility(ui: &MainWindow) {
         use slint::private_unstable_api::re_exports::{AccessibleStringProperty, WindowInner};
         use std::ops::ControlFlow;
+        fn reveal_warnings(window: &slint::Window) {
+            slint::platform::update_timers_and_animations();
+            WindowInner::from_pub(window).draw_contents(|_, _| ());
+            let viewport = window.size().to_logical(window.scale_factor());
+            window.dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+                position: slint::LogicalPosition::new(viewport.width / 2.0, viewport.height / 2.0),
+                delta_x: 0.0,
+                delta_y: -100_000.0,
+            });
+            slint::platform::update_timers_and_animations();
+            WindowInner::from_pub(window).draw_contents(|_, _| ());
+        }
         let window = MonitorWindow::new().unwrap();
         window.show().unwrap();
+        window
+            .window()
+            .set_size(slint::LogicalSize::new(950.0, 420.0));
         let root = WindowInner::from_pub(window.window())
             .window_item_rc()
             .unwrap();
@@ -2491,7 +2834,7 @@ mod action_wiring_tests {
         let backend_text = "Backend-reported output underruns: 1 · see details.";
         sync_monitor_warnings(ui, None, None, 1, false);
         window.set_data(ui.get_monitor_data());
-        slint::platform::update_timers_and_animations();
+        reveal_warnings(window.window());
         let backend = find(backend_text).expect("independent backend warning must be accessible");
         assert_eq!(
             backend
@@ -2503,7 +2846,7 @@ mod action_wiring_tests {
             let partial = auditorylab::MonitorWarning::IncompleteCoverage;
             sync_monitor_warnings(ui, Some(partial), None, 1, false);
             window.set_data(ui.get_monitor_data());
-            slint::platform::update_timers_and_animations();
+            reveal_warnings(window.window());
             let coverage =
                 find(partial.message()).expect("current partial coverage remains readable");
             assert_eq!(
@@ -2519,7 +2862,7 @@ mod action_wiring_tests {
             );
             sync_monitor_warnings(ui, None, None, 1, false);
             window.set_data(ui.get_monitor_data());
-            slint::platform::update_timers_and_animations();
+            reveal_warnings(window.window());
             assert!(find(partial.message()).is_none());
             assert!(find(backend_text).is_some_and(|item| item == backend));
         }
@@ -2529,7 +2872,7 @@ mod action_wiring_tests {
         ] {
             sync_monitor_warnings(ui, Some(critical), None, 1, false);
             window.set_data(ui.get_monitor_data());
-            slint::platform::update_timers_and_animations();
+            reveal_warnings(window.window());
             let warning = find(critical.message()).unwrap();
             assert_eq!(
                 warning

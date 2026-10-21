@@ -15,7 +15,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Added
 
 - A desktop Workbench builds and changes up to 16 tone/click components live, with sliders, exact numeric fields, ear routing, level and modulation controls. Smooth ramps, glides and crossfades connect valid settings; drafts save as schema-2 recipes with title/summary text or export as finite WAV files. The Rust library supplies draft editing, shared control ranges and live playback.
-- An optional bounded output-monitor drawer sits above compact persistent transport, with fixed navigation/Save and a scrolling sound document. Large text/small space can use a focused monitor window; full selectable diagnostics open separately.
+- An optional bounded output-monitor drawer sits above compact persistent transport, with fixed navigation/Save and a scrolling sound document. Large text/small space can use a focused monitor window with scrolling and keyboard access to all controls and warnings; full selectable diagnostics open separately.
 - CLI `-V` as an alias for `--version`.
 - Positive frequencies previously rejected as too small to advance the phase are accepted.
 
