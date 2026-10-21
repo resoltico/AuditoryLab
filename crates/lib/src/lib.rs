@@ -13,7 +13,8 @@ pub use sound_summary::{
     Rhythm, RhythmKind, SoundSummary, ToneRelationship, component_role, recipe_target,
 };
 pub use waveform_view::{
-    CaptureError, ModelSource, ModelView, WaveformCapture, WaveformScale, phase_text,
+    CaptureError, ModelSource, ModelView, MonitorWarning, OutputMonitorState, WaveformCapture,
+    WaveformScale, monitor_warning, output_monitor_state, output_underrun_warning, phase_text,
 };
 mod publish;
 mod wav;
@@ -28,9 +29,9 @@ pub use auditorylab_core::{
     VoiceObservation,
 };
 pub use draft::{
-    ComponentId, Draft, DraftCheck, ModulationKind, Range, Scale, Setting, SourceKind,
-    default_component, default_modulation, quantize_setting, range, set_setting, setting_value,
-    slider_position, slider_value,
+    ComponentId, Draft, DraftCheck, ModulationKind, Range, SavedAudioDiagnostics, Scale, Setting,
+    SourceKind, default_component, default_modulation, quantize_setting, range, set_setting,
+    setting_diagnostics, setting_value, slider_position, slider_value,
 };
 pub use error::{Error, ErrorKind};
 pub use playback::monitor::{

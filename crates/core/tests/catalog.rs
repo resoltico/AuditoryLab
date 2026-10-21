@@ -385,8 +385,5 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
 }
 // Compile the build script's pure ordering test as part of this integration target.
 #[path = "../build.rs"]
-#[allow(
-    dead_code,
-    reason = "The build-script entry point is not executed by the integration test"
-)]
+#[expect(dead_code, reason = "quality:core-tests-catalog-catalog-build")]
 mod catalog_build;

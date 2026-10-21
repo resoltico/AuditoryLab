@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         identity_input::revision(value)?;
     }
     let source = format!(
-        "pub(super) const BUILD: BuildIdentity = BuildIdentity {{ version: {:?}, build: {build}, revision: {:?} }};",
+        "/// Canonical identity resolved from workspace metadata.\npub(super) const BUILD: BuildIdentity = BuildIdentity {{ version: {:?}, build: {build}, revision: {:?} }};",
         std::env::var("CARGO_PKG_VERSION")?,
         revision.as_deref()
     );

@@ -4,13 +4,18 @@ use auditorylab::{
     format_dbfs, human_duration, set_setting, setting_value,
 };
 use std::collections::HashMap;
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Operation {
     Import,
     Play,
     Live,
     Export,
     Save,
+}
+impl Operation {
+    pub(crate) fn is_audio(self) -> bool {
+        matches!(self, Self::Play | Self::Live)
+    }
 }
 trait TargetControl {
     fn sample_rate(&self) -> SampleRate;
@@ -27,6 +32,7 @@ impl TargetControl for LiveControl {
 pub(crate) struct Workbench {
     pub(crate) draft: Draft,
     pub(crate) saved: Draft,
+    pub(crate) identity: std::sync::Arc<()>,
     control: Option<Box<dyn TargetControl>>,
     pub(crate) last_target: Option<auditorylab::Target>,
     pub(crate) messages: HashMap<ComponentId, String>,
@@ -42,6 +48,7 @@ impl Workbench {
         let mut this = Self {
             draft,
             saved: Draft::new(),
+            identity: std::sync::Arc::new(()),
             control: None,
             last_target: None,
             messages: HashMap::new(),
@@ -66,8 +73,17 @@ impl Workbench {
             .as_ref()
             .map_or(export, |control| control.sample_rate())
     }
-    pub(crate) fn ready(&mut self, control: LiveControl, export: SampleRate) {
+    pub(crate) fn ready(
+        &mut self,
+        owner: &std::sync::Arc<()>,
+        control: LiveControl,
+        export: SampleRate,
+    ) -> bool {
+        if !std::sync::Arc::ptr_eq(owner, &self.identity) {
+            return false;
+        }
         self.attach(Box::new(control), export);
+        true
     }
     fn attach(&mut self, control: Box<dyn TargetControl>, export: SampleRate) {
         self.control = Some(control);
@@ -246,8 +262,57 @@ impl Workbench {
     pub(crate) fn has_pending(&self) -> bool {
         !self.pending.is_empty() || !self.pending_metadata.is_empty()
     }
-    pub(crate) fn can_save(&self) -> bool {
+    /// Evaluate the same complete candidate as an explicit action, without sending it to audio.
+    pub(crate) fn action_draft(&self, rate: SampleRate) -> Option<Draft> {
+        let pending = self.pending_view(rate);
+        let candidate = pending.as_ref().unwrap_or(self);
+        candidate.input_valid().then(|| candidate.draft.clone())
+    }
+    /// Validate staged text for actions and diagnostics without changing the audio target.
+    pub(crate) fn pending_view(&self, rate: SampleRate) -> Option<Self> {
+        if !self.has_pending() {
+            return None;
+        }
+        let mut candidate = Self::new(self.draft.clone(), rate);
+        candidate.pending = self.pending.clone();
+        candidate.parse_errors = self.parse_errors.clone();
+        candidate.pending_metadata = self.pending_metadata.clone();
+        candidate.metadata_errors = self.metadata_errors.clone();
+        candidate.commit_pending(rate);
+        Some(candidate)
+    }
+    pub(crate) fn field_error(
+        &self,
+        id: ComponentId,
+        setting: Setting,
+        rate: SampleRate,
+    ) -> String {
+        if let Some(error) = self.parse_errors.get(&(id, setting)) {
+            return error.clone();
+        }
+        self.draft
+            .components()
+            .iter()
+            .find(|(key, _)| *key == id)
+            .and_then(|(_, c)| {
+                auditorylab::setting_diagnostics(c, rate)
+                    .into_iter()
+                    .find(|(key, _)| *key == setting)
+            })
+            .map_or_else(String::new, |(_, message)| message)
+    }
+    pub(crate) fn record_save(&mut self, owner: &std::sync::Arc<()>, draft: Draft) -> bool {
+        if !std::sync::Arc::ptr_eq(owner, &self.identity) {
+            return false;
+        }
+        self.saved = draft;
+        true
+    }
+    pub(crate) fn input_valid(&self) -> bool {
         self.parse_errors.is_empty() && self.metadata_errors.is_empty()
+    }
+    pub(crate) fn can_save(&self) -> bool {
+        self.input_valid() && self.draft.to_toml().is_ok()
     }
 }
 pub(crate) struct App {
@@ -255,7 +320,9 @@ pub(crate) struct App {
     pub(crate) selected: usize,
     pub(crate) rate: SampleRate,
     pub(crate) operation: Option<Operation>,
+    pub(crate) file_operation: Option<Operation>,
     pub(crate) status: String,
+    pub(crate) audio_status: String,
     pub(crate) workbench: Workbench,
     pub(crate) editing: bool,
 }
@@ -266,7 +333,9 @@ impl App {
             selected: 0,
             rate: SampleRate::DEFAULT,
             operation: None,
+            file_operation: None,
             status: String::new(),
+            audio_status: String::new(),
             workbench: Workbench::new(Draft::new(), SampleRate::DEFAULT),
             editing: false,
         }
@@ -280,22 +349,37 @@ impl App {
         }
     }
     pub(crate) fn start(&mut self, op: Operation) -> bool {
-        if self.operation.is_some() {
+        if op == Operation::Export && self.operation.is_some()
+            || op.is_audio() && self.file_operation == Some(Operation::Export)
+        {
             return false;
         }
-        self.operation = Some(op);
-        self.status.clear();
+        let slot = if op.is_audio() {
+            &mut self.operation
+        } else {
+            &mut self.file_operation
+        };
+        if slot.is_some() {
+            return false;
+        }
+        *slot = Some(op);
+        if op.is_audio() {
+            self.audio_status.clear();
+        } else {
+            self.status.clear();
+        }
         true
     }
-    pub(crate) fn finish(&mut self) {
-        self.operation = None;
-        self.workbench.control = None;
-        self.workbench.refresh(self.rate);
+    pub(crate) fn finish(&mut self, op: Operation) {
+        if op.is_audio() {
+            self.operation = None;
+            self.workbench.control = None;
+            self.workbench.refresh(self.rate);
+        } else {
+            self.file_operation = None;
+        }
     }
     pub(crate) fn open_workbench(&mut self, preset: &Preset) {
-        if self.operation.is_some() {
-            return;
-        }
         if preset.stimulus().components.len() > 16 {
             self.status="Workbench supports at most 16 components; edit the recipe file to reduce its component count.".into();
             return;
@@ -389,7 +473,7 @@ mod tests {
         assert!(app.status.contains("bad import"));
     }
     #[test]
-    fn browsing_continues_while_worker_operations_remain_serialized() {
+    fn browsing_preserves_audio_ownership_and_export_waits_for_idle_audio() {
         let mut app = App::new(auditorylab::catalog().unwrap());
         app.select(3);
         assert_eq!(app.selected, 3);
@@ -398,7 +482,7 @@ mod tests {
         app.select(4);
         assert_eq!(app.selected, 4);
         assert!(app.operation.is_some());
-        app.finish();
+        app.finish(Operation::Play);
         assert!(app.start(Operation::Play));
         assert_eq!(app.selected, 4);
     }
@@ -498,10 +582,15 @@ mod tests {
         assert!(app.start(Operation::Live));
         app.editing = false;
         assert!(!app.start(Operation::Play));
-        let before = app.workbench.draft.components().len();
+        let playing_owner = app.workbench.identity.clone();
         app.open_workbench(&app.preset().clone());
-        assert_eq!(app.workbench.draft.components().len(), before);
-        app.finish();
+        assert!(!std::sync::Arc::ptr_eq(
+            &playing_owner,
+            &app.workbench.identity
+        ));
+        assert_eq!(app.operation, Some(Operation::Live));
+        assert!(app.workbench.control.is_none());
+        app.finish(Operation::Live);
         assert!(app.workbench.control.is_none());
     }
     #[test]
@@ -601,5 +690,81 @@ mod tests {
         w.commit_pending(SampleRate::DEFAULT);
         assert_eq!(sent.borrow().len(), 1);
         assert!(!w.parse_errors.is_empty());
+    }
+
+    #[test]
+    fn saving_has_an_independent_slot_and_never_detaches_the_audio_control() {
+        let mut app = App::new(auditorylab::catalog().unwrap());
+        let sent = Sent::default();
+        app.workbench.attach(
+            Box::new(Recorder {
+                rate: app.rate,
+                sent: sent.clone(),
+            }),
+            app.rate,
+        );
+        assert!(app.start(Operation::Live));
+        assert!(app.start(Operation::Save));
+        assert!(!app.start(Operation::Save));
+        assert!(!app.start(Operation::Import));
+        assert!(!app.start(Operation::Play));
+        app.finish(Operation::Save);
+        assert_eq!(app.operation, Some(Operation::Live));
+        assert!(app.workbench.control.is_some());
+        let count = sent.borrow().len();
+        app.workbench.refresh(app.rate);
+        assert!(sent.borrow().len() > count);
+        assert!(app.start(Operation::Save));
+        app.finish(Operation::Live);
+        assert_eq!(app.file_operation, Some(Operation::Save));
+        assert!(app.workbench.control.is_none());
+        app.finish(Operation::Save);
+        assert!(app.start(Operation::Export));
+        assert!(!app.start(Operation::Live));
+    }
+    #[test]
+    fn late_saved_content_and_prepared_control_cannot_rebind_another_draft() {
+        let rate = SampleRate::DEFAULT;
+        let mut w = Workbench::new(Draft::new(), rate);
+        w.draft.set_title("Snapshot N".into());
+        let snapshot = w.draft.clone();
+        let owner = w.identity.clone();
+        w.draft.set_title("Newer N+1".into());
+        assert!(w.record_save(&owner, snapshot.clone()));
+        assert!(w.dirty());
+        assert_eq!(w.saved.title(), "Snapshot N");
+        assert_eq!(w.draft.title(), "Newer N+1");
+        let mut other = Workbench::new(Draft::new(), rate);
+        assert!(!other.record_save(&owner, snapshot));
+        assert!(!other.dirty());
+        let generator = auditorylab::LiveGenerator::new(&Draft::new(), rate).unwrap();
+        assert!(!other.ready(&owner, generator.control(), rate));
+        assert!(other.control.is_none());
+    }
+    #[test]
+    fn pending_metadata_cannot_hide_an_unrelated_parser_error_and_diagnostics_are_specific() {
+        let rate = SampleRate::DEFAULT;
+        let mut w = Workbench::new(Draft::new(), rate);
+        let id = w.draft.add(SourceKind::Tone).unwrap();
+        w.edit(id, Setting::Frequency, "bad", rate);
+        w.pending_metadata
+            .insert("title".into(), "A pending title".into());
+        assert!(w.action_draft(rate).is_none());
+        assert!(
+            w.field_error(id, Setting::Frequency, rate)
+                .contains("finite")
+        );
+        assert!(w.field_error(id, Setting::Level, rate).is_empty());
+        w.pending.insert((id, Setting::Frequency), "3750".into());
+        let pending = w.pending_view(rate).unwrap();
+        assert!(pending.field_error(id, Setting::Frequency, rate).is_empty());
+        assert!(!pending.peak.contains("Correct the numeric fields"));
+        let draft = w.action_draft(rate).unwrap();
+        assert_eq!(draft.title(), "A pending title");
+        assert!(draft.target(rate).is_ok());
+        assert!(
+            !w.parse_errors.is_empty(),
+            "eligibility must not apply pending text to audio"
+        );
     }
 }

@@ -182,4 +182,62 @@ mod tests {
         })
         .unwrap();
     }
+
+    #[test]
+    fn blocked_file_publication_does_not_own_audio_progress_stop_or_newer_edits() {
+        let dir = dir();
+        let path = dir.path().join("snapshot.toml");
+        let destination = path.clone();
+        let mut draft = crate::Draft::new();
+        draft.set_title("Snapshot N".into());
+        let snapshot = draft.clone();
+        let text = snapshot.preset().recipe.to_toml().unwrap();
+        let (staged_tx, staged_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let file_cancel = Cancel::default();
+        let file_flag = file_cancel.clone();
+        let writer = std::thread::spawn(move || {
+            publish(&destination, Replace::Never, &file_flag, |file| {
+                file.write_all(text.as_bytes()).unwrap();
+                staged_tx.send(()).unwrap();
+                release_rx
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .unwrap();
+                Ok(())
+            })
+        });
+        staged_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        assert!(
+            !path.exists(),
+            "atomic publication must not expose the blocked partial file"
+        );
+        let mut audio = crate::LiveGenerator::new(&draft, crate::SampleRate::DEFAULT).unwrap();
+        let control = audio.control();
+        let mut frames = [[0.0; 2]; 512];
+        audio.render(&mut frames);
+        let before = audio.observation().unwrap().frame;
+        draft.set_title("Later N+1".into());
+        assert_eq!(control.update(&draft).unwrap(), 1);
+        for _ in 0..8 {
+            audio.render(&mut frames);
+            assert!(frames.iter().all(|frame| *frame == [0.0; 2]));
+        }
+        assert!(audio.observation().unwrap().frame > before);
+        audio.stop();
+        audio.render(&mut [[0.0; 2]; 4000]);
+        assert!(audio.is_finished());
+        assert!(
+            !file_cancel.is_requested(),
+            "Stop audio cannot cancel or commit a file task"
+        );
+        release_tx.send(()).unwrap();
+        writer.join().unwrap().unwrap();
+        let saved = crate::load_file(&path).unwrap();
+        assert_eq!(saved.title(), "Snapshot N");
+        assert_eq!(draft.title(), "Later N+1");
+        assert!(!draft.same_content(&snapshot));
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 }

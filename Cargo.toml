@@ -5,7 +5,7 @@ members = ["crates/core", "crates/lib", "crates/cli", "crates/gui", "xtask"]
 [workspace.package]
 version = "0.4.0"
 edition = "2024"
-rust-version = "1.99"
+rust-version = "1.99.1"
 license = "MPL-2.0"
 repository = "https://github.com/resoltico/AuditoryLab"
 publish = false
@@ -42,6 +42,7 @@ flate2 = "1"
 [workspace.lints.rust]
 warnings = "deny"
 unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
 missing_docs = "deny"
 unreachable_pub = "deny"
 unused_lifetimes = "deny"
@@ -52,8 +53,6 @@ private_intra_doc_links = "deny"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
-# Argument counts do not establish responsibility or maintainability.
-too_many_arguments = "allow"
 cast_possible_truncation = "deny"
 cast_precision_loss = "deny"
 cast_sign_loss = "deny"
@@ -90,3 +89,12 @@ inherits = "release"
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# Preserve native typography, input, window scaling and accessibility contracts.
+[patch.crates-io]
+accesskit_unix = { path = "third_party/accesskit_unix" }
+i-slint-core = { path = "third_party/i-slint-core" }
+i-slint-compiler = { path = "third_party/i-slint-compiler" }
+i-slint-backend-winit = { path = "third_party/i-slint-backend-winit" }
+parley = { path = "third_party/parley" }
+winit = { path = "third_party/winit" }

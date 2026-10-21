@@ -244,12 +244,57 @@ fn component_message(error: auditorylab_core::ComponentError) -> String {
         _ => error.to_string(),
     }
 }
+/// Associate typed component validation with only the numeric settings it concerns.
+/// Coupled pulse and sideband constraints name both participating inputs.
+pub fn setting_diagnostics(component: &Component, rate: SampleRate) -> Vec<(Setting, String)> {
+    use auditorylab_core::{ComponentError, Parameter};
+    let Err(error) = component.validate(rate) else {
+        return Vec::new();
+    };
+    let parameter = |p| match p {
+        Parameter::Frequency => Setting::Frequency,
+        Parameter::Rate => Setting::ClickRate,
+        Parameter::Width => Setting::ClickWidth,
+        Parameter::ModulationRate => {
+            if matches!(component.modulation, Some(Modulation::Rectangular { .. })) {
+                Setting::GateRate
+            } else {
+                Setting::ModulationRate
+            }
+        }
+        Parameter::ModulationWidth => Setting::GateWidth,
+    };
+    let settings = match &error {
+        ComponentError::Frequency { parameter: p, .. } => vec![parameter(*p)],
+        ComponentError::Sideband { .. } => vec![Setting::Frequency, Setting::ModulationRate],
+        ComponentError::PulseWidth {
+            parameter: Parameter::Width,
+            ..
+        } => vec![Setting::ClickRate, Setting::ClickWidth],
+        ComponentError::PulseWidth { .. } => vec![Setting::GateRate, Setting::GateWidth],
+        ComponentError::PeakDbfs { .. } => vec![Setting::Level],
+        ComponentError::Depth { .. } => vec![Setting::Depth],
+    };
+    let message = component_message(error);
+    settings
+        .into_iter()
+        .map(|setting| (setting, message.clone()))
+        .collect()
+}
 /// Row-specific messages and overall live validity.
 pub struct DraftCheck {
     /// Each component's own error, independently of other rows.
     pub components: Vec<(ComponentId, Option<String>)>,
     /// Per-ear peak bounds, or an overall target error.
     pub sound: Result<[f64; 2], String>,
+}
+/// Validation messages for the saved audio's duration and edge fades.
+#[derive(Debug, Default)]
+pub struct SavedAudioDiagnostics {
+    /// Duration or duration/fade overlap failure.
+    pub duration: Option<String>,
+    /// Fade or duration/fade overlap failure.
+    pub fade: Option<String>,
 }
 /// Editable sound parameters independent of a device rate.
 #[derive(Clone, Debug)]
@@ -401,6 +446,30 @@ impl Draft {
             }),
         }
     }
+    /// Validate finite-audio timing independently from the live target's components.
+    pub fn saved_audio_diagnostics(&self, rate: SampleRate) -> SavedAudioDiagnostics {
+        use auditorylab_core::StimulusError;
+        let timing = Stimulus {
+            duration_seconds: self.duration,
+            fade_seconds: self.fade,
+            components: Vec::new(),
+        };
+        match timing.signal(rate).err() {
+            Some(error @ StimulusError::Duration { .. }) => SavedAudioDiagnostics {
+                duration: Some(error.to_string()),
+                fade: None,
+            },
+            Some(error @ StimulusError::Fade { .. }) => SavedAudioDiagnostics {
+                duration: None,
+                fade: Some(error.to_string()),
+            },
+            Some(error @ StimulusError::FadesOverlap { .. }) => SavedAudioDiagnostics {
+                duration: Some(error.to_string()),
+                fade: Some(error.to_string()),
+            },
+            _ => SavedAudioDiagnostics::default(),
+        }
+    }
     /// Validate every row and the total peak bound at a rate.
     pub fn check(&self, rate: SampleRate) -> DraftCheck {
         DraftCheck {
@@ -431,6 +500,16 @@ impl Draft {
     /// Save finite recipe numbers within the reader's byte limit, using staged publication.
     /// Rate-dependent invalid components may be saved for further editing.
     pub fn save(&self, path: &Path, replace: Replace) -> Result<(), Error> {
+        let text = self.to_toml()?;
+        crate::publish::publish(path, replace, &crate::Cancel::default(), |file| {
+            file.write_all(text.as_bytes()).map_err(|e| {
+                Error::caused(ErrorKind::Write, format!("cannot save to {path:?}: {e}"), e)
+            })
+        })
+    }
+    /// Serialize the exact finite draft within the reader's byte limit, without file I/O.
+    /// Serializable rate-dependent invalid values remain editable and saveable.
+    pub fn to_toml(&self) -> Result<String, Error> {
         let finite = self.duration.is_finite()
             && self.fade.is_finite()
             && self.components.iter().all(|(_, c)| {
@@ -472,11 +551,7 @@ impl Draft {
                 ),
             ));
         }
-        crate::publish::publish(path, replace, &crate::Cancel::default(), |file| {
-            file.write_all(text.as_bytes()).map_err(|e| {
-                Error::caused(ErrorKind::Write, format!("cannot save to {path:?}: {e}"), e)
-            })
-        })
+        Ok(text)
     }
 }
 #[cfg(test)]

@@ -19,9 +19,9 @@ pub(super) fn resolve() -> Typography {
     let mut fonts = fontique::Collection::new(fontique::CollectionOptions::default());
     #[cfg(target_os = "macos")]
     let (size, origin) = {
-        #[allow(
+        #[expect(
             clippy::cast_possible_truncation,
-            reason = "native UI point size fits f32"
+            reason = "quality:gui-typography-native-point-size"
         )]
         let size = objc2_app_kit::NSFont::systemFontSize() as f32;
         (size, "AppKit system UI / fontique SystemUi".to_owned())
@@ -110,26 +110,22 @@ impl Drop for TypographyService {
 }
 
 #[cfg(target_os = "windows")]
-#[allow(
+#[expect(
     unsafe_code,
-    clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
-    reason = "bounded read-only Win32 metrics and WinRT text scale; initialized ABI structure and UTF16 font name"
+    reason = "quality:gui-typography-windows-listener"
 )]
 fn windows_listener(sender: TypographySink, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
-    use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize, RoUninitialize};
     use windows_sys::Win32::UI::{
         HiDpi::SystemParametersInfoForDpi,
         WindowsAndMessaging::{NONCLIENTMETRICSW, SPI_GETNONCLIENTMETRICS},
     };
-    // SAFETY: this worker exclusively initializes and releases its own WinRT apartment.
-    let initialized = unsafe { RoInitialize(RO_INIT_MULTITHREADED) }.is_ok();
-    let settings = windows::UI::ViewManagement::UISettings::new().ok();
     let mut last = None;
     while !stop.load(std::sync::atomic::Ordering::Relaxed) {
         // SAFETY: NONCLIENTMETRICSW is a plain initialized C record; GET fills exactly cbSize.
         let mut metrics: NONCLIENTMETRICSW = unsafe { std::mem::zeroed() };
         metrics.cbSize = std::mem::size_of::<NONCLIENTMETRICSW>() as u32;
+        // SAFETY: the DPI-aware GET writes the initialized NONCLIENTMETRICSW record above.
         if unsafe {
             SystemParametersInfoForDpi(
                 SPI_GETNONCLIENTMETRICS,
@@ -144,22 +140,17 @@ fn windows_listener(sender: TypographySink, stop: std::sync::Arc<std::sync::atom
             let end = face.iter().position(|c| *c == 0).unwrap_or(face.len());
             let family = String::from_utf16_lossy(&face[..end]);
 
-            let scaling = settings
-                .as_ref()
-                .and_then(|s| s.TextScaleFactor().ok())
-                .filter(|s| s.is_finite() && *s > 0.0);
-            let scale = scaling.unwrap_or(1.0);
-            let size = (f64::from(metrics.lfMessageFont.lfHeight.unsigned_abs()) * scale) as f32;
-            if !family.is_empty() && size.is_finite() && (1.0..=256.0).contains(&size) {
+            // Native message metrics include the system text-size preference.
+            // Request 96-DPI logical units; the window applies display scaling.
+            if let Ok(height) = u16::try_from(metrics.lfMessageFont.lfHeight.unsigned_abs())
+                && (1..=256).contains(&height)
+                && !family.is_empty()
+            {
+                let size = f32::from(height);
                 let next = Typography {
                     family,
                     size,
-                    origin: if scaling.is_some() {
-                        "Win32 message font / WinRT text scaling"
-                    } else {
-                        "Win32 message font / fallback text scale 1: WinRT unavailable"
-                    }
-                    .into(),
+                    origin: "Win32 message font at 96 DPI".into(),
                 };
                 if last.as_ref() != Some(&next) {
                     last = Some(next.clone());
@@ -175,10 +166,6 @@ fn windows_listener(sender: TypographySink, stop: std::sync::Arc<std::sync::atom
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
-    }
-    drop(settings);
-    if initialized {
-        unsafe { RoUninitialize() };
     }
 }
 #[cfg(test)]

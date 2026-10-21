@@ -6,26 +6,27 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Breaking
 
-- Desktop drawing requires an OpenGL-capable graphics driver; software-renderer recovery is removed.
+- Desktop drawing requires an OpenGL-capable graphics driver (OpenGL 2.0 or newer on Windows); software-renderer recovery is removed. Fatal Windows application errors appear in a native dialog.
 - Integer-phase oscillators and exact frame-quantized pulse timing replace the synthesis model. Click and rectangular-gate pulses last exactly `round(width_seconds × sample rate)` frames and start on the first frame at or after each onset; edges can move by one frame against 0.3.0. Recipes that leave no closed frame in a period, or whose pulse widths exceed 2^36 frames at the selected rate, are rejected. Reduce such widths to the supported frame limit. Tone and modulation sample bits also change.
 - Rust packages are `auditorylab-core`, `auditorylab`, `auditorylab-cli` and `auditorylab-gui`, under `crates/core`, `crates/lib`, `crates/cli` and `crates/gui`. WAV and device APIs move into the library. Callers use `Stimulus::signal`, immutable seekable `Signal`, and the library's loading/export/playback API; update Rust imports and exhaustive error matches. Install the CLI with `cargo install --locked --path crates/cli`.
 - Windows source builds require MSVC Visual Studio Build Tools. Downloads statically link the Microsoft C runtime. Linux builds use distribution fontconfig without the former font-library patch or root-directory build requirement.
+- Source builds require Rust 1.99.1 or newer; the repository toolchain pins 1.99.1.
 
 ### Added
 
 - A desktop Workbench builds and changes up to 16 tone/click components live, with sliders, exact numeric fields, ear routing, level and modulation controls. Smooth ramps, glides and crossfades connect valid settings; drafts save as schema-2 recipes with title/summary text or export as finite WAV files. The Rust library supplies draft editing, shared control ranges and live playback.
-- Desktop progress and elapsed time, waveform previews before playback and a waveform window following the latency-compensated playback position. The sound panel scrolls to keep its controls accessible while listening guidance stays visible.
+- An optional bounded output-monitor drawer sits above compact persistent transport, with fixed navigation/Save and a scrolling sound document. Large text/small space can use a focused monitor window with scrolling and keyboard access to all controls and warnings; full selectable diagnostics open separately.
 - CLI `-V` as an alias for `--version`.
 - Positive frequencies previously rejected as too small to advance the phase are accepted.
 
 ### Changed
 
 - Native desktop fonts follow San Francisco on macOS, Windows UI font/text scaling and configured Linux desktop family/size. About is available through the application/Help menu, with identity and licenses retained.
-- Library prioritizes physical sound meaning and study context; Workbench groups component controls, with notes and saved/exported audio under Recipe settings. Exact fields preserve committed precision; slider gestures use three significant digits, 0.1 dB levels and whole-percent depths.
+- Library prioritizes sound meaning and attributed study context; Workbench groups directly editable layers with explicit routing/modulation disclosures and document-local static Pattern explained. Exact fields preserve precision, recover valid pending corrections without an extra blur, and report setting-specific errors. Slider gestures use three significant digits, 0.1 dB levels and whole-percent depths.
 - Bounded core timing/envelope projections distinguish static recipe/accepted-target models from generated waveforms. Click/gate/AM summaries retain independent rhythms and steady companions; narrow interaural and monaural pairs retain their physical meaning.
-- One desktop player retains its session across Library browsing and Workbench edits. Generated rates, crossfade roles, actual stereo traces and window sample peak/RMS distinguish accepted controls from generated output; Fixed/Fit share a truthful stereo scale, and freeze retains complete source/rate/span/scale/meter context; gaps and staleness are labeled.
+- One desktop player retains its session across Library browsing and Workbench edits. Generated rates, crossfade roles, actual stereo traces and window sample peak/RMS distinguish accepted controls from generated output; Fixed/Fit share a truthful stereo scale, and Hold retains complete source/session/rate/span/scale/meter context across playback changes. Live/Held/Stale/Waiting/Unavailable/Last states and receipt age distinguish current data from history; cumulative gaps remain in diagnostics. Coverage/display-range advice stays readable without repeated automatic speech; stale/unavailable monitoring, capture errors and independent backend warnings remain announced. Native motion preferences use explicit enabled/disabled/unknown states with user override and diagnosed live fallback.
 - Library search covers titles, IDs, research and sound parameters. Wrapped results, compact component controls and collapsible notes/saved-audio settings keep sound actions accessible. Edited source research stays attributed separately from custom notes.
-- New, draft replacement, window close and File/app-menu Quit protect unsaved content with Save/Discard/Cancel and wait for worker cleanup, including native macOS Cmd-Q. Late saves preserve later edits as dirty.
+- New, draft replacement, window close and File/app-menu Quit protect unsaved content with Save/Discard/Cancel and wait for worker cleanup, including native macOS Cmd-Q. Sound snapshots save while audio continues; audio Stop and file-task cancellation are independent, both lifetimes are joined on quit, and late/obsolete save results preserve newer or replacement drafts. WAV export requires idle audio.
 - CLI/GUI version output and About distinguish product version, numeric native build counter and optional source revision. CLI Play renders start, generated status and final results on stderr; redirected text stays static.
 
 - Stop fades finite playback over 30 ms, shortened at the end; live Stop finishes any current transition before its 30 ms fade. CLI Ctrl-C retains exit 130.
@@ -36,13 +37,19 @@ Notable changes to this project are documented in this file. The format is based
 - Preset files retain `schema_version = 2`; existing catalog parameters are unchanged.
 - Packaging uses `cargo xtask`; reusable CI builds the release archives. Release dispatch defaults to non-publishing verification with downloadable checksums, notes and provenance; publication requires `publish: true` on main. cargo-deny gates dependency policy, and packaging checks dependency and license-text coverage.
 
+### Fixed
+
+- macOS keyboard shortcuts honor native modifier flags when accessibility input supplies no separate modifier-key events.
+- Linux playback checks missed ALSA fault notifications soon enough to recover before the existing stall deadline.
+
 ### Removed
 
-- `--build-info` output, build kinds, the sample observation transport, display memory budgets and vendored backend patches.
+- `--build-info` output, build kinds, the sample observation transport and display memory budgets.
 - Python build/release tooling and committed generated third-party notices.
 
 ### Internal
 
+- Authored Rust lint exceptions require an exact source scope and written rationale, checked in CI across inactive platform code, macro attributes and opaque Rust syntax. Package lint inheritance and production lint-weakening flags are checked; numerical and native unsafe exceptions are confined to their specific operations.
 - macOS CLI and GUI artifacts are separately built for Apple silicon and Intel, with extracted thin-architecture, identity, plist, signature and executable checks. Product/target notices are generated inside each archive. Release asset collection rejects incomplete, duplicate or unexpected archive sets before checksums and attestation.
 - Public library live generation/control/observation and bounded mixed-output monitoring share the device callback's generator boundary. Core rendering and generated-state observation allocate nothing; device monitoring uses a preallocated nonblocking lock attempt per buffer.
 

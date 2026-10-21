@@ -1,0 +1,434 @@
+# Authored source exceptions. Every record is matched to exactly one parsed scope.
+# Re-review the numerical bound, ABI contract or generated boundary before editing.
+
+[[exception]]
+id = "core-facts-from-step"
+file = "crates/core/src/facts.rs"
+scope = "file/impl::PhaseRate/fn:from_step/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss"]
+rationale = "Integer phase steps are rounded to binary64 for reported frequency; they are not used to reconstruct the renderer step"
+
+[[exception]]
+id = "core-live-glide"
+file = "crates/core/src/live.rs"
+scope = "file/fn:glide/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "clippy::cast_precision_loss", "clippy::cast_sign_loss"]
+rationale = "Validated nonnegative phase steps below 2^63 interpolate within their endpoint range; rounding to binary64 and truncating back is the specified glide"
+
+[[exception]]
+id = "core-live-level-sums"
+file = "crates/core/src/live.rs"
+scope = "file/impl::Engine/fn:level_sums/cfg (test)/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss"]
+rationale = "The ramp is at most 23040 frames; conversion to binary64 is exact in this test oracle"
+
+[[exception]]
+id = "core-live-render"
+file = "crates/core/src/live.rs"
+scope = "file/impl::Engine/fn:render/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss"]
+rationale = "The 30 ms ramp is at most 23040 frames at the supported maximum sample rate; its counts fit binary64 exactly"
+
+[[exception]]
+id = "core-live-a-changed-pulse-crossfades-and-a-retuned-tone-does-not"
+file = "crates/core/src/live.rs"
+scope = "file/mod:tests/cfg (test)/fn:a_changed_pulse_crossfades_and_a_retuned_tone_does_not/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+
+[[exception]]
+id = "core-live-a-level-change-moves-linearly-over-one-ramp"
+file = "crates/core/src/live.rs"
+scope = "file/mod:tests/cfg (test)/fn:a_level_change_moves_linearly_over_one_ramp/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "clippy::cast_precision_loss"]
+rationale = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+
+[[exception]]
+id = "core-live-a-retuned-tone-keeps-its-phase-and-a-reset-would-not"
+file = "crates/core/src/live.rs"
+scope = "file/mod:tests/cfg (test)/fn:a_retuned_tone_keeps_its_phase_and_a_reset_would_not/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss"]
+rationale = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+
+[[exception]]
+id = "core-live-an-empty-target-plays-silence-until-stopped"
+file = "crates/core/src/live.rs"
+scope = "file/mod:tests/cfg (test)/fn:an_empty_target_plays_silence_until_stopped/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+
+[[exception]]
+id = "core-live-an-unedited-session-equals-the-signal-after-its-start-ramp"
+file = "crates/core/src/live.rs"
+scope = "file/mod:tests/cfg (test)/fn:an_unedited_session_equals_the_signal_after_its_start_ramp/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+
+[[exception]]
+id = "core-live-frequencies-glide-through-intermediate-steps-during-a-ramp"
+file = "crates/core/src/live.rs"
+scope = "file/mod:tests/cfg (test)/fn:frequencies_glide_through_intermediate_steps_during_a_ramp/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "clippy::cast_precision_loss"]
+rationale = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+
+[[exception]]
+id = "core-live-pulses-started-mid-session-count-from-their-own-first-frame"
+file = "crates/core/src/live.rs"
+scope = "file/mod:tests/cfg (test)/fn:pulses_started_mid_session_count_from_their_own_first_frame/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+
+[[exception]]
+id = "core-live-random-edits-keep-every-ear-within-full-scale"
+file = "crates/core/src/live.rs"
+scope = "file/mod:tests/cfg (test)/fn:random_edits_keep_every_ear_within_full_scale/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss"]
+rationale = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+
+[[exception]]
+id = "core-live-stopping-fades-out-within-one-ramp-and-then-finishes"
+file = "crates/core/src/live.rs"
+scope = "file/mod:tests/cfg (test)/fn:stopping_fades_out_within_one_ramp_and_then_finishes/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+
+[[exception]]
+id = "core-live-targets-during-a-ramp-wait-and-only-the-newest-applies"
+file = "crates/core/src/live.rs"
+scope = "file/mod:tests/cfg (test)/fn:targets_during_a_ramp_wait_and_only_the_newest_applies/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+
+[[exception]]
+id = "core-numeric-frames-to-f64"
+file = "crates/core/src/numeric.rs"
+scope = "file/fn:frames_to_f64/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss"]
+rationale = "every frame count in a session is at most 2^36, which binary64 holds exactly"
+
+[[exception]]
+id = "core-numeric-whole-to-frames"
+file = "crates/core/src/numeric.rs"
+scope = "file/fn:whole_to_frames/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "clippy::cast_sign_loss"]
+rationale = "the only caller has established that the value is whole and within 0..=2^36"
+
+[[exception]]
+id = "core-synthesis-pulse"
+file = "crates/core/src/synthesis.rs"
+scope = "file/fn:pulse/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "clippy::cast_sign_loss"]
+rationale = "Width is checked whole and in 1..=2^36; admitted sub-Nyquist rate has a negative decomposition exponent"
+
+[[exception]]
+id = "core-synthesis-sine"
+file = "crates/core/src/synthesis.rs"
+scope = "file/fn:sine/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss"]
+rationale = "Arithmetic shift retains a signed 53-bit phase before binary64 conversion; the intentionally reduced phase bounds sine input"
+
+[[exception]]
+id = "core-synthesis-times-at-most"
+file = "crates/core/src/synthesis.rs"
+scope = "file/fn:times_at_most/outer"
+level = "expect"
+lints = ["clippy::cast_sign_loss"]
+rationale = "Binary64 decomposition and the early exponent guards make the negated exponent nonnegative before converting to a shift"
+
+[[exception]]
+id = "core-synthesis-periods"
+file = "crates/core/src/synthesis.rs"
+scope = "file/impl::Pulse/fn:periods/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "The validated n < 2^36 and rate < 2^19 bound the shifted pulse count below 2^55"
+
+[[exception]]
+id = "core-synthesis-fractional-and-slow-rates-do-not-open-before-the-exact-onset"
+file = "crates/core/src/synthesis.rs"
+scope = "file/mod:pulses/cfg (test)/fn:fractional_and_slow_rates_do_not_open_before_the_exact_onset/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "clippy::cast_precision_loss", "clippy::cast_sign_loss"]
+rationale = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
+
+[[exception]]
+id = "core-synthesis-pulses-match-independent-integer-onsets-at-early-and-late-frames"
+file = "crates/core/src/synthesis.rs"
+scope = "file/mod:pulses/cfg (test)/fn:pulses_match_independent_integer_onsets_at_early_and_late_frames/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "clippy::cast_sign_loss"]
+rationale = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
+
+[[exception]]
+id = "core-synthesis-phase-at-any-frame-matches-the-exact-rational-phase-within-a-constant"
+file = "crates/core/src/synthesis.rs"
+scope = "file/mod:tests/cfg (test)/fn:phase_at_any_frame_matches_the_exact_rational_phase_within_a_constant/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss"]
+rationale = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
+
+[[exception]]
+id = "core-synthesis-steps-are-exactly-rounded-for-representable-frequencies"
+file = "crates/core/src/synthesis.rs"
+scope = "file/mod:tests/cfg (test)/fn:steps_are_exactly_rounded_for_representable_frequencies/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss"]
+rationale = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
+
+[[exception]]
+id = "core-timing-envelope"
+file = "crates/core/src/timing.rs"
+scope = "file/fn:envelope/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "Truncation deliberately takes the low 64 phase bits of the u128 product, matching wrapping synthesis phase"
+
+[[exception]]
+id = "core-timing-project"
+file = "crates/core/src/timing.rs"
+scope = "file/fn:project/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "clippy::cast_sign_loss"]
+rationale = "The clamped model spans at most four seconds at 768 kHz; positive frame counts fit u64 and usize on supported 64-bit targets"
+
+[[exception]]
+id = "core-tests-catalog-catalog-build"
+file = "crates/core/tests/catalog.rs"
+scope = "file/cfg (test)/mod:catalog_build/outer"
+level = "expect"
+lints = ["dead_code"]
+rationale = "The integration test imports the real catalog build module to check catalog inputs; its unused Cargo build-script main is not executed by that test"
+
+[[exception]]
+id = "core-tests-observations-realized-rates-widths-depth-and-tiny-frequencies-are-explicit"
+file = "crates/core/tests/observations.rs"
+scope = "file/fn:realized_rates_widths_depth_and_tiny_frequencies_are_explicit/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss"]
+rationale = "independent integer-rational phase oracle is converted for presentation comparison"
+
+[[exception]]
+id = "core-tests-observations-target"
+file = "crates/core/tests/observations.rs"
+scope = "file/fn:target/outer"
+level = "expect"
+lints = ["clippy::unwrap_used"]
+rationale = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
+
+[[exception]]
+id = "gui-actions-continuation-poll"
+file = "crates/gui/src/actions.rs"
+scope = "file/enum:ContinuationPoll/outer"
+level = "expect"
+lints = ["clippy::large_enum_variant"]
+rationale = "one queued GUI action is moved by value; boxing would add an unnecessary allocation"
+
+[[exception]]
+id = "gui-main-position"
+file = "crates/gui/src/main.rs"
+scope = "file/fn:position/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "Shared slider_position is normalized before rounding to the renderer f32 coordinate type; audio parameter values remain binary64"
+
+[[exception]]
+id = "gui-main-progress-fraction"
+file = "crates/gui/src/main.rs"
+scope = "file/impl::Desktop/fn:refresh/let:progress_fraction/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "clippy::cast_precision_loss"]
+rationale = "Nonnegative generated/total frame counts form a display-only ratio; the result rounds to f32 and is clamped to 0..=1 before rendering"
+
+[[exception]]
+id = "gui-main-generated"
+file = "crates/gui/src/main.rs"
+scope = "file/mod:generated/outer"
+level = "expect"
+lints = ["clippy::todo", "clippy::unwrap_used", "unreachable_pub"]
+rationale = "Slint 1.18.1 generates unreachable public UI items, unwraps and TODO branches; removing these exceptions produces compiler/Clippy errors in generated output. This module contains only include_modules"
+
+[[exception]]
+id = "gui-motion-gnome-reduced"
+file = "crates/gui/src/motion.rs"
+scope = "file/fn:gnome_reduced/cfg (target_os = \"linux\")/outer"
+level = "expect"
+lints = ["unsafe_code"]
+rationale = "checked native GSettings C ABI; schema/key admission precedes reading, owned references are released"
+
+[[exception]]
+id = "gui-motion-query"
+file = "crates/gui/src/motion.rs"
+scope = "file/fn:query/cfg (target_os = \"windows\")/outer"
+level = "expect"
+lints = ["unsafe_code"]
+rationale = "read-only Win32 GET fills one initialized, exclusively borrowed BOOL"
+
+[[exception]]
+id = "gui-native-application-choose-file"
+file = "crates/gui/src/native_application.rs"
+scope = "file/fn:choose_file/outer"
+level = "expect"
+lints = ["deprecated", "unsafe_code"]
+rationale = "main-thread AppKit sheet/completion ABI; macOS 15-compatible extension filter and checked owned panel lifetime"
+
+[[exception]]
+id = "gui-native-application-install"
+file = "crates/gui/src/native_application.rs"
+scope = "file/fn:install/outer"
+level = "expect"
+lints = ["unsafe_code"]
+rationale = "registers one optional Cocoa delegate method; no object layout or existing method is changed"
+
+[[exception]]
+id = "gui-native-application-refresh-about-menu"
+file = "crates/gui/src/native_application.rs"
+scope = "file/fn:refresh_about_menu/outer"
+level = "expect"
+lints = ["unsafe_code"]
+rationale = "retargets the process-owned native About item to its retained delegate action"
+
+[[exception]]
+id = "gui-native-application-should-terminate"
+file = "crates/gui/src/native_application.rs"
+scope = "file/fn:should_terminate/outer"
+level = "expect"
+lints = ["unsafe_code"]
+rationale = "Objective-C callback ABI is registered with the matching protocol signature"
+
+[[exception]]
+id = "gui-native-application-show-about"
+file = "crates/gui/src/native_application.rs"
+scope = "file/fn:show_about/outer"
+level = "expect"
+lints = ["unsafe_code"]
+rationale = "registered Cocoa menu action has the matching void/object ABI"
+
+[[exception]]
+id = "gui-native-application-stop-audio"
+file = "crates/gui/src/native_application.rs"
+scope = "file/fn:stop_audio/outer"
+level = "expect"
+lints = ["unsafe_code"]
+rationale = "registered native action ABI; sender is checked before using NSButton methods"
+
+[[exception]]
+id = "gui-typography-native-point-size"
+file = "crates/gui/src/typography.rs"
+scope = "file/fn:resolve/let:(size , origin)/cfg (target_os = \"macos\")/let:size/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "AppKit systemFontSize returns the platform UI point size; rounding binary64 to the renderer f32 coordinate type is intentional"
+
+[[exception]]
+id = "gui-typography-windows-listener"
+file = "crates/gui/src/typography.rs"
+scope = "file/fn:windows_listener/cfg (target_os = \"windows\")/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "unsafe_code"]
+rationale = "read-only Win32 metrics at 96 DPI use an initialized ABI structure with a fixed-size u32 length and UTF16 font name"
+
+[[exception]]
+id = "gui-typography-linux-portal-text-scale"
+file = "crates/gui/src/typography/linux.rs"
+scope = "file/fn:listen_once/let:preference/call:map/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "The portal scale is admitted only when finite and in 0.5..=4.0, or defaults to 1.0; rounding to f32 matches the display coordinate type"
+
+[[exception]]
+id = "gui-typography-linux-native-changed"
+file = "crates/gui/src/typography/linux/native.rs"
+scope = "file/fn:changed/outer"
+level = "expect"
+lints = ["unsafe_code"]
+rationale = "C notify callback is registered with its exact ABI; the AtomicBool pointer remains borrowed and live until both handlers are disconnected on the same settings worker"
+
+[[exception]]
+id = "gui-typography-linux-native-gnome-listen"
+file = "crates/gui/src/typography/linux/native.rs"
+scope = "file/fn:gnome_listen/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "unsafe_code"]
+rationale = "Schema and keys are checked before C ABI calls; strings/schema/settings references are released and callbacks disconnect before data expires. Finite scale in 0.5..=4.0 rounds to f32 for display"
+
+[[exception]]
+id = "gui-typography-linux-native-gtk-listen"
+file = "crates/gui/src/typography/linux/native.rs"
+scope = "file/fn:gtk_listen/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss", "unsafe_code"]
+rationale = "Checked C signatures on one GTK worker; callbacks disconnect before stack data expires and GObject strings/GValues are freed. Positive signed Xft DPI converts to f32 only for display sizing"
+
+[[exception]]
+id = "gui-typography-linux-native-library"
+file = "crates/gui/src/typography/linux/native.rs"
+scope = "file/fn:library/outer"
+level = "expect"
+lints = ["unsafe_code"]
+rationale = "Loads fixed system-library names once and retains every Library in a process-lifetime OnceLock; symbol users cannot outlive mapped code"
+
+[[exception]]
+id = "gui-typography-linux-native-pango"
+file = "crates/gui/src/typography/linux/native.rs"
+scope = "file/fn:pango/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss", "unsafe_code"]
+rationale = "Checked Pango C signatures; each parsed description is freed after extracting its bounded family string and scaled point size. The signed native size rounds to f32 for display sizing"
+
+[[exception]]
+id = "lib-playback-monitor-sample-meters"
+file = "crates/lib/src/playback/monitor.rs"
+scope = "file/fn:sample_meters/outer"
+level = "expect"
+lints = ["clippy::cast_precision_loss"]
+rationale = "RMS normalization divides by a positive slice length; binary64 count rounding is acceptable for the reported meter and never changes generated samples"
+
+[[exception]]
+id = "lib-presentation-compact-number"
+file = "crates/lib/src/presentation.rs"
+scope = "file/fn:compact_number/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation", "clippy::cast_sign_loss"]
+rationale = "The decimal count is clamped to the finite integer range 0..=12 before casting to usize; rounding formats presentation text only"
+
+[[exception]]
+id = "lib-wav-export-nearest-f32"
+file = "crates/lib/src/wav/export.rs"
+scope = "file/fn:nearest_f32/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "the file holds binary32 samples; the cast rounds to the nearest one"
+
+[[exception]]
+id = "lib-wav-header-chunk"
+file = "crates/lib/src/wav/header.rs"
+scope = "file/fn:chunk/outer"
+level = "expect"
+lints = ["clippy::cast_possible_truncation"]
+rationale = "the chunk bodies built in this module are at most 40 bytes"
+
+[[exception]]
+id = "lib-tests-workspace-views-summary"
+file = "crates/lib/tests/workspace_views.rs"
+scope = "file/fn:summary/outer"
+level = "expect"
+lints = ["clippy::unwrap_used"]
+rationale = "Test fixture helper deliberately panics if an enumerated component ID or specified target is invalid, causing its calling presentation test to fail"

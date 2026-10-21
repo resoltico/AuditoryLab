@@ -1,4 +1,4 @@
-//! One operation thread and its progress channel.
+//! A bounded audio or file task with independent cancellation, progress and completion.
 use auditorylab::{Cancel, Draft, LiveControl, Preset, Progress, Sound};
 use std::{
     path::PathBuf,
@@ -7,26 +7,34 @@ use std::{
 };
 pub(crate) enum Message {
     Ready(auditorylab::MonitorReader),
-    LiveReady(LiveControl, auditorylab::MonitorReader),
-    Saved(Result<(Draft, PathBuf), auditorylab::Error>),
+    LiveReady(LiveControl, auditorylab::MonitorReader, std::sync::Arc<()>),
+    Saved(
+        std::sync::Arc<()>,
+        Result<(Draft, PathBuf), auditorylab::Error>,
+    ),
     Imported(Result<Preset, auditorylab::Error>),
     Done(Result<String, auditorylab::Error>),
 }
 pub(crate) enum Work {
     Import(PathBuf),
     Play(Preset),
-    Live(Draft),
-    Save(Draft, PathBuf),
+    Live(Draft, std::sync::Arc<()>),
+    Save(Draft, PathBuf, std::sync::Arc<()>),
     Export(Sound, PathBuf),
 }
 pub(crate) struct Worker {
     pub(crate) cancel: Cancel,
     pub(crate) progress: Progress,
+    source_owner: Option<std::sync::Arc<()>>,
     messages: Receiver<Message>,
     handle: Option<JoinHandle<()>>,
 }
 impl Worker {
     pub(crate) fn start(work: Work) -> Self {
+        let source_owner = match &work {
+            Work::Live(_, owner) => Some(owner.clone()),
+            _ => None,
+        };
         let cancel = Cancel::default();
         let progress = Progress::default();
         let c = cancel.clone();
@@ -54,11 +62,11 @@ impl Worker {
                     });
                 let _ = tx.send(Message::Done(result));
             }
-            Work::Live(draft) => {
+            Work::Live(draft, owner) => {
                 let result = auditorylab::prepare_live(&draft)
                     .and_then(|mut live| {
                         let reader = live.monitor(auditorylab::MonitorDetail::Waveform).reader();
-                        let _ = tx.send(Message::LiveReady(live.control(), reader));
+                        let _ = tx.send(Message::LiveReady(live.control(), reader, owner));
                         live.play(&c, &p)
                     })
                     .map(|played| {
@@ -70,11 +78,11 @@ impl Worker {
                     });
                 let _ = tx.send(Message::Done(result));
             }
-            Work::Save(draft, path) => {
+            Work::Save(draft, path, owner) => {
                 let result = draft
                     .save(&path, auditorylab::Replace::Allowed)
                     .map(|()| (draft, path));
-                let _ = tx.send(Message::Saved(result));
+                let _ = tx.send(Message::Saved(owner, result));
             }
             Work::Export(sound, path) => {
                 let result =
@@ -86,9 +94,15 @@ impl Worker {
         Self {
             cancel,
             progress,
+            source_owner,
             messages,
             handle,
         }
+    }
+    pub(crate) fn owns_draft(&self, owner: &std::sync::Arc<()>) -> bool {
+        self.source_owner
+            .as_ref()
+            .is_some_and(|source| std::sync::Arc::ptr_eq(source, owner))
     }
     pub(crate) fn receive(&self) -> Result<Option<Message>, String> {
         match self.messages.try_recv() {
@@ -97,6 +111,34 @@ impl Worker {
             Err(TryRecvError::Disconnected) => {
                 Err("The operation thread ended without a result.".into())
             }
+        }
+    }
+    /// Drain both termination and failure evidence after an unexpected event-loop exit.
+    pub(crate) fn shutdown(mut self) -> Result<(), String> {
+        self.cancel.request();
+        if let Some(handle) = self.handle.take() {
+            handle
+                .join()
+                .map_err(|_| "The operation thread failed.".to_owned())?;
+        }
+        let mut errors = Vec::new();
+        for message in self.messages.try_iter() {
+            let error = match message {
+                Message::Saved(_, Err(e)) | Message::Imported(Err(e)) | Message::Done(Err(e)) => {
+                    Some(e)
+                }
+                _ => None,
+            };
+            if let Some(error) = error
+                && error.kind() != auditorylab::ErrorKind::Cancelled
+            {
+                errors.push(error.to_string());
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("\n"))
         }
     }
     pub(crate) fn join(mut self) -> Result<(), String> {
@@ -118,6 +160,7 @@ mod tests {
         let worker = Worker {
             cancel: Cancel::default(),
             progress: Progress::default(),
+            source_owner: None,
             messages,
             handle: Some(handle),
         };

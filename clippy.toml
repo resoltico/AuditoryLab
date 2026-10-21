@@ -1,3 +1,5 @@
+# A panic in a #[test] is a failed test. Production code and fixture helpers
+# remain subject to unwrap_used/expect_used; helper exceptions require review.
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 avoid-breaking-exported-api = false

@@ -422,7 +422,10 @@ pub struct Meter {
     pub rms_dbfs: f64,
 }
 /// Reduce a copied window outside the monitoring mutex. Silence uses negative infinity.
-#[allow(clippy::cast_precision_loss, reason = "bounded monitor sample count")]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "quality:lib-playback-monitor-sample-meters"
+)]
 pub fn sample_meters(samples: &[[f64; 2]]) -> [Meter; 2] {
     let mut peak = [0.0_f64; 2];
     for frame in samples {
@@ -896,6 +899,267 @@ mod tests {
                         shared.underruns()
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity() {
+        use crate::{
+            OutputMonitorState as State, WaveformCapture, WaveformScale, monitor_warning,
+            output_monitor_state,
+        };
+        let monitor = PlaybackMonitor::new(descriptor(48000), MonitorDetail::Waveform, None);
+        let mut reader = monitor.reader();
+        reader.poll(40);
+        assert_eq!(
+            output_monitor_state(Some(&reader), None, false, true),
+            State::Waiting
+        );
+        {
+            let mut writer = monitor.try_publish().unwrap();
+            writer.append(0, &[[0.0; 2]; 512]);
+            writer.finish(512, None, false);
+        }
+        reader.poll(40);
+        // A fresh status publication does not by itself provide a valid plotted capture.
+        assert_eq!(
+            output_monitor_state(Some(&reader), None, false, false),
+            State::Waiting
+        );
+        assert_eq!(
+            monitor_warning(&reader, 40),
+            Some(crate::MonitorWarning::IncompleteCoverage)
+        );
+        // A missed span is history; enough subsequent contiguous data repairs current coverage.
+        {
+            let mut writer = monitor.try_publish().unwrap();
+            writer.append(1024, &[[0.0; 2]; 2400]);
+            writer.finish(3424, None, false);
+        }
+        reader.poll(40);
+        assert_eq!(reader.status().gaps, 1);
+        assert_eq!(reader.status().underruns, 0);
+        assert_eq!(monitor_warning(&reader, 40), None);
+        let held = WaveformCapture::monitored(&reader, WaveformScale::Fit)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            output_monitor_state(Some(&reader), Some(&held), false, false),
+            State::Live
+        );
+        reader.received = Some(Instant::now() - Duration::from_secs(1));
+        reader.poll(40);
+        assert_eq!(
+            output_monitor_state(Some(&reader), Some(&held), false, false),
+            State::Stale
+        );
+        assert_eq!(
+            monitor_warning(&reader, 40),
+            Some(crate::MonitorWarning::Stale)
+        );
+        let prior = held.caption(true, false);
+        let another = PlaybackMonitor::new(descriptor(48000), MonitorDetail::Waveform, None);
+        let mut other = another.reader();
+        other.poll(40);
+        assert_ne!(other.descriptor().id, held.session().unwrap().id);
+        assert_eq!(
+            output_monitor_state(Some(&other), Some(&held), true, true),
+            State::Held
+        );
+        assert_eq!(held.caption(true, false), prior);
+        {
+            let mut writer = monitor.try_publish().unwrap();
+            writer.append(3424, &[[0.0; 2]; 512]);
+            writer.finish(3936, None, false);
+        }
+        reader.poll(40);
+        assert_eq!(monitor_warning(&reader, 40), None);
+        assert_eq!(reader.status().gaps, 1);
+        monitor.0.shared.finish(Terminal::Complete);
+        reader.poll(40);
+        assert_eq!(
+            output_monitor_state(Some(&reader), Some(&held), false, false),
+            State::LastCapture
+        );
+        monitor.0.disabled.store(true, Ordering::Relaxed);
+        reader.poll(40);
+        assert_eq!(
+            monitor_warning(&reader, 40),
+            Some(crate::MonitorWarning::Unavailable)
+        );
+        assert_eq!(
+            output_monitor_state(None, Some(&held), false, false),
+            State::Preview
+        );
+        assert_eq!(
+            output_monitor_state(None, None, false, false),
+            State::Unavailable
+        );
+        assert_eq!(output_monitor_state(None, None, true, true), State::Waiting);
+        let unavailable = PlaybackMonitor::new(descriptor(48000), MonitorDetail::Waveform, None);
+        let mut absent = unavailable.reader();
+        unavailable.0.disabled.store(true, Ordering::Relaxed);
+        absent.poll(40);
+        assert_eq!(
+            output_monitor_state(Some(&absent), None, false, true),
+            State::Unavailable
+        );
+        let underrun = PlaybackMonitor::new(descriptor(48000), MonitorDetail::Waveform, None);
+        underrun
+            .0
+            .shared
+            .report(cpal::Error::new(cpal::ErrorKind::Xrun));
+        let mut reader = underrun.reader();
+        reader.poll(40);
+        assert_eq!(monitor_warning(&reader, 40), None);
+        assert!(crate::output_underrun_warning(reader.status().underruns).contains("underruns: 1"));
+    }
+    #[test]
+    fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
+        use crate::{MonitorWarning, monitor_warning, output_underrun_warning};
+        let rate = SampleRate::new(48000).unwrap();
+        let generator = crate::LiveGenerator::new(&crate::Draft::new(), rate).unwrap();
+        let mut desc = descriptor(48000);
+        desc.frames = None;
+        let monitor = PlaybackMonitor::new(
+            desc,
+            MonitorDetail::Waveform,
+            Some(Arc::clone(&generator.mailbox)),
+        );
+        let mut callback = Callback::new(Source::Live(Box::new(generator)), 2, monitor.shared())
+            .with_monitor(Some(monitor.clone()));
+        let mut reader = monitor.reader();
+        let mut output = [0.0; 1024];
+        let mut block = 0;
+        let fill = |callback: &mut Callback, block: &mut u64, output: &mut [f64]| {
+            callback.fill(output, time(*block * 512 * 1_000_000_000 / 48000), &|v| v);
+            *block += 1;
+        };
+        for _ in 0..4 {
+            fill(&mut callback, &mut block, &mut output);
+        }
+        reader.poll(40);
+        assert_eq!(monitor_warning(&reader, 40), None);
+        assert!(output_underrun_warning(reader.status().underruns).is_empty());
+        for episode in 1..=10 {
+            let guard = monitor.0.history.lock().unwrap();
+            fill(&mut callback, &mut block, &mut output);
+            drop(guard);
+            if episode == 5 {
+                monitor
+                    .shared()
+                    .report(cpal::Error::new(cpal::ErrorKind::Xrun));
+            }
+            fill(&mut callback, &mut block, &mut output);
+            reader.poll(40);
+            let warning = monitor_warning(&reader, 40).unwrap();
+            assert_eq!(warning, MonitorWarning::IncompleteCoverage);
+            assert_eq!(
+                warning.message(),
+                "Incomplete current waveform coverage; waiting for a contiguous window."
+            );
+            assert!(!warning.announces_changes());
+            assert_eq!(reader.status().gaps, episode);
+            assert_eq!(reader.status().missed_publications, episode);
+            // A reported output problem stays independently readable throughout partial coverage.
+            if episode >= 5 {
+                assert_eq!(
+                    output_underrun_warning(reader.status().underruns),
+                    "Backend-reported output underruns: 1 · see details."
+                );
+            }
+            for _ in 0..20 {
+                reader.poll(40);
+                assert_eq!(monitor_warning(&reader, 40), Some(warning));
+                assert_eq!(reader.status().gaps, episode);
+            }
+            for _ in 0..3 {
+                fill(&mut callback, &mut block, &mut output);
+            }
+            reader.poll(40);
+            assert_eq!(monitor_warning(&reader, 40), None);
+            assert_eq!(
+                reader.status().gaps,
+                episode,
+                "recovery does not erase history"
+            );
+            if episode >= 5 {
+                assert_eq!(
+                    output_underrun_warning(reader.status().underruns),
+                    "Backend-reported output underruns: 1 · see details."
+                );
+            }
+        }
+        reader.received = Some(Instant::now() - Duration::from_secs(1));
+        assert_eq!(monitor_warning(&reader, 40), Some(MonitorWarning::Stale));
+        assert!(monitor_warning(&reader, 40).unwrap().announces_changes());
+        assert_eq!(
+            monitor_warning(&reader, 40).unwrap().message(),
+            "Monitoring is stale; retained samples are not current output."
+        );
+        monitor.0.disabled.store(true, Ordering::Relaxed);
+        reader.poll(40);
+        assert_eq!(
+            monitor_warning(&reader, 40),
+            Some(MonitorWarning::Unavailable)
+        );
+        assert!(monitor_warning(&reader, 40).unwrap().announces_changes());
+        assert_eq!(
+            monitor_warning(&reader, 40).unwrap().message(),
+            "Monitoring unavailable; audio transport is independent."
+        );
+    }
+
+    #[test]
+    fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
+        for hz in [3750.0, 3751.0] {
+            let signal = Stimulus {
+                duration_seconds: 1.0,
+                fade_seconds: 0.0,
+                components: vec![Component {
+                    ears: Ears::Both,
+                    peak_dbfs: -15.3,
+                    carrier: Carrier::Tone { frequency_hz: hz },
+                    modulation: None,
+                }],
+            }
+            .signal(SampleRate::DEFAULT)
+            .unwrap();
+            assert_eq!(SampleRate::DEFAULT.hz(), 48000);
+            // Independent rational oracle: 3750*512/48000 = exactly 40 cycles.
+            assert_eq!(3750_u64 * 512, 48000 * 40);
+            let monitor = PlaybackMonitor::new(descriptor(48000), MonitorDetail::Waveform, None);
+            let mut reader = monitor.reader();
+            let mut samples = [[0.0; 2]; 512];
+            let mut before = Vec::new();
+            let mut old_sequence = 0;
+            for start in [0, 512] {
+                signal.render(start, &mut samples);
+                {
+                    let mut writer = monitor.try_publish().unwrap();
+                    writer.append(start, &samples);
+                    writer.finish(start + 512, signal.observation(start + 511), false);
+                }
+                reader.poll(2);
+                assert!(reader.status().sequence > old_sequence);
+                old_sequence = reader.status().sequence;
+                assert_eq!(reader.status().window_end, start + 512);
+                if start == 0 {
+                    before = reader.samples().to_vec();
+                } else if hz == 3750.0 {
+                    assert_eq!(reader.samples(), before);
+                } else {
+                    assert_ne!(reader.samples(), before);
+                }
+                let capture =
+                    crate::WaveformCapture::monitored(&reader, crate::WaveformScale::Fixed)
+                        .unwrap()
+                        .unwrap();
+                assert_eq!(
+                    crate::output_monitor_state(Some(&reader), Some(&capture), false, false),
+                    crate::OutputMonitorState::Live
+                );
             }
         }
     }

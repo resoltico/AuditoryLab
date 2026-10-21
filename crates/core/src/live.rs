@@ -14,12 +14,6 @@
 //! A target that arrives during a ramp waits for it to finish; only the
 //! newest waiting target is kept. Rendering allocates nothing, takes no lock
 //! and performs no I/O.
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss,
-    reason = "frame counts below 2^36 and phase steps below 2^63 convert exactly enough for glides"
-)]
 use crate::synthesis::{self, Carrier, Modulator, Voice};
 use crate::{Component, Ear, SampleRate, Signal, Stimulus, StimulusError};
 
@@ -184,6 +178,12 @@ fn between(from: f64, to: f64, progress: f64) -> f64 {
 }
 
 #[inline]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    reason = "quality:core-live-glide"
+)]
 fn glide(from: u64, to: u64, progress: f64) -> u64 {
     if from == to || progress >= 1.0 {
         to
@@ -335,6 +335,7 @@ impl Engine {
 
     /// Fill `out` with the next frames and return how many precede the end
     /// of the stream; frames after the end are silence.
+    #[expect(clippy::cast_precision_loss, reason = "quality:core-live-render")]
     pub fn render(&mut self, out: &mut [[f64; 2]]) -> usize {
         for index in 0..out.len() {
             if self.finished {
@@ -508,6 +509,7 @@ impl Engine {
     }
 
     #[cfg(test)]
+    #[expect(clippy::cast_precision_loss, reason = "quality:core-live-level-sums")]
     fn level_sums(&self) -> [f64; 2] {
         let progress = self
             .ramp
@@ -583,6 +585,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "quality:core-live-an-unedited-session-equals-the-signal-after-its-start-ramp"
+    )]
     fn an_unedited_session_equals_the_signal_after_its_start_ramp() {
         let mut stimuli: Vec<Stimulus> = crate::catalog::ENTRIES
             .iter()
@@ -649,6 +655,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "quality:core-live-a-retuned-tone-keeps-its-phase-and-a-reset-would-not"
+    )]
     fn a_retuned_tone_keeps_its_phase_and_a_reset_would_not() {
         let mut engine = Engine::new(rate());
         engine.set(&Target::new(rate(), &[(7, tone(440.0, -6.0, Ears::Both))]).unwrap());
@@ -679,6 +689,11 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        reason = "quality:core-live-a-level-change-moves-linearly-over-one-ramp"
+    )]
     fn a_level_change_moves_linearly_over_one_ramp() {
         // A pulse wider than the session holds the carrier at one.
         let held = Component {
@@ -710,6 +725,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "quality:core-live-a-changed-pulse-crossfades-and-a-retuned-tone-does-not"
+    )]
     fn a_changed_pulse_crossfades_and_a_retuned_tone_does_not() {
         let mut engine = Engine::new(rate());
         engine.set(&Target::new(rate(), &[(1, clicks(40.0, -20.0))]).unwrap());
@@ -730,6 +749,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "quality:core-live-targets-during-a-ramp-wait-and-only-the-newest-applies"
+    )]
     fn targets_during_a_ramp_wait_and_only_the_newest_applies() {
         let mut engine = Engine::new(rate());
         let quiet = Target::new(rate(), &[(1, tone(440.0, -40.0, Ears::Both))]).unwrap();
@@ -748,6 +771,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "quality:core-live-stopping-fades-out-within-one-ramp-and-then-finishes"
+    )]
     fn stopping_fades_out_within_one_ramp_and_then_finishes() {
         let mut engine = Engine::new(rate());
         engine.set(&Target::new(rate(), &[(1, tone(440.0, -6.0, Ears::Both))]).unwrap());
@@ -783,6 +810,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "quality:core-live-random-edits-keep-every-ear-within-full-scale"
+    )]
     fn random_edits_keep_every_ear_within_full_scale() {
         let component = (0_u8..3, 0_u8..4, 1.0_f64..20_000.0, 0.0_f64..1.0, 0_u32..4).prop_map(
             |(ears, kind, hz, level, id)| {
@@ -917,6 +948,11 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        reason = "quality:core-live-frequencies-glide-through-intermediate-steps-during-a-ramp"
+    )]
     fn frequencies_glide_through_intermediate_steps_during_a_ramp() {
         let am = |hz: f64, rate_hz: f64, depth: f64| Component {
             modulation: Some(Modulation::Sinusoidal { rate_hz, depth }),
@@ -954,6 +990,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "quality:core-live-pulses-started-mid-session-count-from-their-own-first-frame"
+    )]
     fn pulses_started_mid_session_count_from_their_own_first_frame() {
         let reference = |n: u64| (n % 1_200) < 48;
         let mut engine = Engine::new(rate());
@@ -1031,6 +1071,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "quality:core-live-an-empty-target-plays-silence-until-stopped"
+    )]
     fn an_empty_target_plays_silence_until_stopped() {
         let mut engine = Engine::new(rate());
         assert!(engine.set(&Target::new(rate(), &[]).unwrap()));

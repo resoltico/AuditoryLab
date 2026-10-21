@@ -1,10 +1,4 @@
 //! Bounded origin-zero timing and envelope projections, independent of live phase history.
-#![allow(
-    clippy::cast_precision_loss,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "bounded positive model frames, bins and finite validated phase/rate quantities"
-)]
 use crate::{
     CarrierFacts, ComponentFacts, Extent, ModulationFacts, SampleRate,
     synthesis::{Carrier, Modulator, Voice, sine},
@@ -46,6 +40,11 @@ pub struct TimingModel {
     /// Up to two physical processes per component; at most 32 lanes × 512 columns.
     pub lanes: Vec<ModelLane>,
 }
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "quality:core-timing-project"
+)]
 pub(crate) fn project(
     rate: SampleRate,
     voices: &[Option<(u32, Voice)>; 16],
@@ -123,6 +122,10 @@ pub(crate) fn project(
 }
 // Bounds of the continuous phase arc used by the discrete synthesizer. A dense
 // column covering an entire period is the full envelope range, not a sampled peak.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "quality:core-timing-envelope"
+)]
 fn envelope(step: u64, depth: f64, start: u64, end: u64) -> Extent {
     let a = u128::from(start) * u128::from(step);
     let b = u128::from(end - 1) * u128::from(step);

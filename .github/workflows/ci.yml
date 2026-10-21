@@ -52,6 +52,9 @@ jobs:
           sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libpango-1.0-0 libgtk-3-0
       - if: github.event_name != 'schedule'
         run: cargo fmt --all -- --check
+      - name: Validate authored lint policy and exceptions
+        if: github.event_name != 'schedule'
+        run: cargo xtask check-lints
       - if: github.event_name != 'schedule'
         run: cargo doc --workspace --no-deps --locked
       - if: github.event_name != 'schedule'
@@ -128,6 +131,9 @@ jobs:
         run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --target-dir target --features cli
       - run: cargo clippy --workspace --all-targets --locked
       - run: cargo test --workspace --locked
+      - name: Verify native AT-SPI cache signal contracts
+        if: runner.os == 'Linux'
+        run: cargo test -p accesskit_unix --lib --locked
       - run: cargo test -p auditorylab-core --release --locked
       - name: Build archives and run host smoke tests
         env:
@@ -170,12 +176,12 @@ jobs:
           args=(--file "crates/core/src/${MUTATION_SOURCE}.rs" --package auditorylab-core
                 --test-workspace=false --timeout 60 --cargo-arg=--locked --output target/mutations)
           if [[ "$MUTATION_SOURCE" == synthesis ]]; then
-            # Bit 52 is clear in the fraction. At line 33 both branches return 1;
-            # at line 62 the enclosing != guard excludes equality.
+            # Bit 52 is clear in the fraction. At line 27 both branches return 1;
+            # at line 61 the enclosing != guard excludes equality.
             # Location-specific exclusions keep the Nyquist and pulse-width guards mutated.
             args+=(--exclude-re 'replace \| with \^ in parts$'
-                   --exclude-re 'synthesis\.rs:33:22: replace < with <= in step$'
-                   --exclude-re 'synthesis\.rs:62:15: replace < with <= in times_at_most$')
+                   --exclude-re 'synthesis\.rs:27:22: replace < with <= in step$'
+                   --exclude-re 'synthesis\.rs:61:15: replace < with <= in times_at_most$')
           fi
           cargo mutants "${args[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

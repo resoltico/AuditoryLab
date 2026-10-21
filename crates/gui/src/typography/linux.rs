@@ -66,7 +66,7 @@ async fn read(
     proxy: &zbus::Proxy<'_>,
     namespace: &str,
     key: &str,
-) -> zbus::Result<zbus::zvariant::OwnedValue> {
+) -> zbus::Result<zbus::OwnedVariant> {
     match proxy.call("ReadOne", &(namespace, key)).await {
         Err(zbus::Error::MethodError(name, ..))
             if name.as_str() == "org.freedesktop.DBus.Error.UnknownMethod" =>
@@ -104,9 +104,9 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
         }
         return;
     }
-    async_io::block_on(async {
+    zbus::block_on(async {
         let connect = async {
-            zbus::connection::Builder::session()?
+            zbus::connection::Builder::session()
                 .method_timeout(Duration::from_secs(2))
                 .build()
                 .await
@@ -135,16 +135,36 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
                 } else {
                     ("org.gnome.desktop.interface", "font-name")
                 };
-                let value: Result<zbus::zvariant::OwnedValue, _> =
-                    read(&proxy, namespace, key).await;
-                let preference = value
+                let value: Result<zbus::OwnedVariant, _> = read(&proxy, namespace, key).await;
+                let description = value
                     .ok()
-                    .and_then(|v| v.downcast_ref::<&str>().ok().map(str::to_owned))
-                    .and_then(|v| if kde { qfont(&v) } else { native::pango(&v) });
-                let mut next = preference.and_then(|p| {
+                    .and_then(|v| v.downcast_ref::<&str>().ok().map(str::to_owned));
+                let mut has_scale = kde;
+                let preference = if kde {
+                    description.and_then(|value| qfont(&value))
+                } else {
+                    let font = description.and_then(|value| native::pango(&value));
+                    let scale = if font.as_ref().is_some_and(|font| font.absolute) {
+                        Some(1.0)
+                    } else {
+                        let scaling: Result<zbus::OwnedVariant, _> =
+                            read(&proxy, namespace, "text-scaling-factor").await;
+                        scaling
+                            .ok()
+                            .and_then(|value| value.downcast_ref::<f64>().ok())
+                            .filter(|scale| scale.is_finite() && (0.5..=4.0).contains(scale))
+                    };
+                    has_scale = scale.is_some();
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "quality:gui-typography-linux-portal-text-scale"
+                    )]
+                    font.map(|font| font.at_font_scale(scale.unwrap_or(1.0) as f32))
+                };
+                let next = preference.and_then(|preference| {
                     resolved(
                         &mut fonts,
-                        p,
+                        preference,
                         if kde {
                             "KDE portal QFont"
                         } else {
@@ -152,27 +172,6 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
                         },
                     )
                 });
-                let mut has_scale = kde;
-                if let Some(font) = next.as_mut()
-                    && !kde
-                {
-                    let scaling: Result<zbus::zvariant::OwnedValue, _> =
-                        read(&proxy, namespace, "text-scaling-factor").await;
-                    if let Some(scale) = scaling
-                        .ok()
-                        .and_then(|v| v.downcast_ref::<f64>().ok())
-                        .filter(|s| s.is_finite() && (0.5..=4.0).contains(s))
-                    {
-                        #[allow(
-                            clippy::cast_possible_truncation,
-                            reason = "validated native text scale"
-                        )]
-                        {
-                            font.size *= scale as f32;
-                            has_scale = true;
-                        }
-                    }
-                }
                 if !kde
                     && (next.is_none() || !has_scale)
                     && native::gnome_listen(&sender, &stop, &mut fonts)
@@ -206,10 +205,9 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
                         return;
                     }
                     if let Some(Some(message)) = change
-                        && let Ok((ns, _, _)) =
-                            message
-                                .body()
-                                .deserialize::<(String, String, zbus::zvariant::OwnedValue)>()
+                        && let Ok((ns, _, _)) = message
+                            .body()
+                            .deserialize::<(String, String, zbus::OwnedVariant)>()
                         && ns == namespace
                     {
                         break;
@@ -248,5 +246,70 @@ mod tests {
         ] {
             assert!(qfont(bad).is_none(), "{bad}");
         }
+    }
+    #[test]
+    #[ignore = "requires an explicitly isolated GNOME D-Bus session; changes its font and scale"]
+    fn native_gnome_font_and_scale_changes_reach_the_running_service() {
+        use std::process::Command;
+        assert_eq!(
+            std::env::var("AUDITORYLAB_FONT_TEST_SESSION").as_deref(),
+            Ok("isolated"),
+            "run only in a disposable desktop session"
+        );
+        fn get(key: &str) -> String {
+            let output = Command::new("gsettings")
+                .args(["get", "org.gnome.desktop.interface", key])
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            String::from_utf8(output.stdout).unwrap().trim().to_owned()
+        }
+        fn set(key: &str, value: &str) -> bool {
+            Command::new("gsettings")
+                .args(["set", "org.gnome.desktop.interface", key, value])
+                .status()
+                .is_ok_and(|s| s.success())
+        }
+        struct Restore(String, String);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                if !set("font-name", &self.0) || !set("text-scaling-factor", &self.1) {
+                    eprintln!("Failed to restore isolated GNOME typography");
+                }
+            }
+        }
+        let restore = Restore(get("font-name"), get("text-scaling-factor"));
+        assert!(set("font-name", "DejaVu Sans 12"));
+        assert!(set("text-scaling-factor", "1.0"));
+        let mut service = crate::typography::TypographyService::start();
+        for (description, scale, size) in [
+            ("DejaVu Sans 12", "1.0", 16.0),
+            ("DejaVu Sans 12", "2.0", 32.0),
+            ("DejaVu Sans 16px", "1.75", 16.0),
+        ] {
+            assert!(set("font-name", description));
+            assert!(set("text-scaling-factor", scale));
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            loop {
+                if let Some(font) = service.latest()
+                    && font.family == "DejaVu Sans"
+                    && (font.size - size).abs() < 0.01
+                {
+                    eprintln!(
+                        "Native GNOME font/scale delivered {} at {} logical px",
+                        font.family, font.size
+                    );
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "native GNOME font scale {scale} was not delivered"
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+        service.shutdown();
+        assert!(set("font-name", &restore.0));
+        assert!(set("text-scaling-factor", &restore.1));
     }
 }
