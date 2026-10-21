@@ -23,6 +23,14 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// How long a stream may go without progress, and how long playback may take
 /// beyond the signal's length to start up and drain.
 const STALL_LIMIT: Duration = Duration::from_secs(30);
+// ALSA checks missed fault notifications when its poll expires. Give recovery
+// time before the no-progress watchdog; other backends use this argument for
+// setup/activation and retain their existing timeout.
+const STREAM_TIMEOUT: Duration = if cfg!(target_os = "linux") {
+    Duration::from_secs(1)
+} else {
+    STALL_LIMIT
+};
 
 /// How samples are represented in the device's stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -182,7 +190,7 @@ impl Output {
                 callback.fill(output, info.timestamp(), &convert);
             },
             move |error| reports.report(error),
-            Some(STALL_LIMIT),
+            Some(STREAM_TIMEOUT),
         )
     }
 }
@@ -545,6 +553,35 @@ mod tests {
         shared.finish(Terminal::Complete);
         supervise(&shared, Duration::ZERO, &AtomicBool::new(true));
         assert!(shared.terminal() == Terminal::Complete);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn backend_recovery_can_run_before_the_stall_deadline() {
+        let shared = Shared::default();
+        let mut state = Supervision::new(None);
+        assert!(state.poll(&shared, Duration::ZERO, false).is_none());
+
+        // ALSA can only inspect a missed fault after its wait expires. Allow
+        // another ordinary poll interval for recovery and the next callback.
+        let recovered_at = STREAM_TIMEOUT + POLL_INTERVAL;
+        assert!(
+            state.poll(&shared, recovered_at, false).is_none(),
+            "backend recovery must get a turn before the no-progress deadline"
+        );
+        shared.mark_progress();
+        assert!(state.poll(&shared, recovered_at, false).is_none());
+
+        // Recovery resets progress timing; it does not relax the stall bound.
+        assert!(
+            state
+                .poll(&shared, recovered_at + STALL_LIMIT - POLL_INTERVAL, false)
+                .is_none()
+        );
+        assert_eq!(
+            state.poll(&shared, recovered_at + STALL_LIMIT, false),
+            Some(Terminal::TimedOut)
+        );
     }
 
     #[test]
