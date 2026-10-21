@@ -13,8 +13,8 @@ pub use sound_summary::{
     Rhythm, RhythmKind, SoundSummary, ToneRelationship, component_role, recipe_target,
 };
 pub use waveform_view::{
-    CaptureError, ModelSource, ModelView, OutputMonitorState, WaveformCapture, WaveformScale,
-    monitor_warning, output_monitor_state, phase_text,
+    CaptureError, ModelSource, ModelView, MonitorWarning, OutputMonitorState, WaveformCapture,
+    WaveformScale, monitor_warning, output_monitor_state, output_underrun_warning, phase_text,
 };
 mod publish;
 mod wav;

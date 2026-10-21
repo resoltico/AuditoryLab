@@ -94,5 +94,6 @@ strip = true
 [patch.crates-io]
 accesskit_unix = { path = "third_party/accesskit_unix" }
 i-slint-core = { path = "third_party/i-slint-core" }
+i-slint-backend-winit = { path = "third_party/i-slint-backend-winit" }
 parley = { path = "third_party/parley" }
 winit = { path = "third_party/winit" }

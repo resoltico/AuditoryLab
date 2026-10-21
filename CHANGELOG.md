@@ -23,7 +23,7 @@ Notable changes to this project are documented in this file. The format is based
 - Native desktop fonts follow San Francisco on macOS, Windows UI font/text scaling and configured Linux desktop family/size. About is available through the application/Help menu, with identity and licenses retained.
 - Library prioritizes sound meaning and attributed study context; Workbench groups directly editable layers with explicit routing/modulation disclosures and document-local static Pattern explained. Exact fields preserve precision, recover valid pending corrections without an extra blur, and report setting-specific errors. Slider gestures use three significant digits, 0.1 dB levels and whole-percent depths.
 - Bounded core timing/envelope projections distinguish static recipe/accepted-target models from generated waveforms. Click/gate/AM summaries retain independent rhythms and steady companions; narrow interaural and monaural pairs retain their physical meaning.
-- One desktop player retains its session across Library browsing and Workbench edits. Generated rates, crossfade roles, actual stereo traces and window sample peak/RMS distinguish accepted controls from generated output; Fixed/Fit share a truthful stereo scale, and Hold retains complete source/session/rate/span/scale/meter context across playback changes. Live/Held/Stale/Waiting/Unavailable/Last states and receipt age distinguish current data from history; cumulative gaps remain in diagnostics. Native motion preferences use explicit enabled/disabled/unknown states with user override and diagnosed live fallback.
+- One desktop player retains its session across Library browsing and Workbench edits. Generated rates, crossfade roles, actual stereo traces and window sample peak/RMS distinguish accepted controls from generated output; Fixed/Fit share a truthful stereo scale, and Hold retains complete source/session/rate/span/scale/meter context across playback changes. Live/Held/Stale/Waiting/Unavailable/Last states and receipt age distinguish current data from history; cumulative gaps remain in diagnostics. Coverage/display-range advice stays readable without repeated automatic speech; stale/unavailable monitoring, capture errors and independent backend warnings remain announced. Native motion preferences use explicit enabled/disabled/unknown states with user override and diagnosed live fallback.
 - Library search covers titles, IDs, research and sound parameters. Wrapped results, compact component controls and collapsible notes/saved-audio settings keep sound actions accessible. Edited source research stays attributed separately from custom notes.
 - New, draft replacement, window close and File/app-menu Quit protect unsaved content with Save/Discard/Cancel and wait for worker cleanup, including native macOS Cmd-Q. Sound snapshots save while audio continues; audio Stop and file-task cancellation are independent, both lifetimes are joined on quit, and late/obsolete save results preserve newer or replacement drafts. WAV export requires idle audio.
 - CLI/GUI version output and About distinguish product version, numeric native build counter and optional source revision. CLI Play renders start, generated status and final results on stderr; redirected text stays static.
@@ -36,9 +36,14 @@ Notable changes to this project are documented in this file. The format is based
 - Preset files retain `schema_version = 2`; existing catalog parameters are unchanged.
 - Packaging uses `cargo xtask`; reusable CI builds the release archives. Release dispatch defaults to non-publishing verification with downloadable checksums, notes and provenance; publication requires `publish: true` on main. cargo-deny gates dependency policy, and packaging checks dependency and license-text coverage.
 
+### Fixed
+
+- macOS keyboard shortcuts honor native modifier flags when accessibility input supplies no separate modifier-key events.
+- Linux playback checks missed ALSA fault notifications soon enough to recover before the existing stall deadline.
+
 ### Removed
 
-- `--build-info` output, build kinds, the sample observation transport, display memory budgets and vendored backend patches.
+- `--build-info` output, build kinds, the sample observation transport and display memory budgets.
 - Python build/release tooling and committed generated third-party notices.
 
 ### Internal

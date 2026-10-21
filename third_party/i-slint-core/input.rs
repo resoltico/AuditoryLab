@@ -398,6 +398,10 @@ pub mod key_codes {
 /// map to keyboard modifiers.
 #[derive(Clone, Copy, Default, Debug)]
 pub(crate) struct InternalKeyboardModifierState {
+    // A backend's aggregate report is authoritative when supplied. Keep it
+    // separate from known physical sides: event flags need not include a
+    // preceding modifier-key event, and release notifications can precede flags.
+    platform_modifiers: Option<KeyboardModifiers>,
     left_alt: bool,
     right_alt: bool,
     altgr: bool,
@@ -410,6 +414,28 @@ pub(crate) struct InternalKeyboardModifierState {
 }
 
 impl InternalKeyboardModifierState {
+    pub(crate) fn synchronize_platform_modifiers(mut self, modifiers: KeyboardModifiers) -> Self {
+        self.platform_modifiers = Some(modifiers);
+        if !modifiers.alt {
+            self.left_alt = false;
+            self.right_alt = false;
+            self.altgr = false;
+        }
+        if !modifiers.control {
+            self.left_control = false;
+            self.right_control = false;
+        }
+        if !modifiers.meta {
+            self.left_meta = false;
+            self.right_meta = false;
+        }
+        if !modifiers.shift {
+            self.left_shift = false;
+            self.right_shift = false;
+        }
+        self
+    }
+
     /// Updates a flag of the modifiers if the key of the given text is pressed.
     /// Returns an updated modifier if detected; None otherwise;
     pub(crate) fn state_update(mut self, pressed: bool, text: &SharedString) -> Option<Self> {
@@ -436,23 +462,49 @@ impl InternalKeyboardModifierState {
     }
 
     pub fn shift(&self) -> bool {
-        self.right_shift || self.left_shift
+        self.platform_modifiers.map_or(self.right_shift || self.left_shift, |m| m.shift)
     }
     pub fn alt(&self) -> bool {
-        self.right_alt || self.left_alt
+        self.platform_modifiers.map_or(self.right_alt || self.left_alt, |m| m.alt)
     }
     pub fn meta(&self) -> bool {
-        self.right_meta || self.left_meta
+        self.platform_modifiers.map_or(self.right_meta || self.left_meta, |m| m.meta)
     }
     pub fn control(&self) -> bool {
-        self.right_control || self.left_control
+        self.platform_modifiers.map_or(self.right_control || self.left_control, |m| m.control)
     }
 
-    pub fn modifiers_for(&self, _event: &InternalKeyEvent) -> KeyboardModifiers {
+    pub fn modifiers_for(&self, event: &InternalKeyEvent) -> KeyboardModifiers {
         #[allow(unused_mut)]
         let mut alt = self.alt();
         #[allow(unused_mut)]
         let mut control = self.control();
+        let mut shift = self.shift();
+        let mut meta = self.meta();
+
+        // Preserve the immediate physical-family state on actual modifier-key
+        // callbacks. Winit may report the following aggregate after this event.
+        // Ordinary keys still use the last authoritative platform flags, even
+        // if a known side was pressed or released in the meantime.
+        if self.platform_modifiers.is_some()
+            && matches!(event.event_type, KeyEventType::KeyPressed | KeyEventType::KeyReleased)
+        {
+            match event.key_event.text.chars().next() {
+                Some(key_codes::Shift | key_codes::ShiftR) => {
+                    shift = self.left_shift || self.right_shift;
+                }
+                Some(key_codes::Control | key_codes::ControlR) => {
+                    control = self.left_control || self.right_control;
+                }
+                Some(key_codes::Meta | key_codes::MetaR) => {
+                    meta = self.left_meta || self.right_meta;
+                }
+                Some(key_codes::Alt) => {
+                    alt = self.left_alt || self.right_alt;
+                }
+                _ => {}
+            }
+        }
 
         // Windows treats Ctrl+Alt as implying AltGr, but not vice-versa
         // Unfortunately, our different backends produce different key combinations here.
@@ -482,11 +534,11 @@ impl InternalKeyboardModifierState {
                 //
                 // On platforms that don't provide text_without_modifiers, fall back to a simple
                 // heuristic that assumes A-Z & 0-9 are not produced with AltGr, but all other keys are.
-                let implies_altgr = if _event.text_without_modifiers.is_empty() {
-                    _event.key_event.text.chars().any(|c| !c.is_ascii_alphanumeric())
+                let implies_altgr = if event.text_without_modifiers.is_empty() {
+                    event.key_event.text.chars().any(|c| !c.is_ascii_alphanumeric())
                 } else {
-                    _event.text_without_modifiers.to_lowercase()
-                        != _event.key_event.text.to_lowercase()
+                    event.text_without_modifiers.to_lowercase()
+                        != event.key_event.text.to_lowercase()
                 };
                 if implies_altgr {
                     alt = false;
@@ -502,14 +554,14 @@ impl InternalKeyboardModifierState {
             let is_altgr = self.altgr
                 || (self.control()
                     && self.alt()
-                    && _event.key_event.text.chars().any(|c| !c.is_ascii_alphanumeric()));
+                    && event.key_event.text.chars().any(|c| !c.is_ascii_alphanumeric()));
             if is_altgr {
                 alt = false;
                 control = false;
             }
         }
 
-        KeyboardModifiers { alt, control, meta: self.meta(), shift: self.shift() }
+        KeyboardModifiers { alt, control, meta, shift }
     }
 }
 

@@ -232,6 +232,21 @@ impl Window {
         })
     }
 
+    pub(crate) fn set_transient_for(&self, parent: Option<&Self>) -> Result<(), NotSupportedError> {
+        if let Some(parent) = parent {
+            let (Some(connection), Some(parent_connection)) =
+                (self.display.backend().upgrade(), parent.display.backend().upgrade())
+            else {
+                return Err(NotSupportedError::new());
+            };
+            if self.window_id == parent.window_id || connection != parent_connection {
+                return Err(NotSupportedError::new());
+            }
+        }
+        self.window.set_parent(parent.map(|parent| &parent.window));
+        Ok(())
+    }
+
     pub(crate) fn xdg_toplevel(&self) -> Option<NonNull<c_void>> {
         NonNull::new(self.window.xdg_toplevel().id().as_ptr().cast())
     }

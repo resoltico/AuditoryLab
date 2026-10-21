@@ -927,7 +927,10 @@ mod tests {
             output_monitor_state(Some(&reader), None, false, false),
             State::Waiting
         );
-        assert!(monitor_warning(&reader, 40).contains("Incomplete"));
+        assert_eq!(
+            monitor_warning(&reader, 40),
+            Some(crate::MonitorWarning::IncompleteCoverage)
+        );
         // A missed span is history; enough subsequent contiguous data repairs current coverage.
         {
             let mut writer = monitor.try_publish().unwrap();
@@ -937,7 +940,7 @@ mod tests {
         reader.poll(40);
         assert_eq!(reader.status().gaps, 1);
         assert_eq!(reader.status().underruns, 0);
-        assert!(monitor_warning(&reader, 40).is_empty());
+        assert_eq!(monitor_warning(&reader, 40), None);
         let held = WaveformCapture::monitored(&reader, WaveformScale::Fit)
             .unwrap()
             .unwrap();
@@ -951,7 +954,10 @@ mod tests {
             output_monitor_state(Some(&reader), Some(&held), false, false),
             State::Stale
         );
-        assert!(monitor_warning(&reader, 40).contains("stale"));
+        assert_eq!(
+            monitor_warning(&reader, 40),
+            Some(crate::MonitorWarning::Stale)
+        );
         let prior = held.caption(true, false);
         let another = PlaybackMonitor::new(descriptor(48000), MonitorDetail::Waveform, None);
         let mut other = another.reader();
@@ -968,7 +974,7 @@ mod tests {
             writer.finish(3936, None, false);
         }
         reader.poll(40);
-        assert!(monitor_warning(&reader, 40).is_empty());
+        assert_eq!(monitor_warning(&reader, 40), None);
         assert_eq!(reader.status().gaps, 1);
         monitor.0.shared.finish(Terminal::Complete);
         reader.poll(40);
@@ -978,7 +984,10 @@ mod tests {
         );
         monitor.0.disabled.store(true, Ordering::Relaxed);
         reader.poll(40);
-        assert!(monitor_warning(&reader, 40).contains("unavailable"));
+        assert_eq!(
+            monitor_warning(&reader, 40),
+            Some(crate::MonitorWarning::Unavailable)
+        );
         assert_eq!(
             output_monitor_state(None, Some(&held), false, false),
             State::Preview
@@ -1003,8 +1012,105 @@ mod tests {
             .report(cpal::Error::new(cpal::ErrorKind::Xrun));
         let mut reader = underrun.reader();
         reader.poll(40);
-        assert!(monitor_warning(&reader, 40).contains("underruns: 1"));
+        assert_eq!(monitor_warning(&reader, 40), None);
+        assert!(crate::output_underrun_warning(reader.status().underruns).contains("underruns: 1"));
     }
+    #[test]
+    fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
+        use crate::{MonitorWarning, monitor_warning, output_underrun_warning};
+        let rate = SampleRate::new(48000).unwrap();
+        let generator = crate::LiveGenerator::new(&crate::Draft::new(), rate).unwrap();
+        let mut desc = descriptor(48000);
+        desc.frames = None;
+        let monitor = PlaybackMonitor::new(
+            desc,
+            MonitorDetail::Waveform,
+            Some(Arc::clone(&generator.mailbox)),
+        );
+        let mut callback = Callback::new(Source::Live(Box::new(generator)), 2, monitor.shared())
+            .with_monitor(Some(monitor.clone()));
+        let mut reader = monitor.reader();
+        let mut output = [0.0; 1024];
+        let mut block = 0;
+        let fill = |callback: &mut Callback, block: &mut u64, output: &mut [f64]| {
+            callback.fill(output, time(*block * 512 * 1_000_000_000 / 48000), &|v| v);
+            *block += 1;
+        };
+        for _ in 0..4 {
+            fill(&mut callback, &mut block, &mut output);
+        }
+        reader.poll(40);
+        assert_eq!(monitor_warning(&reader, 40), None);
+        assert!(output_underrun_warning(reader.status().underruns).is_empty());
+        for episode in 1..=10 {
+            let guard = monitor.0.history.lock().unwrap();
+            fill(&mut callback, &mut block, &mut output);
+            drop(guard);
+            if episode == 5 {
+                monitor
+                    .shared()
+                    .report(cpal::Error::new(cpal::ErrorKind::Xrun));
+            }
+            fill(&mut callback, &mut block, &mut output);
+            reader.poll(40);
+            let warning = monitor_warning(&reader, 40).unwrap();
+            assert_eq!(warning, MonitorWarning::IncompleteCoverage);
+            assert_eq!(
+                warning.message(),
+                "Incomplete current waveform coverage; waiting for a contiguous window."
+            );
+            assert!(!warning.announces_changes());
+            assert_eq!(reader.status().gaps, episode);
+            assert_eq!(reader.status().missed_publications, episode);
+            // A reported output problem stays independently readable throughout partial coverage.
+            if episode >= 5 {
+                assert_eq!(
+                    output_underrun_warning(reader.status().underruns),
+                    "Backend-reported output underruns: 1 · see details."
+                );
+            }
+            for _ in 0..20 {
+                reader.poll(40);
+                assert_eq!(monitor_warning(&reader, 40), Some(warning));
+                assert_eq!(reader.status().gaps, episode);
+            }
+            for _ in 0..3 {
+                fill(&mut callback, &mut block, &mut output);
+            }
+            reader.poll(40);
+            assert_eq!(monitor_warning(&reader, 40), None);
+            assert_eq!(
+                reader.status().gaps,
+                episode,
+                "recovery does not erase history"
+            );
+            if episode >= 5 {
+                assert_eq!(
+                    output_underrun_warning(reader.status().underruns),
+                    "Backend-reported output underruns: 1 · see details."
+                );
+            }
+        }
+        reader.received = Some(Instant::now() - Duration::from_secs(1));
+        assert_eq!(monitor_warning(&reader, 40), Some(MonitorWarning::Stale));
+        assert!(monitor_warning(&reader, 40).unwrap().announces_changes());
+        assert_eq!(
+            monitor_warning(&reader, 40).unwrap().message(),
+            "Monitoring is stale; retained samples are not current output."
+        );
+        monitor.0.disabled.store(true, Ordering::Relaxed);
+        reader.poll(40);
+        assert_eq!(
+            monitor_warning(&reader, 40),
+            Some(MonitorWarning::Unavailable)
+        );
+        assert!(monitor_warning(&reader, 40).unwrap().announces_changes());
+        assert_eq!(
+            monitor_warning(&reader, 40).unwrap().message(),
+            "Monitoring unavailable; audio transport is independent."
+        );
+    }
+
     #[test]
     fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
         for hz in [3750.0, 3751.0] {

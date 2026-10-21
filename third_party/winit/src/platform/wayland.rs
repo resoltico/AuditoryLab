@@ -17,6 +17,7 @@
 use std::ffi::c_void;
 use std::ptr::NonNull;
 
+use crate::error::NotSupportedError;
 use crate::event_loop::{ActiveEventLoop, EventLoop, EventLoopBuilder};
 use crate::monitor::MonitorHandle;
 use crate::window::{Window, WindowAttributes};
@@ -81,9 +82,34 @@ impl<T> EventLoopBuilderExtWayland for EventLoopBuilder<T> {
 pub trait WindowExtWayland {
     /// Returns `xdg_toplevel` of the window or [`None`] if the window is X11 window.
     fn xdg_toplevel(&self) -> Option<NonNull<c_void>>;
+
+    /// Set the modeless parent of this Wayland toplevel.
+    ///
+    /// A parent must be a different mapped Wayland window on the same display.
+    /// The caller must not create a parent cycle. Unmapping the parent removes
+    /// this relationship; mapping it again does not restore the relationship.
+    /// This requests stacking above the parent, without making the child modal
+    /// or guaranteeing keyboard activation by the compositor.
+    ///
+    /// Returns an error for non-Wayland windows or an invalid direct parent.
+    fn set_transient_for(&self, parent: Option<&Window>) -> Result<(), NotSupportedError>;
 }
 
 impl WindowExtWayland for Window {
+    fn set_transient_for(&self, parent: Option<&Window>) -> Result<(), NotSupportedError> {
+        #[allow(unreachable_patterns)]
+        match (&self.window, parent.map(|parent| &parent.window)) {
+            #[cfg(wayland_platform)]
+            (crate::platform_impl::Window::Wayland(window), None) => window.set_transient_for(None),
+            #[cfg(wayland_platform)]
+            (
+                crate::platform_impl::Window::Wayland(window),
+                Some(crate::platform_impl::Window::Wayland(parent)),
+            ) => window.set_transient_for(Some(parent)),
+            _ => Err(NotSupportedError::new()),
+        }
+    }
+
     #[inline]
     fn xdg_toplevel(&self) -> Option<NonNull<c_void>> {
         #[allow(clippy::single_match)]

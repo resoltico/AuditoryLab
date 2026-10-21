@@ -1240,6 +1240,33 @@ impl WindowInner {
         ));
     }
 
+    /// Synchronize normalized aggregate flags from a native backend without
+    /// fabricating physical key events or changing their delivery order.
+    pub fn set_keyboard_modifiers(&self, modifiers: crate::input::KeyboardModifiers) {
+        let state = self.context().0.modifiers.get().synchronize_platform_modifiers(modifiers);
+        self.set_modifier_state(state);
+    }
+
+    fn set_modifier_state(&self, state: crate::input::InternalKeyboardModifierState) {
+        self.context().0.modifiers.set(state);
+        // If a drag is in flight, synthesize a Moved at the last drag position so
+        // the new modifier state flows into `event.proposed-action` and the target's
+        // `can-drop` re-runs — letting the user change copy/move/link with Ctrl/Shift
+        // without having to move the mouse first.
+        let drag_pos = {
+            let state = self.mouse_input_state.take();
+            let pos = state.drag_data.as_ref().map(|d| d.event.position);
+            self.mouse_input_state.replace(state);
+            pos
+        };
+        if let Some(pos) = drag_pos {
+            self.process_mouse_input(MouseEvent::Moved {
+                position: crate::lengths::logical_point_from_api(pos),
+                touch_finger_id: 0,
+            });
+        }
+    }
+
     /// Receive a key event and pass it to the items of the component to
     /// change their state.
     ///
@@ -1269,25 +1296,7 @@ impl WindowInner {
             internal_key_event.event_type == KeyEventType::KeyPressed,
             &internal_key_event.key_event.text,
         ) {
-            // Updates the key modifiers depending on the key code and pressed state.
-            self.context().0.modifiers.set(updated_modifier);
-
-            // If a drag is in flight, synthesize a Moved at the last drag position so
-            // the new modifier state flows into `event.proposed-action` and the target's
-            // `can-drop` re-runs — letting the user change copy/move/link with Ctrl/Shift
-            // without having to move the mouse first.
-            let drag_pos = {
-                let state = self.mouse_input_state.take();
-                let pos = state.drag_data.as_ref().map(|d| d.event.position);
-                self.mouse_input_state.replace(state);
-                pos
-            };
-            if let Some(pos) = drag_pos {
-                self.process_mouse_input(MouseEvent::Moved {
-                    position: crate::lengths::logical_point_from_api(pos),
-                    touch_finger_id: 0,
-                });
-            }
+            self.set_modifier_state(updated_modifier);
         }
 
         internal_key_event.key_event.modifiers =

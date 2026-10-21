@@ -2,6 +2,7 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 mod actions;
 mod app;
+mod details_parent;
 mod dialogs;
 mod motion;
 #[cfg(target_os = "macos")]
@@ -65,12 +66,46 @@ struct Desktop {
     dialog_active: Cell<bool>,
     operation_frames: Cell<u64>,
 }
+fn present_details<C: ComponentHandle + 'static>(window: &DetailsWindow, parent: &C) {
+    if let Err(error) = window.show() {
+        eprintln!("Details: {error}");
+        return;
+    }
+    details_parent::bind(window, parent);
+    window.invoke_focus_close();
+}
 fn hide_monitor_window(ui: &MainWindow, monitor: &MonitorWindow, was_focused: bool) {
     let _ = monitor.hide();
     if was_focused {
         ui.invoke_focus_monitor_opener();
     }
 }
+fn sync_monitor_warnings(
+    ui: &MainWindow,
+    warning: Option<auditorylab::MonitorWarning>,
+    capture_error: Option<&str>,
+    underruns: u64,
+    clipped: bool,
+) {
+    let mut text = capture_error.map_or_else(
+        || warning.map_or_else(String::new, |warning| warning.message().into()),
+        str::to_owned,
+    );
+    let mut live = capture_error.is_some()
+        || warning.is_some_and(auditorylab::MonitorWarning::announces_changes);
+    if clipped {
+        let advisory = auditorylab::MonitorWarning::FixedRangeExceeded;
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(advisory.message());
+        live |= advisory.announces_changes();
+    }
+    ui.set_monitor_warning(text.into());
+    ui.set_monitor_warning_live(live);
+    ui.set_backend_warning(auditorylab::output_underrun_warning(underruns).into());
+}
+
 impl Desktop {
     fn refresh_typography(&self) {
         #[cfg(target_os = "macos")]
@@ -494,6 +529,8 @@ impl Desktop {
         let window =
             [2_u32, 10, 40, 100][usize::try_from(ui.get_window_index()).unwrap_or(2).min(3)];
         let mut current_capture_error = None;
+        let mut current_monitor_warning = None;
+        let mut backend_underruns = 0;
         let mut monitor = self.monitor.borrow_mut();
 
         if let Some(reader) = monitor.as_mut() {
@@ -583,10 +620,8 @@ impl Desktop {
                     }
                 }
             }
-            let warning = current_capture_error
-                .clone()
-                .unwrap_or_else(|| auditorylab::monitor_warning(reader, window));
-            ui.set_monitor_warning(warning.into());
+            current_monitor_warning = auditorylab::monitor_warning(reader, window);
+            backend_underruns = status.underruns;
             ui.set_monitor_state(format!("Current session {}: observed frame {:?} · status age {:?} · gaps {} · output underruns {}",status.session_id,status.observation.map(|o|o.frame),reader.age(),status.gaps,status.underruns).into());
         } else {
             ui.set_player_title(
@@ -623,7 +658,6 @@ impl Desktop {
                 *self.capture.borrow_mut() =
                     Some(auditorylab::WaveformCapture::preview(&sound, window, scale));
             }
-            ui.set_monitor_warning("".into());
             ui.set_monitor_state(
                 if audio {
                     "Waiting for generated samples"
@@ -633,6 +667,16 @@ impl Desktop {
                 .into(),
             );
         }
+        sync_monitor_warnings(
+            &ui,
+            current_monitor_warning,
+            current_capture_error.as_deref(),
+            backend_underruns,
+            self.capture
+                .borrow()
+                .as_ref()
+                .is_some_and(auditorylab::WaveformCapture::clipped),
+        );
         let output_state = auditorylab::output_monitor_state(
             monitor.as_ref(),
             self.capture.borrow().as_ref(),
@@ -678,10 +722,6 @@ impl Desktop {
             ui.set_left_path(left.into());
             ui.set_right_path(right.into());
             ui.set_scale_label(auditorylab::compact_number(capture.limit()).into());
-            if capture.clipped() {
-                let warning = ui.get_monitor_warning();
-                ui.set_monitor_warning(format!("{}{}Waveform exceeds the fixed display range; exact levels are retained. Use Fit to view the full extent.", warning, if warning.is_empty() { "" } else { "\n" }).into());
-            }
             ui.set_waveform_caption(capture.label(ui.get_held(), ended).into());
             ui.set_meters(
                 format!(
@@ -818,6 +858,11 @@ impl Desktop {
                         .window()
                         .with_winit_window(winit::window::Window::has_focus)
                         .unwrap_or(false);
+                    if let Some(details) = self.details_window.upgrade()
+                        && details.window().is_visible()
+                    {
+                        details_parent::bind(&details, ui);
+                    }
                     hide_monitor_window(ui, &window, was_focused);
                 }
             }
@@ -843,7 +888,13 @@ impl Desktop {
             }
         }
     }
-    fn show_diagnostics(&self) {
+    fn show_diagnostics<C: ComponentHandle + 'static>(&self, parent: &C) {
+        self.refresh_diagnostics();
+        if let Some(window) = self.details_window.upgrade() {
+            present_details(&window, parent);
+        }
+    }
+    fn refresh_diagnostics(&self) {
         let (Some(ui), Some(window)) = (self.ui.upgrade(), self.details_window.upgrade()) else {
             return;
         };
@@ -863,8 +914,6 @@ impl Desktop {
             )
             .into(),
         );
-        let _ = window.show();
-        window.invoke_focus_close();
     }
     fn sync_metadata(&self, ui: &MainWindow, w: &app::Workbench) {
         let display =
@@ -1828,18 +1877,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let d = desktop.clone();
-    ui.on_show_diagnostics(move || d.show_diagnostics());
+    ui.on_show_diagnostics(move || {
+        if let Some(ui) = d.ui.upgrade() {
+            d.show_diagnostics(&ui);
+        }
+    });
     let d = desktop.clone();
     ui.on_show_research(move || {
-        let (Some(window), Some(_ui)) = (d.details_window.upgrade(), d.ui.upgrade()) else {
+        let (Some(window), Some(ui)) = (d.details_window.upgrade(), d.ui.upgrade()) else {
             return;
         };
         let app = d.app.borrow();
         window.set_heading(format!("Sound details · {}", app.preset().title()).into());
         window.set_can_refresh(false);
         window.set_content(app::details(app.preset(), app.rate).into());
-        let _ = window.show();
-        window.invoke_focus_close();
+        present_details(&window, &ui);
     });
     let weak = details_window.as_weak();
     details_window.on_dismiss(move || {
@@ -1848,7 +1900,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     let d = desktop.clone();
-    details_window.on_refresh_content(move || d.show_diagnostics());
+    details_window.on_refresh_content(move || d.refresh_diagnostics());
     let d = desktop.clone();
     monitor_window.on_span(move |index| {
         if let Some(ui) = d.ui.upgrade() {
@@ -1877,7 +1929,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     let d = desktop.clone();
-    monitor_window.on_details(move || d.show_diagnostics());
+    monitor_window.on_details(move || {
+        if let Some(monitor) = d.monitor_window.upgrade() {
+            d.show_diagnostics(&monitor);
+        }
+    });
     let d = desktop.clone();
     monitor_window.on_dismiss(move || {
         if let Some(ui) = d.ui.upgrade() {
@@ -2050,6 +2106,7 @@ mod action_wiring_tests {
         }))
         .unwrap();
         assert_audio_controls_keep_stop_visible(&audio_constraints);
+        assert_platform_modifiers_drive_text_shortcuts();
         #[cfg(target_os = "macos")]
         assert_native_font_metrics();
         let ui = MainWindow::new().unwrap();
@@ -2142,7 +2199,358 @@ mod action_wiring_tests {
             "responsive fallback must preserve the user's open choice"
         );
         assert_monitor_handoff_preserves_numeric_entry(&ui);
+        assert_monitor_warning_accessibility(&ui);
+        assert_monitor_layout_survives_warning_changes(&ui);
         ui.hide().unwrap();
+    }
+
+    fn assert_monitor_layout_survives_warning_changes(ui: &MainWindow) {
+        fn settle(ui: &MainWindow) {
+            slint::platform::update_timers_and_animations();
+            // Materialize actual conditional delegates, as the native frame does.
+            slint::private_unstable_api::re_exports::WindowInner::from_pub(ui.window())
+                .draw_contents(|_, _| ());
+            let _ = ui.get_drawer_fits();
+            slint::platform::update_timers_and_animations();
+        }
+        ui.set_monitor_open(true);
+        ui.set_motion_reason("System motion preference permits live drawing.".into());
+        ui.invoke_resize_monitor(270.0);
+        let mut observed_fit = false;
+        let mut observed_fallback = false;
+        let mut changed_warning_bounds = false;
+        for size in [13.0, 26.0] {
+            ui.set_ui_size(size);
+            for width in [680, 1100] {
+                for height in (700..=1200).step_by(5) {
+                    ui.window()
+                        .set_size(slint::PhysicalSize::new(width, height));
+                    sync_monitor_warnings(ui, None, None, 0, false);
+                    settle(ui);
+                    let fits = ui.get_drawer_fits();
+                    let baseline = ui.get_effective_drawer_height();
+                    observed_fit |= fits;
+                    observed_fallback |= !fits;
+                    for (warning, underruns, clipped) in [
+                        (
+                            Some(auditorylab::MonitorWarning::IncompleteCoverage),
+                            0,
+                            false,
+                        ),
+                        (None, 1, false),
+                        (
+                            Some(auditorylab::MonitorWarning::IncompleteCoverage),
+                            1,
+                            true,
+                        ),
+                    ] {
+                        sync_monitor_warnings(ui, warning, None, underruns, clipped);
+                        settle(ui);
+                        assert_eq!(
+                            ui.get_drawer_fits(),
+                            fits,
+                            "warning refresh must not move the monitor between windows at font{size}, {width}x{height}"
+                        );
+                        changed_warning_bounds |= ui.get_effective_drawer_height() != baseline;
+                    }
+                }
+            }
+        }
+        assert!(
+            !changed_warning_bounds,
+            "warning rows must keep stable readable bounds"
+        );
+        assert!(
+            observed_fit && observed_fallback,
+            "layout control must exercise both drawer and focused-window configurations"
+        );
+        ui.set_ui_size(13.0);
+        ui.window().set_size(slint::PhysicalSize::new(1100, 900));
+        sync_monitor_warnings(ui, None, None, 0, false);
+        settle(ui);
+        assert!(ui.get_drawer_fits());
+        assert!(
+            (240.0..=285.0).contains(&ui.get_effective_drawer_height()),
+            "stable warnings must preserve the normal bounded drawer target"
+        );
+        eprintln!(
+            "stable-warning drawer13px1100x900={} logicalpx",
+            ui.get_effective_drawer_height()
+        );
+    }
+
+    fn assert_monitor_warning_accessibility(ui: &MainWindow) {
+        use slint::private_unstable_api::re_exports::{AccessibleStringProperty, WindowInner};
+        use std::ops::ControlFlow;
+        let window = MonitorWindow::new().unwrap();
+        window.show().unwrap();
+        let root = WindowInner::from_pub(window.window())
+            .window_item_rc()
+            .unwrap();
+        let find = |label: &str| {
+            root.visit_descendants(|item| {
+                if item.is_visible()
+                    && item.is_accessible()
+                    && item
+                        .accessible_string_property(AccessibleStringProperty::Label)
+                        .is_some_and(|value| value == label)
+                {
+                    ControlFlow::Break(item.clone())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+        };
+        let backend_text = "Backend-reported output underruns: 1 · see details.";
+        sync_monitor_warnings(ui, None, None, 1, false);
+        window.set_data(ui.get_monitor_data());
+        slint::platform::update_timers_and_animations();
+        let backend = find(backend_text).expect("independent backend warning must be accessible");
+        assert_eq!(
+            backend
+                .accessible_string_property(AccessibleStringProperty::LiveRegion)
+                .as_deref(),
+            Some("polite")
+        );
+        for _ in 0..10 {
+            let partial = auditorylab::MonitorWarning::IncompleteCoverage;
+            sync_monitor_warnings(ui, Some(partial), None, 1, false);
+            window.set_data(ui.get_monitor_data());
+            slint::platform::update_timers_and_animations();
+            let coverage =
+                find(partial.message()).expect("current partial coverage remains readable");
+            assert_eq!(
+                coverage
+                    .accessible_string_property(AccessibleStringProperty::LiveRegion)
+                    .as_deref(),
+                Some("off"),
+                "transient coverage must not generate automatic speech"
+            );
+            assert!(
+                find(backend_text).is_some_and(|item| item == backend),
+                "coverage changes must not recreate the backend warning node"
+            );
+            sync_monitor_warnings(ui, None, None, 1, false);
+            window.set_data(ui.get_monitor_data());
+            slint::platform::update_timers_and_animations();
+            assert!(find(partial.message()).is_none());
+            assert!(find(backend_text).is_some_and(|item| item == backend));
+        }
+        for critical in [
+            auditorylab::MonitorWarning::Stale,
+            auditorylab::MonitorWarning::Unavailable,
+        ] {
+            sync_monitor_warnings(ui, Some(critical), None, 1, false);
+            window.set_data(ui.get_monitor_data());
+            slint::platform::update_timers_and_animations();
+            let warning = find(critical.message()).unwrap();
+            assert_eq!(
+                warning
+                    .accessible_string_property(AccessibleStringProperty::LiveRegion)
+                    .as_deref(),
+                Some("polite")
+            );
+            assert!(find(backend_text).is_some_and(|item| item == backend));
+        }
+        let capture_error =
+            "Invalid waveform capture (non-finite samples); retaining the last valid window";
+        sync_monitor_warnings(ui, None, Some(capture_error), 1, false);
+        window.set_data(ui.get_monitor_data());
+        slint::platform::update_timers_and_animations();
+        assert_eq!(
+            find(capture_error)
+                .unwrap()
+                .accessible_string_property(AccessibleStringProperty::LiveRegion)
+                .as_deref(),
+            Some("polite")
+        );
+        sync_monitor_warnings(ui, None, None, 1, true);
+        window.set_data(ui.get_monitor_data());
+        slint::platform::update_timers_and_animations();
+        let advisory = find("Waveform exceeds the fixed display range; exact levels are retained. Use Fit to view the full extent.").unwrap();
+        assert_eq!(
+            advisory
+                .accessible_string_property(AccessibleStringProperty::LiveRegion)
+                .as_deref(),
+            Some("off")
+        );
+        assert!(find(backend_text).is_some_and(|item| item == backend));
+        sync_monitor_warnings(ui, None, None, 0, false);
+        window.set_data(ui.get_monitor_data());
+        slint::platform::update_timers_and_animations();
+        assert!(find(backend_text).is_none());
+        window.hide().unwrap();
+    }
+
+    fn assert_platform_modifiers_drive_text_shortcuts() {
+        use slint::platform::{Key, WindowEvent};
+        use slint::private_unstable_api::re_exports::{KeyboardModifiers, WindowInner};
+        slint::slint! {
+            export component ModifierProbe inherits Window {
+                width:400px;height:80px;
+                in-out property <string> value:"baseline";
+                out property <bool> pressed-control;
+                out property <bool> pressed-alt;
+                out property <bool> pressed-shift;
+                out property <bool> pressed-meta;
+                out property <bool> released-control;
+                public function focus-field(){field.focus();}
+                field := TextInput {
+                    text <=> root.value;
+                    key-pressed(e)=>{
+                        root.pressed-control=e.modifiers.control;
+                        root.pressed-alt=e.modifiers.alt;
+                        root.pressed-shift=e.modifiers.shift;
+                        root.pressed-meta=e.modifiers.meta;
+                        return reject;
+                    }
+                    key-released(e)=>{root.released-control=e.modifiers.control;return reject;}
+                }
+            }
+        }
+        fn press(probe: &ModifierProbe, text: impl Into<slint::SharedString>) {
+            probe
+                .window()
+                .dispatch_event(WindowEvent::KeyPressed { text: text.into() });
+        }
+        fn release(probe: &ModifierProbe, text: impl Into<slint::SharedString>) {
+            probe
+                .window()
+                .dispatch_event(WindowEvent::KeyReleased { text: text.into() });
+        }
+        fn key(probe: &ModifierProbe, text: impl Into<slint::SharedString>) {
+            let text = text.into();
+            press(probe, text.clone());
+            release(probe, text);
+        }
+        fn reset(probe: &ModifierProbe) {
+            probe
+                .window()
+                .dispatch_event(WindowEvent::WindowActiveChanged(false));
+            probe
+                .window()
+                .dispatch_event(WindowEvent::WindowActiveChanged(true));
+            probe.invoke_focus_field();
+        }
+        let probe = ModifierProbe::new().unwrap();
+        probe.show().unwrap();
+        reset(&probe);
+        let inner = WindowInner::from_pub(probe.window());
+        let mut command = KeyboardModifiers::default();
+        command.control = true;
+        inner.set_keyboard_modifiers(KeyboardModifiers::default());
+        press(&probe, Key::Shift);
+        assert!(
+            probe.get_pressed_shift(),
+            "physical Shift callback precedes its aggregate report"
+        );
+        release(&probe, Key::Shift);
+        press(&probe, Key::Control);
+        assert!(probe.get_pressed_control());
+        release(&probe, Key::Control);
+        press(&probe, Key::Meta);
+        assert!(probe.get_pressed_meta());
+        release(&probe, Key::Meta);
+        press(&probe, Key::Alt);
+        assert!(probe.get_pressed_alt());
+        release(&probe, Key::Alt);
+        inner.set_keyboard_modifiers(command);
+        key(&probe, "a");
+        inner.set_keyboard_modifiers(KeyboardModifiers::default());
+        key(&probe, "x");
+        assert_eq!(
+            probe.get_value(),
+            "x",
+            "flag-only command selects actual TextInput content"
+        );
+        key(&probe, "a");
+        assert_eq!(
+            probe.get_value(),
+            "xa",
+            "released platform flags cannot stick on plain input"
+        );
+
+        // Without platform reports, preserve the physical left/right tracker.
+        reset(&probe);
+        press(&probe, Key::Control);
+        press(&probe, Key::ControlR);
+        release(&probe, Key::Control);
+        assert!(probe.get_released_control());
+        release(&probe, Key::ControlR);
+        assert!(!probe.get_released_control());
+
+        // Winit can report physical releases before the next aggregate flags.
+        // Keep the last authoritative aggregate until that following report.
+        inner.set_keyboard_modifiers(command);
+        press(&probe, Key::Control);
+        press(&probe, Key::ControlR);
+        release(&probe, Key::Control);
+        assert!(probe.get_released_control());
+        release(&probe, Key::ControlR);
+        assert!(
+            !probe.get_released_control(),
+            "modifier callback retains immediate physical family"
+        );
+        key(&probe, "b");
+        assert!(
+            probe.get_pressed_control(),
+            "ordinary input retains the last platform aggregate"
+        );
+        inner.set_keyboard_modifiers(KeyboardModifiers::default());
+        key(&probe, "b");
+        assert!(!probe.get_pressed_control());
+        inner.set_keyboard_modifiers(command);
+        press(&probe, Key::Control);
+        press(&probe, Key::ControlR);
+        inner.set_keyboard_modifiers(KeyboardModifiers::default());
+        release(&probe, Key::Control);
+        assert!(
+            !probe.get_released_control(),
+            "aggregate false clears both known sides before release"
+        );
+        release(&probe, Key::ControlR);
+        assert!(!probe.get_released_control());
+
+        let mut all = KeyboardModifiers::default();
+        all.control = true;
+        all.alt = true;
+        all.shift = true;
+        all.meta = true;
+        inner.set_keyboard_modifiers(all);
+        key(&probe, "b");
+        assert!(
+            probe.get_pressed_control()
+                && probe.get_pressed_alt()
+                && probe.get_pressed_shift()
+                && probe.get_pressed_meta()
+        );
+        reset(&probe);
+        key(&probe, "b");
+        assert!(
+            !probe.get_pressed_control()
+                && !probe.get_pressed_alt()
+                && !probe.get_pressed_shift()
+                && !probe.get_pressed_meta(),
+            "focus loss clears aggregate and physical state"
+        );
+
+        #[cfg(target_os = "windows")]
+        {
+            // Clearing aggregate Alt also clears a prior physical AltGr flag.
+            // Otherwise the existing Ctrl+Alt text heuristic would be skipped.
+            press(&probe, Key::AltGr);
+            inner.set_keyboard_modifiers(KeyboardModifiers::default());
+            let mut control_alt = KeyboardModifiers::default();
+            control_alt.control = true;
+            control_alt.alt = true;
+            inner.set_keyboard_modifiers(control_alt);
+            key(&probe, "@");
+            assert!(!probe.get_pressed_control() && !probe.get_pressed_alt());
+        }
+        probe
+            .window()
+            .dispatch_event(WindowEvent::WindowActiveChanged(false));
+        probe.hide().unwrap();
     }
 
     fn assert_audio_controls_keep_stop_visible(

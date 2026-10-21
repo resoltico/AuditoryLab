@@ -435,11 +435,43 @@ pub fn output_monitor_state(
         crate::ObservationFreshness::Current => OutputMonitorState::Waiting,
     }
 }
+/// A monitor-data or display warning, independent of backend-reported output underruns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MonitorWarning {
+    /// Monitoring cannot provide observations.
+    Unavailable,
+    /// Retained observations are no longer current.
+    Stale,
+    /// Current samples do not yet cover the requested contiguous window.
+    IncompleteCoverage,
+    /// Samples exceed the selected display scale, without changing their exact levels.
+    FixedRangeExceeded,
+}
+impl MonitorWarning {
+    /// Visible and accessible text for this current condition.
+    pub const fn message(self) -> &'static str {
+        match self {
+            Self::Unavailable => "Monitoring unavailable; audio transport is independent.",
+            Self::Stale => "Monitoring is stale; retained samples are not current output.",
+            Self::IncompleteCoverage => {
+                "Incomplete current waveform coverage; waiting for a contiguous window."
+            }
+            Self::FixedRangeExceeded => {
+                "Waveform exceeds the fixed display range; exact levels are retained. Use Fit to view the full extent."
+            }
+        }
+    }
+    /// Stale and unavailable monitoring are announced automatically.
+    /// Coverage and display-scale advice remain readable without repeated automatic speech.
+    pub const fn announces_changes(self) -> bool {
+        !matches!(self, Self::IncompleteCoverage | Self::FixedRangeExceeded)
+    }
+}
 /// Current impairment only. Cumulative skipped monitor publications remain in diagnostics.
-pub fn monitor_warning(reader: &MonitorReader, window_ms: u32) -> String {
+pub fn monitor_warning(reader: &MonitorReader, window_ms: u32) -> Option<MonitorWarning> {
     let status = reader.status();
     if status.disabled {
-        return "Monitoring unavailable; audio transport is independent.".into();
+        return Some(MonitorWarning::Unavailable);
     }
     if matches!(
         status.phase,
@@ -448,20 +480,22 @@ pub fn monitor_warning(reader: &MonitorReader, window_ms: u32) -> String {
             | crate::PlaybackPhase::Draining
     ) {
         if reader.freshness() == crate::ObservationFreshness::Stale {
-            return "Monitoring is stale; retained samples are not current output.".into();
+            return Some(MonitorWarning::Stale);
         }
         let wanted = (u64::from(reader.descriptor().output.sample_rate.hz())
             * u64::from(window_ms.clamp(1, 100)))
         .div_ceil(1000);
         if status.window_end.saturating_sub(status.window_start) < wanted {
-            return "Incomplete current waveform coverage; waiting for a contiguous window.".into();
+            return Some(MonitorWarning::IncompleteCoverage);
         }
     }
-    if status.underruns > 0 {
-        return format!(
-            "Backend-reported output underruns: {} · see details.",
-            status.underruns
-        );
+    None
+}
+/// Independent backend warning; partial monitoring must not hide reported output underruns.
+pub fn output_underrun_warning(underruns: u64) -> String {
+    if underruns == 0 {
+        String::new()
+    } else {
+        format!("Backend-reported output underruns: {underruns} · see details.")
     }
-    String::new()
 }

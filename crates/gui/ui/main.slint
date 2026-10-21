@@ -268,7 +268,7 @@ component Lane inherits Rectangle {
     }
 }
 export struct MonitorData {
-    state:string,age:string,caption:string,meters:string,warning:string,motion:string,
+    state:string,age:string,caption:string,meters:string,warning:string,warninglive:bool,backendwarning:string,motion:string,
     left:string,right:string,limit:string,spanlabel:string,spanchoice:int,scalechoice:int,held:bool,overridden:bool
 }
 component MonitorPanel inherits VerticalBox {
@@ -301,7 +301,13 @@ component MonitorPanel inherits VerticalBox {
         }
     }
     Text {text:root.data.motion;wrap:word-wrap;vertical-stretch:0;max-height:root.ui-size*2.5;overflow:elide;}
-    if root.data.warning!="": Text {text:root.data.warning;wrap:word-wrap;max-height:root.ui-size*2.5;overflow:elide;vertical-stretch:0;accessible-live-region:polite;}
+    // A reserved row keeps brief coverage changes from changing the responsive window choice.
+    HorizontalBox {
+        padding:0px;spacing:8px;vertical-stretch:0;
+        min-height:root.ui-size*2.5;max-height:root.ui-size*2.5;
+        Text {text:root.data.warning;visible:root.data.warning!="";wrap:word-wrap;min-width:0px;preferred-width:0px;horizontal-stretch:1;max-height:root.ui-size*2.5;overflow:elide;accessible-live-region:root.data.warninglive ? polite : off;}
+        Text {text:root.data.backendwarning;visible:root.data.backendwarning!="";wrap:word-wrap;min-width:0px;preferred-width:0px;horizontal-stretch:1;max-height:root.ui-size*2.5;overflow:elide;accessible-live-region:polite;}
+    }
 }
 export component MonitorWindow inherits Window {
     title:"Output monitor";
@@ -388,7 +394,7 @@ export component MainWindow inherits Window {
     changed monitor-height=>{root.update-monitor-layout();}
     public function resize-monitor(pixels:float){root.monitor-height=max(240px,min(360px,pixels*1px));}
     public function focus-monitor-opener(){monitor-opener.focus();}
-    out property <MonitorData> monitor-data:{state:root.output-state,age:root.receipt-age,caption:root.waveform-caption,meters:root.meters,warning:root.monitor-warning,motion:root.motion-reason,left:root.left-path,right:root.right-path,limit:root.scale-label,spanlabel:root.capture-duration,spanchoice:root.window-index,scalechoice:root.scale-index,held:root.held,overridden:root.motion-overridden};
+    out property <MonitorData> monitor-data:{state:root.output-state,age:root.receipt-age,caption:root.waveform-caption,meters:root.meters,warning:root.monitor-warning,warninglive:root.monitor-warning-live,backendwarning:root.backend-warning,motion:root.motion-reason,left:root.left-path,right:root.right-path,limit:root.scale-label,spanlabel:root.capture-duration,spanchoice:root.window-index,scalechoice:root.scale-index,held:root.held,overridden:root.motion-overridden};
     callback show-diagnostics();
     callback show-research();
     callback hold-changed();
@@ -398,6 +404,8 @@ export component MainWindow inherits Window {
     in property <string> model-caption;
     in property <[ModelRow]> model-rows;
     in property <string> monitor-warning;
+    in property <bool> monitor-warning-live;
+    in property <string> backend-warning;
     in property <string> typography-origin;
     in-out property <int> scale-index: 0;
     in property <string> ui-family;
