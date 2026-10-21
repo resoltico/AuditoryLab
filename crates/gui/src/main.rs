@@ -2058,13 +2058,13 @@ mod action_wiring_tests {
             software_renderer::SoftwareRenderer,
         };
         struct Offscreen {
-            audio_constraints: Rc<RefCell<Option<LayoutConstraints>>>,
+            auxiliary_constraints: Rc<RefCell<Option<LayoutConstraints>>>,
         }
         struct OffscreenWindow {
             window: slint::Window,
             renderer: SoftwareRenderer,
             size: Cell<slint::PhysicalSize>,
-            audio_constraints: Rc<RefCell<Option<LayoutConstraints>>>,
+            auxiliary_constraints: Rc<RefCell<Option<LayoutConstraints>>>,
         }
         impl WindowAdapter for OffscreenWindow {
             fn window(&self) -> &slint::Window {
@@ -2085,8 +2085,12 @@ mod action_wiring_tests {
                     });
             }
             fn update_window_properties(&self, properties: WindowProperties<'_>) {
-                if properties.title() == "Audio controls" {
-                    *self.audio_constraints.borrow_mut() = Some(properties.layout_constraints());
+                if matches!(
+                    properties.title().as_str(),
+                    "Audio controls" | "Output monitor"
+                ) {
+                    *self.auxiliary_constraints.borrow_mut() =
+                        Some(properties.layout_constraints());
                 }
             }
         }
@@ -2096,16 +2100,16 @@ mod action_wiring_tests {
                     window: slint::Window::new(weak.clone()),
                     renderer: SoftwareRenderer::new(),
                     size: Cell::default(),
-                    audio_constraints: self.audio_constraints.clone(),
+                    auxiliary_constraints: self.auxiliary_constraints.clone(),
                 }))
             }
         }
-        let audio_constraints = Rc::new(RefCell::new(None));
+        let auxiliary_constraints = Rc::new(RefCell::new(None));
         slint::platform::set_platform(Box::new(Offscreen {
-            audio_constraints: audio_constraints.clone(),
+            auxiliary_constraints: auxiliary_constraints.clone(),
         }))
         .unwrap();
-        assert_audio_controls_keep_stop_visible(&audio_constraints);
+        assert_audio_controls_keep_stop_visible(&auxiliary_constraints);
         assert_platform_modifiers_drive_text_shortcuts();
         #[cfg(target_os = "macos")]
         assert_native_font_metrics();
@@ -2181,13 +2185,24 @@ mod action_wiring_tests {
         ui.set_monitor_warning("".into());
         ui.window().set_size(slint::PhysicalSize::new(680, 700));
         slint::platform::update_timers_and_animations();
-        // Minimum-height clients may clamp the drawer or use the focused window.
-        assert!((240.0..=285.0).contains(&ui.get_effective_drawer_height()));
-        ui.invoke_resize_monitor(360.0);
-        assert!(
-            ui.get_effective_drawer_height() <= 285.0,
-            "minimum window must clamp user drawer height"
-        );
+        // The readable content minimum may exceed the viewport budget. In that
+        // case the drawer is hidden and its calculated content height is not a
+        // displayed pane; the focused monitor preserves the open choice.
+        for requested_height in [240.0, 360.0] {
+            ui.invoke_resize_monitor(requested_height);
+            slint::platform::update_timers_and_animations();
+            if ui.get_drawer_fits() {
+                assert!(
+                    (240.0..=285.0).contains(&ui.get_effective_drawer_height()),
+                    "a visible minimum-window drawer must retain document space"
+                );
+            } else {
+                assert!(
+                    ui.get_monitor_open(),
+                    "focused fallback preserves the open choice"
+                );
+            }
+        }
         ui.set_ui_size(26.0);
         slint::platform::update_timers_and_animations();
         assert!(
@@ -2201,6 +2216,7 @@ mod action_wiring_tests {
         assert_monitor_handoff_preserves_numeric_entry(&ui);
         assert_monitor_warning_accessibility(&ui);
         assert_monitor_layout_survives_warning_changes(&ui);
+        assert_monitor_lane_geometry(&ui, &auxiliary_constraints);
         ui.hide().unwrap();
     }
 
@@ -2219,7 +2235,7 @@ mod action_wiring_tests {
         let mut observed_fit = false;
         let mut observed_fallback = false;
         let mut changed_warning_bounds = false;
-        for size in [13.0, 26.0] {
+        for size in [13.0, 26.0, 40.0] {
             ui.set_ui_size(size);
             for width in [680, 1100] {
                 for height in (700..=1200).step_by(5) {
@@ -2269,14 +2285,185 @@ mod action_wiring_tests {
         sync_monitor_warnings(ui, None, None, 0, false);
         settle(ui);
         assert!(ui.get_drawer_fits());
-        assert!(
-            (240.0..=285.0).contains(&ui.get_effective_drawer_height()),
-            "stable warnings must preserve the normal bounded drawer target"
-        );
         eprintln!(
             "stable-warning drawer13px1100x900={} logicalpx",
             ui.get_effective_drawer_height()
         );
+        assert!(
+            (240.0..=285.0).contains(&ui.get_effective_drawer_height()),
+            "stable warnings must preserve the normal bounded drawer target"
+        );
+    }
+
+    fn assert_monitor_lane_geometry(
+        ui: &MainWindow,
+        constraints: &Rc<RefCell<Option<slint::platform::LayoutConstraints>>>,
+    ) {
+        use slint::private_unstable_api::re_exports::{
+            AccessibleStringProperty, ItemRc, Path, WindowInner,
+        };
+        use std::ops::ControlFlow;
+        fn bounds(item: &ItemRc) -> (f32, f32, f32, f32) {
+            let geometry = item.geometry();
+            let origin = item.map_to_window(geometry.origin);
+            (
+                origin.x,
+                origin.y,
+                geometry.size.width,
+                geometry.size.height,
+            )
+        }
+        fn settle(window: &slint::Window) {
+            slint::platform::update_timers_and_animations();
+            WindowInner::from_pub(window).draw_contents(|_, _| ());
+            slint::platform::update_timers_and_animations();
+        }
+        fn check(window: &slint::Window, size: f32, context: &str, expected_controls: usize) {
+            let viewport = window.size().to_logical(window.scale_factor());
+            let root = WindowInner::from_pub(window).window_item_rc().unwrap();
+            let mut lanes = Vec::new();
+            let mut controls = 0;
+            let _ = root.visit_descendants(|item| {
+                if !item.is_visible() { return ControlFlow::<()>::Continue(()) }
+                if let Some(label) = item.accessible_string_property(AccessibleStringProperty::Label) {
+                    if label.starts_with("Left samples,") || label.starts_with("Right samples,") {
+                        lanes.push(item.clone());
+                    }
+                    if matches!(label.as_str(), "Output monitor" | "Waveform time window" | "Waveform amplitude scale" | "Hold display" | "Return to live" | "Full audio diagnostics and capture source" | "Hide output monitor") {
+                        let (x,y,width,height) = bounds(item);
+                        assert!(x >= 0.0 && y >= 0.0 && x+width <= viewport.width+0.01 && y+height <= viewport.height+0.01, "{context} at{size}px: {label} must remain inside its window, got{:?} in{viewport:?}", (x,y,width,height));
+                        controls += 1;
+                    }
+                }
+                ControlFlow::<()>::Continue(())
+            });
+            assert_eq!(
+                controls, expected_controls,
+                "all monitor header and chart controls remain reachable"
+            );
+            assert_eq!(lanes.len(), 2, "both ear lanes remain visible at {size}px");
+            let mut plots = Vec::new();
+            for lane in lanes {
+                let lane_bounds = bounds(&lane);
+                let mut labels = Vec::new();
+                let mut plot = None;
+                let _ = lane.visit_descendants(|item| {
+                    if item.downcast::<Path>().is_some() {
+                        plot = Some(bounds(item));
+                    }
+                    if let Some(label) =
+                        item.accessible_string_property(AccessibleStringProperty::Label)
+                        && !label.is_empty()
+                    {
+                        labels.push((label.to_string(), bounds(item)));
+                    }
+                    ControlFlow::<()>::Continue(())
+                });
+                let title = labels
+                    .iter()
+                    .find(|(label, _)| matches!(label.as_str(), "Left" | "Right"))
+                    .unwrap()
+                    .1;
+                let positive = labels
+                    .iter()
+                    .find(|(label, _)| label.starts_with('+'))
+                    .unwrap()
+                    .1;
+                let zero = labels.iter().find(|(label, _)| label == "0").unwrap().1;
+                let negative = labels
+                    .iter()
+                    .find(|(label, _)| label.starts_with('−'))
+                    .unwrap()
+                    .1;
+                let plot = plot.expect("the actual generated lane contains its sample path");
+                plots.push(plot);
+                eprintln!(
+                    "Lane {context} at{size}px viewport{viewport:?}: lane={lane_bounds:?}, title={title:?}, +={positive:?}, 0={zero:?}, -={negative:?}, plot={plot:?}"
+                );
+                assert!(
+                    title.0 + title.2 <= positive.0,
+                    "ear label and numeric ticks need separate columns"
+                );
+                assert!(
+                    (title.1 + title.3 / 2.0 - zero.1 - zero.3 / 2.0).abs() < 0.01,
+                    "ear label stays centered on the numeric scale"
+                );
+                for tick in [positive, zero, negative] {
+                    assert!(
+                        tick.0 + tick.2 <= plot.0,
+                        "full numeric labels remain outside the plot"
+                    );
+                    assert!(
+                        tick.1 >= lane_bounds.1
+                            && tick.1 + tick.3 <= lane_bounds.1 + lane_bounds.3 + 0.01,
+                        "numeric labels remain inside their lane"
+                    );
+                }
+                assert!(
+                    plot.2 >= plot.3 * 2.0 - 0.01
+                        && plot.0 + plot.2 <= lane_bounds.0 + lane_bounds.2 + 0.01,
+                    "the plot must fit beside its readable gutter with at least twice its height in time-axis space"
+                );
+                assert!((positive.1 + positive.3 / 2.0 - plot.1).abs() < 0.01);
+                assert!(
+                    (negative.1 + negative.3 / 2.0 - plot.1 - plot.3).abs() < 0.01,
+                    "the plot retains the full distance between the positive and negative ticks"
+                );
+            }
+            assert!(
+                (plots[0].0 - plots[1].0).abs() < 0.01
+                    && (plots[0].2 - plots[1].2).abs() < 0.01
+                    && (plots[0].3 - plots[1].3).abs() < 0.01,
+                "both ears must retain the same plot origin, time scale, and amplitude height"
+            );
+        }
+        let window = MonitorWindow::new().unwrap();
+        window.set_ui_family(ui.get_ui_family());
+        window.set_data(ui.get_monitor_data());
+        let mut drawer_cases = 0;
+        for size in [13.0, 26.0, 40.0] {
+            window.set_ui_size(size);
+            window.show().unwrap();
+            let minimum = constraints.borrow().unwrap().min.unwrap();
+            for requested_width in [680.0_f32, 1100.0] {
+                let width = requested_width.max(minimum.width).ceil();
+                window
+                    .window()
+                    .set_size(slint::LogicalSize::new(width, 1200.0));
+                settle(window.window());
+                let at_width = constraints.borrow().unwrap().min.unwrap();
+                eprintln!(
+                    "Focused monitor at{size}px requested{requested_width}px: native minimum{at_width:?}"
+                );
+                for height in [at_width.height.ceil(), 1200.0] {
+                    window
+                        .window()
+                        .set_size(slint::LogicalSize::new(width, height));
+                    settle(window.window());
+                    check(window.window(), size, "focused", 6);
+                }
+                ui.set_ui_size(size);
+                ui.window()
+                    .set_size(slint::LogicalSize::new(requested_width, 1200.0));
+                settle(ui.window());
+                if ui.get_drawer_fits() {
+                    drawer_cases += 1;
+                    check(ui.window(), size, "drawer", 7);
+                } else {
+                    assert!(
+                        ui.get_monitor_open(),
+                        "responsive fallback preserves the open monitor choice"
+                    );
+                }
+            }
+            window.hide().unwrap();
+        }
+        assert!(
+            drawer_cases > 0,
+            "geometry checks must include the visible drawer"
+        );
+        ui.set_ui_size(13.0);
+        ui.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
     }
 
     fn assert_monitor_warning_accessibility(ui: &MainWindow) {

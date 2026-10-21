@@ -208,44 +208,50 @@ component Lane inherits Rectangle {
     in property <string> trace;
     in property <string> limit: "1";
     in property <length> ui-size:13px;
+    in property <length> label-column-width;
+    out property <length> label-width:title.preferred-width;
     property <length> axis-row-height: max(title.preferred-height, positive.preferred-height, zero.preferred-height, negative.preferred-height);
-    property <length> axis-width: max(title.preferred-width, positive.preferred-width, zero.preferred-width, negative.preferred-width) + 12px;
+    property <length> tick-width: max(positive.preferred-width, zero.preferred-width, negative.preferred-width);
+    property <length> tick-x: root.label-column-width + 12px;
+    property <length> axis-width: root.tick-x + root.tick-width + 6px;
     background: #131d2b;
-    preferred-height: root.axis-row-height*4;
-    min-height: root.axis-row-height*4;
+    preferred-height: root.axis-row-height*3;
+    min-height: root.axis-row-height*3;
+    // Keep at least a 2:1 plotting area beside the full labels.
+    min-width: root.axis-width + root.axis-row-height*4 + 8px;
     accessible-role: image;
     accessible-label: root.label + " samples, common symmetric scale ±" + root.limit;
     title := Text {
         x: 6px;
-        y: (root.axis-row-height - self.preferred-height)/2;
+        y: root.axis-row-height*1.5 - self.preferred-height/2;
         text: root.label;
         color: #e1eaf6;
         font-size: root.ui-size*0.93;
     }
     positive := Text {
-        x: 6px;
-        y: root.axis-row-height*1.5 - self.preferred-height/2;
+        x: root.tick-x;
+        y: root.axis-row-height*0.5 - self.preferred-height/2;
         text: "+"+root.limit;
         color: #c6d0df;
         font-size: root.ui-size;
     }
     zero := Text {
-        x: 6px;
-        y:root.axis-row-height*2.5 - self.preferred-height/2;
+        x: root.tick-x;
+        y:root.axis-row-height*1.5 - self.preferred-height/2;
         text: "0";
         color: #c6d0df;
         font-size: root.ui-size;
     }
     negative := Text {
-        x: 6px;
-        y:root.axis-row-height*3.5 - self.preferred-height/2;
+        x: root.tick-x;
+        y:root.axis-row-height*2.5 - self.preferred-height/2;
         text: "−"+root.limit;
         color: #c6d0df;
         font-size: root.ui-size;
     }
     Rectangle {
         x: root.axis-width;
-        y: root.axis-row-height*1.5;
+        y: root.axis-row-height*0.5;
         width: max(1px, parent.width - root.axis-width - 8px);
         height:root.axis-row-height*2;
         clip: true;
@@ -272,21 +278,23 @@ export struct MonitorData {
     left:string,right:string,limit:string,spanlabel:string,spanchoice:int,scalechoice:int,held:bool,overridden:bool
 }
 component MonitorPanel inherits VerticalBox {
+    property <length> lane-label-width: max(left-lane.label-width, right-lane.label-width);
     in property <MonitorData> data;
     in property <length> ui-size:13px;
     callback span(int);callback scale(int);callback hold();callback follow();callback details();callback collapse();
     spacing:4px;padding:0px;
     HorizontalBox {padding:0px;vertical-stretch:0;
-        Text {text:"Output monitor";font-weight:700;}
-        Text {text:root.data.state;font-weight:600;}
+        Text {text:"Output monitor";font-weight:700;min-width:0px;wrap:word-wrap;}
+        Text {text:root.data.state;font-weight:600;min-width:0px;wrap:word-wrap;}
         Text {min-width:0px;text:root.data.age;wrap:word-wrap;}
+        Button {text:"Details…";accessible-label:"Full audio diagnostics and capture source";clicked=>{root.details();}}
         Button {text:"Hide";accessible-label:"Hide output monitor";clicked=>{root.collapse();}}
     }
     HorizontalBox {padding:0px;spacing:12px;
         VerticalBox {padding:0px;spacing:3px;
             Text {min-width:0px;text:root.data.caption;max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
-            Lane {label:"Left";trace:root.data.left;limit:root.data.limit;ui-size:root.ui-size;}
-            Lane {label:"Right";trace:root.data.right;limit:root.data.limit;ui-size:root.ui-size;}
+            left-lane := Lane {label:"Left";trace:root.data.left;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
+            right-lane := Lane {label:"Right";trace:root.data.right;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
             HorizontalBox {padding:0px;vertical-stretch:0;Text {text:"−"+root.data.spanlabel;}Rectangle {horizontal-stretch:1;}Text {text:"Captured end";}}
         }
         VerticalBox {padding:0px;spacing:4px;preferred-width:root.ui-size*21;max-width:root.ui-size*25;
@@ -296,7 +304,6 @@ component MonitorPanel inherits VerticalBox {
                 Button {text:root.data.held ? "Return to live" : "Hold display";clicked=>{root.hold();}}
                 if root.data.overridden: Button {text:"Follow system";accessible-label:"Follow system motion preference";clicked=>{root.follow();}}
             }
-            Button {text:"Details…";accessible-label:"Full audio diagnostics and capture source";clicked=>{root.details();}}
             Text {text:root.data.meters;max-height:root.ui-size*4;wrap:word-wrap;overflow:elide;}
         }
     }
@@ -313,10 +320,12 @@ export component MonitorWindow inherits Window {
     title:"Output monitor";
     in property <string> ui-family;in property <length> ui-size:13px;
     default-font-family:root.ui-family;default-font-size:root.ui-size;
-    preferred-width:950px;preferred-height:max(420px,root.ui-size*26);min-width:680px;min-height:400px;
+    preferred-width:950px;preferred-height:max(420px,self.min-height);
+    min-width:max(680px,monitor-content.min-width);
+    min-height:max(400px,monitor-content.preferred-height);
     in property <MonitorData> data;
     callback span(int);callback scale(int);callback hold();callback follow();callback details();callback dismiss();
-    VerticalBox {
+    monitor-content := VerticalBox {
         MonitorPanel {data:root.data;ui-size:root.ui-size;span(i)=>{root.span(i);}scale(i)=>{root.scale(i);}hold=>{root.hold();}follow=>{root.follow();}details=>{root.details();}collapse=>{root.dismiss();}}
     }
 }
@@ -381,7 +390,7 @@ export component MainWindow inherits Window {
     property <length> available-monitor-height:0px;
     property <length> minimum-monitor-height: max(240px, drawer-content.preferred-height);
     property <length> maximum-monitor-height: min(360px, root.available-monitor-height);
-    out property <bool> drawer-fits: root.minimum-monitor-height <= root.maximum-monitor-height;
+    out property <bool> drawer-fits: root.minimum-monitor-height <= root.maximum-monitor-height && drawer-content.min-width <= root.width - workspace-layout.padding-left - workspace-layout.padding-right;
     out property <length> effective-drawer-height: max(root.minimum-monitor-height, min(root.monitor-height, root.maximum-monitor-height));
     function update-monitor-layout(){
         // Snapshot viewport space on layout changes to avoid feeding the window's
@@ -563,7 +572,7 @@ export component MainWindow inherits Window {
             }
         }
     }
-    VerticalBox {
+    workspace-layout := VerticalBox {
         spacing: 0px;
         toolbar := HorizontalBox {
             changed preferred-height=>{root.update-monitor-layout();}
