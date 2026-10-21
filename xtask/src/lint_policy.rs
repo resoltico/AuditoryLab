@@ -139,10 +139,10 @@ fn inspect_meta(meta: &Meta, scope: &str, sites: &mut Vec<Site>) -> Result<()> {
     Ok(())
 }
 
-// Macros can hide attributes from syn's normal AST visitor. Inspect token trees
-// too, including inactive macro arms, but never interpret string/comment contents.
-// Exceptions belong on a named Rust scope, not inside a macro template.
-fn macro_attributes(tokens: TokenStream) -> Result<()> {
+// Macro templates and opaque expressions can hide attributes from syn's normal
+// AST visitor. Inspect token trees too, including inactive macro arms, but never
+// interpret string/comment contents. Exceptions belong on a named Rust scope.
+fn unscoped_attributes(tokens: TokenStream) -> Result<()> {
     let tokens: Vec<_> = tokens.into_iter().collect();
     for (index, token) in tokens.iter().enumerate() {
         if matches!(token, TokenTree::Punct(p) if p.as_char() == '#') {
@@ -154,19 +154,19 @@ fn macro_attributes(tokens: TokenStream) -> Result<()> {
                 && group.delimiter() == proc_macro2::Delimiter::Bracket
             {
                 let meta: Meta = syn::parse2(group.stream())
-                    .map_err(|e| format!("uninspectable macro attribute: {e}"))?;
+                    .map_err(|e| format!("uninspectable token attribute: {e}"))?;
                 let mut sites = Vec::new();
                 // Parse recursively even when cfg_attr's condition is false.
-                inspect_meta(&meta, "macro", &mut sites)?;
+                inspect_meta(&meta, "unsupported scope", &mut sites)?;
                 if !sites.is_empty() {
                     return Err(
-                        "put lint exceptions on a named Rust scope outside macro tokens".into(),
+                        "put lint exceptions on a named Rust scope outside opaque tokens".into(),
                     );
                 }
             }
         }
         if let TokenTree::Group(group) = token {
-            macro_attributes(group.stream())?;
+            unscoped_attributes(group.stream())?;
         }
     }
     Ok(())
@@ -231,7 +231,7 @@ impl<'ast> Visit<'ast> for Source {
                     "impl:{}:{}",
                     v.trait_
                         .as_ref()
-                        .map(|(_, p, _)| p.to_token_stream().to_string())
+                        .map(|(p, _)| p.to_token_stream().to_string())
                         .unwrap_or_default(),
                     v.self_ty.to_token_stream()
                 ),
@@ -290,8 +290,16 @@ impl<'ast> Visit<'ast> for Source {
         }
         // Meta tokens are handled above, not as executable Rust expressions.
     }
+    fn visit_expr(&mut self, expr: &'ast syn::Expr) {
+        if let syn::Expr::Verbatim(tokens) = expr
+            && let Err(error) = unscoped_attributes(tokens.clone())
+        {
+            self.errors.push(error.to_string());
+        }
+        visit::visit_expr(self, expr);
+    }
     fn visit_macro(&mut self, mac: &'ast syn::Macro) {
-        if let Err(error) = macro_attributes(mac.tokens.clone()) {
+        if let Err(error) = unscoped_attributes(mac.tokens.clone()) {
             self.errors.push(error.to_string());
         }
         if let Err(error) = flag_literals(mac.tokens.clone(), true) {
@@ -626,6 +634,24 @@ allow_attributes_without_reason = "deny"
         ] {
             assert!(Source::parse(text).is_err(), "{text}");
         }
+    }
+    #[test]
+    fn statement_expression_attributes_cannot_escape_review() {
+        for text in [
+            r#"fn helper() { #[allow(dead_code, reason = "quality:fixture")] become helper(); }"#,
+            r#"#[cfg(any())] fn helper() { #[cfg_attr(any(), allow(dead_code, reason = "quality:fixture"))] become helper(); }"#,
+            r#"fn helper() { #[allow(dead_code, reason = "quality:fixture")] return; }"#,
+        ] {
+            let error = Source::parse(text).unwrap_err().to_string();
+            assert!(
+                error.contains("named Rust scope") || error.contains("supported named item"),
+                "{text}: {error}"
+            );
+        }
+        assert!(Source::parse("fn helper() { become helper(); }").is_ok());
+        assert!(
+            Source::parse(r##"fn helper() { become helper("#[allow(dead_code)]"); }"##).is_ok()
+        );
     }
     #[test]
     fn workspace_rules_and_package_inheritance_are_not_optional() {

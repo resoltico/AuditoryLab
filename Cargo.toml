@@ -5,7 +5,7 @@ members = ["crates/core", "crates/lib", "crates/cli", "crates/gui", "xtask"]
 [workspace.package]
 version = "0.4.0"
 edition = "2024"
-rust-version = "1.99"
+rust-version = "1.99.1"
 license = "MPL-2.0"
 repository = "https://github.com/resoltico/AuditoryLab"
 publish = false

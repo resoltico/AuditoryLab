@@ -99,10 +99,9 @@ fn query() -> Preference {
 #[cfg(target_os = "linux")]
 fn query() -> Preference {
     if desktop_has("KDE") {
-        let reduced = async_io::block_on(futures_lite::future::race(
+        let reduced = zbus::block_on(futures_lite::future::race(
             async {
                 let connection = zbus::connection::Builder::session()
-                    .ok()?
                     .method_timeout(std::time::Duration::from_secs(2))
                     .build()
                     .await
@@ -115,7 +114,7 @@ fn query() -> Preference {
                 )
                 .await
                 .ok()?;
-                let result: zbus::Result<zbus::zvariant::OwnedValue> = proxy
+                let result: zbus::Result<zbus::OwnedVariant> = proxy
                     .call(
                         "ReadOne",
                         &("org.kde.kdeglobals.KDE", "AnimationDurationFactor"),
@@ -124,7 +123,7 @@ fn query() -> Preference {
                 let value = match result {
                     Ok(v) => v,
                     Err(_) => proxy
-                        .call::<_, _, zbus::zvariant::OwnedValue>(
+                        .call::<_, _, zbus::OwnedVariant>(
                             "Read",
                             &("org.kde.kdeglobals.KDE", "AnimationDurationFactor"),
                         )
@@ -213,7 +212,7 @@ fn gnome_reduced() -> Option<bool> {
     }
 }
 #[cfg(target_os = "linux")]
-fn kde_reduced(value: &zbus::zvariant::OwnedValue) -> Option<bool> {
+fn kde_reduced(value: &zbus::OwnedVariant) -> Option<bool> {
     // Read wraps the setting in a variant; ReadOne returns the setting directly.
     let duration = value
         .downcast_ref::<f64>()
@@ -234,7 +233,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn kde_duration_accepts_both_portal_reply_shapes_and_rejects_invalid_values() {
-        use zbus::zvariant::{OwnedValue, Value};
+        use zbus::{OwnedVariant, Variant};
         for (value, expected) in [
             (0.0, Some(true)),
             (1.0, Some(false)),
@@ -242,22 +241,22 @@ mod tests {
             (-1.0, None),
             (f64::NAN, None),
         ] {
-            let direct = OwnedValue::from(value);
-            let wrapped = Value::Value(Box::new(Value::F64(value)))
+            let direct = OwnedVariant::from(value);
+            let wrapped = Variant::Variant(Box::new(Variant::F64(value)))
                 .try_to_owned()
                 .unwrap();
             assert_eq!(kde_reduced(&direct), expected);
             assert_eq!(kde_reduced(&wrapped), expected);
         }
         for (text, expected) in [("0", Some(true)), ("1.5", Some(false)), ("bad", None)] {
-            let value = Value::from(text);
+            let value = Variant::from(text);
             assert_eq!(kde_reduced(&value.try_to_owned().unwrap()), expected);
             assert_eq!(
-                kde_reduced(&Value::Value(Box::new(value)).try_to_owned().unwrap()),
+                kde_reduced(&Variant::Variant(Box::new(value)).try_to_owned().unwrap()),
                 expected
             );
         }
-        assert_eq!(kde_reduced(&OwnedValue::from(true)), None);
+        assert_eq!(kde_reduced(&OwnedVariant::from(true)), None);
     }
     #[test]
     fn unknown_is_not_a_confirmed_reduced_motion_preference() {

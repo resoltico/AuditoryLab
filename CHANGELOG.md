@@ -10,6 +10,7 @@ Notable changes to this project are documented in this file. The format is based
 - Integer-phase oscillators and exact frame-quantized pulse timing replace the synthesis model. Click and rectangular-gate pulses last exactly `round(width_seconds × sample rate)` frames and start on the first frame at or after each onset; edges can move by one frame against 0.3.0. Recipes that leave no closed frame in a period, or whose pulse widths exceed 2^36 frames at the selected rate, are rejected. Reduce such widths to the supported frame limit. Tone and modulation sample bits also change.
 - Rust packages are `auditorylab-core`, `auditorylab`, `auditorylab-cli` and `auditorylab-gui`, under `crates/core`, `crates/lib`, `crates/cli` and `crates/gui`. WAV and device APIs move into the library. Callers use `Stimulus::signal`, immutable seekable `Signal`, and the library's loading/export/playback API; update Rust imports and exhaustive error matches. Install the CLI with `cargo install --locked --path crates/cli`.
 - Windows source builds require MSVC Visual Studio Build Tools. Downloads statically link the Microsoft C runtime. Linux builds use distribution fontconfig without the former font-library patch or root-directory build requirement.
+- Source builds require Rust 1.99.1 or newer; the repository toolchain pins 1.99.1.
 
 ### Added
 
@@ -48,7 +49,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Internal
 
-- Authored Rust lint exceptions require an exact source scope and written rationale, checked in CI across inactive platform code and macro attributes. Package lint inheritance and production lint-weakening flags are checked; numerical and native unsafe exceptions are confined to their specific operations.
+- Authored Rust lint exceptions require an exact source scope and written rationale, checked in CI across inactive platform code, macro attributes and opaque expression tokens. Package lint inheritance and production lint-weakening flags are checked; numerical and native unsafe exceptions are confined to their specific operations.
 - macOS CLI and GUI artifacts are separately built for Apple silicon and Intel, with extracted thin-architecture, identity, plist, signature and executable checks. Product/target notices are generated inside each archive. Release asset collection rejects incomplete, duplicate or unexpected archive sets before checksums and attestation.
 - Public library live generation/control/observation and bounded mixed-output monitoring share the device callback's generator boundary. Core rendering and generated-state observation allocate nothing; device monitoring uses a preallocated nonblocking lock attempt per buffer.
 

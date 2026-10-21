@@ -66,7 +66,7 @@ async fn read(
     proxy: &zbus::Proxy<'_>,
     namespace: &str,
     key: &str,
-) -> zbus::Result<zbus::zvariant::OwnedValue> {
+) -> zbus::Result<zbus::OwnedVariant> {
     match proxy.call("ReadOne", &(namespace, key)).await {
         Err(zbus::Error::MethodError(name, ..))
             if name.as_str() == "org.freedesktop.DBus.Error.UnknownMethod" =>
@@ -104,9 +104,9 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
         }
         return;
     }
-    async_io::block_on(async {
+    zbus::block_on(async {
         let connect = async {
-            zbus::connection::Builder::session()?
+            zbus::connection::Builder::session()
                 .method_timeout(Duration::from_secs(2))
                 .build()
                 .await
@@ -135,8 +135,7 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
                 } else {
                     ("org.gnome.desktop.interface", "font-name")
                 };
-                let value: Result<zbus::zvariant::OwnedValue, _> =
-                    read(&proxy, namespace, key).await;
+                let value: Result<zbus::OwnedVariant, _> = read(&proxy, namespace, key).await;
                 let description = value
                     .ok()
                     .and_then(|v| v.downcast_ref::<&str>().ok().map(str::to_owned));
@@ -148,7 +147,7 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
                     let scale = if font.as_ref().is_some_and(|font| font.absolute) {
                         Some(1.0)
                     } else {
-                        let scaling: Result<zbus::zvariant::OwnedValue, _> =
+                        let scaling: Result<zbus::OwnedVariant, _> =
                             read(&proxy, namespace, "text-scaling-factor").await;
                         scaling
                             .ok()
@@ -206,10 +205,9 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
                         return;
                     }
                     if let Some(Some(message)) = change
-                        && let Ok((ns, _, _)) =
-                            message
-                                .body()
-                                .deserialize::<(String, String, zbus::zvariant::OwnedValue)>()
+                        && let Ok((ns, _, _)) = message
+                            .body()
+                            .deserialize::<(String, String, zbus::OwnedVariant)>()
                         && ns == namespace
                     {
                         break;

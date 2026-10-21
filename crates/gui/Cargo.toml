@@ -18,12 +18,12 @@ fontique = "=0.11.1"
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "=0.6.2"
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "block2", "NSArray", "NSURL", "NSString", "NSGeometry"] }
-objc2 = "0.6.4"
+objc2 = "0.6.5"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSFont", "NSWorkspace", "NSAccessibility", "NSButton", "NSControl", "NSView", "NSWindow", "NSSavePanel", "NSOpenPanel", "NSMenu", "NSMenuItem"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-libloading = "=0.8.9"
-zbus = "=5.19.0"
+libloading = "=0.9.0"
+zbus = "=6.0.0"
 async-io = "=2.6.0"
 futures-lite = "=2.6.1"
 
