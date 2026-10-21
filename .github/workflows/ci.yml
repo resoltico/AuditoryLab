@@ -7,21 +7,24 @@ on:
     - cron: '17 5 * * 1'
   workflow_call:
     inputs:
-      source-revision:
-        type: string
-        default: ''
+      release:
+        description: Run the full release qualification, including scoped mutations
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  # Reusable workflows retain the caller's event name. Release calls provide a revision.
-  cancel-in-progress: ${{ inputs.source-revision == '' }}
+  # Release qualification must not be cancelled by a later ordinary CI run.
+  cancel-in-progress: ${{ !inputs.release }}
 env:
   RUST_BACKTRACE: '1'
-  AUDITORYLAB_SOURCE_REVISION: ${{ inputs.source-revision || github.sha }}
+  AUDITORYLAB_SOURCE_REVISION: ${{ github.sha }}
   CARGO_DENY_VERSION: '0.20.2'
   CARGO_ABOUT_VERSION: '0.9.2'
   CARGO_MUTANTS_VERSION: '27.1.0'
+  ACTIONLINT_VERSION: '1.7.12'
+  ACTIONLINT_LINUX_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
   CARGO_HOME: ${{ github.workspace }}/target/cargo-home
 jobs:
   lint:
@@ -40,11 +43,6 @@ jobs:
           echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
       - run: rustup toolchain install
-      - name: Install cargo-deny
-        run: cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked --target-dir target
-      - name: Weekly advisory check
-        if: github.event_name == 'schedule'
-        run: cargo deny check advisories
       - name: Install Linux build prerequisites
         if: github.event_name != 'schedule'
         run: |
@@ -52,16 +50,37 @@ jobs:
           sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libpango-1.0-0 libgtk-3-0
       - if: github.event_name != 'schedule'
         run: cargo fmt --all -- --check
+      - name: Validate GitHub workflows
+        if: github.event_name != 'schedule'
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl --fail --location --retry 3 --output "target/$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$archive"
+          echo "$ACTIONLINT_LINUX_SHA256  target/$archive" | sha256sum --check
+          tar -xzf "target/$archive" -C target actionlint
+          target/actionlint
       - name: Validate authored lint policy and exceptions
         if: github.event_name != 'schedule'
         run: cargo xtask check-lints
       - if: github.event_name != 'schedule'
         run: cargo doc --workspace --no-deps --locked
+      - name: Cache cargo-deny
+        id: deny-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ env.CARGO_HOME }}/bin/cargo-deny
+          key: cargo-deny-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_DENY_VERSION }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', '.github/workflows/ci.yml') }}
+      - name: Install cargo-deny
+        if: steps.deny-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked --target-dir target
+      - name: Weekly advisory check
+        if: github.event_name == 'schedule'
+        run: cargo deny check advisories
       - if: github.event_name != 'schedule'
         run: cargo deny check
       - name: Detect core source changes
         id: changes
-        if: github.event_name != 'schedule'
+        if: github.event_name != 'schedule' && !inputs.release
         env:
           BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
         run: |
@@ -69,7 +88,7 @@ jobs:
           if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
             base="$(git rev-parse HEAD^)"
           fi
-          git diff --name-only "$base" HEAD -- crates/core/src > target/core-changes.txt
+          git diff --name-only "$base" HEAD -- crates/core Cargo.toml Cargo.lock rust-toolchain.toml .cargo .github/workflows/ci.yml > target/core-changes.txt
           if [[ -s target/core-changes.txt ]]; then
             echo 'core-changed=true' >> "$GITHUB_OUTPUT"
           else
@@ -84,27 +103,21 @@ jobs:
           - runner: macos-15
             target: aarch64-apple-darwin
             platform: macos-aarch64
-            upload: true
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             platform: macos-x86_64
-            upload: true
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             platform: linux-x86_64
-            upload: true
           - runner: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
             platform: linux-aarch64
-            upload: true
           - runner: windows-2022
             target: x86_64-pc-windows-msvc
             platform: windows-x86_64
-            upload: true
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
             platform: windows-aarch64
-            upload: true
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     defaults:
@@ -127,20 +140,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libpango-1.0-0 libgtk-3-0
       - run: rustup toolchain install
-      - name: Install cargo-about
-        run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --target-dir target --features cli
       - run: cargo clippy --workspace --all-targets --locked
       - run: cargo test --workspace --locked
       - name: Verify native AT-SPI cache signal contracts
         if: runner.os == 'Linux'
         run: cargo test -p accesskit_unix --lib --locked
       - run: cargo test -p auditorylab-core --release --locked
+      - name: Cache cargo-about
+        id: about-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ env.CARGO_HOME }}/bin/cargo-about${{ runner.os == 'Windows' && '.exe' || '' }}
+          key: cargo-about-${{ matrix.runner }}-${{ runner.arch }}-${{ env.CARGO_ABOUT_VERSION }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', '.github/workflows/ci.yml') }}
+      - name: Install cargo-about
+        if: steps.about-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --target-dir target --features cli
       - name: Build archives and run host smoke tests
         env:
           DIST_TARGET: ${{ matrix.target }}
         run: cargo xtask dist --target "$DIST_TARGET"
       - name: Upload distributions
-        if: matrix.upload && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || inputs.source-revision != '')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-${{ matrix.platform }}
@@ -155,7 +174,7 @@ jobs:
       matrix:
         source: [synthesis, live, facts, timing, waveform]
     needs: lint
-    if: github.event_name != 'schedule' && needs.lint.outputs.core-changed == 'true'
+    if: github.event_name != 'schedule' && (inputs.release || needs.lint.outputs.core-changed == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -167,7 +186,14 @@ jobs:
           echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
       - run: rustup toolchain install
+      - name: Cache cargo-mutants
+        id: mutants-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ env.CARGO_HOME }}/bin/cargo-mutants
+          key: cargo-mutants-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_MUTANTS_VERSION }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml', '.github/workflows/ci.yml') }}
       - name: Install cargo-mutants
+        if: steps.mutants-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-mutants --version "$CARGO_MUTANTS_VERSION" --locked --target-dir target
       - name: Mutate one core source file
         env:

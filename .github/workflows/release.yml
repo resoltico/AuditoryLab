@@ -1,4 +1,5 @@
 name: Release
+run-name: Release ${{ inputs.version }} (${{ inputs.publish && 'publish' || 'verify' }})
 on:
   workflow_dispatch:
     inputs:
@@ -47,7 +48,7 @@ jobs:
     needs: check
     uses: ./.github/workflows/ci.yml
     with:
-      source-revision: ${{ github.sha }}
+      release: true
     permissions:
       contents: read
   prepare:
@@ -58,8 +59,6 @@ jobs:
       contents: read
       attestations: write
       id-token: write
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,7 +81,9 @@ jobs:
       - id: provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: target/assets/*
+          subject-path: |
+            target/assets/*
+            target/notes.md
       - name: Save provenance bundle
         env:
           BUNDLE_PATH: ${{ steps.provenance.outputs.bundle-path }}
@@ -118,7 +119,7 @@ jobs:
       - name: Verify downloaded checksums and provenance
         run: |
           (cd target/assets && sha256sum --check SHA256SUMS)
-          for asset in target/assets/*; do
+          for asset in target/assets/* target/notes.md; do
             gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY" \
               --bundle target/provenance.jsonl \
               --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
@@ -150,6 +151,11 @@ jobs:
         run: (cd target/assets && sha256sum --check SHA256SUMS)
       - name: Create draft, compare uploaded bytes, then publish
         run: |
+          current_main="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          if [[ "$current_main" != "$GITHUB_SHA" ]]; then
+            echo "main changed during verification; release the reviewed current commit instead." >&2
+            exit 1
+          fi
           tag="v${RELEASE_VERSION}"
           existing="$(git ls-remote --tags origin "refs/tags/${tag}")"
           if [[ -n "$existing" ]]; then

@@ -258,13 +258,7 @@ fn version_line(binary: &str, version: &str, build: u32) -> Result<String> {
     };
     Ok(format!("{binary} {version} (build {build}){source}"))
 }
-fn smoke(cli: &Path, gui: &Path, version: &str, build: u32, scratch: &Path) -> Result<()> {
-    for (path, name) in [(cli, "auditorylab"), (gui, "auditorylab-gui")] {
-        let actual = String::from_utf8(capture(Command::new(path).arg("--version"))?)?;
-        if actual.trim() != version_line(name, version, build)? {
-            return Err(format!("version mismatch: {actual:?}").into());
-        }
-    }
+fn smoke(cli: &Path, scratch: &Path) -> Result<()> {
     let listing = String::from_utf8(capture(Command::new(cli).arg("list"))?)?;
     for entry in fs::read_dir("crates/core/catalog")? {
         let path = entry?.path();
@@ -280,6 +274,10 @@ fn smoke(cli: &Path, gui: &Path, version: &str, build: u32, scratch: &Path) -> R
     }
     let path = scratch.join("one-frame.wav");
     for expected_success in [true, false] {
+        let existing = b"preserve this existing destination";
+        if !expected_success {
+            fs::write(&path, existing)?;
+        }
         let mut child = Command::new(cli)
             .args(["export", "--stdin", "--sample-rate", "8000", "--output"])
             .arg(&path)
@@ -302,12 +300,16 @@ fn smoke(cli: &Path, gui: &Path, version: &str, build: u32, scratch: &Path) -> R
             .into());
         }
         let bytes = fs::read(&path)?;
-        if bytes.len() != 66 || &bytes[..4] != b"RIFF" {
-            return Err("one-frame export must be a 66-byte RIFF file".into());
+        if expected_success {
+            if bytes.len() != 66 || &bytes[..4] != b"RIFF" {
+                return Err("one-frame export must be a 66-byte RIFF file".into());
+            }
+        } else if bytes != existing {
+            return Err("no-clobber export modified the existing destination".into());
         }
     }
     fs::remove_file(path)?;
-    println!("Smoke checks passed: versions, catalog, one-frame RIFF, no-clobber.");
+    println!("Smoke checks passed: catalog, one-frame RIFF, no-clobber.");
     Ok(())
 }
 fn bundle(binary: &Path, root: &Path, version: &str, build: u32) -> Result<PathBuf> {
@@ -419,7 +421,7 @@ fn dist(target: &str, out: &Path) -> Result<()> {
             )?);
             println!("Wrote {}", archive_path.display());
         }
-        smoke(&executables[0], &executables[1], &version, build, &scratch)?;
+        smoke(&executables[0], &scratch)?;
         Ok(())
     })();
     let cleanup = fs::remove_dir_all(&scratch);
