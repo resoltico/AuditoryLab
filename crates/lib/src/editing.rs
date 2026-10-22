@@ -558,8 +558,11 @@ pub struct EditorSession {
     saved: Recipe,
     analyses: Vec<(AnalysisKey, Arc<Analysis>)>,
     candidate: Option<(u64, u64, Arc<Candidate>)>,
+    save_check: Option<(u64, u64, Result<(), SaveRefusal>)>,
     #[cfg(test)]
     evaluations: u64,
+    #[cfg(test)]
+    serializations: u64,
 }
 
 impl EditorSession {
@@ -578,8 +581,11 @@ impl EditorSession {
             saved: Draft::new().recipe(),
             analyses: Vec::new(),
             candidate: None,
+            save_check: None,
             #[cfg(test)]
             evaluations: 0,
+            #[cfg(test)]
+            serializations: 0,
         })
     }
 
@@ -979,15 +985,34 @@ impl EditorSession {
     /// # Errors
     /// Returns the reason it cannot.
     pub fn save_readiness(&mut self) -> Result<(), SaveRefusal> {
-        let candidate = self.candidate();
-        if !candidate.is_complete() {
-            return Err(SaveRefusal::Input(candidate.problems.clone()));
+        if let Some((draft, input, result)) = &self.save_check
+            && *draft == self.draft_revision
+            && *input == self.input_revision
+        {
+            return result.clone();
         }
-        candidate
-            .draft
-            .to_toml()
-            .map(|_| ())
-            .map_err(|error| SaveRefusal::Document(error.to_string()))
+        let candidate = self.candidate();
+        let result = if candidate.is_complete() {
+            #[cfg(test)]
+            {
+                self.serializations += 1;
+            }
+            candidate
+                .draft
+                .to_toml()
+                .map(|_| ())
+                .map_err(|error| SaveRefusal::Document(error.to_string()))
+        } else {
+            Err(SaveRefusal::Input(candidate.problems.clone()))
+        };
+        self.save_check = Some((self.draft_revision, self.input_revision, result.clone()));
+        result
+    }
+
+    /// How many save checks serialized the candidate.
+    #[cfg(test)]
+    pub(crate) const fn serializations(&self) -> u64 {
+        self.serializations
     }
 }
 

@@ -662,15 +662,27 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     document(&mut ws, 440.0);
     ws.poll();
     let view = ws.editor_view();
+    let actions = ws.action_view();
     let previews = ws.output.previews;
+    let models = ws.output.models;
     let evaluations = ws.editor.evaluations();
+    let serializations = ws.editor.serializations();
     let revision = ws.revision();
     let capture = ws.output_view().capture.unwrap();
+    let model = ws.model_view().unwrap();
     for _ in 0..100 {
         assert!(!ws.poll());
     }
+    assert_eq!(ws.action_view(), actions);
     assert_eq!(ws.output.previews, previews);
+    assert_eq!(ws.output.models, models);
     assert_eq!(ws.editor.evaluations(), evaluations);
+    assert_eq!(
+        ws.editor.serializations(),
+        serializations,
+        "save readiness is checked once per candidate"
+    );
+    assert!(Arc::ptr_eq(&model, &ws.model_view().unwrap()));
     assert_eq!(ws.revision(), revision);
     assert!(Arc::ptr_eq(&capture, &ws.output_view().capture.unwrap()));
     assert_eq!(ws.editor_view(), view);
@@ -773,4 +785,50 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
         "not resolved by path"
     );
     assert_eq!(ws.view(), View::Library);
+}
+
+#[test]
+fn the_live_model_follows_accepted_revisions_even_for_identical_audio() {
+    let (mut ws, fakes) = workspace();
+    ws.set_view(View::Workbench);
+    let document = ws.editor().document();
+    ws.add_component(document, CarrierKind::Clicks).unwrap();
+    let id = ws.editor().draft().components()[0].0;
+    let width = ws
+        .editor()
+        .handle(EditingField::Parameter(id, ParameterId::ClickWidth));
+    ws.commit_field(width, "1").unwrap();
+    ws.play().unwrap();
+    let fake = fakes.last();
+    fake.steps
+        .send(Step::Prepare(SampleRate::new(8_000).unwrap()))
+        .unwrap();
+    settle(&mut ws, |ws| ws.live_rate().is_some());
+    ws.poll();
+    let first = ws.model_view().unwrap();
+    let crate::ModelSource::Accepted(first_revision) = first.source else {
+        panic!("a bound live document explains its accepted target");
+    };
+    let models = ws.output.models;
+    for _ in 0..20 {
+        ws.poll();
+    }
+    assert_eq!(
+        ws.output.models, models,
+        "unchanged revisions build nothing"
+    );
+    // 1.01 ms is still 8 frames at 8 kHz: identical samples, new definition.
+    ws.commit_field(width, "1.01").unwrap();
+    ws.poll();
+    let second = ws.model_view().unwrap();
+    let crate::ModelSource::Accepted(second_revision) = second.source else {
+        panic!("still the accepted target");
+    };
+    assert!(second_revision > first_revision);
+    assert!(second.target.same_audio(&first.target));
+    assert_ne!(second.target, first.target);
+    assert_eq!(ws.output.models, models + 1);
+    fake.steps.send(Step::Finish).unwrap();
+    fake.steps.send(Step::Exit).unwrap();
+    settle(&mut ws, |ws| !ws.audio_busy());
 }

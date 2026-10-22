@@ -1,131 +1,119 @@
-//! Parent-bound asynchronous native file selection, separate from operation workers.
-use super::{Desktop, Operation, Work};
-#[cfg(not(target_os = "macos"))]
-use slint::ComponentHandle;
+//! The production shell: parent-bound asynchronous native dialogs and file
+//! panels, and the platform's answer to a close request.
+use crate::adapter::{Shell, SlintAdapter};
+use auditorylab::workspace::{PathPurpose, PromptId, Response};
 use std::{future::Future, rc::Rc};
-impl Desktop {
-    fn choose(
-        self: &Rc<Self>,
-        operation: Operation,
-        dialog: impl Future<Output = Result<Option<Work>, String>> + 'static,
+
+/// Native dialogs and application termination.
+pub(crate) struct NativeShell;
+
+/// Run a dialog on the UI thread and deliver its answer to the workspace. A
+/// dialog that cannot be shown answers its prompt with the failure, so the
+/// workspace never waits on it.
+fn answer(
+    adapter: &Rc<SlintAdapter>,
+    prompt: PromptId,
+    dialog: impl Future<Output = Response> + 'static,
+) {
+    let target = Rc::clone(adapter);
+    if let Err(error) = slint::spawn_local(async move {
+        let response = dialog.await;
+        target.respond(prompt, response);
+    }) {
+        adapter.respond(prompt, Response::Failed(error.to_string()));
+    }
+}
+
+impl Shell for NativeShell {
+    fn ask_unsaved(&self, adapter: &Rc<SlintAdapter>, prompt: PromptId) {
+        let Some(ui) = adapter.main_window() else {
+            adapter.respond(prompt, Response::Cancel);
+            return;
+        };
+        answer(adapter, prompt, async move {
+            use slint::ComponentHandle;
+            let choice = rfd::AsyncMessageDialog::new()
+                .set_parent(&ui.window().window_handle())
+                .set_title("Unsaved sound")
+                .set_description("Save changes to this sound before continuing?")
+                .set_buttons(rfd::MessageButtons::YesNoCancelCustom(
+                    "Save".into(),
+                    "Discard".into(),
+                    "Cancel".into(),
+                ))
+                .show()
+                .await;
+            match choice {
+                rfd::MessageDialogResult::Yes => Response::Save,
+                rfd::MessageDialogResult::No => Response::Discard,
+                rfd::MessageDialogResult::Custom(label) if label == "Save" => Response::Save,
+                rfd::MessageDialogResult::Custom(label) if label == "Discard" => Response::Discard,
+                _ => Response::Cancel,
+            }
+        });
+    }
+
+    fn choose_path(
+        &self,
+        adapter: &Rc<SlintAdapter>,
+        prompt: PromptId,
+        purpose: PathPurpose,
+        suggested_name: Option<String>,
     ) {
-        if self.dialog_active.replace(true) {
-            return;
-        }
-        let desktop = Rc::clone(self);
-        if let Err(error) = slint::spawn_local(async move {
-            let result = dialog.await;
-            desktop.dialog_active.set(false);
-            match result {
-                Ok(Some(work)) => desktop.start(operation, work),
-                Ok(None) => {
-                    desktop.refresh();
-                }
-                Err(error) => {
-                    desktop.app.borrow_mut().status = error;
-                    desktop.refresh();
-                }
-            }
-        }) {
-            self.dialog_active.set(false);
-            self.app.borrow_mut().status = error.to_string();
-        }
-        self.refresh();
-    }
-    pub(super) fn choose_import(self: &Rc<Self>) {
-        if self.app.borrow().file_operation.is_some() || self.dialog_active.get() {
-            return;
-        }
-        let Some(ui) = self.ui.upgrade() else {
+        let Some(ui) = adapter.main_window() else {
+            adapter.respond(prompt, Response::Path(None));
             return;
         };
-        self.choose(Operation::Import, async move {
-            Ok(file_path(&ui, None, "toml").await?.map(Work::Import))
+        let extension = match purpose {
+            PathPurpose::OpenRecipe | PathPurpose::SaveRecipe => "toml",
+            PathPurpose::ExportWav => "wav",
+        };
+        let destination = match purpose {
+            PathPurpose::OpenRecipe => None,
+            PathPurpose::SaveRecipe | PathPurpose::ExportWav => {
+                Some(suggested_name.unwrap_or_else(|| format!("sound.{extension}")))
+            }
+        };
+        // A native Stop control in the panel stops exactly the audio playing now.
+        let control = adapter.audio_control();
+        answer(adapter, prompt, async move {
+            match file_path(&ui, destination.as_deref(), extension, control).await {
+                Ok(path) => Response::Path(path),
+                Err(error) => Response::Failed(error),
+            }
         });
     }
-    pub(super) fn choose_save(self: &Rc<Self>) {
-        let draft = {
-            let mut app = self.app.borrow_mut();
-            if app.file_operation.is_some() || self.dialog_active.get() {
-                return;
-            }
-            let rate = app.rate;
-            app.workbench.commit_pending(rate);
-            if !app.workbench.can_save() {
-                app.status = app.workbench.draft.to_toml().err().map_or_else(
-                    || "Correct the numeric fields before saving.".into(),
-                    |error| error.to_string(),
-                );
-                drop(app);
-                self.refresh();
-                return;
-            }
-            (app.workbench.draft.clone(), app.workbench.identity.clone())
-        };
-        let Some(ui) = self.ui.upgrade() else {
+
+    fn close_resolved(&self, adapter: &SlintAdapter, approved: bool) {
+        #[cfg(target_os = "macos")]
+        if let Some(request) = adapter.take_termination() {
+            crate::native_application::reply_to_termination(request, approved);
             return;
-        };
-        self.choose(Operation::Save, async move {
-            Ok(file_path(&ui, Some("sound.toml"), "toml")
-                .await?
-                .map(|path| Work::Save(draft.0, path, draft.1)))
-        });
-    }
-    pub(super) fn choose_export(self: &Rc<Self>) {
-        let (sound, name) = {
-            let mut app = self.app.borrow_mut();
-            if app.operation.is_some() || app.file_operation.is_some() || self.dialog_active.get() {
-                return;
-            }
-            let rate = app.rate;
-            app.workbench.commit_pending(rate);
-            if app.editing && !app.workbench.can_save() {
-                drop(app);
-                self.refresh();
-                return;
-            }
-            let name = match (app.editing, app.preset().origin()) {
-                (false, auditorylab::Origin::BuiltIn(id)) => format!("{id}.wav"),
-                _ => "sound.wav".into(),
-            };
-            let sound = if app.editing {
-                app.workbench.draft.preset().at(rate)
-            } else {
-                app.preset().at(rate)
-            };
-            match sound {
-                Ok(sound) => (sound, name),
-                Err(error) => {
-                    app.status = error.to_string();
-                    drop(app);
-                    self.refresh();
-                    return;
-                }
-            }
-        };
-        let Some(ui) = self.ui.upgrade() else {
-            return;
-        };
-        self.choose(Operation::Export, async move {
-            Ok(file_path(&ui, Some(&name), "wav")
-                .await?
-                .map(|path| Work::Export(sound, path)))
-        });
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = adapter;
+        if approved && let Err(error) = slint::quit_event_loop() {
+            eprintln!("Quit: {error}");
+        }
     }
 }
 
 /// Platform file selection with the same native overwrite contract on every caller.
-pub(super) async fn file_path(
-    ui: &super::MainWindow,
+async fn file_path(
+    ui: &crate::MainWindow,
     filename: Option<&str>,
     extension: &str,
+    control: Option<auditorylab::PlaybackControl>,
 ) -> Result<Option<std::path::PathBuf>, String> {
     #[cfg(target_os = "macos")]
     {
-        super::native_application::choose_file(ui, filename, extension).await
+        crate::native_application::choose_file(ui, filename, extension, control).await
     }
     #[cfg(not(target_os = "macos"))]
     {
+        use slint::ComponentHandle;
+        // Elsewhere the separate audio controls window offers Stop while a panel is open.
+        drop(control);
         let dialog = rfd::AsyncFileDialog::new()
             .set_parent(&ui.window().window_handle())
             .add_filter(

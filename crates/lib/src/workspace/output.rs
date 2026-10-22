@@ -12,7 +12,10 @@
 //! settings or sessions cannot relabel it.
 use super::View;
 use crate::session::MonitorReader;
-use crate::{EditorSession, RecipeSnapshot, SessionId, SnapshotId, WaveformCapture, WaveformScale};
+use crate::{
+    EditorSession, ModelSource, ModelView, RecipeSnapshot, SessionId, SnapshotId, WaveformCapture,
+    WaveformScale,
+};
 use auditorylab_core::SampleRate;
 use std::sync::Arc;
 
@@ -39,6 +42,14 @@ struct PreviewKey {
     source: SourceKey,
     rate: SampleRate,
     span_ms: u32,
+}
+
+/// What the timing model explains: an accepted live revision, or a static
+/// source at a rate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModelKey {
+    Accepted(SessionId, u64),
+    Source(SourceKey, SampleRate),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,8 +84,11 @@ pub(crate) struct OutputState {
     preview: Option<(PreviewKey, Result<Arc<WaveformCapture>, String>)>,
     scaled_preview: Option<(PreviewKey, WaveformScale, Arc<WaveformCapture>)>,
     held: Option<Arc<WaveformCapture>>,
+    model: Option<(ModelKey, Option<Arc<ModelView>>)>,
     #[cfg(test)]
     pub(crate) previews: u64,
+    #[cfg(test)]
+    pub(crate) models: u64,
 }
 
 impl OutputState {
@@ -156,6 +170,76 @@ impl OutputState {
 
     pub(crate) fn failed_title(&self) -> Option<&str> {
         self.failed_title.as_deref()
+    }
+
+    pub(crate) fn model(&self) -> Option<&Arc<ModelView>> {
+        self.model.as_ref().and_then(|(_, model)| model.as_ref())
+    }
+
+    /// Bring the timing model up to date: a bound live session's accepted
+    /// revision while its document is open, otherwise the shown source at
+    /// its rate. A model is built once per key; an invalid source caches its
+    /// absence. Returns whether the model changed.
+    pub(crate) fn refresh_model(
+        &mut self,
+        editor: &mut EditorSession,
+        selected: Option<&RecipeSnapshot>,
+        view: View,
+        live_document: bool,
+        rate: SampleRate,
+    ) -> bool {
+        let accepted = self
+            .reader
+            .as_ref()
+            .filter(|r| live_document && view == View::Workbench && r.descriptor().frames.is_none())
+            .map(|r| (r.status().session_id, r.accepted()));
+        let key = match (accepted, view, selected) {
+            (Some((session, (revision, _))), _, _) => ModelKey::Accepted(session, revision),
+            (None, View::Workbench, _) => ModelKey::Source(
+                SourceKey::Draft(editor.document(), editor.draft_revision()),
+                rate,
+            ),
+            (None, View::Library, Some(snapshot)) => {
+                ModelKey::Source(SourceKey::Snapshot(snapshot.id()), rate)
+            }
+            (None, View::Library, None) => {
+                let changed = self.model.is_some();
+                self.model = None;
+                return changed;
+            }
+        };
+        if self.model.as_ref().is_some_and(|(k, _)| *k == key) {
+            return false;
+        }
+        #[cfg(test)]
+        {
+            self.models += 1;
+        }
+        let model = match (accepted, key) {
+            (Some((_, (revision, target))), _) => Some((
+                target,
+                editor.draft().title().to_owned(),
+                ModelSource::Accepted(revision),
+            )),
+            (None, ModelKey::Source(SourceKey::Draft(..), _)) => editor
+                .committed_analysis(rate)
+                .target()
+                .map(|t| (*t, editor.draft().title().to_owned(), ModelSource::Draft)),
+            (None, _) => selected.and_then(|snapshot| {
+                snapshot.at(rate).ok().map(|sound| {
+                    (
+                        *sound.signal().target(),
+                        snapshot.title(),
+                        ModelSource::Recipe,
+                    )
+                })
+            }),
+        };
+        self.model = Some((
+            key,
+            model.map(|(target, title, source)| Arc::new(ModelView::new(target, title, source))),
+        ));
+        true
     }
 
     fn current(&self) -> Option<Arc<WaveformCapture>> {

@@ -29,7 +29,7 @@ pub use views::{
 use crate::editing::{
     CommitRefusal, EditRefusal, EditingField, FieldHandle, InputProblem, SaveRefusal,
 };
-use crate::session::{PlaybackPhase, Session, StopRequest};
+use crate::session::{PlaybackControl, PlaybackPhase, Session, StopRequest};
 use crate::{
     Cancel, DocumentId, Draft, EditorSession, Error, ErrorKind, Progress, RecipeSnapshot, Sound,
     WaveformScale, controls, presentation,
@@ -39,6 +39,7 @@ use auditorylab_core::{
 };
 use output::OutputState;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tasks::{
     AudioEvent, AudioKind, AudioTask, Conclusion, FileKind, FileOutcome, FileTask, Polled,
 };
@@ -1318,6 +1319,20 @@ impl Workspace {
         ) {
             self.changed();
         }
+        let live_document = self.live_rate().is_some();
+        let rate = match self.view {
+            View::Workbench => self.diagnostic_rate(),
+            View::Library => self.export_rate,
+        };
+        if self.output.refresh_model(
+            &mut self.editor,
+            self.catalog.get(self.selected),
+            self.view,
+            live_document,
+            rate,
+        ) {
+            self.changed();
+        }
         before != self.revision
     }
 
@@ -1574,6 +1589,21 @@ impl Workspace {
             self.output.unbind();
             self.changed();
         }
+    }
+
+    /// The timing model of what the current view explains: the open
+    /// document's accepted live revision, its committed content, or the
+    /// selected recipe. `None` when that source is not valid.
+    #[must_use]
+    pub fn model_view(&self) -> Option<Arc<crate::ModelView>> {
+        self.output.model().cloned()
+    }
+
+    /// Stop control of the current audio session, for a native control that
+    /// must stop exactly that session.
+    #[must_use]
+    pub fn audio_control(&self) -> Option<PlaybackControl> {
+        self.audio.as_ref().map(|task| task.control.clone())
     }
 
     /// Phase of the current audio session, if one is bound.

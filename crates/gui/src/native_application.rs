@@ -1,265 +1,131 @@
-//! Cocoa application-menu actions and asynchronous termination policy.
-//! Keeps winit's delegate, menu routing and context-menu event handler intact.
+//! macOS application integration: Quit and About arrive through the Slint
+//! backend's typed application handler, and a file panel offers Stop for the
+//! audio session that was playing when it opened.
+use crate::adapter::SlintAdapter;
 use objc2::{
-    Encode, MainThreadMarker, MainThreadOnly,
-    rc::Retained,
-    runtime::{AnyObject, Imp, Sel},
-    sel,
+    DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained,
+    runtime::NSObject, sel,
 };
-use objc2_app_kit::{NSApplication, NSApplicationTerminateReply};
 use objc2_app_kit::{NSButton, NSModalResponseOK, NSOpenPanel, NSSavePanel, NSView};
 use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString};
 use slint::ComponentHandle;
-use std::{
-    cell::{Cell, RefCell},
-    ffi::CString,
+use slint::winit_030::winit::{
+    event_loop::ActiveEventLoop,
+    platform::macos::{TerminationRequest, reply_to_termination as reply},
 };
-thread_local! {
-    static WINDOW:RefCell<Option<slint::Weak<super::MainWindow>>> = const {RefCell::new(None)};
-    static AUDIO_CANCEL:RefCell<Option<auditorylab::Cancel>> = const {RefCell::new(None)};
-    static TERMINATION_PENDING:Cell<bool> = const {Cell::new(false)};
-}
-#[expect(
-    unsafe_code,
-    reason = "Objective-C callback ABI is registered with the matching protocol signature"
-)]
-unsafe extern "C-unwind" fn should_terminate(
-    _this: &AnyObject,
-    _selector: Sel,
-    _sender: &NSApplication,
-) -> NSApplicationTerminateReply {
-    if MainThreadMarker::new().is_none() {
-        return NSApplicationTerminateReply::TerminateCancel;
-    }
-    if TERMINATION_PENDING.with(|pending| pending.replace(true)) {
-        return NSApplicationTerminateReply::TerminateLater;
-    }
-    if slint::invoke_from_event_loop(|| {
-        let window = WINDOW.with(|slot| slot.borrow().as_ref().and_then(slint::Weak::upgrade));
-        if let Some(window) = window {
-            window.invoke_quit();
-        } else {
-            reply_to_termination(false);
-        }
-    })
-    .is_err()
-    {
-        TERMINATION_PENDING.with(|pending| pending.set(false));
-        return NSApplicationTerminateReply::TerminateCancel;
-    }
-    NSApplicationTerminateReply::TerminateLater
-}
-#[expect(
-    unsafe_code,
-    reason = "registered Cocoa menu action has the matching void/object ABI"
-)]
-unsafe extern "C-unwind" fn show_about(_: &AnyObject, _: Sel, _: &AnyObject) {
-    let _ = slint::invoke_from_event_loop(|| {
-        if let Some(window) =
-            WINDOW.with(|slot| slot.borrow().as_ref().and_then(slint::Weak::upgrade))
-        {
-            window.invoke_about();
-        }
-    });
-}
-/// Extend only the known process-owned winit delegate, without replacing its object or methods.
-#[expect(
-    unsafe_code,
-    reason = "registers one optional Cocoa delegate method; no object layout or existing method is changed"
-)]
-pub(super) fn install(
-    window: slint::Weak<super::MainWindow>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mtm =
-        MainThreadMarker::new().ok_or("native Quit must be initialized on the main thread")?;
-    let application = NSApplication::sharedApplication(mtm);
-    let delegate = application
-        .delegate()
-        .ok_or("native Quit needs an initialized window delegate")?;
-    let object: &AnyObject = AsRef::<AnyObject>::as_ref(&*delegate);
-    let class = object.class();
-    let selector = sel!(applicationShouldTerminate:);
-    if class.name().to_bytes() != b"WinitApplicationDelegate"
-        || class.instance_method(selector).is_some()
-    {
-        return Err("native Quit integration needs review: unexpected delegate or an existing termination handler".into());
-    }
-    let encoding = CString::new(format!("{}@:@", NSApplicationTerminateReply::ENCODING))?;
-    // SAFETY: Objective-C's IMP erases a function signature. The callback uses the
-    // protocol's NSUInteger return and (object, selector, application object)
-    // arguments. Its encoding matches exactly. Cocoa invokes it on the main
-    // thread; the function checks that before using UI-thread-local state.
-    let implementation = unsafe {
-        std::mem::transmute::<
-            unsafe extern "C-unwind" fn(
-                &AnyObject,
-                Sel,
-                &NSApplication,
-            ) -> NSApplicationTerminateReply,
-            Imp,
-        >(should_terminate)
-    };
-    // SAFETY: this is the existing, process-owned winit delegate class. Adding a
-    // previously absent method changes no ivars, ownership or existing methods.
-    // The runtime copies the encoding, as in objc2's ClassBuilder::add_method.
-    if !unsafe {
-        objc2::ffi::class_addMethod(
-            (class as *const objc2::runtime::AnyClass).cast_mut(),
-            selector,
-            implementation,
-            encoding.as_ptr(),
-        )
-    }
-    .as_bool()
-    {
-        return Err("could not install native Quit handling".into());
-    }
-    let about_selector = sel!(auditorylabShowAbout:);
-    if class.instance_method(about_selector).is_some() {
-        return Err("native About action already exists; integration needs review".into());
-    }
-    // SAFETY: same process-owned delegate, absent method, exact v@:@ action ABI.
-    let about_imp = unsafe {
-        std::mem::transmute::<unsafe extern "C-unwind" fn(&AnyObject, Sel, &AnyObject), Imp>(
-            show_about,
-        )
-    };
-    if !unsafe {
-        objc2::ffi::class_addMethod(
-            (class as *const objc2::runtime::AnyClass).cast_mut(),
-            about_selector,
-            about_imp,
-            c"v@:@".as_ptr(),
-        )
-    }
-    .as_bool()
-    {
-        return Err("cannot install native About action".into());
-    }
-    let stop_selector = sel!(auditorylabStopAudio:);
-    if class.instance_method(stop_selector).is_some() {
-        return Err("native Stop action already exists".into());
-    }
-    // SAFETY: same absent process-owned delegate method, exact void/object action ABI.
-    let stop_imp = unsafe {
-        std::mem::transmute::<unsafe extern "C-unwind" fn(&AnyObject, Sel, &AnyObject), Imp>(
-            stop_audio,
-        )
-    };
-    if !unsafe {
-        objc2::ffi::class_addMethod(
-            (class as *const objc2::runtime::AnyClass).cast_mut(),
-            stop_selector,
-            stop_imp,
-            c"v@:@".as_ptr(),
-        )
-    }
-    .as_bool()
-    {
-        return Err("cannot install native Stop action".into());
-    }
-    WINDOW.with(|slot| *slot.borrow_mut() = Some(window));
-    // Refresh Cocoa's cached optional-delegate capabilities. The retained local
-    // keeps the exact same delegate alive throughout both weak-property writes.
-    application.setDelegate(None);
-    application.setDelegate(Some(&delegate));
-    Ok(())
-}
-/// Slint creates and rebuilds the native menu asynchronously. Retarget only its
-/// application About item after creation; refreshes also cover menu replacement.
-#[expect(
-    unsafe_code,
-    reason = "retargets the process-owned native About item to its retained delegate action"
-)]
-pub(super) fn refresh_about_menu() -> Result<(), Box<dyn std::error::Error>> {
-    let mtm = MainThreadMarker::new().ok_or("About needs the main thread")?;
-    let application = NSApplication::sharedApplication(mtm);
-    let delegate = application
-        .delegate()
-        .ok_or("missing application delegate")?;
-    let object: &AnyObject = AsRef::<AnyObject>::as_ref(&*delegate);
-    let Some(menu) = application.mainMenu() else {
-        return Ok(());
-    };
-    // Menus may be empty during AppKit launch/recovery or a Slint rebuild.
-    // itemAtIndex throws for an empty menu despite its nullable return type.
-    let Some(app_menu) = menu
-        .itemArray()
-        .firstObject()
-        .and_then(|item| item.submenu())
-    else {
-        return Ok(());
-    };
-    let Some(about) = app_menu.itemArray().firstObject() else {
-        return Ok(());
-    };
-    if !about.title().to_string().starts_with("About ")
-        || !matches!(about.action(), Some(action) if action == sel!(fireMenuItemAction:) || action == sel!(auditorylabShowAbout:))
-    {
-        return Err("native About menu structure changed; integration needs review".into());
-    }
-    // SAFETY: the weak target remains the retained application delegate; action above has its declared ABI.
-    unsafe {
-        about.setTarget(Some(object));
-        about.setAction(Some(sel!(auditorylabShowAbout:)));
-        about.setEnabled(true);
-    }
-    Ok(())
-}
-/// Complete Cocoa's outstanding request only after the shared policy resolves.
-pub(super) fn reply_to_termination(approve: bool) -> bool {
-    let Some(mtm) = MainThreadMarker::new() else {
-        return false;
-    };
-    if !TERMINATION_PENDING.with(|pending| pending.replace(false)) {
-        return false;
-    }
-    NSApplication::sharedApplication(mtm).replyToApplicationShouldTerminate(approve);
-    true
+use std::{
+    cell::RefCell,
+    rc::{Rc, Weak},
+};
+
+/// The application handler installed with the backend. The adapter is
+/// created after the backend, so the handler reaches it through this slot.
+pub(crate) struct ApplicationHandler {
+    adapter: Rc<RefCell<Weak<SlintAdapter>>>,
 }
 
-/// The native button requests only the independent audio cancellation flag.
-pub(super) fn audio_cancel(cancel: Option<auditorylab::Cancel>) {
-    AUDIO_CANCEL.with(|slot| *slot.borrow_mut() = cancel);
-}
-#[expect(
-    unsafe_code,
-    reason = "registered native action ABI; sender is checked before using NSButton methods"
-)]
-unsafe extern "C-unwind" fn stop_audio(_: &AnyObject, _: Sel, sender: &AnyObject) {
-    if MainThreadMarker::new().is_none() {
-        return;
-    }
-    let requested = AUDIO_CANCEL.with(|slot| {
-        slot.borrow().as_ref().is_some_and(|cancel| {
-            cancel.request();
-            true
-        })
-    });
-    if let Some(button) = sender.downcast_ref::<NSButton>() {
-        button.setTitle(&NSString::from_str(if requested {
-            "Stop requested · file dialog stays open"
-        } else {
-            "Audio already stopped · file dialog stays open"
-        }));
-        button.setEnabled(false);
+impl ApplicationHandler {
+    /// A handler and the slot that later receives the adapter.
+    pub(crate) fn new() -> (Self, Rc<RefCell<Weak<SlintAdapter>>>) {
+        let slot = Rc::new(RefCell::new(Weak::new()));
+        (
+            Self {
+                adapter: Rc::clone(&slot),
+            },
+            slot,
+        )
     }
 }
-/// A single native file panel. Its audio-only accessory remains usable within modal scope.
+
+impl slint::winit_030::CustomApplicationHandler for ApplicationHandler {
+    fn intercepts_termination(&self) -> bool {
+        true
+    }
+
+    fn termination_requested(&mut self, _: &ActiveEventLoop, request: TerminationRequest) {
+        match self.adapter.borrow().upgrade() {
+            Some(adapter) => adapter.request_termination(request),
+            None => reply_to_termination(request, false),
+        }
+    }
+
+    fn application_about_title(&self) -> Option<String> {
+        Some("About Auditory Lab".into())
+    }
+
+    fn about_requested(&mut self, _: &ActiveEventLoop) {
+        if let Some(adapter) = self.adapter.borrow().upgrade() {
+            adapter.show_about();
+        }
+    }
+}
+
+/// Answer AppKit's pending termination request.
+pub(crate) fn reply_to_termination(request: TerminationRequest, approve: bool) {
+    if let Err(error) = reply(request, approve) {
+        eprintln!("Quit: {error}");
+    }
+}
+
+/// Instance state of the Stop target: the one session it may stop.
+struct StopTargetState {
+    control: auditorylab::PlaybackControl,
+}
+
+define_class!(
+    /// The Stop button's target in a file panel, bound to one audio session.
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "AuditoryLabPanelStopTarget"]
+    #[ivars = StopTargetState]
+    struct StopTarget;
+
+    impl StopTarget {
+        #[unsafe(method(stopAudio:))]
+        fn stop_audio(&self, sender: &NSButton) {
+            let requested = matches!(
+                self.ivars().control.request_stop(),
+                auditorylab::StopRequest::Accepted | auditorylab::StopRequest::AlreadyRequested
+            );
+            sender.setTitle(&NSString::from_str(if requested {
+                "Stop requested · file dialog stays open"
+            } else {
+                "Audio already stopped · file dialog stays open"
+            }));
+            sender.setEnabled(false);
+        }
+    }
+);
+
+impl StopTarget {
+    #[expect(
+        unsafe_code,
+        reason = "msg_send to NSObject's init has no compile-time checked form"
+    )]
+    fn new(mtm: MainThreadMarker, control: auditorylab::PlaybackControl) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(StopTargetState { control });
+        // SAFETY: NSObject's designated initializer on a freshly allocated instance.
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+/// A single native file panel, as a sheet on the main window. With a
+/// session's control it carries a Stop button for that session; the panel,
+/// its file operation and its sheet are unaffected by Stop.
 #[expect(
     unsafe_code,
     deprecated,
     reason = "main-thread AppKit sheet/completion ABI; macOS 15-compatible extension filter and checked owned panel lifetime"
 )]
-pub(super) async fn choose_file(
-    ui: &super::MainWindow,
+pub(crate) async fn choose_file(
+    ui: &crate::MainWindow,
     filename: Option<&str>,
     extension: &str,
+    control: Option<auditorylab::PlaybackControl>,
 ) -> Result<Option<std::path::PathBuf>, String> {
-    use std::{rc::Rc, task::Poll};
-    let mtm = MainThreadMarker::new().ok_or("File panels require the main thread")?;
-    let app = NSApplication::sharedApplication(mtm);
     use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use std::task::Poll;
+    let mtm = MainThreadMarker::new().ok_or("File panels require the main thread")?;
     let owner = ui.window().window_handle();
     let raw = owner
         .window_handle()
@@ -287,21 +153,21 @@ pub(super) async fn choose_file(
         extension,
     )])));
     panel.setCanCreateDirectories(true);
-    if AUDIO_CANCEL.with(|slot| slot.borrow().is_some()) {
-        let delegate = app
-            .delegate()
-            .ok_or("No native application delegate is available")?;
-        let target = AsRef::<AnyObject>::as_ref(&*delegate);
+    // The button's target is weak; this binding keeps it alive until the
+    // panel completes.
+    let stop_target = control.map(|control| StopTarget::new(mtm, control));
+    if let Some(target) = &stop_target {
         let view = NSView::initWithFrame(
             NSView::alloc(mtm),
             NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(360.0, 44.0)),
         );
-        // SAFETY: selector is installed on this retained delegate with the v@:@ native action ABI.
+        // SAFETY: `stopAudio:` is declared on the target's class with the
+        // void/object action signature.
         let button = unsafe {
             NSButton::buttonWithTitle_target_action(
                 &NSString::from_str("Stop audio · file dialog stays open"),
                 Some(target),
-                Some(sel!(auditorylabStopAudio:)),
+                Some(sel!(stopAudio:)),
                 mtm,
             )
         };
@@ -332,7 +198,7 @@ pub(super) async fn choose_file(
     });
     // Panel, parent and block stay owned until main-thread completion.
     panel.beginSheetModalForWindow_completionHandler(&parent, &completion);
-    std::future::poll_fn(|context| {
+    let path = std::future::poll_fn(|context| {
         if let Some(answer) = result.borrow_mut().take() {
             Poll::Ready(answer)
         } else {
@@ -340,9 +206,7 @@ pub(super) async fn choose_file(
             Poll::Pending
         }
     })
-    .await
-}
-/// Clear the audio-only command after both workers have drained.
-pub(super) fn shutdown() {
-    audio_cancel(None);
+    .await;
+    drop(stop_target);
+    path
 }

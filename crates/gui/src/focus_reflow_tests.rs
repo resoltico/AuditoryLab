@@ -1,55 +1,18 @@
-//! Generated Workbench focus checks across typography and clipping transitions.
-
-use crate::{MainWindow, Row};
+//! Workbench focus through typography reflow, clipping, kind changes,
+//! row removal and auxiliary-window handoff, with the production bindings.
+use crate::adapter::hide_monitor_window;
+use crate::adapter_tests::Harness;
+use crate::generated::MonitorWindow;
+use auditorylab::{EditingField, ParameterId};
+use slint::platform::{Key, WindowEvent};
 use slint::private_unstable_api::re_exports::{
-    AccessibleStringProperty, Flickable, FocusReason, ItemRc, TextInput, WindowInner,
+    Flickable, FocusReason, ItemRc, TextInput, WindowInner,
 };
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
-use std::{cell::RefCell, ops::ControlFlow, rc::Rc};
+use slint::{ComponentHandle, Model};
+use std::ops::ControlFlow;
 
-fn settle(ui: &MainWindow) {
-    for _ in 0..3 {
-        slint::platform::update_timers_and_animations();
-        WindowInner::from_pub(ui.window()).draw_contents(|_, _| ());
-    }
-}
-
-fn key(ui: &MainWindow, text: impl Into<slint::SharedString>) {
-    let text = text.into();
-    ui.window()
-        .dispatch_event(slint::platform::WindowEvent::KeyPressed { text: text.clone() });
-    ui.window()
-        .dispatch_event(slint::platform::WindowEvent::KeyReleased { text });
-    settle(ui);
-}
-
-fn entry(ui: &MainWindow, label: &str) -> ItemRc {
-    let root = WindowInner::from_pub(ui.window()).window_item_rc().unwrap();
-    let owner = root
-        .visit_descendants(|item| {
-            if item
-                .accessible_string_property(AccessibleStringProperty::Label)
-                .as_deref()
-                == Some(label)
-            {
-                ControlFlow::Break(item.clone())
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
-        .unwrap();
-    owner
-        .visit_descendants(|item| {
-            if item.downcast::<TextInput>().is_some() {
-                ControlFlow::Break(item.clone())
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
-        .unwrap()
-}
-
-fn snapshot(ui: &MainWindow, item: &ItemRc, context: &str) {
+fn snapshot(h: &Harness, item: &ItemRc, context: &str) {
+    let ui = h.ui();
     let inner = WindowInner::from_pub(ui.window());
     let field = item.downcast::<TextInput>().unwrap();
     let focused = inner.focus_item.borrow().upgrade();
@@ -69,105 +32,56 @@ fn snapshot(ui: &MainWindow, item: &ItemRc, context: &str) {
     );
 }
 
-/// Uses the already initialized test platform and actual generated Workbench controls.
-pub(super) fn assert_pending_entry_survives_font_reflow(ui: &MainWindow) {
-    const ID: &str = "font-reflow-fixture";
-    let pending = Rc::new(RefCell::new(None::<(i32, String)>));
-    let commits = Rc::new(RefCell::new(Vec::<(i32, String)>::new()));
-    let restores = Rc::new(RefCell::new(Vec::new()));
-    let rows = Rc::new(VecModel::from(vec![Row {
-        id: ID.into(),
-        source: 1,
-        name: "Click rhythm · layer 1".into(),
-        heading: "Click rhythm · layer 1".into(),
-        text1: "40".into(),
-        text2: "1".into(),
-        text3: "-30".into(),
-        text4: "0".into(),
-        ..Row::default()
-    }]));
-    let p = pending.clone();
-    let model = rows.clone();
-    ui.on_stage(move |id, setting, value| {
-        assert_eq!(id, ID);
-        *p.borrow_mut() = Some((setting, value.to_string()));
-        let mut row = model.row_data(0).unwrap();
-        match setting {
-            1 => {
-                row.text1 = value;
-                row.staged1 = true;
-            }
-            3 => {
-                row.text3 = value;
-                row.staged3 = true;
-            }
-            _ => panic!("unexpected focused setting {setting}"),
-        }
-        model.set_row_data(0, row);
-    });
-    let c = commits.clone();
-    ui.on_edit(move |id, setting, value| {
-        assert_eq!(id, ID);
-        c.borrow_mut().push((setting, value.to_string()));
-    });
-    let p = pending.clone();
-    let r = restores.clone();
-    let model = rows.clone();
-    ui.on_restore(move |id, setting| {
-        assert_eq!(id, ID);
-        *p.borrow_mut() = None;
-        r.borrow_mut().push(setting);
-        let mut row = model.row_data(0).unwrap();
-        let value = match setting {
-            1 => {
-                row.text1 = "40".into();
-                row.staged1 = false;
-                "40"
-            }
-            3 => {
-                row.text3 = "-30".into();
-                row.staged3 = false;
-                "-30"
-            }
-            _ => panic!("unexpected restored setting {setting}"),
-        };
-        model.set_row_data(0, row);
-        value.into()
-    });
-    ui.set_monitor_open(false);
-    ui.set_tab_index(1);
-    ui.set_can_edit(true);
-    ui.set_edits_suspended(false);
-    ui.set_ui_family(crate::typography::resolve().family.into());
-    ui.set_rows(ModelRc::from(rows.clone()));
-    ui.window()
-        .dispatch_event(slint::platform::WindowEvent::WindowActiveChanged(true));
-    let inner = WindowInner::from_pub(ui.window());
-    for (label, setting, raw, height) in [
-        ("Click rhythm · layer 1: Click rate (Hz)", 1, "40e", 900.0),
+fn text(item: &ItemRc) -> String {
+    item.downcast::<TextInput>()
+        .unwrap()
+        .as_pin_ref()
+        .text()
+        .to_string()
+}
+
+/// Staged text and committed value of the first component's field.
+fn field_state(h: &Harness, id: ParameterId) -> (Option<String>, Option<f64>) {
+    h.adapter.inspect(|w| {
+        let (component, _) = w.editor().draft().components()[0];
+        let field = EditingField::Parameter(component, id);
         (
-            "Click rhythm · layer 1: Peak level (dBFS)",
-            3,
-            "-30e",
-            700.0,
-        ),
+            w.editor().staged(field).map(str::to_owned),
+            w.editor().draft().value(field),
+        )
+    })
+}
+
+#[test]
+fn pending_entry_survives_font_reflow_clipping_and_row_changes() {
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.set_ui_family(crate::typography::resolve().family.into());
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 1);
+    let inner = WindowInner::from_pub(ui.window());
+    let rate_label = "Click rhythm · layer 1: Click rate (Hz)";
+    let peak_label = "Click rhythm · layer 1: Peak level (dBFS)";
+    for (label, id, committed, raw, height) in [
+        (rate_label, ParameterId::ClickRate, 40.0, "405", 900.0),
+        (peak_label, ParameterId::PeakLevel, -30.0, "-305", 700.0),
     ] {
         ui.set_ui_size(13.0);
         ui.window()
             .set_size(slint::LogicalSize::new(1100.0, height));
-        settle(ui);
-        let input = entry(ui, label);
+        h.settle();
+        let input = h.field(label);
         inner.set_focus_item(&input, true, FocusReason::Programmatic);
         for _ in 0..4 {
-            key(ui, slint::platform::Key::RightArrow);
+            h.key(Key::RightArrow);
         }
-        key(ui, "e");
-        assert_eq!(pending.borrow().as_ref(), Some(&(setting, raw.to_owned())));
-        assert!(commits.borrow().is_empty());
+        h.key("5");
+        assert_eq!(field_state(&h, id), (Some(raw.to_owned()), Some(committed)));
         for size in [22.75, 13.0] {
             ui.set_ui_size(size);
-            settle(ui);
-            snapshot(ui, &input, "no-input typography leg");
+            h.settle();
+            snapshot(&h, &input, "no-input typography leg");
             assert!(
                 !ui.get_monitor_open(),
                 "closed monitor remains closed throughout reflow"
@@ -183,24 +97,21 @@ pub(super) fn assert_pending_entry_survives_font_reflow(ui: &MainWindow) {
                     .as_pin_ref()
                     .has_focus()
             );
+            assert_eq!(text(&input), raw);
             assert_eq!(
-                input.downcast::<TextInput>().unwrap().as_pin_ref().text(),
-                raw
-            );
-            assert!(
-                commits.borrow().is_empty(),
+                field_state(&h, id),
+                (Some(raw.to_owned()), Some(committed)),
                 "font reflow does not commit pending text"
             );
         }
-        key(ui, slint::platform::Key::Escape);
-        assert_eq!(restores.borrow().last(), Some(&setting));
-        assert!(pending.borrow().is_none());
+        h.key(Key::Escape);
+        assert_eq!(field_state(&h, id), (None, Some(committed)));
     }
-    let input = entry(ui, "Click rhythm · layer 1: Click rate (Hz)");
+    let input = h.field(rate_label);
     inner.set_focus_item(&input, true, FocusReason::Programmatic);
     ui.set_tab_index(0);
-    settle(ui);
-    snapshot(ui, &input, "genuinely hidden tab negative control");
+    h.settle();
+    snapshot(&h, &input, "genuinely hidden tab negative control");
     assert!(
         inner.focus_item.borrow().upgrade().as_ref() != Some(&input),
         "a genuinely hidden tab must not retain editing focus"
@@ -212,28 +123,26 @@ pub(super) fn assert_pending_entry_survives_font_reflow(ui: &MainWindow) {
             .as_pin_ref()
             .has_focus()
     );
-    ui.set_tab_index(1);
+    h.workbench();
     ui.set_ui_size(13.0);
     ui.set_editor_scroll_y(0.0);
-    settle(ui);
+    h.settle();
     // Use a supported overflowing document, not an assumed scroll offset.
-    for layer in 2..=8 {
-        let mut row = rows.row_data(0).unwrap();
-        row.id = format!("font-reflow-layer-{layer}").into();
-        row.name = format!("Click rhythm · layer {layer}").into();
-        row.heading = row.name.clone();
-        rows.push(row);
+    for _ in 2..=8 {
+        ui.invoke_add_component(ui.get_document(), 1);
     }
-    assert!(rows.row_count() <= 16);
-    settle(ui);
+    h.settle();
     // Distinguish pure reflow from a non-click pointer event on a clipped entry.
-    let input = entry(ui, "Click rhythm · layer 1: Click rate (Hz)");
+    let input = h.field(rate_label);
     inner.set_focus_item(&input, true, FocusReason::Programmatic);
     for _ in 0..4 {
-        key(ui, slint::platform::Key::RightArrow);
+        h.key(Key::RightArrow);
     }
-    key(ui, "e");
-    assert_eq!(pending.borrow().as_ref(), Some(&(1, "40e".to_owned())));
+    h.key("5");
+    assert_eq!(
+        field_state(&h, ParameterId::ClickRate).0.as_deref(),
+        Some("405")
+    );
     let root = inner.window_item_rc().unwrap();
     let viewport = root
         .visit_descendants(|item| {
@@ -256,9 +165,12 @@ pub(super) fn assert_pending_entry_survives_font_reflow(ui: &MainWindow) {
         .unwrap();
     let flickable = viewport.downcast::<Flickable>().unwrap();
     let overflow = flickable.as_pin_ref().content_height().get() - viewport.geometry().size.height;
-    assert!(overflow > 0.0, "multi-layer editor must actually overflow");
+    assert!(
+        overflow > 0.0,
+        "multi-component editor must actually overflow"
+    );
     ui.set_editor_scroll_y(-overflow);
-    settle(ui);
+    h.settle();
     assert!(viewport.is_visible(), "the editor viewport remains visible");
     assert_eq!(ui.get_tab_index(), 1, "the entry's tab remains selected");
     assert!(
@@ -266,7 +178,7 @@ pub(super) fn assert_pending_entry_survives_font_reflow(ui: &MainWindow) {
         "actual content must scroll"
     );
     snapshot(
-        ui,
+        &h,
         &input,
         "deliberately scrolled offscreen before pointer move",
     );
@@ -286,68 +198,64 @@ pub(super) fn assert_pending_entry_survives_font_reflow(ui: &MainWindow) {
 
     // Escape is the first input after clipping: no pointer event or refocus.
     assert!(inner.focus_item.borrow().upgrade().as_ref() == Some(&input));
-    key(ui, slint::platform::Key::Escape);
+    h.key(Key::Escape);
     assert!(
         inner.focus_item.borrow().upgrade().as_ref() == Some(&input),
         "no-pointer Escape must retain the clipped editor's focus"
     );
-    assert!(
-        pending.borrow().is_none(),
-        "no-pointer Escape must restore pending text"
-    );
     assert_eq!(
-        input.downcast::<TextInput>().unwrap().as_pin_ref().text(),
-        "40"
+        field_state(&h, ParameterId::ClickRate),
+        (None, Some(40.0)),
+        "no-pointer Escape restores without committing"
     );
+    assert_eq!(text(&input), "40");
     assert!(
         input.is_visible(),
         "no-pointer Escape must reveal its restored editor"
     );
-    assert!(
-        commits.borrow().is_empty(),
-        "no-pointer Escape must not blur or commit"
-    );
     for _ in 0..4 {
-        key(ui, slint::platform::Key::RightArrow);
+        h.key(Key::RightArrow);
     }
-    key(ui, "e");
-    assert_eq!(pending.borrow().as_ref(), Some(&(1, "40e".to_owned())));
+    h.key("5");
     ui.set_editor_scroll_y(-overflow);
-    settle(ui);
+    h.settle();
     assert!(!input.is_visible(), "pointer case must begin clipped again");
     let scroll_before_pointer = ui.get_editor_scroll_y();
-    ui.window()
-        .dispatch_event(slint::platform::WindowEvent::PointerMoved {
-            position: slint::LogicalPosition::new(10.0, 10.0),
-        });
-    settle(ui);
-    snapshot(ui, &input, "after non-click pointer move");
+    ui.window().dispatch_event(WindowEvent::PointerMoved {
+        position: slint::LogicalPosition::new(10.0, 10.0),
+    });
+    h.settle();
+    snapshot(&h, &input, "after non-click pointer move");
     assert!(
         inner.focus_item.borrow().upgrade().as_ref() == Some(&input),
         "pointer movement must not discard an offscreen pending editor"
     );
-    assert!(commits.borrow().is_empty());
     assert_eq!(
         ui.get_editor_scroll_y(),
         scroll_before_pointer,
         "pointer movement must not move the viewport or retarget a later click"
     );
-    assert_eq!(pending.borrow().as_ref(), Some(&(1, "40e".to_owned())));
-    key(ui, "1");
-    assert_eq!(pending.borrow().as_ref(), Some(&(1, "40e1".to_owned())));
+    assert_eq!(
+        field_state(&h, ParameterId::ClickRate),
+        (Some("405".into()), Some(40.0))
+    );
+    h.key("1");
+    assert_eq!(
+        field_state(&h, ParameterId::ClickRate).0.as_deref(),
+        Some("4051")
+    );
     assert!(
         input.is_visible(),
         "keyboard editing must reveal the retained offscreen entry"
     );
     assert!(inner.focus_item.borrow().upgrade().as_ref() == Some(&input));
-    key(ui, slint::platform::Key::Escape);
-    assert!(pending.borrow().is_none());
+    h.key(Key::Escape);
     // A real click still activates its original target and commits the old field once.
     for _ in 0..4 {
-        key(ui, slint::platform::Key::RightArrow);
+        h.key(Key::RightArrow);
     }
-    key(ui, "e");
-    let other = entry(ui, "Click rhythm · layer 1: Peak level (dBFS)");
+    h.key("5");
+    let other = h.field(peak_label);
     let geometry = other.geometry();
     let origin = other.map_to_window(geometry.origin);
     let position = slint::LogicalPosition::new(
@@ -361,88 +269,78 @@ pub(super) fn assert_pending_entry_survives_font_reflow(ui: &MainWindow) {
     let scroll_before_click = ui.get_editor_scroll_y();
     for pressed in [true, false] {
         ui.window().dispatch_event(if pressed {
-            slint::platform::WindowEvent::PointerPressed {
+            WindowEvent::PointerPressed {
                 position,
                 button: slint::platform::PointerEventButton::Left,
             }
         } else {
-            slint::platform::WindowEvent::PointerReleased {
+            WindowEvent::PointerReleased {
                 position,
                 button: slint::platform::PointerEventButton::Left,
             }
         });
     }
-    settle(ui);
+    h.settle();
     assert!(
         inner.focus_item.borrow().upgrade().as_ref() == Some(&other),
         "click must activate the measured target"
     );
     assert_eq!(
-        &*commits.borrow(),
-        &[(1, "40e".to_owned())],
-        "ordinary blur commits exactly once"
+        field_state(&h, ParameterId::ClickRate),
+        (None, Some(405.0)),
+        "ordinary blur commits the pending entry"
     );
     assert_eq!(
         ui.get_editor_scroll_y(),
         scroll_before_click,
         "the pointer guard must not scroll before hit testing"
     );
-    inner.set_focus_item(&input, true, FocusReason::Programmatic);
-    key(ui, slint::platform::Key::Escape);
-    assert!(pending.borrow().is_none());
     drop(other);
-    // Changing kind replaces a single-instance conditional field, not its row.
-    let old_conditional = input.clone();
-    let mut tone = rows.row_data(0).unwrap();
-    tone.source = 0;
-    tone.text0 = "3750".into();
-    rows.set_row_data(0, tone);
-    settle(ui);
+    // Changing kind replaces the field, not its component row.
+    let old_field = input.clone();
+    let binding = ui.get_components().row_data(0).unwrap().binding;
+    ui.invoke_set_carrier(binding, 0);
+    h.settle();
     assert!(
         root.visit_descendants(|item| {
-            if *item == old_conditional {
+            if *item == old_field {
                 ControlFlow::Break(())
             } else {
                 ControlFlow::Continue(())
             }
         })
         .is_none(),
-        "kind change must remove the actual click-rate conditional"
+        "kind change must remove the actual click-rate field"
     );
-    ui.window()
-        .dispatch_event(slint::platform::WindowEvent::PointerMoved {
-            position: slint::LogicalPosition::new(10.0, 10.0),
-        });
-    settle(ui);
+    ui.window().dispatch_event(WindowEvent::PointerMoved {
+        position: slint::LogicalPosition::new(10.0, 10.0),
+    });
+    h.settle();
     assert!(
-        inner.focus_item.borrow().upgrade().is_none(),
-        "replaced conditional must not retain focus"
+        inner.focus_item.borrow().upgrade().as_ref() != Some(&old_field),
+        "a removed field must not retain focus"
     );
-    drop(old_conditional);
+    drop(old_field);
     drop(input);
-    let frequency = entry(ui, "Click rhythm · layer 1: Tone frequency (Hz)");
+    let frequency = h.field("Steady tone · layer 1: Tone frequency (Hz)");
     inner.set_focus_item(&frequency, true, FocusReason::Programmatic);
-    settle(ui);
+    h.settle();
     assert!(
         inner.focus_item.borrow().upgrade().as_ref() == Some(&frequency),
-        "attached replacement conditional remains focusable"
+        "the replacement field is focusable"
     );
     let destroyed = frequency.downgrade();
     drop(frequency);
-    rows.set_vec(Vec::new());
-    settle(ui);
+    while let Some(row) = ui.get_components().row_data(0) {
+        ui.invoke_remove_component(row.binding);
+    }
+    h.settle();
     assert_eq!(
-        ui.get_rows().row_count(),
+        ui.get_components().row_count(),
         0,
         "the row model must really be empty"
     );
     if let Some(detached) = destroyed.upgrade() {
-        eprintln!(
-            "Removed delegate diagnostic: old is_visible={} geometry={:?} current-focus={}",
-            detached.is_visible(),
-            detached.geometry(),
-            inner.focus_item.borrow().upgrade().as_ref() == Some(&detached)
-        );
         assert!(
             root.visit_descendants(|item| {
                 if *item == detached {
@@ -455,15 +353,93 @@ pub(super) fn assert_pending_entry_survives_font_reflow(ui: &MainWindow) {
             "removed input must leave the actual live item tree"
         );
     }
-    ui.window()
-        .dispatch_event(slint::platform::WindowEvent::PointerMoved {
-            position: slint::LogicalPosition::new(10.0, 10.0),
-        });
-    settle(ui);
+    ui.window().dispatch_event(WindowEvent::PointerMoved {
+        position: slint::LogicalPosition::new(10.0, 10.0),
+    });
+    h.settle();
     assert!(
         inner.focus_item.borrow().upgrade().is_none(),
-        "destroyed delegate cannot retain focus"
+        "destroyed field cannot retain focus"
     );
-    ui.set_editor_scroll_y(0.0);
-    settle(ui);
+}
+
+#[test]
+fn monitor_handoff_and_deactivation_preserve_numeric_entry() {
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 0);
+    let staged = || field_state(&h, ParameterId::ToneFrequency).0;
+    let committed = || field_state(&h, ParameterId::ToneFrequency).1;
+    ui.invoke_focus_monitor_opener();
+    // Navigate the real component tree, proving the target by its staged field.
+    for _ in 0..60 {
+        h.key(Key::Tab);
+        for _ in 0..4 {
+            h.key(Key::RightArrow);
+        }
+        h.key("1");
+        if staged().is_some() {
+            break;
+        }
+        h.key(Key::Escape);
+    }
+    // Arrow keys on the way also moved the frequency slider, which commits.
+    let base = committed();
+    let base_text = h.adapter.inspect(|w| {
+        let (component, _) = w.editor().draft().components()[0];
+        w.editor().committed_text(EditingField::Parameter(
+            component,
+            ParameterId::ToneFrequency,
+        ))
+    });
+    assert_eq!(staged(), Some(format!("{base_text}1")));
+    let monitor = MonitorWindow::new().unwrap();
+    monitor.show().unwrap();
+    hide_monitor_window(ui, &monitor, false);
+    h.settle();
+    assert_eq!(
+        committed(),
+        base,
+        "hiding an unfocused monitor must not commit a main-window field"
+    );
+    h.key(Key::Escape);
+    assert!(staged().is_none());
+    for _ in 0..4 {
+        h.key(Key::RightArrow);
+    }
+    h.key("e");
+    assert_eq!(staged(), Some(format!("{base_text}e")));
+    monitor.show().unwrap();
+    hide_monitor_window(ui, &monitor, false);
+    h.settle();
+    assert_eq!(
+        staged(),
+        Some(format!("{base_text}e")),
+        "incomplete numeric entry must survive responsive hiding"
+    );
+    h.key(Key::Escape);
+    assert!(staged().is_none());
+    // Native deactivation suspends edit commits before Slint delivers focus loss.
+    for _ in 0..4 {
+        h.key(Key::RightArrow);
+    }
+    h.key("1");
+    ui.set_edits_suspended(true);
+    ui.window()
+        .dispatch_event(WindowEvent::WindowActiveChanged(false));
+    monitor.show().unwrap();
+    hide_monitor_window(ui, &monitor, true);
+    ui.window()
+        .dispatch_event(WindowEvent::WindowActiveChanged(true));
+    ui.set_edits_suspended(false);
+    h.settle();
+    assert_eq!(committed(), base);
+    let staged_before = staged();
+    h.key("2");
+    assert_eq!(
+        staged(),
+        staged_before,
+        "opener handoff must leave the numeric field unfocused"
+    );
 }

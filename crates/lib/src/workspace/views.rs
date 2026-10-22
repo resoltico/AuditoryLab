@@ -610,22 +610,7 @@ impl Workspace {
         };
         let playing = self.audio.is_some();
         let exporting = self.exporting();
-        let progress = match &self.file {
-            Some(super::FileTask {
-                kind: FileKind::Export {
-                    frames, progress, ..
-                },
-                ..
-            }) if *frames > 0 => {
-                #[expect(
-                    clippy::cast_precision_loss,
-                    reason = "Nonnegative frame counts form a display-only ratio"
-                )]
-                let ratio = progress.frames() as f64 / *frames as f64;
-                ratio.clamp(0.0, 1.0)
-            }
-            _ => 0.0,
-        };
+        let progress = self.export_progress();
         let preparing = self
             .audio
             .as_ref()
@@ -674,6 +659,27 @@ impl Workspace {
                 }
                 None => String::new(),
             },
+        }
+    }
+
+    /// The running export's completed fraction, from 0 to 1; 0 otherwise.
+    #[must_use]
+    pub fn export_progress(&self) -> f64 {
+        match &self.file {
+            Some(super::FileTask {
+                kind: FileKind::Export {
+                    frames, progress, ..
+                },
+                ..
+            }) if *frames > 0 => {
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "Nonnegative frame counts form a display-only ratio"
+                )]
+                let ratio = progress.frames() as f64 / *frames as f64;
+                ratio.clamp(0.0, 1.0)
+            }
+            _ => 0.0,
         }
     }
 
@@ -836,6 +842,17 @@ impl Workspace {
                 "Seekable preview; not generated playback".into()
             };
         }
+        view.model_caption = self.output.model().map_or_else(
+            || "No valid timing model available".to_owned(),
+            |model| {
+                format!(
+                    "{}{}\n{}",
+                    model.caption(),
+                    reader.map_or_else(String::new, |r| model.generation_note(r.status())),
+                    presentation::structure_description(&model.structure)
+                )
+            },
+        );
         if let Some(reason) = &output.unavailable {
             view.warning = (reason.clone(), true);
         }

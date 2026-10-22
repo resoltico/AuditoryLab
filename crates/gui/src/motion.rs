@@ -11,15 +11,6 @@ pub(crate) enum Preference {
     Full,
     Unknown,
 }
-impl Preference {
-    pub(crate) fn description(self) -> &'static str {
-        match self {
-            Self::Reduced => "System Reduce Motion is enabled; display held by default.",
-            Self::Full => "System motion preference permits live drawing.",
-            Self::Unknown => "System motion preference unavailable; using live drawing fallback.",
-        }
-    }
-}
 pub(crate) struct Service {
     pending: Arc<Mutex<Option<Preference>>>,
     stop: Arc<AtomicBool>,

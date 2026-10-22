@@ -2,52 +2,37 @@ import {
     Palette, AboutSlint, Button, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, TabWidget, ProgressIndicator
 }
 from "std-widgets.slint";
-export struct ModelRow { id: string, label: string, trace: string }
-export struct Row {
-    id: string,
-
+// Semantic quantities; the application maps each to exactly one domain field.
+export enum ParameterKey {
+    tone-frequency, click-rate, click-width, peak-level, amplitude-modulation-rate,
+    modulation-depth, gate-rate, gate-width, duration, fade
+}
+export enum MetadataKey { title, summary, duration, fade }
+export struct ParameterRow {
+    key: ParameterKey,
+    label: string,
+    help: string,
+    text: string,
+    staged: bool,
+    has-slider: bool,
+    position: float,
+    diagnostic: string,
+}
+// `binding` identifies the rendered component of one particular document.
+export struct ComponentRow {
+    binding: int,
+    id: int,
     ears: int,
-    source: int,
+    carrier: int,
     modulation: int,
-    error: string,
     heading: string,
     name: string,
     context: string,
-    error0: string,
-    text0: string,
-    pos0: float,
-    error1: string,
-    text1: string,
-    pos1: float,
-    error2: string,
-    text2: string,
-    pos2: float,
-    error3: string,
-    text3: string,
-    pos3: float,
-    error4: string,
-    text4: string,
-    pos4: float,
-    error5: string,
-    text5: string,
-    pos5: float,
-    error6: string,
-    text6: string,
-    pos6: float,
-    error7: string,
-    text7: string,
-    staged0:bool,
-    staged1:bool,
-    staged2:bool,
-    staged3:bool,
-    staged4:bool,
-    staged5:bool,
-    staged6:bool,
-    staged7:bool,
-
-    pos7: float,
+    error: string,
+    parameters: [ParameterRow],
 }
-// Keep uncommitted text and focus local; model refreshes only replace unfocused text.
+export struct MetadataRow { label: string, text: string, staged: bool, diagnostic: string }
+export struct ModelLane { component: int, label: string, trace: string }
 component Disclosure inherits Button {
     in-out property <bool> expanded: false;
     in property <string> label;
@@ -56,21 +41,31 @@ component Disclosure inherits Button {
     accessible-expanded: root.expanded;
     clicked => {root.expanded = !root.expanded;}
 }
+// Uncommitted text, caret and focus stay local. Model refreshes replace only
+// unfocused text. An edit keeps the binding it started with, so a late commit
+// can never address a field rendered for another document.
 component NumericField inherits LineEdit {
     in property <string> display-text;
     in property <bool> edits-suspended:false;
     in property <bool> staged:false;
-    private property <bool> dirty: false;
+    in property <int> binding;
     in property <int> reset-key;
+    private property <bool> dirty: false;
+    private property <int> captured: -1;
+    callback stage(int, string);
+    callback commit(int, string);
+    callback restore(int);
+    function owner() -> int { return root.dirty ? root.captured : root.binding; }
     changed reset-key => {
         self.text = root.display-text;
         root.dirty = root.staged;
+        root.captured = root.binding;
     }
-    changed staged => {root.dirty=root.staged;}
-    callback stage(string);
-    callback commit(string);
-    callback restore()->string;
-    init => {self.text=root.display-text;root.dirty=root.staged;}
+    changed staged => {
+        if root.staged && !root.dirty { root.captured = root.binding; }
+        root.dirty = root.staged;
+    }
+    init => {self.text=root.display-text;root.dirty=root.staged;root.captured=root.binding;}
     changed display-text => {
         if !self.has-focus {
             self.text = root.display-text;
@@ -78,80 +73,90 @@ component NumericField inherits LineEdit {
         }
     }
     edited(value) => {
+        if !root.dirty { root.captured = root.binding; }
         root.dirty = true;
-        root.stage(value);
+        root.stage(root.captured, value);
     }
     key-pressed(event) => {
         if event.text == Key.Escape {
-            self.text=root.restore();
-            root.dirty=false;
+            root.restore(root.owner());
+            self.text = root.display-text;
+            root.dirty = false;
             return accept;
         }
         return reject;
     }
     accepted(value) => {
+        let owner = root.owner();
         root.dirty = false;
-        root.commit(value);
+        root.commit(owner, value);
     }
     changed has-focus => {
         if !self.has-focus && root.dirty && !root.edits-suspended {
             root.dirty = false;
-            root.commit(self.text);
+            root.commit(root.captured, self.text);
         }
     }
 }
-component NumericControl inherits HorizontalBox {
+component ParameterControl inherits HorizontalBox {
+    in property <ParameterRow> parameter;
+    in property <int> owner;
     in property <string> context;
     in property <bool> compact:false;
     in property <length> ui-size:13px;
-    padding: 0px;
-    in property <string> label;
-    in property <string> display-text;
     in property <bool> edits-suspended:false;
-    in property <bool> staged:false;
-    in property <float> position;
-    in property <string> diagnostic;
     in property <bool> edit-enabled: true;
-    callback stage(string);
-    callback commit(string);
-    callback restore()->string;
-    callback slide(float);
+    callback stage(int, ParameterKey, string);
+    callback commit(int, ParameterKey, string);
+    callback restore(int, ParameterKey);
+    callback slide(int, ParameterKey, float);
+    padding: 0px;
     vertical-stretch: 0;
     Text {
-        text: root.label;
+        text: root.parameter.label;
         min-width:root.ui-size*(root.compact ? 4 : 12.5);
         max-width:root.ui-size*(root.compact ? 7 : 16);
         wrap: word-wrap;
     }
-    if !root.compact: Slider {
+    if !root.compact && root.parameter.has-slider: Slider {
         enabled: root.edit-enabled;
         minimum: 0;
         maximum: 1;
         step: 0.001;
-        value: root.position;
-        accessible-label: root.context+": "+root.label + " slider";
+        value: root.parameter.position;
+        accessible-label: root.context+": "+root.parameter.label + " slider";
         changed(value) => {
-            root.slide(value);
+            root.slide(root.owner, root.parameter.key, value);
         }
     }
     NumericField {
         enabled: root.edit-enabled;
-        display-text: root.display-text;
+        binding: root.owner;
+        display-text: root.parameter.text;
         edits-suspended:root.edits-suspended;
-        staged:root.staged;
-        restore=>{return root.restore();}
+        staged:root.parameter.staged;
         preferred-width:root.ui-size*(root.compact ? 7 : 12);
         max-width:root.ui-size*(root.compact ? 7 : 12);
         horizontal-stretch: 0;
-        accessible-label: root.context+": "+root.label;
-        accessible-description: root.diagnostic;
-        stage(value) => {
-            root.stage(value);
-        }
-        commit(value) => {
-            root.commit(value);
-        }
+        accessible-label: root.context+": "+root.parameter.label;
+        accessible-description: root.parameter.diagnostic != "" ? root.parameter.diagnostic : root.parameter.help;
+        restore(owner) => { root.restore(owner, root.parameter.key); }
+        stage(owner, value) => { root.stage(owner, root.parameter.key, value); }
+        commit(owner, value) => { root.commit(owner, root.parameter.key, value); }
     }
+}
+component MetadataField inherits NumericField {
+    in property <MetadataRow> field;
+    in property <MetadataKey> key;
+    callback stage-field(int, MetadataKey, string);
+    callback commit-field(int, MetadataKey, string);
+    callback restore-field(int, MetadataKey);
+    display-text: root.field.text;
+    staged: root.field.staged;
+    accessible-description: root.field.diagnostic;
+    stage(owner, value) => { root.stage-field(owner, root.key, value); }
+    commit(owner, value) => { root.commit-field(owner, root.key, value); }
+    restore(owner) => { root.restore-field(owner, root.key); }
 }
 component ExportRate inherits HorizontalBox {
     padding: 0px;
@@ -280,6 +285,8 @@ export struct MonitorData {
 component MonitorPanel inherits VerticalBox {
     property <length> lane-label-width: max(left-lane.label-width, right-lane.label-width);
     in property <MonitorData> data;
+    in property <[string]> span-choices;
+    in property <[string]> scale-choices;
     in property <length> ui-size:13px;
     callback span(int);callback scale(int);callback hold();callback follow();callback details();callback collapse();
     spacing:4px;padding:0px;
@@ -298,8 +305,8 @@ component MonitorPanel inherits VerticalBox {
             HorizontalBox {padding:0px;vertical-stretch:0;Text {text:"−"+root.data.spanlabel;}Rectangle {horizontal-stretch:1;}Text {text:"Captured end";}}
         }
         VerticalBox {padding:0px;spacing:4px;preferred-width:root.ui-size*21;max-width:root.ui-size*25;
-            ComboBox {model:["2 ms","10 ms","40 ms","100 ms"];current-index:root.data.spanchoice;enabled:!root.data.held;accessible-label:"Waveform time window";selected(v)=>{root.span(self.current-index);}}
-            ComboBox {model:["Fixed ±1","Fit signal"];current-index:root.data.scalechoice;enabled:!root.data.held;accessible-label:"Waveform amplitude scale";selected(v)=>{root.scale(self.current-index);}}
+            ComboBox {model:root.span-choices;current-index:root.data.spanchoice;enabled:!root.data.held;accessible-label:"Waveform time window";selected(v)=>{root.span(self.current-index);}}
+            ComboBox {model:root.scale-choices;current-index:root.data.scalechoice;enabled:!root.data.held;accessible-label:"Waveform amplitude scale";selected(v)=>{root.scale(self.current-index);}}
             HorizontalBox {padding:0px;spacing:4px;
                 Button {text:root.data.held ? "Return to live" : "Hold display";clicked=>{root.hold();}}
                 if root.data.overridden: Button {text:"Follow system";accessible-label:"Follow system motion preference";clicked=>{root.follow();}}
@@ -323,6 +330,8 @@ export component MonitorWindow inherits Window {
     preferred-width:950px;preferred-height:420px;
     min-width:680px;min-height:400px;
     in property <MonitorData> data;
+    in property <[string]> span-choices;
+    in property <[string]> scale-choices;
     callback span(int);callback scale(int);callback hold();callback follow();callback details();callback dismiss();
     forward-focus:monitor-keys;
     monitor-keys := FocusScope {
@@ -352,7 +361,7 @@ export component MonitorWindow inherits Window {
         }
     monitor-scroll := ScrollView {
         VerticalBox {padding:16px;
-            MonitorPanel {max-height:self.preferred-height;data:root.data;ui-size:root.ui-size;span(i)=>{root.span(i);}scale(i)=>{root.scale(i);}hold=>{root.hold();}follow=>{root.follow();}details=>{root.details();}collapse=>{root.dismiss();}}
+            MonitorPanel {max-height:self.preferred-height;data:root.data;span-choices:root.span-choices;scale-choices:root.scale-choices;ui-size:root.ui-size;span(i)=>{root.span(i);}scale(i)=>{root.scale(i);}hold=>{root.hold();}follow=>{root.follow();}details=>{root.details();}collapse=>{root.dismiss();}}
         }
     }
     }
@@ -397,15 +406,36 @@ export component AudioControlsWindow inherits Window {
 export component MainWindow inherits Window {
     title: "Auditory Lab";
     in-out property <bool> edits-suspended:false;
-    callback restore(string,int)->string;
-    callback restore-metadata(string)->string;
     in-out property <bool> monitor-open:true;
     in property <bool> native-mac: false;
     in property <string> draft-brief;
-    in property <bool> title-staged;
-    in property <bool> summary-staged;
-    in property <bool> duration-staged;
-    in property <bool> fade-staged;
+    // The open document's binding; field callbacks carry the binding they rendered with.
+    in property <int> document;
+    in property <int> document-reset;
+    in property <MetadataRow> title-field;
+    in property <MetadataRow> summary-field;
+    in property <MetadataRow> duration-field;
+    in property <MetadataRow> fade-field;
+    in property <[ComponentRow]> components;
+    in property <[ModelLane]> model-lanes;
+    in property <[string]> ears-choices;
+    in property <[string]> carrier-choices;
+    in property <[string]> add-choices;
+    in property <[string]> modulation-choices;
+    in property <[string]> span-choices;
+    in property <[string]> scale-choices;
+    callback stage-parameter(int, ParameterKey, string);
+    callback commit-parameter(int, ParameterKey, string);
+    callback restore-parameter(int, ParameterKey);
+    callback slide(int, ParameterKey, float);
+    callback stage-metadata(int, MetadataKey, string);
+    callback commit-metadata(int, MetadataKey, string);
+    callback restore-metadata(int, MetadataKey);
+    callback set-ears(int, int);
+    callback set-carrier(int, int);
+    callback set-modulation(int, int);
+    callback remove-component(int);
+    callback add-component(int, int);
 
     in property <string> output-state;
     in property <string> receipt-age;
@@ -439,7 +469,6 @@ export component MainWindow inherits Window {
     in property <string> waveform-caption;
     in property <string> scale-label: "1";
     in property <string> model-caption;
-    in property <[ModelRow]> model-rows;
     in property <string> monitor-warning;
     in property <bool> monitor-warning-live;
     in property <string> backend-warning;
@@ -455,7 +484,6 @@ export component MainWindow inherits Window {
     min-height: 700px;
     in property <[StandardListViewItem]> catalog;
     in-out property <int> selected: 0;
-    in property <[Row]> rows;
     in property <string> sound-title;
     in property <string> studied;
     in property <bool> can-open-study;
@@ -494,16 +522,11 @@ export component MainWindow inherits Window {
     in property <float> progress;
     in property <string> left-path;
     in property <string> right-path;
-    in property <int> draft-reset;
     in-out property <length> editor-scroll-y;
-    in property <string> draft-title;
-    in property <string> draft-summary;
-    in property <string> duration;
-    in property <string> fade;
     in property <string> metadata-error;
-    in property <string> duration-error;
-    in property <string> fade-error;
     in property <string> save-reason;
+    in property <string> export-reason;
+    in property <string> play-reason;
     in property <string> peak;
     in-out property <int> tab-index: 0;
     in-out property <int> window-index: 2;
@@ -542,14 +565,6 @@ export component MainWindow inherits Window {
     callback tab-changed(int);
     callback open-workbench();
     callback new-draft();
-    callback add-component(int);
-    callback remove-component(string);
-    callback choice(string, int, int);
-    callback edit(string, int, string);
-    callback slide(string, int, float);
-    callback metadata(string, string);
-    callback stage-metadata(string, string);
-    callback stage(string, int, string);
     callback save-recipe();
     MenuBar {
         Menu {
@@ -834,7 +849,7 @@ export component MainWindow inherits Window {
                                 if library-pattern.expanded: VerticalBox {
                                     vertical-stretch:0;
                                     Text {text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
-                                    for lane in root.model-rows: VerticalBox {
+                                    for lane in root.model-lanes: VerticalBox {
                                         vertical-stretch:0;
                                         Text {text:lane.label;wrap:word-wrap;vertical-stretch:0;}
                                         Rectangle {height:30px;background:Palette.control-background;
@@ -869,22 +884,19 @@ export component MainWindow inherits Window {
                         padding: 0px;
                         vertical-stretch: 0;
                         Text {
-                            text:"Sound";
+                            text:root.title-field.label;
                         }
-                        NumericField {
-                            reset-key:root.draft-reset;
+                        MetadataField {
+                            key: MetadataKey.title;
+                            field: root.title-field;
+                            binding: root.document;
+                            reset-key:root.document-reset;
                             enabled:root.can-edit;
-                            display-text:root.draft-title;
-                            staged:root.title-staged;
                             edits-suspended:root.edits-suspended;
-                            restore=>{return root.restore-metadata("title");}
                             accessible-label:"Sound title";
-                            stage(v)=> {
-                                root.stage-metadata("title",v);
-                            }
-                            commit(v)=> {
-                                root.metadata("title",v);
-                            }
+                            stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
+                            commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
+                            restore-field(owner, key) => { root.restore-metadata(owner, key); }
                         }
                     }
                     HorizontalBox {vertical-stretch:0;
@@ -899,27 +911,15 @@ export component MainWindow inherits Window {
                                 root.new-draft();
                             }
                         }
-
-
                     }
                     HorizontalBox {
                         padding: 0px;
                         vertical-stretch: 0;
-
-
-
-                        Button {
-                            text:"Add steady tone";
-                            enabled:root.can-edit && root.rows.length<16;
+                        for label[index] in root.add-choices: Button {
+                            text:label;
+                            enabled:root.can-edit;
                             clicked=> {
-                                root.add-component(0);
-                            }
-                        }
-                        Button {
-                            text:"Add click rhythm";
-                            enabled:root.can-edit && root.rows.length<16;
-                            clicked=> {
-                                root.add-component(1);
+                                root.add-component(root.document, index);
                             }
                         }
                     }
@@ -932,7 +932,6 @@ export component MainWindow inherits Window {
                         accessible-label:root.retained-warning;
                         accessible-live-region:polite;
                     }
-
                     if root.status != "": Text {text:root.status;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
                     if root.file-activity != "": Text {text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
                     if root.metadata-error != "": Text {text:root.metadata-error;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
@@ -944,390 +943,196 @@ export component MainWindow inherits Window {
                         font-size:root.ui-size*0.93;
                         vertical-stretch:0;
                     }
-                            for row in root.rows: VerticalBox {
-                                spacing: 4px;
-                                Rectangle {
-                                    height:1px;
-                                    background:Palette.border;
+                    for row in root.components: VerticalBox {
+                        spacing: 4px;
+                        vertical-stretch: 0;
+                        Rectangle {
+                            height:1px;
+                            background:Palette.border;
+                        }
+                        Text {
+                            text: row.heading;
+                            font-weight: 700;
+                            vertical-stretch: 0;
+                        }
+                        Text {text:row.context; wrap:word-wrap; vertical-stretch:0;}
+                        pattern := Disclosure {label:"Pattern explained · static core model";}
+                        if pattern.expanded: VerticalBox {
+                            vertical-stretch:0;
+                            Text {text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
+                            VerticalBox {
+                              padding:0px; spacing:0px; vertical-stretch:0;
+                              for lane in root.model-lanes: VerticalBox {
+                                padding:0px; spacing:0px; vertical-stretch:0;
+                                if lane.component == row.id: VerticalBox {
+                                  vertical-stretch:0;
+                                  Text {text:lane.label;wrap:word-wrap;vertical-stretch:0;}
+                                  Rectangle {height:36px;background:Palette.control-background;
+                                      accessible-role:image;accessible-label:lane.label+" static model, origin zero";
+                                      Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
+                                  }
                                 }
-                                vertical-stretch: 0;
-                                HorizontalBox {
-                                    padding: 0px;
-                                    vertical-stretch: 0;
-                                    Text {
-                                        text: row.heading;
-                                        font-weight: 700;
-                                    }
-                                }
-                                Text {text:row.context; wrap:word-wrap; vertical-stretch:0;}
-                                pattern := Disclosure {label:"Pattern explained · static core model";}
-                                if pattern.expanded: VerticalBox {
-                                    vertical-stretch:0;
-                                    Text {text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
-                                    VerticalBox {
-                                      padding:0px; spacing:0px; vertical-stretch:0;
-                                      for lane in root.model-rows: VerticalBox {
-                                        padding:0px; spacing:0px; vertical-stretch:0;
-                                        if lane.id == row.id: VerticalBox {
-                                          vertical-stretch:0;
-                                          Text {text:lane.label;wrap:word-wrap;vertical-stretch:0;}
-                                          Rectangle {height:36px;background:Palette.control-background;
-                                              accessible-role:image;accessible-label:lane.label+" static model, origin zero";
-                                              Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
-                                          }
-                                        }
-                                      }
-                                    }
-                                    Text {text:"Technical layer ID: "+row.id;vertical-stretch:0;}
-                                }
-                                component-options := Disclosure {label:"Routing, modulation and layer options";}
-                                if component-options.expanded: VerticalBox {
-                                    padding: 0px;
-                                    vertical-stretch: 0;
-                                    Text {
-                                        text: "Ears";
-                                    }
-                                    ComboBox {
-                                        enabled: root.can-edit;
-                                        model: ["Both ears", "Left", "Right"];
-                                        current-index: row.ears;
-                                        accessible-label: "ears";
-                                        selected(value) => {
-                                            root.choice(row.id, 0, self.current-index);
-                                        }
-                                    }
-                                    Text {
-                                        text: "Source";
-                                    }
-                                    ComboBox {
-                                        enabled: root.can-edit;
-                                        model: ["Tone", "Clicks"];
-                                        current-index: row.source;
-                                        accessible-label: "source";
-                                        selected(value) => {
-                                            root.choice(row.id, 1, self.current-index);
-                                        }
-                                    }
-                                    Text {
-                                        text: "Modulation";
-                                    }
-                                    ComboBox {
-                                        enabled: root.can-edit;
-                                        model: ["None", "Sinusoidal", "Gate"];
-                                        current-index: row.modulation;
-                                        accessible-label: "modulation";
-                                        selected(value) => {
-                                            root.choice(row.id, 2, self.current-index);
-                                        }
-                                    }
-                                    Button {
-                                        text: "Remove";
-                                        enabled: root.can-edit;
-                                        accessible-label: "Remove layer · " + row.name;
-                                        clicked => {
-                                            root.remove-component(row.id);
-                                        }
-                                    }
-                                }
-                                if row.source == 0: NumericControl {
-                                    compact:root.compact;
-                                    ui-size:root.ui-size;
-                                    label: "Tone frequency (Hz)";
-                                    edit-enabled: root.can-edit;
-                                    diagnostic: row.error0;
-                                    display-text: row.text0;
-                                    staged:row.staged0;
-                                    context:row.name;
-                                    position: row.pos0;
-                                    edits-suspended:root.edits-suspended;
-                                    restore=>{return root.restore(row.id,0);}
-                                    stage(value) => {
-                                        root.stage(row.id, 0, value);
-                                    }
-                                    commit(value) => {
-                                        root.edit(row.id, 0, value);
-                                    }
-                                    slide(value) => {
-                                        root.slide(row.id, 0, value);
-                                    }
-                                }
-                                if row.source == 1: NumericControl {
-                                    compact:root.compact;
-                                    ui-size:root.ui-size;
-                                    label: "Click rate (Hz)";
-                                    edit-enabled: root.can-edit;
-                                    diagnostic: row.error1;
-                                    display-text: row.text1;
-                                    staged:row.staged1;
-                                    context:row.name;
-                                    position: row.pos1;
-                                    edits-suspended:root.edits-suspended;
-                                    restore=>{return root.restore(row.id,1);}
-                                    stage(value) => {
-                                        root.stage(row.id, 1, value);
-                                    }
-                                    commit(value) => {
-                                        root.edit(row.id, 1, value);
-                                    }
-                                    slide(value) => {
-                                        root.slide(row.id, 1, value);
-                                    }
-                                }
-                                if row.source == 1: NumericControl {
-                                    compact:root.compact;
-                                    ui-size:root.ui-size;
-                                    label: "Click width (ms)";
-                                    edit-enabled: root.can-edit;
-                                    diagnostic: row.error2;
-                                    display-text: row.text2;
-                                    staged:row.staged2;
-                                    context:row.name;
-                                    position: row.pos2;
-                                    edits-suspended:root.edits-suspended;
-                                    restore=>{return root.restore(row.id,2);}
-                                    stage(value) => {
-                                        root.stage(row.id, 2, value);
-                                    }
-                                    commit(value) => {
-                                        root.edit(row.id, 2, value);
-                                    }
-                                    slide(value) => {
-                                        root.slide(row.id, 2, value);
-                                    }
-                                }
-                                NumericControl {
-                                    compact:root.compact;
-                                    ui-size:root.ui-size;
-                                    label: "Peak level (dBFS)";
-                                    edit-enabled: root.can-edit;
-                                    diagnostic: row.error3;
-                                    display-text: row.text3;
-                                    staged:row.staged3;
-                                    context:row.name;
-                                    position: row.pos3;
-                                    edits-suspended:root.edits-suspended;
-                                    restore=>{return root.restore(row.id,3);}
-                                    stage(value) => {
-                                        root.stage(row.id, 3, value);
-                                    }
-                                    commit(value) => {
-                                        root.edit(row.id, 3, value);
-                                    }
-                                    slide(value) => {
-                                        root.slide(row.id, 3, value);
-                                    }
-                                }
-                                if row.modulation == 1: NumericControl {
-                                    compact:root.compact;
-                                    ui-size:root.ui-size;
-                                    label: "Modulation rate (Hz)";
-                                    edit-enabled: root.can-edit;
-                                    diagnostic: row.error4;
-                                    display-text: row.text4;
-                                    staged:row.staged4;
-                                    context:row.name;
-                                    position: row.pos4;
-                                    edits-suspended:root.edits-suspended;
-                                    restore=>{return root.restore(row.id,4);}
-                                    stage(value) => {
-                                        root.stage(row.id, 4, value);
-                                    }
-                                    commit(value) => {
-                                        root.edit(row.id, 4, value);
-                                    }
-                                    slide(value) => {
-                                        root.slide(row.id, 4, value);
-                                    }
-                                }
-                                if row.modulation == 1: NumericControl {
-                                    compact:root.compact;
-                                    ui-size:root.ui-size;
-                                    label: "Depth (%)";
-                                    edit-enabled: root.can-edit;
-                                    diagnostic: row.error5;
-                                    display-text: row.text5;
-                                    staged:row.staged5;
-                                    context:row.name;
-                                    position: row.pos5;
-                                    edits-suspended:root.edits-suspended;
-                                    restore=>{return root.restore(row.id,5);}
-                                    stage(value) => {
-                                        root.stage(row.id, 5, value);
-                                    }
-                                    commit(value) => {
-                                        root.edit(row.id, 5, value);
-                                    }
-                                    slide(value) => {
-                                        root.slide(row.id, 5, value);
-                                    }
-                                }
-                                if row.modulation == 2: NumericControl {
-                                    compact:root.compact;
-                                    ui-size:root.ui-size;
-                                    label: "Gate rate (Hz)";
-                                    edit-enabled: root.can-edit;
-                                    diagnostic: row.error6;
-                                    display-text: row.text6;
-                                    staged:row.staged6;
-                                    context:row.name;
-                                    position: row.pos6;
-                                    edits-suspended:root.edits-suspended;
-                                    restore=>{return root.restore(row.id,6);}
-                                    stage(value) => {
-                                        root.stage(row.id, 6, value);
-                                    }
-                                    commit(value) => {
-                                        root.edit(row.id, 6, value);
-                                    }
-                                    slide(value) => {
-                                        root.slide(row.id, 6, value);
-                                    }
-                                }
-                                if row.modulation == 2: NumericControl {
-                                    compact:root.compact;
-                                    ui-size:root.ui-size;
-                                    label: "Gate width (ms)";
-                                    edit-enabled: root.can-edit;
-                                    diagnostic: row.error7;
-                                    display-text: row.text7;
-                                    staged:row.staged7;
-                                    context:row.name;
-                                    position: row.pos7;
-                                    edits-suspended:root.edits-suspended;
-                                    restore=>{return root.restore(row.id,7);}
-                                    stage(value) => {
-                                        root.stage(row.id, 7, value);
-                                    }
-                                    commit(value) => {
-                                        root.edit(row.id, 7, value);
-                                    }
-                                    slide(value) => {
-                                        root.slide(row.id, 7, value);
-                                    }
-                                }
-                                if row.error != "": Text {
-                                    text: row.error;
-                                    color: Palette.foreground;
-                                    accessible-live-region: polite;
-                                    wrap: word-wrap;
-                                    vertical-stretch: 0;
-                                }
+                              }
                             }
-                            Text {
-                                text:root.peak;
-                                wrap:word-wrap;
-                                vertical-stretch:0;
+                        }
+                        component-options := Disclosure {label:"Routing, modulation and layer options";}
+                        if component-options.expanded: VerticalBox {
+                            padding: 0px;
+                            vertical-stretch: 0;
+                            Text { text: "Ears"; }
+                            ComboBox {
+                                enabled: root.can-edit;
+                                model: root.ears-choices;
+                                current-index: row.ears;
+                                accessible-label: row.name + ": ears";
+                                selected(value) => { root.set-ears(row.binding, self.current-index); }
                             }
-                            settings := Disclosure {label:"Sound settings · notes and saved/exported audio";}
-                            if settings.expanded: VerticalBox {
+                            Text { text: "Carrier"; }
+                            ComboBox {
+                                enabled: root.can-edit;
+                                model: root.carrier-choices;
+                                current-index: row.carrier;
+                                accessible-label: row.name + ": carrier";
+                                selected(value) => { root.set-carrier(row.binding, self.current-index); }
+                            }
+                            Text { text: "Modulation"; }
+                            ComboBox {
+                                enabled: root.can-edit;
+                                model: root.modulation-choices;
+                                current-index: row.modulation;
+                                accessible-label: row.name + ": modulation";
+                                selected(value) => { root.set-modulation(row.binding, self.current-index); }
+                            }
+                            Button {
+                                text: "Remove";
+                                enabled: root.can-edit;
+                                accessible-label: "Remove " + row.name;
+                                clicked => { root.remove-component(row.binding); }
+                            }
+                        }
+                        for parameter in row.parameters: ParameterControl {
+                            parameter: parameter;
+                            owner: row.binding;
+                            context: row.name;
+                            compact: root.compact;
+                            ui-size: root.ui-size;
+                            edit-enabled: root.can-edit;
+                            edits-suspended: root.edits-suspended;
+                            stage(owner, key, value) => { root.stage-parameter(owner, key, value); }
+                            commit(owner, key, value) => { root.commit-parameter(owner, key, value); }
+                            restore(owner, key) => { root.restore-parameter(owner, key); }
+                            slide(owner, key, value) => { root.slide(owner, key, value); }
+                        }
+                        if row.error != "": Text {
+                            text: row.error;
+                            color: Palette.foreground;
+                            accessible-live-region: polite;
+                            wrap: word-wrap;
+                            vertical-stretch: 0;
+                        }
+                    }
+                    Text {
+                        text:root.peak;
+                        wrap:word-wrap;
+                        vertical-stretch:0;
+                    }
+                    settings := Disclosure {label:"Sound settings · notes and saved/exported audio";}
+                    if settings.expanded: VerticalBox {
                         Button {
                             text:"Export WAV…";
                             enabled:!root.busy && root.can-export;
+                            accessible-description:root.export-reason;
                             clicked=> {
                                 root.export-wav();
                             }
                         }
-                            Disclosure {label:"Sound notes";expanded <=> root.notes;}
-                            if root.notes: VerticalBox {
-                                if root.based-on != "": Text {
-                                    text:root.based-on;
-                                    wrap:word-wrap;
-                                    vertical-stretch:0;
+                        Disclosure {label:"Sound notes";expanded <=> root.notes;}
+                        if root.notes: VerticalBox {
+                            if root.based-on != "": Text {
+                                text:root.based-on;
+                                wrap:word-wrap;
+                                vertical-stretch:0;
+                            }
+                            if root.based-on != "": Button {
+                                text:"Show source recipe in Library";
+                                clicked=> {
+                                    root.based-on-source();
                                 }
-                                if root.based-on != "": Button {
-                                    text:"Show source recipe in Library";
-                                    clicked=> {
-                                        root.based-on-source();
-                                    }
-                                }
+                            }
+                            Text {
+                                text:"Your notes about this sound";
+                                vertical-stretch:0;
+                            }
+                            MetadataField {
+                                key: MetadataKey.summary;
+                                field: root.summary-field;
+                                binding: root.document;
+                                reset-key:root.document-reset;
+                                enabled:root.can-edit;
+                                edits-suspended:root.edits-suspended;
+                                accessible-label:"Custom recipe notes";
+                                stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
+                                commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
+                                restore-field(owner, key) => { root.restore-metadata(owner, key); }
+                            }
+                        }
+                        Disclosure {label:"Saved audio · duration, fades and export rate";expanded <=> root.saved-audio;}
+                        if root.saved-audio: VerticalBox {
+                            Text {
+                                text:"Live playback continues until Stop. These settings affect saved recipes and WAV export.";
+                                wrap:word-wrap;
+                                vertical-stretch:0;
+                            }
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
                                 Text {
-                                    text:"Your notes about this sound";
-                                    vertical-stretch:0;
+                                    text:root.duration-field.label;
                                 }
-                                NumericField {
-                                    reset-key:root.draft-reset;
+                                MetadataField {
+                                    key: MetadataKey.duration;
+                                    field: root.duration-field;
+                                    binding: root.document;
+                                    reset-key:root.document-reset;
                                     enabled:root.can-edit;
-                                    display-text:root.draft-summary;
-                            staged:root.summary-staged;
-                            edits-suspended:root.edits-suspended;
-                            restore=>{return root.restore-metadata("summary");}
-                                    accessible-label:"Custom recipe notes";
-                                    stage(v)=> {
-                                        root.stage-metadata("summary",v);
-                                    }
-                                    commit(v)=> {
-                                        root.metadata("summary",v);
-                                    }
+                                    edits-suspended:root.edits-suspended;
+                                    accessible-label:"Saved duration";
+                                    stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
+                                    commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
+                                    restore-field(owner, key) => { root.restore-metadata(owner, key); }
                                 }
-                            }
-                            Disclosure {label:"Saved audio · duration, fades and export rate";expanded <=> root.saved-audio;}
-                            if root.saved-audio: VerticalBox {
                                 Text {
-                                    text:"Live playback continues until Stop. These settings affect saved recipes and WAV export.";
-                                    wrap:word-wrap;
-                                    vertical-stretch:0;
+                                    text:root.fade-field.label;
                                 }
-                                HorizontalBox {
-                                    padding: 0px;
-                                    vertical-stretch: 0;
-                                    Text {
-                                        text:"Duration (s)";
-                                    }
-                                    NumericField {
-                                        reset-key:root.draft-reset;
-                                        enabled:root.can-edit;
-                                        display-text:root.duration;
-                            staged:root.duration-staged;
-                            edits-suspended:root.edits-suspended;
-                            restore=>{return root.restore-metadata("duration");}
-                                        accessible-label:"Saved duration seconds";
-                                        accessible-description:root.duration-error;
-                                        stage(v)=> {
-                                            root.stage-metadata("duration",v);
-                                        }
-                                        commit(v)=> {
-                                            root.metadata("duration",v);
-                                        }
-                                    }
-                                    Text {
-                                        text:"Fade (s)";
-                                    }
-                                    NumericField {
-                                        reset-key:root.draft-reset;
-                                        enabled:root.can-edit;
-                                        display-text:root.fade;
-                            staged:root.fade-staged;
-                            edits-suspended:root.edits-suspended;
-                            restore=>{return root.restore-metadata("fade");}
-                                        accessible-label:"Saved fade seconds";
-                                        accessible-description:root.fade-error;
-                                        stage(v)=> {
-                                            root.stage-metadata("fade",v);
-                                        }
-                                        commit(v)=> {
-                                            root.metadata("fade",v);
-                                        }
-                                    }
+                                MetadataField {
+                                    key: MetadataKey.fade;
+                                    field: root.fade-field;
+                                    binding: root.document;
+                                    reset-key:root.document-reset;
+                                    enabled:root.can-edit;
+                                    edits-suspended:root.edits-suspended;
+                                    accessible-label:"Saved fade";
+                                    stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
+                                    commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
+                                    restore-field(owner, key) => { root.restore-metadata(owner, key); }
                                 }
-                                ExportRate {
-                                    choices:root.export-rates;
-                                    selected <=> root.rate-index;
-                                    edit-enabled:!root.busy;
-                                    changed(i)=> {
-                                        root.rate-changed(i);
-                                    }
+                            }
+                            ExportRate {
+                                choices:root.export-rates;
+                                selected <=> root.rate-index;
+                                edit-enabled:!root.busy;
+                                changed(i)=> {
+                                    root.rate-changed(i);
                                 }
-
                             }
-                            }
-                            Rectangle {
-                                vertical-stretch:1;
-                            }
-
-                                    }
+                        }
+                    }
+                    Rectangle {
+                        vertical-stretch:1;
+                    }
+                    }
                 }
             }
-
         }
         Rectangle {
             visible:root.monitor-open && root.drawer-fits;
@@ -1352,6 +1157,7 @@ export component MainWindow inherits Window {
                 }
                 MonitorPanel {
                     data:root.monitor-data;ui-size:root.ui-size;
+                    span-choices:root.span-choices;scale-choices:root.scale-choices;
                     span(i)=>{root.window-index=i;root.window-changed();}
                     scale(i)=>{root.scale-index=i;root.window-changed();}
                     hold=>{root.held=!root.held;root.hold-changed();}
