@@ -21,7 +21,7 @@ pub(super) fn resolve() -> Typography {
     let (size, origin) = {
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "quality:gui-typography-native-point-size"
+            reason = "AppKit systemFontSize returns the platform UI point size; rounding binary64 to the renderer f32 coordinate type is intentional"
         )]
         let size = objc2_app_kit::NSFont::systemFontSize() as f32;
         (size, "AppKit system UI / fontique SystemUi".to_owned())
@@ -113,7 +113,7 @@ impl Drop for TypographyService {
 #[expect(
     unsafe_code,
     clippy::cast_possible_truncation,
-    reason = "quality:gui-typography-windows-listener"
+    reason = "read-only Win32 metrics at 96 DPI use an initialized ABI structure with a fixed-size u32 length and UTF16 font name"
 )]
 fn windows_listener(sender: TypographySink, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
     use windows_sys::Win32::UI::{

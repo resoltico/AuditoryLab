@@ -8,7 +8,7 @@ static PANGO: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
 static GTK: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
 static GOBJECT: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
 static GLIB: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
-#[expect(unsafe_code, reason = "quality:gui-typography-linux-native-library")]
+#[expect(unsafe_code, reason = "Loads fixed system-library names once and retains every Library in a process-lifetime OnceLock; symbol users cannot outlive mapped code")]
 fn library(
     slot: &'static std::sync::OnceLock<Option<Library>>,
     name: &str,
@@ -37,7 +37,7 @@ impl PangoFont {
 #[expect(
     unsafe_code,
     clippy::cast_precision_loss,
-    reason = "quality:gui-typography-linux-native-pango"
+    reason = "Checked Pango C signatures; each parsed description is freed after extracting its bounded family string and scaled point size. The signed native size rounds to f32 for display sizing"
 )]
 pub(super) fn pango(text: &str) -> Option<PangoFont> {
     if text.len() > 4096 {
@@ -97,7 +97,7 @@ struct NativeValue {
     kind: usize,
     data: [u64; 2],
 }
-#[expect(unsafe_code, reason = "quality:gui-typography-linux-native-changed")]
+#[expect(unsafe_code, reason = "C notify callback is registered with its exact ABI; the AtomicBool pointer remains borrowed and live until both handlers are disconnected on the same settings worker")]
 unsafe extern "C" fn changed(_: *mut c_void, _: *mut c_void, data: *mut c_void) {
     // SAFETY: a borrowed AtomicBool is connected only while its enclosing GTK listener lives.
     unsafe { &*data.cast::<AtomicBool>() }.store(true, Ordering::Relaxed);
@@ -105,7 +105,7 @@ unsafe extern "C" fn changed(_: *mut c_void, _: *mut c_void, data: *mut c_void) 
 #[expect(
     unsafe_code,
     clippy::cast_precision_loss,
-    reason = "quality:gui-typography-linux-native-gtk-listen"
+    reason = "Checked C signatures on one GTK worker; callbacks disconnect before stack data expires and GObject strings/GValues are freed. Positive signed Xft DPI converts to f32 only for display sizing"
 )]
 pub(super) fn gtk_listen(
     sender: &TypographySink,
@@ -296,7 +296,7 @@ pub(super) fn gtk_listen(
 #[expect(
     unsafe_code,
     clippy::cast_possible_truncation,
-    reason = "quality:gui-typography-linux-native-gnome-listen"
+    reason = "Schema and keys are checked before C ABI calls; strings/schema/settings references are released and callbacks disconnect before data expires. Finite scale in 0.5..=4.0 rounds to f32 for display"
 )]
 pub(super) fn gnome_listen(
     sender: &TypographySink,

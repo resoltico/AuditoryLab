@@ -117,7 +117,7 @@ pub fn interaural_pair(observation: &crate::Observation) -> Option<InterauralPai
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "quality:lib-presentation-compact-number"
+    reason = "The decimal count is clamped to the finite integer range 0..=12 before casting to usize; rounding formats presentation text only"
 )]
 pub fn compact_number(value: f64) -> String {
     if !value.is_finite() || value == 0.0 {

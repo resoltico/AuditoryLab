@@ -157,7 +157,7 @@ fn listen_once(sender: TypographySink, stop: Arc<AtomicBool>) {
                     has_scale = scale.is_some();
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "quality:gui-typography-linux-portal-text-scale"
+                        reason = "The portal scale is admitted only when finite and in 0.5..=4.0, or defaults to 1.0; rounding to f32 matches the display coordinate type"
                     )]
                     font.map(|font| font.at_font_scale(scale.unwrap_or(1.0) as f32))
                 };

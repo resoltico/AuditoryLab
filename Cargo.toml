@@ -62,6 +62,7 @@ dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
 mem_forget = "deny"
+allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
 
 # Debug information for dependencies and incremental caches make up most of a

@@ -9,7 +9,7 @@ pub struct PhaseRate {
     pub realized_hz: f64,
 }
 impl PhaseRate {
-    #[expect(clippy::cast_precision_loss, reason = "quality:core-facts-from-step")]
+    #[expect(clippy::cast_precision_loss, reason = "Integer phase steps are rounded to binary64 for reported frequency; they are not used to reconstruct the renderer step")]
     pub(crate) fn from_step(requested_hz: f64, step: u64, rate: SampleRate) -> Self {
         Self {
             requested_hz,

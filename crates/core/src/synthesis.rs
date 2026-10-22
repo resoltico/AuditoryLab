@@ -32,7 +32,7 @@ pub(crate) fn step(hz: f64, fs: u32) -> Option<u64> {
     u64::try_from(quotient).ok()
 }
 #[inline]
-#[expect(clippy::cast_precision_loss, reason = "quality:core-synthesis-sine")]
+#[expect(clippy::cast_precision_loss, reason = "Arithmetic shift retains a signed 53-bit phase before binary64 conversion; the intentionally reduced phase bounds sine input")]
 pub(crate) fn sine(phase: u64) -> f64 {
     let cycles = ((phase as i64) >> 11) as f64 / 9_007_199_254_740_992.0;
     libm::sin(TAU * cycles)
@@ -40,7 +40,7 @@ pub(crate) fn sine(phase: u64) -> f64 {
 /// Whether x × k ≤ fs, exactly, for non-negative finite x, positive k and a valid sample rate.
 #[expect(
     clippy::cast_sign_loss,
-    reason = "quality:core-synthesis-times-at-most"
+    reason = "Binary64 decomposition and the early exponent guards make the negated exponent nonnegative before converting to a shift"
 )]
 pub(crate) fn times_at_most(x: f64, k: u64, fs: u32) -> bool {
     if !(x >= 0.0 && x.is_finite()) {
@@ -79,7 +79,7 @@ impl Pulse {
     #[inline]
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "quality:core-synthesis-periods"
+        reason = "The validated n < 2^36 and rate < 2^19 bound the shifted pulse count below 2^55"
     )]
     fn periods(self, n: u64) -> u64 {
         // floor(floor(n*m/2^shift)/fs) = floor(n*m/(2^shift*fs)).
@@ -124,7 +124,7 @@ impl Pulse {
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "quality:core-synthesis-pulse"
+    reason = "Width is checked whole and in 1..=2^36; admitted sub-Nyquist rate has a negative decomposition exponent"
 )]
 pub(crate) fn pulse(width_seconds: f64, rate_hz: f64, fs: u32) -> Option<Pulse> {
     let frames = libm::round(width_seconds * f64::from(fs));
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_precision_loss,
-        reason = "quality:core-synthesis-steps-are-exactly-rounded-for-representable-frequencies"
+        reason = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
     )]
     fn steps_are_exactly_rounded_for_representable_frequencies() {
         for rate in [1_u32, 8_000, 44_100, 48_000, 96_000, 768_000] {
@@ -264,7 +264,7 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_precision_loss,
-        reason = "quality:core-synthesis-phase-at-any-frame-matches-the-exact-rational-phase-within-a-constant"
+        reason = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
     )]
     fn phase_at_any_frame_matches_the_exact_rational_phase_within_a_constant() {
         // Phase error of n*step versus exact n*f/fs: less than n * 2^-64 cycles
@@ -307,7 +307,7 @@ mod pulses {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "quality:core-synthesis-pulses-match-independent-integer-onsets-at-early-and-late-frames"
+        reason = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
     )]
     fn pulses_match_independent_integer_onsets_at_early_and_late_frames() {
         for fs in [8000, 44100, 48000, 96000, 768000] {
@@ -332,7 +332,7 @@ mod pulses {
         clippy::cast_possible_truncation,
         clippy::cast_precision_loss,
         clippy::cast_sign_loss,
-        reason = "quality:core-synthesis-fractional-and-slow-rates-do-not-open-before-the-exact-onset"
+        reason = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
     )]
     fn fractional_and_slow_rates_do_not_open_before_the_exact_onset() {
         for (p, q) in [

@@ -12,7 +12,7 @@ fn tone(hz: f64, ears: Ears) -> Component {
         modulation: None,
     }
 }
-#[expect(clippy::unwrap_used, reason = "quality:core-tests-observations-target")]
+#[expect(clippy::unwrap_used, reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail")]
 fn target(rate: SampleRate, component: Component) -> Target {
     Target::new(rate, &[(7, component)]).unwrap()
 }
@@ -136,7 +136,7 @@ fn latest_revision_wins_and_stop_does_not_claim_the_skipped_target() {
 #[test]
 #[expect(
     clippy::cast_precision_loss,
-    reason = "quality:core-tests-observations-realized-rates-widths-depth-and-tiny-frequencies-are-explicit"
+    reason = "independent integer-rational phase oracle is converted for presentation comparison"
 )]
 fn realized_rates_widths_depth_and_tiny_frequencies_are_explicit() {
     for hz in [44100, 48000, 768000] {

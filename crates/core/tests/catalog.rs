@@ -385,5 +385,5 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
 }
 // Compile the build script's pure ordering test as part of this integration target.
 #[path = "../build.rs"]
-#[expect(dead_code, reason = "quality:core-tests-catalog-catalog-build")]
+#[expect(dead_code, reason = "The integration test imports the real catalog build module to check catalog inputs; its unused Cargo build-script main is not executed by that test")]
 mod catalog_build;

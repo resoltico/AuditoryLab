@@ -43,7 +43,7 @@ pub struct TimingModel {
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "quality:core-timing-project"
+    reason = "The clamped model spans at most four seconds at 768 kHz; positive frame counts fit u64 and usize on supported 64-bit targets"
 )]
 pub(crate) fn project(
     rate: SampleRate,
@@ -124,7 +124,7 @@ pub(crate) fn project(
 // column covering an entire period is the full envelope range, not a sampled peak.
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "quality:core-timing-envelope"
+    reason = "Truncation deliberately takes the low 64 phase bits of the u128 product, matching wrapping synthesis phase"
 )]
 fn envelope(step: u64, depth: f64, start: u64, end: u64) -> Extent {
     let a = u128::from(start) * u128::from(step);

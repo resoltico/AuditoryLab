@@ -21,7 +21,7 @@ use actions::{Action, Continuation};
     unreachable_pub,
     clippy::unwrap_used,
     clippy::todo,
-    reason = "quality:gui-main-generated"
+    reason = "Slint 1.18.1 generates unreachable public UI items, unwraps and TODO branches; removing these exceptions produces compiler/Clippy errors in generated output. This module contains only include_modules"
 )]
 mod generated {
     slint::include_modules!();
@@ -838,7 +838,7 @@ impl Desktop {
         #[expect(
             clippy::cast_precision_loss,
             clippy::cast_possible_truncation,
-            reason = "quality:gui-main-progress-fraction"
+            reason = "Nonnegative generated/total frame counts form a display-only ratio; the result rounds to f32 and is clamped to 0..=1 before rendering"
         )]
         let progress_fraction =
             if app.file_operation == Some(Operation::Export) && self.operation_frames.get() > 0 {
@@ -1368,7 +1368,7 @@ fn sync_action_buttons(ui: &MainWindow, app: &App, dialog_active: bool) {
         .into(),
     );
 }
-#[expect(clippy::cast_possible_truncation, reason = "quality:gui-main-position")]
+#[expect(clippy::cast_possible_truncation, reason = "Shared slider_position is normalized before rounding to the renderer f32 coordinate type; audio parameter values remain binary64")]
 fn position(setting: auditorylab::Setting, rate: auditorylab::SampleRate, value: f64) -> f32 {
     auditorylab::slider_position(setting, rate, value) as f32
 }

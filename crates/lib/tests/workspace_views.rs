@@ -10,7 +10,7 @@ fn tone(hz: f64, ears: Ears) -> Component {
 }
 #[expect(
     clippy::unwrap_used,
-    reason = "quality:lib-tests-workspace-views-summary"
+    reason = "Test fixture helper deliberately panics if an enumerated component ID or specified target is invalid, causing its calling presentation test to fail"
 )]
 fn summary(components: &[Component]) -> SoundSummary {
     let pairs: Vec<_> = components

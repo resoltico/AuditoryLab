@@ -3,7 +3,6 @@
 #[cfg(test)]
 #[path = "../../third_party/winit/src/platform_impl/linux/x11/xsettings/gtk_scaling.rs"]
 mod gtk_scaling;
-mod lint_policy;
 mod notices;
 mod package;
 mod targets;
@@ -461,14 +460,13 @@ fn main() -> Result<()> {
     )?;
     let args: Vec<_> = env::args().skip(1).collect();
     match args.first().map(String::as_str) {
-        Some("check-lints") if args.len()==1 => lint_policy::check(Path::new(".")),
         Some("dist") => { let mut target=None; let mut out=PathBuf::from("target/dist"); let mut i=1; while i<args.len() { let value=args.get(i+1).ok_or("missing option value")?; match args[i].as_str() { "--target"=>target=Some(value.as_str()),"--out"=>out=PathBuf::from(value),_=>return Err("use dist --target TARGET [--out DIR]".into()) } i+=2; } dist(target.ok_or("dist requires --target")?,&out) }
         Some("inspect-package") if args.len()==3 => { let meta=metadata(None)?; let _=package::inspect(Path::new(&args[2]), Path::new("target/package-inspection"), &args[1], version(&meta)?, build_number(&meta)?, &rust_standard_library_copyright()?)?; Ok(()) },
         Some("collect-assets") if args.len()==4 => targets::collect(&args[1], Path::new(&args[2]), Path::new(&args[3])),
         Some("notes") if args.len()==2 => { println!("{}",section(&fs::read_to_string("CHANGELOG.md")?,&args[1])?.1); Ok(()) }
         Some("check-release") if args.len()==2 => { let meta=metadata(None)?; if version(&meta)?!=args[1] { return Err("workspace version differs from requested release".into()); } let text=fs::read_to_string("CHANGELOG.md")?; release_notes(&text,&args[1])?; rust_standard_library_copyright()?; Ok(()) }
         Some("notices") if args.len()==4 => { let meta=metadata(Some(&args[2]))?; fs::write(&args[3],about(&args[1],&args[2],&meta)?)?; Ok(()) }
-        _=>Err("use cargo xtask dist --target TARGET [--out DIR], inspect-package TARGET ARCHIVE, collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT, notes VERSION, check-release VERSION, or check-lints".into()),
+        _=>Err("use cargo xtask dist --target TARGET [--out DIR], inspect-package TARGET ARCHIVE, collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT, notes VERSION, or check-release VERSION".into()),
     }
 }
 #[cfg(test)]

@@ -37,7 +37,7 @@ impl Continuation {
 }
 #[expect(
     clippy::large_enum_variant,
-    reason = "quality:gui-actions-continuation-poll"
+    reason = "one queued GUI action is moved by value; boxing would add an unnecessary allocation"
 )]
 pub(super) enum ContinuationPoll {
     Waiting,
