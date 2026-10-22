@@ -529,3 +529,87 @@ pub enum OptionAsAlt {
     #[default]
     None,
 }
+
+/// An outstanding request from macOS to terminate the application.
+///
+/// When an interceptor is registered with
+/// [`EventLoopExtMacOS::set_termination_interceptor`], Winit's application
+/// delegate answers `applicationShouldTerminate:` with "terminate later",
+/// owns the pending request and hands its interceptor this opaque token.
+/// Answer it exactly once with [`reply_to_termination`]. Repeated Quit
+/// commands while a request is pending coalesce into that request. A request
+/// that cannot be delivered, or that is still pending when the event loop
+/// exits, is denied. Without an interceptor, termination proceeds as AppKit's
+/// default does.
+#[derive(Debug, PartialEq, Eq)]
+pub struct TerminationRequest {
+    epoch: u64,
+}
+
+impl TerminationRequest {
+    pub(crate) fn new(epoch: u64) -> Self {
+        Self { epoch }
+    }
+}
+
+/// Why a termination reply was not delivered.
+#[derive(Debug, PartialEq, Eq)]
+pub enum TerminationReplyError {
+    /// Replies must be made on the main thread; the request is returned
+    /// unchanged so it can still be answered there.
+    WrongThread(TerminationRequest),
+    /// The request was already answered, denied or superseded.
+    Stale,
+}
+
+impl std::fmt::Display for TerminationReplyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WrongThread(_) => f.write_str("termination replies must be made on the main thread"),
+            Self::Stale => f.write_str("the termination request is no longer pending"),
+        }
+    }
+}
+
+impl std::error::Error for TerminationReplyError {}
+
+/// Additional methods on [`EventLoop`](crate::event_loop::EventLoop) that are specific to macOS.
+pub trait EventLoopExtMacOS {
+    /// Decide termination asynchronously. The interceptor runs on the main
+    /// thread inside AppKit's callback; it must only hand the request on,
+    /// returning whether that succeeded. `None` restores the default.
+    fn set_termination_interceptor(
+        &self,
+        interceptor: Option<Box<dyn Fn(TerminationRequest) -> bool>>,
+    );
+}
+
+impl<T> EventLoopExtMacOS for crate::event_loop::EventLoop<T> {
+    fn set_termination_interceptor(
+        &self,
+        interceptor: Option<Box<dyn Fn(TerminationRequest) -> bool>>,
+    ) {
+        self.event_loop.set_termination_interceptor(interceptor);
+    }
+}
+
+/// Answer a pending termination request: `true` lets the application
+/// terminate, `false` keeps it running.
+///
+/// # Errors
+/// Returns [`TerminationReplyError::WrongThread`] off the main thread, without
+/// consuming the request, and [`TerminationReplyError::Stale`] when the request
+/// is no longer the pending one.
+pub fn reply_to_termination(
+    request: TerminationRequest,
+    approve: bool,
+) -> Result<(), TerminationReplyError> {
+    let Some(mtm) = objc2_foundation::MainThreadMarker::new() else {
+        return Err(TerminationReplyError::WrongThread(request));
+    };
+    if crate::platform_impl::reply_to_termination(mtm, request.epoch, approve) {
+        Ok(())
+    } else {
+        Err(TerminationReplyError::Stale)
+    }
+}

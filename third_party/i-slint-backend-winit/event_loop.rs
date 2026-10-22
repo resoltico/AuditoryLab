@@ -37,6 +37,9 @@ pub enum CustomEvent {
     Accesskit(accesskit_winit::Event),
     #[cfg(muda)]
     Muda(muda::MenuEvent),
+    /// macOS asks whether the application may terminate.
+    #[cfg(target_os = "macos")]
+    Termination(winit::platform::macos::TerminationRequest),
 }
 
 impl std::fmt::Debug for CustomEvent {
@@ -51,6 +54,8 @@ impl std::fmt::Debug for CustomEvent {
             Self::Accesskit(a) => write!(f, "AccessKit({a:?})"),
             #[cfg(muda)]
             Self::Muda(e) => write!(f, "Muda({e:?})"),
+            #[cfg(target_os = "macos")]
+            Self::Termination(r) => write!(f, "Termination({r:?})"),
         }
     }
 }
@@ -189,6 +194,20 @@ impl winit::application::ApplicationHandler<SlintEvent> for EventLoopState {
             #[cfg(target_arch = "wasm32")]
             CustomEvent::WakeEventLoopWorkaround => {
                 event_loop.set_control_flow(ControlFlow::Poll);
+            }
+            #[cfg(target_os = "macos")]
+            CustomEvent::Termination(request) => match self.custom_application_handler.as_mut() {
+                Some(handler) => handler.termination_requested(event_loop, request),
+                // Interceptors are only installed for a handler; deny anything else.
+                None => {
+                    let _ = winit::platform::macos::reply_to_termination(request, false);
+                }
+            },
+            #[cfg(muda)]
+            CustomEvent::Muda(event) if event.id().0 == crate::muda::APPLICATION_ABOUT_ID => {
+                if let Some(handler) = self.custom_application_handler.as_mut() {
+                    handler.about_requested(event_loop);
+                }
             }
             #[cfg(muda)]
             CustomEvent::Muda(event) => {

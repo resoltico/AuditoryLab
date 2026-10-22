@@ -32,6 +32,20 @@ pub enum MudaType {
 
 static MUDA_SET_EVENT_HANDLER_INSTALLED: AtomicBool = AtomicBool::new(false);
 
+/// AuditoryLab: menu identifier of the application-handled About item. Muda
+/// events with this identifier are routed to the custom application handler
+/// before window menu identifiers are parsed.
+pub const APPLICATION_ABOUT_ID: &str = "slint-application-about";
+
+/// The title of the application-handled About item, when the custom
+/// application handler provides one; otherwise the predefined About is used.
+static APPLICATION_ABOUT_TITLE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Route the application menu's About item to the custom application handler.
+pub fn set_application_about(title: String) {
+    let _ = APPLICATION_ABOUT_TITLE.set(title);
+}
+
 /// Returns true when `SLINT_NO_MUDA` is set, in which case the menu bar and the context menus
 /// are rendered by Slint. That's the only way to exercise these code paths on macOS and Windows.
 pub fn is_disabled() -> bool {
@@ -316,7 +330,11 @@ impl MudaAdapter {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn setup_default_menu_bar() -> Result<Self, i_slint_core::api::PlatformError> {
+    pub fn setup_default_menu_bar(
+        proxy: EventLoopProxy<SlintEvent>,
+    ) -> Result<Self, i_slint_core::api::PlatformError> {
+        // The default menu routes its items through the same once-installed bridge.
+        install_event_handler_if_necessary(proxy);
         let menu_bar = muda::Menu::new();
         create_default_app_menu(&menu_bar)?;
         menu_bar.init_for_nsapp();
@@ -402,8 +420,16 @@ fn create_default_app_menu(menu_bar: &muda::Menu) -> Result<(), i_slint_core::ap
     menu_bar
         .append(&app_menu)
         .and_then(|_| {
+            match APPLICATION_ABOUT_TITLE.get() {
+                Some(title) => app_menu.append(&muda::MenuItem::with_id(
+                    muda::MenuId(APPLICATION_ABOUT_ID.into()),
+                    title,
+                    true,
+                    None,
+                )),
+                None => app_menu.append(&muda::PredefinedMenuItem::about(None, None)),
+            }?;
             app_menu.append_items(&[
-                &muda::PredefinedMenuItem::about(None, None),
                 &muda::PredefinedMenuItem::separator(),
                 &muda::PredefinedMenuItem::services(None),
                 &muda::PredefinedMenuItem::separator(),

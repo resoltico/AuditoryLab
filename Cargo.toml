@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/core", "crates/lib", "crates/cli", "crates/gui", "xtask"]
+# Vendored patch sources are not members; tests needing their own dev-dependencies run from their manifests.
+exclude = ["third_party"]
 
 [workspace.package]
 version = "0.4.0"

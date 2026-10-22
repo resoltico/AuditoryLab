@@ -384,6 +384,13 @@ impl<T> EventLoop<T> {
         })
     }
 
+    pub(crate) fn set_termination_interceptor(
+        &self,
+        interceptor: Option<super::app_state::TerminationInterceptor>,
+    ) {
+        self.delegate.set_termination_interceptor(interceptor);
+    }
+
     pub fn create_proxy(&self) -> EventLoopProxy<T> {
         EventLoopProxy::new(self.sender.clone())
     }

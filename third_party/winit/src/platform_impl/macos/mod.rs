@@ -24,6 +24,15 @@ pub(crate) use self::event_loop::{
 };
 pub(crate) use self::monitor::{MonitorHandle, VideoModeHandle};
 pub(crate) use self::window::WindowId;
+
+/// Answer the pending termination request with this epoch, if it still is.
+pub(crate) fn reply_to_termination(
+    mtm: objc2_foundation::MainThreadMarker,
+    epoch: u64,
+    approve: bool,
+) -> bool {
+    app_state::ApplicationDelegate::get(mtm).reply_to_termination(epoch, approve)
+}
 pub(crate) use self::window_delegate::PlatformSpecificWindowAttributes;
 use crate::event::DeviceId as RootDeviceId;
 

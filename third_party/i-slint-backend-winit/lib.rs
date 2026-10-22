@@ -271,6 +271,38 @@ pub trait CustomApplicationHandler {
     fn memory_warning(&mut self, event_loop: &ActiveEventLoop) -> EventResult {
         EventResult::Propagate
     }
+
+    /// macOS: return `true` to decide application termination asynchronously.
+    /// The backend then registers a termination interceptor on Winit's own
+    /// application delegate, and each request arrives in
+    /// [`Self::termination_requested`]. Without it, termination proceeds as
+    /// AppKit's default does.
+    #[cfg(target_os = "macos")]
+    fn intercepts_termination(&self) -> bool {
+        false
+    }
+
+    /// macOS: decide a termination request. Answer it exactly once with
+    /// [`winit::platform::macos::reply_to_termination`]; dropping it unanswered
+    /// keeps it pending until the event loop exits, when it is denied.
+    #[cfg(target_os = "macos")]
+    fn termination_requested(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        request: winit::platform::macos::TerminationRequest,
+    ) {
+        let _ = winit::platform::macos::reply_to_termination(request, true);
+    }
+
+    /// Return a title to replace the application menu's predefined About item
+    /// with one that calls [`Self::about_requested`]. It is identified by a
+    /// reserved menu identifier, not by its title or position.
+    fn application_about_title(&self) -> Option<String> {
+        None
+    }
+
+    /// The application menu's About item was chosen.
+    fn about_requested(&mut self, event_loop: &ActiveEventLoop) {}
 }
 
 /// Use the BackendBuilder to configure the properties of the Winit Backend before creating it.
@@ -403,6 +435,25 @@ impl BackendBuilder {
             self.requested_graphics_api.clone(),
             self.allow_fallback,
         )?);
+
+        if let Some(handler) = self.custom_application_handler.as_ref() {
+            #[cfg(muda)]
+            if let Some(title) = handler.application_about_title() {
+                crate::muda::set_application_about(title);
+            }
+            #[cfg(target_os = "macos")]
+            if handler.intercepts_termination()
+                && let Some(event_loop) = shared_data.not_running_event_loop.borrow().as_ref()
+            {
+                let proxy = shared_data.event_loop_proxy.clone();
+                winit::platform::macos::EventLoopExtMacOS::set_termination_interceptor(
+                    event_loop,
+                    Some(Box::new(move |request| {
+                        proxy.send_event(SlintEvent(CustomEvent::Termination(request))).is_ok()
+                    })),
+                );
+            }
+        }
 
         Ok(Backend {
             event_loop_state: Default::default(),

@@ -6,7 +6,8 @@ use std::time::Instant;
 use objc2::rc::Retained;
 use objc2::{declare_class, msg_send_id, mutability, ClassType, DeclaredClass};
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSRunningApplication,
+    NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate,
+    NSApplicationTerminateReply, NSRunningApplication,
 };
 use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol};
 
@@ -40,6 +41,8 @@ pub(super) struct AppState {
     start_time: Cell<Option<Instant>>,
     wait_timeout: Cell<Option<Instant>>,
     pending_redraw: RefCell<Vec<WindowId>>,
+    /// AuditoryLab: typed asynchronous termination. See `platform::macos::TerminationRequest`.
+    termination: Termination,
     // NOTE: This is strongly referenced by our `NSWindowDelegate` and our `NSView` subclass, and
     // as such should be careful to not add fields that, in turn, strongly reference those.
 }
@@ -70,6 +73,11 @@ declare_class!(
         fn app_will_terminate(&self, notification: &NSNotification) {
             self.will_terminate(notification)
         }
+
+        #[method(applicationShouldTerminate:)]
+        fn app_should_terminate(&self, _sender: &NSApplication) -> NSApplicationTerminateReply {
+            self.should_terminate()
+        }
     }
 );
 
@@ -98,6 +106,7 @@ impl ApplicationDelegate {
             start_time: Cell::new(None),
             wait_timeout: Cell::new(None),
             pending_redraw: RefCell::new(vec![]),
+            termination: Termination::default(),
         });
         unsafe { msg_send_id![super(this), init] }
     }
@@ -163,6 +172,49 @@ impl ApplicationDelegate {
         }
     }
 
+    /// Without a registered interceptor, terminate as AppKit would without
+    /// this method. With one, own a pending request before dispatching it,
+    /// coalesce repeated requests and deny one that cannot be dispatched.
+    fn should_terminate(&self) -> NSApplicationTerminateReply {
+        trace_scope!("applicationShouldTerminate:");
+        let termination = &self.ivars().termination;
+        let interceptor = termination.interceptor.borrow();
+        let Some(interceptor) = interceptor.as_ref() else {
+            return NSApplicationTerminateReply::NSTerminateNow;
+        };
+        let Some(epoch) = termination.state.begin() else {
+            return NSApplicationTerminateReply::NSTerminateLater;
+        };
+        if interceptor(crate::platform::macos::TerminationRequest::new(epoch)) {
+            NSApplicationTerminateReply::NSTerminateLater
+        } else {
+            termination.state.undeliverable(epoch);
+            NSApplicationTerminateReply::NSTerminateCancel
+        }
+    }
+
+    pub fn set_termination_interceptor(&self, interceptor: Option<TerminationInterceptor>) {
+        *self.ivars().termination.interceptor.borrow_mut() = interceptor;
+    }
+
+    /// Answer the pending request with this epoch exactly once.
+    pub fn reply_to_termination(&self, epoch: u64, approve: bool) -> bool {
+        if !self.ivars().termination.state.answer(epoch) {
+            return false;
+        }
+        let mtm = MainThreadMarker::from(self);
+        unsafe { NSApplication::sharedApplication(mtm).replyToApplicationShouldTerminate(approve) };
+        true
+    }
+
+    /// Deny a request that can no longer be answered by its interceptor.
+    fn deny_pending_termination(&self) {
+        if self.ivars().termination.state.abandon() {
+            let mtm = MainThreadMarker::from(self);
+            unsafe { NSApplication::sharedApplication(mtm).replyToApplicationShouldTerminate(false) };
+        }
+    }
+
     fn will_terminate(&self, _notification: &NSNotification) {
         trace_scope!("applicationWillTerminate:");
         let mtm = MainThreadMarker::from(self);
@@ -221,6 +273,7 @@ impl ApplicationDelegate {
     /// NOTE: that if the `NSApplication` has been launched then that state is preserved,
     /// and we won't need to re-launch the app if subsequent EventLoops are run.
     pub fn internal_exit(&self) {
+        self.deny_pending_termination();
         self.handle_event(Event::LoopExiting);
 
         self.set_is_running(false);
@@ -414,6 +467,99 @@ impl ApplicationDelegate {
 
 #[derive(Debug)]
 pub(crate) struct HandlePendingUserEvents;
+
+/// AuditoryLab: called on the main thread with an owned request; returns
+/// whether the request was delivered.
+pub type TerminationInterceptor = Box<dyn Fn(crate::platform::macos::TerminationRequest) -> bool>;
+
+/// AuditoryLab: the registered interceptor and its pending request.
+#[derive(Default)]
+struct Termination {
+    interceptor: RefCell<Option<TerminationInterceptor>>,
+    state: TerminationState,
+}
+
+impl std::fmt::Debug for Termination {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Termination")
+            .field("intercepted", &self.interceptor.borrow().is_some())
+            .field("state", &self.state)
+            .finish()
+    }
+}
+
+/// At most one pending termination request, identified by an epoch that is
+/// never reused, so an answer to an older request cannot settle a newer one.
+#[derive(Debug, Default)]
+struct TerminationState {
+    epoch: Cell<u64>,
+    pending: Cell<Option<u64>>,
+}
+
+impl TerminationState {
+    /// Start a request, or `None` while one is already pending: repeated
+    /// requests coalesce into it.
+    fn begin(&self) -> Option<u64> {
+        if self.pending.get().is_some() {
+            return None;
+        }
+        let epoch = self.epoch.get() + 1;
+        self.epoch.set(epoch);
+        self.pending.set(Some(epoch));
+        Some(epoch)
+    }
+
+    /// The request could not be handed to the interceptor.
+    fn undeliverable(&self, epoch: u64) {
+        if self.pending.get() == Some(epoch) {
+            self.pending.set(None);
+        }
+    }
+
+    /// Settle the request with this epoch; false when it is not pending.
+    fn answer(&self, epoch: u64) -> bool {
+        if self.pending.get() != Some(epoch) {
+            return false;
+        }
+        self.pending.set(None);
+        true
+    }
+
+    /// Settle whatever is pending, for denial; false when nothing is.
+    fn abandon(&self) -> bool {
+        self.pending.take().is_some()
+    }
+}
+
+#[cfg(test)]
+mod termination_tests {
+    use super::TerminationState;
+
+    #[test]
+    fn requests_coalesce_and_each_epoch_is_answered_once() {
+        let state = TerminationState::default();
+        assert_eq!(state.begin(), Some(1));
+        assert_eq!(state.begin(), None, "repeated Quit joins the pending request");
+        assert!(state.answer(1));
+        assert!(!state.answer(1), "a second answer is stale");
+        assert_eq!(state.begin(), Some(2));
+        assert!(!state.answer(1), "an old token cannot settle a later request");
+        assert!(state.answer(2));
+    }
+
+    #[test]
+    fn undeliverable_and_abandoned_requests_are_settled() {
+        let state = TerminationState::default();
+        let epoch = state.begin().unwrap();
+        state.undeliverable(epoch);
+        assert!(!state.answer(epoch), "an undelivered request is already denied");
+        let epoch = state.begin().unwrap();
+        state.undeliverable(epoch - 1);
+        assert!(state.abandon(), "teardown denies the pending request");
+        assert!(!state.abandon());
+        assert!(!state.answer(epoch));
+    }
+}
 
 /// Returns the minimum `Option<Instant>`, taking into account that `None`
 /// equates to an infinite timeout, not a zero timeout (so can't just use
