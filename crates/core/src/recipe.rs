@@ -8,20 +8,21 @@ use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
-/// A preset: a stimulus and, optionally, what it is about.
+/// A recipe: a stimulus and, optionally, what it is about.
 ///
-/// A preset is strict TOML of at most [`Preset::MAX_BYTES`]. Unknown,
+/// A recipe is strict TOML of at most [`Recipe::MAX_BYTES`]. Unknown,
 /// missing required, duplicated and mistyped fields are errors. Values are checked
-/// when the stimulus is given a sample rate by [`Stimulus::signal`].
+/// when the stimulus is given a sample rate by [`Stimulus::signal`]; a parsed
+/// recipe can still hold values no rate accepts, including `nan` and `inf`.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Preset {
+pub struct Recipe {
     /// The sound.
     pub stimulus: Stimulus,
-    /// What the sound is and where it comes from, when the preset says.
+    /// What the sound is and where it comes from, when the recipe says.
     pub about: Option<About>,
 }
 
-/// What a preset's sound is, for listeners and for researchers. Parsing
+/// What a recipe's sound is, for listeners and for researchers. Parsing
 /// checks the field structure and string types; sources are not fetched or
 /// certified. This descriptive text does not affect the samples.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -46,46 +47,46 @@ pub struct About {
     /// reports about it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub study: Option<String>,
-    /// How the preset differs from, or adds to, the source's description.
+    /// How the recipe differs from, or adds to, the source's description.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub adaptation: Option<String>,
 }
 
-/// Why text is not a preset.
+/// Why text is not a recipe.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PresetError {
-    /// The preset is longer than [`Preset::MAX_BYTES`].
+pub enum RecipeError {
+    /// The recipe is longer than [`Recipe::MAX_BYTES`].
     TooLarge,
-    /// The preset is not UTF-8 text.
+    /// The recipe is not UTF-8 text.
     NotUtf8,
-    /// The preset is UTF-16 text, as some editors and shells save it.
+    /// The recipe is UTF-16 text, as some editors and shells save it.
     Utf16,
-    /// The text is not TOML or does not match the preset format.
+    /// The text is not TOML or does not match the recipe format.
     Format(toml::de::Error),
-    /// The preset states a schema version other than [`Preset::SCHEMA_VERSION`].
+    /// The recipe states a schema version other than [`Recipe::SCHEMA_VERSION`].
     UnsupportedVersion {
-        /// The version the preset states.
+        /// The version the recipe states.
         found: u32,
     },
 }
 
-impl Display for PresetError {
+impl Display for RecipeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::TooLarge => write!(f, "preset exceeds {} bytes", Preset::MAX_BYTES),
-            Self::NotUtf8 => write!(f, "preset is not UTF-8 text"),
-            Self::Utf16 => write!(f, "preset is UTF-16 text; save it as UTF-8"),
-            Self::Format(error) => write!(f, "preset does not match the format: {error}"),
+            Self::TooLarge => write!(f, "recipe exceeds {} bytes", Recipe::MAX_BYTES),
+            Self::NotUtf8 => write!(f, "recipe is not UTF-8 text"),
+            Self::Utf16 => write!(f, "recipe is UTF-16 text; save it as UTF-8"),
+            Self::Format(error) => write!(f, "recipe does not match the format: {error}"),
             Self::UnsupportedVersion { found } => write!(
                 f,
-                "preset has schema_version {found}; this build reads {}",
-                Preset::SCHEMA_VERSION
+                "recipe has schema_version {found}; this build reads {}",
+                Recipe::SCHEMA_VERSION
             ),
         }
     }
 }
 
-impl core::error::Error for PresetError {
+impl core::error::Error for RecipeError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::Format(error) => Some(error),
@@ -94,7 +95,7 @@ impl core::error::Error for PresetError {
     }
 }
 
-/// Only the version, read first so that a preset written for another
+/// Only the version, read first so that a recipe written for another
 /// version is reported as such rather than by its unfamiliar fields.
 #[derive(Deserialize)]
 struct Version {
@@ -113,50 +114,50 @@ struct Document {
     component: Vec<DocumentComponent>,
 }
 
-impl Preset {
-    /// The one preset schema this build reads.
+impl Recipe {
+    /// The one recipe schema this build reads.
     pub const SCHEMA_VERSION: u32 = 2;
 
-    /// The longest preset, in bytes. A reader can stop after one byte more.
+    /// The longest recipe, in bytes. A reader can stop after one byte more.
     pub const MAX_BYTES: usize = 65_536;
 
-    /// Read a preset from bytes.
+    /// Read a recipe from bytes.
     ///
     /// # Errors
-    /// Returns [`PresetError::TooLarge`], [`PresetError::Utf16`],
-    /// [`PresetError::NotUtf8`], or what
-    /// [`Preset::parse`] returns.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, PresetError> {
+    /// Returns [`RecipeError::TooLarge`], [`RecipeError::Utf16`],
+    /// [`RecipeError::NotUtf8`], or what
+    /// [`Recipe::parse`] returns.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, RecipeError> {
         if bytes.len() > Self::MAX_BYTES {
-            return Err(PresetError::TooLarge);
+            return Err(RecipeError::TooLarge);
         }
         let text = core::str::from_utf8(bytes).map_err(|_| {
             // A byte-order mark identifies UTF-16; other invalid input is just not UTF-8.
             if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
-                PresetError::Utf16
+                RecipeError::Utf16
             } else {
-                PresetError::NotUtf8
+                RecipeError::NotUtf8
             }
         })?;
         Self::parse(text)
     }
 
-    /// Read a preset from text.
+    /// Read a recipe from text.
     ///
     /// # Errors
-    /// Returns [`PresetError::TooLarge`], [`PresetError::Format`] or
-    /// [`PresetError::UnsupportedVersion`].
-    pub fn parse(text: &str) -> Result<Self, PresetError> {
+    /// Returns [`RecipeError::TooLarge`], [`RecipeError::Format`] or
+    /// [`RecipeError::UnsupportedVersion`].
+    pub fn parse(text: &str) -> Result<Self, RecipeError> {
         if text.len() > Self::MAX_BYTES {
-            return Err(PresetError::TooLarge);
+            return Err(RecipeError::TooLarge);
         }
-        let version: Version = toml::from_str(text).map_err(PresetError::Format)?;
+        let version: Version = toml::from_str(text).map_err(RecipeError::Format)?;
         if let Some(found) = version.schema_version
             && found != Self::SCHEMA_VERSION
         {
-            return Err(PresetError::UnsupportedVersion { found });
+            return Err(RecipeError::UnsupportedVersion { found });
         }
-        let document: Document = toml::from_str(text).map_err(PresetError::Format)?;
+        let document: Document = toml::from_str(text).map_err(RecipeError::Format)?;
         Ok(Self {
             stimulus: Stimulus {
                 duration_seconds: document.duration_seconds,
@@ -167,7 +168,7 @@ impl Preset {
         })
     }
 
-    /// Serialize the preset in the schema-2 TOML recipe layout.
+    /// Serialize the recipe in the schema-2 TOML recipe layout.
     ///
     /// # Errors
     /// Returns the TOML writer's error; finite values always serialize.

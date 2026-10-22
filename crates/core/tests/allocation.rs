@@ -6,14 +6,14 @@
 
 #![cfg(test)]
 
-use auditorylab_core::{Preset, SampleRate, catalog};
+use auditorylab_core::{Recipe, SampleRate, catalog};
 use std::hint::black_box;
 
 #[test]
 fn rendering_any_catalog_entry_allocates_nothing() {
     for entry in catalog::ENTRIES {
         for hz in [44_100, 48_000] {
-            let mut stimulus = Preset::parse(entry.text).unwrap().stimulus;
+            let mut stimulus = Recipe::parse(entry.text).unwrap().stimulus;
             stimulus.duration_seconds = 0.5;
             let signal = stimulus.signal(SampleRate::new(hz).unwrap()).unwrap();
             let mut buffers = [

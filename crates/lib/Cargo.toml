@@ -1,14 +1,19 @@
 [package]
 name = "auditorylab"
-description = "Shared application workflows for auditory presets"
+description = "Shared application workflows for auditory recipes"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+[features]
+default = []
+# Default-device playback through CPAL. Portable consumers leave it off.
+device-playback = ["dep:cpal"]
+
 [dependencies]
-cpal.workspace = true
+cpal = { workspace = true, optional = true }
 auditorylab-core.workspace = true
 tempfile.workspace = true
 [target.'cfg(unix)'.dependencies]
@@ -24,5 +29,9 @@ toml.workspace = true
 allocation-counter.workspace = true
 proptest.workspace = true
 waveadapter.workspace = true
+[[test]]
+name = "default_output"
+required-features = ["device-playback"]
+
 [lints]
 workspace = true

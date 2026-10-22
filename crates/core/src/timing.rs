@@ -1,7 +1,8 @@
 //! Bounded origin-zero timing and envelope projections, independent of live phase history.
 use crate::{
-    CarrierFacts, ComponentFacts, Extent, ModulationFacts, SampleRate,
-    synthesis::{Carrier, Modulator, Voice, sine},
+    CarrierFacts, ComponentFacts, ComponentId, Extent, ModulationFacts, SampleRate,
+    compiled::CompiledMix,
+    synthesis::{Carrier, Modulator, sine},
 };
 use alloc::vec::Vec;
 /// Physical process represented by a model lane.
@@ -20,7 +21,7 @@ pub enum ModelKind {
 #[derive(Debug, Clone)]
 pub struct ModelLane {
     /// Caller component identity.
-    pub id: u32,
+    pub id: ComponentId,
     /// Process type.
     pub kind: ModelKind,
     /// Validated physical quantities.
@@ -45,17 +46,11 @@ pub struct TimingModel {
     clippy::cast_sign_loss,
     reason = "The clamped model spans at most four seconds at 768 kHz; positive frame counts fit u64 and usize on supported 64-bit targets"
 )]
-pub(crate) fn project(
-    rate: SampleRate,
-    voices: &[Option<(u32, Voice)>; 16],
-    facts: &[Option<ComponentFacts>; 16],
-    bins: usize,
-) -> TimingModel {
+pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
+    let rate = mix.rate();
     let mut slowest = f64::INFINITY;
-    for (entry, facts) in voices.iter().zip(facts) {
-        let (Some((_, voice)), Some(f)) = (entry, facts) else {
-            continue;
-        };
+    for entry in mix.entries() {
+        let (voice, f) = (&entry.voice, &entry.facts);
         if voice.amplitude == 0.0 {
             continue;
         }
@@ -79,10 +74,8 @@ pub(crate) fn project(
         insufficient_cycle: slowest.is_finite() && seconds * slowest < 1.0,
         lanes: Vec::new(),
     };
-    for (entry, facts) in voices.iter().zip(facts) {
-        let (Some((id, voice)), Some(facts)) = (entry, facts) else {
-            continue;
-        };
+    for entry in mix.entries() {
+        let (id, voice, facts) = (entry.id, &entry.voice, &entry.facts);
         if voice.amplitude == 0.0 {
             continue;
         }
@@ -96,7 +89,7 @@ pub(crate) fn project(
                 })
                 .collect();
             model.lanes.push(ModelLane {
-                id: *id,
+                id,
                 kind,
                 facts: *facts,
                 columns,

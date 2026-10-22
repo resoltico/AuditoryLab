@@ -49,7 +49,10 @@ unsafe extern "C-unwind" fn should_terminate(
     }
     NSApplicationTerminateReply::TerminateLater
 }
-#[expect(unsafe_code, reason = "registered Cocoa menu action has the matching void/object ABI")]
+#[expect(
+    unsafe_code,
+    reason = "registered Cocoa menu action has the matching void/object ABI"
+)]
 unsafe extern "C-unwind" fn show_about(_: &AnyObject, _: Sel, _: &AnyObject) {
     let _ = slint::invoke_from_event_loop(|| {
         if let Some(window) =
@@ -60,7 +63,10 @@ unsafe extern "C-unwind" fn show_about(_: &AnyObject, _: Sel, _: &AnyObject) {
     });
 }
 /// Extend only the known process-owned winit delegate, without replacing its object or methods.
-#[expect(unsafe_code, reason = "registers one optional Cocoa delegate method; no object layout or existing method is changed")]
+#[expect(
+    unsafe_code,
+    reason = "registers one optional Cocoa delegate method; no object layout or existing method is changed"
+)]
 pub(super) fn install(
     window: slint::Weak<super::MainWindow>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -216,7 +222,10 @@ pub(super) fn reply_to_termination(approve: bool) -> bool {
 pub(super) fn audio_cancel(cancel: Option<auditorylab::Cancel>) {
     AUDIO_CANCEL.with(|slot| *slot.borrow_mut() = cancel);
 }
-#[expect(unsafe_code, reason = "registered native action ABI; sender is checked before using NSButton methods")]
+#[expect(
+    unsafe_code,
+    reason = "registered native action ABI; sender is checked before using NSButton methods"
+)]
 unsafe extern "C-unwind" fn stop_audio(_: &AnyObject, _: Sel, sender: &AnyObject) {
     if MainThreadMarker::new().is_none() {
         return;

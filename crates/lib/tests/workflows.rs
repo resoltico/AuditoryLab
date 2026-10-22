@@ -16,7 +16,7 @@ fn bounded_input_and_regular_file_admission() {
     bytes.push(b' ');
     assert_eq!(
         load_reader(&bytes[..], "limit").unwrap_err().kind(),
-        ErrorKind::InvalidPreset
+        ErrorKind::InvalidRecipe
     );
     for bytes in [
         &[0xff][..],
@@ -26,7 +26,7 @@ fn bounded_input_and_regular_file_admission() {
     ] {
         assert_eq!(
             load_reader(bytes, "bad").unwrap_err().kind(),
-            ErrorKind::InvalidPreset
+            ErrorKind::InvalidRecipe
         );
     }
     let dir = dir();
@@ -99,7 +99,7 @@ fn public_export_progress_no_clobber_replace_and_cancellation() {
 #[test]
 fn shared_values_cross_threads() {
     fn shared<T: Send + Sync + 'static>() {}
-    shared::<Preset>();
+    shared::<RecipeSnapshot>();
     shared::<Sound>();
     shared::<Error>();
     shared::<Cancel>();

@@ -1,8 +1,6 @@
 //! Coherent bounded display captures and target-model provenance, shared by renderers.
-use crate::{
-    Extent, Meter, MonitorReader, Observation, SampleRate, SessionDescriptor, SoundSummary,
-};
-use auditorylab_core::{live::Target, timing::TimingModel};
+use crate::{Extent, Meter, MonitorReader, Observation, SampleRate, SessionDescriptor};
+use auditorylab_core::{Target, interpretation::Structure, timing::TimingModel};
 /// A view cannot silently hide invalid samples or invent source coverage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaptureError {
@@ -94,6 +92,16 @@ impl WaveformCapture {
         self.scale
     }
 
+    /// The same captured samples under another display scale. Bins and
+    /// meters are reused; only the display limit changes.
+    #[must_use]
+    pub fn with_scale(&self, scale: WaveformScale) -> Self {
+        let mut capture = self.clone();
+        capture.scale = scale;
+        capture.limit = limit(&self.bins, scale);
+        capture
+    }
+
     /// Capture the current copied contiguous monitor window; no callback or recorder changes.
     pub fn monitored(
         reader: &MonitorReader,
@@ -117,9 +125,15 @@ impl WaveformCapture {
         capture.underruns = status.underruns;
         Ok(Some(capture))
     }
-    /// Build a static, clearly separate seekable preview, bounded to100ms.
-    pub fn preview(sound: &crate::Sound, window_ms: u32, scale: WaveformScale) -> Self {
-        let signal = sound.signal();
+    /// Build a static, clearly separate seekable preview of at most 100 ms,
+    /// starting after the fade-in.
+    #[must_use]
+    pub fn preview(
+        title: String,
+        signal: &auditorylab_core::Signal,
+        window_ms: u32,
+        scale: WaveformScale,
+    ) -> Self {
         let start = signal.fade_frames().min(signal.frames().saturating_sub(1));
         let count = (u64::from(signal.sample_rate().hz()) * u64::from(window_ms.clamp(1, 100)))
             .div_ceil(1000)
@@ -129,7 +143,7 @@ impl WaveformCapture {
         signal.render(start, &mut samples);
         // Validated synthesis is finite; if that invariant changes, fail visibly rather than draw stale geometry.
         Self::samples(
-            sound.preset().title(),
+            title,
             signal.sample_rate(),
             (start, start + count),
             &samples,
@@ -149,16 +163,9 @@ impl WaveformCapture {
             return Err(CaptureError::InvalidSpan);
         }
         let mut bins = Vec::new();
-        crate::sample_trace(samples, 512, &mut bins).map_err(|_| CaptureError::NonFiniteSample)?;
-        let peak = bins
-            .iter()
-            .flatten()
-            .fold(0.0_f64, |p, e| p.max(e.min.abs()).max(e.max.abs()));
-        let limit = match scale {
-            WaveformScale::Fixed => 1.0,
-            WaveformScale::Fit if peak > 0.0 => peak,
-            WaveformScale::Fit => 1.0,
-        };
+        auditorylab_core::waveform::sample_trace(samples, 512, &mut bins)
+            .map_err(|_| CaptureError::NonFiniteSample)?;
+        let limit = limit(&bins, scale);
         Ok(Self {
             session: None,
             title,
@@ -222,6 +229,18 @@ impl WaveformCapture {
         )
     }
 }
+fn limit(bins: &[[Extent; 2]], scale: WaveformScale) -> f64 {
+    let peak = bins
+        .iter()
+        .flatten()
+        .fold(0.0_f64, |p, e| p.max(e.min.abs()).max(e.max.abs()));
+    match scale {
+        WaveformScale::Fixed => 1.0,
+        WaveformScale::Fit if peak > 0.0 => peak,
+        WaveformScale::Fit => 1.0,
+    }
+}
+
 /// Provenance of a pure timing model; never an observed live pulse origin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelSource {
@@ -244,7 +263,7 @@ pub struct ModelView {
     /// Origin-zero core projection.
     pub projection: TimingModel,
     /// Physical interpretation.
-    pub summary: SoundSummary,
+    pub structure: Structure,
 }
 impl ModelView {
     /// Construct off the callback; at most32lanes×512columns regardless of rates.
@@ -254,7 +273,7 @@ impl ModelView {
             title,
             source,
             projection: target.timing_model(256),
-            summary: SoundSummary::target(&target),
+            structure: Structure::of_target(&target),
         }
     }
     /// Explicit model rate/origin/provenance, with insufficient-cycle warning when capped.
@@ -263,7 +282,7 @@ impl ModelView {
             "Timing model · {} · {} · origin 0 · {} Hz · {:.1} ms · projection, not recorded output{}",
             self.title,
             match self.source {
-                ModelSource::Draft => "last valid draft".into(),
+                ModelSource::Draft => "committed draft".into(),
                 ModelSource::Recipe => "validated recipe".into(),
                 ModelSource::Accepted(r) =>
                     format!("accepted target revision {r}; not phase history"),
@@ -279,8 +298,11 @@ impl ModelView {
     }
 }
 /// Shared lifecycle wording; terminal silence never relabels a session's recipe.
+#[must_use]
 pub const fn phase_text(phase: crate::PlaybackPhase) -> &'static str {
-    use crate::PlaybackPhase::*;
+    use crate::PlaybackPhase::{
+        Completed, Draining, Failed, FrameLimit, Preparing, Running, Stopped, Stopping,
+    };
     match phase {
         Preparing => "Preparing output…",
         Running => "Playing",
@@ -288,6 +310,7 @@ pub const fn phase_text(phase: crate::PlaybackPhase) -> &'static str {
         Draining => "Finishing output…",
         Completed => "Completed",
         Stopped => "Stopped",
+        FrameLimit => "Reached the longest session length",
         Failed => "Failed",
     }
 }
@@ -319,7 +342,7 @@ impl ModelView {
                 Some(crate::ModulationFacts::Sinusoidal { rate, depth }) => format!(
                     "{} Hz AM · {}%",
                     crate::compact_number(rate.realized_hz),
-                    depth * 100.0
+                    crate::compact_number(depth * 100.0)
                 ),
                 _ => unreachable!("envelope lane modulation"),
             },
@@ -334,12 +357,7 @@ impl ModelView {
         let ModelSource::Accepted(revision) = self.source else {
             return String::new();
         };
-        let ended = matches!(
-            status.phase,
-            crate::PlaybackPhase::Stopped
-                | crate::PlaybackPhase::Completed
-                | crate::PlaybackPhase::Failed
-        );
+        let ended = status.phase.is_terminal();
         match status.observation {
             None => if ended {
                 " · not generated before the session ended"
@@ -415,12 +433,7 @@ pub fn output_monitor_state(
             OutputMonitorState::Unavailable
         };
     };
-    if matches!(
-        reader.status().phase,
-        crate::PlaybackPhase::Stopped
-            | crate::PlaybackPhase::Completed
-            | crate::PlaybackPhase::Failed
-    ) {
+    if reader.status().phase.is_terminal() {
         return if capture.is_some() {
             OutputMonitorState::LastCapture
         } else {

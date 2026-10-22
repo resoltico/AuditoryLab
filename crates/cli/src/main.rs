@@ -1,6 +1,9 @@
 //! Command-line interface to Auditory Lab.
 #![forbid(unsafe_code)]
-use auditorylab::{self as lab, Cancel, ErrorKind, Origin, Preset, Progress, Replace, SampleRate};
+use auditorylab::{
+    self as lab, Cancel, EndReason, ErrorKind, PlaybackControl, Preparation, Progress,
+    RecipeSnapshot, Replace, SampleRate, Session,
+};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use std::{
     io::{self, IsTerminal, Write},
@@ -15,17 +18,17 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
-    /// Find built-in sounds and their durations.
+    /// Find built-in recipes and their durations.
     List,
-    /// Read a sound's description and research context.
+    /// Read a recipe's description and research context.
     Describe(Source),
     /// Print or save an editable built-in TOML recipe.
     Recipe {
-        preset_id: String,
+        recipe_id: String,
         #[arg(long, value_name = "PATH")]
         output: Option<PathBuf>,
     },
-    /// Validate a recipe and inspect its technical parameters.
+    /// Validate a recipe and inspect its technical parameters at one sample rate.
     Inspect {
         #[command(flatten)]
         source: Source,
@@ -47,8 +50,8 @@ enum Command {
 #[derive(Args)]
 #[group(id = "source", required = true, multiple = false)]
 struct Source {
-    /// Exact built-in ID (see list).
-    preset_id: Option<String>,
+    /// Exact built-in recipe ID (see list).
+    recipe_id: Option<String>,
     /// Read a UTF-8 TOML recipe file.
     #[arg(long, value_name = "PATH")]
     file: Option<PathBuf>,
@@ -61,8 +64,8 @@ fn rate(text: &str) -> Result<SampleRate, String> {
         .map_err(|e| e.to_string())
         .and_then(|n| SampleRate::new(n).map_err(|e| e.to_string()))
 }
-fn read(source: Source) -> Result<Preset, lab::Error> {
-    if let Some(id) = source.preset_id {
+fn read(source: Source) -> Result<RecipeSnapshot, lab::Error> {
+    if let Some(id) = source.recipe_id {
         lab::builtin(&id)
     } else if let Some(path) = source.file {
         lab::load_file(&path)
@@ -77,7 +80,7 @@ fn read(source: Source) -> Result<Preset, lab::Error> {
 }
 fn exit_code(kind: ErrorKind) -> u8 {
     match kind {
-        ErrorKind::UnknownPreset | ErrorKind::InvalidPreset | ErrorKind::InvalidSound => 2,
+        ErrorKind::UnknownRecipe | ErrorKind::InvalidRecipe | ErrorKind::InvalidSound => 2,
         ErrorKind::Cancelled => 130,
         _ => 1,
     }
@@ -109,20 +112,20 @@ fn completed(text: &str) {
         eprintln!("warning: operation completed; cannot report completion: {e}");
     }
 }
-fn cancel_on_interrupt() -> Result<Cancel, Box<dyn std::error::Error>> {
-    let cancel = Cancel::default();
-    let handler = cancel.clone();
+/// The first interrupt runs `request`; a second one exits at once.
+fn on_interrupt(request: impl Fn() + Send + 'static) -> Result<(), Box<dyn std::error::Error>> {
+    let interrupted = std::sync::atomic::AtomicBool::new(false);
     ctrlc::set_handler(move || {
-        if handler.is_requested() {
+        if interrupted.swap(true, std::sync::atomic::Ordering::Relaxed) {
             if io::stderr().is_terminal() {
                 let _ = write!(io::stderr(), "\r\x1b[2K");
                 let _ = io::stderr().flush();
             }
             std::process::exit(130);
         }
-        handler.request();
+        request();
     })?;
-    Ok(cancel)
+    Ok(())
 }
 struct StatusLine {
     active: bool,
@@ -142,177 +145,115 @@ impl Drop for StatusLine {
         }
     }
 }
-fn describe(preset: &Preset) -> String {
-    let s = preset.stimulus();
-    let mut out = format!(
-        "{}\nSource: {}\nDuration: {}\nFade: {} at each edge\n",
-        preset.title(),
-        preset.origin(),
-        lab::human_duration(s.duration_seconds),
-        lab::human_duration(s.fade_seconds)
-    );
-    for (label, value) in preset.research() {
-        out.push_str(&format!("{label}: {value}\n"));
-    }
-    if let Ok(sound) = preset.at(SampleRate::DEFAULT) {
-        out.push_str(&format!(
-            "Description at {} Hz:\n{}\n",
-            SampleRate::DEFAULT.hz(),
-            lab::sound_description(&sound, false)
-        ));
-    } else {
-        for (i, component) in s.components.iter().enumerate() {
-            out.push_str(&format!("Component {}: {component}\n", i + 1));
-        }
-    }
-    out
+/// How a command ended when it did not fail.
+enum Ended {
+    Normally,
+    Stopped,
 }
-fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
-    match cli.command {
-        None => {
-            output(format!("{}\n", Cli::command().render_help()).as_bytes())?;
+fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> {
+    let session = Session::new();
+    let control: PlaybackControl = session.control();
+    let stop = control.clone();
+    on_interrupt(move || {
+        stop.request_stop();
+    })?;
+    let mut playback = match lab::device::prepare_playback(session, snapshot)? {
+        Preparation::Ready(playback) => playback,
+        Preparation::Stopped(report) => {
+            eprintln!("{}", prose(&lab::playback_result(&report)));
+            return Ok(Ended::Stopped);
         }
-        Some(Command::List) => {
-            let mut text = String::new();
-            for preset in lab::catalog()? {
-                if let Origin::BuiltIn(id) = preset.origin() {
-                    text.push_str(&format!(
-                        "{id}\n  {} ({})\n",
-                        preset.title(),
-                        lab::human_duration(preset.stimulus().duration_seconds)
-                    ));
-                    if let Some(a) = preset.about().and_then(|a| a.studied_for.as_deref()) {
-                        text.push_str(&format!("  {a}\n"));
+    };
+    eprintln!(
+        "{}\nPress Ctrl-C to stop.",
+        prose(&lab::playback_preamble(
+            snapshot,
+            playback.output(),
+            playback.signal()
+        ))
+    );
+    let sound = snapshot.at(playback.output().sample_rate)?;
+    eprintln!("{}", prose(&lab::sound_description(&sound, false)));
+    let report = if io::stderr().is_terminal() {
+        let mut reader = playback.monitor(lab::MonitorDetail::Quantities).reader();
+        let done = std::sync::atomic::AtomicBool::new(false);
+        std::thread::scope(
+            |scope| -> Result<lab::PlaybackReport, Box<dyn std::error::Error>> {
+                let printer = scope.spawn(|| {
+                    let mut terminal = StatusLine { active: false };
+                    while !done.load(std::sync::atomic::Ordering::Acquire) {
+                        reader.poll(0);
+                        terminal.draw(&lab::playback_status(&reader));
+                        std::thread::sleep(std::time::Duration::from_millis(250));
                     }
-                }
-            }
-            say(&text)?;
-        }
+                });
+                // Keep the discovered device on its caller thread; only plain
+                // shared status crosses to the terminal renderer.
+                let result = playback.play();
+                done.store(true, std::sync::atomic::Ordering::Release);
+                printer
+                    .join()
+                    .map_err(|_| io::Error::other("status renderer failed"))?;
+                Ok(result?)
+            },
+        )?
+    } else {
+        playback.play()?
+    };
+    eprintln!("{}", prose(&lab::playback_result(&report)));
+    Ok(if report.end == EndReason::Stopped {
+        Ended::Stopped
+    } else {
+        Ended::Normally
+    })
+}
+fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
+    match cli.command {
+        None => output(format!("{}\n", Cli::command().render_help()).as_bytes())?,
+        Some(Command::List) => say(&lab::catalog_listing(&lab::catalog()?))?,
         Some(Command::Recipe {
-            preset_id,
+            recipe_id,
             output: path,
         }) => {
             if let Some(path) = path {
-                lab::save_builtin(&preset_id, &path, Replace::Never)?;
+                lab::save_builtin(&recipe_id, &path, Replace::Never)?;
                 completed(&format!("Saved recipe to {path:?}."));
             } else {
-                output(lab::builtin_source(&preset_id)?.as_bytes())?;
+                output(lab::builtin_source(&recipe_id)?.as_bytes())?;
             }
         }
-        Some(Command::Describe(source)) => say(&describe(&read(source)?))?,
+        Some(Command::Describe(source)) => say(&lab::describe(&read(source)?))?,
         Some(Command::Inspect {
             source,
             sample_rate,
-        }) => {
-            let preset = read(source)?;
-            let sound = preset.at(sample_rate)?;
-            let signal = sound.signal();
-            say(&format!(
-                "{}\nSample rate: {} Hz\nFrames: {}\nDuration: {}\nFade: {} frames ({} s)\nPeak bounds: left {} dBFS, right {} dBFS",
-                describe(&preset),
-                sample_rate.hz(),
-                signal.frames(),
-                lab::human_duration(signal.duration_seconds()),
-                signal.fade_frames(),
-                signal.fade_seconds(),
-                signal.peak_dbfs()[0],
-                signal.peak_dbfs()[1]
-            ))?;
-            say(&lab::sound_description(&sound, true))?;
-        }
+        }) => say(&lab::inspection(&read(source)?.at(sample_rate)?))?,
         Some(Command::Export {
             source,
             output: path,
             sample_rate,
         }) => {
-            let preset = read(source)?;
-            let sound = preset.at(sample_rate)?;
-            let cancel = cancel_on_interrupt()?;
+            let snapshot = read(source)?;
+            let sound = snapshot.at(sample_rate)?;
+            let cancel = Cancel::default();
+            let request = cancel.clone();
+            on_interrupt(move || request.request())?;
             eprintln!(
                 "{}",
                 prose(&format!(
                     "Exporting {} to {path:?} at {} Hz. Press Ctrl-C to stop.",
-                    preset.title(),
+                    snapshot.title(),
                     sample_rate.hz()
                 ))
             );
             let result = lab::export(&sound, &path, Replace::Never, &cancel, &Progress::default())?;
             completed(&format!(
-                "Exported {} frames to {path:?} ({:?}).",
+                "Exported {} frames to {path:?} ({}).",
                 result.frames, result.container
             ));
         }
-        Some(Command::Play(source)) => {
-            let preset = read(source)?;
-            let cancel = cancel_on_interrupt()?;
-            let mut playback = lab::prepare_playback(&preset)?;
-            let info = playback.output();
-            eprintln!(
-                "{}",
-                prose(&format!(
-                    "Preparing {}\nSource: {}\nDuration: {}\nDevice: {}\n{} Hz, {} channels, {}\n{}\nPress Ctrl-C to stop.",
-                    preset.title(),
-                    preset.origin(),
-                    lab::human_duration(playback.sound().signal().duration_seconds()),
-                    info.name.as_deref().unwrap_or("default output"),
-                    info.sample_rate.hz(),
-                    info.channels,
-                    info.format,
-                    preset
-                        .notices()
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                ))
-            );
-            eprintln!(
-                "{}",
-                prose(&lab::sound_description(playback.sound(), false))
-            );
-            let tty = io::stderr().is_terminal();
-            let result = if tty {
-                let mut reader = playback.monitor(lab::MonitorDetail::Quantities).reader();
-                let progress = Progress::default();
-                let done = std::sync::atomic::AtomicBool::new(false);
-                std::thread::scope(|scope| -> Result<lab::Played, Box<dyn std::error::Error>> {
-                    let printer = scope.spawn(|| {
-                        let mut terminal = StatusLine { active: false };
-                        while !done.load(std::sync::atomic::Ordering::Acquire) {
-                            reader.poll(0);
-                            let state = reader.status();
-                            terminal.draw(&format!(
-                                "{} · {:?} · {:?} · {}",
-                                lab::playback_elapsed(
-                                    reader.descriptor().output.sample_rate,
-                                    progress.frames()
-                                ),
-                                state.phase,
-                                reader.freshness(),
-                                reader.description()
-                            ));
-                            std::thread::sleep(std::time::Duration::from_millis(250));
-                        }
-                    });
-                    // Keep the discovered device on its caller thread; only plain
-                    // shared status crosses to the terminal renderer.
-                    let result = playback.play(&cancel, &progress);
-                    done.store(true, std::sync::atomic::Ordering::Release);
-                    printer
-                        .join()
-                        .map_err(|_| io::Error::other("status renderer failed"))?;
-                    Ok(result?)
-                })?
-            } else {
-                playback.play(&cancel, &Progress::default())?
-            };
-            eprintln!("Played {} frames.", result.frames);
-            if result.underruns > 0 {
-                eprintln!("{}", lab::Notice::Underruns(result.underruns));
-            }
-        }
+        Some(Command::Play(source)) => return play(&read(source)?),
     }
-    Ok(())
+    Ok(Ended::Normally)
 }
 fn main() -> ExitCode {
     let cli = match Cli::try_parse() {
@@ -332,11 +273,12 @@ fn main() -> ExitCode {
         Err(e) => e.exit(),
     };
     match run(cli) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(Ended::Normally) => ExitCode::SUCCESS,
+        Ok(Ended::Stopped) => ExitCode::from(130),
         Err(e) => {
             let mut message = e.to_string();
             if e.downcast_ref::<lab::Error>()
-                .is_some_and(|e| e.kind() == ErrorKind::UnknownPreset)
+                .is_some_and(|e| e.kind() == ErrorKind::UnknownRecipe)
             {
                 message.push_str("; run `auditorylab list`, or use --file PATH");
             }

@@ -1368,7 +1368,10 @@ fn sync_action_buttons(ui: &MainWindow, app: &App, dialog_active: bool) {
         .into(),
     );
 }
-#[expect(clippy::cast_possible_truncation, reason = "Shared slider_position is normalized before rounding to the renderer f32 coordinate type; audio parameter values remain binary64")]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "Shared slider_position is normalized before rounding to the renderer f32 coordinate type; audio parameter values remain binary64"
+)]
 fn position(setting: auditorylab::Setting, rate: auditorylab::SampleRate, value: f64) -> f32 {
     auditorylab::slider_position(setting, rate, value) as f32
 }

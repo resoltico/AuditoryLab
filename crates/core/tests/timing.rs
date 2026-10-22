@@ -1,9 +1,12 @@
 //! Timing-model oracles use integer rationals, never the projection's pulse helper.
 use auditorylab_core::{
-    Carrier, Component, Ears, Modulation, SampleRate,
-    live::{Engine, Target},
+    Carrier, Component, ComponentId, Ears, Modulation, SampleRate, Target, live::Engine,
     timing::ModelKind,
 };
+
+fn id(n: u32) -> ComponentId {
+    ComponentId::new(n)
+}
 fn clicks(hz: f64, width: f64) -> Component {
     Component {
         ears: Ears::Both,
@@ -26,11 +29,11 @@ fn every_column_contains_all_rational_pulses_including_single_frame_impulses() {
             let rate = SampleRate::new(fs).unwrap();
             let hz =
                 f64::from(u32::try_from(num).unwrap()) / f64::from(u32::try_from(den).unwrap());
-            let target = Target::new(rate, &[(7, clicks(hz, width))]).unwrap();
+            let target = Target::new(rate, &[(id(7), clicks(hz, width))]).unwrap();
             let model = target.timing_model(257);
             let lane = &model.lanes[0];
             assert_eq!(lane.kind, ModelKind::Clicks);
-            assert_eq!(lane.id, 7);
+            assert_eq!(lane.id, id(7));
             let w = if width == 0.001 {
                 if fs == 44100 {
                     44
@@ -71,7 +74,7 @@ fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
         }),
         ..clicks(40.0, 0.001)
     };
-    let model = Target::new(rate, &[(1, component)])
+    let model = Target::new(rate, &[(id(1), component)])
         .unwrap()
         .timing_model(1);
     assert_eq!(model.lanes[0].kind, ModelKind::Gate);
@@ -102,7 +105,7 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
     let muted = Target::new(
         rate,
         &[(
-            1,
+            id(1),
             Component {
                 peak_dbfs: -10000.0,
                 ..c
@@ -113,12 +116,12 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
     .timing_model(512);
     assert!(muted.lanes.is_empty());
     assert_eq!(muted.frames, 12000);
-    let t = Target::new(rate, &[(1, c)]).unwrap();
+    let t = Target::new(rate, &[(id(1), c)]).unwrap();
     let m = t.timing_model(usize::MAX);
     assert_eq!(m.frames, 192000);
     assert!(m.insufficient_cycle);
     assert_eq!(m.lanes[0].columns.len(), 512);
-    let t = Target::new(rate, &[(1, clicks(8.0, 0.001))]).unwrap();
+    let t = Target::new(rate, &[(id(1), clicks(8.0, 0.001))]).unwrap();
     assert_eq!(t.timing_model(256).frames, 24000);
     let c = Component {
         modulation: Some(Modulation::Sinusoidal {
@@ -127,7 +130,7 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
         }),
         ..clicks(40.0, 0.001)
     };
-    let t = Target::new(rate, &[(1, c)]).unwrap();
+    let t = Target::new(rate, &[(id(1), c)]).unwrap();
     let m = t.timing_model(256);
     assert_eq!(m.lanes.len(), 2);
     assert_eq!(m.lanes[1].kind, ModelKind::Envelope);
@@ -149,7 +152,7 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
     b.render(&mut y);
     assert_eq!(x, y);
     assert_eq!(a.observation(), b.observation());
-    let all: Vec<_> = (0..16).map(|id| (id, c)).collect();
+    let all: Vec<_> = (0..16).map(|n| (id(n), c)).collect();
     assert_eq!(
         Target::new(rate, &all)
             .unwrap()
@@ -175,7 +178,7 @@ fn am_bounds_contain_independent_sine_samples_and_depth_zero_is_steady() {
                 }),
                 ..clicks(40.0, 0.001)
             };
-            let m = Target::new(rate, &[(1, c)]).unwrap().timing_model(257);
+            let m = Target::new(rate, &[(id(1), c)]).unwrap().timing_model(257);
             if depth == 0.0 {
                 assert_eq!(m.lanes[0].kind, ModelKind::Steady);
                 continue;
@@ -205,7 +208,7 @@ fn maximum_rate_projection_has_fixed_storage_and_measured_cost() {
         }),
         ..clicks(383999.0, 1.0 / 768000.0)
     };
-    let voices: Vec<_> = (0..16).map(|id| (id, c)).collect();
+    let voices: Vec<_> = (0..16).map(|n| (id(n), c)).collect();
     let t = Target::new(rate, &voices).unwrap();
     let now = std::time::Instant::now();
     let model = t.timing_model(usize::MAX);
@@ -243,7 +246,7 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
         let model = Target::new(
             rate,
             &[(
-                1,
+                id(1),
                 Component {
                     modulation: Some(modulation),
                     ..tone
@@ -256,7 +259,7 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
         assert!(!model.insufficient_cycle);
     }
     for (hz, incomplete) in [(0.125, true), (0.25, false), (8.0, false)] {
-        let model = Target::new(rate, &[(1, clicks(hz, 0.001))])
+        let model = Target::new(rate, &[(id(1), clicks(hz, 0.001))])
             .unwrap()
             .timing_model(17);
         assert_eq!(model.insufficient_cycle, incomplete, "{hz}");
@@ -266,7 +269,7 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
     let model = Target::new(
         rate,
         &[(
-            1,
+            id(1),
             Component {
                 modulation: Some(Modulation::Sinusoidal {
                     rate_hz: 0.1,
@@ -297,7 +300,7 @@ fn envelope_bounds_match_endpoints_and_quarter_cycle_extrema() {
             }),
             ..clicks(40.0, 0.001)
         };
-        let model = Target::new(rate, &[(1, component)])
+        let model = Target::new(rate, &[(id(1), component)])
             .unwrap()
             .timing_model(37);
         assert_eq!(model.frames, 24000);

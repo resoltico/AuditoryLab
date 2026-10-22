@@ -12,13 +12,13 @@ fn tone(hz: f64, ears: Ears) -> Component {
     clippy::unwrap_used,
     reason = "Test fixture helper deliberately panics if an enumerated component ID or specified target is invalid, causing its calling presentation test to fail"
 )]
-fn summary(components: &[Component]) -> SoundSummary {
+fn summary(components: &[Component]) -> Structure {
     let pairs: Vec<_> = components
         .iter()
         .enumerate()
-        .map(|(i, c)| (u32::try_from(i).unwrap(), *c))
+        .map(|(i, c)| (ComponentId::numbered(i).unwrap(), *c))
         .collect();
-    SoundSummary::target(&Target::new(SampleRate::DEFAULT, &pairs).unwrap())
+    Structure::of_target(&Target::new(SampleRate::DEFAULT, &pairs).unwrap())
 }
 #[test]
 fn physical_meaning_has_positive_and_rejected_neighbors() {
@@ -32,7 +32,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     let s = summary(&[click, tone(440.0, Ears::Both)]);
     assert_eq!(s.rhythms.len(), 1);
     assert_eq!(s.rhythms[0].kind, RhythmKind::Clicks);
-    let text = s.description();
+    let text = structure_description(&s);
     assert!(
         text.contains("40 Hz clicks")
             && text.contains("440 Hz steady tone")
@@ -51,11 +51,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
         summary(&[a, b]).relationship,
         Some(ToneRelationship::Monaural { .. })
     ));
-    assert!(
-        summary(&[a, tone(380.0, Ears::Both)])
-            .description()
-            .contains("Unison")
-    );
+    assert!(structure_description(&summary(&[a, tone(380.0, Ears::Both)])).contains("Unison"));
     for bad in [
         vec![
             a,
@@ -88,7 +84,10 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     };
     let s = summary(&[gate, click]);
     assert_eq!(s.rhythms.len(), 2);
-    assert!(s.description().contains("8 Hz gate") && s.description().contains("40 Hz clicks"));
+    assert!(
+        structure_description(&s).contains("8 Hz gate")
+            && structure_description(&s).contains("40 Hz clicks")
+    );
     let active = Component {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 39.0625,
@@ -99,7 +98,10 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     let am = summary(&[active]);
     assert_eq!(am.rhythms.len(), 1);
     assert_eq!(am.rhythms[0].kind, RhythmKind::AmplitudeModulation);
-    assert!(am.description().contains("39.0625") && am.description().contains("50%"));
+    assert!(
+        structure_description(&am).contains("39.0625")
+            && structure_description(&am).contains("50%")
+    );
     let inactive = Component {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 39.0625,
@@ -204,41 +206,83 @@ fn captures_fit_both_ears_without_changing_meters_and_reject_invalid_data() {
 fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized() {
     assert_eq!(compact_number(39.0625), "39.0625");
     assert_eq!(compact_number(39.0625123456789), "≈39.0625");
-    assert_eq!(compact_number(100000.0), "100000");
-    assert!(!compact_number(f64::from_bits(1)).starts_with('0'));
-    let mut c = tone(440.0, Ears::Both);
     let exact = 39.0625123456789;
-    set_setting(&mut c, Setting::Frequency, exact);
-    assert_eq!(setting_value(&c, Setting::Frequency), Some(exact));
-    let _ = summary(&[c]).description();
-    assert_eq!(setting_value(&c, Setting::Frequency), Some(exact));
+    assert_eq!(
+        editable_number(ParameterId::ToneFrequency, exact),
+        "39.0625123456789"
+    );
     let c = Component {
         carrier: Carrier::Click {
             rate_hz: 40.0,
             width_seconds: 0.001,
         },
-        ..c
+        ..tone(440.0, Ears::Both)
     };
-    let t = Target::new(SampleRate::new(44100).unwrap(), &[(9, c)]).unwrap();
+    let t = Target::new(SampleRate::new(44100).unwrap(), &[(ComponentId::new(9), c)]).unwrap();
     let m = ModelView::new(t, "draft".into(), ModelSource::Draft);
     assert!(m.caption().contains("origin 0") && m.caption().contains("44100 Hz"));
-    if let CarrierFacts::Clicks(p) = m.projection.lanes[0].facts.carrier {
-        assert_eq!(p.width_frames, 44);
-    } else {
-        panic!()
+    let CarrierFacts::Clicks(p) = m.projection.lanes[0].facts.carrier else {
+        panic!("click lane")
+    };
+    assert_eq!(p.width_frames, 44);
+}
+
+#[test]
+fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
+    // 0.1 ms at 8 kHz realizes one frame, 0.125 ms; 1 ms at 44.1 kHz realizes 44 frames.
+    for (hz, requested, frames, realized) in [
+        (8_000, 0.0001, 1, "0.125"),
+        (44_100, 0.001, 44, "≈0.997732"),
+    ] {
+        let rate = SampleRate::new(hz).unwrap();
+        let component = Component {
+            carrier: Carrier::Click {
+                rate_hz: 40.0,
+                width_seconds: requested,
+            },
+            ..tone(440.0, Ears::Both)
+        };
+        let check = TargetCheck::new(rate, &[(ComponentId::new(1), component)]);
+        let facts = check.components()[0].1.clone().unwrap();
+        let brief = component_description(&facts, false);
+        let detail = component_description(&facts, true);
+        assert!(brief.contains(&format!("{realized} ms open")), "{brief}");
+        assert!(
+            detail.contains(&format!("requested {} ms", requested * 1000.0)),
+            "{detail}"
+        );
+        assert!(
+            detail.contains(&format!("realized {frames} frame")),
+            "{detail}"
+        );
+        assert!(detail.contains(&format!("at {hz} Hz")), "{detail}");
+        assert_eq!(
+            editable_number(ParameterId::ClickWidth, requested),
+            (requested * 1000.0).to_string()
+        );
     }
 }
 
 #[test]
-fn diagnostics_name_only_the_affected_settings_and_coupled_neighbors() {
+fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
     let rate = SampleRate::DEFAULT;
-    let c = tone(30000.0, Ears::Both);
-    let errors = setting_diagnostics(&c, rate);
+    for id in ParameterId::ALL {
+        let d = id.descriptor();
+        assert_eq!(labeled(id), format!("{} ({})", d.label, d.unit.symbol()));
+    }
+    let check = |c: Component| {
+        TargetCheck::new(rate, &[(ComponentId::new(1), c)]).components()[0]
+            .1
+            .clone()
+            .unwrap_err()
+            .parameters()
+            .to_vec()
+    };
     assert_eq!(
-        errors.iter().map(|e| e.0).collect::<Vec<_>>(),
-        [Setting::Frequency]
+        check(tone(30000.0, Ears::Both)),
+        [ParameterId::ToneFrequency]
     );
-    let c = Component {
+    let clicks = Component {
         carrier: Carrier::Click {
             rate_hz: 160.0,
             width_seconds: 0.010,
@@ -246,13 +290,10 @@ fn diagnostics_name_only_the_affected_settings_and_coupled_neighbors() {
         ..tone(440.0, Ears::Both)
     };
     assert_eq!(
-        setting_diagnostics(&c, rate)
-            .iter()
-            .map(|e| e.0)
-            .collect::<Vec<_>>(),
-        [Setting::ClickRate, Setting::ClickWidth]
+        check(clicks),
+        [ParameterId::ClickRate, ParameterId::ClickWidth]
     );
-    let c = Component {
+    let sideband = Component {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 10000.0,
             depth: 0.5,
@@ -260,63 +301,41 @@ fn diagnostics_name_only_the_affected_settings_and_coupled_neighbors() {
         ..tone(16000.0, Ears::Both)
     };
     assert_eq!(
-        setting_diagnostics(&c, rate)
-            .iter()
-            .map(|e| e.0)
-            .collect::<Vec<_>>(),
-        [Setting::Frequency, Setting::ModulationRate]
+        check(sideband),
+        [
+            ParameterId::ToneFrequency,
+            ParameterId::AmplitudeModulationRate
+        ]
     );
-    let c = Component {
-        peak_dbfs: 1.0,
+    assert_eq!(
+        check(Component {
+            peak_dbfs: 1.0,
+            ..tone(440.0, Ears::Both)
+        }),
+        [ParameterId::PeakLevel]
+    );
+    let depth = Component {
+        modulation: Some(Modulation::Sinusoidal {
+            rate_hz: 40.0,
+            depth: 1.5,
+        }),
         ..tone(440.0, Ears::Both)
     };
-    assert_eq!(setting_diagnostics(&c, rate)[0].0, Setting::Level);
-    assert!(setting_diagnostics(&tone(440.0, Ears::Both), rate).is_empty());
-}
-
-#[test]
-fn save_admission_and_saved_timing_diagnostics_share_the_actual_serialization_contract() {
-    let mut draft = Draft::new();
-    let id = draft.add(SourceKind::Tone).unwrap();
-    draft.replace(id, tone(-1.0, Ears::Both));
-    assert!(
-        draft.to_toml().is_ok(),
-        "finite-invalid drafts remain saveable"
+    let error = TargetCheck::new(rate, &[(ComponentId::new(1), depth)]).components()[0]
+        .1
+        .clone()
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "Modulation depth 150% must be from 0% to 100%"
     );
-    assert!(draft.target(SampleRate::DEFAULT).is_err());
-    draft.replace(
-        id,
-        Component {
-            peak_dbfs: f64::NEG_INFINITY,
-            ..tone(440.0, Ears::Both)
-        },
-    );
-    assert!(
-        draft.target(SampleRate::DEFAULT).is_err(),
-        "nonfinite component levels are invalid in the core too"
-    );
-    assert!(draft.to_toml().unwrap_err().to_string().contains("finite"));
-    draft.replace(id, tone(440.0, Ears::Both));
-    draft.set_summary("x".repeat(65536));
-    assert!(
-        draft.target(SampleRate::DEFAULT).is_ok(),
-        "metadata size is not an audio-target constraint"
-    );
-    assert!(draft.to_toml().is_err());
-    draft.set_summary(String::new());
-    draft.set_duration_seconds(0.001);
-    draft.set_fade_seconds(0.1);
-    let errors = draft.saved_audio_diagnostics(SampleRate::DEFAULT);
-    assert!(errors.duration.is_some() && errors.fade.is_some());
-    draft.set_duration_seconds(1.0);
-    draft.set_fade_seconds(-1.0);
-    let errors = draft.saved_audio_diagnostics(SampleRate::DEFAULT);
-    assert!(errors.duration.is_none() && errors.fade.is_some());
-    draft.set_duration_seconds(f64::NAN);
-    draft.set_fade_seconds(0.1);
-    let errors = draft.saved_audio_diagnostics(SampleRate::DEFAULT);
-    assert!(errors.duration.is_some() && errors.fade.is_none());
-    draft.set_duration_seconds(1.0);
-    let errors = draft.saved_audio_diagnostics(SampleRate::DEFAULT);
-    assert!(errors.duration.is_none() && errors.fade.is_none());
+    for kind in CarrierKind::ALL {
+        assert!(!kind.label().is_empty());
+    }
+    for kind in ModulationKind::ALL {
+        assert!(!kind.label().is_empty());
+    }
+    for ears in Ears::ALL {
+        assert!(ears.label().ends_with("ear") || ears.label().ends_with("ears"));
+    }
 }

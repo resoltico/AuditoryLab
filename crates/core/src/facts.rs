@@ -1,5 +1,5 @@
 //! Typed requested and realized generator quantities.
-use crate::{Carrier, Component, ComponentError, Ears, Modulation, SampleRate};
+use crate::{Carrier, Component, ComponentId, Ears, Modulation, SampleRate, Stimulus};
 /// Requested rate and the rate represented by the renderer's phase increment.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PhaseRate {
@@ -9,7 +9,10 @@ pub struct PhaseRate {
     pub realized_hz: f64,
 }
 impl PhaseRate {
-    #[expect(clippy::cast_precision_loss, reason = "Integer phase steps are rounded to binary64 for reported frequency; they are not used to reconstruct the renderer step")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "Integer phase steps are rounded to binary64 for reported frequency; they are not used to reconstruct the renderer step"
+    )]
     pub(crate) fn from_step(requested_hz: f64, step: u64, rate: SampleRate) -> Self {
         Self {
             requested_hz,
@@ -17,15 +20,26 @@ impl PhaseRate {
         }
     }
 }
-/// Pulse repetition uses rational onset scheduling, not a rounded period.
+/// A pulse train's requested and realized quantities. Repetition uses
+/// rational onset scheduling, not a rounded period, so the requested rate is
+/// also the generated long-run rate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PulseFacts {
     /// Configured rational repetition rate, in Hz.
     pub rate_hz: f64,
-    /// Requested width in seconds.
-    pub width_seconds: f64,
-    /// Realized width, rounded to whole frames.
+    /// Requested pulse length in seconds, as entered.
+    pub requested_width_seconds: f64,
+    /// Generated pulse length: the requested length rounded to whole frames.
     pub width_frames: u64,
+    /// The rate the width was resolved at.
+    pub sample_rate: SampleRate,
+}
+impl PulseFacts {
+    /// Generated pulse length in seconds, derived from the frame count.
+    #[must_use]
+    pub fn realized_width_seconds(&self) -> f64 {
+        self.sample_rate.seconds_in(self.width_frames)
+    }
 }
 /// A component's carrier quantities.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -60,22 +74,13 @@ pub struct ComponentFacts {
     /// Optional envelope quantities.
     pub modulation: Option<ModulationFacts>,
 }
-impl Component {
-    /// Resolve requested/realized generator facts with the same validation as rendering.
-    ///
-    /// # Errors
-    /// Returns the component validation error for this sample rate.
-    pub fn facts(&self, rate: SampleRate) -> Result<ComponentFacts, ComponentError> {
-        self.voice(rate)
-            .map(|voice| ComponentFacts::from_voice(self, &voice, rate))
-    }
-}
 impl ComponentFacts {
     pub(crate) fn from_voice(c: &Component, v: &crate::synthesis::Voice, rate: SampleRate) -> Self {
         let pulse = |rate_hz, width_seconds, frames| PulseFacts {
             rate_hz,
-            width_seconds,
+            requested_width_seconds: width_seconds,
             width_frames: frames,
+            sample_rate: rate,
         };
         let carrier = match (c.carrier, v.carrier) {
             (Carrier::Tone { frequency_hz }, crate::synthesis::Carrier::Tone { step }) => {
@@ -130,11 +135,22 @@ pub enum SlotRole {
     /// Generator fading in.
     Incoming,
 }
+impl SlotRole {
+    /// A short name for the role.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Continuing => "Continuing",
+            Self::Outgoing => "Outgoing",
+            Self::Incoming => "Incoming",
+        }
+    }
+}
 /// Actual generator quantities and routing gains for one generated frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VoiceObservation {
     /// Caller component identity; crossfades can have two roles with the same identity.
-    pub id: u32,
+    pub id: ComponentId,
     /// Slot attribution within the transition.
     pub role: SlotRole,
     /// Requested and generated component quantities.
@@ -153,6 +169,11 @@ pub struct Observation {
     pub settled_revision: u64,
     /// Whether the last generated frame precedes the end of a ramp.
     pub transitioning: bool,
-    /// Fixed storage for up to 32 concurrent generators; unused entries are None.
-    pub voices: [Option<VoiceObservation>; 32],
+    /// Fixed storage for every concurrent generator; unused entries are None.
+    pub voices: [Option<VoiceObservation>; Observation::MAX_VOICES],
+}
+impl Observation {
+    /// The most generators that run at once: every component of an outgoing
+    /// target crossfading with every component of its replacement.
+    pub const MAX_VOICES: usize = 2 * Stimulus::MAX_COMPONENTS;
 }

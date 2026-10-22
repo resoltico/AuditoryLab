@@ -1,6 +1,6 @@
 [package]
 name = "auditorylab-core"
-description = "Auditory stimuli: the preset format, its catalog, and sample generation"
+description = "Auditory stimuli: the recipe format, its catalog, and sample generation"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

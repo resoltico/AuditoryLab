@@ -280,7 +280,7 @@ fn click_nyquist_rejection_is_not_masked_by_the_closed_frame_rule() {
         s.signal(rate(48000)),
         Err(StimulusError::Component {
             error: ComponentError::Frequency {
-                parameter: Parameter::Rate,
+                parameter: ParameterId::ClickRate,
                 ..
             },
             ..
@@ -294,8 +294,16 @@ fn click_nyquist_rejection_is_not_masked_by_the_closed_frame_rule() {
 }
 
 mod validate {
-    use crate::{Carrier, Component, ComponentError, Ears, Modulation, SampleRate, Stimulus};
+    use crate::{
+        Carrier, Component, ComponentError, ComponentId, Ears, Modulation, SampleRate, Stimulus,
+        TargetCheck,
+    };
     use alloc::vec;
+
+    pub(super) fn own(component: Component, rate: SampleRate) -> Result<(), ComponentError> {
+        let check = TargetCheck::new(rate, &[(ComponentId::new(1), component)]);
+        check.components()[0].1.clone().map(|_| ())
+    }
 
     #[test]
     fn each_guard_accepts_and_rejects_like_signal() {
@@ -430,7 +438,7 @@ mod validate {
             ),
         ];
         for (component, valid) in cases {
-            let own = component.validate(rate);
+            let own = own(component, rate);
             assert_eq!(own.is_ok(), valid, "{component:?}");
             let whole = Stimulus {
                 duration_seconds: 1.0,
@@ -453,11 +461,13 @@ mod validate {
             }
         }
         assert!(matches!(
-            Component {
-                peak_dbfs: f64::NAN,
-                ..base
-            }
-            .validate(rate),
+            own(
+                Component {
+                    peak_dbfs: f64::NAN,
+                    ..base
+                },
+                rate
+            ),
             Err(ComponentError::PeakDbfs { .. })
         ));
     }
@@ -474,8 +484,7 @@ fn excessive_width_names_the_signal_frame_limit() {
         },
         modulation: None,
     };
-    let message = component
-        .validate(crate::SampleRate::DEFAULT)
+    let message = validate::own(component, crate::SampleRate::DEFAULT)
         .unwrap_err()
         .to_string();
     assert!(

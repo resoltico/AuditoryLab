@@ -1,11 +1,11 @@
 //! Seekability, bounds, fades and trace extrema against independent oracles.
-use auditorylab_core::{Preset, SampleRate, catalog, waveform};
+use auditorylab_core::{Recipe, SampleRate, catalog, waveform};
 use proptest::prelude::*;
 proptest! {
     #![proptest_config(ProptestConfig { cases: 64, max_shrink_iters: 128, failure_persistence: None, .. ProptestConfig::default() })]
     #[test]
     fn arbitrary_windows_equal_a_full_render(start in 0_usize..5000, len in 0_usize..1000, entry in 0_usize..19) {
-        let mut stimulus = Preset::parse(catalog::ENTRIES[entry].text).unwrap().stimulus;
+        let mut stimulus = Recipe::parse(catalog::ENTRIES[entry].text).unwrap().stimulus;
         stimulus.duration_seconds = 0.1; stimulus.fade_seconds = 0.01;
         let signal = stimulus.signal(SampleRate::DEFAULT).unwrap();
         let mut all = vec![[0.0; 2]; 6000]; signal.render(0, &mut all);
@@ -17,7 +17,7 @@ proptest! {
 #[test]
 fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
     let text = "schema_version = 2\nduration_seconds = 1.25\nfade_seconds = 0.0\n[[component]]\nkind = 'click'\nears = 'left'\nrate_hz = 3.0\nwidth_seconds = 0.000125\npeak_dbfs = -20.0";
-    let signal = Preset::parse(text)
+    let signal = Recipe::parse(text)
         .unwrap()
         .stimulus
         .signal(SampleRate::new(8000).unwrap())
@@ -58,7 +58,7 @@ fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
 }
 #[test]
 fn fades_and_late_tones_follow_independent_sine_formulas() {
-    let mut stimulus = Preset::parse(catalog::find("ioannou-2015-pure-tone-200-hz").unwrap().text)
+    let mut stimulus = Recipe::parse(catalog::find("ioannou-2015-pure-tone-200-hz").unwrap().text)
         .unwrap()
         .stimulus;
     stimulus.duration_seconds = 68_719_476_736.0 / 48_000.0;
@@ -80,7 +80,7 @@ fn fades_and_late_tones_follow_independent_sine_formulas() {
 #[test]
 fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
     let text = "schema_version=2\nduration_seconds=1431655.7653333333\nfade_seconds=0\n[[component]]\nkind='tone'\nears='both'\nfrequency_hz=8000\npeak_dbfs=-20\n[component.modulation]\nkind='sinusoidal'\nrate_hz=39.0625\ndepth=0.7\n";
-    let signal = Preset::parse(text)
+    let signal = Recipe::parse(text)
         .unwrap()
         .stimulus
         .signal(SampleRate::DEFAULT)
@@ -104,7 +104,7 @@ fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
 #[test]
 fn raised_cosine_is_symmetric_and_matches_sine_squared() {
     let text = "schema_version=2\nduration_seconds=0.125125\nfade_seconds=0.008\n[[component]]\nkind='click'\nears='both'\nrate_hz=0.5\nwidth_seconds=0.25\npeak_dbfs=0\n";
-    let signal = Preset::parse(text)
+    let signal = Recipe::parse(text)
         .unwrap()
         .stimulus
         .signal(SampleRate::new(8000).unwrap())
@@ -138,7 +138,7 @@ fn public_signals_preserve_slow_onsets_and_widths_longer_than_a_second() {
             "schema_version=2\nduration_seconds=3\nfade_seconds=0\n[[component]]\nkind='click'\nears='both'\nrate_hz={rate}\nwidth_seconds={width}\npeak_dbfs=-20\n"
         )
     };
-    let signal = Preset::parse(&recipe(1.0_f64.next_down(), 0.001))
+    let signal = Recipe::parse(&recipe(1.0_f64.next_down(), 0.001))
         .unwrap()
         .stimulus
         .signal(SampleRate::DEFAULT)
@@ -149,7 +149,7 @@ fn public_signals_preserve_slow_onsets_and_widths_longer_than_a_second() {
         assert_eq!(signal.frame(onset + 47), [0.1; 2]);
         assert_eq!(signal.frame(onset + 48), [0.0; 2]);
     }
-    let signal = Preset::parse(&recipe(0.1, 2.0))
+    let signal = Recipe::parse(&recipe(0.1, 2.0))
         .unwrap()
         .stimulus
         .signal(SampleRate::DEFAULT)

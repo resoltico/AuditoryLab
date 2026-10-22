@@ -1,8 +1,7 @@
 //! Independent generated-state, attribution and revision oracles.
 use auditorylab_core::{
-    Carrier, CarrierFacts, Component, Ears, Modulation, ModulationFacts, SampleRate, SlotRole,
-    StimulusError,
-    live::{Engine, Target},
+    Carrier, CarrierFacts, Component, ComponentFacts, ComponentId, Ears, Modulation,
+    ModulationFacts, SampleRate, SlotRole, StimulusError, Target, TargetCheck, live::Engine,
 };
 fn tone(hz: f64, ears: Ears) -> Component {
     Component {
@@ -12,9 +11,20 @@ fn tone(hz: f64, ears: Ears) -> Component {
         modulation: None,
     }
 }
-#[expect(clippy::unwrap_used, reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail")]
+#[expect(
+    clippy::unwrap_used,
+    reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
+)]
 fn target(rate: SampleRate, component: Component) -> Target {
-    Target::new(rate, &[(7, component)]).unwrap()
+    Target::new(rate, &[(ComponentId::new(7), component)]).unwrap()
+}
+#[expect(
+    clippy::unwrap_used,
+    reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
+)]
+fn facts(component: Component, rate: SampleRate) -> ComponentFacts {
+    let check = TargetCheck::new(rate, &[(ComponentId::new(1), component)]);
+    *check.target().unwrap().components().next().unwrap().1
 }
 #[test]
 fn observations_identify_last_frame_without_advancing_phase() {
@@ -108,8 +118,14 @@ fn changed_pulses_preserve_both_real_rates_and_roles() {
     assert_eq!(rates, [40.0, 80.0]);
     assert_eq!(voices[0].id, voices[1].id);
     assert!(matches!(
-        Target::new(rate, &[(1, clicks(40.0)), (1, clicks(80.0))]),
-        Err(StimulusError::DuplicateComponentId { id: 1 })
+        Target::new(
+            rate,
+            &[
+                (ComponentId::new(1), clicks(40.0)),
+                (ComponentId::new(1), clicks(80.0))
+            ]
+        ),
+        Err(StimulusError::DuplicateComponentId { id }) if id == ComponentId::new(1)
     ));
 }
 #[test]
@@ -148,7 +164,7 @@ fn realized_rates_widths_depth_and_tiny_frequencies_are_explicit() {
             }),
             ..tone(1000.0, Ears::Both)
         };
-        let f = c.facts(rate).unwrap();
+        let f = facts(c, rate);
         let CarrierFacts::Tone(t) = f.carrier else {
             panic!()
         };
@@ -158,10 +174,7 @@ fn realized_rates_widths_depth_and_tiny_frequencies_are_explicit() {
             f.modulation,
             Some(ModulationFacts::Sinusoidal { depth: 0.0, .. })
         ));
-        let CarrierFacts::Tone(tiny) = tone(f64::from_bits(1), Ears::Both)
-            .facts(rate)
-            .unwrap()
-            .carrier
+        let CarrierFacts::Tone(tiny) = facts(tone(f64::from_bits(1), Ears::Both), rate).carrier
         else {
             panic!()
         };

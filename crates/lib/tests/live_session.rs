@@ -1,52 +1,83 @@
-//! Public-library prepare/control/observe/stop without an audio device.
+//! Public-library live generation without an audio device.
 use auditorylab::{
-    Carrier, Component, Draft, Ears, LiveGenerator, SampleRate, SourceKind, interaural_pair,
+    Carrier, CarrierKind, Component, ComponentId, Draft, Ears, LiveGenerator, LiveUpdateError,
+    ParameterId, SampleRate, Structure, Target,
 };
-#[test]
-fn generated_quantities_follow_valid_revisions_and_metadata_does_not_retarget() {
-    let mut draft = Draft::new();
-    let left = draft.add(SourceKind::Tone).unwrap();
-    let right = draft.add(SourceKind::Tone).unwrap();
-    let component = |frequency_hz, ears| Component {
+
+fn component(frequency_hz: f64, ears: Ears) -> Component {
+    Component {
         ears,
         peak_dbfs: -30.0,
         carrier: Carrier::Tone { frequency_hz },
         modulation: None,
-    };
+    }
+}
+
+fn target(draft: &Draft) -> Target {
+    draft
+        .target_check(SampleRate::DEFAULT)
+        .into_result()
+        .unwrap_or_else(|e| panic!("{e}"))
+}
+
+#[expect(
+    clippy::unwrap_used,
+    reason = "Fixture helper panics when the generated frame is not an interaural pair, failing the calling test"
+)]
+fn difference(generator: &LiveGenerator) -> f64 {
+    let (left, right) = Structure::of_observation(&generator.observation().unwrap())
+        .interaural()
+        .unwrap();
+    (left - right).abs()
+}
+
+#[test]
+fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarget() {
+    let mut draft = Draft::new();
+    let left = draft.add(CarrierKind::Tone).unwrap();
+    let right = draft.add(CarrierKind::Tone).unwrap();
     draft.replace(left, component(380.0, Ears::Left));
     draft.replace(right, component(420.0, Ears::Right));
-    let mut generator = LiveGenerator::new(&draft, SampleRate::DEFAULT).unwrap();
+    let mut generator = LiveGenerator::new(target(&draft));
     let control = generator.control();
-    assert_eq!(control.update(&draft).unwrap(), 1);
+    assert_eq!(control.update(&target(&draft)).unwrap(), 1);
     let mut out = [[0.0; 2]; 2000];
     generator.render(&mut out);
-    let first = generator.observation().unwrap();
-    assert_eq!(interaural_pair(&first).unwrap().difference_hz, 40.0);
+    assert_eq!(difference(&generator), 40.0);
     draft.set_title("An edited research copy".into());
     draft.set_summary("My notes".into());
-    assert_eq!(control.update(&draft).unwrap(), 1);
+    assert_eq!(
+        control.update(&target(&draft)).unwrap(),
+        1,
+        "metadata is not part of the target"
+    );
     draft.replace(right, component(428.0, Ears::Right));
-    assert_eq!(control.update(&draft).unwrap(), 2);
+    assert_eq!(control.update(&target(&draft)).unwrap(), 2);
     generator.render(&mut [[0.0; 2]; 720]);
-    let mid = interaural_pair(&generator.observation().unwrap()).unwrap();
-    assert!(mid.difference_hz > 40.0 && mid.difference_hz < 48.0);
+    let mid = difference(&generator);
+    assert!(mid > 40.0 && mid < 48.0);
     draft.replace(right, component(439.0, Ears::Right));
-    assert_eq!(control.update(&draft).unwrap(), 3);
+    assert_eq!(control.update(&target(&draft)).unwrap(), 3);
     draft.replace(right, component(448.0, Ears::Right));
-    assert_eq!(control.update(&draft).unwrap(), 4);
+    assert_eq!(control.update(&target(&draft)).unwrap(), 4);
     generator.render(&mut [[0.0; 2]; 4000]);
     let settled = generator.observation().unwrap();
-    assert_eq!(settled.active_revision, 4);
-    assert_eq!(settled.settled_revision, 4);
-    assert_eq!(interaural_pair(&settled).unwrap().difference_hz, 68.0);
+    assert_eq!((settled.active_revision, settled.settled_revision), (4, 4));
+    assert_eq!(difference(&generator), 68.0);
+    // An invalid edit never becomes a target, so nothing changes.
     draft.replace(right, component(f64::NAN, Ears::Right));
-    assert!(control.update(&draft).is_err());
+    assert!(draft.target_check(SampleRate::DEFAULT).target().is_none());
     assert_eq!(generator.observation().unwrap(), settled);
     generator.stop();
     generator.render(&mut out);
     assert!(generator.is_finished());
     assert!(out[1440..].iter().all(|f| *f == [0.0; 2]));
+    assert_eq!(
+        control.update(&target(&Draft::new())),
+        Err(LiveUpdateError::SessionClosed)
+    );
 }
+
 #[test]
 fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
     for (text, expected) in [
@@ -60,60 +91,33 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
             true,
         ),
     ] {
-        let preset = auditorylab::load_reader(
+        let snapshot = auditorylab::load_reader(
             format!("schema_version=2\nduration_seconds=1\nfade_seconds=0\n{text}").as_bytes(),
             "called binaural even if not a pair",
         )
         .unwrap();
-        let sound = preset.at(SampleRate::DEFAULT).unwrap();
+        let sound = snapshot.at(SampleRate::DEFAULT).unwrap();
+        let observation = sound.signal().observation(0).unwrap();
         assert_eq!(
-            interaural_pair(&sound.signal().observation(0).unwrap()).is_some(),
+            Structure::of_observation(&observation)
+                .interaural()
+                .is_some(),
             expected
         );
     }
 }
 
 #[test]
-fn editor_units_and_ranges_have_independent_boundary_oracles() {
-    use auditorylab::{
-        ModulationKind, Setting, default_component, default_modulation, set_setting, setting_value,
-        slider_position, slider_value,
-    };
-    let rate = SampleRate::DEFAULT;
-    assert_eq!(slider_value(Setting::Level, rate, 0.5), -40.0);
-    assert_eq!(slider_value(Setting::Depth, rate, 0.5), 50.0);
-    assert_eq!(slider_value(Setting::Frequency, rate, 0.5), 632.0);
-    assert_eq!(slider_position(Setting::Frequency, rate, f64::NAN), 0.0);
-    let mut c = default_component(SourceKind::Tone);
-    c.modulation = Some(default_modulation(ModulationKind::Sinusoidal, rate));
-    assert_eq!(setting_value(&c, Setting::Depth), Some(100.0));
-    set_setting(&mut c, Setting::Depth, 25.0);
-    assert!(matches!(
-        c.modulation,
-        Some(auditorylab::Modulation::Sinusoidal { depth: 0.25, .. })
-    ));
-    assert_eq!(setting_value(&c, Setting::Depth), Some(25.0));
-    let before = c;
-    set_setting(&mut c, Setting::ClickWidth, 10.0);
-    assert_eq!(c, before);
-}
-
-#[test]
 fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint() {
     use auditorylab::{Observation, SlotRole, VoiceObservation, generated_description};
-    let facts = Component {
-        ears: Ears::Right,
-        peak_dbfs: -20.0,
-        carrier: Carrier::Tone {
-            frequency_hz: 440.0,
-        },
-        modulation: None,
-    }
-    .facts(SampleRate::DEFAULT)
-    .unwrap();
-    let mut voices = [None; 32];
+    let check = auditorylab::TargetCheck::new(
+        SampleRate::DEFAULT,
+        &[(ComponentId::new(1), component(440.0, Ears::Right))],
+    );
+    let facts = *check.target().unwrap().components().next().unwrap().1;
+    let mut voices = [None; Observation::MAX_VOICES];
     voices[0] = Some(VoiceObservation {
-        id: 1,
+        id: ComponentId::new(1),
         role: SlotRole::Continuing,
         facts,
         gains: [0.05, 0.05],
@@ -128,7 +132,10 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
     let text = generated_description(Some(&observation));
     assert!(text.contains("Both ears"), "{text}");
     assert!(auditorylab::generated_details(&observation).contains("gain L -26.0 / R -26.0 dBFS"));
+    assert!(
+        auditorylab::generated_details(&observation).contains("Continuing"),
+        "role label, not Debug"
+    );
     assert!(text.starts_with("Changing"));
-    assert_eq!(auditorylab::compact_number(39.0625), "39.0625");
-    assert_ne!(auditorylab::compact_number(1e-20), "0");
+    assert_eq!(ParameterId::ClickWidth.descriptor().label, "Click width");
 }

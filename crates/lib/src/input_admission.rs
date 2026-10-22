@@ -71,7 +71,7 @@ mod tests {
             .write_all(&vec![b' '; 65_537])
             .unwrap();
         let error = crate::load_reader(file, "grown recipe").unwrap_err();
-        assert_eq!(error.kind(), crate::ErrorKind::InvalidPreset);
+        assert_eq!(error.kind(), crate::ErrorKind::InvalidRecipe);
     }
 
     #[test]

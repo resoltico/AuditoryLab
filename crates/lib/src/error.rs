@@ -6,12 +6,12 @@ use std::{
 /// A failure category for frontend exit codes and presentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
-    /// Unknown built-in ID.
-    UnknownPreset,
+    /// Unknown built-in recipe ID.
+    UnknownRecipe,
     /// Input could not be read.
     Unreadable,
-    /// Invalid recipe format.
-    InvalidPreset,
+    /// Invalid recipe document: format, schema, non-finite numbers or size.
+    InvalidRecipe,
     /// Invalid signal parameters.
     InvalidSound,
     /// Device failure.
@@ -20,7 +20,7 @@ pub enum ErrorKind {
     DestinationExists,
     /// Publication failure.
     Write,
-    /// Operation cancelled.
+    /// A file operation was cancelled before publication.
     Cancelled,
 }
 /// A complete contextual error, optionally naming a leftover partial file.
@@ -38,6 +38,23 @@ impl Error {
             message: message.into(),
             source: None,
             leftover: None,
+        }
+    }
+    #[cfg_attr(
+        not(feature = "device-playback"),
+        expect(
+            dead_code,
+            reason = "Device errors are the only boxed causes built without a typed source"
+        )
+    )]
+    pub(crate) fn boxed(
+        kind: ErrorKind,
+        message: impl Into<String>,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    ) -> Self {
+        Self {
+            source: Some(source),
+            ..Self::new(kind, message)
         }
     }
     pub(crate) fn caused(

@@ -8,7 +8,10 @@ static PANGO: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
 static GTK: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
 static GOBJECT: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
 static GLIB: std::sync::OnceLock<Option<Library>> = std::sync::OnceLock::new();
-#[expect(unsafe_code, reason = "Loads fixed system-library names once and retains every Library in a process-lifetime OnceLock; symbol users cannot outlive mapped code")]
+#[expect(
+    unsafe_code,
+    reason = "Loads fixed system-library names once and retains every Library in a process-lifetime OnceLock; symbol users cannot outlive mapped code"
+)]
 fn library(
     slot: &'static std::sync::OnceLock<Option<Library>>,
     name: &str,
@@ -97,7 +100,10 @@ struct NativeValue {
     kind: usize,
     data: [u64; 2],
 }
-#[expect(unsafe_code, reason = "C notify callback is registered with its exact ABI; the AtomicBool pointer remains borrowed and live until both handlers are disconnected on the same settings worker")]
+#[expect(
+    unsafe_code,
+    reason = "C notify callback is registered with its exact ABI; the AtomicBool pointer remains borrowed and live until both handlers are disconnected on the same settings worker"
+)]
 unsafe extern "C" fn changed(_: *mut c_void, _: *mut c_void, data: *mut c_void) {
     // SAFETY: a borrowed AtomicBool is connected only while its enclosing GTK listener lives.
     unsafe { &*data.cast::<AtomicBool>() }.store(true, Ordering::Relaxed);

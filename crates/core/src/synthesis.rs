@@ -32,7 +32,10 @@ pub(crate) fn step(hz: f64, fs: u32) -> Option<u64> {
     u64::try_from(quotient).ok()
 }
 #[inline]
-#[expect(clippy::cast_precision_loss, reason = "Arithmetic shift retains a signed 53-bit phase before binary64 conversion; the intentionally reduced phase bounds sine input")]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "Arithmetic shift retains a signed 53-bit phase before binary64 conversion; the intentionally reduced phase bounds sine input"
+)]
 pub(crate) fn sine(phase: u64) -> f64 {
     let cycles = ((phase as i64) >> 11) as f64 / 9_007_199_254_740_992.0;
     libm::sin(TAU * cycles)
@@ -162,6 +165,13 @@ pub(crate) struct Voice {
     pub(crate) modulation: Option<Modulator>,
 }
 impl Voice {
+    /// The linear routing gains at full envelope, left and right.
+    pub(crate) const fn gains(&self) -> [f64; 2] {
+        [
+            if self.left { self.amplitude } else { 0.0 },
+            if self.right { self.amplitude } else { 0.0 },
+        ]
+    }
     #[inline]
     pub(crate) fn sample(&self, n: u64) -> f64 {
         let carrier = match self.carrier {

@@ -4,7 +4,7 @@
 // Independently decode caller-owned encoded streams and test writer boundaries.
 
 use crate::wav::{Container, Exported, encode};
-use auditorylab_core::{Component, Ears, Preset, SampleRate, Signal, Stimulus, catalog};
+use auditorylab_core::{Component, Ears, Recipe, SampleRate, Signal, Stimulus, catalog};
 fn export(
     session: Signal,
     path: &Path,
@@ -143,7 +143,7 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
 }
 
 fn short_catalog_session(name: &str) -> Signal {
-    let mut preset = Preset::parse(catalog::find(name).unwrap().text).unwrap();
+    let mut preset = Recipe::parse(catalog::find(name).unwrap().text).unwrap();
     preset.stimulus.duration_seconds = 0.125;
     preset.stimulus.fade_seconds = 0.01;
     preset.stimulus.signal(rate()).unwrap()

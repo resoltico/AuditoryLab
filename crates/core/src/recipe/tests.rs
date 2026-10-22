@@ -1,7 +1,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use super::{Preset, PresetError};
+use super::{Recipe, RecipeError};
 use crate::{Component, Ears, Modulation};
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -28,19 +28,19 @@ peak_dbfs = -20.0
 
 const ABOUT: &str = "\n[about]\ntitle = \"t\"\nstudied_for = \"f\"\nsummary = \"s\"\ncitation = \"c\"\nsource_url = \"u\"\nstudy = \"d\"\nadaptation = \"a\"\n";
 
-fn edited(from: &str, to: &str) -> Result<Preset, PresetError> {
+fn edited(from: &str, to: &str) -> Result<Recipe, RecipeError> {
     assert!(PAIR.contains(from), "fixture lacks {from}");
-    Preset::parse(&PAIR.replacen(from, to, 1))
+    Recipe::parse(&PAIR.replacen(from, to, 1))
 }
 
 #[test]
 fn a_preset_reads_into_its_stimulus_in_file_order() {
-    let preset = Preset::parse(PAIR).unwrap();
-    assert_eq!(preset.about, None);
-    assert_eq!(preset.stimulus.duration_seconds, 10.0);
-    assert_eq!(preset.stimulus.fade_seconds, 0.1);
+    let recipe = Recipe::parse(PAIR).unwrap();
+    assert_eq!(recipe.about, None);
+    assert_eq!(recipe.stimulus.duration_seconds, 10.0);
+    assert_eq!(recipe.stimulus.fade_seconds, 0.1);
     assert_eq!(
-        preset.stimulus.components,
+        recipe.stimulus.components,
         vec![
             Component {
                 ears: Ears::Left,
@@ -65,7 +65,7 @@ fn a_preset_reads_into_its_stimulus_in_file_order() {
 #[test]
 fn every_kind_and_modulation_reads_and_whole_numbers_are_accepted_as_reals() {
     let text = "schema_version = 2\nduration_seconds = 3\nfade_seconds = 0\n\n[[component]]\nears = \"both\"\nkind = \"click\"\nrate_hz = 40\nwidth_seconds = 0.001\npeak_dbfs = -20\n\n[component.modulation]\nkind = \"sinusoidal\"\nrate_hz = 2\ndepth = 1\n";
-    let stimulus = Preset::parse(text).unwrap().stimulus;
+    let stimulus = Recipe::parse(text).unwrap().stimulus;
     assert_eq!(stimulus.duration_seconds, 3.0);
     assert_eq!(
         stimulus.components,
@@ -86,16 +86,16 @@ fn every_kind_and_modulation_reads_and_whole_numbers_are_accepted_as_reals() {
 
 #[test]
 fn a_preset_without_components_is_silence() {
-    let preset =
-        Preset::parse("schema_version = 2\nduration_seconds = 1.0\nfade_seconds = 0.0\n").unwrap();
-    assert!(preset.stimulus.components.is_empty());
-    assert!(!preset.stimulus.uses_separate_ears());
+    let recipe =
+        Recipe::parse("schema_version = 2\nduration_seconds = 1.0\nfade_seconds = 0.0\n").unwrap();
+    assert!(recipe.stimulus.components.is_empty());
+    assert!(!recipe.stimulus.uses_separate_ears());
 }
 
 #[test]
 fn about_text_is_optional_strict_and_never_changes_the_stimulus() {
-    let plain = Preset::parse(PAIR).unwrap();
-    let annotated = Preset::parse(&format!("{PAIR}{ABOUT}")).unwrap();
+    let plain = Recipe::parse(PAIR).unwrap();
+    let annotated = Recipe::parse(&format!("{PAIR}{ABOUT}")).unwrap();
     assert_eq!(annotated.stimulus, plain.stimulus);
     let about = annotated.about.unwrap();
     assert_eq!(about.title, "t");
@@ -111,7 +111,7 @@ fn about_text_is_optional_strict_and_never_changes_the_stimulus() {
         ["f", "s", "c", "u", "d", "a"].map(|value| Some(String::from(value)))
     );
     // Only the title is required; every other field may be omitted alone.
-    let titled = Preset::parse(&format!("{PAIR}\n[about]\ntitle = \"t\"\n")).unwrap();
+    let titled = Recipe::parse(&format!("{PAIR}\n[about]\ntitle = \"t\"\n")).unwrap();
     assert_eq!(titled.about.unwrap().summary, None);
     for (field, value) in [
         ("title", "t"),
@@ -124,7 +124,7 @@ fn about_text_is_optional_strict_and_never_changes_the_stimulus() {
     ] {
         let entry = format!("{field} = \"{value}\"\n");
         assert!(ABOUT.contains(&entry), "{entry}");
-        let omitted = Preset::parse(&format!("{PAIR}{}", ABOUT.replace(&entry, "")));
+        let omitted = Recipe::parse(&format!("{PAIR}{}", ABOUT.replace(&entry, "")));
         assert_eq!(omitted.is_ok(), field != "title", "{field}");
         for altered in [
             ABOUT.replace(&entry, &format!("{field} = 1\n")),
@@ -132,8 +132,8 @@ fn about_text_is_optional_strict_and_never_changes_the_stimulus() {
         ] {
             assert!(
                 matches!(
-                    Preset::parse(&format!("{PAIR}{altered}")),
-                    Err(PresetError::Format(_))
+                    Recipe::parse(&format!("{PAIR}{altered}")),
+                    Err(RecipeError::Format(_))
                 ),
                 "{altered}"
             );
@@ -142,12 +142,12 @@ fn about_text_is_optional_strict_and_never_changes_the_stimulus() {
     for unknown in ["reviewed = \"x\"", "description = \"d\""] {
         let extra = ABOUT.replace("[about]", &format!("[about]\n{unknown}"));
         assert!(
-            Preset::parse(&format!("{PAIR}{extra}")).is_err(),
+            Recipe::parse(&format!("{PAIR}{extra}")).is_err(),
             "{unknown}"
         );
     }
     let old_table = ABOUT.replace("[about]", "[provenance]");
-    assert!(Preset::parse(&format!("{PAIR}{old_table}")).is_err());
+    assert!(Recipe::parse(&format!("{PAIR}{old_table}")).is_err());
 }
 
 #[test]
@@ -188,14 +188,14 @@ fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
         ),
     ] {
         assert!(
-            matches!(edited(from, to), Err(PresetError::Format(_))),
+            matches!(edited(from, to), Err(RecipeError::Format(_))),
             "accepted {to:?}"
         );
     }
     let modulated = format!(
         "{PAIR}\n[component.modulation]\nkind = \"sinusoidal\"\nrate_hz = 4.0\ndepth = 0.5\n"
     );
-    assert!(Preset::parse(&modulated).is_ok());
+    assert!(Recipe::parse(&modulated).is_ok());
     for (from, to) in [
         ("kind = \"sinusoidal\"\n", ""),
         ("kind = \"sinusoidal\"", "kind = \"square\""),
@@ -205,8 +205,8 @@ fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
     ] {
         assert!(
             matches!(
-                Preset::parse(&modulated.replacen(from, to, 1)),
-                Err(PresetError::Format(_))
+                Recipe::parse(&modulated.replacen(from, to, 1)),
+                Err(RecipeError::Format(_))
             ),
             "accepted {to:?}"
         );
@@ -223,73 +223,73 @@ fn another_schema_version_is_reported_before_its_fields_are_read() {
                 "peak_dbfs = -20.0",
                 "peak_dbfs = -20.0\nphase_degrees = 90.0",
             );
-        let error = Preset::parse(&text).unwrap_err();
-        assert_eq!(error, PresetError::UnsupportedVersion { found: version });
+        let error = Recipe::parse(&text).unwrap_err();
+        assert_eq!(error, RecipeError::UnsupportedVersion { found: version });
         assert_eq!(
             error.to_string(),
-            format!("preset has schema_version {version}; this build reads 2")
+            format!("recipe has schema_version {version}; this build reads 2")
         );
     }
     assert!(matches!(
         edited("schema_version = 2", "schema_version = \"1\""),
-        Err(PresetError::Format(_))
+        Err(RecipeError::Format(_))
     ));
 }
 
 #[test]
 fn input_is_bounded_and_must_be_utf_8() {
-    let padded = format!("{PAIR}{}", " ".repeat(Preset::MAX_BYTES - PAIR.len()));
+    let padded = format!("{PAIR}{}", " ".repeat(Recipe::MAX_BYTES - PAIR.len()));
     assert_eq!(padded.len(), 65_536);
-    assert!(Preset::parse(&padded).is_ok());
-    assert!(Preset::from_bytes(padded.as_bytes()).is_ok());
+    assert!(Recipe::parse(&padded).is_ok());
+    assert!(Recipe::from_bytes(padded.as_bytes()).is_ok());
     let oversized = padded + " ";
-    assert_eq!(Preset::parse(&oversized), Err(PresetError::TooLarge));
+    assert_eq!(Recipe::parse(&oversized), Err(RecipeError::TooLarge));
     assert_eq!(
-        Preset::from_bytes(oversized.as_bytes()),
-        Err(PresetError::TooLarge)
+        Recipe::from_bytes(oversized.as_bytes()),
+        Err(RecipeError::TooLarge)
     );
-    assert_eq!(Preset::from_bytes(&[0xff]), Err(PresetError::NotUtf8));
+    assert_eq!(Recipe::from_bytes(&[0xff]), Err(RecipeError::NotUtf8));
     // Windows tools commonly save UTF-16 with a byte-order mark; say so.
     let utf16: Vec<u8> = [0xff, 0xfe]
         .into_iter()
         .chain(PAIR.encode_utf16().flat_map(u16::to_le_bytes))
         .collect();
-    assert_eq!(Preset::from_bytes(&utf16), Err(PresetError::Utf16));
+    assert_eq!(Recipe::from_bytes(&utf16), Err(RecipeError::Utf16));
     let big_endian: Vec<u8> = [0xfe, 0xff]
         .into_iter()
         .chain(PAIR.encode_utf16().flat_map(u16::to_be_bytes))
         .collect();
-    assert_eq!(Preset::from_bytes(&big_endian), Err(PresetError::Utf16));
+    assert_eq!(Recipe::from_bytes(&big_endian), Err(RecipeError::Utf16));
     // A UTF-8 byte-order mark is accepted.
     let marked = [&[0xef, 0xbb, 0xbf][..], PAIR.as_bytes()].concat();
-    assert!(Preset::from_bytes(&marked).is_ok());
+    assert!(Recipe::from_bytes(&marked).is_ok());
 }
 
 #[test]
 fn messages_say_what_is_wrong_with_the_preset() {
     use core::error::Error;
     assert_eq!(
-        PresetError::TooLarge.to_string(),
-        "preset exceeds 65536 bytes"
+        RecipeError::TooLarge.to_string(),
+        "recipe exceeds 65536 bytes"
     );
-    assert_eq!(PresetError::NotUtf8.to_string(), "preset is not UTF-8 text");
+    assert_eq!(RecipeError::NotUtf8.to_string(), "recipe is not UTF-8 text");
     assert_eq!(
-        PresetError::Utf16.to_string(),
-        "preset is UTF-16 text; save it as UTF-8"
+        RecipeError::Utf16.to_string(),
+        "recipe is UTF-16 text; save it as UTF-8"
     );
     let format = edited("frequency_hz = 250.0\n", "").unwrap_err();
     let text = format.to_string();
     assert!(
-        text.starts_with("preset does not match the format: "),
+        text.starts_with("recipe does not match the format: "),
         "{text}"
     );
     assert!(text.contains("frequency_hz"), "{text}");
     assert!(format.source().is_some());
-    assert!(PresetError::TooLarge.source().is_none());
+    assert!(RecipeError::TooLarge.source().is_none());
 }
 
 mod writing {
-    use crate::{About, Carrier, Component, Ears, Modulation, Preset, Stimulus};
+    use crate::{About, Carrier, Component, Ears, Modulation, Recipe, Stimulus};
     use alloc::string::String;
     use alloc::vec::Vec;
     use proptest::{prelude::*, test_runner::Config, test_runner::TestRunner};
@@ -297,10 +297,10 @@ mod writing {
     #[test]
     fn every_catalog_recipe_reads_back_equal_after_writing() {
         for entry in crate::catalog::ENTRIES {
-            let preset = Preset::parse(entry.text).unwrap();
-            let text = preset.to_toml().unwrap();
+            let recipe = Recipe::parse(entry.text).unwrap();
+            let text = recipe.to_toml().unwrap();
             assert!(text.starts_with("schema_version = 2\n"), "{}", entry.id);
-            assert_eq!(Preset::parse(&text).unwrap(), preset, "{}", entry.id);
+            assert_eq!(Recipe::parse(&text).unwrap(), recipe, "{}", entry.id);
         }
     }
 
@@ -367,14 +367,14 @@ mod writing {
                 adaptation: None,
             })
         });
-        let preset = (
+        let recipe = (
             number.clone(),
             number,
             prop::collection::vec(component, 0..5),
             about,
         )
             .prop_map(
-                |(duration_seconds, fade_seconds, components, about)| Preset {
+                |(duration_seconds, fade_seconds, components, about)| Recipe {
                     stimulus: Stimulus {
                         duration_seconds,
                         fade_seconds,
@@ -390,11 +390,11 @@ mod writing {
             ..Config::default()
         };
         TestRunner::new(config)
-            .run(&preset, |preset| {
-                let text = preset.to_toml().unwrap();
-                let back = Preset::parse(&text).unwrap();
+            .run(&recipe, |recipe| {
+                let text = recipe.to_toml().unwrap();
+                let back = Recipe::parse(&text).unwrap();
                 // Bitwise equality keeps signed zeros and subnormals honest.
-                let bits = |p: &Preset| -> Vec<u64> {
+                let bits = |p: &Recipe| -> Vec<u64> {
                     let s = &p.stimulus;
                     let mut out =
                         alloc::vec![s.duration_seconds.to_bits(), s.fade_seconds.to_bits()];
@@ -422,8 +422,8 @@ mod writing {
                     }
                     out
                 };
-                prop_assert_eq!(bits(&back), bits(&preset));
-                prop_assert_eq!(back, preset);
+                prop_assert_eq!(bits(&back), bits(&recipe));
+                prop_assert_eq!(back, recipe);
                 Ok(())
             })
             .unwrap();

@@ -7,7 +7,7 @@
 #![cfg(test)]
 
 use auditorylab_core::catalog::{self, Entry};
-use auditorylab_core::{Carrier, Ears, Modulation, Preset, SampleRate};
+use auditorylab_core::{Carrier, Ears, Modulation, Recipe, SampleRate};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -21,7 +21,7 @@ enum Mod {
 }
 
 /// (name, seconds, components as (ears, kind, Hz, peak dBFS, modulation)).
-type Recipe = (
+type Written = (
     &'static str,
     f64,
     &'static [(Ears, &'static str, f64, f64, Option<Mod>)],
@@ -32,7 +32,7 @@ const R: Ears = Ears::Right;
 const B: Ears = Ears::Both;
 const MONAURAL: f64 = -23.0103;
 
-const RECIPES: &[Recipe] = &[
+const RECIPES: &[Written] = &[
     (
         "beauchene-2016-binaural-5-hz",
         300.0,
@@ -157,8 +157,8 @@ const RECIPES: &[Recipe] = &[
     ),
 ];
 
-fn preset(entry: &Entry) -> Preset {
-    Preset::parse(entry.text).unwrap_or_else(|error| panic!("{}: {error}", entry.id))
+fn recipe(entry: &Entry) -> Recipe {
+    Recipe::parse(entry.text).unwrap_or_else(|error| panic!("{}: {error}", entry.id))
 }
 
 /// Name order with runs of digits compared as numbers, written independently
@@ -229,7 +229,7 @@ fn every_entry_has_its_independently_written_recipe() {
         RECIPES.iter().map(|r| r.0).collect::<Vec<_>>()
     );
     for (entry, (name, seconds, parts)) in catalog::ENTRIES.iter().zip(RECIPES) {
-        let stimulus = preset(entry).stimulus;
+        let stimulus = recipe(entry).stimulus;
         assert_eq!(stimulus.duration_seconds, *seconds, "{name}");
         assert_eq!(stimulus.fade_seconds, 0.1, "{name}");
         assert_eq!(stimulus.components.len(), parts.len(), "{name}");
@@ -305,7 +305,7 @@ fn built_in_about_values_reject_controls_non_ascii_and_double_quotes() {
 fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
     let mut citations = BTreeMap::new();
     for entry in catalog::ENTRIES {
-        let about = preset(entry)
+        let about = recipe(entry)
             .about
             .unwrap_or_else(|| panic!("{} has no about table", entry.id));
         let field = |name: &str, value: &Option<String>| {
@@ -351,7 +351,7 @@ fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
 fn every_entry_validates_and_pulses_follow_integer_onsets() {
     for entry in catalog::ENTRIES {
         for hz in [44_100, 48_000, 96_000] {
-            let mut stimulus = preset(entry).stimulus;
+            let mut stimulus = recipe(entry).stimulus;
             let signal = stimulus.signal(SampleRate::new(hz).unwrap()).unwrap();
             assert_eq!(signal.duration_seconds(), stimulus.duration_seconds);
             stimulus.fade_seconds = 0.0;
@@ -385,5 +385,8 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
 }
 // Compile the build script's pure ordering test as part of this integration target.
 #[path = "../build.rs"]
-#[expect(dead_code, reason = "The integration test imports the real catalog build module to check catalog inputs; its unused Cargo build-script main is not executed by that test")]
+#[expect(
+    dead_code,
+    reason = "The integration test imports the real catalog build module to check catalog inputs; its unused Cargo build-script main is not executed by that test"
+)]
 mod catalog_build;

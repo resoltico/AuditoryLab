@@ -1,8 +1,7 @@
 //! Offline rendering cost at 48 kHz: `cargo run -p auditorylab-core --example render_cost --release`.
 //! Each case renders twenty seconds. No audio device is opened.
 use auditorylab_core::{
-    Carrier, Component, Ears, Modulation, SampleRate, Stimulus,
-    live::{Engine, Target},
+    Carrier, Component, ComponentId, Ears, Modulation, SampleRate, Stimulus, Target, live::Engine,
 };
 use std::{error::Error, hint::black_box, time::Instant};
 const RATE: u32 = 48_000;
@@ -19,7 +18,7 @@ fn measure(components: Vec<Component>) -> Result<[f64; 3], Box<dyn Error>> {
         components
             .iter()
             .enumerate()
-            .map(|(i, component)| Ok((u32::try_from(i)? + offset, *component)))
+            .map(|(i, component)| Ok((ComponentId::new(u32::try_from(i)? + offset), *component)))
             .collect::<Result<Vec<_>, std::num::TryFromIntError>>()
     };
     let targets = [

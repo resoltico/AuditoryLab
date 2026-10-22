@@ -1,4 +1,12 @@
 //! Atomic publication of completed files.
+//!
+//! The sequence is: check cancellation; for `Replace::Never`, reject an
+//! existing destination before creating anything; stage in the destination
+//! directory; write; sync; check cancellation once more; persist atomically.
+//! Successful persistence is the publication's linearization point: a
+//! cancellation requested afterwards cannot unpublish it. Failure cleanup
+//! removes only the operation's own stage. Syncing the stage is not a claim
+//! of durability through a system crash or power loss.
 use crate::{Cancel, Error, ErrorKind, Replace};
 use std::{fs::File, path::Path};
 use tempfile::NamedTempFile;
@@ -8,6 +16,26 @@ fn cleanup(stage: NamedTempFile, failure: Error) -> Error {
         Ok(()) => failure,
         Err(e) => failure.with_leftover(path, e),
     }
+}
+/// Reject any existing entry, including directories and dangling symbolic
+/// links, before staging or writing. This avoids needless work; the final
+/// no-clobber persistence still decides a race with another creator.
+fn preflight(path: &Path) -> Result<(), Error> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => Err(exists(path)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(Error::caused(
+            ErrorKind::Write,
+            format!("cannot check whether {path:?} exists: {e}"),
+            e,
+        )),
+    }
+}
+fn exists(path: &Path) -> Error {
+    Error::new(
+        ErrorKind::DestinationExists,
+        format!("cannot publish to {path:?}: the file already exists and was left untouched"),
+    )
 }
 pub(crate) fn publish<T>(
     path: &Path,
@@ -23,6 +51,9 @@ pub(crate) fn publish<T>(
     };
     if cancel.is_requested() {
         return Err(cancelled());
+    }
+    if replace == Replace::Never {
+        preflight(path)?;
     }
     let parent = path
         .parent()
@@ -70,19 +101,17 @@ pub(crate) fn publish<T>(
         Ok(_) => Ok(value),
         Err(failure) => {
             let e = failure.error;
-            let kind = if e.kind() == std::io::ErrorKind::AlreadyExists {
-                ErrorKind::DestinationExists
+            let error = if e.kind() == std::io::ErrorKind::AlreadyExists {
+                let message = exists(path).to_string();
+                Error::caused(ErrorKind::DestinationExists, message, e)
             } else {
-                ErrorKind::Write
-            };
-            let message = if kind == ErrorKind::DestinationExists {
-                format!(
-                    "cannot publish to {path:?}: the file already exists and was left untouched"
+                Error::caused(
+                    ErrorKind::Write,
+                    format!("cannot publish to {path:?}: {e}"),
+                    e,
                 )
-            } else {
-                format!("cannot publish to {path:?}: {e}")
             };
-            Err(cleanup(failure.file, Error::caused(kind, message, e)))
+            Err(cleanup(failure.file, error))
         }
     }
 }
@@ -184,60 +213,108 @@ mod tests {
     }
 
     #[test]
-    fn blocked_file_publication_does_not_own_audio_progress_stop_or_newer_edits() {
+    fn every_existing_entry_is_rejected_before_staging_or_writing() {
         let dir = dir();
-        let path = dir.path().join("snapshot.toml");
-        let destination = path.clone();
-        let mut draft = crate::Draft::new();
-        draft.set_title("Snapshot N".into());
-        let snapshot = draft.clone();
-        let text = snapshot.preset().recipe.to_toml().unwrap();
-        let (staged_tx, staged_rx) = std::sync::mpsc::channel();
-        let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let file_cancel = Cancel::default();
-        let file_flag = file_cancel.clone();
-        let writer = std::thread::spawn(move || {
-            publish(&destination, Replace::Never, &file_flag, |file| {
-                file.write_all(text.as_bytes()).unwrap();
-                staged_tx.send(()).unwrap();
-                release_rx
-                    .recv_timeout(std::time::Duration::from_secs(5))
-                    .unwrap();
+        let file = dir.path().join("file");
+        fs::write(&file, b"old").unwrap();
+        let directory = dir.path().join("directory");
+        fs::create_dir(&directory).unwrap();
+        let mut existing = vec![file.clone(), directory];
+        #[cfg(unix)]
+        {
+            let link = dir.path().join("link");
+            std::os::unix::fs::symlink(&file, &link).unwrap();
+            let dangling = dir.path().join("dangling");
+            std::os::unix::fs::symlink(dir.path().join("absent"), &dangling).unwrap();
+            existing.extend([link, dangling]);
+        }
+        let entries = fs::read_dir(dir.path()).unwrap().count();
+        for path in existing {
+            let written = std::cell::Cell::new(false);
+            let error = publish(&path, Replace::Never, &Cancel::default(), |_| {
+                written.set(true);
                 Ok(())
             })
-        });
-        staged_rx
-            .recv_timeout(std::time::Duration::from_secs(5))
-            .unwrap();
-        assert!(
-            !path.exists(),
-            "atomic publication must not expose the blocked partial file"
-        );
-        let mut audio = crate::LiveGenerator::new(&draft, crate::SampleRate::DEFAULT).unwrap();
-        let control = audio.control();
-        let mut frames = [[0.0; 2]; 512];
-        audio.render(&mut frames);
-        let before = audio.observation().unwrap().frame;
-        draft.set_title("Later N+1".into());
-        assert_eq!(control.update(&draft).unwrap(), 1);
-        for _ in 0..8 {
-            audio.render(&mut frames);
-            assert!(frames.iter().all(|frame| *frame == [0.0; 2]));
+            .unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::DestinationExists, "{path:?}");
+            assert!(!written.get(), "the writer must not run for {path:?}");
+            assert_eq!(
+                fs::read_dir(dir.path()).unwrap().count(),
+                entries,
+                "no stage"
+            );
         }
-        assert!(audio.observation().unwrap().frame > before);
-        audio.stop();
-        audio.render(&mut [[0.0; 2]; 4000]);
-        assert!(audio.is_finished());
-        assert!(
-            !file_cancel.is_requested(),
-            "Stop audio cannot cancel or commit a file task"
+        assert_eq!(fs::read(&file).unwrap(), b"old");
+        // A missing destination proceeds.
+        publish(
+            &dir.path().join("new"),
+            Replace::Never,
+            &Cancel::default(),
+            |f| {
+                f.write_all(b"new")
+                    .map_err(|e| Error::caused(ErrorKind::Write, "write", e))
+            },
+        )
+        .unwrap();
+        // Another inspection failure stays actionable rather than meaning absence.
+        #[cfg(unix)]
+        {
+            let error = publish(
+                &file.join("below-a-file"),
+                Replace::Never,
+                &Cancel::default(),
+                |_| Ok(()),
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::Write);
+            assert!(error.to_string().contains("cannot check"), "{error}");
+        }
+    }
+
+    #[test]
+    fn a_destination_created_after_preflight_is_preserved_by_atomic_persistence() {
+        let dir = dir();
+        let path = dir.path().join("raced");
+        let error = publish(&path, Replace::Never, &Cancel::default(), |f| {
+            // The competitor appears after preflight and before persistence.
+            fs::write(&path, b"competitor").unwrap();
+            f.write_all(b"ours")
+                .map_err(|e| Error::caused(ErrorKind::Write, "write", e))
+        })
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::DestinationExists);
+        assert_eq!(fs::read(&path).unwrap(), b"competitor");
+        assert_eq!(
+            fs::read_dir(dir.path()).unwrap().count(),
+            1,
+            "stage removed"
         );
-        release_tx.send(()).unwrap();
-        writer.join().unwrap().unwrap();
-        let saved = crate::load_file(&path).unwrap();
-        assert_eq!(saved.title(), "Snapshot N");
-        assert_eq!(draft.title(), "Later N+1");
-        assert!(!draft.same_content(&snapshot));
+    }
+
+    #[test]
+    fn cancellation_after_persistence_cannot_unpublish() {
+        let dir = dir();
+        let path = dir.path().join("published");
+        let cancel = Cancel::default();
+        let result = publish(&path, Replace::Never, &cancel, |f| {
+            f.write_all(b"done")
+                .map_err(|e| Error::caused(ErrorKind::Write, "write", e))
+        });
+        // Cancellation racing or following successful persistence.
+        cancel.request();
+        assert!(result.is_ok());
+        assert_eq!(fs::read(&path).unwrap(), b"done");
+        // Cancellation observed at the final check cleans only the stage.
+        let late = Cancel::default();
+        let other = dir.path().join("late");
+        let error = publish(&other, Replace::Never, &late, |f| {
+            late.request();
+            f.write_all(b"late")
+                .map_err(|e| Error::caused(ErrorKind::Write, "write", e))
+        })
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Cancelled);
+        assert!(!other.exists());
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 }

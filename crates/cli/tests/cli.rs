@@ -51,7 +51,7 @@ fn commands_sources_and_exit_codes() {
     let text = String::from_utf8(unknown.stderr).unwrap();
     assert_eq!(
         text,
-        "unknown preset \"unknown\"; run `auditorylab list`, or use --file PATH\n"
+        "unknown built-in recipe \"unknown\"; run `auditorylab list`, or use --file PATH\n"
     );
     let list = String::from_utf8(cli(&["list"]).stdout).unwrap();
     assert!(list.contains("1 h") && list.contains("5 min 7.2 s"));
@@ -228,4 +228,47 @@ fn public_cli_renders_shared_rhythms_and_rejects_pair_neighbors() {
             assert!(text.contains(needle) && !text.contains(rejected), "{text}");
         }
     }
+}
+#[test]
+fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realized_widths() {
+    let dir = dir();
+    let path = dir.path().join("pulse.toml");
+    fs::write(
+        &path,
+        "schema_version = 2\nduration_seconds = 0.05\nfade_seconds = 0.0\n\n[[component]]\nkind = \"click\"\nears = \"both\"\npeak_dbfs = -30.0\nrate_hz = 40.0\nwidth_seconds = 0.0001\n",
+    )
+    .unwrap();
+    let out = cli(&[
+        "inspect",
+        "--file",
+        path.to_str().unwrap(),
+        "--sample-rate",
+        "8000",
+    ]);
+    assert!(out.status.success(), "{out:?}");
+    // Terminal wrapping may break long lines; compare the words.
+    let text = String::from_utf8(out.stdout).unwrap().replace('\n', " ");
+    assert!(text.contains("Sample rate: 8000 Hz"), "{text}");
+    assert!(text.contains("Frames: 400"), "{text}");
+    assert!(
+        text.contains("requested 0.1 ms · realized 1 frame (0.125 ms) at 8000 Hz"),
+        "{text}"
+    );
+    assert!(
+        text.contains("40 Hz clicks · 0.125 ms"),
+        "the model view states the realized width: {text}"
+    );
+    assert!(
+        !text.contains("48000"),
+        "no default-rate description leaks into inspection: {text}"
+    );
+    let invalid = cli(&[
+        "inspect",
+        "--file",
+        path.to_str().unwrap(),
+        "--sample-rate",
+        "100",
+    ]);
+    assert_eq!(invalid.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("at 100 Hz"));
 }

@@ -1,9 +1,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::synthesis::Voice;
-use crate::{SampleRate, numeric};
-use alloc::vec::Vec;
+use crate::{ComponentFacts, ComponentId, SampleRate, StimulusError, Target, numeric};
 use core::f64::consts::PI;
 
 /// The length of a session and its per-frame gain. A positive resolved
@@ -16,13 +14,35 @@ pub(crate) struct Envelope {
 }
 
 impl Envelope {
-    /// The caller has checked `0 < frames <= Signal::MAX_FRAMES` and
-    /// `2 * fade_frames < frames`.
-    pub(crate) const fn new(frames: u64, fade_frames: u64) -> Self {
-        Self {
+    /// Resolve a duration and fade to whole frames at `rate`.
+    ///
+    /// Errors follow the finite order: duration, fade, then overlapping fades.
+    pub(crate) fn resolve(
+        rate: SampleRate,
+        duration_seconds: f64,
+        fade_seconds: f64,
+    ) -> Result<Self, StimulusError> {
+        let frames = rate
+            .frames_in(duration_seconds)
+            .filter(|frames| *frames > 0)
+            .ok_or(StimulusError::Duration {
+                seconds: duration_seconds,
+                sample_rate_hz: rate.hz(),
+            })?;
+        let fade_frames = rate.frames_in(fade_seconds).ok_or(StimulusError::Fade {
+            seconds: fade_seconds,
+            sample_rate_hz: rate.hz(),
+        })?;
+        if fade_frames > (frames - 1) / 2 {
+            return Err(StimulusError::FadesOverlap {
+                fade_frames,
+                frames,
+            });
+        }
+        Ok(Self {
             frames,
             fade_frames,
-        }
+        })
     }
 
     /// The gain of `frame`, within `[0, 1]`; zero past the end.
@@ -42,13 +62,10 @@ impl Envelope {
 
 /// A stimulus checked at a sample rate: a known number of stereo frames,
 /// ready to render from the first.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Signal {
-    sample_rate: SampleRate,
+    target: Target,
     envelope: Envelope,
-    voices: Vec<Voice>,
-    peak: [f64; 2],
-    facts: Vec<crate::ComponentFacts>,
 }
 
 impl Signal {
@@ -57,31 +74,28 @@ impl Signal {
     /// exact in binary64.
     pub const MAX_FRAMES: u64 = 1 << 36;
 
-    pub(crate) fn new(
-        sample_rate: SampleRate,
-        envelope: Envelope,
-        voices: Vec<Voice>,
-        peak: [f64; 2],
-        components: &[crate::Component],
-    ) -> Self {
-        let facts = components
-            .iter()
-            .zip(&voices)
-            .map(|(c, v)| crate::ComponentFacts::from_voice(c, v, sample_rate))
-            .collect();
-        Self {
-            facts,
-            sample_rate,
-            envelope,
-            voices,
-            peak,
-        }
+    pub(crate) const fn new(target: Target, envelope: Envelope) -> Self {
+        Self { target, envelope }
+    }
+
+    /// Check a duration and fade at `rate` with the same rules and order as
+    /// [`Stimulus::signal`](crate::Stimulus::signal), without components.
+    ///
+    /// # Errors
+    /// Returns [`StimulusError::Duration`], [`StimulusError::Fade`] or
+    /// [`StimulusError::FadesOverlap`].
+    pub fn check_envelope(
+        rate: SampleRate,
+        duration_seconds: f64,
+        fade_seconds: f64,
+    ) -> Result<(), StimulusError> {
+        Envelope::resolve(rate, duration_seconds, fade_seconds).map(|_| ())
     }
 
     /// Return the sample rate of the frames.
     #[must_use]
     pub const fn sample_rate(&self) -> SampleRate {
-        self.sample_rate
+        self.target.sample_rate()
     }
 
     /// Return the number of frames.
@@ -99,13 +113,13 @@ impl Signal {
     /// Return the length in seconds, for presentation; division can round.
     #[must_use]
     pub fn duration_seconds(&self) -> f64 {
-        self.sample_rate.seconds_in(self.envelope.frames)
+        self.sample_rate().seconds_in(self.envelope.frames)
     }
 
     /// Return the fade at each edge in seconds, for presentation.
     #[must_use]
     pub fn fade_seconds(&self) -> f64 {
-        self.sample_rate.seconds_in(self.envelope.fade_frames)
+        self.sample_rate().seconds_in(self.envelope.fade_frames)
     }
 
     /// Return each ear's summed amplitude bound in dBFS. It is not a measured
@@ -113,30 +127,34 @@ impl Signal {
     /// infinity.
     #[must_use]
     pub fn peak_dbfs(&self) -> [f64; 2] {
-        self.peak.map(numeric::dbfs)
+        self.target.peak_dbfs()
     }
 
-    /// Validated requested and realized component quantities.
-    pub fn facts(&self) -> &[crate::ComponentFacts] {
-        &self.facts
+    /// The validated components, without the finite envelope.
+    #[must_use]
+    pub const fn target(&self) -> &Target {
+        &self.target
+    }
+
+    /// Each component's identity and validated facts, in order.
+    pub fn components(&self) -> impl Iterator<Item = (ComponentId, &ComponentFacts)> {
+        self.target.components()
     }
 
     /// Observe a generated frame's finite-source quantities, or None outside the signal.
+    #[must_use]
     pub fn observation(&self, frame: u64) -> Option<crate::Observation> {
         if frame >= self.frames() {
             return None;
         }
-        let mut voices = [None; 32];
-        for (i, (facts, voice)) in self.facts.iter().zip(&self.voices).enumerate() {
-            let gain = self.envelope.gain_at(frame) * voice.amplitude;
-            voices[i] = Some(crate::VoiceObservation {
-                id: u32::try_from(i).unwrap_or(u32::MAX),
+        let gain = self.envelope.gain_at(frame);
+        let mut voices = [None; crate::Observation::MAX_VOICES];
+        for (slot, entry) in voices.iter_mut().zip(self.target.mix().entries()) {
+            *slot = Some(crate::VoiceObservation {
+                id: entry.id,
                 role: crate::SlotRole::Continuing,
-                facts: *facts,
-                gains: [
-                    if voice.left { gain } else { 0.0 },
-                    if voice.right { gain } else { 0.0 },
-                ],
+                facts: entry.facts,
+                gains: entry.voice.gains().map(|level| level * gain),
             });
         }
         Some(crate::Observation {
@@ -156,7 +174,8 @@ impl Signal {
             return [0.0; 2];
         }
         let mut out = [0.0; 2];
-        for voice in &self.voices {
+        for entry in self.target.mix().entries() {
+            let voice = &entry.voice;
             let value = voice.sample(n);
             if voice.left {
                 out[0] += value;
