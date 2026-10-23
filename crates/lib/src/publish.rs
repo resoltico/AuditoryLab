@@ -2,7 +2,9 @@
 //!
 //! The sequence is: check cancellation; for `Replace::Never`, reject an
 //! existing destination before creating anything; stage in the destination
-//! directory; write; sync; check cancellation once more; persist atomically.
+//! directory; write; sync; check cancellation once more; publish the completed file.
+//! Confirmed replacement is atomic; no-overwrite persistence is not guaranteed
+//! atomic on every platform and may retain the staging link.
 //! Successful persistence is the publication's linearization point: a
 //! cancellation requested afterwards cannot unpublish it. Failure cleanup
 //! removes only the operation's own stage. Syncing the stage is not a claim

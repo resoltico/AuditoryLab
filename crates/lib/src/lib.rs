@@ -1,7 +1,7 @@
 //! Shared application capabilities for Auditory Lab frontends.
 //!
 //! The library loads immutable [`RecipeSnapshot`]s, edits documents through
-//! [`EditorSession`], publishes files atomically, exports WAV, and runs
+//! [`EditorSession`], publishes completed files, exports WAV, and runs
 //! portable playback [`session`]s whose device output is the optional
 //! `device-playback` feature. [`Workspace`] combines them for interactive
 //! frontends; command-line use calls the same functions directly.
@@ -114,7 +114,10 @@ impl Progress {
     }
 }
 
-/// Export stereo float WAV and publish the completed file atomically.
+/// Export stereo float WAV, sync it and publish the completed file.
+///
+/// Confirmed replacement is atomic. No-overwrite publication preserves an
+/// existing destination but is not guaranteed atomic on every platform.
 ///
 /// # Errors
 /// Returns [`ErrorKind::DestinationExists`], [`ErrorKind::Cancelled`] or

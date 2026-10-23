@@ -1,27 +1,30 @@
-# Auditory Lab application icon: "Woven"
+# Woven icon assets
 
-Two sine waves at slightly different frequencies, one woven over the other. They stand for the two tones of a binaural beat.
+Two sine waves at different frequencies weave across one another, representing the two tones of a binaural beat. [Software and artwork terms](../../LICENSE) govern use; [attribution and geometry](ORIGINALITY.md) identify the drawing source. The [application artwork guide](../README.md) documents actual runtime consumers.
 
-| Folder | Contents |
-|---|---|
-| `source/` | `make_icon.py` (generates everything), `palette.json` (colours), `check_contrast.py` (accessibility check) |
-| `assets/macos/` | `AppIcon.icon` (Icon Composer: light, dark and tinted), `AppIcon.icns` (flat fallback) |
-| `assets/windows/` | `auditorylab.ico` (16–256 px) |
-| `assets/linux/` | hicolor icon theme tree, `org.resoltico.auditorylab` (PNG 16–512 px plus SVG) |
-| `assets/runtime/` | `window-icon.png` (512 px) for the Slint window icon |
-| `assets/artwork/` | flat light and dark SVGs, for documentation |
-| `preview.png` | light, dark and tinted looks at 320 down to 16 px |
+| Path | Contents |
+| --- | --- |
+| `source/make_icon.py`, `source/palette.json` | Drawing geometry and palettes. |
+| `source/check_contrast.py` | Palette contrast calculation with color-vision simulations. |
+| `assets/macos/AppIcon.icon` | Editable Icon Composer package and SVG layers, with light/dark/tinted settings. |
+| `assets/macos/AppIcon.icns` | Flat reference export; app packaging compiles the editable package instead. |
+| `assets/windows/auditorylab.ico` | Windows executable icon. |
+| `assets/linux/hicolor` | PNG sizes and scalable SVG for `org.resoltico.auditorylab`. |
+| `assets/runtime/window-icon.png` | Embedded 512px Slint icon. |
+| `assets/artwork` | Flat light/dark SVG references. |
+| `preview.png` | Appearance and size reference. |
 
-## Light and dark
+The light palette supplies Windows, Linux and the runtime PNG. The macOS icon package also carries dark and tinted appearance settings for system rendering.
 
-The light palette is the main icon on every platform. The dark palette is used only on macOS 26 and later, which switch icons automatically from the single `AppIcon.icon`. Windows and Linux have no standard light/dark switch for application icons.
+## Inspect construction output
 
-## Regenerate and check
+Application builds use the tracked assets and do not need Python image libraries. To inspect the drawing generator, use an isolated Python environment with Shapely 2 or later, CairoSVG and Pillow, plus NumPy for the contrast script. Run from this directory, writing to a separate output directory:
 
 ```sh
-pip install "shapely>=2" cairosvg pillow numpy
-python3 source/make_icon.py assets      # rebuilds every asset
-python3 source/check_contrast.py        # prints PASS when the palette meets the targets
+python3 source/make_icon.py ../../target/icon-review
+python3 source/check_contrast.py
+diff -ru assets ../../target/icon-review
+shasum -a 256 -c SHA256SUMS
 ```
 
-`HANDOFF-PROMPT.md` covers integration into the repository, `ORIGINALITY.md` covers provenance and `ARTWORK-LICENSE.md` covers licensing.
+The generator emits `assets/` contents; it does not regenerate the separate preview or this documentation. Image-library versions can affect exported bytes, so inspect differences rather than treating unpinned construction tools as a reproducible application build. The contrast script calculates reference-palette ratios, not whole-application accessibility or native rendering qualification. The manifest covers the files it lists; it is not a complete directory inventory. Changes to proprietary artwork require the owner's permission.

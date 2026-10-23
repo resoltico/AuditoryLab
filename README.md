@@ -55,7 +55,7 @@ The **Workbench** builds sounds from up to 16 tone or click components. Change t
 
 Install [rustup](https://rustup.rs/). [rust-toolchain.toml](rust-toolchain.toml) selects the compiler and components.
 
-- macOS 15 or later: install Xcode Command Line Tools with `xcode-select --install`. Packaging a macOS app also requires full Xcode 26 or later for Icon Composer resources; see [packaging](CONTRIBUTING.md).
+- macOS 15 or later: install Xcode Command Line Tools with `xcode-select --install`. Packaging a macOS app also requires full Xcode 26 or later for Icon Composer resources; see [packaging](docs/releasing.md#build-distributions).
 - Debian/Ubuntu: `sudo apt-get install build-essential pkg-config libasound2-dev libfontconfig1-dev libxkbcommon-x11-0 libpango-1.0-0 libgtk-3-0`.
 - Windows: install Visual Studio Build Tools with Desktop development with C++, including the MSVC tools and Windows SDK for your processor. Use the native MSVC Rust host. Windows 10 or later is required on x86_64; ARM64 requires Windows 11. The x86_64 target requires SSE3, CMPXCHG16B and LAHF/SAHF.
 
@@ -77,15 +77,12 @@ The `auditorylab` library builds without an audio device stack by default; its `
 - [Recipes](docs/recipes.md): recipe fields, waveforms, validation and catalog additions.
 - [Catalog sources](docs/catalog.md): study methods, parameters and adaptations.
 - [Architecture](docs/architecture.md): crates, synthesis, playback, the shared workspace and the desktop adapter.
-- [Contributing](CONTRIBUTING.md): checks, dependencies, packaging and releases.
+- [Contributing](CONTRIBUTING.md): checks and dependencies.
+- [Packaging and releases](docs/releasing.md): distribution contents, build identity, qualification and publication.
 - [Changelog](CHANGELOG.md) and [security](SECURITY.md).
 
 ## License
 
 Copyright © 2026 Ervins Strauhmanis. Each download contains product-specific dependency notices.
 
-Software and documentation use MPL-2.0; third-party components retain their own
-terms. Owner artwork and drawing sources have separate proprietary terms in
-[LICENSE](LICENSE), with unchanged artwork permitted in original or modified
-Auditory Lab distributions. Editable sources and the supplied provenance are
-retained in [artwork](artwork/README.md).
+Software and documentation use MPL-2.0; third-party components retain their own terms. Owner artwork and drawing sources have separate proprietary terms in [LICENSE](LICENSE), with unchanged artwork permitted in original or modified Auditory Lab distributions. Editable sources and attribution are in the [artwork guide](artwork/README.md).

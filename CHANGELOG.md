@@ -4,25 +4,27 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
-- Match the EML v6 About layout with selectable identity, owner icon, project and license actions, and the actual Slint attribution widget.
-- Retain editable owner artwork under separate proprietary terms and integrate platform icons. Bundle complete legal materials inside the macOS app.
-- Advance the shared product build counter to 2; reject non-increasing release counters. Ad-hoc sign both macOS CLI architectures.
-- Use ZIP for future macOS desktop downloads, retain tar.gz for Unix CLI/Linux desktop and ZIP for Windows, and normalize archive times to source-commit UTC time rather than staging/default timestamps.
-
 ### Breaking
 
+- macOS desktop archives use `.zip`; update download and extraction commands that expect `.tar.gz`. Unix CLI and Linux desktop archives remain `.tar.gz`, and Windows archives remain `.zip`.
+- Every archive adds `SOURCE.txt` with its source revision and timestamp; Linux desktop archives also include the `hicolor` icon tree. Update exact archive-member allowlists, and keep the Linux launcher and icon tree together when installing.
+- Packaging macOS desktop apps requires full Xcode 26 or later with `actool`; Command Line Tools alone cannot build the icon resources. Windows desktop source builds require the Windows SDK resource compiler for the executable icon.
+- Packaging a source tree without Git requires explicit `AUDITORYLAB_SOURCE_REVISION` and `SOURCE_DATE_EPOCH` values from the release commit.
 - The `auditorylab` library has no default features. Enable `device-playback` for default-device playback (`auditorylab::device`); without it, the library builds without CPAL and `Workspace` refuses audio with a typed reason. The CLI and desktop enable it.
 - Library and core APIs use recipe vocabulary and semantic identifiers, with no aliases for the former names: core `Recipe` and library `RecipeSnapshot` (immutable content, origin and identity) replace `Preset`; `CarrierKind` replaces `SourceKind`; `ParameterId` with its label, unit and help descriptor replaces positional settings; `ComponentId` identifies components. `TargetCheck` compiles components once at a rate and replaces `Component::validate` and `Component::facts`; `Target` is a core type whose equality compares definitions and whose `same_audio` compares generated audio. Playback uses a single-owner `Session`, cloneable `PlaybackControl`, typed `PlaybackReport` and `EndReason`, replacing `Playback` and `Live`. Editing uses `EditorSession` with `FieldHandle` commands. Update imports and exhaustive matches. Recipe schema 2 and the catalog's signal parameters are unchanged.
 - Validation messages name quantities by label in display units, such as “Modulation depth 150% must be from 0% to 100%”, and the CLI reports an “unknown built-in recipe” rather than an “unknown preset”. Update consumers that match message text.
 
 ### Added
 
+- Application icons for macOS, Windows and Linux, with editable drawing sources. The owner artwork has separate proprietary terms in `LICENSE`: unchanged artwork may accompany original or modified Auditory Lab distributions; independent reuse or artwork modification requires permission. Software remains MPL-2.0.
 - `auditorylab::workspace::Workspace` holds the interactive workflow shared by desktop frontends: library search and selection, one open document, one audio and one file task, prompts and their typed responses, action availability and change-driven views.
 - **Undo remove** in the desktop Workbench restores the most recently removed layer in its place, with any text typed into it, until another layer is removed or the sound is replaced. `Workspace::restore_component` and `EditorSession::restore_removed` provide it, and `Draft::remove` returns the removed position and component.
 - Pulse widths are reported as requested and realized, with the realized frame count at the stated rate, in CLI `inspect` and `describe`, desktop descriptions and generated details.
 
 ### Changed
 
+- About shows the application icon, selectable identity, **Project website** and **Licenses** actions, and Slint attribution. The license window exposes complete software/artwork terms and bundled component notices. macOS apps contain their legal materials and source reference, so moving only the app preserves access to them.
+- Archive member timestamps use the source commit time instead of staging times or placeholder dates. ZIP dates use UTC civil fields rounded down to two-second precision; extraction tools may interpret them in local time.
 - Committing typed input applies the whole sound at once. If any typed entry does not parse or any value is not a finite number, including an imported one, nothing changes and every typed entry stays for correction; otherwise all entries apply together, even values the sound cannot play, so the draft can be saved and repaired. Changing a carrier or modulation discards typed entries only for the fields it removes.
 - Play and live playback are no longer blocked by the export rate. The device's actual rate decides validity before the stream starts: a 30 kHz tone can play on a 96 kHz device while it stays invalid for 48 kHz export, and a sound valid only at the export rate is refused before playback on a slower device. Live edits are checked at the device's rate.
 - Live playback accepts settings that differ only in requested values that generate identical samples, such as a width that rounds to the same frames, as a new revision without a transition. **Pattern explained** follows the playing session's accepted settings.
@@ -33,7 +35,11 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Fixed
 
-- Desktop layout and input: a long title, message or extreme value (such as 1e300) wraps instead of widening the page; a search that hides every recipe leaves nothing selected, so Play, Export and Edit a copy no longer act on an invisible recipe; disabled Add buttons at 16 components state why; Duration, Fade and Export WAV… have ordinary sizes, with their problems shown beside them; a slider follows typed values after it has been dragged; a component's error is stated once; input errors no longer leave stale or repeated status lines; a single mouse click selects a Library recipe, and the Library divider and monitor grip respond to the first drag; a layer's ears, carrier and modulation choices and its Remove button are sized to their content instead of the window width; an imported recipe is scrolled into view; a recipe without study or summary text shows no blank lines; when an export ends, Cancel export leaves an empty space rather than another button under the pointer; and a modulated or gated carrier is named in lowercase (`carrier tone 440 Hz`).
+- The Intel macOS CLI is ad-hoc signed and checked after extraction, matching Apple silicon. Downloads remain without Developer ID signing or notarization.
+- Desktop text and layout: long titles, messages and extreme values wrap within the page; Duration, Fade and Export WAV… retain ordinary sizes with nearby diagnostics; a layer's ears, carrier, modulation and Remove controls fit their content. A recipe without study or summary text leaves no blank rows, and modulated/gated carrier descriptions use lowercase (`carrier tone 440 Hz`).
+- Library selection follows a single click and an imported recipe scrolls into view. A search that hides every recipe clears the selection, so Play, Export and Edit a copy cannot act on an invisible recipe. Library and monitor dividers respond to the first drag.
+- Workbench sliders continue following typed values after a drag. Component errors appear once, input recovery clears stale/repeated status, and disabled Add buttons explain the 16-layer limit.
+- When an export ends, Cancel export leaves empty space instead of placing another button under the pointer.
 - Assistive technologies can no longer press a disabled desktop button.
 - CLI `inspect --sample-rate HZ` describes the sound only at the selected rate; it no longer adds a description at 48,000 Hz.
 
@@ -43,6 +49,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Internal
 
+- Packaging binds source revision and archive times to the checked-out commit and rejects conflicting identity inputs. Dirty-tree packages carry the base HEAD identity and are development evidence only. Release preparation rejects a product build counter that does not exceed the prior release tag's counter; compilation and CI reruns retain the committed counter.
 - The six vendored toolkit crates record their upstream crates.io archives and SHA-256 values, with a command for reviewing the changes against them. The vendored Winit termination request state has unit tests that run on macOS CI.
 - CI runs a downstream consumer without device playback and checks that CPAL is absent from its dependency tree, and mutates the core file that compiles targets.
 

@@ -1,18 +1,13 @@
-# Auditory Lab owner artwork
+# Application artwork
 
-`auditorylab-icon/` preserves the supplied 21 October 2026 package unchanged,
-including editable Icon Composer SVG layers, drawing construction source, palette,
-platform exports, preview, provenance, draft terms and original checksums.
-The governing terms are in [LICENSE](../LICENSE). The supplied draft and handoff
-instructions are retained as provenance, not adopted as repository policy.
-The owner's permission includes distributions with modified MPL-covered code.
+Auditory Lab's “Woven” icon shows two sine waves woven across each other. The [root LICENSE](../LICENSE) governs the artwork, its drawing source and generated images separately from MPL-covered software. Unchanged art may accompany original or modified Auditory Lab source/binary distributions. Copying the drawing source for builds is permitted; modifying the art or reusing it independently requires permission. Normal application, preview and build code remains MPL-covered.
 
-The checksums identify supplied bytes; they do not certify originality or ownership.
-See the completion evidence for the measured checksum coverage.
-Normal application, preview and build code remains MPL-covered. The icon drawing
-construction source and palette are artwork source under the root artwork terms.
+## Sources and attribution
 
-Packaging compiles `assets/macos/AppIcon.icon` with the selected Xcode actool;
-it does not silently fall back to the supplied flat ICNS. Other platforms use
-the supplied ICO and hicolor exports. The runtime PNG is embedded by Slint and
-shared by the main and About windows. CLI downloads do not contain unused images.
+[`auditorylab-icon/source/make_icon.py`](auditorylab-icon/source/make_icon.py) and its [palette](auditorylab-icon/source/palette.json) define the drawing. The [attribution and geometry](auditorylab-icon/ORIGINALITY.md) record identifies the supplied account of authorship and its limits. Editable Icon Composer layers, platform exports and a preview are retained beside them. The [asset guide](auditorylab-icon/README.md) describes the files and construction tools. Its checksum manifest checks the listed current files; hashes do not certify originality or ownership.
+
+## Runtime and packaging
+
+Slint embeds the runtime PNG in the main and About windows. Windows builds embed the ICO into the desktop executable. Linux packages include the desktop Icon identifier and its hicolor exports. macOS packaging compiles the editable `AppIcon.icon` with the selected Xcode `actool`, producing icon resources before signing; the separate flat ICNS is a reference export, not a packaging fallback. CLI downloads contain no unused GUI images.
+
+See [packaging prerequisites and resource checks](../docs/releasing.md#formats-and-installed-resources). Artwork construction tools are optional for application builds, which use the tracked assets; native macOS packaging still compiles the editable icon package.

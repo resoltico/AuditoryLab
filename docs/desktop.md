@@ -2,7 +2,7 @@
 
 Start `auditorylab-gui` without arguments, or open **Auditory Lab.app** on macOS. Choose the separate Apple silicon or Intel download for your processor; macOS 15 or later is required. Windows downloads contain `auditorylab-gui.exe`. `--version` prints product version, build counter and optional source revision without opening a device.
 
-About is available from the macOS application menu or Windows/Linux Help menu. It contains selectable product/source identity, licenses and toolkit attribution. **Source and issue tracker** opens the repository.
+About is available from the macOS application menu or Windows/Linux Help menu. It shows the application icon, selectable product version/build and optional source revision, and Slint attribution. **Project website** opens the repository. **Licenses** opens the complete software and artwork terms; **Third-party licenses…** opens the bundled component notices and source reference. On macOS these resources stay inside the app when it is moved to Applications. An incomplete desktop package reports missing resources in the license window. Source builds display the embedded software/artwork terms, but component notices require a packaged distribution. Escape closes About or the license window.
 
 ## Window and navigation
 
@@ -50,7 +50,7 @@ Live level/routing/depth changes ramp over 30 ms. Tone/AM rates glide continuous
 
 **Save sound…** commits an immutable draft snapshot before opening the native panel and writes schema-2 TOML while audio continues. One audio session and at most one file operation have independent cancellation/progress/completion. A later edit remains dirty after an earlier snapshot saves. A result from an older draft cannot mark a replacement draft saved. Saving cannot detach live control or clear its monitor.
 
-Save accepts serializable finite-invalid values for correction, reported as **Saved with validation errors**. Unparseable/nonfinite fields and recipes over 64 KiB are rejected. Play and Export validate at their respective rates. Native Save confirms replacement; library staged publication syncs and atomically publishes the captured contents. Cancellation/failure preserves the draft and reports cleanup leftovers. The atomic save step is not cancellable through Stop.
+Save accepts serializable finite-invalid values for correction, reported as **Saved with validation errors**. Unparseable/nonfinite fields and recipes over 64 KiB are rejected. Play and Export validate at their respective rates. Native Save confirms replacement; library staged publication syncs the captured contents before publishing. Confirmed replacement is atomic; no-overwrite publication preserves an existing destination but is not guaranteed atomic on every platform. Cancellation/failure preserves the draft and reports cleanup leftovers. The publication step is not cancellable through Stop.
 
 During macOS file selection an in-panel **Stop audio** button addresses only audio, leaving the panel open. Windows/Linux expose independent modeless **Audio controls** while the owner has a native file dialog. Ordinary transport remains available during the file job itself. **Cancel export** is separately named; WAV export requires idle audio to avoid competing render workloads. Import shares the single file slot and only populates Library.
 
@@ -61,6 +61,8 @@ New/copy/close/File Quit/native macOS Quit protect dirty content with Save/Disca
 A downloaded macOS app may require **System Settings → Privacy & Security → Open Anyway** after its first launch attempt; see [Apple’s instructions](https://support.apple.com/en-us/102445).
 
 Linux needs X11 or Wayland, fontconfig, xkbcommon, fonts, OpenGL and an xdg-desktop-portal with a desktop backend for native dialogs. X11 also needs `libxkbcommon-x11-0` on Debian/Ubuntu. Windows needs the matching architecture and an OpenGL 2.0 or newer driver. Fatal Windows application errors appear in a native dialog, including failure to create a graphics context. See [source prerequisites](../README.md#build-from-source).
+
+For a Linux desktop download, keep the extracted folder and its legal materials together, add that folder to PATH, install `auditorylab-gui.desktop` under `~/.local/share/applications/`, and merge the packaged `hicolor/` contents into `~/.local/share/icons/hicolor/`. Keep the `org.resoltico.auditorylab` icon names unchanged. Run the executable directly from its original folder if installing no launcher.
 
 Typography uses San Francisco on macOS, Windows message font/text scale (Segoe UI by default), and the configured Linux desktop family/size. GNOME uses its settings portal or native GSettings; KDE uses its QFont portal preference; other GTK desktops use XSettings. Pango/GTK/GIO support Linux parsing/fallbacks. Missing preference sources/families are diagnosed. Updates coalesce off audio/UI processing and reflow app-owned windows without submitting audio targets. Menu/context-menu routing retains ordinary backend handling.
 
