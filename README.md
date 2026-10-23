@@ -47,7 +47,7 @@ Choose a built-in ID, `--file PATH` for a regular recipe file or `--stdin` for a
 
 Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `auditorylab-gui` on Linux. Search and select a sound to see its description and explicitly labeled preview. **Listen** starts finite audio; the persistent player names the actual session while you browse. **Open Recipe…** imports a file, and **Export WAV…** chooses a destination through the native Save dialog.
 
-Fixed navigation and transport surround the scrolling document. The optional bounded Output monitor drawer shows actual captures, selected span/scale, digital levels and Live/Held/Stale/Last state; static Pattern explained stays beside the layers. Stop and estimated elapsed remain available across screens.
+The player at the bottom keeps Stop and the elapsed time in reach on every screen. The optional **Output monitor** above it draws the samples being played, or a labeled preview, with their levels, and can hold a moment for a closer look. **Pattern explained** draws a sound's timing pattern beside its description.
 
 The **Workbench** builds sounds from up to 16 tone or click components. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or **Edit a copy** from Library, then **Save sound…** while audio continues, or stop audio to export a finite WAV. Source research stays attributed separately from your custom notes; dirty drafts are protected on New and Quit. See the [desktop guide](docs/desktop.md).
 

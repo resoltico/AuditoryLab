@@ -1,6 +1,6 @@
 # CLI
 
-Run `auditorylab` for help, `auditorylab COMMAND --help` for command options, or `auditorylab -V` for the version. Version output includes a short commit ID in CI builds.
+Run `auditorylab` for help, `auditorylab COMMAND --help` for command options, or `auditorylab -V` for the [version](#generated-status-and-identity).
 
 ## Commands
 
