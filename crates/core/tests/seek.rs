@@ -4,7 +4,7 @@ use proptest::prelude::*;
 proptest! {
     #![proptest_config(ProptestConfig { cases: 64, max_shrink_iters: 128, failure_persistence: None, .. ProptestConfig::default() })]
     #[test]
-    fn arbitrary_windows_equal_a_full_render(start in 0_usize..5000, len in 0_usize..1000, entry in 0_usize..19) {
+    fn arbitrary_windows_equal_a_full_render(start in 0_usize..5000, len in 0_usize..1000, entry in 0_usize..catalog::ENTRIES.len()) {
         let mut stimulus = Recipe::parse(catalog::ENTRIES[entry].text).unwrap().stimulus;
         stimulus.duration_seconds = 0.1; stimulus.fade_seconds = 0.01;
         let signal = stimulus.signal(SampleRate::DEFAULT).unwrap();

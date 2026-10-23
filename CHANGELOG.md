@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-23
+
 ### Breaking
 
 - macOS desktop archives use `.zip`; update download and extraction commands that expect `.tar.gz`. Unix CLI and Linux desktop archives remain `.tar.gz`, and Windows archives remain `.zip`.
@@ -49,6 +51,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Internal
 
+- CI splits the three longest mutation scopes into disjoint parallel shards while retaining every selected mutant, baseline and test budget. Tool caches survive unrelated workflow edits, and successful tool installs discard compiler intermediates. Property generation follows the catalog size; worker-lifecycle tests synchronize on publication rather than scheduler timing, and publication rejection tests compile on Windows.
 - Packaging binds source revision and archive times to the checked-out commit and rejects conflicting identity inputs. Dirty-tree packages carry the base HEAD identity and are development evidence only. Release preparation rejects a product build counter that does not exceed the prior release tag's counter; compilation and CI reruns retain the committed counter.
 - The six vendored toolkit crates record their upstream crates.io archives and SHA-256 values, with a command for reviewing the changes against them. The vendored Winit termination request state has unit tests that run on macOS CI.
 - CI runs a downstream consumer without device playback and checks that CPAL is absent from its dependency tree, and mutates the core file that compiles targets.

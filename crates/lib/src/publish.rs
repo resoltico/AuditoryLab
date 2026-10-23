@@ -221,15 +221,17 @@ mod tests {
         fs::write(&file, b"old").unwrap();
         let directory = dir.path().join("directory");
         fs::create_dir(&directory).unwrap();
-        let mut existing = vec![file.clone(), directory];
+        let existing = vec![file.clone(), directory];
         #[cfg(unix)]
-        {
+        let existing = {
+            let mut existing = existing;
             let link = dir.path().join("link");
             std::os::unix::fs::symlink(&file, &link).unwrap();
             let dangling = dir.path().join("dangling");
             std::os::unix::fs::symlink(dir.path().join("absent"), &dangling).unwrap();
             existing.extend([link, dangling]);
-        }
+            existing
+        };
         let entries = fs::read_dir(dir.path()).unwrap().count();
         for path in existing {
             let written = std::cell::Cell::new(false);

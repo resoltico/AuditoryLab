@@ -273,22 +273,19 @@ mod tests {
     fn a_result_before_exit_keeps_the_slot_finishing_until_the_join() {
         let release = Arc::new(Barrier::new(2));
         let worker_release = Arc::clone(&release);
+        let (sent, received) = mpsc::channel();
         let mut worker: Worker<u8, u8> = Worker::spawn(move |tx| {
             tx.send(7).unwrap();
+            sent.send(()).unwrap();
             worker_release.wait();
         });
-        let mut received = false;
-        for _ in 0..1000 {
-            match worker.poll(Some) {
-                Polled::Busy if worker.finishing() => {
-                    received = true;
-                    break;
-                }
-                Polled::Busy => thread::yield_now(),
-                Polled::Joined { .. } => panic!("joined before the thread exited"),
-            }
-        }
-        assert!(received, "the result arrived while the thread still ran");
+        // Prove the event is queued; a fixed number of yields does not prove
+        // that the operating system has scheduled the worker.
+        received
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        assert!(matches!(worker.poll(Some), Polled::Busy));
+        assert!(worker.finishing(), "the result arrived before worker exit");
         assert!(matches!(worker.poll(Some), Polled::Busy), "still owned");
         release.wait();
         loop {
