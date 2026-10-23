@@ -1103,9 +1103,8 @@ fn assert_audio_controls_keep_stop_visible(
 #[test]
 fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     use slint::platform::{Key, WindowEvent};
-    use slint::private_unstable_api::re_exports::{AccessibleStringProperty, WindowInner};
+    use slint::private_unstable_api::re_exports::WindowInner;
     use slint::{Model, VecModel};
-    use std::ops::ControlFlow;
     install();
     let ui = MainWindow::new().unwrap();
     ui.set_ui_family(typography::resolve().family.into());
@@ -1120,34 +1119,7 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     ui.show().unwrap();
     ui.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
     let window = ui.window();
-    let bounds_of = |label: &str| {
-        let root = WindowInner::from_pub(window).window_item_rc().unwrap();
-        let mut found = Vec::new();
-        let _ = root.visit_descendants(|item| {
-            if item.is_visible()
-                && item.is_accessible()
-                && item
-                    .accessible_string_property(AccessibleStringProperty::Label)
-                    .is_some_and(|value| value == label)
-            {
-                let geometry = item.geometry();
-                let origin = item.map_to_window(geometry.origin);
-                found.push((
-                    origin.x,
-                    origin.y,
-                    geometry.size.width,
-                    geometry.size.height,
-                ));
-            }
-            ControlFlow::<()>::Continue(())
-        });
-        assert_eq!(
-            found.len(),
-            1,
-            "exactly one exposed control is labelled {label}"
-        );
-        found[0]
-    };
+    let bounds_of = |label: &str| exposed_bounds(window, label);
     for size in [13.0, 26.0] {
         ui.set_ui_size(size);
         let mut reference = None;
@@ -1193,6 +1165,88 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
         }
     }
     let _ = ui.get_transport_labels().row_count();
+    ui.hide().unwrap();
+}
+
+/// The window bounds of the one visible accessible item labelled `label`.
+fn exposed_bounds(window: &slint::Window, label: &str) -> (f32, f32, f32, f32) {
+    use slint::private_unstable_api::re_exports::{AccessibleStringProperty, WindowInner};
+    use std::ops::ControlFlow;
+    let root = WindowInner::from_pub(window).window_item_rc().unwrap();
+    let mut found = Vec::new();
+    let _ = root.visit_descendants(|item| {
+        if item.is_visible()
+            && item.is_accessible()
+            && item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .is_some_and(|value| value == label)
+        {
+            let geometry = item.geometry();
+            let origin = item.map_to_window(geometry.origin);
+            found.push((
+                origin.x,
+                origin.y,
+                geometry.size.width,
+                geometry.size.height,
+            ));
+        }
+        ControlFlow::<()>::Continue(())
+    });
+    assert_eq!(
+        found.len(),
+        1,
+        "exactly one exposed control is labelled {label}"
+    );
+    found[0]
+}
+
+/// When an export ends, Cancel export leaves an empty space, so a late press
+/// never lands on another control.
+#[test]
+fn a_finished_export_leaves_no_control_under_cancel_export() {
+    install();
+    let ui = MainWindow::new().unwrap();
+    ui.set_status("Exporting WAV".into());
+    ui.set_exporting(true);
+    ui.show().unwrap();
+    ui.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
+    crate::test_platform::settle(ui.window());
+    let details = exposed_bounds(ui.window(), "Task details…");
+    let (x, y, width, height) = exposed_bounds(ui.window(), "Cancel export");
+    ui.set_exporting(false);
+    ui.set_status("Exported".into());
+    crate::test_platform::settle(ui.window());
+    assert_eq!(exposed_bounds(ui.window(), "Task details…"), details);
+    let (dx, _, dwidth, _) = details;
+    assert!(
+        dx + dwidth <= x || x + width <= dx,
+        "Task details at {details:?} took Cancel export's place at {:?}",
+        (x, y, width, height)
+    );
+    ui.hide().unwrap();
+}
+
+/// A recipe without a study or summary leaves no blank lines in its details.
+#[test]
+fn absent_recipe_texts_leave_no_gap() {
+    install();
+    let ui = MainWindow::new().unwrap();
+    ui.set_has_results(true);
+    ui.set_sound_title("Title".into());
+    ui.set_structure("Structure".into());
+    ui.set_recipe_timing("Timing".into());
+    ui.show().unwrap();
+    ui.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
+    crate::test_platform::settle(ui.window());
+    let below = |label| {
+        let (_, y, _, height) = exposed_bounds(ui.window(), label);
+        y + height
+    };
+    let top = |label| exposed_bounds(ui.window(), label).1;
+    assert_eq!(
+        top("Timing") - below("Structure"),
+        top("Structure") - below("Title")
+    );
     ui.hide().unwrap();
 }
 

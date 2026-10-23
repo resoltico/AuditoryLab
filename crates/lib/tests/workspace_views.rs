@@ -228,6 +228,39 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
 }
 
 #[test]
+fn a_carrier_is_named_in_sentence_case() {
+    let describe = |component: Component| {
+        let check = TargetCheck::new(SampleRate::DEFAULT, &[(ComponentId::new(1), component)]);
+        component_description(&check.components()[0].1.clone().unwrap(), false)
+    };
+    let modulated = |modulation| Component {
+        modulation: Some(modulation),
+        ..tone(440.0, Ears::Both)
+    };
+    let clicks = Component {
+        carrier: Carrier::Click {
+            rate_hz: 40.0,
+            width_seconds: 0.001,
+        },
+        ..tone(440.0, Ears::Both)
+    };
+    let plain = describe(tone(440.0, Ears::Both));
+    assert!(plain.starts_with("Tone 440 Hz"), "{plain}");
+    let pulses = describe(clicks);
+    assert!(pulses.starts_with("Pulse rate 40 "), "{pulses}");
+    let am = describe(modulated(Modulation::Sinusoidal {
+        rate_hz: 8.0,
+        depth: 0.5,
+    }));
+    assert!(am.contains("· carrier tone 440 Hz"), "{am}");
+    let gate = describe(modulated(Modulation::Rectangular {
+        rate_hz: 8.0,
+        width_seconds: 0.001,
+    }));
+    assert!(gate.contains("· carrier tone 440 Hz"), "{gate}");
+}
+
+#[test]
 fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
     // 0.1 ms at 8 kHz realizes one frame, 0.125 ms; 1 ms at 44.1 kHz realizes 44 frames.
     for (hz, requested, frames, realized) in [

@@ -216,21 +216,22 @@ fn generator_description(facts: &ComponentFacts, detail: bool) -> String {
             pulse_brief(p)
         }
     };
-    let carrier = match facts.carrier {
-        CarrierFacts::Tone(rate) => format!("Tone {}", phase(rate)),
-        CarrierFacts::Clicks(p) => format!("Pulse rate {}", pulse(p)),
+    // The carrier's name opens the text alone and is lowercase after "carrier".
+    let (opening, inner, value) = match facts.carrier {
+        CarrierFacts::Tone(rate) => ("Tone", "tone", phase(rate)),
+        CarrierFacts::Clicks(p) => ("Pulse rate", "pulse rate", pulse(p)),
     };
     match facts.modulation {
-        None => carrier,
+        None => format!("{opening} {value}"),
         Some(ModulationFacts::Sinusoidal { rate, depth }) if depth > 0.0 => format!(
-            "Modulation {} · depth {}% · carrier {carrier}",
+            "Modulation {} · depth {}% · carrier {inner} {value}",
             phase(rate),
             compact_number(depth * 100.0)
         ),
         Some(ModulationFacts::Sinusoidal { .. }) => {
-            format!("{carrier} · Modulation inactive (depth 0%)")
+            format!("{opening} {value} · Modulation inactive (depth 0%)")
         }
-        Some(ModulationFacts::Gate(p)) => format!("Gate {} · carrier {carrier}", pulse(p)),
+        Some(ModulationFacts::Gate(p)) => format!("Gate {} · carrier {inner} {value}", pulse(p)),
     }
 }
 

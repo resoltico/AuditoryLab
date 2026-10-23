@@ -619,3 +619,139 @@ fn a_dragged_slider_keeps_following_typed_values() {
         value()
     );
 }
+
+#[test]
+fn an_imported_recipe_is_scrolled_into_view() {
+    let h = Harness::new();
+    let ui = h.ui();
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("imported.toml");
+    std::fs::write(
+        &path,
+        "schema_version = 2\nduration_seconds = 1.0\nfade_seconds = 0.01\n\n[about]\ntitle = \"Imported probe\"\n",
+    )
+    .unwrap();
+    ui.invoke_open_recipe();
+    let [Request::Path(prompt, PathPurpose::OpenRecipe, _)] = h.take()[..] else {
+        panic!("Open asks for a file");
+    };
+    h.adapter.respond(prompt, Response::Path(Some(path)));
+    h.wait_for_files();
+    for _ in 0..5 {
+        h.settle();
+    }
+    let root = WindowInner::from_pub(ui.window()).window_item_rc().unwrap();
+    let row = root
+        .visit_descendants(|item| {
+            if item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .is_some_and(|label| label.contains("Imported probe"))
+            {
+                ControlFlow::Break(item.clone())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .expect("the imported row");
+    let search = root
+        .visit_descendants(|item| {
+            if item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .is_some_and(|label| label == "Find a recipe")
+            {
+                ControlFlow::Break(item.clone())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .expect("the search field");
+    let list_top = search.map_to_window(search.geometry().origin).y + search.geometry().size.height;
+    let geometry = row.geometry();
+    let origin = row.map_to_window(geometry.origin);
+    assert!(
+        origin.y >= list_top - 0.1 && origin.y + geometry.size.height <= 900.0,
+        "the imported row is visible: {origin:?} {geometry:?}"
+    );
+}
+
+#[test]
+fn clicking_a_recipe_row_selects_it() {
+    let h = Harness::new();
+    let ui = h.ui();
+    let second = h.adapter.inspect(|w| w.catalog()[1].title());
+    let row = labelled(ui, &second);
+    let centre = centre(&row);
+    drag(ui, centre, centre);
+    h.settle();
+    assert_eq!(ui.get_selected(), 1);
+    assert_eq!(h.adapter.inspect(|w| w.selected().unwrap().title()), second);
+}
+
+#[test]
+fn dragging_the_pane_handles_resizes_the_panes() {
+    let h = Harness::new();
+    let ui = h.ui();
+    let width = ui.get_sidebar_width();
+    let divider = centre(&labelled(ui, "Library pane width"));
+    drag(
+        ui,
+        divider,
+        slint::LogicalPosition::new(divider.x + 40.0, divider.y),
+    );
+    h.settle();
+    assert_eq!(ui.get_sidebar_width(), width + 40.0);
+
+    ui.invoke_resize_monitor(240.0);
+    h.settle();
+    let height = ui.get_effective_drawer_height();
+    let grip = centre(&labelled(ui, "Output monitor height"));
+    drag(ui, grip, slint::LogicalPosition::new(grip.x, grip.y - 30.0));
+    h.settle();
+    assert!(
+        ui.get_effective_drawer_height() > height,
+        "dragging the grip up grows the monitor from {height}"
+    );
+}
+
+/// The first item whose accessible label starts with `prefix`.
+fn labelled(ui: &MainWindow, prefix: &str) -> ItemRc {
+    WindowInner::from_pub(ui.window())
+        .window_item_rc()
+        .unwrap()
+        .visit_descendants(|item| {
+            if item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .is_some_and(|label| label.starts_with(prefix))
+            {
+                ControlFlow::Break(item.clone())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .unwrap_or_else(|| panic!("an item labelled {prefix:?}"))
+}
+
+fn centre(item: &ItemRc) -> slint::LogicalPosition {
+    let geometry = item.geometry();
+    let origin = item.map_to_window(geometry.origin);
+    slint::LogicalPosition::new(
+        origin.x + geometry.size.width / 2.0,
+        origin.y + geometry.size.height / 2.0,
+    )
+}
+
+/// Press the left button at `from`, move to `to` and release there.
+fn drag(ui: &MainWindow, from: slint::LogicalPosition, to: slint::LogicalPosition) {
+    use slint::platform::PointerEventButton;
+    let button = PointerEventButton::Left;
+    let window = ui.window();
+    window.dispatch_event(WindowEvent::PointerPressed {
+        position: from,
+        button,
+    });
+    window.dispatch_event(WindowEvent::PointerMoved { position: to });
+    window.dispatch_event(WindowEvent::PointerReleased {
+        position: to,
+        button,
+    });
+}

@@ -685,9 +685,11 @@ export component MainWindow inherits Window {
             padding:4px;
             Text {text:"Auditory Lab";font-weight:600;vertical-alignment:center;}
             Rectangle {horizontal-stretch:1;}
-            if root.status != "": Button {text:"Task details…";clicked=>{root.show-diagnostics();}}
+            // Left of the lasting controls, so a late press on Cancel export
+            // lands in the space it leaves rather than on another control.
             if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:"WAV export progress";max-width:120px;}
             if root.exporting: Button {text:"Cancel export";clicked=>{root.cancel-file();}}
+            if root.status != "": Button {text:"Task details…";clicked=>{root.show-diagnostics();}}
             if root.tab-index==1: Button {text:"Save sound…";enabled:!root.busy && root.can-save;accessible-description:root.save-reason;clicked=>{root.save-recipe();}}
             monitor-opener := StableButton {
                 text:root.monitor-open ? "Hide monitor" : "Show monitor";
@@ -735,8 +737,18 @@ export component MainWindow inherits Window {
                         catalog-scroll := ScrollView {
                             VerticalBox {
                                 spacing: 4px;
-                                for item[index] in root.catalog: Rectangle {
+                                for item[index] in root.catalog: catalog-row := Rectangle {
                                     property <bool> selected-row: root.selected==index;
+                                    // A row created already selected, such as a new import,
+                                    // reveals itself once it has been laid out.
+                                    initial-reveal := Timer {
+                                        interval: 1ms;
+                                        running: catalog-row.selected-row;
+                                        triggered => {
+                                            self.running = false;
+                                            catalog-row.reveal();
+                                        }
+                                    }
                                     function reveal() {
                                         if self.selected-row {
                                             if self.y + catalog-scroll.content-y < 0px {catalog-scroll.content-y=-self.y;}
@@ -764,13 +776,6 @@ export component MainWindow inherits Window {
                                         wrap: word-wrap;
                                         color: root.selected == index ? Palette.selection-foreground : Palette.control-foreground;
                                     }
-                                    touch := TouchArea {
-                                        clicked => {
-                                            focus.focus();
-                                            root.select(index);
-                                            root.library-detail=true;
-                                        }
-                                    }
                                     focus := FocusScope {
                                         key-pressed(event) => {
                                             if event.text == "\n" || event.text == " " {
@@ -779,6 +784,14 @@ export component MainWindow inherits Window {
                                                 return accept;
                                             }
                                             return reject;
+                                        }
+                                    }
+                                    // Above the focus scope, so a pointer press reaches it.
+                                    touch := TouchArea {
+                                        clicked => {
+                                            focus.focus();
+                                            root.select(index);
+                                            root.library-detail=true;
                                         }
                                     }
                                 }
@@ -816,17 +829,6 @@ export component MainWindow inherits Window {
                             root.resize-library-pane(root.sidebar-width/1px - 16);
                         }
                         forward-focus: resize-focus;
-                        resize-touch := TouchArea {
-                            mouse-cursor:col-resize;
-                            clicked=> {
-                                resize-focus.focus();
-                            }
-                            moved=> {
-                                if self.pressed {
-                                    root.resize-library-pane((root.sidebar-width + self.mouse-x - self.pressed-x)/1px);
-                                }
-                            }
-                        }
                         resize-focus := FocusScope {
                             key-pressed(event)=> {
                                 if event.text==Key.LeftArrow {
@@ -838,6 +840,18 @@ export component MainWindow inherits Window {
                                     return accept;
                                 }
                                 return reject;
+                            }
+                        }
+                        // Above the focus scope, so a pointer press reaches it.
+                        resize-touch := TouchArea {
+                            mouse-cursor:col-resize;
+                            clicked=> {
+                                resize-focus.focus();
+                            }
+                            moved=> {
+                                if self.pressed {
+                                    root.resize-library-pane((root.sidebar-width + self.mouse-x - self.pressed-x)/1px);
+                                }
                             }
                         }
                     }
@@ -874,13 +888,14 @@ export component MainWindow inherits Window {
                                     wrap:word-wrap;
                                     vertical-stretch:0;
                                 }
-                                Text {min-width:0px;text:root.studied;wrap:word-wrap;vertical-stretch:0;}
+                                // A custom recipe has no study or summary to show.
+                                if root.studied != "": Text {min-width:0px;text:root.studied;wrap:word-wrap;vertical-stretch:0;}
                                 Text {min-width:0px;
                                     text:root.recipe-timing;
                                     wrap:word-wrap;
                                     vertical-stretch:0;
                                 }
-                                Text {min-width:0px;
+                                if root.summary != "": Text {min-width:0px;
                                     text:root.summary;
                                     wrap:word-wrap;
                                     vertical-stretch:0;
@@ -1245,8 +1260,8 @@ export component MainWindow inherits Window {
                     accessible-action-increment=>{root.resize-monitor(root.effective-drawer-height/1px+16);}
                     accessible-action-decrement=>{root.resize-monitor(root.effective-drawer-height/1px-16);}
                     forward-focus:grip-focus;
-                    grip-touch := TouchArea {mouse-cursor:row-resize;moved=>{if self.pressed{root.resize-monitor((root.effective-drawer-height + self.pressed-y - self.mouse-y)/1px);}}clicked=>{grip-focus.focus();}}
                     grip-focus := FocusScope {key-pressed(e)=>{if e.text==Key.UpArrow{root.resize-monitor(root.effective-drawer-height/1px+16);return accept;}if e.text==Key.DownArrow{root.resize-monitor(root.effective-drawer-height/1px-16);return accept;}return reject;}}
+                    grip-touch := TouchArea {mouse-cursor:row-resize;moved=>{if self.pressed{root.resize-monitor((root.effective-drawer-height + self.pressed-y - self.mouse-y)/1px);}}clicked=>{grip-focus.focus();}}
                 }
                 MonitorPanel {
                     data:root.monitor-data;ui-size:root.ui-size;
