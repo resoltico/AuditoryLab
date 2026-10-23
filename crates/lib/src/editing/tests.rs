@@ -217,6 +217,73 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
 }
 
 #[test]
+fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
+    let mut editor = editor_with(&[tone(440.0), tone(550.0), tone(660.0)]);
+    let document = editor.document();
+    editor.record_saved(document, &editor.draft().recipe());
+    let middle = editor.draft().components()[1].0;
+    let frequency = field(&editor, 1, ParameterId::ToneFrequency);
+    let other = field(&editor, 0, ParameterId::ToneFrequency);
+    assert_eq!(
+        editor.restore_removed(document),
+        Err(EditRefusal::NothingRemoved)
+    );
+    editor.stage(frequency, "bad").unwrap();
+    editor.remove_component(document, middle).unwrap();
+    assert_eq!(editor.removed(), Some((1, &tone(550.0))));
+    assert_eq!(editor.staged(frequency.field), None);
+    editor.stage(other, "450").unwrap();
+
+    let stale = EditorSession::new(Draft::new()).unwrap().document();
+    assert_eq!(
+        editor.restore_removed(stale),
+        Err(EditRefusal::StaleDocument)
+    );
+    assert_eq!(editor.restore_removed(document), Ok(middle));
+    let ids: Vec<_> = editor
+        .draft()
+        .components()
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+    assert_eq!(ids[1], middle, "the same identity returns to its place");
+    assert_eq!(editor.draft().component(middle), Some(&tone(550.0)));
+    assert_eq!(editor.staged(frequency.field), Some("bad"));
+    assert_eq!(
+        editor.staged(other.field),
+        Some("450"),
+        "later staging stays"
+    );
+    assert_eq!(editor.removed(), None);
+    assert_eq!(
+        editor.restore_removed(document),
+        Err(EditRefusal::NothingRemoved),
+        "one removal restores once"
+    );
+    editor.restore(frequency).unwrap();
+    editor.restore(other).unwrap();
+    assert!(!editor.dirty(), "restoring returns the saved content");
+
+    // A newer removal replaces the older one, and the limit keeps it waiting.
+    let first = editor.draft().components()[0].0;
+    let last = editor.draft().components()[2].0;
+    editor.remove_component(document, first).unwrap();
+    editor.remove_component(document, last).unwrap();
+    assert_eq!(editor.removed(), Some((1, &tone(660.0))));
+    while editor.draft().components().len() < Stimulus::MAX_COMPONENTS {
+        editor.add_component(document, CarrierKind::Tone).unwrap();
+    }
+    assert_eq!(
+        editor.restore_removed(document),
+        Err(EditRefusal::ComponentLimit)
+    );
+    assert_eq!(editor.removed(), Some((1, &tone(660.0))));
+    let added = editor.draft().components()[2].0;
+    editor.remove_component(document, added).unwrap();
+    assert_eq!(editor.restore_removed(document), Ok(added));
+}
+
+#[test]
 fn stale_document_handles_are_rejected_everywhere() {
     let mut old = editor_with(&[tone(440.0)]);
     let handle = field(&old, 0, ParameterId::ToneFrequency);
@@ -304,7 +371,7 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
     let mut d = Draft::new();
     let a = d.add(CarrierKind::Tone).unwrap();
     let b = d.add(CarrierKind::Clicks).unwrap();
-    assert!(d.remove(a));
+    assert!(d.remove(a).is_some());
     let c = d.add(CarrierKind::Tone).unwrap();
     assert_ne!(a, c);
     assert!(d.replace(

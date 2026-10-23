@@ -100,6 +100,8 @@ pub enum EditRefusal {
     ComponentLimit,
     /// No unused component identity remains in this document.
     IdentitiesExhausted,
+    /// No removed component is waiting to be restored.
+    NothingRemoved,
 }
 
 /// Why staged text is not a usable value.
@@ -228,12 +230,27 @@ impl Draft {
             .is_some()
     }
 
-    /// Remove a component without reusing its identity; returns `false` for
-    /// an unknown identity.
-    pub fn remove(&mut self, id: ComponentId) -> bool {
-        let before = self.components.len();
-        self.components.retain(|(key, _)| *key != id);
-        before != self.components.len()
+    /// Remove a component without reusing its identity, returning its
+    /// position and value, or `None` for an unknown identity.
+    pub fn remove(&mut self, id: ComponentId) -> Option<(usize, Component)> {
+        let index = self.components.iter().position(|(key, _)| *key == id)?;
+        Some((index, self.components.remove(index).1))
+    }
+
+    /// Put a removed component back at its position, or at the end if fewer
+    /// components remain, under the identity it had.
+    fn restore(
+        &mut self,
+        index: usize,
+        id: ComponentId,
+        component: Component,
+    ) -> Result<(), EditRefusal> {
+        if self.components.len() >= Stimulus::MAX_COMPONENTS {
+            return Err(EditRefusal::ComponentLimit);
+        }
+        let index = index.min(self.components.len());
+        self.components.insert(index, (id, component));
+        Ok(())
     }
 
     /// Editable title.
@@ -547,6 +564,15 @@ struct AnalysisKey {
 /// rate and their candidate and committed forms.
 const CACHED_ANALYSES: usize = 4;
 
+/// The most recently removed component, with the text that was staged for it.
+#[derive(Debug)]
+struct Removed {
+    index: usize,
+    id: ComponentId,
+    component: Component,
+    staged: Vec<(EditingField, String)>,
+}
+
 /// One open document and its editing state.
 #[derive(Debug)]
 pub struct EditorSession {
@@ -559,6 +585,7 @@ pub struct EditorSession {
     analyses: Vec<(AnalysisKey, Arc<Analysis>)>,
     candidate: Option<(u64, u64, Arc<Candidate>)>,
     save_check: Option<(u64, u64, Result<(), SaveRefusal>)>,
+    removed: Option<Removed>,
     #[cfg(test)]
     evaluations: u64,
     #[cfg(test)]
@@ -582,6 +609,7 @@ impl EditorSession {
             analyses: Vec::new(),
             candidate: None,
             save_check: None,
+            removed: None,
             #[cfg(test)]
             evaluations: 0,
             #[cfg(test)]
@@ -893,17 +921,58 @@ impl EditorSession {
         id: ComponentId,
     ) -> Result<(), EditRefusal> {
         self.admit(document)?;
-        if !self.draft.remove(id) {
-            return Err(EditRefusal::UnknownComponent);
+        let (index, component) = self.draft.remove(id).ok_or(EditRefusal::UnknownComponent)?;
+        let owned = |field: &EditingField| matches!(field, EditingField::Parameter(owner, _) if *owner == id);
+        let staged: Vec<_> = self
+            .staged
+            .iter()
+            .filter(|(field, _)| owned(field))
+            .map(|(field, text)| (*field, text.clone()))
+            .collect();
+        if !staged.is_empty() {
+            self.staged.retain(|field, _| !owned(field));
+            self.input_revision += 1;
         }
-        let staged = self.staged.len();
-        self.staged
-            .retain(|field, _| !matches!(field, EditingField::Parameter(owner, _) if *owner == id));
-        if staged != self.staged.len() {
+        self.removed = Some(Removed {
+            index,
+            id,
+            component,
+            staged,
+        });
+        self.draft_revision += 1;
+        Ok(())
+    }
+
+    /// The most recently removed component and the position it had, while it
+    /// can still be restored.
+    #[must_use]
+    pub fn removed(&self) -> Option<(usize, &Component)> {
+        self.removed.as_ref().map(|r| (r.index, &r.component))
+    }
+
+    /// Put the most recently removed component back where it was, with its
+    /// identity and the text that was staged for it.
+    ///
+    /// # Errors
+    /// Returns [`EditRefusal`] for a stale document, when nothing was
+    /// removed, or at the component limit, which keeps the component for a
+    /// later restore.
+    pub fn restore_removed(&mut self, document: DocumentId) -> Result<ComponentId, EditRefusal> {
+        self.admit(document)?;
+        let removed = self.removed.take().ok_or(EditRefusal::NothingRemoved)?;
+        if let Err(refusal) = self
+            .draft
+            .restore(removed.index, removed.id, removed.component)
+        {
+            self.removed = Some(removed);
+            return Err(refusal);
+        }
+        if !removed.staged.is_empty() {
+            self.staged.extend(removed.staged);
             self.input_revision += 1;
         }
         self.draft_revision += 1;
-        Ok(())
+        Ok(removed.id)
     }
 
     /// Whether the document differs from its saved content or has staged text.

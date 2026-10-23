@@ -493,6 +493,7 @@ export component MainWindow inherits Window {
     callback set-carrier(int, int);
     callback set-modulation(int, int);
     callback remove-component(int);
+    callback restore-component(int);
     callback add-component(int, int);
 
     in property <string> output-state;
@@ -564,6 +565,8 @@ export component MainWindow inherits Window {
     in property <bool> can-edit;
     in property <bool> can-add-component;
     in property <string> add-reason;
+    in property <string> removed-component;
+    in property <bool> can-restore-component;
     in property <bool> can-export;
     in property <bool> can-play;
     in property <bool> can-save;
@@ -1014,6 +1017,18 @@ export component MainWindow inherits Window {
                         }
                     }
                     if root.add-reason != "": Text {min-width:0px;text:root.add-reason;wrap:word-wrap;vertical-stretch:0;}
+                    if root.removed-component != "": HorizontalBox {
+                        padding: 0px;
+                        vertical-stretch: 0;
+                        Button {
+                            text: "Undo remove";
+                            horizontal-stretch: 0;
+                            enabled: root.can-restore-component;
+                            accessible-description: root.removed-component + " " + root.add-reason;
+                            clicked => { root.restore-component(root.document); }
+                        }
+                        Text {min-width:0px;horizontal-stretch:1;text:root.removed-component;wrap:word-wrap;vertical-alignment:center;}
+                    }
                     if root.retained-warning != "": Text {min-width:0px;
                         text:root.retained-warning;
                         color:Palette.foreground;
@@ -1067,38 +1082,50 @@ export component MainWindow inherits Window {
                             }
                         }
                         component-options := Disclosure {label:"Routing, modulation and layer options";}
-                        if component-options.expanded: VerticalBox {
-                            padding: 0px;
+                        // Labels beside choices sized to their content; the
+                        // shared column keeps the three choices aligned.
+                        if component-options.expanded: GridLayout {
+                            spacing: 6px;
                             vertical-stretch: 0;
-                            Text { text: "Ears"; }
-                            ComboBox {
-                                enabled: root.can-edit;
-                                model: root.ears-choices;
-                                current-index: row.ears;
-                                accessible-label: row.name + ": ears";
-                                selected(value) => { root.set-ears(row.binding, self.current-index); }
+                            Row {
+                                Text { text: "Ears"; vertical-alignment: center; }
+                                ComboBox {
+                                    enabled: root.can-edit;
+                                    model: root.ears-choices;
+                                    current-index: row.ears;
+                                    accessible-label: row.name + ": ears";
+                                    selected(value) => { root.set-ears(row.binding, self.current-index); }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
                             }
-                            Text { text: "Carrier"; }
-                            ComboBox {
-                                enabled: root.can-edit;
-                                model: root.carrier-choices;
-                                current-index: row.carrier;
-                                accessible-label: row.name + ": carrier";
-                                selected(value) => { root.set-carrier(row.binding, self.current-index); }
+                            Row {
+                                Text { text: "Carrier"; vertical-alignment: center; }
+                                ComboBox {
+                                    enabled: root.can-edit;
+                                    model: root.carrier-choices;
+                                    current-index: row.carrier;
+                                    accessible-label: row.name + ": carrier";
+                                    selected(value) => { root.set-carrier(row.binding, self.current-index); }
+                                }
                             }
-                            Text { text: "Modulation"; }
-                            ComboBox {
-                                enabled: root.can-edit;
-                                model: root.modulation-choices;
-                                current-index: row.modulation;
-                                accessible-label: row.name + ": modulation";
-                                selected(value) => { root.set-modulation(row.binding, self.current-index); }
+                            Row {
+                                Text { text: "Modulation"; vertical-alignment: center; }
+                                ComboBox {
+                                    enabled: root.can-edit;
+                                    model: root.modulation-choices;
+                                    current-index: row.modulation;
+                                    accessible-label: row.name + ": modulation";
+                                    selected(value) => { root.set-modulation(row.binding, self.current-index); }
+                                }
                             }
-                            Button {
-                                text: "Remove";
-                                enabled: root.can-edit;
-                                accessible-label: "Remove " + row.name;
-                                clicked => { root.remove-component(row.binding); }
+                            Row {
+                                Button {
+                                    col: 1;
+                                    text: "Remove";
+                                    enabled: root.can-edit;
+                                    accessible-label: "Remove " + row.name;
+                                    clicked => { root.remove-component(row.binding); }
+                                }
                             }
                         }
                         for parameter in row.parameters: ParameterControl {

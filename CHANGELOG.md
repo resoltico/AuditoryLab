@@ -13,6 +13,7 @@ Notable changes to this project are documented in this file. The format is based
 ### Added
 
 - `auditorylab::workspace::Workspace` holds the interactive workflow shared by desktop frontends: library search and selection, one open document, one audio and one file task, prompts and their typed responses, action availability and change-driven views.
+- **Undo remove** in the desktop Workbench restores the most recently removed layer in its place, with any text typed into it, until another layer is removed or the sound is replaced. `Workspace::restore_component` and `EditorSession::restore_removed` provide it, and `Draft::remove` returns the removed position and component.
 - Pulse widths are reported as requested and realized, with the realized frame count at the stated rate, in CLI `inspect` and `describe`, desktop descriptions and generated details.
 
 ### Changed
@@ -27,7 +28,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Fixed
 
-- Desktop layout and input: a long title, message or extreme value (such as 1e300) wraps instead of widening the page; a search that hides every recipe leaves nothing selected, so Play, Export and Edit a copy no longer act on an invisible recipe; disabled Add buttons at 16 components state why; Duration, Fade and Export WAV… have ordinary sizes, with their problems shown beside them; a slider follows typed values after it has been dragged; a component's error is stated once; input errors no longer leave stale or repeated status lines; a single mouse click selects a Library recipe, and the Library divider and monitor grip respond to the first drag; an imported recipe is scrolled into view; a recipe without study or summary text shows no blank lines; when an export ends, Cancel export leaves an empty space rather than another button under the pointer; and a modulated or gated carrier is named in lowercase (`carrier tone 440 Hz`).
+- Desktop layout and input: a long title, message or extreme value (such as 1e300) wraps instead of widening the page; a search that hides every recipe leaves nothing selected, so Play, Export and Edit a copy no longer act on an invisible recipe; disabled Add buttons at 16 components state why; Duration, Fade and Export WAV… have ordinary sizes, with their problems shown beside them; a slider follows typed values after it has been dragged; a component's error is stated once; input errors no longer leave stale or repeated status lines; a single mouse click selects a Library recipe, and the Library divider and monitor grip respond to the first drag; a layer's ears, carrier and modulation choices and its Remove button are sized to their content instead of the window width; an imported recipe is scrolled into view; a recipe without study or summary text shows no blank lines; when an export ends, Cancel export leaves an empty space rather than another button under the pointer; and a modulated or gated carrier is named in lowercase (`carrier tone 440 Hz`).
 - Assistive technologies can no longer press a disabled desktop button.
 - CLI `inspect --sample-rate HZ` describes the sound only at the selected rate; it no longer adds a description at 48,000 Hz.
 

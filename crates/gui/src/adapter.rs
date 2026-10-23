@@ -578,6 +578,8 @@ impl SlintAdapter {
         ui.set_can_edit(actions.can_edit);
         ui.set_can_add_component(actions.can_add_component);
         ui.set_add_reason(actions.add_component_reason.as_str().into());
+        ui.set_removed_component(actions.removed_component.as_str().into());
+        ui.set_can_restore_component(actions.can_restore_component);
         ui.set_busy(actions.file_busy);
         ui.set_playback_busy(actions.playback_busy);
         ui.set_exporting(actions.exporting);
@@ -1196,6 +1198,14 @@ fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         w(&|a| {
             if let Some((document, id)) = a.component(binding) {
                 a.command(|w| w.remove_component(document, id));
+            }
+        });
+    });
+    let w = with.clone();
+    ui.on_restore_component(move |binding| {
+        w(&|a| {
+            if let Some(Binding::Document(document)) = a.resolve(binding) {
+                a.command(|w| w.restore_component(document));
             }
         });
     });

@@ -147,6 +147,11 @@ pub struct ActionView {
     pub can_add_component: bool,
     /// Why no component can be added, when editing is otherwise allowed.
     pub add_component_reason: String,
+    /// The most recently removed component, which Undo remove restores;
+    /// empty when there is none.
+    pub removed_component: String,
+    /// Undo remove is admitted.
+    pub can_restore_component: bool,
     /// Open and Save are blocked by a file task or prompt.
     pub file_busy: bool,
     /// An audio task occupies its slot.
@@ -228,6 +233,9 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
             "A sound holds at most {} components; remove one to add another.",
             auditorylab_core::Stimulus::MAX_COMPONENTS
         ),
+        Refusal::Edit(EditRefusal::NothingRemoved) => {
+            "No removed layer is waiting to be restored.".into()
+        }
         Refusal::Edit(EditRefusal::IdentitiesExhausted) => {
             "This sound has used every component identity; start a new sound to add more.".into()
         }
@@ -678,6 +686,18 @@ impl Workspace {
             } else {
                 String::new()
             },
+            removed_component: self
+                .editor
+                .removed()
+                .map(|(index, component)| {
+                    format!(
+                        "Removed {} · layer {}.",
+                        component.role().label(),
+                        index + 1
+                    )
+                })
+                .unwrap_or_default(),
+            can_restore_component: self.can_edit() && !full && self.editor.removed().is_some(),
             file_busy: self.file.is_some() || self.prompt.is_some(),
             playback_busy: playing,
             exporting,

@@ -692,6 +692,21 @@ impl Workspace {
         self.after_edit(result)
     }
 
+    /// Put the most recently removed component back where it was.
+    ///
+    /// # Errors
+    /// Returns the refusal when nothing was removed, at the component limit
+    /// or while editing is blocked.
+    pub fn restore_component(&mut self, document: DocumentId) -> Result<(), Refusal> {
+        self.editing_allowed()?;
+        let result = self
+            .editor
+            .restore_removed(document)
+            .map(|_| ())
+            .map_err(Refusal::Edit);
+        self.after_edit(result)
+    }
+
     /// The live session's actual rate, when a live task is bound to the open
     /// document; otherwise the selected export rate. Field diagnostics use it.
     #[must_use]

@@ -713,6 +713,84 @@ fn dragging_the_pane_handles_resizes_the_panes() {
     );
 }
 
+#[test]
+fn a_removed_layer_returns_through_undo_remove() {
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 0);
+    ui.invoke_add_component(ui.get_document(), 1);
+    h.settle();
+    let first = h.adapter.inspect(|w| w.editor().draft().components()[0].0);
+    assert_eq!(ui.get_removed_component(), "");
+    ui.invoke_remove_component(h.component_binding(0));
+    h.settle();
+    assert_eq!(ui.get_components().row_count(), 1);
+    assert_eq!(ui.get_removed_component(), "Removed Steady tone · layer 1.");
+    assert!(ui.get_can_restore_component());
+    let button = labelled(ui, "Undo remove");
+    let width = ui
+        .window()
+        .size()
+        .to_logical(ui.window().scale_factor())
+        .width;
+    assert!(
+        button.geometry().size.width < width / 4.0,
+        "Undo remove is sized to its label"
+    );
+    let undo = centre(&button);
+    drag(ui, undo, undo);
+    h.settle();
+    assert_eq!(ui.get_components().row_count(), 2);
+    assert_eq!(
+        h.adapter.inspect(|w| w.editor().draft().components()[0].0),
+        first
+    );
+    assert_eq!(ui.get_removed_component(), "");
+}
+
+#[test]
+fn layer_options_are_sized_to_their_content() {
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 0);
+    h.settle();
+    let options = centre(&labelled(ui, "Routing, modulation and layer options"));
+    drag(ui, options, options);
+    h.settle();
+    let name = ui.get_components().row_data(0).unwrap().name;
+    let width = ui
+        .window()
+        .size()
+        .to_logical(ui.window().scale_factor())
+        .width;
+    let bounds = |label: &str| {
+        let item = labelled(ui, label);
+        let geometry = item.geometry();
+        (item.map_to_window(geometry.origin).x, geometry.size.width)
+    };
+    let (remove_x, remove_width) = bounds(&format!("Remove {name}"));
+    assert!(
+        remove_width < width / 4.0,
+        "Remove is {remove_width} of {width}"
+    );
+    let choices: Vec<_> = ["ears", "carrier", "modulation"]
+        .iter()
+        .map(|choice| bounds(&format!("{name}: {choice}")))
+        .collect();
+    assert!(
+        choices.iter().all(|&c| c == choices[0]),
+        "the choices share one column: {choices:?}"
+    );
+    assert!(
+        choices[0].1 < width / 2.0,
+        "choices are {:?} of {width}",
+        choices[0]
+    );
+    assert_eq!(remove_x, choices[0].0, "Remove aligns with the choices");
+}
+
 /// The first item whose accessible label starts with `prefix`.
 fn labelled(ui: &MainWindow, prefix: &str) -> ItemRc {
     WindowInner::from_pub(ui.window())
