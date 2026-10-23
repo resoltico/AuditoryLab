@@ -55,7 +55,7 @@ The **Workbench** builds sounds from up to 16 tone or click components. Change t
 
 Install [rustup](https://rustup.rs/). [rust-toolchain.toml](rust-toolchain.toml) selects the compiler and components.
 
-- macOS 15 or later: install Xcode Command Line Tools with `xcode-select --install`. Packaging a macOS app also requires full Xcode 26 or later for Icon Composer resources; see [packaging](docs/releasing.md#build-distributions).
+- macOS 15 or later: install Xcode Command Line Tools with `xcode-select --install`. Compiling Icon Composer resources for app packaging needs full Xcode 26 or later on a macOS 26 or later host; app assembly can use those resources on macOS 15. See [packaging](docs/releasing.md#build-distributions).
 - Debian/Ubuntu: `sudo apt-get install build-essential pkg-config libasound2-dev libfontconfig1-dev libxkbcommon-x11-0 libpango-1.0-0 libgtk-3-0`.
 - Windows: install Visual Studio Build Tools with Desktop development with C++, including the MSVC tools and Windows SDK for your processor. Use the native MSVC Rust host. Windows 10 or later is required on x86_64; ARM64 requires Windows 11. The x86_64 target requires SSE3, CMPXCHG16B and LAHF/SAHF.
 

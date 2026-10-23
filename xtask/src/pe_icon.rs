@@ -83,8 +83,17 @@ pub(crate) fn verify(bytes: &[u8], ico: &[u8]) -> Result<()> {
     for i in 0..count {
         let at = 6 + i * 16;
         let g = 6 + i * 14;
-        if ico.get(at..at + 12).filter(|_| at + 12 <= ico.len()) != group.get(g..g + 12) {
+        if ico.get(at..at + 4) != group.get(g..g + 4)
+            || ico.get(at + 6..at + 12) != group.get(g + 6..g + 12)
+        {
             return Err("PE icon dimensions differ from supplied ICO".into());
+        }
+        // RC fills an unspecified ICO plane count with the single image plane.
+        // Descriptor dimensions, bit depth, size and actual image bytes remain exact.
+        let planes = word(ico, at + 4)?;
+        let resource_planes = word(group, g + 4)?;
+        if resource_planes != planes && !(planes == 0 && resource_planes == 1) {
+            return Err("PE icon plane count differs from supplied ICO".into());
         }
         let offset = dword(ico, at + 12)?;
         let size = dword(ico, at + 8)?;
@@ -153,6 +162,18 @@ mod tests {
         pe[806..818].copy_from_slice(&ico[6..18]);
         put16(&mut pe, 818, 7);
         super::verify(&pe, &ico).unwrap();
+        // The supplied PNG ICO uses zero planes; native RC writes one in the group.
+        put16(&mut ico, 10, 0);
+        super::verify(&pe, &ico).unwrap();
+        put16(&mut pe, 810, 2);
+        assert!(super::verify(&pe, &ico).is_err());
+        put16(&mut pe, 810, 1);
+        pe[806] = 48;
+        assert!(super::verify(&pe, &ico).is_err());
+        pe[806] = 32;
+        pe[812] = 24;
+        assert!(super::verify(&pe, &ico).is_err());
+        pe[812] = 32;
         pe[768] = b'x';
         assert!(super::verify(&pe, &ico).is_err());
         pe[768] = b'i';

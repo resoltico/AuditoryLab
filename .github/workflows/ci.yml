@@ -92,7 +92,32 @@ jobs:
           else
             echo 'core-changed=false' >> "$GITHUB_OUTPUT"
           fi
+  icons:
+    if: github.event_name != 'schedule'
+    # Xcode's layered icon renderer needs Tahoe frameworks. Product binaries
+    # and extracted archives are still built/tested on macOS 15, including Intel.
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare native icon compiler
+        run: |
+          mkdir -p target/tmp
+          echo "TMPDIR=${GITHUB_WORKSPACE}/target/tmp" >> "$GITHUB_ENV"
+          developer="/Applications/Xcode_${MACOS_XCODE_VERSION}.app/Contents/Developer"
+          test -d "$developer"
+          echo "DEVELOPER_DIR=$developer" >> "$GITHUB_ENV"
+      - run: rustup toolchain install
+      - run: cargo xtask compile-icons target/macos-icons
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-icons-${{ github.sha }}
+          path: target/macos-icons/*
+          if-no-files-found: error
   test:
+    needs: icons
     if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
@@ -178,10 +203,22 @@ jobs:
       - name: Install cargo-about
         if: steps.about-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-about --version "$CARGO_ABOUT_VERSION" --locked --features cli
+      - name: Download native icon resources for this source
+        if: runner.os == 'macOS'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-icons-${{ github.sha }}
+          path: target/macos-icons
+          digest-mismatch: error
       - name: Build archives and run host smoke tests
         env:
           DIST_TARGET: ${{ matrix.target }}
-        run: cargo xtask dist --target "$DIST_TARGET"
+        run: |
+          args=(--target "$DIST_TARGET")
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            args+=(--icons target/macos-icons)
+          fi
+          cargo xtask dist "${args[@]}"
       - name: Upload distributions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -217,7 +254,7 @@ jobs:
             shard: 0/1
           - source: waveform
             shard: 0/1
-    needs: lint
+    needs: [lint, icons]
     if: github.event_name != 'schedule' && (inputs.release || needs.lint.outputs.core-changed == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 15

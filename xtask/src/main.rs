@@ -358,10 +358,15 @@ fn check_previous_build(current: u32) -> Result<()> {
         .ok_or("previous published build metadata missing")?;
     increasing_build(current, previous)
 }
-fn dist(target: &str, out: &Path) -> Result<()> {
+fn dist(target: &str, out: &Path, icons: Option<&Path>) -> Result<()> {
     let platform = platform(target)?;
     let source = source::Source::resolve()?;
-    if target.contains("apple") {
+    if let Some(icons) = icons {
+        if !target.contains("apple") {
+            return Err("--icons is supported only for macOS distributions".into());
+        }
+        macos::validate_icons(icons, &source)?;
+    } else if target.contains("apple") {
         archive::actool()?;
     }
     let rust_copyright = rust_standard_library_copyright()?;
@@ -428,7 +433,7 @@ fn dist(target: &str, out: &Path) -> Result<()> {
                 source_notice(&version, build, &source),
             )?;
             if product == "gui" && target.contains("apple") {
-                macos::bundle(&destination, &folder, &version, build)?;
+                macos::bundle(&destination, &folder, &version, build, icons, &source)?;
                 fs::remove_file(&destination)?;
             } else if target.contains("apple") {
                 // Both architectures have the same declared ad-hoc signing contract.
@@ -485,13 +490,14 @@ fn main() -> Result<()> {
     )?;
     let args: Vec<_> = env::args().skip(1).collect();
     match args.first().map(String::as_str) {
-        Some("dist") => { let mut target=None; let mut out=PathBuf::from("target/dist"); let mut i=1; while i<args.len() { let value=args.get(i+1).ok_or("missing option value")?; match args[i].as_str() { "--target"=>target=Some(value.as_str()),"--out"=>out=PathBuf::from(value),_=>return Err("use dist --target TARGET [--out DIR]".into()) } i+=2; } dist(target.ok_or("dist requires --target")?,&out) }
+        Some("dist") => { let mut target=None; let mut icons=None; let mut out=PathBuf::from("target/dist"); let mut i=1; while i<args.len() { let value=args.get(i+1).ok_or("missing option value")?; match args[i].as_str() { "--target"=>target=Some(value.as_str()),"--out"=>out=PathBuf::from(value),"--icons"=>icons=Some(Path::new(value)),_=>return Err("use dist --target TARGET [--out DIR] [--icons DIR]".into()) } i+=2; } dist(target.ok_or("dist requires --target")?,&out,icons) }
+        Some("compile-icons") if args.len()==2 => macos::compile_icons(Path::new(&args[1]), &source::Source::resolve()?),
         Some("inspect-package") if args.len()==3 => { let meta=metadata(None)?; let _=package::inspect(Path::new(&args[2]), Path::new("target/package-inspection"), &args[1], version(&meta)?, build_number(&meta)?, &rust_standard_library_copyright()?, &source::Source::resolve()?)?; Ok(()) },
         Some("collect-assets") if args.len()==4 => targets::collect(&args[1], Path::new(&args[2]), Path::new(&args[3])),
         Some("notes") if args.len()==2 => { println!("{}",section(&fs::read_to_string("CHANGELOG.md")?,&args[1])?.1); Ok(()) }
         Some("check-release") if args.len()==2 => { let meta=metadata(None)?; if version(&meta)?!=args[1] { return Err("workspace version differs from requested release".into()); } let text=fs::read_to_string("CHANGELOG.md")?; release_notes(&text,&args[1])?; check_previous_build(build_number(&meta)?)?; rust_standard_library_copyright()?; Ok(()) }
         Some("notices") if args.len()==4 => { let meta=metadata(Some(&args[2]))?; fs::write(&args[3],about(&args[1],&args[2],&meta)?)?; Ok(()) }
-        _=>Err("use cargo xtask dist --target TARGET [--out DIR], inspect-package TARGET ARCHIVE, collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT, notes VERSION, or check-release VERSION".into()),
+        _=>Err("use cargo xtask dist --target TARGET [--out DIR] [--icons DIR], compile-icons OUTPUT, inspect-package TARGET ARCHIVE, collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT, notes VERSION, or check-release VERSION".into()),
     }
 }
 #[cfg(test)]
