@@ -40,11 +40,12 @@ pub use editing::{
 pub use error::{Error, ErrorKind};
 pub use identity::{BUILD_IDENTITY, BuildIdentity, SOURCE_URL, version_line};
 pub use presentation::{
-    Notice, TRANSPORT_LABELS, capture_error_text, catalog_listing, clock, compact_number,
-    component_description, describe, editable_number, format_dbfs, generated_description,
-    generated_details, human_duration, inspection, invalid_at_rate, labeled, library_label,
-    notices, playback_elapsed, playback_preamble, playback_result, playback_status, recipe_details,
-    research, sound_brief, sound_description, structure_description, window_cycle_hint,
+    Notice, TRANSPORT_LABELS, axis_limit, capture_error_text, catalog_listing, clock,
+    compact_number, component_description, describe, editable_number, format_dbfs,
+    generated_description, generated_details, human_duration, inspection, invalid_at_rate, labeled,
+    library_label, notices, playback_elapsed, playback_preamble, playback_result, playback_status,
+    recipe_details, research, sound_brief, sound_description, structure_description,
+    window_cycle_hint,
 };
 pub use recipe::{
     Origin, RecipeSnapshot, SnapshotId, Sound, builtin, builtin_source, catalog, load_file,

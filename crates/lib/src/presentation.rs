@@ -78,6 +78,26 @@ pub(crate) const PLAY_SELECTED: &str = "Play selected sound";
 pub(crate) const PLAY_LIVE: &str = "Play live";
 pub(crate) const STOP_AUDIO: &str = "Stop audio";
 
+/// A waveform axis limit with three significant digits, for tick labels.
+#[must_use]
+pub fn axis_limit(limit: f64) -> String {
+    if !limit.is_finite() || limit <= 0.0 {
+        return compact_number(limit);
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "A positive finite magnitude's decimal exponent is clamped to 0..=12 before use as a digit count"
+    )]
+    let decimals = (2.0 - limit.log10().floor()).clamp(0.0, 12.0) as usize;
+    let text = format!("{limit:.decimals$}");
+    if text.contains('.') {
+        text.trim_end_matches('0').trim_end_matches('.').to_owned()
+    } else {
+        text
+    }
+}
+
 /// One-decimal digital level; silence uses the minus-infinity symbol.
 #[must_use]
 pub fn format_dbfs(value: f64) -> String {
@@ -712,6 +732,14 @@ pub fn window_cycle_hint(observation: Option<&Observation>, window_ms: f64) -> O
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn axis_limits_keep_three_significant_digits() {
+        assert_eq!(super::axis_limit(1.0), "1");
+        assert_eq!(super::axis_limit(0.031_622_7), "0.0316");
+        assert_eq!(super::axis_limit(0.5), "0.5");
+        assert_eq!(super::axis_limit(0.000_123_456), "0.000123");
+    }
+
     #[test]
     fn the_transport_clock_counts_whole_seconds_minutes_and_hours() {
         for (seconds, text) in [

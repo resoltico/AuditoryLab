@@ -139,6 +139,9 @@ component ParameterControl inherits HorizontalBox {
         maximum: 1;
         step: 0.001;
         value: root.parameter.position;
+        // Dragging replaces the value binding; keep following committed values.
+        property <float> committed: root.parameter.position;
+        changed committed => { self.value = self.committed; }
         accessible-label: root.context+": "+root.parameter.label + " slider";
         changed(value) => {
             root.slide(root.owner, root.parameter.key, value);
@@ -183,7 +186,9 @@ component StableButton inherits Rectangle {
     in property <bool> primary: false;
     in property <bool> enabled: true;
     in property <string> accessible-name: root.text;
+    in property <bool> expanded: false;
     callback clicked();
+    forward-focus: button;
     property <length> stable-width: max(measure.preferred-width, button.preferred-width);
     min-width: root.stable-width;
     preferred-width: root.stable-width;
@@ -205,6 +210,7 @@ component StableButton inherits Rectangle {
         primary: root.primary;
         enabled: root.enabled;
         accessible-label: root.accessible-name;
+        accessible-expanded: root.expanded;
         clicked => { root.clicked(); }
     }
 }
@@ -217,8 +223,10 @@ component ExportRate inherits HorizontalBox {
     callback changed(int);
     Text {
         text:"Export sample rate";
+        vertical-alignment:center;
     }
     ComboBox {
+        horizontal-stretch:0;
         model:root.choices;
         current-index <=> root.selected;
         enabled:root.edit-enabled;
@@ -341,7 +349,7 @@ component MonitorPanel inherits VerticalBox {
     callback span(int);callback scale(int);callback hold();callback follow();callback details();callback collapse();
     spacing:4px;padding:0px;
     HorizontalBox {padding:0px;vertical-stretch:0;cross-axis-alignment:center;
-        Text {text:"Output monitor";font-weight:700;wrap:word-wrap;}
+        Text {min-width:0px;text:"Output monitor";font-weight:700;wrap:word-wrap;}
         Text {text:root.data.state;font-weight:600;wrap:no-wrap;horizontal-stretch:0;}
         Text {preferred-width:0px;horizontal-stretch:1;text:root.data.age;wrap:no-wrap;overflow:elide;accessible-label:root.data.age;}
         Button {text:"Details…";accessible-label:"Full audio diagnostics and capture source";clicked=>{root.details();}}
@@ -361,10 +369,10 @@ component MonitorPanel inherits VerticalBox {
                 Button {text:root.data.held ? "Return to live" : "Hold display";clicked=>{root.hold();}}
                 if root.data.overridden: Button {text:"Follow system";accessible-label:"Follow system motion preference";clicked=>{root.follow();}}
             }
-            Text {text:root.data.meters;max-height:root.ui-size*4;wrap:word-wrap;overflow:elide;}
+            Text {min-width:0px;text:root.data.meters;max-height:root.ui-size*4;wrap:word-wrap;overflow:elide;}
         }
     }
-    Text {text:root.data.motion;wrap:word-wrap;vertical-stretch:0;max-height:root.ui-size*2.5;overflow:elide;}
+    Text {min-width:0px;text:root.data.motion;wrap:word-wrap;vertical-stretch:0;max-height:root.ui-size*2.5;overflow:elide;}
     // A reserved row keeps brief coverage changes from changing the responsive window choice.
     HorizontalBox {
         padding:0px;spacing:8px;vertical-stretch:0;
@@ -523,7 +531,7 @@ export component MainWindow inherits Window {
     in property <bool> monitor-warning-live;
     in property <string> backend-warning;
     in property <string> typography-origin;
-    in-out property <int> scale-index: 0;
+    in-out property <int> scale-index: 1;
     in property <string> ui-family;
     in property <length> ui-size: 13px;
     default-font-family: root.ui-family;
@@ -554,6 +562,8 @@ export component MainWindow inherits Window {
     in property <string> transport-action;
     in property <[string]> transport-labels;
     in property <bool> can-edit;
+    in property <bool> can-add-component;
+    in property <string> add-reason;
     in property <bool> can-export;
     in property <bool> can-play;
     in property <bool> can-save;
@@ -679,9 +689,10 @@ export component MainWindow inherits Window {
             if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:"WAV export progress";max-width:120px;}
             if root.exporting: Button {text:"Cancel export";clicked=>{root.cancel-file();}}
             if root.tab-index==1: Button {text:"Save sound…";enabled:!root.busy && root.can-save;accessible-description:root.save-reason;clicked=>{root.save-recipe();}}
-            monitor-opener := Button {
+            monitor-opener := StableButton {
                 text:root.monitor-open ? "Hide monitor" : "Show monitor";
-                accessible-label:(root.monitor-open ? "Hide output monitor" : "Show output monitor");accessible-expanded:root.monitor-open;
+                labels:["Hide monitor","Show monitor"];
+                accessible-name:(root.monitor-open ? "Hide output monitor" : "Show output monitor");expanded:root.monitor-open;
                 clicked=>{root.monitor-open=!root.monitor-open;root.window-changed();}
             }
         }
@@ -745,7 +756,7 @@ export component MainWindow inherits Window {
                                     accessible-action-default => {
                                         touch.clicked();
                                     }
-                                    label := Text {
+                                    label := Text {min-width:0px;
                                         x: 10px;
                                         y: 10px;
                                         width: parent.width - 20px;
@@ -830,8 +841,10 @@ export component MainWindow inherits Window {
                             }
                         }
                     }
-                    if !root.compact || root.library-detail: ScrollView {
+                    if !root.compact || root.library-detail: detail-scroll := ScrollView {
+                        // Follow the visible width so long text wraps rather than widening the page.
                         VerticalBox {
+                            width: detail-scroll.visible-width;
                             spacing: 10px;
                             if root.compact: Button {
                                 text:"Back to recipes";
@@ -839,11 +852,16 @@ export component MainWindow inherits Window {
                                     root.library-detail=false;
                                 }
                             }
+                            if root.status != "": Text {min-width:0px;text:root.status;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
+                            if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
+                            if !root.has-results: Text {min-width:0px;
+                                text:"No recipe matches “" + root.query + "”. Clear the search to see every recipe.";
+                                wrap:word-wrap;
+                                vertical-stretch:0;
+                            }
                             if root.has-results: VerticalBox {
                                 vertical-stretch: 0;
-                                if root.status != "": Text {text:root.status;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
-                                if root.file-activity != "": Text {text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
-                                Text {
+                                Text {min-width:0px;
                                     text:root.sound-title;
                                     font-size:root.ui-size*1.85;
                                     font-weight:600;
@@ -851,18 +869,18 @@ export component MainWindow inherits Window {
                                     vertical-stretch:0;
                                 }
 
-                                Text {
+                                Text {min-width:0px;
                                     text:root.structure;
                                     wrap:word-wrap;
                                     vertical-stretch:0;
                                 }
-                                Text {text:root.studied;wrap:word-wrap;vertical-stretch:0;}
-                                Text {
+                                Text {min-width:0px;text:root.studied;wrap:word-wrap;vertical-stretch:0;}
+                                Text {min-width:0px;
                                     text:root.recipe-timing;
                                     wrap:word-wrap;
                                     vertical-stretch:0;
                                 }
-                                Text {
+                                Text {min-width:0px;
                                     text:root.summary;
                                     wrap:word-wrap;
                                     vertical-stretch:0;
@@ -900,10 +918,10 @@ export component MainWindow inherits Window {
                                 library-pattern := Disclosure {label:"Pattern explained · static core model";}
                                 if library-pattern.expanded: VerticalBox {
                                     vertical-stretch:0;
-                                    Text {text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
+                                    Text {min-width:0px;text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
                                     for lane in root.model-lanes: VerticalBox {
                                         vertical-stretch:0;
-                                        Text {text:lane.label;wrap:word-wrap;vertical-stretch:0;}
+                                        Text {min-width:0px;text:lane.label;wrap:word-wrap;vertical-stretch:0;}
                                         Rectangle {height:30px;background:Palette.control-background;
                                             accessible-role:image;accessible-label:lane.label+" static model";
                                             Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
@@ -929,9 +947,11 @@ export component MainWindow inherits Window {
             }
             Tab {
                 title:"Workbench";
-                ScrollView {
+                editor-scroll := ScrollView {
                     content-y <=> root.editor-scroll-y;
+                    // Follow the visible width so long text wraps rather than widening the page.
                     VerticalBox {
+                    width: editor-scroll.visible-width;
                     HorizontalBox {
                         padding: 0px;
                         vertical-stretch: 0;
@@ -953,7 +973,7 @@ export component MainWindow inherits Window {
                         }
                     }
                     HorizontalBox {vertical-stretch:0;
-                        Text {
+                        Text {min-width:0px;
                             text:root.dirty ? "Unsaved changes" : "Unmodified draft";
                             wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;
                         }
@@ -971,13 +991,15 @@ export component MainWindow inherits Window {
                         vertical-stretch: 0;
                         for label[index] in root.add-choices: Button {
                             text:label;
-                            enabled:root.can-edit;
+                            enabled:root.can-add-component;
+                            accessible-description:root.add-reason;
                             clicked=> {
                                 root.add-component(root.document, index);
                             }
                         }
                     }
-                    if root.retained-warning != "": Text {
+                    if root.add-reason != "": Text {min-width:0px;text:root.add-reason;wrap:word-wrap;vertical-stretch:0;}
+                    if root.retained-warning != "": Text {min-width:0px;
                         text:root.retained-warning;
                         color:Palette.foreground;
                         font-weight:700;
@@ -986,12 +1008,12 @@ export component MainWindow inherits Window {
                         accessible-label:root.retained-warning;
                         accessible-live-region:polite;
                     }
-                    if root.status != "": Text {text:root.status;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
-                    if root.file-activity != "": Text {text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
-                    if root.metadata-error != "": Text {text:root.metadata-error;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
-                    if root.save-reason != "": Text {text:root.save-reason;wrap:word-wrap;vertical-stretch:0;}
-                    Text {text:root.draft-brief; font-size:root.ui-size*1.5; font-weight:600; wrap:word-wrap; vertical-stretch:0;}
-                    if root.based-on-title != "": Text {
+                    if root.status != "": Text {min-width:0px;text:root.status;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
+                    if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
+                    if root.metadata-error != "": Text {min-width:0px;text:root.metadata-error;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
+                    if root.save-reason != "": Text {min-width:0px;text:root.save-reason;wrap:word-wrap;vertical-stretch:0;}
+                    Text {min-width:0px;text:root.draft-brief; font-size:root.ui-size*1.5; font-weight:600; wrap:word-wrap; vertical-stretch:0;}
+                    if root.based-on-title != "": Text {min-width:0px;
                         text:root.based-on-title;
                         wrap:word-wrap;
                         font-size:root.ui-size*0.93;
@@ -1009,18 +1031,18 @@ export component MainWindow inherits Window {
                             font-weight: 700;
                             vertical-stretch: 0;
                         }
-                        Text {text:row.context; wrap:word-wrap; vertical-stretch:0;}
+                        Text {min-width:0px;text:row.context; wrap:word-wrap; vertical-stretch:0;}
                         pattern := Disclosure {label:"Pattern explained · static core model";}
                         if pattern.expanded: VerticalBox {
                             vertical-stretch:0;
-                            Text {text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
+                            Text {min-width:0px;text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
                             VerticalBox {
                               padding:0px; spacing:0px; vertical-stretch:0;
                               for lane in root.model-lanes: VerticalBox {
                                 padding:0px; spacing:0px; vertical-stretch:0;
                                 if lane.component == row.id: VerticalBox {
                                   vertical-stretch:0;
-                                  Text {text:lane.label;wrap:word-wrap;vertical-stretch:0;}
+                                  Text {min-width:0px;text:lane.label;wrap:word-wrap;vertical-stretch:0;}
                                   Rectangle {height:36px;background:Palette.control-background;
                                       accessible-role:image;accessible-label:lane.label+" static model, origin zero";
                                       Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
@@ -1077,7 +1099,7 @@ export component MainWindow inherits Window {
                             restore(owner, key) => { root.restore-parameter(owner, key); }
                             slide(owner, key, value) => { root.slide(owner, key, value); }
                         }
-                        if row.error != "": Text {
+                        if row.error != "": Text {min-width:0px;
                             text: row.error;
                             color: Palette.foreground;
                             accessible-live-region: polite;
@@ -1085,24 +1107,31 @@ export component MainWindow inherits Window {
                             vertical-stretch: 0;
                         }
                     }
-                    Text {
+                    Text {min-width:0px;
                         text:root.peak;
                         wrap:word-wrap;
                         vertical-stretch:0;
                     }
                     settings := Disclosure {label:"Sound settings · notes and saved/exported audio";}
                     if settings.expanded: VerticalBox {
-                        Button {
-                            text:"Export WAV…";
-                            enabled:!root.busy && root.can-export;
-                            accessible-description:root.export-reason;
-                            clicked=> {
-                                root.export-wav();
+                        vertical-stretch:0;
+                        HorizontalLayout {
+                            Button {
+                                horizontal-stretch:0;
+                                text:"Export WAV…";
+                                enabled:!root.busy && root.can-export;
+                                accessible-description:root.export-reason;
+                                clicked=> {
+                                    root.export-wav();
+                                }
                             }
+                            Rectangle {}
                         }
+                        if !root.can-export && root.export-reason != "": Text {min-width:0px;text:root.export-reason;wrap:word-wrap;vertical-stretch:0;}
                         Disclosure {label:"Sound notes";expanded <=> root.notes;}
                         if root.notes: VerticalBox {
-                            if root.based-on != "": Text {
+                            vertical-stretch:0;
+                            if root.based-on != "": Text {min-width:0px;
                                 text:root.based-on;
                                 wrap:word-wrap;
                                 vertical-stretch:0;
@@ -1132,7 +1161,8 @@ export component MainWindow inherits Window {
                         }
                         Disclosure {label:"Saved audio · duration, fades and export rate";expanded <=> root.saved-audio;}
                         if root.saved-audio: VerticalBox {
-                            Text {
+                            vertical-stretch:0;
+                            Text {min-width:0px;
                                 text:"Live playback continues until Stop. These settings affect saved recipes and WAV export.";
                                 wrap:word-wrap;
                                 vertical-stretch:0;
@@ -1142,6 +1172,7 @@ export component MainWindow inherits Window {
                                 vertical-stretch: 0;
                                 Text {
                                     text:root.duration-field.label;
+                                    vertical-alignment:center;
                                 }
                                 MetadataField {
                                     key: MetadataKey.duration;
@@ -1151,12 +1182,15 @@ export component MainWindow inherits Window {
                                     enabled:root.can-edit;
                                     edits-suspended:root.edits-suspended;
                                     accessible-label:"Saved duration";
+                                    horizontal-stretch:0;
+                                    preferred-width:root.ui-size*10;
                                     stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
                                     commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
                                     restore-field(owner, key) => { root.restore-metadata(owner, key); }
                                 }
                                 Text {
                                     text:root.fade-field.label;
+                                    vertical-alignment:center;
                                 }
                                 MetadataField {
                                     key: MetadataKey.fade;
@@ -1166,11 +1200,16 @@ export component MainWindow inherits Window {
                                     enabled:root.can-edit;
                                     edits-suspended:root.edits-suspended;
                                     accessible-label:"Saved fade";
+                                    horizontal-stretch:0;
+                                    preferred-width:root.ui-size*10;
                                     stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
                                     commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
                                     restore-field(owner, key) => { root.restore-metadata(owner, key); }
                                 }
+                                Rectangle {}
                             }
+                            if root.duration-field.diagnostic != "": Text {min-width:0px;text:root.duration-field.diagnostic;wrap:word-wrap;vertical-stretch:0;}
+                            if root.fade-field.diagnostic != "": Text {min-width:0px;text:root.fade-field.diagnostic;wrap:word-wrap;vertical-stretch:0;}
                             ExportRate {
                                 choices:root.export-rates;
                                 selected <=> root.rate-index;
@@ -1228,10 +1267,11 @@ export component MainWindow inherits Window {
             background:Palette.control-background;border-width:1px;border-color:Palette.border;
             VerticalBox {padding:8px;spacing:3px;
                 HorizontalBox {vertical-stretch:0;padding:0px;
-                    StableButton {text:root.transport-action;labels:root.transport-labels;primary:true;enabled:root.transport-enabled;accessible-name:root.transport-action+(root.playback-busy ? "" : " · "+root.play-target);clicked=>{root.play-stop();}}
-                    VerticalBox {padding:0px;spacing:2px;
-                        Text {min-width:0px;text:root.player-title+(root.playback-busy ? "" : " · Next Play: "+root.play-target);max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
-                        Text {min-width:0px;text:root.generated;max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
+                    StableButton {text:root.transport-action;labels:root.transport-labels;primary:true;enabled:root.transport-enabled;accessible-name:root.transport-action+(root.playback-busy || root.play-target == "" ? "" : " · "+root.play-target);clicked=>{root.play-stop();}}
+                    VerticalBox {padding:0px;spacing:2px;horizontal-stretch:1;
+                        // One line each: the transport keeps its height; Details has the full text.
+                        Text {min-width:0px;text:root.player-title+(root.playback-busy || root.play-target == "" ? "" : " · Next Play: "+root.play-target);wrap:no-wrap;overflow:elide;}
+                        Text {min-width:0px;text:root.generated;wrap:no-wrap;overflow:elide;}
                     }
                     // Sized for the longest clock, so ticking never reflows the row.
                     Rectangle {
@@ -1242,9 +1282,9 @@ export component MainWindow inherits Window {
                         elapsed-template := Text {visible:false;text:"00:00:00 / 00:00:00";}
                         elapsed-text := Text {width:parent.width;height:parent.height;text:root.elapsed;horizontal-alignment:right;vertical-alignment:center;}
                     }
-                    Button {text:"Details…";accessible-label:"Audio details";clicked=>{root.show-diagnostics();}}
+                    Button {text:"Details…";horizontal-stretch:0;accessible-label:"Audio details";clicked=>{root.show-diagnostics();}}
                 }
-                Text {text:root.guidance;wrap:word-wrap;vertical-stretch:0;}
+                Text {min-width:0px;text:root.guidance;wrap:word-wrap;vertical-stretch:0;}
             }
         }
     }

@@ -213,7 +213,7 @@ impl WaveformCapture {
     /// Full frozen/retained context; current generated status is presented independently.
     pub fn caption(&self, frozen: bool, ended: bool) -> String {
         format!(
-            "{} · session {} · sample rate {} Hz · frames {}..{} · snapshot {} · observed frame {:?} · captured gaps {} / underruns {} · exact scale ±{}",
+            "{} · session {} · sample rate {} Hz · frames {}..{} · snapshot {} · observed frame {} · captured gaps {} / underruns {} · exact scale ±{}",
             self.label(frozen, ended),
             self.session
                 .as_ref()
@@ -222,7 +222,8 @@ impl WaveformCapture {
             self.span.0,
             self.span.1,
             self.sequence,
-            self.observation.map(|o| o.frame),
+            self.observation
+                .map_or_else(|| "none yet".to_owned(), |o| o.frame.to_string()),
             self.gaps,
             self.underruns,
             self.limit

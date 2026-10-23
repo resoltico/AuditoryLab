@@ -161,6 +161,8 @@ pub enum Refusal {
     Document(String),
     /// The source is not valid at the export rate.
     Invalid(String),
+    /// No recipe is selected: the search shows none.
+    NoSelection,
     /// An editing command addressed something that no longer exists.
     Edit(EditRefusal),
     /// The recipe has more components than a document can hold.
@@ -261,6 +263,7 @@ pub struct Workspace {
     effects: Vec<Effect>,
     next_id: u64,
     file_status: String,
+    edit_status: String,
     audio_status: String,
     output: OutputState,
     revision: u64,
@@ -306,6 +309,7 @@ impl Workspace {
             effects: Vec::new(),
             next_id: 1,
             file_status: String::new(),
+            edit_status: String::new(),
             audio_status: String::new(),
             output: OutputState::default(),
             revision: 0,
@@ -366,10 +370,18 @@ impl Workspace {
         &self.catalog
     }
 
-    /// The selected recipe, if the library is not empty.
+    /// The selected recipe, when the search shows it. A search that hides
+    /// every recipe leaves nothing selected.
     #[must_use]
     pub fn selected(&self) -> Option<&RecipeSnapshot> {
-        self.catalog.get(self.selected)
+        self.selected_index().map(|index| &self.catalog[index])
+    }
+
+    fn selected_index(&self) -> Option<usize> {
+        self.filtered
+            .contains(&self.selected)
+            .then_some(self.selected)
+            .filter(|&index| index < self.catalog.len())
     }
 
     /// Positions of the library entries matching the query, in order.
@@ -511,10 +523,16 @@ impl Workspace {
     }
 
     fn after_edit(&mut self, result: Result<(), Refusal>) -> Result<(), Refusal> {
-        match &result {
-            Ok(()) => self.submit_live(),
-            Err(refusal) => self.file_status = views::refusal_text(refusal),
-        }
+        // Field diagnostics already explain input problems; other refusals
+        // are reported until the next accepted edit.
+        self.edit_status = match &result {
+            Ok(()) => {
+                self.submit_live();
+                String::new()
+            }
+            Err(Refusal::Input(_)) => String::new(),
+            Err(refusal) => views::refusal_text(refusal),
+        };
         self.changed();
         result
     }
@@ -805,7 +823,7 @@ impl Workspace {
                         self.effects.push(Effect::ChoosePath {
                             prompt: id,
                             purpose: PathPurpose::SaveRecipe,
-                            suggested_name: Some("sound.toml".into()),
+                            suggested_name: Some(file_name(self.editor.draft().title(), "toml")),
                         });
                     }
                     Err(refusal) => {
@@ -1060,7 +1078,7 @@ impl Workspace {
         self.effects.push(Effect::ChoosePath {
             prompt: id,
             purpose: PathPurpose::SaveRecipe,
-            suggested_name: Some("sound.toml".into()),
+            suggested_name: Some(file_name(self.editor.draft().title(), "toml")),
         });
         Ok(())
     }
@@ -1090,10 +1108,10 @@ impl Workspace {
         let rate = self.export_rate;
         let (sound, name) = match self.view {
             View::Library => {
-                let snapshot = self.selected().cloned().ok_or(Refusal::NoExport)?;
+                let snapshot = self.selected().cloned().ok_or(Refusal::NoSelection)?;
                 let name = match snapshot.origin() {
                     crate::Origin::BuiltIn(id) => format!("{id}.wav"),
-                    _ => "sound.wav".into(),
+                    _ => file_name(&snapshot.title(), "wav"),
                 };
                 (
                     snapshot
@@ -1114,7 +1132,8 @@ impl Workspace {
                     }))
                 })?;
                 let snapshot = self.editor.draft().snapshot();
-                (Sound::from_parts(snapshot, signal), "sound.wav".into())
+                let name = file_name(self.editor.draft().title(), "wav");
+                (Sound::from_parts(snapshot, signal), name)
             }
         };
         let id = self.prompt(PromptState::Export(sound));
@@ -1196,7 +1215,7 @@ impl Workspace {
         }
         match self.view {
             View::Library => {
-                let snapshot = self.selected().cloned().ok_or(Refusal::NoAudio)?;
+                let snapshot = self.selected().cloned().ok_or(Refusal::NoSelection)?;
                 if snapshot.stimulus().nonfinite().next().is_some() {
                     return Err(Refusal::NotFinite);
                 }
@@ -1225,7 +1244,7 @@ impl Workspace {
         }
         match self.view {
             View::Library => match self.selected() {
-                None => Err(Refusal::NoAudio),
+                None => Err(Refusal::NoSelection),
                 Some(s) if s.stimulus().nonfinite().next().is_some() => Err(Refusal::NotFinite),
                 Some(_) => Ok(()),
             },
@@ -1310,10 +1329,11 @@ impl Workspace {
         self.poll_audio();
         self.poll_file();
         self.resolve_pending();
+        let shown = self.selected_index();
         if self.output.refresh(
             &mut self.editor,
             &self.catalog,
-            self.selected,
+            shown,
             self.view,
             self.export_rate,
             self.audio.is_some(),
@@ -1327,7 +1347,7 @@ impl Workspace {
         };
         if self.output.refresh_model(
             &mut self.editor,
-            self.catalog.get(self.selected),
+            shown.map(|index| &self.catalog[index]),
             self.view,
             live_document,
             rate,
@@ -1615,6 +1635,30 @@ impl Workspace {
     pub fn audio_phase(&self) -> Option<PlaybackPhase> {
         self.audio.as_ref().map(|t| t.control.phase())
     }
+}
+
+/// A file name suggested from a title: characters that file systems reject
+/// become spaces, and the name is kept short.
+fn file_name(title: &str, extension: &str) -> String {
+    let cleaned: String = title
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    let mut stem: String = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    if let Some((cut, _)) = stem.char_indices().nth(80) {
+        stem.truncate(cut);
+    }
+    let stem = stem.trim_matches(|c: char| c == '.' || c.is_whitespace());
+    format!(
+        "{}.{extension}",
+        if stem.is_empty() { "sound" } else { stem }
+    )
 }
 
 /// Search identity, title, research text and component meaning together.

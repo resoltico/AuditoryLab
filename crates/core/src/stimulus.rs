@@ -376,6 +376,8 @@ pub enum StimulusError {
         fade_frames: u64,
         /// The stimulus length.
         frames: u64,
+        /// The sample rate the lengths were resolved at.
+        sample_rate_hz: u32,
     },
     /// Two components of a target share an identity.
     DuplicateComponentId {
@@ -493,6 +495,31 @@ impl ComponentError {
 /// A model value in its displayed unit, with the unit's symbol.
 struct Quantity(ParameterId, f64);
 
+/// The longest length at a rate, in days.
+struct Longest(u32);
+
+impl Display for Longest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let days = numeric::frames_to_f64(Signal::MAX_FRAMES) / f64::from(self.0) / 86_400.0;
+        write!(f, "{days:.1} days")
+    }
+}
+
+/// A value as short text: scientific notation for magnitudes from 10¹² or
+/// below 10⁻⁶, so a message never carries hundreds of digits.
+struct Number(f64);
+
+impl Display for Number {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let value = self.0;
+        if value.is_finite() && value != 0.0 && (value.abs() >= 1e12 || value.abs() < 1e-6) {
+            write!(f, "{value:e}")
+        } else {
+            write!(f, "{value}")
+        }
+    }
+}
+
 impl Display for Quantity {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let unit = self.0.descriptor().unit;
@@ -505,7 +532,7 @@ impl Display for Quantity {
             f,
             "{} {}{separator}{}",
             self.0.descriptor().label,
-            unit.to_display(self.1),
+            Number(unit.to_display(self.1)),
             unit.symbol()
         )
     }
@@ -522,26 +549,32 @@ impl Display for StimulusError {
                 sample_rate_hz,
             } => write!(
                 f,
-                "{} must be finite and give from 1 to {} frames at {sample_rate_hz} Hz",
+                "{} must last from one sample (1/{sample_rate_hz} s) to {} at {sample_rate_hz} Hz",
                 Quantity(ParameterId::Duration, *seconds),
-                Signal::MAX_FRAMES
+                Longest(*sample_rate_hz)
             ),
             Self::Fade {
                 seconds,
                 sample_rate_hz,
             } => write!(
                 f,
-                "{} must be finite, non-negative and at most {} frames at {sample_rate_hz} Hz",
+                "{} must be from 0 s to {} at {sample_rate_hz} Hz",
                 Quantity(ParameterId::Fade, *seconds),
-                Signal::MAX_FRAMES
+                Longest(*sample_rate_hz)
             ),
             Self::FadesOverlap {
                 fade_frames,
                 frames,
-            } => write!(
-                f,
-                "a fade of {fade_frames} frames at each edge does not fit within {frames} frames; the fades must leave at least one frame between them"
-            ),
+                sample_rate_hz,
+            } => {
+                let seconds = |n: u64| numeric::frames_to_f64(n) / f64::from(*sample_rate_hz);
+                write!(
+                    f,
+                    "a {} s fade at each edge does not fit in {} s; the two fades together must be shorter than the duration",
+                    Number(seconds(*fade_frames)),
+                    Number(seconds(*frames))
+                )
+            }
             Self::TooManyComponents { count } => write!(
                 f,
                 "{count} components exceed the limit of {}",
@@ -596,9 +629,10 @@ impl Display for ComponentError {
                 sample_rate_hz,
             } => write!(
                 f,
-                "{} must give 1 to {} frames at {sample_rate_hz} Hz and leave at least one closed frame in each 1/{rate_hz} s period",
+                "{} must give 1 to {} frames at {sample_rate_hz} Hz and leave at least one closed frame in each 1/{} s period",
                 Quantity(*parameter, *width_seconds),
-                crate::Signal::MAX_FRAMES
+                crate::Signal::MAX_FRAMES,
+                Number(*rate_hz)
             ),
             Self::PeakDbfs { peak_dbfs } => write!(
                 f,

@@ -30,12 +30,16 @@ impl Shell for NativeShell {
             adapter.respond(prompt, Response::Cancel);
             return;
         };
+        let description = format!(
+            "Save changes to “{}” before continuing?",
+            adapter.document_title()
+        );
         answer(adapter, prompt, async move {
             use slint::ComponentHandle;
             let choice = rfd::AsyncMessageDialog::new()
                 .set_parent(&ui.window().window_handle())
                 .set_title("Unsaved sound")
-                .set_description("Save changes to this sound before continuing?")
+                .set_description(description)
                 .set_buttons(rfd::MessageButtons::YesNoCancelCustom(
                     "Save".into(),
                     "Discard".into(),

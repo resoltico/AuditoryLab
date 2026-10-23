@@ -853,3 +853,37 @@ fn receipt_age_reads_in_human_units() {
         );
     }
 }
+
+#[test]
+fn a_search_that_hides_every_recipe_leaves_nothing_to_play_or_export() {
+    let (mut ws, fakes) = workspace();
+    let chosen = ws.selected().unwrap().id();
+    ws.set_query("no recipe has this text");
+    assert!(ws.selected().is_none());
+    assert_eq!(ws.play(), Err(Refusal::NoSelection));
+    assert_eq!(ws.export(), Err(Refusal::NoSelection));
+    assert_eq!(fakes.count(), 0, "no audio task started");
+    assert!(!ws.action_view().can_play);
+    assert!(ws.library_view().selected.is_none());
+    ws.copy_selected();
+    assert_eq!(ws.view(), View::Library, "nothing to copy");
+    ws.set_query("");
+    assert_eq!(
+        ws.selected().unwrap().id(),
+        chosen,
+        "clearing restores the choice"
+    );
+}
+
+#[test]
+fn suggested_file_names_come_from_titles() {
+    assert_eq!(
+        super::file_name("5 Hz binaural beat (edited)", "toml"),
+        "5 Hz binaural beat (edited).toml"
+    );
+    assert_eq!(super::file_name("a/b:c*?\"<>|\\d", "wav"), "a b c d.wav");
+    assert_eq!(super::file_name("  \t ", "toml"), "sound.toml");
+    assert_eq!(super::file_name("...", "toml"), "sound.toml");
+    let long = super::file_name(&"x".repeat(500), "wav");
+    assert_eq!(long.chars().count(), 84);
+}

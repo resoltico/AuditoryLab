@@ -343,6 +343,20 @@ impl SlintAdapter {
             .expect("the workspace is open until shutdown"))
     }
 
+    /// The open document's title, shortened for a dialog.
+    pub(crate) fn document_title(&self) -> String {
+        let title = self
+            .workspace
+            .borrow()
+            .as_ref()
+            .map(|w| w.editor().draft().title().to_owned())
+            .unwrap_or_default();
+        match title.char_indices().nth(60) {
+            Some((cut, _)) => format!("{}…", &title[..cut]),
+            None => title,
+        }
+    }
+
     pub(crate) fn main_window(&self) -> Option<MainWindow> {
         self.main.upgrade()
     }
@@ -562,6 +576,8 @@ impl SlintAdapter {
         ui.set_can_export(actions.can_export);
         ui.set_export_reason(actions.export_reason.as_str().into());
         ui.set_can_edit(actions.can_edit);
+        ui.set_can_add_component(actions.can_add_component);
+        ui.set_add_reason(actions.add_component_reason.as_str().into());
         ui.set_busy(actions.file_busy);
         ui.set_playback_busy(actions.playback_busy);
         ui.set_exporting(actions.exporting);
@@ -736,7 +752,7 @@ impl SlintAdapter {
                 let [left, right] = scope::paths(capture.bins(), capture.limit());
                 ui.set_left_path(left.into());
                 ui.set_right_path(right.into());
-                ui.set_scale_label(auditorylab::compact_number(capture.limit()).into());
+                ui.set_scale_label(auditorylab::axis_limit(capture.limit()).into());
                 ui.set_capture_duration(format!("{:.2} ms", capture.milliseconds()).into());
             } else {
                 ui.set_left_path(SharedString::new());
@@ -1462,12 +1478,12 @@ pub(crate) fn hide_monitor_window(ui: &MainWindow, monitor: &MonitorWindow, was_
 fn about_identity() -> String {
     let identity = auditorylab::BUILD_IDENTITY;
     format!(
-        "Version {} · Build {}\n{}\n\nAuditory Lab: MPL-2.0\nSlint: Royalty-free Desktop, Mobile, and Web Applications License 2.0\nThird-party licenses: THIRD-PARTY-NOTICES.txt in the download.",
+        "Version {} · Build {}{}\n\nAuditory Lab: MPL-2.0\nSlint: Royalty-free Desktop, Mobile, and Web Applications License 2.0\nThird-party licenses: THIRD-PARTY-NOTICES.txt in the download.",
         identity.version,
         identity.build,
         identity
             .revision
-            .map_or(String::new(), |r| format!("Source revision: {r}"))
+            .map_or(String::new(), |r| format!("\nSource revision: {r}"))
     )
 }
 

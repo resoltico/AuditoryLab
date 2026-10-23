@@ -552,3 +552,70 @@ fn a_tab_choice_survives_a_projection_before_its_change_handler_runs() {
     assert_eq!(ui.get_tab_index(), 1);
     assert_eq!(h.adapter.inspect(|w| w.view()), View::Workbench);
 }
+
+#[test]
+fn a_dragged_slider_keeps_following_typed_values() {
+    use slint::platform::PointerEventButton;
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 0);
+    h.settle();
+    let label = "Steady tone · layer 1: Tone frequency (Hz) slider";
+    let slider = || {
+        let root = WindowInner::from_pub(ui.window()).window_item_rc().unwrap();
+        root.visit_descendants(|item| {
+            if item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref()
+                == Some(label)
+            {
+                ControlFlow::Break(item.clone())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .expect("the frequency slider")
+    };
+    let value = || {
+        slider()
+            .accessible_string_property(AccessibleStringProperty::Value)
+            .unwrap()
+            .parse::<f32>()
+            .unwrap()
+    };
+    let item = slider();
+    let geometry = item.geometry();
+    let origin = item.map_to_window(geometry.origin);
+    let y = origin.y + geometry.size.height / 2.0;
+    let at =
+        |fraction: f32| slint::LogicalPosition::new(origin.x + geometry.size.width * fraction, y);
+    let window = ui.window();
+    window.dispatch_event(WindowEvent::PointerPressed {
+        position: at(0.5),
+        button: PointerEventButton::Left,
+    });
+    window.dispatch_event(WindowEvent::PointerMoved { position: at(0.2) });
+    window.dispatch_event(WindowEvent::PointerReleased {
+        position: at(0.2),
+        button: PointerEventButton::Left,
+    });
+    h.settle();
+    let dragged = value();
+    let binding = h.component_binding(0);
+    ui.invoke_commit_parameter(binding, ParameterKey::ToneFrequency, "5000".into());
+    h.settle();
+    let expected = ui
+        .get_components()
+        .row_data(0)
+        .unwrap()
+        .parameters
+        .row_data(0)
+        .unwrap()
+        .position;
+    assert!(
+        (value() - expected).abs() < 1e-3,
+        "knob {} after typing 5000 should be {expected}; it was {dragged} after the drag",
+        value()
+    );
+}

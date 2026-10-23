@@ -37,6 +37,7 @@ impl Envelope {
             return Err(StimulusError::FadesOverlap {
                 fade_frames,
                 frames,
+                sample_rate_hz: rate.hz(),
             });
         }
         Ok(Self {

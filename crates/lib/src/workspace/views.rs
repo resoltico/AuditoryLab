@@ -5,7 +5,9 @@
 //! availability. Building a view evaluates through the editor's caches; an
 //! unchanged document is not evaluated again.
 use super::{FileKind, OutputView, Refusal, View, Workspace};
-use crate::editing::{EditingField, FieldHandle, InputProblem, MetadataField, SaveRefusal};
+use crate::editing::{
+    EditRefusal, EditingField, FieldHandle, InputProblem, MetadataField, SaveRefusal,
+};
 use crate::session::{EndReason, PlaybackReport};
 use crate::{
     DocumentId, Exported, RecipeSnapshot, controls, monitor_warning, output_monitor_state,
@@ -141,6 +143,10 @@ pub struct ActionView {
     pub export_reason: String,
     /// Editing commands are accepted.
     pub can_edit: bool,
+    /// Another component fits in the open sound.
+    pub can_add_component: bool,
+    /// Why no component can be added, when editing is otherwise allowed.
+    pub add_component_reason: String,
     /// Open and Save are blocked by a file task or prompt.
     pub file_busy: bool,
     /// An audio task occupies its slot.
@@ -213,11 +219,21 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
         Refusal::AudioPlaying => "Stop audio before exporting a WAV file.".into(),
         Refusal::Exporting => "Wait for the export to finish or cancel it before playing.".into(),
         Refusal::NoAudio => "Nothing is playing.".into(),
+        Refusal::NoSelection => "No recipe matches the search; clear it or choose a recipe.".into(),
         Refusal::NoExport => "No export is running.".into(),
         Refusal::Input(problems) => input_text(problems),
         Refusal::NotFinite => "The recipe's numbers must all be finite before it can play.".into(),
         Refusal::Document(message) | Refusal::Invalid(message) => message.clone(),
-        Refusal::Edit(_) => "That field no longer belongs to the open sound.".into(),
+        Refusal::Edit(EditRefusal::ComponentLimit) => format!(
+            "A sound holds at most {} components; remove one to add another.",
+            auditorylab_core::Stimulus::MAX_COMPONENTS
+        ),
+        Refusal::Edit(EditRefusal::IdentitiesExhausted) => {
+            "This sound has used every component identity; start a new sound to add more.".into()
+        }
+        Refusal::Edit(
+            EditRefusal::StaleDocument | EditRefusal::UnknownComponent | EditRefusal::Inapplicable,
+        ) => "That field no longer belongs to the open sound.".into(),
         Refusal::TooManyComponents(count) => format!(
             "The workbench supports at most {} components; this recipe has {count}. Edit the recipe file to reduce them.",
             auditorylab_core::Stimulus::MAX_COMPONENTS
@@ -266,14 +282,20 @@ pub(super) fn save_refusal_text(refusal: &SaveRefusal) -> String {
     }
 }
 
+/// A path as people read it, quoted, without escapes.
+fn shown(path: &Path) -> String {
+    format!("“{}”", path.display())
+}
+
 pub(super) fn file_started_text(kind: &FileKind) -> String {
     match kind {
-        FileKind::Import(path) => format!("Opening {path:?}."),
+        FileKind::Import(path) => format!("Opening {}.", shown(path)),
         FileKind::Save { content, path, .. } => format!(
-            "Saving {} to {path:?}.",
-            content.about.as_ref().map_or("sound", |a| a.title.as_str())
+            "Saving {} to {}.",
+            content.about.as_ref().map_or("sound", |a| a.title.as_str()),
+            shown(path)
         ),
-        FileKind::Export { title, path, .. } => format!("Exporting {title} to {path:?}."),
+        FileKind::Export { title, path, .. } => format!("Exporting {title} to {}.", shown(path)),
     }
 }
 
@@ -289,12 +311,13 @@ pub(super) fn saved_text(
 ) -> String {
     let valid = content.stimulus.signal(rate).is_ok();
     format!(
-        "{} to {path:?}.{}",
+        "{} to {}.{}",
         if valid {
             "Saved sound"
         } else {
             "Saved with validation errors"
         },
+        shown(path),
         if same_document {
             ""
         } else {
@@ -305,9 +328,10 @@ pub(super) fn saved_text(
 
 pub(super) fn exported_text(path: &Path, exported: &Exported) -> String {
     format!(
-        "Exported {} frames at {} Hz to {path:?} ({}).",
+        "Exported {} frames at {} Hz to {} ({}).",
         exported.frames,
         exported.sample_rate.hz(),
+        shown(path),
         exported.container
     )
 }
@@ -453,8 +477,8 @@ impl Workspace {
                     name: format!("{} · layer {}", shown.role().label(), index + 1),
                     context: match own {
                         Some(Ok(facts)) => presentation::component_description(facts, false),
-                        Some(Err(error)) => error.to_string(),
-                        None => String::new(),
+                        // The error line states it, with its rate.
+                        Some(Err(_)) | None => String::new(),
                     },
                     error: errors.join("; "),
                     parameters,
@@ -595,8 +619,9 @@ impl Workspace {
     /// Action availability, from the same admission rules the commands use.
     pub fn action_view(&mut self) -> ActionView {
         let play = self.play_readiness();
+        // While a dialog is open, it is the reason; no line repeats it.
         let save = if self.prompt.is_some() {
-            Err(refusal_text(&Refusal::PromptOpen))
+            Err(String::new())
         } else if self.file.is_some() {
             Err(refusal_text(&Refusal::FileBusy))
         } else {
@@ -607,7 +632,9 @@ impl Workspace {
         let rate = self.export_rate;
         let export = if self.audio.is_some() {
             Err(refusal_text(&Refusal::AudioPlaying))
-        } else if self.file.is_some() || self.prompt.is_some() || self.pending.is_some() {
+        } else if self.prompt.is_some() {
+            Err(String::new())
+        } else if self.file.is_some() || self.pending.is_some() {
             Err(refusal_text(&Refusal::FileBusy))
         } else {
             match self.view {
@@ -632,6 +659,8 @@ impl Workspace {
                 }
             }
         };
+        let full =
+            self.editor.draft().components().len() >= auditorylab_core::Stimulus::MAX_COMPONENTS;
         let playing = self.audio.is_some();
         let exporting = self.exporting();
         let progress = self.export_progress();
@@ -643,6 +672,12 @@ impl Workspace {
             can_export: export.is_ok(),
             export_reason: export.err().unwrap_or_default(),
             can_edit: self.can_edit(),
+            can_add_component: self.can_edit() && !full,
+            add_component_reason: if full {
+                refusal_text(&Refusal::Edit(EditRefusal::ComponentLimit))
+            } else {
+                String::new()
+            },
             file_busy: self.file.is_some() || self.prompt.is_some(),
             playback_busy: playing,
             exporting,
@@ -663,7 +698,11 @@ impl Workspace {
                     .unwrap_or_default(),
             },
             progress,
-            file_status: self.file_status.clone(),
+            file_status: [self.file_status.as_str(), self.edit_status.as_str()]
+                .into_iter()
+                .filter(|text| !text.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n"),
             audio_status: self.audio_status.clone(),
             file_activity: match self.file.as_ref().map(|t| &t.kind) {
                 Some(FileKind::Save { .. }) => {
@@ -831,9 +870,11 @@ impl Workspace {
                 |age| received_text(age, held),
             );
             view.monitor_state = format!(
-                "Current session {}: observed frame {:?} · gaps {} · output underruns {}",
+                "Current session {}: observed frame {} · gaps {} · output underruns {}",
                 status.session_id,
-                status.observation.map(|o| o.frame),
+                status
+                    .observation
+                    .map_or_else(|| "none yet".to_owned(), |o| o.frame.to_string()),
                 status.gaps,
                 status.underruns
             );

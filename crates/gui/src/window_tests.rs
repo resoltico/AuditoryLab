@@ -1152,9 +1152,19 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
         ui.set_ui_size(size);
         let mut reference = None;
         for label in auditorylab::TRANSPORT_LABELS {
-            for elapsed in ["0:00", "0:09 / 5:00", "10:00 / 5:00:00", "26:03:04"] {
+            for (elapsed, status) in [
+                ("0:00", "Preparing output… · A"),
+                (
+                    "0:09 / 5:00",
+                    "Playing · 5 Hz binaural beat · Finite recipe",
+                ),
+                ("10:00 / 5:00:00", ""),
+                ("26:03:04", &"A very long title ".repeat(30)),
+            ] {
                 ui.set_transport_action(label.into());
                 ui.set_elapsed(elapsed.into());
+                ui.set_player_title(status.into());
+                ui.set_generated(status.into());
                 crate::test_platform::settle(window);
                 let geometry = (bounds_of(label), bounds_of("Audio details"));
                 match reference {
@@ -1183,5 +1193,94 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
         }
     }
     let _ = ui.get_transport_labels().row_count();
+    ui.hide().unwrap();
+}
+
+/// An assistive technology's press reaches a button only while it is enabled.
+#[test]
+fn accessibility_presses_respect_disabled_buttons() {
+    use slint::private_unstable_api::re_exports::{
+        AccessibilityAction, AccessibleStringProperty, WindowInner,
+    };
+    use std::ops::ControlFlow;
+    slint::slint! {
+        import { Button } from "std-widgets.slint";
+        export component PressProbe inherits Window {
+            in property <bool> enabled;
+            out property <int> presses;
+            Button { text: "Probe"; enabled: root.enabled; clicked => { root.presses += 1; } }
+        }
+    }
+    install();
+    let probe = PressProbe::new().unwrap();
+    probe.show().unwrap();
+    let press = |probe: &PressProbe| {
+        let root = WindowInner::from_pub(probe.window())
+            .window_item_rc()
+            .unwrap();
+        let button = root
+            .visit_descendants(|item| {
+                if item
+                    .accessible_string_property(AccessibleStringProperty::Label)
+                    .is_some_and(|label| label == "Probe")
+                {
+                    ControlFlow::Break(item.clone())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+            .unwrap();
+        button.accessible_action(&AccessibilityAction::Default);
+    };
+    probe.set_enabled(false);
+    press(&probe);
+    assert_eq!(
+        probe.get_presses(),
+        0,
+        "a disabled button ignores the press"
+    );
+    probe.set_enabled(true);
+    press(&probe);
+    assert_eq!(probe.get_presses(), 1);
+    probe.hide().unwrap();
+}
+
+/// Long unbreakable text wraps inside the document instead of widening it.
+#[test]
+fn unbreakable_text_never_widens_the_documents() {
+    use slint::private_unstable_api::re_exports::{AccessibleStringProperty, WindowInner};
+    use std::ops::ControlFlow;
+    install();
+    let ui = MainWindow::new().unwrap();
+    ui.show().unwrap();
+    ui.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
+    let long = "Supercalifragilisticexpialidocious_".repeat(30);
+    ui.set_status(long.as_str().into());
+    ui.set_draft_brief(long.as_str().into());
+    ui.set_retained_warning(long.as_str().into());
+    for tab in [1, 0] {
+        ui.set_tab_index(tab);
+        crate::test_platform::settle(ui.window());
+        let root = WindowInner::from_pub(ui.window()).window_item_rc().unwrap();
+        let mut checked = 0;
+        let _ = root.visit_descendants(|item| {
+            let label = item.accessible_string_property(AccessibleStringProperty::Label);
+            if item.is_visible()
+                && label
+                    .as_deref()
+                    .is_some_and(|l| matches!(l, "Sound title" | "Find a recipe"))
+            {
+                let geometry = item.geometry();
+                let origin = item.map_to_window(geometry.origin);
+                assert!(
+                    origin.x >= 0.0 && origin.x + geometry.size.width <= 1100.0 + 0.1,
+                    "{label:?} must stay inside the window: {origin:?} {geometry:?}"
+                );
+                checked += 1;
+            }
+            ControlFlow::<()>::Continue(())
+        });
+        assert!(checked > 0, "the tab's main field was checked");
+    }
     ui.hide().unwrap();
 }

@@ -160,7 +160,8 @@ fn durations_and_fades_must_give_whole_frames_that_fit() {
         signal_error(&s, 48_000),
         StimulusError::FadesOverlap {
             fade_frames: 24_000,
-            frames: 48_000
+            frames: 48_000,
+            sample_rate_hz: 48_000
         }
     );
     s.fade_seconds = 0.499_9;
@@ -490,5 +491,54 @@ fn excessive_width_names_the_signal_frame_limit() {
     assert!(
         message.contains(&crate::Signal::MAX_FRAMES.to_string()),
         "{message}"
+    );
+}
+
+#[test]
+fn messages_keep_extreme_values_short() {
+    let error = ComponentError::Frequency {
+        parameter: ParameterId::ToneFrequency,
+        hz: 1e300,
+        sample_rate_hz: 48_000,
+    }
+    .to_string();
+    assert!(error.contains("1e300 Hz"), "{error}");
+    assert!(error.len() < 120, "{error}");
+    let tiny = ComponentError::Frequency {
+        parameter: ParameterId::ToneFrequency,
+        hz: 1e-9,
+        sample_rate_hz: 48_000,
+    }
+    .to_string();
+    assert!(tiny.contains("1e-9 Hz"), "{tiny}");
+    let ordinary = ComponentError::Frequency {
+        parameter: ParameterId::ToneFrequency,
+        hz: 30_000.0,
+        sample_rate_hz: 48_000,
+    }
+    .to_string();
+    assert!(ordinary.contains("30000 Hz"), "{ordinary}");
+}
+
+#[test]
+fn length_messages_speak_in_time_not_frames() {
+    let duration = StimulusError::Duration {
+        seconds: 0.0,
+        sample_rate_hz: 48_000,
+    }
+    .to_string();
+    assert_eq!(
+        duration,
+        "Duration 0 s must last from one sample (1/48000 s) to 16.6 days at 48000 Hz"
+    );
+    let overlap = StimulusError::FadesOverlap {
+        fade_frames: 24_000,
+        frames: 48_000,
+        sample_rate_hz: 48_000,
+    }
+    .to_string();
+    assert_eq!(
+        overlap,
+        "a 0.5 s fade at each edge does not fit in 1 s; the two fades together must be shorter than the duration"
     );
 }

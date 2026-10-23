@@ -97,7 +97,7 @@ impl OutputState {
     }
 
     pub(crate) fn scale(&self) -> WaveformScale {
-        self.scale.unwrap_or(WaveformScale::Fixed)
+        self.scale.unwrap_or(WaveformScale::Fit)
     }
 
     pub(crate) fn held(&self) -> bool {
@@ -280,7 +280,7 @@ impl OutputState {
         &mut self,
         editor: &mut EditorSession,
         catalog: &[RecipeSnapshot],
-        selected: usize,
+        selected: Option<usize>,
         view: View,
         export_rate: SampleRate,
         audio: bool,
@@ -327,14 +327,14 @@ impl OutputState {
         &mut self,
         editor: &mut EditorSession,
         catalog: &[RecipeSnapshot],
-        selected: usize,
+        selected: Option<usize>,
         view: View,
         rate: SampleRate,
         span_ms: u32,
         scale: WaveformScale,
     ) {
         let source = match view {
-            View::Library => match catalog.get(selected) {
+            View::Library => match selected.and_then(|index| catalog.get(index)) {
                 Some(snapshot) => SourceKey::Snapshot(snapshot.id()),
                 None => {
                     self.preview = None;
@@ -356,7 +356,9 @@ impl OutputState {
             }
             let result = match view {
                 View::Library => {
-                    let snapshot = &catalog[selected];
+                    let Some(snapshot) = selected.and_then(|index| catalog.get(index)) else {
+                        return;
+                    };
                     snapshot
                         .at(rate)
                         .map(|sound| {

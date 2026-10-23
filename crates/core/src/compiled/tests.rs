@@ -255,7 +255,8 @@ fn finite_entry_points_select_envelope_errors_before_component_errors() {
     assert_eq!(
         StimulusError::FadesOverlap {
             fade_frames: 1,
-            frames: 2
+            frames: 2,
+            sample_rate_hz: 8_000
         }
         .parameters(),
         [ParameterId::Duration, ParameterId::Fade]
