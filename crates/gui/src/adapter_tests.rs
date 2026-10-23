@@ -833,3 +833,50 @@ fn drag(ui: &MainWindow, from: slint::LogicalPosition, to: slint::LogicalPositio
         button,
     });
 }
+
+#[test]
+fn about_and_licenses_use_production_actions_and_reopen_without_losing_terms() {
+    let h = Harness::new();
+    h.ui().invoke_about();
+    settle(h.windows.about.window());
+    assert!(h.windows.about.window().is_visible());
+    assert_eq!(
+        h.windows.about.get_identity().as_str(),
+        format!(
+            "Version {} (Build {})",
+            auditorylab::BUILD_IDENTITY.version,
+            auditorylab::BUILD_IDENTITY.build
+        )
+    );
+    h.windows.about.invoke_open_licenses();
+    settle(h.windows.licenses.window());
+    assert!(h.windows.licenses.window().is_visible());
+    assert_eq!(
+        h.windows.licenses.get_licenses().as_str(),
+        include_str!("../../../LICENSE")
+    );
+    h.windows.licenses.invoke_third_party_licenses_requested();
+    assert!(h.windows.licenses.get_notice().contains("missing or empty"));
+    h.windows
+        .licenses
+        .window()
+        .dispatch_event(WindowEvent::KeyPressed {
+            text: Key::Escape.into(),
+        });
+    assert!(
+        !h.windows.licenses.window().is_visible(),
+        "Escape closes the focused license window"
+    );
+    h.windows.about.invoke_open_licenses();
+    assert!(h.windows.licenses.window().is_visible());
+    for _ in 0..2 {
+        h.windows.about.invoke_dismiss();
+        assert!(!h.windows.about.window().is_visible());
+        h.ui().invoke_about();
+        assert!(h.windows.about.window().is_visible());
+        h.windows.licenses.invoke_dismiss();
+        assert!(!h.windows.licenses.window().is_visible());
+        h.windows.about.invoke_open_licenses();
+        assert!(h.windows.licenses.window().is_visible());
+    }
+}

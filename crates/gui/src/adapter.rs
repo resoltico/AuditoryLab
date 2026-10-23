@@ -63,6 +63,7 @@ pub(crate) trait Shell {
 pub(crate) struct Windows {
     pub(crate) main: MainWindow,
     pub(crate) about: AboutWindow,
+    pub(crate) licenses: crate::generated::LicenseWindow,
     pub(crate) monitor: MonitorWindow,
     pub(crate) details: DetailsWindow,
     pub(crate) audio_controls: AudioControlsWindow,
@@ -73,6 +74,7 @@ impl Windows {
         Ok(Self {
             main: MainWindow::new()?,
             about: AboutWindow::new()?,
+            licenses: crate::generated::LicenseWindow::new()?,
             monitor: MonitorWindow::new()?,
             details: DetailsWindow::new()?,
             audio_controls: AudioControlsWindow::new()?,
@@ -144,6 +146,7 @@ pub(crate) struct SlintAdapter {
     shell: Box<dyn Shell>,
     main: slint::Weak<MainWindow>,
     about: slint::Weak<AboutWindow>,
+    licenses: slint::Weak<crate::generated::LicenseWindow>,
     monitor: slint::Weak<MonitorWindow>,
     details: slint::Weak<DetailsWindow>,
     audio_controls: slint::Weak<AudioControlsWindow>,
@@ -192,6 +195,7 @@ impl SlintAdapter {
             shell,
             main: ui.as_weak(),
             about: windows.about.as_weak(),
+            licenses: windows.licenses.as_weak(),
             monitor: windows.monitor.as_weak(),
             details: windows.details.as_weak(),
             audio_controls: windows.audio_controls.as_weak(),
@@ -230,6 +234,9 @@ impl SlintAdapter {
         );
         ui.set_native_mac(cfg!(target_os = "macos"));
         windows.about.set_identity(about_identity().into());
+        windows
+            .licenses
+            .set_licenses(include_str!("../../../LICENSE").into());
         if let Some(preferences) = adapter.preferences.borrow().as_ref() {
             apply_font(windows, &preferences.font);
         }
@@ -389,7 +396,7 @@ impl SlintAdapter {
             if let Err(error) = about.show() {
                 eprintln!("About: {error}");
             }
-            about.invoke_focus_close();
+            about.invoke_focus_website();
         }
     }
 
@@ -450,9 +457,17 @@ impl SlintAdapter {
                 font.family, font.size, font.origin
             );
             preferences.font = font;
-            if let (Some(main), Some(about), Some(monitor), Some(details), Some(controls)) = (
+            if let (
+                Some(main),
+                Some(about),
+                Some(licenses),
+                Some(monitor),
+                Some(details),
+                Some(controls),
+            ) = (
                 self.main.upgrade(),
                 self.about.upgrade(),
+                self.licenses.upgrade(),
                 self.monitor.upgrade(),
                 self.details.upgrade(),
                 self.audio_controls.upgrade(),
@@ -461,6 +476,7 @@ impl SlintAdapter {
                     &Windows {
                         main,
                         about,
+                        licenses,
                         monitor,
                         details,
                         audio_controls: controls,
@@ -1439,6 +1455,33 @@ fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
     windows
         .about
         .on_open_source(|| open_web(auditorylab::SOURCE_URL));
+    let licenses = windows.licenses.as_weak();
+    windows.about.on_open_licenses(move || {
+        if let Some(window) = licenses.upgrade() {
+            match window.show() {
+                Ok(()) => window.invoke_focus_start(),
+                Err(error) => eprintln!("Licenses: {error}"),
+            }
+        }
+    });
+    let licenses = windows.licenses.as_weak();
+    windows.licenses.on_dismiss(move || {
+        if let Some(window) = licenses.upgrade() {
+            let _ = window.hide();
+        }
+    });
+    let licenses = windows.licenses.as_weak();
+    windows.licenses.on_third_party_licenses_requested(move || {
+        if let Some(window) = licenses.upgrade() {
+            match crate::licenses::notices_directory() {
+                Ok(path) => match path.to_str() {
+                    Some(path) => open_web(path),
+                    None => window.set_notice("Cannot open a non-UTF8 notices path.".into()),
+                },
+                Err(error) => window.set_notice(error.into()),
+            }
+        }
+    });
     let details = windows.details.as_weak();
     windows.details.on_dismiss(move || {
         if let Some(window) = details.upgrade() {
@@ -1461,6 +1504,8 @@ fn apply_font(windows: &Windows, font: &typography::Typography) {
     windows.main.set_ui_size(font.size);
     windows.about.set_ui_family(family.clone());
     windows.about.set_ui_size(font.size);
+    windows.licenses.set_ui_family(family.clone());
+    windows.licenses.set_ui_size(font.size);
     windows.monitor.set_ui_family(family.clone());
     windows.monitor.set_ui_size(font.size);
     windows.details.set_ui_family(family.clone());
@@ -1487,14 +1532,7 @@ pub(crate) fn hide_monitor_window(ui: &MainWindow, monitor: &MonitorWindow, was_
 
 fn about_identity() -> String {
     let identity = auditorylab::BUILD_IDENTITY;
-    format!(
-        "Version {} · Build {}{}\n\nAuditory Lab: MPL-2.0\nSlint: Royalty-free Desktop, Mobile, and Web Applications License 2.0\nThird-party licenses: THIRD-PARTY-NOTICES.txt in the download.",
-        identity.version,
-        identity.build,
-        identity
-            .revision
-            .map_or(String::new(), |r| format!("\nSource revision: {r}"))
-    )
+    format!("Version {} (Build {})", identity.version, identity.build)
 }
 
 fn open_web(url: &str) {

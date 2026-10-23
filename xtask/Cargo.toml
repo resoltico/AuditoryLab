@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 serde_json = "1"
+toml.workspace = true
 zip.workspace = true
 tar.workspace = true
 flate2.workspace = true

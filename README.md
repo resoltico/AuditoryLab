@@ -12,7 +12,7 @@ Most of the studies behind these sounds are small, and their results are mixed. 
 
 ## Download
 
-Choose a CLI or desktop archive from [Releases](https://github.com/resoltico/AuditoryLab/releases/latest). Choose **Mac · Apple silicon** (`macos-aarch64`) or **Mac · Intel** (`macos-x86_64`); both require macOS 15 or later. CLI and desktop archives are separate, and every macOS executable contains exactly one architecture. Follow the archive's README for platform requirements and launch instructions.
+Choose a CLI or desktop archive from [Releases](https://github.com/resoltico/AuditoryLab/releases/latest). Choose **Mac · Apple silicon** (`macos-aarch64`) or **Mac · Intel** (`macos-x86_64`); both require macOS 15 or later. CLI and desktop archives are separate, and every macOS executable contains exactly one architecture. macOS desktop downloads use ZIP; Unix CLI and Linux desktop downloads use tar.gz; Windows downloads use ZIP. Follow the archive's README for platform requirements and launch instructions. The macOS app contains its own legal resources, so it can be moved alone to Applications. macOS binaries are ad-hoc signed, without Developer ID signing or notarization.
 
 Download `SHA256SUMS` alongside the archive and compare its entry before extracting. On macOS use `shasum -a 256 ARCHIVE`; on Linux use `sha256sum ARCHIVE`; in PowerShell use `Get-FileHash ARCHIVE -Algorithm SHA256`.
 
@@ -55,7 +55,7 @@ The **Workbench** builds sounds from up to 16 tone or click components. Change t
 
 Install [rustup](https://rustup.rs/). [rust-toolchain.toml](rust-toolchain.toml) selects the compiler and components.
 
-- macOS 15 or later: install Xcode Command Line Tools with `xcode-select --install`.
+- macOS 15 or later: install Xcode Command Line Tools with `xcode-select --install`. Packaging a macOS app also requires full Xcode 26 or later for Icon Composer resources; see [packaging](CONTRIBUTING.md).
 - Debian/Ubuntu: `sudo apt-get install build-essential pkg-config libasound2-dev libfontconfig1-dev libxkbcommon-x11-0 libpango-1.0-0 libgtk-3-0`.
 - Windows: install Visual Studio Build Tools with Desktop development with C++, including the MSVC tools and Windows SDK for your processor. Use the native MSVC Rust host. Windows 10 or later is required on x86_64; ARM64 requires Windows 11. The x86_64 target requires SSE3, CMPXCHG16B and LAHF/SAHF.
 
@@ -82,4 +82,10 @@ The `auditorylab` library builds without an audio device stack by default; its `
 
 ## License
 
-Copyright © 2026 Ervins Strauhmanis. Source: [Mozilla Public License 2.0](LICENSE). Each download contains its product-specific `THIRD-PARTY-NOTICES.txt`.
+Copyright © 2026 Ervins Strauhmanis. Each download contains product-specific dependency notices.
+
+Software and documentation use MPL-2.0; third-party components retain their own
+terms. Owner artwork and drawing sources have separate proprietary terms in
+[LICENSE](LICENSE), with unchanged artwork permitted in original or modified
+Auditory Lab distributions. Editable sources and the supplied provenance are
+retained in [artwork](artwork/README.md).

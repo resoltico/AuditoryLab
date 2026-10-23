@@ -1,0 +1,5 @@
+{
+  "light": {"background": "#F6F3EC", "front_wave": "#15183F", "back_wave": "#A8440B"},
+  "dark":  {"background": "#0A0C1F", "front_wave": "#F6F3EC", "back_wave": "#F1742C"},
+  "tinted_back_wave_opacity": 0.6
+}

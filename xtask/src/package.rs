@@ -51,6 +51,7 @@ pub(crate) fn inspect(
     version: &str,
     build: u32,
     rust_copyright: &[u8],
+    source: &crate::source::Source,
 ) -> Result<PathBuf> {
     let platform = crate::targets::platform(target)?;
     let name = archive
@@ -63,14 +64,8 @@ pub(crate) fn inspect(
         "auditorylab"
     };
     let stem = format!("{binary}-{version}-{platform}");
-    let expected = format!(
-        "{stem}.{}",
-        if target.contains("windows") {
-            "zip"
-        } else {
-            "tar.gz"
-        }
-    );
+    let format = crate::archive::Format::for_product(binary == "auditorylab-gui", target);
+    let expected = format!("{stem}.{}", format.extension());
     if name != expected {
         return Err(format!("expected archive {expected}; got {name}").into());
     }
@@ -79,11 +74,8 @@ pub(crate) fn inspect(
     if root.exists() {
         fs::remove_dir_all(&root)?;
     }
-    if target.contains("windows") {
-        zip::ZipArchive::new(fs::File::open(archive)?)?.extract(out)?;
-    } else {
-        tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(archive)?)).unpack(out)?;
-    }
+    crate::archive::verify_metadata(archive, format, source.epoch)?;
+    crate::archive::extract(archive, out, format)?;
     for file in ["LICENSE", "README.txt", "THIRD-PARTY-NOTICES.txt"] {
         if fs::read(root.join(file))?.is_empty() {
             return Err(format!("empty package member {file}").into());
@@ -95,6 +87,13 @@ pub(crate) fn inspect(
         return Err(
             "packaged Rust standard-library notices differ from the compiler's original".into(),
         );
+    }
+    if fs::read(root.join("LICENSE"))? != include_bytes!("../../LICENSE") {
+        return Err("package LICENSE differs from complete software/artwork terms".into());
+    }
+    if fs::read_to_string(root.join("SOURCE.txt"))? != crate::source_notice(version, build, source)
+    {
+        return Err("package source availability identity differs".into());
     }
     let app = root.join("Auditory Lab.app");
     let executable = if binary == "auditorylab-gui" && target.contains("apple") {
@@ -117,7 +116,23 @@ pub(crate) fn inspect(
         }
     }
     if !target.contains("apple") {
-        architecture_header(&fs::read(&executable)?, target)?;
+        let bytes = fs::read(&executable)?;
+        architecture_header(&bytes, target)?;
+        if binary == "auditorylab-gui" && target.contains("windows") {
+            crate::pe_icon::verify(
+                &bytes,
+                include_bytes!("../../artwork/auditorylab-icon/assets/windows/auditorylab.ico"),
+            )?;
+        }
+        if binary == "auditorylab-gui" && target.contains("linux") {
+            let source = Path::new("artwork/auditorylab-icon/assets/linux/hicolor");
+            compare_tree(source, &root.join("hicolor"))?;
+            if !fs::read_to_string(root.join("auditorylab-gui.desktop"))?
+                .contains("Icon=org.resoltico.auditorylab\n")
+            {
+                return Err("desktop Icon identifier missing".into());
+            }
+        }
     } else {
         let arches = String::from_utf8(capture(
             Command::new("lipo").arg("-archs").arg(&executable),
@@ -130,7 +145,22 @@ pub(crate) fn inspect(
                 "x86_64"
             },
         )?;
+        run(Command::new("codesign")
+            .args(["--verify", "--strict"])
+            .arg(&executable))?;
         if binary == "auditorylab-gui" {
+            for file in crate::LEGAL_FILES {
+                if fs::read(app.join("Contents/Resources").join(file))?
+                    != fs::read(root.join(file))?
+                {
+                    return Err(format!("bundled legal resource differs: {file}").into());
+                }
+            }
+            for file in ["Assets.car", "AppIcon.icns", "icon-partial.plist"] {
+                if fs::metadata(app.join("Contents/Resources").join(file))?.len() == 0 {
+                    return Err(format!("missing icon resource: {file}").into());
+                }
+            }
             for (key, expected) in [
                 ("CFBundleShortVersionString", version.to_owned()),
                 ("CFBundleVersion", build.to_string()),
@@ -153,11 +183,34 @@ pub(crate) fn inspect(
         }
     }
     let actual = String::from_utf8(capture(Command::new(&executable).arg("--version"))?)?;
-    if actual.trim() != crate::version_line(binary, version, build)? {
+    if actual.trim() != crate::version_line(binary, version, build, Some(&source.revision))? {
         return Err(format!("extracted executable identity differs: {actual:?}").into());
     }
     println!("Extracted package identity/content/architecture checks passed: {name}");
     Ok(executable)
+}
+fn compare_tree(source: &Path, actual: &Path) -> Result<()> {
+    let mut expected: Vec<_> = fs::read_dir(source)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<_>>()?;
+    let mut found: Vec<_> = fs::read_dir(actual)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<_>>()?;
+    expected.sort();
+    found.sort();
+    if expected != found {
+        return Err("Linux icon tree members differ from supplied artwork".into());
+    }
+    for name in expected {
+        let source = source.join(&name);
+        let actual = actual.join(name);
+        if source.is_dir() {
+            compare_tree(&source, &actual)?;
+        } else if fs::read(source)? != fs::read(actual)? {
+            return Err("Linux icon bytes differ from supplied artwork".into());
+        }
+    }
+    Ok(())
 }
 #[cfg(test)]
 mod tests {
@@ -175,6 +228,19 @@ mod tests {
         ] {
             fs::write(folder.join(name), "fixture").unwrap();
         }
+        fs::write(folder.join("LICENSE"), include_bytes!("../../LICENSE")).unwrap();
+        fs::write(
+            folder.join("SOURCE.txt"),
+            crate::source_notice(
+                "0.4.0",
+                1,
+                &crate::source::Source {
+                    revision: "a".repeat(40),
+                    epoch: 1_709_251_199,
+                },
+            ),
+        )
+        .unwrap();
         let archive = temp.path().join("auditorylab-0.4.0-windows-x86_64.zip");
         let expected = b"complete upstream Rust copyright fixture";
         for contents in [
@@ -186,7 +252,13 @@ mod tests {
             if let Some(contents) = contents {
                 fs::write(folder.join("COPYRIGHT-library.html"), contents).unwrap();
             }
-            crate::archive(&folder, &archive, true).unwrap();
+            crate::archive::write(
+                &folder,
+                &archive,
+                crate::archive::Format::Zip,
+                1_709_251_199,
+            )
+            .unwrap();
             let error = super::inspect(
                 &archive,
                 &temp.path().join("extracted"),
@@ -194,6 +266,10 @@ mod tests {
                 "0.4.0",
                 1,
                 expected,
+                &crate::source::Source {
+                    revision: "a".repeat(40),
+                    epoch: 1_709_251_199,
+                },
             )
             .unwrap_err()
             .to_string();

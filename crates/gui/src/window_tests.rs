@@ -1338,3 +1338,83 @@ fn unbreakable_text_never_widens_the_documents() {
     }
     ui.hide().unwrap();
 }
+
+#[test]
+fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_scales() {
+    use crate::generated::AboutWindow;
+    use crate::test_platform::settle;
+    use slint::private_unstable_api::re_exports::{AccessibleStringProperty, WindowInner};
+    use std::ops::ControlFlow;
+    install();
+    let about = AboutWindow::new().unwrap();
+    about.set_ui_family(typography::resolve().family.into());
+    about.set_identity("Version 0.4.0 (Build 2)".into());
+    about.show().unwrap();
+    for scale in [1.0, 2.0] {
+        about
+            .window()
+            .dispatch_event(slint::platform::WindowEvent::ScaleFactorChanged {
+                scale_factor: scale,
+            });
+        for size in [13.0_f32, 26.0, 40.0] {
+            about.set_ui_size(size);
+            let width = 420.0_f32.max(size * 30.0);
+            let height = 410.0_f32.max(size * 27.0);
+            about
+                .window()
+                .set_size(slint::LogicalSize::new(width, height));
+            settle(about.window());
+            let root = WindowInner::from_pub(about.window())
+                .window_item_rc()
+                .unwrap();
+            let mut observed = 0;
+            let _ = root.visit_descendants(|item| {
+                if let Some(label) =
+                    item.accessible_string_property(AccessibleStringProperty::Label)
+                    && (matches!(
+                        label.as_str(),
+                        "Application icon"
+                            | "Auditory Lab"
+                            | "Version 0.4.0 (Build 2)"
+                            | "Copyright © 2026 Ervins Strauhmanis"
+                            | "Project website"
+                            | "Licenses"
+                            | "#MadeWithSlint"
+                    ) || label.starts_with("Play and export"))
+                {
+                    let geometry = item.geometry();
+                    let origin = item.map_to_window(geometry.origin);
+                    assert!(
+                        origin.x >= 0.0
+                            && origin.y >= 0.0
+                            && geometry.size.width > 0.0
+                            && geometry.size.height > 0.0
+                            && origin.x + geometry.size.width <= width + 0.1
+                            && origin.y + geometry.size.height <= height + 0.1,
+                        "{label} clipped at font {size}, scale {scale}: {geometry:?} {origin:?}"
+                    );
+                    if label == "Application icon" {
+                        assert_eq!((geometry.size.width, geometry.size.height), (64.0, 64.0));
+                    }
+                    observed += 1;
+                }
+                ControlFlow::<()>::Continue(())
+            });
+            assert_eq!(observed, 8, "all required About contents are reachable");
+            if let Ok(directory) = std::env::var("AUDITORYLAB_TEST_SCREENSHOTS") {
+                use std::io::Write;
+                std::fs::create_dir_all(&directory).unwrap();
+                let pixels = about.window().take_snapshot().unwrap();
+                let mut file = std::fs::File::create(
+                    std::path::Path::new(&directory)
+                        .join(format!("about-font{size}-scale{scale}.ppm")),
+                )
+                .unwrap();
+                write!(file, "P6\n{} {}\n255\n", pixels.width(), pixels.height()).unwrap();
+                for pixel in pixels.as_slice() {
+                    file.write_all(&[pixel.r, pixel.g, pixel.b]).unwrap();
+                }
+            }
+        }
+    }
+}

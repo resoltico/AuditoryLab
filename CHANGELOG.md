@@ -4,6 +4,11 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+- Match the EML v6 About layout with selectable identity, owner icon, project and license actions, and the actual Slint attribution widget.
+- Retain editable owner artwork under separate proprietary terms and integrate platform icons. Bundle complete legal materials inside the macOS app.
+- Advance the shared product build counter to 2; reject non-increasing release counters. Ad-hoc sign both macOS CLI architectures.
+- Use ZIP for future macOS desktop downloads, retain tar.gz for Unix CLI/Linux desktop and ZIP for Windows, and normalize archive times to source-commit UTC time rather than staging/default timestamps.
+
 ### Breaking
 
 - The `auditorylab` library has no default features. Enable `device-playback` for default-device playback (`auditorylab::device`); without it, the library builds without CPAL and `Workspace` refuses audio with a typed reason. The CLI and desktop enable it.

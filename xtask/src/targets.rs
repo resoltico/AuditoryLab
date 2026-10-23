@@ -25,14 +25,10 @@ fn expected(version: &str) -> BTreeSet<String> {
     TARGETS
         .iter()
         .flat_map(|(triple, platform)| {
-            PRODUCTS.iter().map(move |(_, binary)| {
+            PRODUCTS.iter().map(move |(product, binary)| {
                 format!(
                     "{binary}-{version}-{platform}.{}",
-                    if triple.contains("windows") {
-                        "zip"
-                    } else {
-                        "tar.gz"
-                    }
+                    crate::archive::Format::for_product(*product == "gui", triple).extension()
                 )
             })
         })
@@ -101,6 +97,25 @@ mod tests {
     fn only_the_complete_thin_product_set_is_accepted() {
         let names: Vec<_> = expected("0.4.0").into_iter().collect();
         validate_names("0.4.0", &names).unwrap();
+        assert_eq!(names.len(), 12);
+        for name in [
+            "auditorylab-gui-0.4.0-macos-aarch64.zip",
+            "auditorylab-gui-0.4.0-macos-x86_64.zip",
+            "auditorylab-0.4.0-macos-aarch64.tar.gz",
+        ] {
+            assert!(names.iter().any(|actual| actual == name));
+        }
+        let wrong: Vec<_> = names
+            .iter()
+            .map(|name| {
+                name.replace(
+                    "auditorylab-gui-0.4.0-macos-aarch64.zip",
+                    "auditorylab-gui-0.4.0-macos-aarch64.tar.gz",
+                )
+            })
+            .collect();
+        assert!(validate_names("0.4.0", &wrong).is_err());
+
         for omit in 0..names.len() {
             let mut incomplete = names.clone();
             incomplete.remove(omit);

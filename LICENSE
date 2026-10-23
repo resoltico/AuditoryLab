@@ -1,3 +1,23 @@
+Auditory Lab
+Copyright (c) 2026 Ervins Strauhmanis
+SPDX-License-Identifier: MPL-2.0 AND LicenseRef-Proprietary-Artwork
+
+This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+The MPL notice applies to project software and documentation except the artwork files identified below. Separately licensed third-party components retain their own notices and are not relicensed by this notice. Target-specific license and native runtime materials accompany binary distributions.
+
+Corresponding source is available from the exact source revision identified with each binary distribution and the matching release source archives. Published release archives are available at https://github.com/resoltico/AuditoryLab/releases. The source includes the Rust libraries, command-line and desktop products, editable artwork and build configuration. Redistributors must make the corresponding MPL-covered source available and tell recipients how to obtain it.
+
+Proprietary artwork terms (LicenseRef-Proprietary-Artwork)
+
+Copyright (c) 2026 Ervins Strauhmanis. All rights reserved, subject to the permission below and any previously granted rights.
+
+These terms apply to artwork/auditorylab-icon/assets, artwork/auditorylab-icon/source/make_icon.py, artwork/auditorylab-icon/source/palette.json, artwork/auditorylab-icon/preview.png, and images generated from those files. These files and images are excluded from the MPL grant above. Other application, preview and build code remains MPL-covered. Previously granted permissions remain valid.
+
+Permission is granted, without fee, to copy the artwork source to build Auditory Lab, to display the artwork while using the application, and to redistribute the unchanged artwork solely as part of Auditory Lab source or binary distributions, including distributions with modified MPL-covered code. Retain these terms and the copyright notice. This permission does not permit modifying the artwork, using it independently or in another product, or claiming trademark rights in it. Replace the artwork with your own if different branding is needed. Rights required by applicable law and permissions granted in earlier distributions remain unaffected. No warranty of title, originality, non-infringement or exclusive rights is made; the artwork is supplied as is, without warranty, to the extent permitted by law.
+
+The unmodified Mozilla Public License follows.
+
 Mozilla Public License Version 2.0
 ==================================
 

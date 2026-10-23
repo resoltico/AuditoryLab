@@ -9,6 +9,7 @@ mod dialogs;
 mod focus_reflow_tests;
 #[cfg(test)]
 mod focus_scroll_tests;
+mod licenses;
 mod motion;
 #[cfg(target_os = "macos")]
 mod native_application;
