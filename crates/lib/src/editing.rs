@@ -419,7 +419,7 @@ pub(crate) fn serialize(recipe: &Recipe) -> Result<String, Error> {
 ///
 /// # Errors
 /// Returns serialization errors, [`ErrorKind::DestinationExists`] under
-/// [`Replace::Never`], or [`ErrorKind::Write`].
+/// [`Replace::Never`](crate::Replace::Never), or [`ErrorKind::Write`].
 pub fn save_content(
     recipe: &Recipe,
     path: &std::path::Path,

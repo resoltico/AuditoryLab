@@ -12,7 +12,7 @@ summary = "250 Hz in the left ear and 256 Hz in the right: a slow 6-per-second b
 citation = "Jirakittayakorn N, Wongsawat Y (2017). Brain responses to a 6-Hz binaural beat: effects on general theta rhythm and frontal midline theta activity. Frontiers in Neuroscience 11: 365."
 source_url = "https://doi.org/10.3389/fnins.2017.00365"
 study = "A 30-minute binaural beat, 250 Hz in the left ear and 256 Hz in the right, heard by 17 seated adults between 5-minute baseline and post-stimulus EEG recordings; a control group of 11 heard silence. Theta activity increased within 10 minutes of exposure in the beat group."
-adaptation = "The source made the stimulus in Sound Forge Pro and played it at 65 dB SPL; it states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added. The baseline and post-stimulus periods are not part of this preset."
+adaptation = "The source made the stimulus in Sound Forge Pro and played it at 65 dB SPL; it states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added. The baseline and post-stimulus periods are not part of this recipe."
 
 [[component]]
 ears = "left"

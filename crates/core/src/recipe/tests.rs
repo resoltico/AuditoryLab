@@ -34,7 +34,7 @@ fn edited(from: &str, to: &str) -> Result<Recipe, RecipeError> {
 }
 
 #[test]
-fn a_preset_reads_into_its_stimulus_in_file_order() {
+fn a_recipe_reads_into_its_stimulus_in_file_order() {
     let recipe = Recipe::parse(PAIR).unwrap();
     assert_eq!(recipe.about, None);
     assert_eq!(recipe.stimulus.duration_seconds, 10.0);
@@ -85,7 +85,7 @@ fn every_kind_and_modulation_reads_and_whole_numbers_are_accepted_as_reals() {
 }
 
 #[test]
-fn a_preset_without_components_is_silence() {
+fn a_recipe_without_components_is_silence() {
     let recipe =
         Recipe::parse("schema_version = 2\nduration_seconds = 1.0\nfade_seconds = 0.0\n").unwrap();
     assert!(recipe.stimulus.components.is_empty());
@@ -266,7 +266,7 @@ fn input_is_bounded_and_must_be_utf_8() {
 }
 
 #[test]
-fn messages_say_what_is_wrong_with_the_preset() {
+fn messages_say_what_is_wrong_with_the_recipe() {
     use core::error::Error;
     assert_eq!(
         RecipeError::TooLarge.to_string(),
@@ -305,7 +305,7 @@ mod writing {
     }
 
     #[test]
-    fn written_presets_read_back_equal() {
+    fn written_recipes_read_back_equal() {
         let number = prop_oneof![
             any::<f64>().prop_filter("finite", |x| x.is_finite()),
             Just(5e-324),

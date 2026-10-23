@@ -142,6 +142,25 @@ jobs:
       - name: Verify native AT-SPI cache signal contracts
         if: runner.os == 'Linux'
         run: cargo test -p accesskit_unix --lib --locked
+      - name: Verify macOS termination request contracts
+        if: runner.os == 'macOS'
+        env:
+          CARGO_TARGET_DIR: target/vendor-tests
+        run: cargo test --manifest-path third_party/winit/Cargo.toml --locked --lib termination
+      - name: Run a downstream consumer without device playback
+        if: runner.os == 'Linux'
+        env:
+          CARGO_TARGET_DIR: target/portable-consumer
+        run: |
+          cp Cargo.lock consumers/portable/Cargo.lock
+          cargo run --manifest-path consumers/portable/Cargo.toml
+          if cargo tree --manifest-path consumers/portable/Cargo.toml -e normal,build --target all -i cpal; then
+            echo 'CPAL reaches a consumer without the device-playback feature' >&2
+            exit 1
+          fi
+          # Negative control: the same query finds CPAL once the feature is on.
+          cargo tree --manifest-path consumers/portable/Cargo.toml --features auditorylab/device-playback \
+            -e normal,build --target all -i cpal > /dev/null
       - run: cargo test -p auditorylab-core --release --locked
       - name: Cache cargo-about
         id: about-cache
@@ -169,7 +188,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: [synthesis, live, facts, timing, waveform]
+        source: [synthesis, compiled, live, facts, timing, waveform]
     needs: lint
     if: github.event_name != 'schedule' && (inputs.release || needs.lint.outputs.core-changed == 'true')
     runs-on: ubuntu-24.04
@@ -200,11 +219,11 @@ jobs:
                 --test-workspace=false --timeout 60 --cargo-arg=--locked --output target/mutations)
           if [[ "$MUTATION_SOURCE" == synthesis ]]; then
             # Bit 52 is clear in the fraction. At line 27 both branches return 1;
-            # at line 61 the enclosing != guard excludes equality.
+            # at line 64 the enclosing != guard excludes equality.
             # Location-specific exclusions keep the Nyquist and pulse-width guards mutated.
             args+=(--exclude-re 'replace \| with \^ in parts$'
                    --exclude-re 'synthesis\.rs:27:22: replace < with <= in step$'
-                   --exclude-re 'synthesis\.rs:61:15: replace < with <= in times_at_most$')
+                   --exclude-re 'synthesis\.rs:64:15: replace < with <= in times_at_most$')
           fi
           cargo mutants "${args[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -8,7 +8,7 @@ Run `auditorylab` for help, `auditorylab COMMAND --help` for command options, or
 |---|---|
 | `list` | Built-in IDs, titles, research topics and durations. |
 | `describe SOURCE` | Declared parameters, components and study context. |
-| `recipe PRESET_ID [--output PATH]` | Original built-in TOML bytes, printed or saved. |
+| `recipe RECIPE_ID [--output PATH]` | Original built-in TOML bytes, printed or saved. |
 | `inspect SOURCE [--sample-rate HZ]` | Validation, frame count, resolved duration/fade and per-ear peak bounds. |
 | `play SOURCE` | Playback at the default device's sample rate. |
 | `export SOURCE --output PATH [--sample-rate HZ]` | A stereo 32-bit float WAV file. |
@@ -25,7 +25,7 @@ auditorylab inspect --file clicks.toml --sample-rate 44100
 cat clicks.toml | auditorylab inspect --stdin
 ```
 
-`recipe` retrieves only built-in source text. Save a copy with `--output`, edit it as UTF-8, then use `--file` to inspect, export or play it. Keep `[about]` consistent with your edits. See [presets](presets.md).
+`recipe` retrieves only built-in source text. Save a copy with `--output`, edit it as UTF-8, then use `--file` to inspect, export or play it. Keep `[about]` consistent with your edits. See [recipes](recipes.md).
 
 When stdin is a terminal, the CLI prints an end-of-input cue before reading. Interrupt handling for export/play begins after input has been read.
 

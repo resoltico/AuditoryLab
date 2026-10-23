@@ -4,6 +4,35 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Breaking
+
+- The `auditorylab` library has no default features. Enable `device-playback` for default-device playback (`auditorylab::device`); without it, the library builds without CPAL and `Workspace` refuses audio with a typed reason. The CLI and desktop enable it.
+- Library and core APIs use recipe vocabulary and semantic identifiers, with no aliases for the former names: core `Recipe` and library `RecipeSnapshot` (immutable content, origin and identity) replace `Preset`; `CarrierKind` replaces `SourceKind`; `ParameterId` with its label, unit and help descriptor replaces positional settings; `ComponentId` identifies components. `TargetCheck` compiles components once at a rate and replaces `Component::validate` and `Component::facts`; `Target` is a core type whose equality compares definitions and whose `same_audio` compares generated audio. Playback uses a single-owner `Session`, cloneable `PlaybackControl`, typed `PlaybackReport` and `EndReason`. Editing uses `EditorSession` with `FieldHandle` commands. Update imports and exhaustive matches. Recipe schema 2 and the catalog's signal parameters are unchanged.
+- Validation messages name quantities by label in display units, such as “Modulation depth 150% must be from 0% to 100%”. Update consumers that match message text.
+
+### Added
+
+- `auditorylab::workspace::Workspace` holds the interactive workflow shared by desktop frontends: library search and selection, one open document, one audio and one file task, prompts and their typed responses, action availability and change-driven views.
+- Pulse widths are reported as requested and realized, with the realized frame count at the stated rate, in CLI `inspect` and `describe`, desktop descriptions and generated details.
+
+### Changed
+
+- Committing typed input applies the whole sound at once. If any typed entry does not parse or any value is not a finite number, including an imported one, nothing changes and every typed entry stays for correction; otherwise all entries apply together, even values the sound cannot play, so the draft can be saved and repaired. Changing a carrier or modulation discards typed entries only for the fields it removes.
+- Play and live playback are no longer blocked by the export rate. The device's actual rate decides validity before the stream starts: a 30 kHz tone can play on a 96 kHz device while it stays invalid for 48 kHz export, and a sound valid only at the export rate is refused before playback on a slower device. Live edits are checked at the device's rate.
+- Live playback accepts settings that differ only in requested values that generate identical samples, such as a width that rounds to the same frames, as a new revision without a transition. **Pattern explained** follows the playing session's accepted settings.
+- Reopening a recipe file replaces its Library entry with the new content; a copy made earlier keeps the recipe it was copied from in its source details.
+- Recipe saving and WAV export without replacement reject an existing destination before writing anything.
+- On macOS, Quit from the application menu or Command-Q and the window's close button use the same decision; repeated Quit asks once, and the app quits only after its audio and file tasks have finished. About in the application menu opens Auditory Lab's About window. The Stop button in a file panel stops only the audio that was playing when the panel opened.
+
+### Removed
+
+- `cargo xtask check-lints` and `lint-exceptions.toml`. Lint exceptions are narrow `#[expect]` attributes whose reasons explain them in the source; `allow` attributes are denied.
+
+### Internal
+
+- The six vendored toolkit crates record their upstream crates.io archives and SHA-256 values, with a command for reviewing the changes against them. The vendored Winit termination request state has unit tests that run on macOS CI.
+- CI runs a downstream consumer without device playback and checks that CPAL is absent from its dependency tree, and mutates the core file that compiles targets.
+
 ## [0.4.0] - 2026-10-21
 
 ### Breaking

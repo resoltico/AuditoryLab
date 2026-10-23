@@ -143,10 +143,10 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
 }
 
 fn short_catalog_session(name: &str) -> Signal {
-    let mut preset = Recipe::parse(catalog::find(name).unwrap().text).unwrap();
-    preset.stimulus.duration_seconds = 0.125;
-    preset.stimulus.fade_seconds = 0.01;
-    preset.stimulus.signal(rate()).unwrap()
+    let mut recipe = Recipe::parse(catalog::find(name).unwrap().text).unwrap();
+    recipe.stimulus.duration_seconds = 0.125;
+    recipe.stimulus.fade_seconds = 0.01;
+    recipe.stimulus.signal(rate()).unwrap()
 }
 
 fn edge_gain(frame: u32) -> f64 {

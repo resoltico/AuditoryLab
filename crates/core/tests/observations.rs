@@ -200,3 +200,10 @@ fn observe_set_render_stop_remain_allocation_free() {
     });
     assert_eq!(count.count_total, 0);
 }
+
+#[test]
+fn slot_roles_have_their_own_names() {
+    assert_eq!(SlotRole::Continuing.label(), "Continuing");
+    assert_eq!(SlotRole::Outgoing.label(), "Outgoing");
+    assert_eq!(SlotRole::Incoming.label(), "Incoming");
+}

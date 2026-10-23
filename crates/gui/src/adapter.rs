@@ -514,11 +514,10 @@ impl SlintAdapter {
                 w.editor_view(),
                 w.library_view(),
                 w.action_view(),
-                w.view(),
                 w.export_rate(),
             )
         });
-        let Some((editor, library, actions, view, rate)) = views else {
+        let Some((editor, library, actions, rate)) = views else {
             return;
         };
         self.reconcile_document(ui, &editor);
@@ -578,10 +577,6 @@ impl SlintAdapter {
                 .join("\n")
                 .into(),
         );
-        ui.set_tab_index(match view {
-            View::Library => 0,
-            View::Workbench => 1,
-        });
         if let Some(index) = Workspace::export_rates().iter().position(|r| *r == rate)
             && let Ok(index) = i32::try_from(index)
         {
@@ -1211,13 +1206,21 @@ fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         }
     });
     on!(on_search, |a, query| a.command(|w| w.set_query(&query)));
-    on!(on_tab_changed, |a, index| a.command(|w| w.set_view(
-        if index == 1 {
+    on!(on_tab_changed, |a, index| {
+        // The tab's change handler can run while a projection is writing
+        // properties, when commands are ignored; apply the choice after it.
+        let view = if index == 1 {
             View::Workbench
         } else {
             View::Library
-        }
-    )));
+        };
+        let weak = Rc::downgrade(&a);
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            if let Some(a) = weak.upgrade() {
+                a.command(|w| w.set_view(view));
+            }
+        });
+    });
     on!(on_rate_changed, |a, index| {
         if let Some(rate) = choice(&Workspace::export_rates(), index) {
             a.command(|w| w.set_export_rate(rate));

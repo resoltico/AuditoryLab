@@ -12,7 +12,6 @@ Keep temporary files under `target/`. Set TMPDIR (and TEMP/TMP on Windows) to an
 mkdir -p target/tmp
 export TMPDIR="$PWD/target/tmp"
 cargo fmt --all -- --check
-cargo xtask check-lints
 cargo clippy --workspace --all-targets --locked
 cargo test --workspace --locked
 cargo test -p auditorylab-core --release --locked
@@ -24,17 +23,15 @@ The toolchain is pinned in [rust-toolchain.toml](rust-toolchain.toml); the works
 
 Unit tests live beside code; integration tests use public APIs and the actual CLI executable. Check signal formulas against independent oracles. Give validation guards accepted and rejected neighbours. Change a [pinned digest](crates/core/tests/determinism.rs) only for a deliberate sample change and explain it in the commit. Property tests set bounded case/shrink budgets and disable persistence; turn minimized failures into regression tests. Allocation tests include a negative control. Device tests are ignored by default and use component-free silence; preserve the user's device, routing and volume.
 
-Frontends use the library for domain workflows. Keep rendering and validation in core, publication and playback in the library, and presentation in frontends. Core, library and CLI forbid unsafe code; the GUI confines unsafe code to generated Slint and audited native adapters. [Workspace lints](Cargo.toml) are shared.
+Frontends use the library for domain workflows. Keep rendering and validation in core; editing, publication, playback, interactive workflow and shared wording in the library; and terminal or widget mechanics in frontends. GUI tests install the production bindings with `SlintAdapter::install` on an offscreen platform, one per test thread, rather than wiring callbacks of their own. Core, library and CLI forbid unsafe code; the GUI confines unsafe code to generated Slint and audited native adapters. [Workspace lints](Cargo.toml) are shared.
 
 ### Lint exceptions
 
 All authored packages inherit `[lints] workspace = true`. Cargo.toml owns lint levels; clippy.toml owns Clippy configuration. Argument count is a review signal: split unrelated responsibilities when that simplifies the whole design, and justify an irreducible ABI or cohesive operation locally rather than introducing a parameter bag to silence a lint. Test-function unwrap/expect panics deliberately fail the test; fixture helpers need their own narrow exception.
 
-There is no baseline exemption for existing code. First fix the code or remove an unnecessary allowance. When a conversion, generated-code boundary or native ABI genuinely requires an exception, use `#[expect(LINT, reason = "quality:meaningful-id")]` when supported consistently on the relevant targets. Use `allow` only when a conditional/generated diagnostic cannot be expected reliably, and explain that choice in the rationale. [lint-exceptions.toml](lint-exceptions.toml) owns the justification and exact file, parsed scope, attribute level and lint set; source attributes carry only the ID. Keep local `SAFETY` comments at unsafe operations as well. A changed bound or native lifetime requires fresh review, even when the registered scope stays the same.
+There is no baseline exemption for existing code. First fix the code or remove an unnecessary allowance. When a conversion, generated-code boundary or native ABI genuinely requires an exception, put `#[expect(LINT, reason = "…")]` on the narrowest item, with a reason that states why the exception is correct there. `expect` fails the build when the lint no longer fires, so stale exceptions surface; the workspace denies `allow` attributes without a reason and `allow` attributes generally. Keep local `SAFETY` comments at unsafe operations. A changed bound or native lifetime requires fresh review of the reason.
 
-`cargo xtask check-lints` parses every authored Rust file on disk, including untracked files and inactive cfg branches; it rejects unknown, duplicate, stale, reasonless and scope/lint-set changes. It inspects macro token attributes and rejects suppression templates or uninspectable attribute interpolation; put a necessary exception on the named enclosing Rust scope. New unsupported exception scopes reject explicitly. It also checks authored manifests, Cargo/workflow flag text, current Rust flag environment variables, literal command arguments/environment values and literal Cargo build directives. Mutation testing's `cap_lints` is confined to cargo-mutants configuration; ordinary builds and docs may not cap or lower lints.
-
-This is a structural check, not proof of a rationale or arbitrary code generation, dynamically assembled commands, external scripts or user/global Cargo settings. Compiler/Clippy/rustdoc checks on all supported targets remain required. `third_party/` contains upstream dependency sources governed by [its patch policy](third_party/README.md); it is not an authored-package exception baseline. Review our patches there at their native boundary rather than claiming this scan validates an upstream codebase. Generated `OUT_DIR` output is checked by its compiler/generator boundary, not this source scan. Syn, quote, proc-macro2 and TOML parsing are build-tool dependencies only; packaged CLI/GUI runtime dependencies do not gain them from xtask.
+`third_party/` contains upstream dependency sources governed by [their record](third_party/README.md); review changes there at their native boundary.
 
 Mutation testing stays short and scoped to one file:
 
@@ -43,7 +40,17 @@ TMPDIR="$PWD/target/tmp" cargo mutants --file crates/core/src/synthesis.rs \
   --timeout 60 --cargo-arg=--locked --output target/mutations
 ```
 
-Use `--re` to focus a smaller selection. Investigate survivors against an independent oracle. The CI command excludes equivalent integer-phase mutations with their reasons beside the command. Keep the Nyquist guard in the selection.
+Use `--re` to focus a smaller selection. Investigate survivors against an independent oracle. CI mutates each core source file that holds synthesis, compilation, live transitions, facts, timing or waveform reduction; when such code moves to another file, change that file list in [ci.yml](.github/workflows/ci.yml). The CI command excludes equivalent integer-phase mutations by location, with their reasons beside the command; a change that moves those lines must update the locations. Keep the Nyquist guard in the selection.
+
+A downstream program that uses the library without the `device-playback` feature must not reach CPAL. CI runs the [portable consumer](consumers/portable/src/main.rs) and checks its dependency tree:
+
+```sh
+cp Cargo.lock consumers/portable/Cargo.lock
+CARGO_TARGET_DIR=target/portable-consumer cargo run --manifest-path consumers/portable/Cargo.toml
+CARGO_TARGET_DIR=target/portable-consumer cargo tree --manifest-path consumers/portable/Cargo.toml -e normal,build --target all -i cpal
+```
+
+The last command must report that no package matches.
 
 ## Dependencies
 
@@ -53,7 +60,7 @@ Use `--re` to focus a smaller selection. Investigate survivors against an indepe
 
 ## Desktop checks
 
-Open an isolated built window. Check fixed toolbar/transport versus scrolling document, bounded drawer/large-text monitor window, document-local static patterns, selectable details, input recovery and field-specific accessibility messages. Save a component-free snapshot while audio continues; verify Stop inside the real native panel, later edits remaining dirty, cancellation/replacement and both-worker quit cleanup. Check native Open, export cancellation, monitor Live/Held/Stale/Last and About. Play only a component-free recipe during development checks. Check progress and CPU use at the intended display scale. The UI uses OpenGL and synthesis runs on the CPU.
+Open an isolated built window. Check fixed toolbar/transport versus scrolling document, bounded drawer/large-text monitor window, document-local static patterns, selectable details, input recovery and field-specific accessibility messages. Save a component-free snapshot while audio continues; verify Stop inside the real native panel, later edits remaining dirty, cancellation/replacement and both-worker quit cleanup. On macOS, quit with unsaved edits through the application menu and Command-Q, choose Cancel, then Save, and check that one dialog appears however often Quit is pressed. Check native Open, export cancellation, monitor Live/Held/Stale/Last and About from the application menu. Play only a component-free recipe during development checks. Check progress and CPU use at the intended display scale. The UI uses OpenGL and synthesis runs on the CPU.
 
 ## Packaging and releases
 
@@ -63,7 +70,7 @@ To inspect notices without building archives, use `cargo xtask notices cli TARGE
 
 For a release, set the workspace version, add a dated changelog section and review `cargo xtask notes VERSION`. Commit the reviewed candidate on main and push. To proceed directly to release without a duplicate push-triggered CI run, use `[skip ci]` on the release-preparation commit; workflow dispatch still runs the full qualification. Dispatch [release.yml](.github/workflows/release.yml) with that version and `publish: true` for authorized publication, or `publish: false` (the default) to inspect a verification bundle without publishing. Verification may run on a branch; publication requires main. Both modes check the requested workspace version, a dated nonempty changelog section and an absent tag before building.
 
-Both modes call CI for the selected source bytes, including every native target and all five file-scoped mutation jobs, collect archives through `cargo xtask collect-assets VERSION INPUT OUTPUT`, reject missing/duplicate/unexpected product/target archives from xtask’s supported mapping, write SHA256SUMS and release notes, and attest the assets. They upload a `release-verification` artifact containing `assets/`, `notes.md` and `provenance.jsonl`. A separate read-only job downloads that artifact and verifies the checksums and provenance against the source commit, ref and release workflow; both modes must pass that round trip. Release notes are attested and verified alongside the archive/checksum files. Verification creates no tag or draft release. Use non-publishing mode when the bundle needs manual review before publication. Review it for the exact intended main commit and repeat that review if main changes. It does create workflow artifacts and GitHub attestations.
+Both modes call CI for the selected source bytes, including every native target and every file-scoped mutation job, collect archives through `cargo xtask collect-assets VERSION INPUT OUTPUT`, reject missing/duplicate/unexpected product/target archives from xtask’s supported mapping, write SHA256SUMS and release notes, and attest the assets. They upload a `release-verification` artifact containing `assets/`, `notes.md` and `provenance.jsonl`. A separate read-only job downloads that artifact and verifies the checksums and provenance against the source commit, ref and release workflow; both modes must pass that round trip. Release notes are attested and verified alongside the archive/checksum files. Verification creates no tag or draft release. Use non-publishing mode when the bundle needs manual review before publication. Review it for the exact intended main commit and repeat that review if main changes. It does create workflow artifacts and GitHub attestations.
 
 The publishing dispatch builds and verifies the selected main source bytes once, then a separate job with release-write permission downloads the verification artifact and rechecks its checksums. That job first checks that main still names the verified source commit, creates a draft release, compares uploaded digests with the built bytes, then publishes. Published tags and assets are never replaced. If publication stops at a draft, inspect the failed step and its logs; compare every uploaded digest and source commit before completing that same draft. Choose a new version for changes to published bytes. To verify a public download, compare SHA256SUMS and the release asset digests, inspect the attestation against the release workflow/source commit, and run the binary's `--version`.
 

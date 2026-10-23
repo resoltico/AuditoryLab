@@ -540,3 +540,15 @@ fn unchanged_state_projects_nothing_and_paths_follow_only_new_captures() {
     assert_eq!(h.adapter.counts.path_builds.get(), paths + 1);
     assert!(h.adapter.counts.document_projections.get() > documents);
 }
+
+#[test]
+fn a_tab_choice_survives_a_projection_before_its_change_handler_runs() {
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_tab_index(1);
+    // A tick projects before Slint has run the tab's change handler.
+    h.adapter.tick();
+    h.settle();
+    assert_eq!(ui.get_tab_index(), 1);
+    assert_eq!(h.adapter.inspect(|w| w.view()), View::Workbench);
+}

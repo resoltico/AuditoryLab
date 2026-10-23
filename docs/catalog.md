@@ -1,6 +1,6 @@
 # Catalog sources and adaptations
 
-This reference describes the source parameters and adaptations of the built-in recipes from eight primary studies. Recipe content is authoritative in the [catalog source](../crates/core/catalog), and the [preset guide](presets.md#built-in-catalog) describes admission and fidelity requirements.
+This reference describes the source parameters and adaptations of the built-in recipes from eight primary studies. Recipe content is authoritative in the [catalog source](../crates/core/catalog), and the [recipe guide](recipes.md#built-in-catalog) describes admission and fidelity requirements.
 
 ## Primary sources and evidence limits
 

@@ -309,3 +309,32 @@ fn definition_equality_includes_requested_facts_and_same_audio_does_not() {
     let changed = Target::new(rate(8_000), &[(id(1), clicks(41.0, 0.000_10))]).unwrap();
     assert!(!narrow.same_audio(&changed));
 }
+
+#[test]
+fn each_component_result_is_found_by_its_own_identity() {
+    let check = TargetCheck::new(
+        rate(48_000),
+        &[(id(7), tone(440.0, -30.0)), (id(3), tone(30_000.0, -30.0))],
+    );
+    let valid = check.component(id(7)).unwrap();
+    assert!(matches!(
+        valid.as_ref().unwrap().carrier,
+        CarrierFacts::Tone(rate) if rate.requested_hz == 440.0
+    ));
+    assert!(
+        check.component(id(3)).unwrap().is_err(),
+        "the invalid component's own error"
+    );
+    assert!(
+        check.component(id(1)).is_none(),
+        "an unknown identity has no result"
+    );
+}
+
+#[test]
+fn emptiness_counts_components() {
+    assert!(Target::silence(rate(8_000)).is_empty());
+    let target = Target::new(rate(8_000), &[(id(1), tone(440.0, -30.0))]).unwrap();
+    assert!(!target.is_empty());
+    assert_eq!(target.len(), 1);
+}
