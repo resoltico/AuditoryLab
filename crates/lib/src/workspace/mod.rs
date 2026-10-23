@@ -1168,9 +1168,10 @@ impl Workspace {
     /// Returns the admission or input refusal.
     pub fn play(&mut self) -> Result<(), Refusal> {
         let result = self.play_inner();
-        if let Err(refusal) = &result {
-            self.audio_status = views::refusal_text(refusal);
-        }
+        self.audio_status = match &result {
+            Ok(()) => String::new(),
+            Err(refusal) => views::refusal_text(refusal),
+        };
         self.changed();
         result
     }
@@ -1366,7 +1367,10 @@ impl Workspace {
             self.audio_status = match (result, panicked) {
                 (_, true) => presentation::WORKER_FAILED.into(),
                 (None, false) => presentation::WORKER_ENDED_WITHOUT_RESULT.into(),
-                (Some(Ok(report)), false) => views::playback_text(&report),
+                // A bound monitor already shows how the session ended.
+                (Some(Ok(report)), false) => {
+                    views::playback_text(&report, self.output.reader().is_some())
+                }
                 (Some(Err(error)), false) => error.to_string(),
             };
             if conclusion == Conclusion::Failed {

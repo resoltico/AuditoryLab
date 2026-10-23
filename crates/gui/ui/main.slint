@@ -33,13 +33,27 @@ export struct ComponentRow {
 }
 export struct MetadataRow { label: string, text: string, staged: bool, diagnostic: string }
 export struct ModelLane { component: int, label: string, trace: string }
-component Disclosure inherits Button {
+// A compact disclosure: as wide as its label, aligned with the content it opens.
+component Disclosure inherits Rectangle {
     in-out property <bool> expanded: false;
     in property <string> label;
-    text: (root.expanded ? "▾ " : "▸ ") + root.label;
-    accessible-label: root.label + (root.expanded ? " · expanded" : " · collapsed");
-    accessible-expanded: root.expanded;
-    clicked => {root.expanded = !root.expanded;}
+    min-width: toggle.min-width;
+    preferred-width: toggle.preferred-width;
+    max-width: toggle.preferred-width;
+    min-height: toggle.min-height;
+    preferred-height: toggle.preferred-height;
+    max-height: toggle.preferred-height;
+    horizontal-stretch: 0;
+    toggle := Button {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        text: (root.expanded ? "▾ " : "▸ ") + root.label;
+        accessible-label: root.label + (root.expanded ? " · expanded" : " · collapsed");
+        accessible-expanded: root.expanded;
+        clicked => {root.expanded = !root.expanded;}
+    }
 }
 // Uncommitted text, caret and focus stay local. Model refreshes replace only
 // unfocused text. An edit keeps the binding it started with, so a late commit
@@ -114,6 +128,7 @@ component ParameterControl inherits HorizontalBox {
     vertical-stretch: 0;
     Text {
         text: root.parameter.label;
+        vertical-alignment: center;
         min-width:root.ui-size*(root.compact ? 4 : 12.5);
         max-width:root.ui-size*(root.compact ? 7 : 16);
         wrap: word-wrap;
@@ -157,6 +172,41 @@ component MetadataField inherits NumericField {
     stage(owner, value) => { root.stage-field(owner, root.key, value); }
     commit(owner, value) => { root.commit-field(owner, root.key, value); }
     restore(owner) => { root.restore-field(owner, root.key); }
+}
+// A button as wide as the widest of its possible labels, so a label change
+// never resizes it or moves its neighbours. Hidden copies of the button
+// measure the labels in the current font; they are neither drawn, focusable
+// nor exposed to accessibility.
+component StableButton inherits Rectangle {
+    in property <string> text;
+    in property <[string]> labels;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    in property <string> accessible-name: root.text;
+    callback clicked();
+    property <length> stable-width: max(measure.preferred-width, button.preferred-width);
+    min-width: root.stable-width;
+    preferred-width: root.stable-width;
+    max-width: root.stable-width;
+    min-height: button.min-height;
+    preferred-height: button.preferred-height;
+    max-height: button.preferred-height;
+    horizontal-stretch: 0;
+    measure := VerticalLayout {
+        visible: false;
+        for label in root.labels: Button { text: label; primary: root.primary; }
+    }
+    button := Button {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        primary: root.primary;
+        enabled: root.enabled;
+        accessible-label: root.accessible-name;
+        clicked => { root.clicked(); }
+    }
 }
 component ExportRate inherits HorizontalBox {
     padding: 0px;
@@ -502,6 +552,7 @@ export component MainWindow inherits Window {
     in property <bool> playback-busy;
     in property <bool> transport-enabled;
     in property <string> transport-action;
+    in property <[string]> transport-labels;
     in property <bool> can-edit;
     in property <bool> can-export;
     in property <bool> can-play;
@@ -819,8 +870,9 @@ export component MainWindow inherits Window {
                                 HorizontalBox {
                                     padding: 0px;
                                     vertical-stretch: 0;
-                                    Button {
+                                    StableButton {
                                         text:root.playback-busy ? "Stop current & play recipe" : "Listen";
+                                        labels:["Listen","Stop current & play recipe"];
                                         enabled:root.can-play && (!root.busy || root.playback-busy);
                                         clicked=> {
                                             root.play-recipe();
@@ -885,6 +937,7 @@ export component MainWindow inherits Window {
                         vertical-stretch: 0;
                         Text {
                             text:root.title-field.label;
+                            vertical-alignment:center;
                         }
                         MetadataField {
                             key: MetadataKey.title;
@@ -902,9 +955,10 @@ export component MainWindow inherits Window {
                     HorizontalBox {vertical-stretch:0;
                         Text {
                             text:root.dirty ? "Unsaved changes" : "Unmodified draft";
-                            wrap:word-wrap;max-width:root.compact ? root.ui-size*6 : 300px;
+                            wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;
                         }
                         Button {
+                            horizontal-stretch:0;
                             text:"New";
                             enabled:root.can-edit;
                             clicked=> {
@@ -1174,12 +1228,20 @@ export component MainWindow inherits Window {
             background:Palette.control-background;border-width:1px;border-color:Palette.border;
             VerticalBox {padding:8px;spacing:3px;
                 HorizontalBox {vertical-stretch:0;padding:0px;
-                    Button {text:root.transport-action;primary:true;enabled:root.transport-enabled;accessible-label:root.transport-action+(root.playback-busy ? "" : " · "+root.play-target);clicked=>{root.play-stop();}}
+                    StableButton {text:root.transport-action;labels:root.transport-labels;primary:true;enabled:root.transport-enabled;accessible-name:root.transport-action+(root.playback-busy ? "" : " · "+root.play-target);clicked=>{root.play-stop();}}
                     VerticalBox {padding:0px;spacing:2px;
                         Text {min-width:0px;text:root.player-title+(root.playback-busy ? "" : " · Next Play: "+root.play-target);max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
                         Text {min-width:0px;text:root.generated;max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
                     }
-                    Text {text:root.elapsed;vertical-alignment:center;}
+                    // Sized for the longest clock, so ticking never reflows the row.
+                    Rectangle {
+                        horizontal-stretch:0;
+                        min-width:elapsed-template.preferred-width;
+                        preferred-width:elapsed-template.preferred-width;
+                        min-height:elapsed-text.preferred-height;
+                        elapsed-template := Text {visible:false;text:"00:00:00 / 00:00:00";}
+                        elapsed-text := Text {width:parent.width;height:parent.height;text:root.elapsed;horizontal-alignment:right;vertical-alignment:center;}
+                    }
                     Button {text:"Details…";accessible-label:"Audio details";clicked=>{root.show-diagnostics();}}
                 }
                 Text {text:root.guidance;wrap:word-wrap;vertical-stretch:0;}

@@ -51,16 +51,32 @@ pub fn human_duration(value: f64) -> String {
     )
 }
 
-/// Whole-second estimated output elapsed time.
+/// A transport clock of whole seconds: `m:ss`, or `h:mm:ss` from one hour.
+/// Partial seconds are dropped, so the clock advances once per second.
+#[must_use]
+pub fn clock(seconds: f64) -> String {
+    let whole = std::time::Duration::try_from_secs_f64(seconds.max(0.0))
+        .map_or(u64::MAX, |time| time.as_secs());
+    let (hours, minutes, seconds) = (whole / 3600, (whole % 3600) / 60, whole % 60);
+    if hours == 0 {
+        format!("{minutes}:{seconds:02}")
+    } else {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    }
+}
+
+/// Estimated output elapsed time as a transport clock.
 #[must_use]
 pub fn playback_elapsed(rate: SampleRate, frames: u64) -> String {
-    let seconds = rate.seconds_in(frames);
-    human_duration(if seconds < 1.0 {
-        seconds
-    } else {
-        seconds.floor()
-    })
+    clock(rate.seconds_in(frames))
 }
+
+/// The labels the play/stop transport control can show, in no particular
+/// order; a frontend can size the control for the widest.
+pub const TRANSPORT_LABELS: [&str; 3] = [PLAY_SELECTED, PLAY_LIVE, STOP_AUDIO];
+pub(crate) const PLAY_SELECTED: &str = "Play selected sound";
+pub(crate) const PLAY_LIVE: &str = "Play live";
+pub(crate) const STOP_AUDIO: &str = "Stop audio";
 
 /// One-decimal digital level; silence uses the minus-infinity symbol.
 #[must_use]
@@ -696,6 +712,23 @@ pub fn window_cycle_hint(observation: Option<&Observation>, window_ms: f64) -> O
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_transport_clock_counts_whole_seconds_minutes_and_hours() {
+        for (seconds, text) in [
+            (0.0, "0:00"),
+            (0.037, "0:00"),
+            (9.99, "0:09"),
+            (10.0, "0:10"),
+            (300.0, "5:00"),
+            (3599.9, "59:59"),
+            (3600.0, "1:00:00"),
+            (93_784.0, "26:03:04"),
+            (-1.0, "0:00"),
+        ] {
+            assert_eq!(super::clock(seconds), text, "{seconds}");
+        }
+    }
+
     use super::*;
 
     #[test]

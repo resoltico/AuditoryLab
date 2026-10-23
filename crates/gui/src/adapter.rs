@@ -957,6 +957,12 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     ui.set_scale_choices(scales.clone());
     monitor.set_span_choices(spans);
     monitor.set_scale_choices(scales);
+    ui.set_transport_labels(strings(
+        auditorylab::TRANSPORT_LABELS
+            .iter()
+            .map(|label| (*label).to_owned())
+            .collect(),
+    ));
     ui.set_export_rates(strings(
         Workspace::export_rates()
             .iter()

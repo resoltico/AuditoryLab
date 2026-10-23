@@ -6,7 +6,7 @@
 //! unchanged document is not evaluated again.
 use super::{FileKind, OutputView, Refusal, View, Workspace};
 use crate::editing::{EditingField, FieldHandle, InputProblem, MetadataField, SaveRefusal};
-use crate::session::{EndReason, PlaybackPhase, PlaybackReport};
+use crate::session::{EndReason, PlaybackReport};
 use crate::{
     DocumentId, Exported, RecipeSnapshot, controls, monitor_warning, output_monitor_state,
     output_underrun_warning, phase_text, presentation,
@@ -312,18 +312,42 @@ pub(super) fn exported_text(path: &Path, exported: &Exported) -> String {
     )
 }
 
-pub(super) fn playback_text(report: &PlaybackReport) -> String {
+/// How a session ended, for the status line. With `shown`, the transport
+/// already names an ordinary ending, so only what it does not show remains.
+pub(super) fn playback_text(report: &PlaybackReport, shown: bool) -> String {
     let mut text = String::from(match report.end {
+        EndReason::Completed if shown => "",
         EndReason::Completed => "Playback complete.",
+        EndReason::Stopped if report.drained && shown => "",
         EndReason::Stopped if report.drained => "Stopped.",
         EndReason::Stopped => "Stopped; queued output was cut off after the stop limit.",
         EndReason::FrameLimit => "Live playback reached the longest supported session.",
     });
     if report.underruns > 0 {
-        text.push(' ');
+        if !text.is_empty() {
+            text.push(' ');
+        }
         text.push_str(&presentation::Notice::Underruns(report.underruns).to_string());
     }
     text
+}
+
+/// How long ago the monitor last received changed samples.
+pub(super) fn received_text(age: std::time::Duration, held: bool) -> String {
+    let when = match age.as_secs() {
+        0 => "just now".to_owned(),
+        seconds @ 1..60 => format!("{seconds} s ago"),
+        seconds @ 60..3600 => format!("{} min ago", seconds / 60),
+        seconds => format!("{} h ago", seconds / 3600),
+    };
+    format!(
+        "{} {when}",
+        if held {
+            "Current session received samples"
+        } else {
+            "Received samples"
+        }
+    )
 }
 
 impl Workspace {
@@ -611,10 +635,6 @@ impl Workspace {
         let playing = self.audio.is_some();
         let exporting = self.exporting();
         let progress = self.export_progress();
-        let preparing = self
-            .audio
-            .as_ref()
-            .is_some_and(|t| t.control.phase() == PlaybackPhase::Preparing);
         ActionView {
             can_play: play.is_ok(),
             play_reason: play.as_ref().err().map(refusal_text).unwrap_or_default(),
@@ -627,15 +647,14 @@ impl Workspace {
             playback_busy: playing,
             exporting,
             transport_enabled: playing || play.is_ok(),
-            transport_label: if preparing {
-                "Cancel".into()
-            } else if playing {
-                "Stop audio".into()
+            transport_label: if playing {
+                presentation::STOP_AUDIO
             } else if self.view == View::Workbench {
-                "Play live".into()
+                presentation::PLAY_LIVE
             } else {
-                "Play selected sound".into()
-            },
+                presentation::PLAY_SELECTED
+            }
+            .into(),
             play_target: match self.view {
                 View::Workbench => self.editor.draft().title().to_owned(),
                 View::Library => self
@@ -753,9 +772,7 @@ impl Workspace {
                 |frames| {
                     format!(
                         "{elapsed} / {}",
-                        presentation::human_duration(
-                            descriptor.output.sample_rate.seconds_in(frames)
-                        )
+                        presentation::clock(descriptor.output.sample_rate.seconds_in(frames))
                     )
                 },
             );
@@ -772,9 +789,14 @@ impl Workspace {
                     ))
                 )
             } else {
-                format!(
-                    "Generated audio · {}",
-                    presentation::generated_description(status.observation.as_ref())
+                status.observation.as_ref().map_or_else(
+                    || presentation::generated_description(None),
+                    |o| {
+                        format!(
+                            "Generated audio · {}",
+                            presentation::generated_description(Some(o))
+                        )
+                    },
                 )
             };
             view.generated_details = status.observation.map_or_else(String::new, |o| {
@@ -806,17 +828,7 @@ impl Workspace {
             view.backend_warning = output_underrun_warning(status.underruns);
             view.receipt_age = reader.age().map_or_else(
                 || "No generated publication received".into(),
-                |age| {
-                    format!(
-                        "{} {} ms ago",
-                        if held {
-                            "Current session receipt"
-                        } else {
-                            "Receipt"
-                        },
-                        age.as_millis()
-                    )
-                },
+                |age| received_text(age, held),
             );
             view.monitor_state = format!(
                 "Current session {}: observed frame {:?} · gaps {} · output underruns {}",

@@ -1097,3 +1097,91 @@ fn assert_audio_controls_keep_stop_visible(
         controls.hide().unwrap();
     }
 }
+
+/// The transport's play/stop button and its neighbours keep their exact
+/// geometry while the label and the clock change, at ordinary and large text.
+#[test]
+fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
+    use slint::platform::{Key, WindowEvent};
+    use slint::private_unstable_api::re_exports::{AccessibleStringProperty, WindowInner};
+    use slint::{Model, VecModel};
+    use std::ops::ControlFlow;
+    install();
+    let ui = MainWindow::new().unwrap();
+    ui.set_ui_family(typography::resolve().family.into());
+    ui.set_transport_labels(slint::ModelRc::new(VecModel::from(
+        auditorylab::TRANSPORT_LABELS
+            .iter()
+            .map(|label| slint::SharedString::from(*label))
+            .collect::<Vec<_>>(),
+    )));
+    ui.set_playback_busy(true);
+    ui.set_transport_enabled(true);
+    ui.show().unwrap();
+    ui.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
+    let window = ui.window();
+    let bounds_of = |label: &str| {
+        let root = WindowInner::from_pub(window).window_item_rc().unwrap();
+        let mut found = Vec::new();
+        let _ = root.visit_descendants(|item| {
+            if item.is_visible()
+                && item.is_accessible()
+                && item
+                    .accessible_string_property(AccessibleStringProperty::Label)
+                    .is_some_and(|value| value == label)
+            {
+                let geometry = item.geometry();
+                let origin = item.map_to_window(geometry.origin);
+                found.push((
+                    origin.x,
+                    origin.y,
+                    geometry.size.width,
+                    geometry.size.height,
+                ));
+            }
+            ControlFlow::<()>::Continue(())
+        });
+        assert_eq!(
+            found.len(),
+            1,
+            "exactly one exposed control is labelled {label}"
+        );
+        found[0]
+    };
+    for size in [13.0, 26.0] {
+        ui.set_ui_size(size);
+        let mut reference = None;
+        for label in auditorylab::TRANSPORT_LABELS {
+            for elapsed in ["0:00", "0:09 / 5:00", "10:00 / 5:00:00", "26:03:04"] {
+                ui.set_transport_action(label.into());
+                ui.set_elapsed(elapsed.into());
+                crate::test_platform::settle(window);
+                let geometry = (bounds_of(label), bounds_of("Audio details"));
+                match reference {
+                    None => reference = Some(geometry),
+                    Some(expected) => assert_eq!(
+                        geometry, expected,
+                        "{label} with {elapsed} at {size}px moved the transport"
+                    ),
+                }
+            }
+        }
+    }
+    // The hidden measuring buttons never take keyboard focus.
+    let inner = WindowInner::from_pub(window);
+    window.dispatch_event(WindowEvent::WindowActiveChanged(true));
+    for _ in 0..60 {
+        let text: slint::SharedString = Key::Tab.into();
+        window.dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+        window.dispatch_event(WindowEvent::KeyReleased { text });
+        crate::test_platform::settle(window);
+        if let Some(focused) = inner.focus_item.borrow().upgrade() {
+            assert!(
+                focused.is_visible(),
+                "Tab reached a hidden measuring control"
+            );
+        }
+    }
+    let _ = ui.get_transport_labels().row_count();
+    ui.hide().unwrap();
+}

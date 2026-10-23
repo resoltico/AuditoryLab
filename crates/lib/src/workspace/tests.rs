@@ -482,7 +482,12 @@ fn a_live_preparation_binds_committed_edits_at_the_actual_rate_only() {
     fake.steps.send(Step::Finish).unwrap();
     fake.steps.send(Step::Exit).unwrap();
     settle(&mut ws, |ws| !ws.audio_busy());
-    assert!(ws.action_view().audio_status.starts_with("Stopped"));
+    assert!(ws.transport_view().player_title.starts_with("Stopped"));
+    assert_eq!(
+        ws.action_view().audio_status,
+        "",
+        "the transport names an ordinary Stop; the status line does not repeat it"
+    );
 }
 
 #[test]
@@ -831,4 +836,20 @@ fn the_live_model_follows_accepted_revisions_even_for_identical_audio() {
     fake.steps.send(Step::Finish).unwrap();
     fake.steps.send(Step::Exit).unwrap();
     settle(&mut ws, |ws| !ws.audio_busy());
+}
+
+#[test]
+fn receipt_age_reads_in_human_units() {
+    use std::time::Duration;
+    for (millis, held, text) in [
+        (120, false, "Received samples just now"),
+        (12_495, false, "Received samples 12 s ago"),
+        (125_000, false, "Received samples 2 min ago"),
+        (7_300_000, true, "Current session received samples 2 h ago"),
+    ] {
+        assert_eq!(
+            super::views::received_text(Duration::from_millis(millis), held),
+            text
+        );
+    }
 }
