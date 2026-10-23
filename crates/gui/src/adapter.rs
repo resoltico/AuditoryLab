@@ -1475,7 +1475,11 @@ fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
         if let Some(window) = licenses.upgrade() {
             match crate::licenses::notices_directory() {
                 Ok(path) => match path.to_str() {
-                    Some(path) => open_web(path),
+                    Some(path) => {
+                        window
+                            .set_notice("Open bundled component notices and license files.".into());
+                        open_web(path);
+                    }
                     None => window.set_notice("Cannot open a non-UTF8 notices path.".into()),
                 },
                 Err(error) => window.set_notice(error.into()),
