@@ -1,16 +1,17 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
 # Source: Materials and Methods, sections Sensory stimulation and Evaluation of induced entrainment.
-schema_version = 2
+schema_version = 3
 duration_seconds = 180.0
 fade_seconds = 0.1
 
 [about]
 title = "40 Hz clicks"
+
+[about.research]
+source = "chan-2022"
 studied_for = "Human study: Alzheimer's disease research"
 summary = "Short clicks 40 times a second, heard as a steady buzz: the sound of a light-and-sound device studied for Alzheimer's disease. In study sessions the device was well tolerated and brain recordings followed the 40 Hz rhythm. A pilot enrolled 15 patients for daily combined light and sound. At 3 months, brain scans from 7 active and 6 control participants showed less enlargement of fluid-filled spaces in the active group; total brain volume did not significantly change. One face-name memory test favored the active group, with only 4 active and 5 control participants analyzed, while standard cognitive tests did not differ significantly. The authors call these results preliminary. The sound is not an established treatment."
-citation = "Chan D, Suk HJ, Jackson BL, Milman NP, Stark D, Klerman EB, et al. (2022). Gamma frequency sensory stimulation in mild probable Alzheimer's dementia patients: results of feasibility and pilot studies. PLoS ONE 17(12): e0278412."
-source_url = "https://doi.org/10.1371/journal.pone.0278412"
 study = "The sound of a 40 Hz light-and-sound stimulation device: a 1 ms rectangular pulse in every 25 ms. In the study's EEG sessions, sound-only, light-only and combined conditions each lasted about 3 minutes for cognitively normal adults. Its pilot trial's home-use arm combined the sound with 40 Hz light for 1 hour a day, against constant light and white noise."
 adaptation = "The source played the clicks from loudspeakers about five feet away at 68 to 78 dB; this recipe sends identical clicks to both ears with a -20 dBFS pulse height, uncalibrated, for 3 minutes, with 0.1 s fades added. Pulse polarity is not stated; these pulses are positive. The light stimulation is not reproduced."
 

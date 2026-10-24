@@ -202,15 +202,11 @@ impl ParameterId {
                 Unit::Milliseconds,
                 "How long each gate stays open; generation rounds it to whole frames at the sample rate.",
             ),
-            Self::Duration => (
-                "Duration",
-                Unit::Seconds,
-                "The length of saved recipes and exported audio; live playback continues until stopped.",
-            ),
+            Self::Duration => ("Duration", Unit::Seconds, "The finite sound duration."),
             Self::Fade => (
                 "Fade",
                 Unit::Seconds,
-                "The raised-cosine fade at each edge of saved recipes and exported audio.",
+                "The raised-cosine fade at each edge of a finite sound.",
             ),
         };
         ParameterDescriptor {

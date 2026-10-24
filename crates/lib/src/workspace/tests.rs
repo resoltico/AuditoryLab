@@ -147,12 +147,13 @@ fn workspace() -> (Workspace, Fakes) {
 }
 
 fn settle(ws: &mut Workspace, until: impl Fn(&Workspace) -> bool) {
-    for _ in 0..5_000 {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
         ws.poll();
         if until(ws) {
             return;
         }
-        std::thread::sleep(std::time::Duration::from_millis(1));
+        std::thread::yield_now();
     }
     panic!("workspace did not settle");
 }
@@ -186,6 +187,7 @@ fn held_file(ws: &mut Workspace, kind: FileKind, outcome: FileOutcome) -> (Sende
 fn export_kind() -> FileKind {
     FileKind::Export {
         title: "export".into(),
+        sound: Draft::new().snapshot().at(SampleRate::DEFAULT).unwrap(),
         path: "unused.wav".into(),
         frames: 1,
         cancel: Cancel::default(),
@@ -308,7 +310,7 @@ fn an_unrelated_file_failure_does_not_cancel_audio_replacement() {
         &mut ws,
         FileKind::Save {
             document,
-            content: Draft::new().recipe(),
+            content: Arc::new(Draft::new().recipe()),
             path: "unused.toml".into(),
         },
         FileOutcome::Saved(Err(Error::new(ErrorKind::Write, "disk full"))),
@@ -338,7 +340,7 @@ fn a_panic_after_publication_cannot_authorize_save_and_close() {
     std::fs::create_dir_all(&base).unwrap();
     let dir = tempfile::tempdir_in(base).unwrap();
     let target = dir.path().join("saved.toml");
-    let (mut ws, _) = workspace();
+    let (mut ws, execution) = controlled();
     let (_, handle) = document(&mut ws, 440.0);
     let _ = handle;
     ws.close();
@@ -349,29 +351,13 @@ fn a_panic_after_publication_cannot_authorize_save_and_close() {
     let Effect::ChoosePath { prompt, .. } = ws.take_effects()[0] else {
         panic!("save panel")
     };
-    // Replace the real save with one that publishes, reports and then panics.
-    let document = ws.editor().document();
-    let content = ws.editor().draft().recipe();
     ws.respond(prompt, Response::Path(Some(target.clone())));
-    let task = ws.file.take().unwrap();
-    // Let the real worker finish so its thread is not left behind.
-    let mut real = task.worker;
-    while !matches!(real.poll(Some), tasks::Polled::Joined { .. }) {
-        std::thread::yield_now();
-    }
-    let worker = Worker::spawn(|tx| {
-        let _ = tx.send(FileOutcome::Saved(Ok(())));
-        panic!("injected failure after publication");
-    });
-    ws.file = Some(FileTask {
-        id: task.id,
-        kind: FileKind::Save {
-            document,
-            content,
-            path: target,
-        },
-        worker,
-    });
+    let worker = execution.file().unwrap();
+    worker.result().unwrap();
+    ws.poll();
+    assert!(ws.file_busy());
+    assert!(target.exists(), "the captured content really published");
+    worker.panic().unwrap();
     settle(&mut ws, |ws| !ws.file_busy());
     assert_eq!(
         ws.take_effects(),
@@ -634,7 +620,6 @@ fn shutdown_joins_both_workers_and_reports_real_failures() {
         FileOutcome::Imported(Err(Error::new(ErrorKind::Unreadable, "unreadable import"))),
     );
     let stopper = std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(20));
         fake.steps.send(Step::Finish).unwrap();
         fake.steps.send(Step::Exit).unwrap();
         release.send(()).unwrap();
@@ -754,12 +739,12 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
     let dir = tempfile::tempdir_in(base).unwrap();
     let path = dir.path().join("same.toml");
     let first_text =
-        "schema_version=2\nduration_seconds=1\nfade_seconds=0\n[about]\ntitle='First'\n";
+        "schema_version=3\nduration_seconds=1\nfade_seconds=0\n[about]\ntitle='First'\n";
     std::fs::write(&path, first_text).unwrap();
     let (mut ws, _) = workspace();
     for text in [
         first_text,
-        "schema_version=2\nduration_seconds=2\nfade_seconds=0\n[about]\ntitle='Second'\n",
+        "schema_version=3\nduration_seconds=2\nfade_seconds=0\n[about]\ntitle='Second'\n",
     ] {
         std::fs::write(&path, text).unwrap();
         ws.import().unwrap();
@@ -886,4 +871,535 @@ fn suggested_file_names_come_from_titles() {
     assert_eq!(super::file_name("...", "toml"), "sound.toml");
     let long = super::file_name(&"x".repeat(500), "wav");
     assert_eq!(long.chars().count(), 84);
+}
+
+#[test]
+fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
+    let (mut ws, _) = workspace();
+    let (_, frequency) = document(&mut ws, 440.0);
+    ws.stage(frequency, "30000").unwrap();
+    let revision = ws.revision();
+    let committed = ws.editor.draft_revision();
+    let input = ws.editor.input_revision();
+    let next_id = ws.next_id;
+    let effects = ws.take_effects();
+    for _ in 0..10 {
+        let actions = ws.action_view();
+        assert!(actions.can_save);
+        assert!(!actions.can_export);
+    }
+    assert_eq!(ws.next_id, next_id);
+    assert_eq!(ws.revision(), revision);
+    assert_eq!(ws.editor.draft_revision(), committed);
+    assert_eq!(ws.editor.input_revision(), input);
+    assert!(ws.take_effects().is_empty());
+    assert!(!ws.audio_busy() && !ws.file_busy());
+    assert!(ws.export().is_err());
+    assert_eq!(ws.editor.staged(frequency.field), Some("30000"));
+    assert_eq!(ws.editor.draft_revision(), committed);
+    drop(effects);
+    let notes = ws
+        .editor
+        .handle(EditingField::Metadata(crate::MetadataField::Summary));
+    ws.stage(notes, &"🎧".repeat(Recipe::MAX_BYTES)).unwrap();
+    assert!(ws.save().is_err());
+    assert!(ws.editor.staged(notes.field).is_some());
+    assert_eq!(ws.editor.draft_revision(), committed);
+}
+
+#[test]
+fn library_dependencies_exclude_editor_and_telemetry_but_include_selection_query_and_rate() {
+    let (mut ws, _) = workspace();
+    let initial = ws.library_view();
+    let evaluations = ws.library_evaluations.get();
+    let (_, field) = document(&mut ws, 440.0);
+    ws.stage(field, "880").unwrap();
+    ws.action_view();
+    ws.editor_view();
+    ws.poll();
+    assert_eq!(ws.library_view(), initial);
+    assert_eq!(ws.library_evaluations.get(), evaluations);
+    ws.select(1);
+    assert_ne!(ws.library_view().title, initial.title);
+    assert_eq!(ws.library_evaluations.get(), evaluations + 1);
+    ws.set_query("no matching result");
+    let empty = ws.library_view();
+    assert!(empty.rows.is_empty() && empty.title.is_empty() && empty.details.is_empty());
+    ws.set_query("");
+    ws.set_export_rate(SampleRate::new(96000).unwrap());
+    assert!(!ws.library_view().rows.is_empty());
+    assert_eq!(ws.library_evaluations.get(), evaluations + 3);
+}
+
+#[test]
+fn reopened_source_navigation_uses_persisted_content_after_original_file_is_removed() {
+    let dir = tempfile::tempdir_in(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
+    )
+    .unwrap();
+    let path = dir.path().join("original.toml");
+    let original = crate::catalog().unwrap().remove(0);
+    crate::save_content(original.recipe(), &path, crate::Replace::Never).unwrap();
+    let loaded = crate::load_file(&path).unwrap();
+    let mut draft = Draft::from_snapshot(&loaded);
+    draft.set_summary("Own notes".into());
+    let derivative = dir.path().join("derivative.toml");
+    crate::save_content(&draft.recipe(), &derivative, crate::Replace::Never).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let reopened = crate::load_file(&derivative).unwrap();
+    let (mut ws, _) = workspace();
+    ws.replace_document(Draft::from_snapshot(&reopened));
+    ws.show_based_on_source();
+    assert_eq!(ws.selected().unwrap().recipe(), original.recipe());
+    assert_eq!(ws.editor.draft().summary(), "Own notes");
+}
+
+#[test]
+fn search_includes_own_notes_and_attributed_persisted_source_context() {
+    let source = crate::catalog().unwrap().remove(0);
+    let citation = source
+        .about()
+        .unwrap()
+        .research
+        .as_ref()
+        .unwrap()
+        .citation
+        .clone()
+        .unwrap();
+    let mut draft = Draft::from_snapshot(&source);
+    draft.set_summary("unique-own-notes-marker 🎧".into());
+    let bytes = draft.to_toml().unwrap();
+    let reopened = crate::load_reader(bytes.as_bytes(), "reopened derivative").unwrap();
+    let mut ws = Workspace::new(vec![reopened], Capabilities::portable()).unwrap();
+    for query in ["unique-own-notes-marker", &citation] {
+        ws.set_query(query);
+        assert_eq!(ws.filtered().len(), 1, "{query}");
+        assert!(ws.library_view().details.contains("Source citation:"));
+        assert!(ws.selected().unwrap().about().unwrap().research.is_none());
+    }
+    ws.set_query("not-present-anywhere-marker");
+    assert!(ws.filtered().is_empty());
+    let mut custom = Draft::new();
+    custom.set_summary("custom-notes-marker".into());
+    ws.add_import(custom.snapshot());
+    ws.set_query("custom-notes-marker");
+    assert_eq!(ws.filtered().len(), 1);
+    ws.set_query("unique-own-notes-marker");
+    assert_eq!(ws.filtered().len(), 1);
+    ws.add_import(crate::RecipeSnapshot::new(
+        crate::Origin::Stream("reopened derivative".into()),
+        custom.recipe(),
+    ));
+    ws.set_query("unique-own-notes-marker");
+    // A reimport under the same origin must remove stale search text.
+    assert_eq!(ws.filtered().len(), 0);
+    let mut direct = Workspace::new(vec![source], Capabilities::portable()).unwrap();
+    direct.set_query(&citation);
+    assert_eq!(direct.filtered().len(), 1);
+}
+
+#[test]
+fn readiness_details_and_export_share_actual_snapshot_realizations_including_errors() {
+    let mut ws = Workspace::new(crate::catalog().unwrap(), Capabilities::portable()).unwrap();
+    let selected = ws.selected().unwrap().clone();
+    let _ = ws.library_view();
+    let count = selected.realization_count();
+    assert_eq!(
+        count, 1,
+        "rows, structure and details share the same actual compile"
+    );
+    for _ in 0..10 {
+        ws.action_view();
+        let _ = ws.library_view();
+        ws.set_hold(true);
+        ws.set_hold(false);
+    }
+    assert_eq!(selected.realization_count(), count);
+    ws.export().unwrap();
+    let prompt = ws.prompt.as_ref().unwrap().id;
+    ws.respond(prompt, Response::Path(None));
+    assert_eq!(selected.realization_count(), count);
+    ws.set_export_rate(SampleRate::new(96000).unwrap());
+    ws.action_view();
+    assert_eq!(selected.realization_count(), count + 1);
+    ws.set_export_rate(SampleRate::DEFAULT);
+    ws.action_view();
+    assert_eq!(selected.realization_count(), count + 1);
+    let mut invalid = Draft::new();
+    invalid.set_duration_seconds(-1.0);
+    let snapshot = invalid.snapshot();
+    let mut bad = Workspace::new(vec![snapshot.clone()], Capabilities::portable()).unwrap();
+    for _ in 0..10 {
+        assert!(!bad.action_view().can_export);
+        let _ = bad.library_view();
+    }
+    assert_eq!(
+        snapshot.realization_count(),
+        1,
+        "failures cache at the real compile path too"
+    );
+    for hz in [96000, 192000, 44100] {
+        snapshot.at(SampleRate::new(hz).unwrap()).unwrap_err();
+    }
+    assert_eq!(snapshot.cached_rates(), 2);
+    let replacement = crate::RecipeSnapshot::new(
+        crate::Origin::File("same.toml".into()),
+        selected.recipe().clone(),
+    );
+    let mut imported = Workspace::new(vec![replacement.clone()], Capabilities::portable()).unwrap();
+    imported.action_view();
+    assert_eq!(replacement.realization_count(), 1);
+    let fresh = crate::RecipeSnapshot::new(
+        crate::Origin::File("same.toml".into()),
+        selected.recipe().clone(),
+    );
+    imported.add_import(fresh.clone());
+    imported.action_view();
+    assert_eq!(
+        fresh.realization_count(),
+        1,
+        "reimports cannot reuse another identity's result"
+    );
+    assert_eq!(replacement.realization_count(), 1);
+}
+
+fn controlled() -> (Workspace, testing::Execution) {
+    testing::workspace(
+        crate::catalog().unwrap(),
+        Capabilities {
+            device_playback: true,
+        },
+    )
+    .unwrap()
+}
+
+fn chosen_path(ws: &mut Workspace, path: &std::path::Path) {
+    let prompt = ws
+        .take_effects()
+        .into_iter()
+        .find_map(|effect| match effect {
+            Effect::ChoosePath { prompt, .. } => Some(prompt),
+            _ => None,
+        })
+        .expect("command opened a path prompt");
+    ws.respond(prompt, Response::Path(Some(path.to_owned())));
+}
+
+#[test]
+fn commanded_save_preserves_dialog_capture_and_owns_the_slot_through_real_join() {
+    let dir = tempfile::tempdir_in(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
+    )
+    .unwrap();
+    let path = dir.path().join("captured.toml");
+    let (mut ws, execution) = controlled();
+    let (_, field) = document(&mut ws, 440.0);
+    ws.save().unwrap();
+    // Simulate independently changed editor content before the delayed panel reply.
+    ws.editor.commit_field(field, "880").unwrap().unwrap();
+    chosen_path(&mut ws, &path);
+    let save = execution.file().unwrap();
+    assert_eq!(save.path(), path);
+    assert_eq!(
+        save.captured_recipe().unwrap().stimulus.components[0].carrier,
+        crate::Carrier::Tone {
+            frequency_hz: 440.0
+        }
+    );
+    assert_eq!(ws.import(), Err(Refusal::FileBusy));
+    save.result().unwrap();
+    ws.poll();
+    assert!(ws.file_busy(), "result is not exit");
+    assert!(ws.editor().dirty());
+    assert_eq!(
+        crate::load_file(&path).unwrap().stimulus().components[0].carrier,
+        crate::Carrier::Tone {
+            frequency_hz: 440.0
+        }
+    );
+    ws.commit_field(field, "990").unwrap();
+    save.exit().unwrap();
+    settle(&mut ws, |w| !w.file_busy());
+    assert!(
+        ws.editor().dirty(),
+        "later edits are not the published baseline"
+    );
+}
+
+#[test]
+fn commanded_import_launch_missing_result_and_panic_are_visible_without_reviving_work() {
+    let dir = tempfile::tempdir_in(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
+    )
+    .unwrap();
+    let path = dir.path().join("import.toml");
+    crate::save_content(&Draft::new().recipe(), &path, crate::Replace::Never).unwrap();
+    let (mut ws, execution) = controlled();
+    let before = ws.catalog().len();
+    ws.import().unwrap();
+    chosen_path(&mut ws, &path);
+    let import = execution.file().unwrap();
+    import.result().unwrap();
+    ws.poll();
+    assert!(ws.file_busy());
+    assert_eq!(ws.catalog().len(), before);
+    import.exit().unwrap();
+    settle(&mut ws, |w| !w.file_busy());
+    assert_eq!(ws.catalog().len(), before + 1);
+    for panic in [false, true] {
+        ws.import().unwrap();
+        chosen_path(&mut ws, &path);
+        let import = execution.file().unwrap();
+        if panic {
+            import.panic().unwrap();
+        } else {
+            import.exit().unwrap();
+        }
+        settle(&mut ws, |w| !w.file_busy());
+        assert!(ws.action_view().file_status.contains(if panic {
+            presentation::WORKER_FAILED
+        } else {
+            presentation::WORKER_ENDED_WITHOUT_RESULT
+        }));
+        assert_eq!(ws.catalog().len(), before + 1);
+    }
+    execution.fail_file_launch();
+    ws.import().unwrap();
+    chosen_path(&mut ws, &path);
+    ws.poll();
+    assert!(!ws.file_busy());
+    assert!(ws.action_view().file_status.contains("Cannot start worker"));
+}
+
+#[test]
+fn commanded_export_cancellation_and_unrelated_file_failure_preserve_audio_dependencies() {
+    let dir = tempfile::tempdir_in(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
+    )
+    .unwrap();
+    let path = dir.path().join("cancelled.wav");
+    let (mut ws, execution) = controlled();
+    ws.export().unwrap();
+    assert_eq!(ws.play(), Err(Refusal::PromptOpen));
+    chosen_path(&mut ws, &path);
+    let export = execution.file().unwrap();
+    assert_eq!(ws.play(), Err(Refusal::Exporting));
+    ws.cancel_export().unwrap();
+    assert!(export.cancelled());
+    export.result().unwrap();
+    ws.poll();
+    assert!(ws.file_busy());
+    export.exit().unwrap();
+    settle(&mut ws, |w| !w.file_busy());
+    assert!(!path.exists());
+    ws.import().unwrap();
+    chosen_path(&mut ws, &path);
+    let import = execution.file().unwrap();
+    ws.play().unwrap();
+    let first = execution.audio().unwrap();
+    ws.play().unwrap();
+    assert!(ws.action_pending());
+    import.fail().unwrap();
+    import.exit().unwrap();
+    settle(&mut ws, |w| !w.file_busy());
+    first.result().unwrap();
+    first.exit().unwrap();
+    settle(&mut ws, |w| !w.action_pending());
+    let replacement = execution.audio().unwrap();
+    assert!(
+        ws.audio_busy(),
+        "unrelated import failure cannot block replacement audio"
+    );
+    replacement.result().unwrap();
+    replacement.exit().unwrap();
+    settle(&mut ws, |w| !w.audio_busy());
+    ws.shutdown().unwrap();
+}
+
+#[test]
+fn commanded_launch_failure_blocks_dependent_close_and_save_success_waits_for_join() {
+    let (mut ws, execution) = controlled();
+    execution.fail_audio_launch();
+    ws.play().unwrap();
+    ws.close();
+    ws.poll();
+    assert_eq!(
+        ws.take_effects(),
+        [Effect::CloseResolved { approved: false }]
+    );
+    assert!(
+        ws.action_view()
+            .audio_status
+            .contains("Cannot start worker")
+    );
+    let dir = tempfile::tempdir_in(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
+    )
+    .unwrap();
+    let path = dir.path().join("close.toml");
+    document(&mut ws, 440.0);
+    ws.close();
+    let Effect::AskUnsaved(prompt) = ws.take_effects()[0] else {
+        panic!("unsaved prompt");
+    };
+    ws.respond(prompt, Response::Save);
+    chosen_path(&mut ws, &path);
+    let save = execution.file().unwrap();
+    save.result().unwrap();
+    ws.poll();
+    assert!(
+        ws.take_effects().is_empty(),
+        "publication alone cannot authorize close"
+    );
+    save.exit().unwrap();
+    settle(&mut ws, |w| !w.file_busy());
+    assert_eq!(
+        ws.take_effects(),
+        [Effect::CloseResolved { approved: true }]
+    );
+}
+
+#[test]
+fn search_retains_original_custom_notes_and_reimported_source_metadata_invalidates_views() {
+    let mut original = Draft::new();
+    original.set_summary("original-custom-note-marker".into());
+    let mut edited = Draft::from_snapshot(&original.snapshot());
+    edited.set_summary("current-own-notes-marker".into());
+    let reopened = crate::load_reader(edited.to_toml().unwrap().as_bytes(), "derivative").unwrap();
+    let recipe = reopened.recipe().clone();
+    let first = RecipeSnapshot::new(crate::Origin::File("same.toml".into()), recipe.clone());
+    let mut ws = Workspace::new(vec![first.clone()], Capabilities::portable()).unwrap();
+    ws.set_query("original-custom-note-marker");
+    assert_eq!(ws.filtered().len(), 1);
+    assert!(
+        ws.library_view()
+            .details
+            .contains("Source notes: original-custom-note-marker")
+    );
+    let initial_compilations = first.realization_count();
+    let mut changed = recipe;
+    changed
+        .source
+        .as_mut()
+        .unwrap()
+        .about
+        .as_mut()
+        .unwrap()
+        .summary = Some("reimport-source-marker".into());
+    let replacement = RecipeSnapshot::new(crate::Origin::File("same.toml".into()), changed);
+    ws.add_import(replacement.clone());
+    ws.set_query("original-custom-note-marker");
+    assert!(ws.library_view().rows.is_empty());
+    ws.set_query("reimport-source-marker");
+    assert_eq!(ws.filtered().len(), 1);
+    assert!(
+        ws.library_view()
+            .details
+            .contains("Source notes: reimport-source-marker")
+    );
+    ws.action_view();
+    assert_eq!(replacement.realization_count(), 1);
+    assert_eq!(first.realization_count(), initial_compilations);
+}
+
+#[test]
+fn copy_availability_and_execution_share_the_component_limit() {
+    let mut recipe = Draft::new().recipe();
+    recipe.stimulus.components =
+        vec![crate::default_component(CarrierKind::Tone); Stimulus::MAX_COMPONENTS + 1];
+    let snapshot = RecipeSnapshot::new(crate::Origin::Stream("too many".into()), recipe);
+    let mut ws = Workspace::new(vec![snapshot], Capabilities::portable()).unwrap();
+    let document = ws.editor().document();
+    assert!(!ws.action_view().can_copy);
+    ws.copy_selected();
+    assert_eq!(ws.editor().document(), document);
+    assert!(
+        ws.action_view()
+            .file_status
+            .contains("Edit the recipe file to reduce them")
+    );
+    assert!(ws.take_effects().is_empty());
+}
+
+#[test]
+fn derivation_preflights_the_actual_retained_anchor_before_touching_dirty_work() {
+    let mut source = Draft::new().recipe();
+    source.stimulus.components.push(crate::Component {
+        carrier: crate::Carrier::Tone {
+            frequency_hz: f64::NAN,
+        },
+        ..crate::default_component(CarrierKind::Tone)
+    });
+    let snapshot = RecipeSnapshot::new(
+        crate::Origin::Stream("nonfinite source".into()),
+        source.clone(),
+    );
+    let mut ws = Workspace::new(vec![snapshot], Capabilities::portable()).unwrap();
+    let doc = ws.editor().document();
+    ws.set_view(View::Workbench);
+    ws.add_component(doc, CarrierKind::Tone).unwrap();
+    ws.set_view(View::Library);
+    let before = ws.editor().draft().recipe();
+    let actions = ws.action_view();
+    assert!(!actions.can_copy);
+    assert!(
+        actions
+            .copy_reason
+            .contains("original source component 1 Tone frequency")
+    );
+    ws.copy_selected();
+    assert_eq!(ws.editor().document(), doc);
+    assert_eq!(ws.editor().draft().recipe(), before);
+    assert!(ws.take_effects().is_empty());
+    // An existing derivative retains its anchor, not its current numbers.
+    let mut derivative = Draft::new().recipe();
+    derivative.source = Some(crate::Source {
+        stimulus: source.stimulus.clone(),
+        about: None,
+    });
+    let bad_anchor = RecipeSnapshot::new(
+        crate::Origin::Stream("bad anchor".into()),
+        derivative.clone(),
+    );
+    assert!(Workspace::copy_content_admission(&bad_anchor).is_err());
+    derivative.source.as_mut().unwrap().stimulus.components[0].carrier = crate::Carrier::Tone {
+        frequency_hz: 440.0,
+    };
+    derivative.stimulus.duration_seconds = -1.0;
+    let finite_invalid =
+        RecipeSnapshot::new(crate::Origin::Stream("finite invalid".into()), derivative);
+    assert!(Workspace::copy_content_admission(&finite_invalid).is_ok());
+    let mut repairable = finite_invalid.recipe().clone();
+    repairable.stimulus.components = source.stimulus.components;
+    let repairable = RecipeSnapshot::new(
+        crate::Origin::Stream("repairable derivative".into()),
+        repairable,
+    );
+    assert!(
+        Workspace::copy_content_admission(&repairable).is_ok(),
+        "finite retained anchor permits repairing nonfinite current values"
+    );
+}
+
+#[test]
+fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scroll() {
+    let (mut ws, _) = workspace();
+    ws.set_view(View::Workbench);
+    let notes = ws
+        .editor
+        .handle(EditingField::Metadata(crate::MetadataField::Summary));
+    ws.stage(notes, &"Z".repeat(66000)).unwrap();
+    let actions = ws.action_view();
+    assert!(!actions.can_save);
+    assert!(actions.operation_summary.contains("65536"));
+    ws.file_status = "Exported 100 frames at 48000 Hz".into();
+    let actions = ws.action_view();
+    assert!(actions.operation_summary.contains("65536"));
+    assert!(actions.operation_outcome.starts_with("Exported 100"));
+    assert!(actions.operation_summary.chars().count() <= 181);
+    ws.editor.restore(notes).unwrap();
+    ws.file_status = format!("Export failed: {}", "deep/path/".repeat(50));
+    let actions = ws.action_view();
+    assert!(actions.operation_summary.starts_with("Export failed"));
+    assert!(actions.operation_details.len() > actions.operation_summary.len());
 }

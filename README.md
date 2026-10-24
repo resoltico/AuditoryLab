@@ -86,3 +86,5 @@ The `auditorylab` library builds without an audio device stack by default; its `
 Copyright © 2026 Ervins Strauhmanis. Each download contains product-specific dependency notices.
 
 Software and documentation use MPL-2.0; third-party components retain their own terms. Owner artwork and drawing sources have separate proprietary terms in [LICENSE](LICENSE), with unchanged artwork permitted in original or modified Auditory Lab distributions. Editable sources and attribution are in the [artwork guide](artwork/README.md).
+
+Recipes use schema 3: current notes are separate from research context, and edited derivatives retain one original source sound with its attribution through save/reopen. Prior schema versions are rejected. See the [recipe format](docs/recipes.md) and [architecture](docs/architecture.md).

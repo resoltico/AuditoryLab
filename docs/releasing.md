@@ -56,3 +56,5 @@ The publishing job downloads the verified bytes and rechecks their checksums. It
 If publication stops at a draft, inspect the failed step and its logs and compare every uploaded digest and source commit. Resolve recovery of that draft explicitly; a failed job alone does not establish whether server-side publication occurred. Changed published bytes need a new version.
 
 To verify a public download, compare its `SHA256SUMS` entry and GitHub asset digest, verify its attestation against the release workflow/source commit, then inspect the extracted binary's `--version` and `SOURCE.txt`.
+
+Before native distribution, run `cargo xtask verify-vendor` and the controlled callback procedure in [Contributing](../CONTRIBUTING.md#controlled-callback-qualification) on the intended hardware. Normal CI exercises deterministic synthesis/allocation/lifecycle/publication tests; a controlled timing failure must be reported with its rate/buffer/workload and cannot be turned into a universal playback blacklist. Source changes require new package inspection and native qualification; retained archives from an earlier tree do not qualify the redesign.

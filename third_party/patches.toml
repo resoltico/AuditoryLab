@@ -1,0 +1,35 @@
+[[patch]]
+name = "accesskit_unix"
+version = "0.22.1"
+url = "https://static.crates.io/crates/accesskit_unix/accesskit_unix-0.22.1.crate"
+sha256 = "03e156ed3802e35eefe894ef2671bc6c889303d8a7e110b5e1b48f504b91362f"
+
+[[patch]]
+name = "i-slint-core"
+version = "1.18.1"
+url = "https://static.crates.io/crates/i-slint-core/i-slint-core-1.18.1.crate"
+sha256 = "ed2ea15059d70bc31b1a8b1eb4c34f2c5df04cb7e53f36179b43c0261231d646"
+
+[[patch]]
+name = "i-slint-compiler"
+version = "1.18.1"
+url = "https://static.crates.io/crates/i-slint-compiler/i-slint-compiler-1.18.1.crate"
+sha256 = "f55d48ebef05e2bf09ba5a1fc67bcb11033b9e12a2a50ed3105c7d25e2b539d0"
+
+[[patch]]
+name = "i-slint-backend-winit"
+version = "1.18.1"
+url = "https://static.crates.io/crates/i-slint-backend-winit/i-slint-backend-winit-1.18.1.crate"
+sha256 = "dae4fcf1b19e9cb109984d2af87d2b9485388c619265bff71dd523133888bee2"
+
+[[patch]]
+name = "parley"
+version = "0.11.1"
+url = "https://static.crates.io/crates/parley/parley-0.11.1.crate"
+sha256 = "22d2ff88bd3f7d68d1d9b09c7e6209f9a8e8c05088295140a2bcf2e9b17038c5"
+
+[[patch]]
+name = "winit"
+version = "0.30.13"
+url = "https://static.crates.io/crates/winit/winit-0.30.13.crate"
+sha256 = "a6755fa58a9f8350bd1e472d4c3fcc25f824ec358933bba33306d0b63df5978d"

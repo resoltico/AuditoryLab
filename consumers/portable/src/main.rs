@@ -34,8 +34,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .committed_analysis(rate)
         .target()
         .ok_or("the edited recipe does not compile")?;
-    let sound = snapshot.at(rate)?;
-    let path = std::env::temp_dir().join(format!("auditorylab-portable-{}.wav", std::process::id()));
+    let edited = editor.draft().snapshot();
+    let sound = edited.at(rate)?;
+    if sound.snapshot().stimulus() == snapshot.stimulus() {
+        return Err("export did not capture the edited draft".into());
+    }
+    let path =
+        std::env::temp_dir().join(format!("auditorylab-portable-{}.wav", std::process::id()));
     let exported = auditorylab::export(
         &sound,
         &path,
@@ -43,9 +48,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &Cancel::default(),
         &Progress::default(),
     );
+    let bytes = std::fs::read(&path);
     let removed = std::fs::remove_file(&path);
     let exported = exported?;
     removed?;
+    let bytes = bytes?;
+    // Inspect the actual delivered samples, independently of the export call.
+    let data = bytes
+        .windows(4)
+        .position(|chunk| chunk == b"data")
+        .ok_or("WAV data missing")?
+        + 8;
+    for frame in 0..512_u64 {
+        let start = data + usize::try_from(frame)? * 8;
+        for (channel, expected) in sound.signal().frame(frame).iter().enumerate() {
+            let offset = start + channel * 4;
+            let actual = f32::from_le_bytes(bytes[offset..offset + 4].try_into()?);
+            if actual != *expected as f32 {
+                return Err("exported samples differ from edited signal".into());
+            }
+        }
+    }
 
     // Live generation without a device.
     let mut generator = LiveGenerator::new(target);

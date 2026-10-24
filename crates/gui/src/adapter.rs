@@ -9,19 +9,26 @@
 //! component of one document. A binding is never reused, so a callback that
 //! arrives after its document was replaced still names the old document and
 //! the workspace refuses it.
+mod actions;
+mod auxiliary;
+mod editing;
+mod library;
 use crate::generated::{
     AboutWindow, AudioControlsWindow, ComponentRow, DetailsWindow, MainWindow, MetadataKey,
     MetadataRow, ModelLane, MonitorWindow, ParameterKey, ParameterRow,
 };
 use crate::{details_parent, motion, scope, typography};
+use actions::install_actions;
 use auditorylab::workspace::{
     ComponentView, EditorView, Effect, MetadataView, MotionPreference, ParameterView, PathPurpose,
     PromptId, Response, View, Workspace,
 };
 use auditorylab::{
     CarrierKind, ComponentId, DocumentId, Ears, EditingField, FieldHandle, MetadataField,
-    ModelView, ModulationKind, ParameterId, PlaybackPhase, WaveformCapture, WaveformScale,
+    ModelView, ModulationKind, ParameterId, PlaybackPhase, WaveformCapture,
 };
+use auxiliary::{install_auxiliary, install_monitor};
+use editing::install_editing;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{
     cell::{Cell, RefCell},
@@ -31,13 +38,7 @@ use std::{
     time::Duration,
 };
 
-/// Waveform spans offered by the monitor, in milliseconds.
-const SPANS_MS: [u32; 4] = [2, 10, 40, 100];
-/// Waveform scales offered by the monitor, with their labels.
-const SCALES: [(WaveformScale, &str); 2] = [
-    (WaveformScale::Fixed, "Fixed ±1"),
-    (WaveformScale::Fit, "Fit signal"),
-];
+use auditorylab::{MONITOR_SCALES as SCALES, MONITOR_SPANS_MS as SPANS_MS};
 /// Tick intervals while work is running and while idle.
 const ACTIVE_TICK: Duration = Duration::from_millis(50);
 const IDLE_TICK: Duration = Duration::from_millis(200);
@@ -121,6 +122,7 @@ impl Bindings {
     fn allocate(&mut self, binding: Binding) -> i32 {
         // Exhaustion leaves rows unbound; their callbacks are then refused.
         let Some(next) = self.next.checked_add(1) else {
+            self.map.clear();
             return -1;
         };
         self.next = next;
@@ -153,6 +155,7 @@ pub(crate) struct SlintAdapter {
     components: Rc<VecModel<ComponentRow>>,
     entries: RefCell<Vec<ComponentEntry>>,
     catalog: Rc<VecModel<slint::StandardListViewItem>>,
+    library: RefCell<Option<Arc<auditorylab::workspace::LibraryView>>>,
     lanes: Rc<VecModel<ModelLane>>,
     bindings: RefCell<Bindings>,
     document: Cell<Option<(DocumentId, i32)>>,
@@ -162,6 +165,12 @@ pub(crate) struct SlintAdapter {
     updating: Cell<bool>,
     dialog_open: Cell<bool>,
     monitor_window_visible: Cell<bool>,
+    monitor_activation_pending: Cell<bool>,
+    monitor_requested: Cell<Option<bool>>,
+    main_ready: Cell<bool>,
+    restore_main_after_monitor: Cell<bool>,
+    monitor_error: RefCell<String>,
+    controls_error: RefCell<String>,
     audio_controls_visible: Cell<bool>,
     preferences: RefCell<Option<Preferences>>,
     timer: slint::Timer,
@@ -178,6 +187,7 @@ pub(crate) struct SlintAdapter {
 pub(crate) struct TestCounts {
     pub(crate) document_projections: Cell<u64>,
     pub(crate) path_builds: Cell<u64>,
+    pub(crate) library_projections: Cell<u64>,
 }
 
 impl SlintAdapter {
@@ -202,6 +212,7 @@ impl SlintAdapter {
             components: Rc::new(VecModel::default()),
             entries: RefCell::new(Vec::new()),
             catalog: Rc::new(VecModel::default()),
+            library: RefCell::new(None),
             lanes: Rc::new(VecModel::default()),
             bindings: RefCell::new(Bindings::default()),
             document: Cell::new(None),
@@ -211,6 +222,12 @@ impl SlintAdapter {
             updating: Cell::new(false),
             dialog_open: Cell::new(false),
             monitor_window_visible: Cell::new(false),
+            monitor_activation_pending: Cell::new(false),
+            monitor_requested: Cell::new(None),
+            main_ready: Cell::new(false),
+            restore_main_after_monitor: Cell::new(false),
+            monitor_error: RefCell::new(String::new()),
+            controls_error: RefCell::new(String::new()),
             audio_controls_visible: Cell::new(false),
             preferences: RefCell::new(preferences),
             timer: slint::Timer::default(),
@@ -221,6 +238,11 @@ impl SlintAdapter {
             counts: TestCounts::default(),
         });
         set_choices(ui, &windows.monitor);
+        ui.set_window_index(index_of(&SPANS_MS, &auditorylab::DEFAULT_MONITOR_SPAN_MS));
+        ui.set_scale_index(index_of(
+            &SCALES.map(|(scale, _)| scale),
+            &auditorylab::DEFAULT_MONITOR_SCALE,
+        ));
         ui.set_components(ModelRc::from(adapter.components.clone()));
         ui.set_catalog(ModelRc::from(adapter.catalog.clone()));
         ui.set_model_lanes(ModelRc::from(adapter.lanes.clone()));
@@ -258,6 +280,98 @@ impl SlintAdapter {
 
     /// Run `command` on the workspace, then perform its effects and project.
     /// Callbacks raised while projecting are not commands and are ignored.
+    /// Show main and wait for its first native redraw, not a pre-resume timer.
+    pub(crate) fn show_main(self: &Rc<Self>) -> Result<(), slint::PlatformError> {
+        if let Some(main) = self.main.upgrade() {
+            use slint::winit_030::{EventResult, WinitWindowAccessor, winit};
+            let weak = Rc::downgrade(self);
+            main.window().on_winit_window_event(move |_, event| {
+                if let Some(adapter) = weak.upgrade() {
+                    adapter.main_window_event(event);
+                }
+                EventResult::Propagate
+            });
+            if let Some(monitor) = self.monitor.upgrade() {
+                let weak = Rc::downgrade(self);
+                monitor.window().on_winit_window_event(move |_, event| {
+                    if matches!(event, winit::event::WindowEvent::RedrawRequested)
+                        && let Some(adapter) = weak.upgrade()
+                        && (adapter.monitor_activation_pending.get()
+                            || adapter.restore_main_after_monitor.get())
+                    {
+                        adapter.monitor_frame_ready();
+                    }
+                    EventResult::Propagate
+                });
+            }
+            main.show()?;
+        }
+        Ok(())
+    }
+
+    // Winit exposes one filter per window. Keep focus suspension and the first
+    // frame gate together so installing either cannot replace the other.
+    pub(crate) fn main_window_event(
+        self: &Rc<Self>,
+        event: &slint::winit_030::winit::event::WindowEvent,
+    ) {
+        use slint::winit_030::winit::event::WindowEvent;
+        match event {
+            WindowEvent::Focused(focused) => {
+                if let Some(main) = self.main.upgrade() {
+                    main.set_edits_suspended(!focused);
+                }
+            }
+            WindowEvent::RedrawRequested if !self.main_ready.get() => self.main_frame_ready(),
+            _ => {}
+        }
+    }
+
+    /// Reconcile after the first redraw has completed; offscreen hosts call
+    /// this after their first software frame. No native focus policy is mocked.
+    pub(crate) fn main_frame_ready(self: &Rc<Self>) {
+        let weak = Rc::downgrade(self);
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            if let Some(adapter) = weak.upgrade()
+                && !adapter.main_ready.replace(true)
+            {
+                adapter.project();
+            }
+        });
+    }
+
+    /// Native backends may reveal a window on its first frame; complete
+    /// activation/restoration only after that frame, not immediately after show.
+    fn monitor_frame_ready(self: &Rc<Self>) {
+        let weak = Rc::downgrade(self);
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            let Some(adapter) = weak.upgrade() else {
+                return;
+            };
+            let (Some(main), Some(monitor)) = (adapter.main.upgrade(), adapter.monitor.upgrade())
+            else {
+                return;
+            };
+            if !main.get_monitor_open()
+                || main.get_drawer_fits()
+                || !adapter.monitor_window_visible.get()
+            {
+                return;
+            }
+            use slint::winit_030::WinitWindowAccessor;
+            monitor.invoke_sync_controls();
+            if adapter.monitor_activation_pending.replace(false) {
+                adapter.restore_main_after_monitor.set(false);
+                monitor
+                    .window()
+                    .with_winit_window(|native| native.focus_window());
+            } else if adapter.restore_main_after_monitor.replace(false) {
+                main.window()
+                    .with_winit_window(|native| native.focus_window());
+            }
+        });
+    }
+
     pub(crate) fn command<R>(
         self: &Rc<Self>,
         command: impl FnOnce(&mut Workspace) -> R,
@@ -413,6 +527,16 @@ impl SlintAdapter {
             .map_or(Ok(()), Workspace::shutdown)
     }
 
+    #[cfg(test)]
+    pub(crate) fn monitor_presented(&self) -> bool {
+        self.monitor_window_visible.get()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn binding_count(&self) -> usize {
+        self.bindings.borrow().map.len()
+    }
+
     fn resolve(&self, binding: i32) -> Option<Binding> {
         self.bindings.borrow().get(binding)
     }
@@ -559,33 +683,20 @@ impl SlintAdapter {
         ui.set_based_on(editor.based_on.as_str().into());
         ui.set_retained_warning(editor.retained_warning.as_str().into());
 
-        sync_rows(
-            &self.catalog,
-            library
-                .rows
-                .iter()
-                .map(|label| slint::StandardListViewItem::from(label.as_str()))
-                .collect(),
-        );
-        ui.set_has_results(!library.rows.is_empty());
-        ui.set_selected(
-            library
-                .selected
-                .and_then(|i| i32::try_from(i).ok())
-                .unwrap_or(-1),
-        );
-        ui.set_sound_title(library.title.as_str().into());
-        ui.set_structure(library.structure.as_str().into());
-        ui.set_studied(library.studied.as_str().into());
-        ui.set_recipe_timing(library.timing.as_str().into());
-        ui.set_summary(library.summary.as_str().into());
-        ui.set_details(library.details.as_str().into());
-        ui.set_can_open_study(library.study_url.is_some());
+        self.project_library(ui, library);
         if ui.get_query() != self.query() {
             ui.set_query(self.query().into());
         }
 
         ui.set_can_play(actions.can_play);
+        ui.set_library_play_action(actions.library_play_label.into());
+        ui.set_can_import(actions.can_import);
+        ui.set_can_new(actions.can_new);
+        ui.set_can_copy(actions.can_copy);
+        ui.set_copy_reason(actions.copy_reason.as_str().into());
+        ui.set_operation_summary(actions.operation_summary.as_str().into());
+        ui.set_operation_outcome(actions.operation_outcome.as_str().into());
+        ui.set_can_preview(actions.can_preview);
         ui.set_play_reason(actions.play_reason.as_str().into());
         ui.set_can_save(actions.can_save);
         ui.set_save_reason(actions.save_reason.as_str().into());
@@ -596,21 +707,22 @@ impl SlintAdapter {
         ui.set_add_reason(actions.add_component_reason.as_str().into());
         ui.set_removed_component(actions.removed_component.as_str().into());
         ui.set_can_restore_component(actions.can_restore_component);
-        ui.set_busy(actions.file_busy);
         ui.set_playback_busy(actions.playback_busy);
         ui.set_exporting(actions.exporting);
         ui.set_transport_enabled(actions.transport_enabled);
         ui.set_transport_action(actions.transport_label.as_str().into());
         ui.set_play_target(actions.play_target.as_str().into());
         ui.set_file_activity(actions.file_activity.as_str().into());
-        ui.set_status(
-            [actions.file_status.as_str(), actions.audio_status.as_str()]
-                .into_iter()
-                .filter(|s| !s.is_empty())
-                .collect::<Vec<_>>()
-                .join("\n")
-                .into(),
-        );
+        ui.set_status(actions.operation_details.into());
+        if self.bindings.borrow().next == i32::MAX {
+            self.bindings.borrow_mut().map.clear();
+            ui.set_can_edit(false);
+            ui.set_status(
+                "Editor binding identities exhausted. Save your sound and restart Auditory Lab."
+                    .into(),
+            );
+            ui.set_edits_suspended(true);
+        }
         if let Some(index) = Workspace::export_rates().iter().position(|r| *r == rate)
             && let Ok(index) = i32::try_from(index)
         {
@@ -638,6 +750,7 @@ impl SlintAdapter {
             // Rebinding: no automatic blur commit may reach the new document.
             let suspended = ui.get_edits_suspended();
             ui.set_edits_suspended(true);
+            self.bindings.borrow_mut().map.clear();
             let binding = self
                 .bindings
                 .borrow_mut()
@@ -670,7 +783,8 @@ impl SlintAdapter {
             if editor.components.iter().any(|c| c.id == entries[index].id) {
                 index += 1;
             } else {
-                entries.remove(index);
+                let retired = entries.remove(index);
+                self.bindings.borrow_mut().map.remove(&retired.binding);
                 self.components.remove(index);
             }
         }
@@ -822,26 +936,74 @@ impl SlintAdapter {
     /// Show the focused monitor window when the drawer does not fit, and the
     /// separate Stop window while a dialog may block the main window.
     fn sync_auxiliary(&self, ui: &MainWindow) {
-        let focused_monitor = ui.get_monitor_open() && !ui.get_drawer_fits();
+        if !self.main_ready.get() || !ui.window().is_visible() {
+            return;
+        }
+        let requested = ui.get_monitor_open();
+        if self.monitor_requested.replace(Some(requested)) != Some(requested) {
+            self.monitor_activation_pending.set(requested);
+        }
+        let focused_monitor = requested && !ui.get_drawer_fits();
         if let Some(window) = self.monitor.upgrade() {
             window.set_data(ui.get_monitor_data());
-            if focused_monitor != self.monitor_window_visible.replace(focused_monitor) {
-                if focused_monitor {
-                    let _ = window.show();
-                } else {
-                    use slint::winit_030::{WinitWindowAccessor, winit};
-                    // Hiding can transfer native focus; sample ownership first.
-                    let was_focused = window
+            // ComboBox initialization may write its local index; reapply the
+            // authoritative projection without replacing widgets or firing actions.
+            window.invoke_sync_controls();
+            if focused_monitor
+                && (!self.monitor_window_visible.get() || !window.window().is_visible())
+            {
+                use slint::winit_030::{WinitWindowAccessor, winit};
+                let preserve_main = !self.monitor_activation_pending.get()
+                    && ui
                         .window()
                         .with_winit_window(winit::window::Window::has_focus)
                         .unwrap_or(false);
-                    if let Some(details) = self.details.upgrade()
-                        && details.window().is_visible()
-                    {
-                        details_parent::bind(&details, ui);
+                match window.show() {
+                    Ok(()) => {
+                        window.invoke_sync_controls();
+                        self.monitor_window_visible.set(true);
+                        self.monitor_error.borrow_mut().clear();
+                        self.restore_main_after_monitor.set(preserve_main);
                     }
-                    hide_monitor_window(ui, &window, was_focused);
+                    Err(error) => {
+                        self.monitor_window_visible.set(false);
+                        *self.monitor_error.borrow_mut() =
+                            format!("Cannot show Output monitor: {error}");
+                    }
                 }
+            } else if !focused_monitor
+                && (self.monitor_window_visible.get() || window.window().is_visible())
+            {
+                use slint::winit_030::{WinitWindowAccessor, winit};
+                let was_focused = window
+                    .window()
+                    .with_winit_window(winit::window::Window::has_focus)
+                    .unwrap_or(false);
+                if let Some(details) = self.details.upgrade()
+                    && details.window().is_visible()
+                {
+                    details_parent::bind(&details, ui);
+                }
+                match hide_monitor_window(ui, &window, was_focused) {
+                    Ok(()) => {
+                        self.monitor_window_visible.set(false);
+                        self.monitor_error.borrow_mut().clear();
+                    }
+                    Err(error) => {
+                        *self.monitor_error.borrow_mut() =
+                            format!("Cannot hide Output monitor: {error}");
+                    }
+                }
+            }
+            if !focused_monitor
+                && !self.monitor_window_visible.get()
+                && !window.window().is_visible()
+            {
+                self.monitor_error.borrow_mut().clear();
+            }
+            if !focused_monitor {
+                self.monitor_activation_pending.set(false);
+                self.restore_main_after_monitor.set(false);
             }
         }
         let audio = ui.get_playback_busy();
@@ -850,14 +1012,35 @@ impl SlintAdapter {
             window.set_source(ui.get_player_title());
             window.set_elapsed(ui.get_elapsed());
             window.set_active(audio);
-            if controls != self.audio_controls_visible.replace(controls) {
-                if controls {
-                    let _ = window.show();
+            if controls != self.audio_controls_visible.get() {
+                let result = if controls {
+                    window.show()
                 } else {
-                    let _ = window.hide();
+                    window.hide()
+                };
+                match result {
+                    Ok(()) => {
+                        self.audio_controls_visible.set(controls);
+                        self.controls_error.borrow_mut().clear();
+                    }
+                    Err(error) => {
+                        *self.controls_error.borrow_mut() =
+                            format!("Cannot present Audio controls: {error}");
+                    }
                 }
             }
         }
+        ui.set_auxiliary_error(
+            [
+                self.monitor_error.borrow().as_str(),
+                self.controls_error.borrow().as_str(),
+            ]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .into(),
+        );
     }
 
     fn show_diagnostics<C: ComponentHandle + 'static>(&self, parent: &C) {
@@ -875,12 +1058,13 @@ impl SlintAdapter {
         window.set_can_refresh(true);
         window.set_content(
             format!(
-                "{}\n{}\n{}\n{}\n{}\n{}\nTypography: {}\n{}",
+                "{}\n{}\n{}\n{}\n{}\n{}\n{}\nTypography: {}\n{}",
                 ui.get_player_title(),
                 ui.get_generated_details(),
                 ui.get_monitor_state(),
                 ui.get_device(),
                 ui.get_status(),
+                ui.get_auxiliary_error(),
                 ui.get_motion_reason(),
                 ui.get_typography_origin(),
                 ui.get_model_caption()
@@ -991,6 +1175,12 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     ui.set_scale_choices(scales.clone());
     monitor.set_span_choices(spans);
     monitor.set_scale_choices(scales);
+    ui.set_library_play_labels(strings(
+        auditorylab::LIBRARY_PLAY_LABELS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect(),
+    ));
     ui.set_transport_labels(strings(
         auditorylab::TRANSPORT_LABELS
             .iter()
@@ -1114,250 +1304,6 @@ fn sync_rows<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) 
 
 // ---- callback installation ----
 
-fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
-    let weak = Rc::downgrade(adapter);
-    let with = move |f: &dyn Fn(&Rc<SlintAdapter>)| {
-        if let Some(adapter) = weak.upgrade() {
-            f(&adapter);
-        }
-    };
-    let w = with.clone();
-    ui.on_stage_parameter(move |binding, key, text| {
-        w(&|a| {
-            if let Some(handle) = a.parameter_handle(binding, key) {
-                a.command(|w| w.stage(handle, &text));
-            }
-        });
-    });
-    let w = with.clone();
-    ui.on_commit_parameter(move |binding, key, text| {
-        w(&|a| {
-            if let Some(handle) = a.parameter_handle(binding, key) {
-                a.command(|w| w.commit_field(handle, &text));
-            }
-        });
-    });
-    let w = with.clone();
-    ui.on_restore_parameter(move |binding, key| {
-        w(&|a| {
-            if let Some(handle) = a.parameter_handle(binding, key) {
-                a.command(|w| w.restore(handle));
-            }
-        });
-    });
-    let w = with.clone();
-    ui.on_slide(move |binding, key, position| {
-        w(&|a| {
-            if let Some(handle) = a.parameter_handle(binding, key) {
-                a.command(|w| w.slide(handle, f64::from(position)));
-            }
-        });
-    });
-    let w = with.clone();
-    ui.on_stage_metadata(move |binding, key, text| {
-        w(&|a| {
-            if let Some(handle) = a.metadata_handle(binding, key) {
-                a.command(|w| w.stage(handle, &text));
-            }
-        });
-    });
-    let w = with.clone();
-    ui.on_commit_metadata(move |binding, key, text| {
-        w(&|a| {
-            if let Some(handle) = a.metadata_handle(binding, key) {
-                a.command(|w| w.commit_field(handle, &text));
-            }
-        });
-    });
-    let w = with.clone();
-    ui.on_restore_metadata(move |binding, key| {
-        w(&|a| {
-            if let Some(handle) = a.metadata_handle(binding, key) {
-                a.command(|w| w.restore(handle));
-            }
-        });
-    });
-    let w = with.clone();
-    ui.on_set_ears(move |binding, index| {
-        w(&|a| {
-            if let (Some((document, id)), Some(ears)) =
-                (a.component(binding), choice(&Ears::ALL, index))
-            {
-                a.command(|w| w.set_ears(document, id, ears));
-            }
-        });
-    });
-    let w = with.clone();
-    ui.on_set_carrier(move |binding, index| {
-        w(&|a| {
-            if let (Some((document, id)), Some(kind)) =
-                (a.component(binding), choice(&CarrierKind::ALL, index))
-            {
-                a.command(|w| w.set_carrier(document, id, kind));
-            }
-        });
-    });
-    let w = with.clone();
-    ui.on_set_modulation(move |binding, index| {
-        w(&|a| {
-            let kind = match index {
-                0 => Some(None),
-                i => choice(&ModulationKind::ALL, i - 1).map(Some),
-            };
-            if let (Some((document, id)), Some(kind)) = (a.component(binding), kind) {
-                a.command(|w| w.set_modulation(document, id, kind));
-            }
-        });
-    });
-    let w = with.clone();
-    ui.on_remove_component(move |binding| {
-        w(&|a| {
-            if let Some((document, id)) = a.component(binding) {
-                a.command(|w| w.remove_component(document, id));
-            }
-        });
-    });
-    let w = with.clone();
-    ui.on_restore_component(move |binding| {
-        w(&|a| {
-            if let Some(Binding::Document(document)) = a.resolve(binding) {
-                a.command(|w| w.restore_component(document));
-            }
-        });
-    });
-    let w = with;
-    ui.on_add_component(move |binding, index| {
-        w(&|a| {
-            if let (Some(Binding::Document(document)), Some(kind)) =
-                (a.resolve(binding), choice(&CarrierKind::ALL, index))
-            {
-                a.command(|w| w.add_component(document, kind));
-            }
-        });
-    });
-}
-
-fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
-    macro_rules! on {
-        ($setter:ident, |$a:ident $(, $arg:ident)*| $body:expr) => {{
-            let weak: Weak<SlintAdapter> = Rc::downgrade(adapter);
-            ui.$setter(move |$($arg),*| {
-                if let Some($a) = weak.upgrade() {
-                    $body;
-                }
-            });
-        }};
-    }
-    on!(on_select, |a, index| {
-        if let Ok(index) = usize::try_from(index) {
-            a.command(|w| w.select(index));
-        }
-    });
-    on!(on_search, |a, query| a.command(|w| w.set_query(&query)));
-    on!(on_tab_changed, |a, index| {
-        // The tab's change handler can run while a projection is writing
-        // properties, when commands are ignored; apply the choice after it.
-        let view = if index == 1 {
-            View::Workbench
-        } else {
-            View::Library
-        };
-        let weak = Rc::downgrade(&a);
-        slint::Timer::single_shot(Duration::ZERO, move || {
-            if let Some(a) = weak.upgrade() {
-                a.command(|w| w.set_view(view));
-            }
-        });
-    });
-    on!(on_rate_changed, |a, index| {
-        if let Some(rate) = choice(&Workspace::export_rates(), index) {
-            a.command(|w| w.set_export_rate(rate));
-        }
-    });
-    on!(on_play_stop, |a| a.command(|w| {
-        if w.audio_busy() {
-            let _ = w.stop();
-        } else {
-            let _ = w.play();
-        }
-    }));
-    on!(on_play_recipe, |a| a.command(Workspace::play));
-    on!(on_stop_audio, |a| a.command(Workspace::stop));
-    on!(on_preview_selected, |a| a
-        .command(Workspace::preview_current));
-    on!(on_open_recipe, |a| a.command(Workspace::import));
-    on!(on_save_recipe, |a| a.command(Workspace::save));
-    on!(on_export_wav, |a| a.command(Workspace::export));
-    on!(on_cancel_file, |a| a.command(Workspace::cancel_export));
-    on!(on_open_workbench, |a| a.command(Workspace::copy_selected));
-    on!(on_new_draft, |a| a.command(Workspace::new_document));
-    on!(on_based_on_source, |a| a
-        .command(Workspace::show_based_on_source));
-    on!(on_quit, |a| a.command(Workspace::close));
-    on!(on_about, |a| a.show_about());
-    on!(on_open_study, |a| {
-        let url = a
-            .workspace
-            .borrow_mut()
-            .as_mut()
-            .and_then(|w| w.library_view().study_url);
-        if let Some(url) = url {
-            open_web(&url);
-        }
-    });
-    on!(on_show_diagnostics, |a| {
-        if let Some(ui) = a.main.upgrade() {
-            a.show_diagnostics(&ui);
-        }
-    });
-    on!(on_show_research, |a| {
-        let library = a.workspace.borrow().as_ref().map(Workspace::library_view);
-        if let (Some(window), Some(ui), Some(library)) =
-            (a.details.upgrade(), a.main.upgrade(), library)
-        {
-            window.set_heading(format!("Sound details · {}", library.title).into());
-            window.set_can_refresh(false);
-            window.set_content(library.details.into());
-            present_details(&window, &ui);
-        }
-    });
-    on!(on_hold_changed, |a| {
-        if let Some(ui) = a.main.upgrade() {
-            let held = ui.get_held();
-            a.command(|w| w.set_hold(held));
-        }
-    });
-    on!(on_follow_motion, |a| a.command(Workspace::follow_motion));
-    on!(on_window_changed, |a| {
-        // Layout change handlers also run while drawing; native window
-        // transitions wait until the current frame completes.
-        let weak = Rc::downgrade(&a);
-        a.deferred
-            .start(slint::TimerMode::SingleShot, Duration::ZERO, move || {
-                if let Some(a) = weak.upgrade() {
-                    a.apply_waveform_choice();
-                }
-            });
-    });
-    let weak = Rc::downgrade(adapter);
-    ui.window().on_close_requested(move || {
-        if let Some(a) = weak.upgrade() {
-            a.command(Workspace::close);
-        }
-        slint::CloseRequestResponse::KeepWindowShown
-    });
-    let weak = ui.as_weak();
-    slint::winit_030::WinitWindowAccessor::on_winit_window_event(ui.window(), move |_, event| {
-        use slint::winit_030::{EventResult, winit};
-        if let winit::event::WindowEvent::Focused(focused) = event
-            && let Some(ui) = weak.upgrade()
-        {
-            ui.set_edits_suspended(!focused);
-        }
-        EventResult::Propagate
-    });
-}
-
 impl SlintAdapter {
     fn apply_waveform_choice(self: &Rc<Self>) {
         let Some(ui) = self.main.upgrade() else {
@@ -1372,135 +1318,6 @@ impl SlintAdapter {
         }
     }
 }
-
-fn install_monitor(adapter: &Rc<SlintAdapter>, windows: &Windows) {
-    let monitor = &windows.monitor;
-    let weak = Rc::downgrade(adapter);
-    monitor.on_span(move |index| {
-        if let Some(a) = weak.upgrade() {
-            if let Some(ui) = a.main.upgrade() {
-                ui.set_window_index(index);
-            }
-            a.apply_waveform_choice();
-        }
-    });
-    let weak = Rc::downgrade(adapter);
-    monitor.on_scale(move |index| {
-        if let Some(a) = weak.upgrade() {
-            if let Some(ui) = a.main.upgrade() {
-                ui.set_scale_index(index);
-            }
-            a.apply_waveform_choice();
-        }
-    });
-    let weak = Rc::downgrade(adapter);
-    monitor.on_hold(move || {
-        if let Some(a) = weak.upgrade()
-            && let Some(ui) = a.main.upgrade()
-        {
-            let held = !ui.get_held();
-            a.command(|w| w.set_hold(held));
-        }
-    });
-    let weak = Rc::downgrade(adapter);
-    monitor.on_follow(move || {
-        if let Some(a) = weak.upgrade() {
-            a.command(Workspace::follow_motion);
-        }
-    });
-    let weak = Rc::downgrade(adapter);
-    monitor.on_details(move || {
-        if let Some(a) = weak.upgrade()
-            && let Some(monitor) = a.monitor.upgrade()
-        {
-            a.show_diagnostics(&monitor);
-        }
-    });
-    let weak = Rc::downgrade(adapter);
-    monitor.on_dismiss(move || {
-        if let Some(a) = weak.upgrade() {
-            if let Some(ui) = a.main.upgrade() {
-                ui.set_monitor_open(false);
-                ui.invoke_focus_monitor_opener();
-            }
-            a.project();
-        }
-    });
-    let weak = monitor.as_weak();
-    monitor.window().on_close_requested(move || {
-        if let Some(window) = weak.upgrade() {
-            window.invoke_dismiss();
-        }
-        slint::CloseRequestResponse::KeepWindowShown
-    });
-}
-
-fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
-    let weak = Rc::downgrade(adapter);
-    windows.audio_controls.on_stop(move || {
-        if let Some(a) = weak.upgrade() {
-            a.command(Workspace::stop);
-        }
-    });
-    windows
-        .audio_controls
-        .window()
-        .on_close_requested(|| slint::CloseRequestResponse::KeepWindowShown);
-    let about = windows.about.as_weak();
-    windows.about.on_dismiss(move || {
-        if let Some(about) = about.upgrade() {
-            let _ = about.hide();
-        }
-    });
-    windows
-        .about
-        .on_open_source(|| open_web(auditorylab::SOURCE_URL));
-    let licenses = windows.licenses.as_weak();
-    windows.about.on_open_licenses(move || {
-        if let Some(window) = licenses.upgrade() {
-            match window.show() {
-                Ok(()) => window.invoke_focus_start(),
-                Err(error) => eprintln!("Licenses: {error}"),
-            }
-        }
-    });
-    let licenses = windows.licenses.as_weak();
-    windows.licenses.on_dismiss(move || {
-        if let Some(window) = licenses.upgrade() {
-            let _ = window.hide();
-        }
-    });
-    let licenses = windows.licenses.as_weak();
-    windows.licenses.on_third_party_licenses_requested(move || {
-        if let Some(window) = licenses.upgrade() {
-            match crate::licenses::notices_directory() {
-                Ok(path) => match path.to_str() {
-                    Some(path) => {
-                        window
-                            .set_notice("Open bundled component notices and license files.".into());
-                        open_web(path);
-                    }
-                    None => window.set_notice("Cannot open a non-UTF8 notices path.".into()),
-                },
-                Err(error) => window.set_notice(error.into()),
-            }
-        }
-    });
-    let details = windows.details.as_weak();
-    windows.details.on_dismiss(move || {
-        if let Some(window) = details.upgrade() {
-            let _ = window.hide();
-        }
-    });
-    let weak = Rc::downgrade(adapter);
-    windows.details.on_refresh_content(move || {
-        if let Some(a) = weak.upgrade() {
-            a.refresh_diagnostics();
-        }
-    });
-}
-
-// ---- window helpers ----
 
 fn apply_font(windows: &Windows, font: &typography::Typography) {
     let family: SharedString = font.family.as_str().into();
@@ -1524,14 +1341,25 @@ fn present_details<C: ComponentHandle + 'static>(window: &DetailsWindow, parent:
         return;
     }
     details_parent::bind(window, parent);
+    // show() is a no-op for an already-shown modeless reader. This is an
+    // explicit user request, unlike automatic monitor reflow.
+    use slint::winit_030::WinitWindowAccessor;
+    window
+        .window()
+        .with_winit_window(|native| native.focus_window());
     window.invoke_focus_close();
 }
 
-pub(crate) fn hide_monitor_window(ui: &MainWindow, monitor: &MonitorWindow, was_focused: bool) {
-    let _ = monitor.hide();
+pub(crate) fn hide_monitor_window(
+    ui: &MainWindow,
+    monitor: &MonitorWindow,
+    was_focused: bool,
+) -> Result<(), slint::PlatformError> {
+    monitor.hide()?;
     if was_focused {
         ui.invoke_focus_monitor_opener();
     }
+    Ok(())
 }
 
 fn about_identity() -> String {
@@ -1552,5 +1380,23 @@ fn open_web(url: &str) {
     let mut command = std::process::Command::new("xdg-open");
     if let Err(error) = command.arg(url).spawn() {
         eprintln!("Cannot open link: {error}");
+    }
+}
+
+#[cfg(test)]
+mod binding_tests {
+    use super::*;
+    #[test]
+    fn token_exhaustion_retires_all_callbacks_without_reusing_an_identity() {
+        let workspace =
+            Workspace::new(Vec::new(), auditorylab::workspace::Capabilities::portable()).unwrap();
+        let document = workspace.editor().document();
+        let mut bindings = Bindings::default();
+        let old = bindings.allocate(Binding::Document(document));
+        bindings.next = i32::MAX;
+        assert_eq!(bindings.allocate(Binding::Document(document)), -1);
+        assert!(bindings.get(old).is_none());
+        assert_eq!(bindings.next, i32::MAX);
+        assert!(bindings.map.is_empty());
     }
 }

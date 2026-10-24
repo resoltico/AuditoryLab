@@ -179,7 +179,7 @@ impl SessionState {
     /// Publish successful drain: Completed or FrameLimit while running,
     /// Stopped when Stop was accepted first. The choice and the publication
     /// use the same word, so Stop cannot slip between them.
-    #[cfg(any(feature = "device-playback", test))]
+    #[cfg(any(feature = "device-playback", feature = "test-support", test))]
     pub(crate) fn finish_drained(&self, natural: Outcome) -> Outcome {
         let mut current = self.outcome.load(Ordering::Acquire);
         loop {
@@ -285,7 +285,7 @@ impl SessionState {
 
     /// The report of a successful terminal outcome, read after the stream
     /// is torn down; `None` while active or after a failure.
-    #[cfg(any(feature = "device-playback", test))]
+    #[cfg(any(feature = "device-playback", feature = "test-support", test))]
     pub(crate) fn report(&self) -> Option<PlaybackReport> {
         let (end, drained) = match self.outcome() {
             Outcome::Completed => (EndReason::Completed, true),
@@ -342,7 +342,7 @@ impl Session {
         }
     }
 
-    #[cfg(any(feature = "device-playback", test))]
+    #[cfg(any(feature = "device-playback", feature = "test-support", test))]
     pub(crate) fn state(&self) -> &Arc<SessionState> {
         &self.state
     }

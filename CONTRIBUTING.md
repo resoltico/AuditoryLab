@@ -17,6 +17,7 @@ cargo test --workspace --locked
 cargo test -p auditorylab-core --release --locked
 cargo doc --workspace --no-deps --locked
 cargo deny check
+cargo xtask verify-vendor
 ```
 
 The toolchain is pinned in [rust-toolchain.toml](rust-toolchain.toml); the workspace manifest declares the minimum compiler. CI tool versions and platforms are defined in [ci.yml](.github/workflows/ci.yml). The lint job checks both workflows with a checksum-pinned actionlint. Pinned cargo-tool executables are cached by tool version, runner architecture, compiler/configuration and installation features; unrelated workflow edits do not invalidate them. Successful tool installs discard their temporary compiler outputs. Dependency/advisory data and product build outputs are not restored from those caches.
@@ -75,3 +76,16 @@ Use Cargo's ordinary target directory for routine development, rather than a per
 Keep logs, screenshots, failure inputs and packaged deliverables outside compiler profile directories (`debug`, `release`, `dist` and their `deps`/`build` directories), so profile cleanup does not remove evidence. `target/` can contain both compiler caches and retained evidence: inspect it before a whole-tree `cargo clean` or deletion. Do not clean directories used by an active compiler or a requested running service. For an isolated Cargo target directory, `cargo clean --target-dir PATH` removes that build after its evidence has been copied out.
 
 The four authored property-test sites have finite case/shrink and generated-data limits and disable persistence. There is no authored fuzz corpus or browser-test runner. The pinned cargo-mutants reuses one build directory per worker, omits target/VCS copies and normally deletes scratch builds; its output retains current and one previous report generation. Preserve a failed report before it rotates. CI job timeouts and these finite scopes limit work, not bytes: there is no enforced disk quota. A numerical maximum depends on the toolchain, dependency outputs and logs; measure the intended scope on its runner before setting a smaller filesystem quota. Adding a worker or a retained build tree adds another compiler cache.
+
+### Controlled callback qualification
+
+Prebuild the release test executable, then run with no competing builds/tests on an idle dedicated host. Record CPU model, power settings, OS, `rustc -Vv`, revision, rate, buffer size and monitor mode. The benchmark warms up 100 callbacks, then records 3,000 callbacks (three groups of 1,000), replacing all 16 component carriers at every callback boundary. Replacements exercise up to 32 outgoing/incoming slots during 30 ms transitions; buffers longer than that include settled frames. Reports include median, p95, maximum, nominal deadline, deadline misses, monitor gaps, storage and simulated backend underruns. No real device scheduling is exercised.
+
+```sh
+cargo test --locked -p auditorylab --features device-playback --release --no-run
+AUDITORYLAB_PERF_MAX_BUDGET_PERCENT=75 cargo test --locked -p auditorylab --features device-playback callback_monitor_costs --release -- --ignored --nocapture
+```
+
+The controlled criterion requires every measured callback to fit 75% of its buffer budget (25% measured headroom); a failure qualifies no such configuration. Omitting the environment variable produces an observational report only. The manually dispatched `performance.yml` workflow requires a dedicated `auditorylab-performance` self-hosted runner and retains results even on failure. It does not assert universal playback support or remove renderable rates. Native/device qualification remains separate.
+
+Workspace and GUI action tests use the `workspace::testing` controlled execution fixtures (unit-test configuration or the nondefault `test-support` feature). Drive real commands and prompt responses, then acknowledge worker results and explicitly release exit/panic; do not replace a workspace task after launch to claim command-path coverage. Each GUI test installs its offscreen platform once and activates the visible accessible control, excluding StableButton's hidden sizing labels. The fixture never opens an audio device.

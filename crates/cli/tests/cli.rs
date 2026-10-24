@@ -19,7 +19,7 @@ fn dir() -> tempfile::TempDir {
     tempfile::tempdir_in(base).unwrap()
 }
 const ID: &str = "chan-2022-clicks-40-hz";
-const SILENCE: &[u8] = b"schema_version=2\nduration_seconds=0.01\nfade_seconds=0\n";
+const SILENCE: &[u8] = b"schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n";
 #[test]
 fn commands_sources_and_exit_codes() {
     for args in [
@@ -126,7 +126,7 @@ fn play_reads_stdin_and_reports_native_silent_playback() {
         .stdin
         .take()
         .unwrap()
-        .write_all(b"schema_version=2\nduration_seconds=1\nfade_seconds=0\n")
+        .write_all(b"schema_version=3\nduration_seconds=1\nfade_seconds=0\n")
         .unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(
@@ -147,7 +147,7 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
     let output = dir.path().join("long.wav");
     fs::write(
         &input,
-        b"schema_version=2\nduration_seconds=1000000\nfade_seconds=0\n",
+        b"schema_version=3\nduration_seconds=1000000\nfade_seconds=0\n",
     )
     .unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_auditorylab"))
@@ -191,7 +191,7 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
 fn public_cli_renders_shared_rhythms_and_rejects_pair_neighbors() {
     let d = dir();
     let file = d.path().join("meaning.toml");
-    let header = "schema_version=2\nduration_seconds=1\nfade_seconds=0\n";
+    let header = "schema_version=3\nduration_seconds=1\nfade_seconds=0\n";
     let click = "[[component]]\nears=\"both\"\npeak_dbfs=-40\nkind=\"click\"\nrate_hz=40\nwidth_seconds=0.001\n";
     let tone = |hz, ears: &str, level| {
         format!(
@@ -235,7 +235,7 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
     let path = dir.path().join("pulse.toml");
     fs::write(
         &path,
-        "schema_version = 2\nduration_seconds = 0.05\nfade_seconds = 0.0\n\n[[component]]\nkind = \"click\"\nears = \"both\"\npeak_dbfs = -30.0\nrate_hz = 40.0\nwidth_seconds = 0.0001\n",
+        "schema_version = 3\nduration_seconds = 0.05\nfade_seconds = 0.0\n\n[[component]]\nkind = \"click\"\nears = \"both\"\npeak_dbfs = -30.0\nrate_hz = 40.0\nwidth_seconds = 0.0001\n",
     )
     .unwrap();
     let out = cli(&[
@@ -271,4 +271,33 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
     ]);
     assert_eq!(invalid.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&invalid.stderr).contains("at 100 Hz"));
+}
+
+#[test]
+fn unicode_notes_roundtrip_and_terminal_controls_are_escaped_at_display_boundary() {
+    let dir = dir();
+    let path = dir.path().join("notes.toml");
+    let mut recipe = auditorylab::Recipe::parse(std::str::from_utf8(SILENCE).unwrap()).unwrap();
+    recipe.about = Some(auditorylab::About {
+        title: "Rīga \"🎧\"".into(),
+        summary: Some("Line one\nLine two \u{1b}[31m \u{202e}reverse".into()),
+        research: None,
+    });
+    let text = recipe.to_toml().unwrap();
+    fs::write(&path, &text).unwrap();
+    assert_eq!(auditorylab::Recipe::parse(&text).unwrap(), recipe);
+    for command in ["describe", "inspect"] {
+        let out = cli(&[command, "--file", path.to_str().unwrap()]);
+        assert!(out.status.success(), "{out:?}");
+        let display = String::from_utf8(out.stdout).unwrap();
+        assert!(
+            display.contains("Rīga") && display.contains("🎧"),
+            "{display}"
+        );
+        assert!(
+            display.contains("\\u{1b}") && display.contains("\\u{202e}"),
+            "{display}"
+        );
+        assert!(!display.contains('\u{1b}') && !display.contains('\u{202e}'));
+    }
 }

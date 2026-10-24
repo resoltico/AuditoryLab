@@ -33,7 +33,6 @@ mod generated {
 use adapter::{Preferences, SlintAdapter, Windows};
 use auditorylab::workspace::{Capabilities, Workspace};
 use generated::{DetailsWindow, MainWindow};
-use slint::ComponentHandle;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let result = run();
@@ -82,7 +81,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     {
         *handler_slot.borrow_mut() = std::rc::Rc::downgrade(&adapter);
     }
-    windows.main.show()?;
+    adapter.show_main()?;
     let result = slint::run_event_loop_until_quit();
     // Leaving the loop by any route still ends every task and reports failures.
     let shutdown = adapter.shutdown();

@@ -1,0 +1,511 @@
+--- a/src/platform/macos.rs
++++ b/src/platform/macos.rs
+@@ -529,3 +529,87 @@
+     #[default]
+     None,
+ }
++
++/// An outstanding request from macOS to terminate the application.
++///
++/// When an interceptor is registered with
++/// [`EventLoopExtMacOS::set_termination_interceptor`], Winit's application
++/// delegate answers `applicationShouldTerminate:` with "terminate later",
++/// owns the pending request and hands its interceptor this opaque token.
++/// Answer it exactly once with [`reply_to_termination`]. Repeated Quit
++/// commands while a request is pending coalesce into that request. A request
++/// that cannot be delivered, or that is still pending when the event loop
++/// exits, is denied. Without an interceptor, termination proceeds as AppKit's
++/// default does.
++#[derive(Debug, PartialEq, Eq)]
++pub struct TerminationRequest {
++    epoch: u64,
++}
++
++impl TerminationRequest {
++    pub(crate) fn new(epoch: u64) -> Self {
++        Self { epoch }
++    }
++}
++
++/// Why a termination reply was not delivered.
++#[derive(Debug, PartialEq, Eq)]
++pub enum TerminationReplyError {
++    /// Replies must be made on the main thread; the request is returned
++    /// unchanged so it can still be answered there.
++    WrongThread(TerminationRequest),
++    /// The request was already answered, denied or superseded.
++    Stale,
++}
++
++impl std::fmt::Display for TerminationReplyError {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        match self {
++            Self::WrongThread(_) => f.write_str("termination replies must be made on the main thread"),
++            Self::Stale => f.write_str("the termination request is no longer pending"),
++        }
++    }
++}
++
++impl std::error::Error for TerminationReplyError {}
++
++/// Additional methods on [`EventLoop`](crate::event_loop::EventLoop) that are specific to macOS.
++pub trait EventLoopExtMacOS {
++    /// Decide termination asynchronously. The interceptor runs on the main
++    /// thread inside AppKit's callback; it must only hand the request on,
++    /// returning whether that succeeded. `None` restores the default.
++    fn set_termination_interceptor(
++        &self,
++        interceptor: Option<Box<dyn Fn(TerminationRequest) -> bool>>,
++    );
++}
++
++impl<T> EventLoopExtMacOS for crate::event_loop::EventLoop<T> {
++    fn set_termination_interceptor(
++        &self,
++        interceptor: Option<Box<dyn Fn(TerminationRequest) -> bool>>,
++    ) {
++        self.event_loop.set_termination_interceptor(interceptor);
++    }
++}
++
++/// Answer a pending termination request: `true` lets the application
++/// terminate, `false` keeps it running.
++///
++/// # Errors
++/// Returns [`TerminationReplyError::WrongThread`] off the main thread, without
++/// consuming the request, and [`TerminationReplyError::Stale`] when the request
++/// is no longer the pending one.
++pub fn reply_to_termination(
++    request: TerminationRequest,
++    approve: bool,
++) -> Result<(), TerminationReplyError> {
++    let Some(mtm) = objc2_foundation::MainThreadMarker::new() else {
++        return Err(TerminationReplyError::WrongThread(request));
++    };
++    if crate::platform_impl::reply_to_termination(mtm, request.epoch, approve) {
++        Ok(())
++    } else {
++        Err(TerminationReplyError::Stale)
++    }
++}
+--- a/src/platform/wayland.rs
++++ b/src/platform/wayland.rs
+@@ -17,6 +17,7 @@
+ use std::ffi::c_void;
+ use std::ptr::NonNull;
+ 
++use crate::error::NotSupportedError;
+ use crate::event_loop::{ActiveEventLoop, EventLoop, EventLoopBuilder};
+ use crate::monitor::MonitorHandle;
+ use crate::window::{Window, WindowAttributes};
+@@ -81,9 +82,34 @@
+ pub trait WindowExtWayland {
+     /// Returns `xdg_toplevel` of the window or [`None`] if the window is X11 window.
+     fn xdg_toplevel(&self) -> Option<NonNull<c_void>>;
++
++    /// Set the modeless parent of this Wayland toplevel.
++    ///
++    /// A parent must be a different mapped Wayland window on the same display.
++    /// The caller must not create a parent cycle. Unmapping the parent removes
++    /// this relationship; mapping it again does not restore the relationship.
++    /// This requests stacking above the parent, without making the child modal
++    /// or guaranteeing keyboard activation by the compositor.
++    ///
++    /// Returns an error for non-Wayland windows or an invalid direct parent.
++    fn set_transient_for(&self, parent: Option<&Window>) -> Result<(), NotSupportedError>;
+ }
+ 
+ impl WindowExtWayland for Window {
++    fn set_transient_for(&self, parent: Option<&Window>) -> Result<(), NotSupportedError> {
++        #[allow(unreachable_patterns)]
++        match (&self.window, parent.map(|parent| &parent.window)) {
++            #[cfg(wayland_platform)]
++            (crate::platform_impl::Window::Wayland(window), None) => window.set_transient_for(None),
++            #[cfg(wayland_platform)]
++            (
++                crate::platform_impl::Window::Wayland(window),
++                Some(crate::platform_impl::Window::Wayland(parent)),
++            ) => window.set_transient_for(Some(parent)),
++            _ => Err(NotSupportedError::new()),
++        }
++    }
++
+     #[inline]
+     fn xdg_toplevel(&self) -> Option<NonNull<c_void>> {
+         #[allow(clippy::single_match)]
+--- a/src/platform_impl/linux/wayland/window/mod.rs
++++ b/src/platform_impl/linux/wayland/window/mod.rs
+@@ -232,6 +232,21 @@
+         })
+     }
+ 
++    pub(crate) fn set_transient_for(&self, parent: Option<&Self>) -> Result<(), NotSupportedError> {
++        if let Some(parent) = parent {
++            let (Some(connection), Some(parent_connection)) =
++                (self.display.backend().upgrade(), parent.display.backend().upgrade())
++            else {
++                return Err(NotSupportedError::new());
++            };
++            if self.window_id == parent.window_id || connection != parent_connection {
++                return Err(NotSupportedError::new());
++            }
++        }
++        self.window.set_parent(parent.map(|parent| &parent.window));
++        Ok(())
++    }
++
+     pub(crate) fn xdg_toplevel(&self) -> Option<NonNull<c_void>> {
+         NonNull::new(self.window.xdg_toplevel().id().as_ptr().cast())
+     }
+--- a/src/platform_impl/linux/x11/util/randr.rs
++++ b/src/platform_impl/linux/x11/util/randr.rs
+@@ -37,11 +37,11 @@
+ }
+ 
+ impl XConnection {
+-    // Retrieve DPI from Xft.dpi property
+-    pub fn get_xft_dpi(&self) -> Option<f64> {
++    // Retrieve configured window DPI, with Xft.dpi as fallback.
++    pub fn get_window_dpi(&self) -> Option<f64> {
+         // Try to get it from XSETTINGS first.
+         if let Some(xsettings_screen) = self.xsettings_screen() {
+-            match self.xsettings_dpi(xsettings_screen) {
++            match self.xsettings_window_dpi(xsettings_screen) {
+                 Ok(Some(dpi)) => return Some(dpi),
+                 Ok(None) => {},
+                 Err(err) => {
+@@ -142,7 +142,7 @@
+                 dpi_override
+             },
+             EnvVarDPI::NotSet => {
+-                if let Some(dpi) = self.get_xft_dpi() {
++                if let Some(dpi) = self.get_window_dpi() {
+                     dpi / 96.
+                 } else {
+                     calc_dpi_factor(
+--- a/src/platform_impl/linux/x11/xsettings.rs
++++ b/src/platform_impl/linux/x11/xsettings.rs
+@@ -14,14 +14,16 @@
+ 
+ type Result<T> = core::result::Result<T, ParserError>;
+ 
++mod gtk_scaling;
++
+ const DPI_NAME: &[u8] = b"Xft/DPI";
+ const DPI_MULTIPLIER: f64 = 1024.0;
+ const LITTLE_ENDIAN: u8 = b'l';
+ const BIG_ENDIAN: u8 = b'B';
+ 
+ impl XConnection {
+-    /// Get the DPI from XSettings.
+-    pub(crate) fn xsettings_dpi(
++    /// Get configured window DPI from XSettings.
++    pub(crate) fn xsettings_window_dpi(
+         &self,
+         xsettings_screen: xproto::Atom,
+     ) -> core::result::Result<Option<f64>, super::X11Error> {
+@@ -34,7 +36,24 @@
+         let data: Vec<u8> =
+             self.get_property(owner.owner, atoms[_XSETTINGS_SETTINGS], atoms[_XSETTINGS_SETTINGS])?;
+ 
+-        // Parse the property.
++        // GTK separates its resolved window scale from text DPI. Xft/DPI
++        // includes both; consuming it as window DPI applies text scaling twice
++        // in clients which also honor GTK font preferences.
++        let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
++        if gtk_scaling::applies(&desktop) {
++            let setting = read_settings(&data)?
++                .find(|res| res.as_ref().map_or(true, |s| s.name == b"Gdk/WindowScalingFactor"))
++                .transpose()?;
++            let integer = setting.and_then(|setting| match setting.data {
++                SettingData::Integer(scale) => Some(scale),
++                _ => None,
++            });
++            if let Some(scale) = gtk_scaling::window_scale(integer) {
++                return Ok(Some(scale * 96.0));
++            }
++        }
++
++        // Preserve Xft behavior when no resolved GTK window scale is available.
+         let dpi_setting = read_settings(&data)?
+             .find(|res| res.as_ref().map_or(true, |s| s.name == DPI_NAME))
+             .transpose()?;
+--- /dev/null
++++ b/src/platform_impl/linux/x11/xsettings/gtk_scaling.rs
+@@ -0,0 +1,43 @@
++// SPDX-License-Identifier: Apache-2.0 OR MIT
++//! GTK font DPI is independent of its resolved window factor.
++
++pub(super) fn applies(desktop: &str) -> bool {
++    !desktop
++        .split(':')
++        .any(|name| name.eq_ignore_ascii_case("KDE"))
++}
++
++pub(super) fn window_scale(integer: Option<i32>) -> Option<f64> {
++    integer.filter(|scale| *scale > 0).map(f64::from)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn desktop_selection_preserves_kde_precedence() {
++        for desktop in [
++            "GNOME",
++            "GNOME:GNOME-Flashback",
++            "ubuntu:GNOME",
++            "gnome",
++            "XFCE",
++            "LXQt",
++            "",
++        ] {
++            assert!(applies(desktop), "{desktop}");
++        }
++        for desktop in ["KDE", "GNOME:KDE", "kde:gnome"] {
++            assert!(!applies(desktop), "{desktop}");
++        }
++    }
++    #[test]
++    fn resolved_factors_keep_text_dpi_out_of_window_geometry() {
++        assert_eq!(window_scale(Some(1)), Some(1.0));
++        assert_eq!(window_scale(Some(2)), Some(2.0));
++        // Auto/unavailable/wrong-type properties cannot supply a resolved factor.
++        assert_eq!(window_scale(None), None);
++        assert_eq!(window_scale(Some(0)), None);
++        assert_eq!(window_scale(Some(-1)), None);
++    }
++}
+--- a/src/platform_impl/macos/app_state.rs
++++ b/src/platform_impl/macos/app_state.rs
+@@ -6,7 +6,8 @@
+ use objc2::rc::Retained;
+ use objc2::{declare_class, msg_send_id, mutability, ClassType, DeclaredClass};
+ use objc2_app_kit::{
+-    NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSRunningApplication,
++    NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate,
++    NSApplicationTerminateReply, NSRunningApplication,
+ };
+ use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol};
+ 
+@@ -40,6 +41,8 @@
+     start_time: Cell<Option<Instant>>,
+     wait_timeout: Cell<Option<Instant>>,
+     pending_redraw: RefCell<Vec<WindowId>>,
++    /// AuditoryLab: typed asynchronous termination. See `platform::macos::TerminationRequest`.
++    termination: Termination,
+     // NOTE: This is strongly referenced by our `NSWindowDelegate` and our `NSView` subclass, and
+     // as such should be careful to not add fields that, in turn, strongly reference those.
+ }
+@@ -69,6 +72,11 @@
+         #[method(applicationWillTerminate:)]
+         fn app_will_terminate(&self, notification: &NSNotification) {
+             self.will_terminate(notification)
++        }
++
++        #[method(applicationShouldTerminate:)]
++        fn app_should_terminate(&self, _sender: &NSApplication) -> NSApplicationTerminateReply {
++            self.should_terminate()
+         }
+     }
+ );
+@@ -98,6 +106,7 @@
+             start_time: Cell::new(None),
+             wait_timeout: Cell::new(None),
+             pending_redraw: RefCell::new(vec![]),
++            termination: Termination::default(),
+         });
+         unsafe { msg_send_id![super(this), init] }
+     }
+@@ -163,6 +172,49 @@
+         }
+     }
+ 
++    /// Without a registered interceptor, terminate as AppKit would without
++    /// this method. With one, own a pending request before dispatching it,
++    /// coalesce repeated requests and deny one that cannot be dispatched.
++    fn should_terminate(&self) -> NSApplicationTerminateReply {
++        trace_scope!("applicationShouldTerminate:");
++        let termination = &self.ivars().termination;
++        let interceptor = termination.interceptor.borrow();
++        let Some(interceptor) = interceptor.as_ref() else {
++            return NSApplicationTerminateReply::NSTerminateNow;
++        };
++        let Some(epoch) = termination.state.begin() else {
++            return NSApplicationTerminateReply::NSTerminateLater;
++        };
++        if interceptor(crate::platform::macos::TerminationRequest::new(epoch)) {
++            NSApplicationTerminateReply::NSTerminateLater
++        } else {
++            termination.state.undeliverable(epoch);
++            NSApplicationTerminateReply::NSTerminateCancel
++        }
++    }
++
++    pub fn set_termination_interceptor(&self, interceptor: Option<TerminationInterceptor>) {
++        *self.ivars().termination.interceptor.borrow_mut() = interceptor;
++    }
++
++    /// Answer the pending request with this epoch exactly once.
++    pub fn reply_to_termination(&self, epoch: u64, approve: bool) -> bool {
++        if !self.ivars().termination.state.answer(epoch) {
++            return false;
++        }
++        let mtm = MainThreadMarker::from(self);
++        unsafe { NSApplication::sharedApplication(mtm).replyToApplicationShouldTerminate(approve) };
++        true
++    }
++
++    /// Deny a request that can no longer be answered by its interceptor.
++    fn deny_pending_termination(&self) {
++        if self.ivars().termination.state.abandon() {
++            let mtm = MainThreadMarker::from(self);
++            unsafe { NSApplication::sharedApplication(mtm).replyToApplicationShouldTerminate(false) };
++        }
++    }
++
+     fn will_terminate(&self, _notification: &NSNotification) {
+         trace_scope!("applicationWillTerminate:");
+         let mtm = MainThreadMarker::from(self);
+@@ -221,6 +273,7 @@
+     /// NOTE: that if the `NSApplication` has been launched then that state is preserved,
+     /// and we won't need to re-launch the app if subsequent EventLoops are run.
+     pub fn internal_exit(&self) {
++        self.deny_pending_termination();
+         self.handle_event(Event::LoopExiting);
+ 
+         self.set_is_running(false);
+@@ -414,6 +467,99 @@
+ 
+ #[derive(Debug)]
+ pub(crate) struct HandlePendingUserEvents;
++
++/// AuditoryLab: called on the main thread with an owned request; returns
++/// whether the request was delivered.
++pub type TerminationInterceptor = Box<dyn Fn(crate::platform::macos::TerminationRequest) -> bool>;
++
++/// AuditoryLab: the registered interceptor and its pending request.
++#[derive(Default)]
++struct Termination {
++    interceptor: RefCell<Option<TerminationInterceptor>>,
++    state: TerminationState,
++}
++
++impl std::fmt::Debug for Termination {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("Termination")
++            .field("intercepted", &self.interceptor.borrow().is_some())
++            .field("state", &self.state)
++            .finish()
++    }
++}
++
++/// At most one pending termination request, identified by an epoch that is
++/// never reused, so an answer to an older request cannot settle a newer one.
++#[derive(Debug, Default)]
++struct TerminationState {
++    epoch: Cell<u64>,
++    pending: Cell<Option<u64>>,
++}
++
++impl TerminationState {
++    /// Start a request, or `None` while one is already pending: repeated
++    /// requests coalesce into it.
++    fn begin(&self) -> Option<u64> {
++        if self.pending.get().is_some() {
++            return None;
++        }
++        let epoch = self.epoch.get() + 1;
++        self.epoch.set(epoch);
++        self.pending.set(Some(epoch));
++        Some(epoch)
++    }
++
++    /// The request could not be handed to the interceptor.
++    fn undeliverable(&self, epoch: u64) {
++        if self.pending.get() == Some(epoch) {
++            self.pending.set(None);
++        }
++    }
++
++    /// Settle the request with this epoch; false when it is not pending.
++    fn answer(&self, epoch: u64) -> bool {
++        if self.pending.get() != Some(epoch) {
++            return false;
++        }
++        self.pending.set(None);
++        true
++    }
++
++    /// Settle whatever is pending, for denial; false when nothing is.
++    fn abandon(&self) -> bool {
++        self.pending.take().is_some()
++    }
++}
++
++#[cfg(test)]
++mod termination_tests {
++    use super::TerminationState;
++
++    #[test]
++    fn requests_coalesce_and_each_epoch_is_answered_once() {
++        let state = TerminationState::default();
++        assert_eq!(state.begin(), Some(1));
++        assert_eq!(state.begin(), None, "repeated Quit joins the pending request");
++        assert!(state.answer(1));
++        assert!(!state.answer(1), "a second answer is stale");
++        assert_eq!(state.begin(), Some(2));
++        assert!(!state.answer(1), "an old token cannot settle a later request");
++        assert!(state.answer(2));
++    }
++
++    #[test]
++    fn undeliverable_and_abandoned_requests_are_settled() {
++        let state = TerminationState::default();
++        let epoch = state.begin().unwrap();
++        state.undeliverable(epoch);
++        assert!(!state.answer(epoch), "an undelivered request is already denied");
++        let epoch = state.begin().unwrap();
++        state.undeliverable(epoch - 1);
++        assert!(state.abandon(), "teardown denies the pending request");
++        assert!(!state.abandon());
++        assert!(!state.answer(epoch));
++    }
++}
+ 
+ /// Returns the minimum `Option<Instant>`, taking into account that `None`
+ /// equates to an infinite timeout, not a zero timeout (so can't just use
+--- a/src/platform_impl/macos/event_loop.rs
++++ b/src/platform_impl/macos/event_loop.rs
+@@ -384,6 +384,13 @@
+         })
+     }
+ 
++    pub(crate) fn set_termination_interceptor(
++        &self,
++        interceptor: Option<super::app_state::TerminationInterceptor>,
++    ) {
++        self.delegate.set_termination_interceptor(interceptor);
++    }
++
+     pub fn create_proxy(&self) -> EventLoopProxy<T> {
+         EventLoopProxy::new(self.sender.clone())
+     }
+--- a/src/platform_impl/macos/mod.rs
++++ b/src/platform_impl/macos/mod.rs
+@@ -24,6 +24,15 @@
+ };
+ pub(crate) use self::monitor::{MonitorHandle, VideoModeHandle};
+ pub(crate) use self::window::WindowId;
++
++/// Answer the pending termination request with this epoch, if it still is.
++pub(crate) fn reply_to_termination(
++    mtm: objc2_foundation::MainThreadMarker,
++    epoch: u64,
++    approve: bool,
++) -> bool {
++    app_state::ApplicationDelegate::get(mtm).reply_to_termination(epoch, approve)
++}
+ pub(crate) use self::window_delegate::PlatformSpecificWindowAttributes;
+ use crate::event::DeviceId as RootDeviceId;
+ 

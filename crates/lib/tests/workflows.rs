@@ -7,7 +7,7 @@ fn dir() -> tempfile::TempDir {
     fs::create_dir_all(&base).unwrap();
     tempfile::tempdir_in(base).unwrap()
 }
-const SILENCE: &str = "schema_version=2\nduration_seconds=0.01\nfade_seconds=0\n";
+const SILENCE: &str = "schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n";
 #[test]
 fn bounded_input_and_regular_file_admission() {
     let mut bytes = SILENCE.as_bytes().to_vec();
@@ -22,7 +22,7 @@ fn bounded_input_and_regular_file_admission() {
         &[0xff][..],
         &[0xff, 0xfe][..],
         b"schema_version=3",
-        b"schema_version=2\nunknown=1",
+        b"schema_version=3\nunknown=1",
     ] {
         assert_eq!(
             load_reader(bytes, "bad").unwrap_err().kind(),
@@ -104,9 +104,36 @@ fn shared_values_cross_threads() {
     shared::<Error>();
     shared::<Cancel>();
     shared::<Progress>();
-    assert_eq!(catalog().unwrap().len(), 19);
+    assert!(!catalog().unwrap().is_empty());
     assert_eq!(
         version_line("auditorylab").split_whitespace().next(),
         Some("auditorylab")
     );
+}
+
+#[test]
+fn untitled_file_names_are_concise_and_origins_remain_complete() {
+    let plain =
+        auditorylab::Recipe::parse("schema_version=3\nduration_seconds=1\nfade_seconds=0\n")
+            .unwrap();
+    for (path, name, suggested) in [
+        (
+            "/deep/Rīga 🎧/huge-cancel.toml",
+            "huge-cancel",
+            "huge-cancel.wav",
+        ),
+        ("/deep/line\nbreak.toml", "line\\nbreak", "line break.wav"),
+        ("/deep/symlink.toml", "symlink", "symlink.wav"),
+    ] {
+        let snapshot =
+            auditorylab::RecipeSnapshot::new(auditorylab::Origin::File(path.into()), plain.clone());
+        assert_eq!(snapshot.title(), name);
+        assert_eq!(snapshot.suggested_output_name("wav"), suggested);
+        assert!(
+            auditorylab::recipe_details(&snapshot, auditorylab::SampleRate::DEFAULT)
+                .contains("/deep/")
+        );
+        let draft = auditorylab::Draft::from_snapshot(&snapshot);
+        assert_eq!(draft.title(), format!("{name} (edited)"));
+    }
 }

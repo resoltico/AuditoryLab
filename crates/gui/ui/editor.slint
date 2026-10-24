@@ -1,0 +1,271 @@
+import { Button, LineEdit, TextEdit, Slider, HorizontalBox, ComboBox } from "std-widgets.slint";
+import { ParameterKey, MetadataKey, ParameterRow, MetadataRow } from "models.slint";
+// A compact disclosure: as wide as its label, aligned with the content it opens.
+export component Disclosure inherits Rectangle {
+    in-out property <bool> expanded: false;
+    in property <string> label;
+    min-width: toggle.min-width;
+    preferred-width: toggle.preferred-width;
+    max-width: toggle.preferred-width;
+    min-height: toggle.min-height;
+    preferred-height: toggle.preferred-height;
+    max-height: toggle.preferred-height;
+    horizontal-stretch: 0;
+    toggle := Button {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        text: (root.expanded ? "▾ " : "▸ ") + root.label;
+        accessible-label: root.label + (root.expanded ? " · expanded" : " · collapsed");
+        accessible-expanded: root.expanded;
+        clicked => {root.expanded = !root.expanded;}
+    }
+}
+// Uncommitted text, caret and focus stay local. Model refreshes replace only
+// unfocused text. An edit keeps the binding it started with, so a late commit
+// can never address a field rendered for another document.
+export component NumericField inherits LineEdit {
+    in property <string> display-text;
+    in property <bool> edits-suspended:false;
+    in property <bool> staged:false;
+    in property <int> binding;
+    in property <int> reset-key;
+    private property <bool> dirty: false;
+    private property <int> captured: -1;
+    callback stage(int, string);
+    callback commit(int, string);
+    callback restore(int);
+    function owner() -> int { return root.dirty ? root.captured : root.binding; }
+    changed reset-key => {
+        self.text = root.display-text;
+        root.dirty = root.staged;
+        root.captured = root.binding;
+    }
+    changed staged => {
+        if root.staged && !root.dirty { root.captured = root.binding; }
+        root.dirty = root.staged;
+    }
+    init => {self.text=root.display-text;root.dirty=root.staged;root.captured=root.binding;}
+    changed display-text => {
+        if !self.has-focus {
+            self.text = root.display-text;
+            root.dirty=root.staged;
+        }
+    }
+    edited(value) => {
+        if !root.dirty { root.captured = root.binding; }
+        root.dirty = true;
+        root.stage(root.captured, value);
+    }
+    key-pressed(event) => {
+        if event.text == Key.Escape {
+            root.restore(root.owner());
+            self.text = root.display-text;
+            root.dirty = false;
+            return accept;
+        }
+        return reject;
+    }
+    accepted(value) => {
+        let owner = root.owner();
+        root.dirty = false;
+        root.commit(owner, value);
+    }
+    changed has-focus => {
+        if !self.has-focus && root.dirty && !root.edits-suspended {
+            root.dirty = false;
+            root.commit(root.captured, self.text);
+        }
+    }
+}
+export component ParameterControl inherits HorizontalBox {
+    in property <ParameterRow> parameter;
+    in property <int> owner;
+    in property <string> context;
+    in property <bool> compact:false;
+    in property <length> ui-size:13px;
+    in property <bool> edits-suspended:false;
+    in property <bool> edit-enabled: true;
+    callback stage(int, ParameterKey, string);
+    callback commit(int, ParameterKey, string);
+    callback restore(int, ParameterKey);
+    callback slide(int, ParameterKey, float);
+    padding: 0px;
+    vertical-stretch: 0;
+    Text {
+        text: root.parameter.label;
+        vertical-alignment: center;
+        min-width:root.ui-size*(root.compact ? 4 : 12.5);
+        max-width:root.ui-size*(root.compact ? 7 : 16);
+        wrap: word-wrap;
+    }
+    if !root.compact && root.parameter.has-slider: Slider {
+        enabled: root.edit-enabled;
+        minimum: 0;
+        maximum: 1;
+        step: 0.001;
+        value: root.parameter.position;
+        // Dragging replaces the value binding; keep following committed values.
+        property <float> committed: root.parameter.position;
+        changed committed => { self.value = self.committed; }
+        accessible-label: root.context+": "+root.parameter.label + " slider";
+        changed(value) => {
+            root.slide(root.owner, root.parameter.key, value);
+        }
+    }
+    NumericField {
+        enabled: root.edit-enabled;
+        binding: root.owner;
+        display-text: root.parameter.text;
+        edits-suspended:root.edits-suspended;
+        staged:root.parameter.staged;
+        preferred-width:root.ui-size*(root.compact ? 7 : 12);
+        max-width:root.ui-size*(root.compact ? 7 : 12);
+        horizontal-stretch: 0;
+        accessible-label: root.context+": "+root.parameter.label;
+        accessible-description: root.parameter.diagnostic != "" ? root.parameter.diagnostic : root.parameter.help;
+        restore(owner) => { root.restore(owner, root.parameter.key); }
+        stage(owner, value) => { root.stage(owner, root.parameter.key, value); }
+        commit(owner, value) => { root.commit(owner, root.parameter.key, value); }
+    }
+}
+export component NotesInput inherits TextEdit {
+    min-height: 96px;
+    preferred-height: 120px;
+    max-height: 180px;
+    vertical-stretch: 0;
+    in property <string> display-text;
+    in property <bool> edits-suspended:false;
+    in property <bool> staged:false;
+    in property <int> binding;
+    in property <int> reset-key;
+    private property <bool> dirty: false;
+    private property <int> captured: -1;
+    callback stage(int, string);
+    callback commit(int, string);
+    callback restore(int);
+    function owner() -> int { return root.dirty ? root.captured : root.binding; }
+    changed reset-key => {
+        self.text = root.display-text;
+        root.dirty = root.staged;
+        root.captured = root.binding;
+    }
+    changed staged => {
+        if root.staged && !root.dirty { root.captured = root.binding; }
+        root.dirty = root.staged;
+    }
+    init => {self.text=root.display-text;root.dirty=root.staged;root.captured=root.binding;}
+    changed display-text => {
+        if !self.has-focus {
+            self.text = root.display-text;
+            root.dirty=root.staged;
+        }
+    }
+    edited(value) => {
+        if !root.dirty { root.captured = root.binding; }
+        root.dirty = true;
+        root.stage(root.captured, value);
+    }
+    key-pressed(event) => {
+        if event.text == Key.Escape {
+            root.restore(root.owner());
+            self.text = root.display-text;
+            root.dirty = false;
+            return accept;
+        }
+        return reject;
+    }
+    changed has-focus => {
+        if !self.has-focus && root.dirty && !root.edits-suspended {
+            root.dirty = false;
+            root.commit(root.captured, self.text);
+        }
+    }
+}
+export component MetadataField inherits NumericField {
+    in property <MetadataRow> field;
+    in property <MetadataKey> key;
+    callback stage-field(int, MetadataKey, string);
+    callback commit-field(int, MetadataKey, string);
+    callback restore-field(int, MetadataKey);
+    display-text: root.field.text;
+    staged: root.field.staged;
+    accessible-description: root.field.diagnostic;
+    stage(owner, value) => { root.stage-field(owner, root.key, value); }
+    commit(owner, value) => { root.commit-field(owner, root.key, value); }
+    restore(owner) => { root.restore-field(owner, root.key); }
+}
+export component NotesField inherits NotesInput {
+    in property <MetadataRow> field;
+    in property <MetadataKey> key;
+    callback stage-field(int, MetadataKey, string);
+    callback commit-field(int, MetadataKey, string);
+    callback restore-field(int, MetadataKey);
+    display-text: root.field.text;
+    staged: root.field.staged;
+    accessible-description: root.field.diagnostic;
+    stage(owner, value) => { root.stage-field(owner, root.key, value); }
+    commit(owner, value) => { root.commit-field(owner, root.key, value); }
+    restore(owner) => { root.restore-field(owner, root.key); }
+}
+// A button as wide as the widest of its possible labels, so a label change
+// never resizes it or moves its neighbours. Hidden copies of the button
+// measure the labels in the current font; they are neither drawn, focusable
+// nor exposed to accessibility.
+export component StableButton inherits Rectangle {
+    in property <string> text;
+    in property <[string]> labels;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    in property <string> accessible-name: root.text;
+    in property <bool> expanded: false;
+    callback clicked();
+    forward-focus: button;
+    public function focus-button() { button.focus(); }
+    property <length> stable-width: max(measure.preferred-width, button.preferred-width);
+    min-width: root.stable-width;
+    preferred-width: root.stable-width;
+    max-width: root.stable-width;
+    min-height: button.min-height;
+    preferred-height: button.preferred-height;
+    max-height: button.preferred-height;
+    horizontal-stretch: 0;
+    measure := VerticalLayout {
+        visible: false;
+        for label in root.labels: Button { text: label; primary: root.primary; }
+    }
+    button := Button {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        primary: root.primary;
+        enabled: root.enabled;
+        accessible-label: root.accessible-name;
+        accessible-expanded: root.expanded;
+        clicked => { root.clicked(); }
+    }
+}
+export component ExportRate inherits HorizontalBox {
+    padding: 0px;
+    vertical-stretch: 0;
+    in-out property <int> selected;
+    in property <[string]> choices;
+    in property <bool> edit-enabled;
+    callback changed(int);
+    Text {
+        text:"Export sample rate";
+        vertical-alignment:center;
+    }
+    ComboBox {
+        horizontal-stretch:0;
+        model:root.choices;
+        current-index <=> root.selected;
+        enabled:root.edit-enabled;
+        selected(v)=> {
+            root.changed(self.current-index);
+        }
+    }
+}

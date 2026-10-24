@@ -32,7 +32,7 @@ enum Command {
     Inspect {
         #[command(flatten)]
         source: Source,
-        #[arg(long, default_value="48000", value_parser=rate, value_name="HZ")]
+        #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(), value_parser=rate, value_name="HZ")]
         sample_rate: SampleRate,
     },
     /// Play on the default audio output device.
@@ -43,7 +43,7 @@ enum Command {
         source: Source,
         #[arg(long, value_name = "PATH")]
         output: PathBuf,
-        #[arg(long, default_value="48000", value_parser=rate, value_name="HZ")]
+        #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(), value_parser=rate, value_name="HZ")]
         sample_rate: SampleRate,
     },
 }

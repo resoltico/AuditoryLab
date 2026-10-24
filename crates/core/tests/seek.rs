@@ -16,7 +16,7 @@ proptest! {
 }
 #[test]
 fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
-    let text = "schema_version = 2\nduration_seconds = 1.25\nfade_seconds = 0.0\n[[component]]\nkind = 'click'\nears = 'left'\nrate_hz = 3.0\nwidth_seconds = 0.000125\npeak_dbfs = -20.0";
+    let text = "schema_version = 3\nduration_seconds = 1.25\nfade_seconds = 0.0\n[[component]]\nkind = 'click'\nears = 'left'\nrate_hz = 3.0\nwidth_seconds = 0.000125\npeak_dbfs = -20.0";
     let signal = Recipe::parse(text)
         .unwrap()
         .stimulus
@@ -79,7 +79,7 @@ fn fades_and_late_tones_follow_independent_sine_formulas() {
 }
 #[test]
 fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
-    let text = "schema_version=2\nduration_seconds=1431655.7653333333\nfade_seconds=0\n[[component]]\nkind='tone'\nears='both'\nfrequency_hz=8000\npeak_dbfs=-20\n[component.modulation]\nkind='sinusoidal'\nrate_hz=39.0625\ndepth=0.7\n";
+    let text = "schema_version=3\nduration_seconds=1431655.7653333333\nfade_seconds=0\n[[component]]\nkind='tone'\nears='both'\nfrequency_hz=8000\npeak_dbfs=-20\n[component.modulation]\nkind='sinusoidal'\nrate_hz=39.0625\ndepth=0.7\n";
     let signal = Recipe::parse(text)
         .unwrap()
         .stimulus
@@ -103,7 +103,7 @@ fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
 }
 #[test]
 fn raised_cosine_is_symmetric_and_matches_sine_squared() {
-    let text = "schema_version=2\nduration_seconds=0.125125\nfade_seconds=0.008\n[[component]]\nkind='click'\nears='both'\nrate_hz=0.5\nwidth_seconds=0.25\npeak_dbfs=0\n";
+    let text = "schema_version=3\nduration_seconds=0.125125\nfade_seconds=0.008\n[[component]]\nkind='click'\nears='both'\nrate_hz=0.5\nwidth_seconds=0.25\npeak_dbfs=0\n";
     let signal = Recipe::parse(text)
         .unwrap()
         .stimulus
@@ -135,7 +135,7 @@ fn raised_cosine_is_symmetric_and_matches_sine_squared() {
 fn public_signals_preserve_slow_onsets_and_widths_longer_than_a_second() {
     let recipe = |rate, width| {
         format!(
-            "schema_version=2\nduration_seconds=3\nfade_seconds=0\n[[component]]\nkind='click'\nears='both'\nrate_hz={rate}\nwidth_seconds={width}\npeak_dbfs=-20\n"
+            "schema_version=3\nduration_seconds=3\nfade_seconds=0\n[[component]]\nkind='click'\nears='both'\nrate_hz={rate}\nwidth_seconds={width}\npeak_dbfs=-20\n"
         )
     };
     let signal = Recipe::parse(&recipe(1.0_f64.next_down(), 0.001))

@@ -71,8 +71,10 @@ pub fn playback_elapsed(rate: SampleRate, frames: u64) -> String {
     clock(rate.seconds_in(frames))
 }
 
-/// The labels the play/stop transport control can show, in no particular
-/// order; a frontend can size the control for the widest.
+/// Library playback labels used for stable button sizing.
+pub const LIBRARY_PLAY_LABELS: [&str; 2] = ["Listen", "Stop current & play recipe"];
+
+/// Labels used to size the persistent play/stop transport.
 pub const TRANSPORT_LABELS: [&str; 3] = [PLAY_SELECTED, PLAY_LIVE, STOP_AUDIO];
 pub(crate) const PLAY_SELECTED: &str = "Play selected sound";
 pub(crate) const PLAY_LIVE: &str = "Play live";
@@ -452,22 +454,68 @@ pub fn sound_description(sound: &Sound, detail: bool) -> String {
     text
 }
 
+pub(crate) fn document_notes(snapshot: &RecipeSnapshot) -> String {
+    let mut text = String::new();
+    if let Some(notes) = snapshot
+        .about()
+        .and_then(|a| a.summary.as_deref())
+        .filter(|s| !s.is_empty())
+    {
+        text.push_str(&format!("Sound notes: {notes}\n"));
+    }
+    if let Some(source) = &snapshot.recipe().source {
+        text.push_str(&format!(
+            "Based on: {}\nResearch findings describe the retained source sound.\n",
+            source
+                .about
+                .as_ref()
+                .map_or("source sound", |a| a.title.as_str())
+        ));
+        if let Some(notes) = source
+            .about
+            .as_ref()
+            .and_then(|a| a.summary.as_deref())
+            .filter(|s| !s.is_empty())
+        {
+            text.push_str(&format!("Source notes: {notes}\n"));
+        }
+        if let Some(research) = source.about.as_ref().and_then(|a| a.research.as_ref()) {
+            for (label, value) in [
+                ("Source studied for", &research.studied_for),
+                ("Source summary", &research.summary),
+                ("Source citation", &research.citation),
+                ("Source URL", &research.source_url),
+                ("Source study", &research.study),
+                ("Source adaptation", &research.adaptation),
+            ] {
+                if let Some(value) = value {
+                    text.push_str(&format!("{label}: {value}\n"));
+                }
+            }
+        }
+    }
+    text
+}
+
 /// The research text of a snapshot in its shared display order.
 #[must_use]
 pub fn research(snapshot: &RecipeSnapshot) -> Vec<(&'static str, &str)> {
-    snapshot.about().map_or_else(Vec::new, |a| {
-        [
-            ("Studied for", &a.studied_for),
-            ("Summary", &a.summary),
-            ("Citation", &a.citation),
-            ("Source", &a.source_url),
-            ("Study", &a.study),
-            ("Adaptation", &a.adaptation),
-        ]
-        .into_iter()
-        .filter_map(|(label, value)| value.as_deref().map(|text| (label, text)))
-        .collect()
-    })
+    snapshot
+        .about()
+        .and_then(|a| a.research.as_ref())
+        .map_or_else(Vec::new, |a| {
+            [
+                ("Studied for", &a.studied_for),
+                ("Summary", &a.summary),
+                ("Citation", &a.citation),
+                ("Source", &a.source_url),
+                ("Study", &a.study),
+                ("Adaptation", &a.adaptation),
+            ]
+            .into_iter()
+            .filter_map(|(label, value)| value.as_deref().map(|text| (label, text)))
+            .collect()
+        })
 }
 
 /// Shared listening guidance.
@@ -522,6 +570,7 @@ pub fn library_label(snapshot: &RecipeSnapshot, rate: SampleRate) -> String {
         structure,
         snapshot
             .about()
+            .and_then(|a| a.research.as_ref())
             .and_then(|a| a.studied_for.as_deref())
             .unwrap_or("Custom recipe"),
         human_duration(snapshot.stimulus().duration_seconds)
@@ -533,6 +582,7 @@ pub fn library_label(snapshot: &RecipeSnapshot, rate: SampleRate) -> String {
 #[must_use]
 pub fn recipe_details(snapshot: &RecipeSnapshot, rate: SampleRate) -> String {
     let mut text = format!("Source: {}\n\n", snapshot.origin());
+    text.push_str(&document_notes(snapshot));
     for (name, value) in research(snapshot) {
         text.push_str(&format!("{name}: {value}\n\n"));
     }
@@ -570,6 +620,7 @@ pub fn describe(snapshot: &RecipeSnapshot) -> String {
         human_duration(s.duration_seconds),
         human_duration(s.fade_seconds)
     );
+    out.push_str(&document_notes(snapshot));
     for (label, value) in research(snapshot) {
         out.push_str(&format!("{label}: {value}\n"));
     }
@@ -596,6 +647,7 @@ pub fn inspection(sound: &Sound) -> String {
     let snapshot = sound.snapshot();
     let signal = sound.signal();
     let mut out = format!("{}\nSource: {}\n", snapshot.title(), snapshot.origin());
+    out.push_str(&document_notes(snapshot));
     for (label, value) in research(snapshot) {
         out.push_str(&format!("{label}: {value}\n"));
     }
@@ -625,7 +677,11 @@ pub fn catalog_listing(snapshots: &[RecipeSnapshot]) -> String {
                 snapshot.title(),
                 human_duration(snapshot.stimulus().duration_seconds)
             ));
-            if let Some(a) = snapshot.about().and_then(|a| a.studied_for.as_deref()) {
+            if let Some(a) = snapshot
+                .about()
+                .and_then(|a| a.research.as_ref())
+                .and_then(|a| a.studied_for.as_deref())
+            {
                 text.push_str(&format!("  {a}\n"));
             }
         }

@@ -21,8 +21,42 @@ fn key(s: &str) -> Vec<String> {
     }
     out
 }
+/// Resolve one condition into a standalone current-schema recipe.
+pub(crate) fn generated_recipe(
+    condition: &str,
+    read: impl FnOnce(&str) -> Result<String, Box<dyn std::error::Error>>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut document: toml::Table = toml::from_str(condition)?;
+    let research = document
+        .get_mut("about")
+        .and_then(toml::Value::as_table_mut)
+        .and_then(|a| a.get_mut("research"))
+        .and_then(toml::Value::as_table_mut)
+        .ok_or("missing condition research")?;
+    let source = research.remove("source").ok_or("missing study source")?;
+    let source = source.as_str().ok_or("study source must be text")?;
+    if source.is_empty()
+        || !source
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
+    {
+        return Err("invalid study source ID".into());
+    }
+    let study: toml::Table = toml::from_str(&read(source)?)?;
+    if study.len() != 2 || !study.contains_key("citation") || !study.contains_key("source_url") {
+        return Err("study must contain only citation and source_url".into());
+    }
+    for (name, value) in study {
+        if research.insert(name, value).is_some() {
+            return Err("condition duplicates study citation".into());
+        }
+    }
+    Ok(toml::to_string(&document)?)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=catalog");
+    println!("cargo:rerun-if-changed=studies");
     let mut ids = Vec::new();
     for entry in fs::read_dir("catalog")? {
         let path = entry?.path();
@@ -48,11 +82,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "/// Built-in recipes in natural ID order.\npub const ENTRIES: &[Entry] = &[\n",
     );
     for id in ids {
-        let path = fs::canonicalize(format!("catalog/{id}.toml"))?;
-        text.push_str(&format!(
-            "Entry {{ id: {id:?}, text: include_str!({:?}) }},\n",
-            path
-        ));
+        let recipe = generated_recipe(
+            &fs::read_to_string(format!("catalog/{id}.toml"))?,
+            |source| Ok(fs::read_to_string(format!("studies/{source}.toml"))?),
+        )?;
+        text.push_str(&format!("Entry {{ id: {id:?}, text: {recipe:?} }},\n"));
     }
     text.push_str("];\n");
     fs::write(PathBuf::from(env::var("OUT_DIR")?).join("catalog.rs"), text)?;

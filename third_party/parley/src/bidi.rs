@@ -889,6 +889,6 @@ impl BracketStack {
     }
 }
 
-const fn mask(t: BidiClass) -> u32 {
-    1 << (t.to_icu4c_value() as u32)
-}
+#[path = "bidi_mask.rs"]
+mod bidi_mask;
+use bidi_mask::mask;

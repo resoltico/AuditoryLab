@@ -113,7 +113,7 @@ fn commit_is_atomic_over_the_whole_candidate() {
 
 #[test]
 fn inherited_nonfinite_values_block_commit_save_until_repaired() {
-    let text = "schema_version=2\nduration_seconds=nan\nfade_seconds=0\n[[component]]\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=inf\n[[component]]\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=440\n";
+    let text = "schema_version=3\nduration_seconds=nan\nfade_seconds=0\n[[component]]\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=inf\n[[component]]\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=440\n";
     let snapshot = crate::load_reader(text.as_bytes(), "nonfinite import").unwrap();
     let mut editor = EditorSession::new(Draft::from_snapshot(&snapshot)).unwrap();
     assert!(
@@ -137,7 +137,9 @@ fn inherited_nonfinite_values_block_commit_save_until_repaired() {
     editor.stage(duration, "1").unwrap();
     assert_eq!(editor.commit(), Ok(true));
     assert_eq!(editor.draft().value(other.field), Some(-20.0));
-    assert_eq!(editor.save_readiness(), Ok(()));
+    assert!(
+        matches!(editor.save_readiness(), Err(SaveRefusal::Document(message)) if message.contains("retained source"))
+    );
     // Programmatic nonfinite values are diagnosed the same way.
     let mut draft = Draft::new();
     let id = draft.add(CarrierKind::Tone).unwrap();
@@ -406,7 +408,7 @@ fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids()
     assert_eq!(ids, recipe_ids);
     let about = d.recipe().about.unwrap();
     assert_eq!(about.summary.as_deref(), Some(""));
-    assert!(about.citation.is_none() && about.study.is_none() && about.studied_for.is_none());
+    assert!(about.research.is_none());
 }
 
 #[test]
@@ -439,4 +441,116 @@ fn save_round_trips_and_keeps_existing_destinations() {
     d.set_duration_seconds(f64::NAN);
     assert!(save_content(&d.recipe(), &path, crate::Replace::Allowed).is_err());
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
+}
+
+#[test]
+fn derivatives_reopen_with_one_original_source_and_own_unicode_notes() {
+    let source = crate::catalog().unwrap().remove(0);
+    let original = source.recipe().clone();
+    let mut draft = Draft::from_snapshot(&source);
+    draft.set_summary("Rīga \"quoted\" 🎧\nsecond line".into());
+    draft.set_duration_seconds(2.0);
+    let mut bytes = draft.to_toml().unwrap();
+    for _ in 0..20 {
+        let reopened = crate::load_reader(bytes.as_bytes(), "reopened elsewhere").unwrap();
+        assert!(reopened.about().unwrap().research.is_none());
+        assert_eq!(
+            reopened.about().unwrap().summary.as_deref(),
+            Some("Rīga \"quoted\" 🎧\nsecond line")
+        );
+        let anchor = reopened.recipe().source.as_ref().unwrap();
+        assert_eq!(anchor.stimulus, original.stimulus);
+        assert_eq!(anchor.about, original.about);
+        draft = Draft::from_snapshot(&reopened);
+        assert_eq!(draft.based_on().unwrap().recipe(), &original);
+        // Keep a constant title so the serialized size measures provenance, not UI naming.
+        draft.set_title("Derivative".into());
+        bytes = draft.to_toml().unwrap();
+        assert_eq!(bytes.matches("[source]").count(), 1);
+        assert!(!bytes.contains("reopened elsewhere"));
+        assert!(!bytes.contains("schema_version = 2"));
+    }
+}
+
+#[test]
+fn the_entire_document_including_unicode_anchor_has_exact_byte_neighbours() {
+    let source = crate::catalog().unwrap().remove(0);
+    let mut draft = Draft::from_snapshot(&source);
+    draft.set_summary("é🎧".into());
+    let remaining = Recipe::MAX_BYTES - draft.to_toml().unwrap().len();
+    draft.set_summary(format!("é🎧{}", "a".repeat(remaining)));
+    let text = draft.to_toml().unwrap();
+    assert_eq!(text.len(), Recipe::MAX_BYTES);
+    Recipe::parse(&text).unwrap();
+    draft.set_summary(format!("{}a", draft.summary()));
+    assert!(draft.to_toml().is_err());
+    let dir = tempfile::tempdir_in(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
+    )
+    .unwrap();
+    let path = dir.path().join("existing.toml");
+    std::fs::write(&path, b"unchanged").unwrap();
+    assert!(save_content(&draft.recipe(), &path, crate::Replace::Allowed).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), b"unchanged");
+    let absent = dir.path().join("absent.toml");
+    assert!(save_content(&draft.recipe(), &absent, crate::Replace::Never).is_err());
+    assert!(!absent.exists());
+}
+
+#[test]
+fn source_content_is_structural_but_saved_numbers_must_be_finite() {
+    let mut recipe = Draft::new().recipe();
+    recipe.source = Some(auditorylab_core::Source {
+        stimulus: Stimulus {
+            duration_seconds: -1.0,
+            fade_seconds: 9.0,
+            components: Vec::new(),
+        },
+        about: None,
+    });
+    let text = serialize(&recipe).unwrap();
+    assert_eq!(
+        Recipe::parse(&text).unwrap(),
+        recipe,
+        "finite invalid anchors are retained for inspection"
+    );
+    recipe.source.as_mut().unwrap().stimulus.duration_seconds = f64::NAN;
+    assert!(
+        serialize(&recipe)
+            .unwrap_err()
+            .to_string()
+            .contains("retained source")
+    );
+    let mut editor = EditorSession::new(Draft::from_snapshot(&crate::RecipeSnapshot::new(
+        Origin::Stream("import".into()),
+        Recipe::parse(&text).unwrap(),
+    )))
+    .unwrap();
+    assert!(editor.save_readiness().is_ok());
+    let document = editor.document();
+    let saved = editor.draft().recipe();
+    assert!(editor.record_saved(document, &saved));
+    assert!(!editor.dirty());
+    editor.draft.based_on = None;
+    assert!(editor.dirty(), "provenance participates in saved equality");
+}
+
+#[test]
+fn descriptions_and_equivalent_text_do_not_recompile_sound_inputs() {
+    let mut editor = editor_with(&[tone(440.0)]);
+    let rate = SampleRate::DEFAULT;
+    let first = editor.committed_analysis(rate);
+    let evaluations = editor.evaluations();
+    let notes = editor.handle(EditingField::Metadata(MetadataField::Summary));
+    editor.stage(notes, "Own notes 🎧").unwrap();
+    assert!(Arc::ptr_eq(&first, &editor.candidate_analysis(rate)));
+    editor.commit().unwrap();
+    assert!(Arc::ptr_eq(&first, &editor.committed_analysis(rate)));
+    let frequency = field(&editor, 0, ParameterId::ToneFrequency);
+    editor.stage(frequency, "440.000").unwrap();
+    assert!(Arc::ptr_eq(&first, &editor.candidate_analysis(rate)));
+    assert_eq!(editor.evaluations(), evaluations);
+    editor.stage(frequency, "880").unwrap();
+    assert!(!Arc::ptr_eq(&first, &editor.candidate_analysis(rate)));
+    assert_eq!(editor.evaluations(), evaluations + 1);
 }

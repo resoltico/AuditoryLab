@@ -1,16 +1,17 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
 # Source: Materials and Methods, sections Stimuli and Procedure.
-schema_version = 2
+schema_version = 3
 duration_seconds = 480.0
 fade_seconds = 0.1
 
 [about]
 title = "40 Hz binaural beat"
+
+[about.research]
+source = "orozco-perez-2020"
 studied_for = "Human study: Relaxation and brain-rhythm response"
 summary = "380 Hz in the left ear and 420 Hz in the right: a 40-per-second binaural beat for headphones. In one study, 16 adults listened for 8 minutes: their brain recordings followed the beat weakly, the same two tones mixed together in both ears produced a stronger response, and they felt no more relaxed or absorbed than without the beat. Reviews of binaural-beat research report mixed results."
-citation = "Orozco Perez HD, Dumas G, Lehmann A (2020). Binaural beats through the auditory pathway: from brainstem to connectivity patterns. eNeuro 7(2): ENEURO.0232-19.2020."
-source_url = "https://doi.org/10.1523/ENEURO.0232-19.2020"
 study = "Binaural-beat condition: 380 Hz in the left ear and 420 Hz in the right. Sixteen adults heard each of four 8-minute conditions (7 Hz and 40 Hz, binaural and monaural) during EEG. Both beat types entrained cortical activity at the beat frequency, monaural beats more strongly; ratings of mental relaxation and absorption did not differ between conditions."
 adaptation = "The source states equal starting phases and the lower tone in the left ear; both tones start at phase zero here. The source generated sound live at 48 kHz and calibrated output to 70 dB SPL per ear; it does not specify ramps; this recipe uses a -20 dBFS peak per tone, uncalibrated, and adds 0.1 s fades."
 

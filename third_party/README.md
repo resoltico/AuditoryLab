@@ -4,26 +4,17 @@ The workspace patches pinned i-slint-core, i-slint-compiler and i-slint-backend-
 
 ## Sources
 
-Each directory is the published crates.io archive with the listed files changed. The SHA-256 values are those of the archives and match the crates.io index.
+[patches.toml](patches.toml) is the authoritative archive URL/version/SHA-256 record. [patches/](patches/) contains upstream-ready unified diffs, including license additions and the backend lockfile omission. Vendored source must equal the authenticated archive with exactly its reviewed patch applied. Changed-file inventories are derived from these diffs, rather than maintained separately.
 
-| Directory | Upstream archive | SHA-256 | Changed files |
-| --- | --- | --- | --- |
-| `accesskit_unix` | [accesskit_unix 0.22.1](https://static.crates.io/crates/accesskit_unix/accesskit_unix-0.22.1.crate) | `03e156ed3802e35eefe894ef2671bc6c889303d8a7e110b5e1b48f504b91362f` | `src/atspi/bus.rs`; adds `LICENSE-APACHE`, `LICENSE-MIT` |
-| `i-slint-core` | [i-slint-core 1.18.1](https://static.crates.io/crates/i-slint-core/i-slint-core-1.18.1.crate) | `ed2ea15059d70bc31b1a8b1eb4c34f2c5df04cb7e53f36179b43c0261231d646` | `input.rs`, `item_tree.rs`, `items/flickable.rs`, `items/text.rs`, `textlayout/sharedparley.rs`, `textlayout/sharedparley/shaping.rs`, `window.rs` |
-| `i-slint-compiler` | [i-slint-compiler 1.18.1](https://static.crates.io/crates/i-slint-compiler/i-slint-compiler-1.18.1.crate) | `f55d48ebef05e2bf09ba5a1fc67bcb11033b9e12a2a50ed3105c7d25e2b539d0` | `builtin_elements.rs`, `widgets/common/textedit-base.slint`, `widgets/{cosmic,cupertino,fluent,material,qt}/button.slint` |
-| `i-slint-backend-winit` | [i-slint-backend-winit 1.18.1](https://static.crates.io/crates/i-slint-backend-winit/i-slint-backend-winit-1.18.1.crate) | `dae4fcf1b19e9cb109984d2af87d2b9485388c619265bff71dd523133888bee2` | `event_loop.rs`, `lib.rs`, `muda.rs`, `winitwindowadapter.rs`; omits the archive's `Cargo.lock` |
-| `parley` | [parley 0.11.1](https://static.crates.io/crates/parley/parley-0.11.1.crate) | `22d2ff88bd3f7d68d1d9b09c7e6209f9a8e8c05088295140a2bcf2e9b17038c5` | `src/shape/mod.rs` |
-| `winit` | [winit 0.30.13](https://static.crates.io/crates/winit/winit-0.30.13.crate) | `a6755fa58a9f8350bd1e472d4c3fcc25f824ec358933bba33306d0b63df5978d` | `src/platform/macos.rs`, `src/platform/wayland.rs`, `src/platform_impl/linux/wayland/window/mod.rs`, `src/platform_impl/linux/x11/util/randr.rs`, `src/platform_impl/linux/x11/xsettings.rs` and the new `xsettings/` directory, `src/platform_impl/macos/app_state.rs`, `src/platform_impl/macos/event_loop.rs`, `src/platform_impl/macos/mod.rs` |
-
-The directories here are the only maintained copy of the changes. To review one, compare it with its verified archive; every archive also contains `.cargo_vcs_info.json`, which is not kept:
+Run from the repository root:
 
 ```sh
-mkdir -p target/vendor-review
-curl -sSfL -o target/vendor-review/winit-0.30.13.crate https://static.crates.io/crates/winit/winit-0.30.13.crate
-shasum -a 256 target/vendor-review/winit-0.30.13.crate
-tar -xzf target/vendor-review/winit-0.30.13.crate -C target/vendor-review
-diff -ruN target/vendor-review/winit-0.30.13 third_party/winit
+cargo xtask verify-vendor
 ```
+
+This command downloads missing archives to `target/vendor-review`, verifies SHA-256 before extraction, applies each patch in an automatically removed temporary directory under `target/tmp`, compares every source byte, and checks Cargo metadata plus normal/build graphs for both products at every target defined in `xtask/src/targets.rs`. Only `.cargo_vcs_info.json` and Cargo's top-level `target/` compiler outputs are excluded. Symlinks, unreviewed additions, missing edits and registry resolutions that bypass a patch fail. The SHA implementation uses the maintained RustCrypto `sha2` crate; no platform-specific hashing command is required. `curl`, Git and the pinned Rust toolchain are prerequisites. The command does not build native targets or qualify their behavior.
+
+For an upgrade, authenticate the new archive first, inspect upstream changes and the existing diff, reapply only required fixes, then update source, patch and archive record together. Run this verifier and the boundary tests below. A matching package version or patch filename is insufficient evidence. Negative controls in `xtask/src/vendor.rs` exercise corrupt bytes, missing files and unexpected source additions.
 
 The root manifest excludes `third_party` from the workspace so that a crate whose tests need its own development dependencies runs them from its manifest and lockfile.
 
@@ -64,3 +55,20 @@ On macOS, Winit’s own application delegate implements `applicationShouldTermin
 The Slint Winit backend registers that interceptor when its custom application handler asks for it, before the event loop runs, and delivers each request to the handler through its event-loop proxy; without a handler, it denies the request. When the handler supplies an About title, the default and declarative application menus both build the About item with the reserved menu identifier `slint-application-about`, and the backend routes that identifier to the handler before parsing window menu identifiers. Otherwise the predefined About item remains. The default menu bar installs the same once-installed menu-event bridge as declarative menus.
 
 The standard Button's accessibility default action — the press an assistive technology sends — reaches `clicked` only while the button is enabled, in every widget style, as pointer and keyboard presses already do. The GUI test `accessibility_presses_respect_disabled_buttons` exercises it.
+
+## Patch retirement gates
+
+Remove a patch only when an authenticated candidate upstream implementation passes its corresponding production-boundary checks, followed by native qualification on affected platforms:
+
+| Patch | Required behavior before retirement |
+| --- | --- |
+| AccessKit Unix | AT-SPI cache add/remove signals encode one structured argument and real assistive clients refresh removed/reinserted controls. |
+| Slint core | Native optical sizing/tracking, multiline shaped extents, semantic focus recovery, clipped editor focus and modifier normalization pass the font, reflow, scroll and keyboard suites. |
+| Slint compiler/widgets | TextEdit reveals the shaped cursor rectangle and disabled accessibility presses cannot invoke buttons in any style. |
+| Slint Winit backend | Modeless parenting/show redraw work on Wayland; native macOS termination and About route through the production handler with stale epochs rejected. |
+| Parley | Shaping preserves logical optical sizing/tracking; bidi membership uses public property identities without deprecated numeric encodings. |
+| Winit | XSettings scaling preserves explicit override/KDE precedence; Wayland parent requests and macOS deferred/coalesced termination pass their native boundaries. |
+
+Parley's bidi masks now assign local distinct membership bits to the public `BidiClass` constants; their numeric values never escape the internal sets. This removes ICU 2.3's deprecated ICU4C accessor without suppressing warnings. Existing bidirectional and GUI text tests remain required.
+
+The published Parley archive omits the `parley_dev` test helper, so its full standalone `cargo test --lib` does not compile from these published sources. The changed membership function lives in `src/bidi_mask.rs`; xtask includes that exact production file and checks nonzero, pairwise-disjoint bits for every public class used by the resolver. It compiles against the workspace's resolved ICU version under the authored warnings policy. GUI shaping/keyboard/font tests exercise the integrated renderer. These focused checks do not claim execution of upstream's full font-fixture suite.

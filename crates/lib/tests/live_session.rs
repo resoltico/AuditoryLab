@@ -92,7 +92,7 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
         ),
     ] {
         let snapshot = auditorylab::load_reader(
-            format!("schema_version=2\nduration_seconds=1\nfade_seconds=0\n{text}").as_bytes(),
+            format!("schema_version=3\nduration_seconds=1\nfade_seconds=0\n{text}").as_bytes(),
             "called binaural even if not a pair",
         )
         .unwrap();

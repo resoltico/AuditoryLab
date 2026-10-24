@@ -61,8 +61,8 @@ fn pending_entry_survives_font_reflow_clipping_and_row_changes() {
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 1);
     let inner = WindowInner::from_pub(ui.window());
-    let rate_label = "Click rhythm · layer 1: Click rate (Hz)";
-    let peak_label = "Click rhythm · layer 1: Peak level (dBFS)";
+    let rate_label = "Click rhythm · component 1: Click rate (Hz)";
+    let peak_label = "Click rhythm · component 1: Peak level (dBFS)";
     for (label, id, committed, raw, height) in [
         (rate_label, ParameterId::ClickRate, 40.0, "405", 900.0),
         (peak_label, ParameterId::PeakLevel, -30.0, "-305", 700.0),
@@ -322,7 +322,7 @@ fn pending_entry_survives_font_reflow_clipping_and_row_changes() {
     );
     drop(old_field);
     drop(input);
-    let frequency = h.field("Steady tone · layer 1: Tone frequency (Hz)");
+    let frequency = h.field("Steady tone · component 1: Tone frequency (Hz)");
     inner.set_focus_item(&frequency, true, FocusReason::Programmatic);
     h.settle();
     assert!(
@@ -396,7 +396,7 @@ fn monitor_handoff_and_deactivation_preserve_numeric_entry() {
     assert_eq!(staged(), Some(format!("{base_text}1")));
     let monitor = MonitorWindow::new().unwrap();
     monitor.show().unwrap();
-    hide_monitor_window(ui, &monitor, false);
+    hide_monitor_window(ui, &monitor, false).unwrap();
     h.settle();
     assert_eq!(
         committed(),
@@ -411,7 +411,7 @@ fn monitor_handoff_and_deactivation_preserve_numeric_entry() {
     h.key("e");
     assert_eq!(staged(), Some(format!("{base_text}e")));
     monitor.show().unwrap();
-    hide_monitor_window(ui, &monitor, false);
+    hide_monitor_window(ui, &monitor, false).unwrap();
     h.settle();
     assert_eq!(
         staged(),
@@ -429,7 +429,7 @@ fn monitor_handoff_and_deactivation_preserve_numeric_entry() {
     ui.window()
         .dispatch_event(WindowEvent::WindowActiveChanged(false));
     monitor.show().unwrap();
-    hide_monitor_window(ui, &monitor, true);
+    hide_monitor_window(ui, &monitor, true).unwrap();
     ui.window()
         .dispatch_event(WindowEvent::WindowActiveChanged(true));
     ui.set_edits_suspended(false);

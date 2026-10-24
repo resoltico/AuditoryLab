@@ -6,6 +6,18 @@ use auditorylab_core::{
     Carrier, CarrierKind, Component, Ears, Modulation, ModulationKind, ParameterId, SampleRate,
 };
 
+/// Waveform spans offered by application monitors, in milliseconds.
+pub const MONITOR_SPANS_MS: [u32; 4] = [2, 10, 40, 100];
+/// Application monitor scales and labels.
+pub const MONITOR_SCALES: [(crate::WaveformScale, &str); 2] = [
+    (crate::WaveformScale::Fixed, "Fixed ±1"),
+    (crate::WaveformScale::Fit, "Fit signal"),
+];
+/// Initial waveform span.
+pub const DEFAULT_MONITOR_SPAN_MS: u32 = 40;
+/// Initial waveform scale.
+pub const DEFAULT_MONITOR_SCALE: crate::WaveformScale = crate::WaveformScale::Fit;
+
 /// Mapping from a slider position to a value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scale {
@@ -76,22 +88,26 @@ pub fn range(id: ParameterId, rate: SampleRate) -> Option<Range> {
 pub fn default_component(kind: CarrierKind) -> Component {
     Component {
         ears: Ears::Both,
-        peak_dbfs: -30.0,
+        peak_dbfs: model_default(ParameterId::PeakLevel),
         carrier: default_carrier(kind),
         modulation: None,
     }
 }
 
+fn model_default(id: ParameterId) -> f64 {
+    range(id, SampleRate::DEFAULT).map_or(0.0, |r| id.descriptor().unit.to_model(r.default))
+}
+
 /// The default carrier of a kind, in model units.
 #[must_use]
-pub const fn default_carrier(kind: CarrierKind) -> Carrier {
+pub fn default_carrier(kind: CarrierKind) -> Carrier {
     match kind {
         CarrierKind::Tone => Carrier::Tone {
-            frequency_hz: 440.0,
+            frequency_hz: model_default(ParameterId::ToneFrequency),
         },
         CarrierKind::Clicks => Carrier::Click {
-            rate_hz: 40.0,
-            width_seconds: 0.001,
+            rate_hz: model_default(ParameterId::ClickRate),
+            width_seconds: model_default(ParameterId::ClickWidth),
         },
     }
 }

@@ -1,535 +1,14 @@
 import {
-    Palette, AboutSlint, Button, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, TabWidget, ProgressIndicator
+    Palette, Button, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, TabWidget, ProgressIndicator
 }
 from "std-widgets.slint";
-// Semantic quantities; the application maps each to exactly one domain field.
-export enum ParameterKey {
-    tone-frequency, click-rate, click-width, peak-level, amplitude-modulation-rate,
-    modulation-depth, gate-rate, gate-width, duration, fade
-}
-export enum MetadataKey { title, summary, duration, fade }
-export struct ParameterRow {
-    key: ParameterKey,
-    label: string,
-    help: string,
-    text: string,
-    staged: bool,
-    has-slider: bool,
-    position: float,
-    diagnostic: string,
-}
-// `binding` identifies the rendered component of one particular document.
-export struct ComponentRow {
-    binding: int,
-    id: int,
-    ears: int,
-    carrier: int,
-    modulation: int,
-    heading: string,
-    name: string,
-    context: string,
-    error: string,
-    parameters: [ParameterRow],
-}
-export struct MetadataRow { label: string, text: string, staged: bool, diagnostic: string }
-export struct ModelLane { component: int, label: string, trace: string }
-// A compact disclosure: as wide as its label, aligned with the content it opens.
-component Disclosure inherits Rectangle {
-    in-out property <bool> expanded: false;
-    in property <string> label;
-    min-width: toggle.min-width;
-    preferred-width: toggle.preferred-width;
-    max-width: toggle.preferred-width;
-    min-height: toggle.min-height;
-    preferred-height: toggle.preferred-height;
-    max-height: toggle.preferred-height;
-    horizontal-stretch: 0;
-    toggle := Button {
-        x: 0px;
-        y: 0px;
-        width: parent.width;
-        height: parent.height;
-        text: (root.expanded ? "▾ " : "▸ ") + root.label;
-        accessible-label: root.label + (root.expanded ? " · expanded" : " · collapsed");
-        accessible-expanded: root.expanded;
-        clicked => {root.expanded = !root.expanded;}
-    }
-}
-// Uncommitted text, caret and focus stay local. Model refreshes replace only
-// unfocused text. An edit keeps the binding it started with, so a late commit
-// can never address a field rendered for another document.
-component NumericField inherits LineEdit {
-    in property <string> display-text;
-    in property <bool> edits-suspended:false;
-    in property <bool> staged:false;
-    in property <int> binding;
-    in property <int> reset-key;
-    private property <bool> dirty: false;
-    private property <int> captured: -1;
-    callback stage(int, string);
-    callback commit(int, string);
-    callback restore(int);
-    function owner() -> int { return root.dirty ? root.captured : root.binding; }
-    changed reset-key => {
-        self.text = root.display-text;
-        root.dirty = root.staged;
-        root.captured = root.binding;
-    }
-    changed staged => {
-        if root.staged && !root.dirty { root.captured = root.binding; }
-        root.dirty = root.staged;
-    }
-    init => {self.text=root.display-text;root.dirty=root.staged;root.captured=root.binding;}
-    changed display-text => {
-        if !self.has-focus {
-            self.text = root.display-text;
-            root.dirty=root.staged;
-        }
-    }
-    edited(value) => {
-        if !root.dirty { root.captured = root.binding; }
-        root.dirty = true;
-        root.stage(root.captured, value);
-    }
-    key-pressed(event) => {
-        if event.text == Key.Escape {
-            root.restore(root.owner());
-            self.text = root.display-text;
-            root.dirty = false;
-            return accept;
-        }
-        return reject;
-    }
-    accepted(value) => {
-        let owner = root.owner();
-        root.dirty = false;
-        root.commit(owner, value);
-    }
-    changed has-focus => {
-        if !self.has-focus && root.dirty && !root.edits-suspended {
-            root.dirty = false;
-            root.commit(root.captured, self.text);
-        }
-    }
-}
-component ParameterControl inherits HorizontalBox {
-    in property <ParameterRow> parameter;
-    in property <int> owner;
-    in property <string> context;
-    in property <bool> compact:false;
-    in property <length> ui-size:13px;
-    in property <bool> edits-suspended:false;
-    in property <bool> edit-enabled: true;
-    callback stage(int, ParameterKey, string);
-    callback commit(int, ParameterKey, string);
-    callback restore(int, ParameterKey);
-    callback slide(int, ParameterKey, float);
-    padding: 0px;
-    vertical-stretch: 0;
-    Text {
-        text: root.parameter.label;
-        vertical-alignment: center;
-        min-width:root.ui-size*(root.compact ? 4 : 12.5);
-        max-width:root.ui-size*(root.compact ? 7 : 16);
-        wrap: word-wrap;
-    }
-    if !root.compact && root.parameter.has-slider: Slider {
-        enabled: root.edit-enabled;
-        minimum: 0;
-        maximum: 1;
-        step: 0.001;
-        value: root.parameter.position;
-        // Dragging replaces the value binding; keep following committed values.
-        property <float> committed: root.parameter.position;
-        changed committed => { self.value = self.committed; }
-        accessible-label: root.context+": "+root.parameter.label + " slider";
-        changed(value) => {
-            root.slide(root.owner, root.parameter.key, value);
-        }
-    }
-    NumericField {
-        enabled: root.edit-enabled;
-        binding: root.owner;
-        display-text: root.parameter.text;
-        edits-suspended:root.edits-suspended;
-        staged:root.parameter.staged;
-        preferred-width:root.ui-size*(root.compact ? 7 : 12);
-        max-width:root.ui-size*(root.compact ? 7 : 12);
-        horizontal-stretch: 0;
-        accessible-label: root.context+": "+root.parameter.label;
-        accessible-description: root.parameter.diagnostic != "" ? root.parameter.diagnostic : root.parameter.help;
-        restore(owner) => { root.restore(owner, root.parameter.key); }
-        stage(owner, value) => { root.stage(owner, root.parameter.key, value); }
-        commit(owner, value) => { root.commit(owner, root.parameter.key, value); }
-    }
-}
-component MetadataField inherits NumericField {
-    in property <MetadataRow> field;
-    in property <MetadataKey> key;
-    callback stage-field(int, MetadataKey, string);
-    callback commit-field(int, MetadataKey, string);
-    callback restore-field(int, MetadataKey);
-    display-text: root.field.text;
-    staged: root.field.staged;
-    accessible-description: root.field.diagnostic;
-    stage(owner, value) => { root.stage-field(owner, root.key, value); }
-    commit(owner, value) => { root.commit-field(owner, root.key, value); }
-    restore(owner) => { root.restore-field(owner, root.key); }
-}
-// A button as wide as the widest of its possible labels, so a label change
-// never resizes it or moves its neighbours. Hidden copies of the button
-// measure the labels in the current font; they are neither drawn, focusable
-// nor exposed to accessibility.
-component StableButton inherits Rectangle {
-    in property <string> text;
-    in property <[string]> labels;
-    in property <bool> primary: false;
-    in property <bool> enabled: true;
-    in property <string> accessible-name: root.text;
-    in property <bool> expanded: false;
-    callback clicked();
-    forward-focus: button;
-    property <length> stable-width: max(measure.preferred-width, button.preferred-width);
-    min-width: root.stable-width;
-    preferred-width: root.stable-width;
-    max-width: root.stable-width;
-    min-height: button.min-height;
-    preferred-height: button.preferred-height;
-    max-height: button.preferred-height;
-    horizontal-stretch: 0;
-    measure := VerticalLayout {
-        visible: false;
-        for label in root.labels: Button { text: label; primary: root.primary; }
-    }
-    button := Button {
-        x: 0px;
-        y: 0px;
-        width: parent.width;
-        height: parent.height;
-        text: root.text;
-        primary: root.primary;
-        enabled: root.enabled;
-        accessible-label: root.accessible-name;
-        accessible-expanded: root.expanded;
-        clicked => { root.clicked(); }
-    }
-}
-component ExportRate inherits HorizontalBox {
-    padding: 0px;
-    vertical-stretch: 0;
-    in-out property <int> selected;
-    in property <[string]> choices;
-    in property <bool> edit-enabled;
-    callback changed(int);
-    Text {
-        text:"Export sample rate";
-        vertical-alignment:center;
-    }
-    ComboBox {
-        horizontal-stretch:0;
-        model:root.choices;
-        current-index <=> root.selected;
-        enabled:root.edit-enabled;
-        selected(v)=> {
-            root.changed(self.current-index);
-        }
-    }
-}
-component AboutLabel inherits TextInput {
-    read-only: true;
-    single-line: true;
-    horizontal-alignment: center;
-    accessible-label: self.text;
-    vertical-stretch: 0;
-}
-export component AboutWindow inherits Window {
-    title: "About Auditory Lab";
-    icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
-    in property <string> ui-family;
-    in property <length> ui-size: 13px;
-    default-font-family: root.ui-family;
-    default-font-size: root.ui-size;
-    preferred-width: max(420px, root.ui-size * 30);
-    preferred-height: max(410px, root.ui-size * 27);
-    in property <string> identity;
-    callback open-source();
-    callback open-licenses();
-    callback dismiss();
-    callback focus-website();
-    focus-website => { website.focus(); }
-    MenuBar {
-        Menu { title: "Edit";
-            MenuItem { title: "Copy"; shortcut: @keys(Control + C);
-                enabled: name-text.has-focus || version-text.has-focus || purpose-text.has-focus || copyright-text.has-focus;
-                activated => {
-                    if name-text.has-focus { name-text.copy(); }
-                    if version-text.has-focus { version-text.copy(); }
-                    if purpose-text.has-focus { purpose-text.copy(); }
-                    if copyright-text.has-focus { copyright-text.copy(); }
-                }
-            }
-            MenuItem { title: "Select All"; shortcut: @keys(Control + A);
-                enabled: name-text.has-focus || version-text.has-focus || purpose-text.has-focus || copyright-text.has-focus;
-                activated => {
-                    if name-text.has-focus { name-text.select-all(); }
-                    if version-text.has-focus { version-text.select-all(); }
-                    if purpose-text.has-focus { purpose-text.select-all(); }
-                    if copyright-text.has-focus { copyright-text.select-all(); }
-                }
-            }
-        }
-    }
-    forward-focus: about-focus;
-    about-focus := FocusScope {
-        key-pressed(event) => { if event.text == Key.Escape { root.dismiss(); return accept; } return reject; }
-        VerticalBox {
-            padding: 24px; spacing: 12px; alignment: center;
-            HorizontalBox { alignment: center; padding: 0px;
-                Image { source: root.icon; width: 64px; height: 64px; image-fit: contain; accessible-label: "Application icon"; }
-            }
-            name-text := AboutLabel { text: "Auditory Lab"; font-size: 18px; font-weight: 600; }
-            version-text := AboutLabel { text: root.identity; }
-            purpose-text := AboutLabel { text: "Play and export auditory stimuli.\nEdit sounds as TOML recipes."; single-line: false; }
-            copyright-text := AboutLabel { text: "Copyright © 2026 Ervins Strauhmanis"; }
-            HorizontalBox { alignment: center; spacing: 12px; padding: 0px;
-                website := Button { text: "Project website"; clicked => { root.open-source(); } }
-                Button { text: "Licenses"; clicked => { root.open-licenses(); } }
-            }
-            HorizontalBox { alignment: center; vertical-stretch: 0; padding: 0px;
-                AboutSlint { width: 280px; height: 100px; horizontal-stretch: 0; vertical-stretch: 0; }
-            }
-        }
-    }
-}
-export component LicenseWindow inherits Window {
-    title: "Software and Artwork Licenses";
-    icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
-    in property <string> ui-family;
-    in property <length> ui-size: 13px;
-    default-font-family: root.ui-family;
-    default-font-size: root.ui-size;
-    preferred-width: 720px; preferred-height: 560px;
-    in property <string> licenses;
-    in property <string> notice: "Open bundled component notices and license files.";
-    callback third-party-licenses-requested();
-    callback dismiss();
-    callback focus-start();
-    focus-start => { license-text.focus(); license-text.set-selection-offsets(0, 0); license-text.content-y = 0px; }
-    forward-focus: license-focus;
-    MenuBar {
-        Menu { title: "Edit";
-            MenuItem { title: "Copy"; shortcut: @keys(Control + C); enabled: license-text.has-focus; activated => { license-text.copy(); } }
-            MenuItem { title: "Select All"; shortcut: @keys(Control + A); enabled: license-text.has-focus; activated => { license-text.select-all(); } }
-        }
-    }
-    license-focus := FocusScope {
-        forward-focus: license-text;
-        key-pressed(event) => { if event.text == Key.Escape { root.dismiss(); return accept; } return reject; }
-        VerticalBox {
-            license-text := TextEdit { text: root.licenses; read-only: true; accessible-label: "Complete software and owner artwork license terms"; }
-            HorizontalBox {
-                padding: 12px; spacing: 12px; vertical-stretch: 0;
-                Text { text: root.notice; wrap: word-wrap; horizontal-stretch: 1; }
-                Button { text: "Third-party licenses…"; horizontal-stretch: 0; clicked => { root.third-party-licenses-requested(); } }
-            }
-        }
-    }
-}
+export { ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import { ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import { Disclosure, NumericField, ParameterControl, MetadataField, NotesField, StableButton, ExportRate } from "editor.slint";
+export { AboutWindow, LicenseWindow } from "about.slint";
 
-component Lane inherits Rectangle {
-    in property <string> label;
-    in property <string> trace;
-    in property <string> limit: "1";
-    in property <length> ui-size:13px;
-    in property <length> label-column-width;
-    out property <length> label-width:title.preferred-width;
-    property <length> axis-row-height: max(title.preferred-height, positive.preferred-height, zero.preferred-height, negative.preferred-height);
-    property <length> tick-width: max(positive.preferred-width, zero.preferred-width, negative.preferred-width);
-    property <length> tick-x: root.label-column-width + 12px;
-    property <length> axis-width: root.tick-x + root.tick-width + 6px;
-    background: #131d2b;
-    preferred-height: root.axis-row-height*3;
-    min-height: root.axis-row-height*3;
-    // Keep at least a 2:1 plotting area beside the full labels.
-    min-width: root.axis-width + root.axis-row-height*4 + 8px;
-    accessible-role: image;
-    accessible-label: root.label + " samples, common symmetric scale ±" + root.limit;
-    title := Text {
-        x: 6px;
-        y: root.axis-row-height*1.5 - self.preferred-height/2;
-        text: root.label;
-        color: #e1eaf6;
-        font-size: root.ui-size*0.93;
-    }
-    positive := Text {
-        x: root.tick-x;
-        y: root.axis-row-height*0.5 - self.preferred-height/2;
-        text: "+"+root.limit;
-        color: #c6d0df;
-        font-size: root.ui-size;
-    }
-    zero := Text {
-        x: root.tick-x;
-        y:root.axis-row-height*1.5 - self.preferred-height/2;
-        text: "0";
-        color: #c6d0df;
-        font-size: root.ui-size;
-    }
-    negative := Text {
-        x: root.tick-x;
-        y:root.axis-row-height*2.5 - self.preferred-height/2;
-        text: "−"+root.limit;
-        color: #c6d0df;
-        font-size: root.ui-size;
-    }
-    Rectangle {
-        x: root.axis-width;
-        y: root.axis-row-height*0.5;
-        width: max(1px, parent.width - root.axis-width - 8px);
-        height:root.axis-row-height*2;
-        clip: true;
-        Rectangle {
-            y: parent.height / 2;
-            height: 1px;
-            width: parent.width;
-            background: #43536b;
-        }
-        Path {
-            width: parent.width;
-            height: parent.height;
-            viewbox-width: 1024;
-            viewbox-height: 100;
-            fit: fill;
-            commands: root.trace;
-            stroke: #77d4ef;
-            stroke-width: 1px;
-        }
-    }
-}
-export struct MonitorData {
-    state:string,age:string,caption:string,meters:string,warning:string,warninglive:bool,backendwarning:string,motion:string,
-    left:string,right:string,limit:string,spanlabel:string,spanchoice:int,scalechoice:int,held:bool,overridden:bool
-}
-component MonitorPanel inherits VerticalBox {
-    property <length> lane-label-width: max(left-lane.label-width, right-lane.label-width);
-    in property <MonitorData> data;
-    in property <[string]> span-choices;
-    in property <[string]> scale-choices;
-    in property <length> ui-size:13px;
-    callback span(int);callback scale(int);callback hold();callback follow();callback details();callback collapse();
-    spacing:4px;padding:0px;
-    HorizontalBox {padding:0px;vertical-stretch:0;cross-axis-alignment:center;
-        Text {min-width:0px;text:"Output monitor";font-weight:700;wrap:word-wrap;}
-        Text {text:root.data.state;font-weight:600;wrap:no-wrap;horizontal-stretch:0;}
-        Text {preferred-width:0px;horizontal-stretch:1;text:root.data.age;wrap:no-wrap;overflow:elide;accessible-label:root.data.age;}
-        Button {text:"Details…";accessible-label:"Full audio diagnostics and capture source";clicked=>{root.details();}}
-        Button {text:"Hide";accessible-label:"Hide output monitor";clicked=>{root.collapse();}}
-    }
-    HorizontalBox {padding:0px;spacing:12px;
-        VerticalBox {padding:0px;spacing:3px;
-            Text {min-width:0px;text:root.data.caption;max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
-            left-lane := Lane {label:"Left";trace:root.data.left;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
-            right-lane := Lane {label:"Right";trace:root.data.right;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
-            HorizontalBox {padding:0px;vertical-stretch:0;Text {text:"−"+root.data.spanlabel;}Rectangle {horizontal-stretch:1;}Text {text:"Captured end";}}
-        }
-        VerticalBox {padding:0px;spacing:4px;preferred-width:root.ui-size*21;max-width:root.ui-size*25;
-            ComboBox {model:root.span-choices;current-index:root.data.spanchoice;enabled:!root.data.held;accessible-label:"Waveform time window";selected(v)=>{root.span(self.current-index);}}
-            ComboBox {model:root.scale-choices;current-index:root.data.scalechoice;enabled:!root.data.held;accessible-label:"Waveform amplitude scale";selected(v)=>{root.scale(self.current-index);}}
-            HorizontalBox {padding:0px;spacing:4px;
-                Button {text:root.data.held ? "Return to live" : "Hold display";clicked=>{root.hold();}}
-                if root.data.overridden: Button {text:"Follow system";accessible-label:"Follow system motion preference";clicked=>{root.follow();}}
-            }
-            Text {min-width:0px;text:root.data.meters;max-height:root.ui-size*4;wrap:word-wrap;overflow:elide;}
-        }
-    }
-    Text {min-width:0px;text:root.data.motion;wrap:word-wrap;vertical-stretch:0;max-height:root.ui-size*2.5;overflow:elide;}
-    // A reserved row keeps brief coverage changes from changing the responsive window choice.
-    HorizontalBox {
-        padding:0px;spacing:8px;vertical-stretch:0;
-        min-height:root.ui-size*2.5;max-height:root.ui-size*2.5;
-        Text {text:root.data.warning;visible:root.data.warning!="";wrap:word-wrap;min-width:0px;preferred-width:0px;horizontal-stretch:1;max-height:root.ui-size*2.5;overflow:elide;accessible-live-region:root.data.warninglive ? polite : off;}
-        Text {text:root.data.backendwarning;visible:root.data.backendwarning!="";wrap:word-wrap;min-width:0px;preferred-width:0px;horizontal-stretch:1;max-height:root.ui-size*2.5;overflow:elide;accessible-live-region:polite;}
-    }
-}
-export component MonitorWindow inherits Window {
-    title:"Output monitor";
-    in property <string> ui-family;in property <length> ui-size:13px;
-    default-font-family:root.ui-family;default-font-size:root.ui-size;
-    preferred-width:950px;preferred-height:420px;
-    min-width:680px;min-height:400px;
-    in property <MonitorData> data;
-    in property <[string]> span-choices;
-    in property <[string]> scale-choices;
-    callback span(int);callback scale(int);callback hold();callback follow();callback details();callback dismiss();
-    forward-focus:monitor-keys;
-    monitor-keys := FocusScope {
-        width:parent.width;height:parent.height;
-        // These controls have fixed choices; selectable text lives in Details.
-        capture-key-pressed(event)=>{
-            if !event.modifiers.alt && !event.modifiers.meta && !event.modifiers.shift {
-                if !event.modifiers.control && event.text==Key.PageDown {
-                    monitor-scroll.content-y=max(min(0px,monitor-scroll.visible-height - monitor-scroll.content-height),monitor-scroll.content-y - monitor-scroll.visible-height);
-                    return accept;
-                }
-                if !event.modifiers.control && event.text==Key.PageUp {
-                    monitor-scroll.content-y=min(0px,monitor-scroll.content-y+monitor-scroll.visible-height);
-                    return accept;
-                }
-                if event.modifiers.control && event.text==Key.Home {
-                    monitor-scroll.content-x=0px;monitor-scroll.content-y=0px;
-                    return accept;
-                }
-                if event.modifiers.control && event.text==Key.End {
-                    monitor-scroll.content-x=min(0px,monitor-scroll.visible-width - monitor-scroll.content-width);
-                    monitor-scroll.content-y=min(0px,monitor-scroll.visible-height - monitor-scroll.content-height);
-                    return accept;
-                }
-            }
-            return reject;
-        }
-    monitor-scroll := ScrollView {
-        VerticalBox {padding:16px;
-            MonitorPanel {max-height:self.preferred-height;data:root.data;span-choices:root.span-choices;scale-choices:root.scale-choices;ui-size:root.ui-size;span(i)=>{root.span(i);}scale(i)=>{root.scale(i);}hold=>{root.hold();}follow=>{root.follow();}details=>{root.details();}collapse=>{root.dismiss();}}
-        }
-    }
-    }
-}
-export component DetailsWindow inherits Window {
-    in property <string> ui-family;in property <length> ui-size:13px;
-    default-font-family:root.ui-family;default-font-size:root.ui-size;
-    in property <string> heading;title:root.heading;
-    in property <string> content;
-    in property <bool> can-refresh;
-    public function focus-close(){close.focus();}
-    callback refresh-content();
-    preferred-width:750px;preferred-height:600px;min-width:500px;min-height:350px;
-    callback dismiss();
-    FocusScope {
-        key-pressed(e)=>{if e.text==Key.Escape{root.dismiss();return accept;}return reject;}
-    VerticalBox {
-        Text {text:root.heading;font-weight:700;vertical-stretch:0;}
-        TextEdit {text:root.content;read-only:true;accessible-label:root.heading;}
-        if root.can-refresh: Button {text:"Refresh diagnostics snapshot";clicked=>{root.refresh-content();}}
-        close := Button {text:"Close";clicked=>{root.dismiss();}}
-    }
-}
-}
-export component AudioControlsWindow inherits Window {
-    title:"Audio controls";
-    in property <string> ui-family;in property <length> ui-size:13px;
-    default-font-family:root.ui-family;default-font-size:root.ui-size;
-    in property <string> source;in property <string> elapsed;in property <bool> active;
-    min-width:max(320px,controls.min-width);
-    min-height:controls.preferred-height;
-    preferred-width:400px;preferred-height:max(150px,self.min-height);
-    callback stop();
-    controls := VerticalBox {
-        padding:16px;spacing:8px;
-        Text {min-width:0px;text:root.source;overflow:elide;accessible-label:root.source;}
-        Text {text:root.elapsed;}
-        Button {text:"Stop audio";enabled:root.active;clicked=>{root.stop();}}
-    }
-}
+export { MonitorWindow, DetailsWindow, AudioControlsWindow, MonitorData } from "monitor.slint";
+import { Lane, MonitorPanel, MonitorData } from "monitor.slint";
 
 export component MainWindow inherits Window {
     icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
@@ -590,7 +69,7 @@ export component MainWindow inherits Window {
     changed height=>{root.update-monitor-layout();}
     changed monitor-height=>{root.update-monitor-layout();}
     public function resize-monitor(pixels:float){root.monitor-height=max(240px,min(360px,pixels*1px));}
-    public function focus-monitor-opener(){monitor-opener.focus();}
+    public function focus-monitor-opener(){monitor-opener.focus-button();}
     out property <MonitorData> monitor-data:{state:root.output-state,age:root.receipt-age,caption:root.waveform-caption,meters:root.meters,warning:root.monitor-warning,warninglive:root.monitor-warning-live,backendwarning:root.backend-warning,motion:root.motion-reason,left:root.left-path,right:root.right-path,limit:root.scale-label,spanlabel:root.capture-duration,spanchoice:root.window-index,scalechoice:root.scale-index,held:root.held,overridden:root.motion-overridden};
     callback show-diagnostics();
     callback show-research();
@@ -603,7 +82,7 @@ export component MainWindow inherits Window {
     in property <bool> monitor-warning-live;
     in property <string> backend-warning;
     in property <string> typography-origin;
-    in-out property <int> scale-index: 1;
+    in-out property <int> scale-index;
     in property <string> ui-family;
     in property <length> ui-size: 13px;
     default-font-family: root.ui-family;
@@ -625,8 +104,11 @@ export component MainWindow inherits Window {
     in property <string> details;
     in property <string> guidance;
     in property <string> status;
+    in property <string> operation-summary;
+    in property <string> operation-outcome;
+    in property <string> auxiliary-error;
+    in property <string> copy-reason;
     in property <string> file-activity;
-    in property <bool> busy;
     in property <bool> exporting;
     callback cancel-file();
     in property <bool> playback-busy;
@@ -640,6 +122,12 @@ export component MainWindow inherits Window {
     in property <bool> can-restore-component;
     in property <bool> can-export;
     in property <bool> can-play;
+    in property <string> library-play-action;
+    in property <[string]> library-play-labels;
+    in property <bool> can-import;
+    in property <bool> can-new;
+    in property <bool> can-copy;
+    in property <bool> can-preview;
     in property <bool> can-save;
     in property <bool> dirty;
     in property <string> based-on;
@@ -664,7 +152,7 @@ export component MainWindow inherits Window {
     in property <string> play-reason;
     in property <string> peak;
     in-out property <int> tab-index: 0;
-    in-out property <int> window-index: 2;
+    in-out property <int> window-index;
     in-out property <int> rate-index: 1;
     in-out property <bool> research: false;
     in-out property <bool> held: false;
@@ -706,27 +194,28 @@ export component MainWindow inherits Window {
             title: "File";
             MenuItem {
                 title: "New Sound";
+                enabled: root.can-new;
                 activated => {
                     root.new-draft();
                 }
             }
             MenuItem {
                 title: "Open Recipe…";
-                enabled: !root.busy;
+                enabled: root.can-import;
                 activated => {
                     root.open-recipe();
                 }
             }
             MenuItem {
                 title: "Save sound…";
-                enabled: !root.busy && root.can-save && root.tab-index == 1;
+                enabled: root.can-save && root.tab-index == 1;
                 activated => {
                     root.save-recipe();
                 }
             }
             MenuItem {
                 title: "Export WAV…";
-                enabled: !root.busy && root.can-export;
+                enabled: root.can-export;
                 activated => {
                     root.export-wav();
                 }
@@ -763,8 +252,8 @@ export component MainWindow inherits Window {
             // lands in the space it leaves rather than on another control.
             if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:"WAV export progress";max-width:120px;}
             if root.exporting: Button {text:"Cancel export";clicked=>{root.cancel-file();}}
-            if root.status != "": Button {text:"Task details…";clicked=>{root.show-diagnostics();}}
-            if root.tab-index==1: Button {text:"Save sound…";enabled:!root.busy && root.can-save;accessible-description:root.save-reason;clicked=>{root.save-recipe();}}
+            if root.status != "" || root.auxiliary-error != "": Button {text:"Task details…";clicked=>{root.show-diagnostics();}}
+            if root.tab-index==1: Button {text:"Save sound…";enabled:root.can-save;accessible-description:root.save-reason;clicked=>{root.save-recipe();}}
             monitor-opener := StableButton {
                 text:root.monitor-open ? "Hide monitor" : "Show monitor";
                 labels:["Hide monitor","Show monitor"];
@@ -876,7 +365,7 @@ export component MainWindow inherits Window {
                         }
                         Button {
                             text: "Open Recipe…";
-                            enabled: !root.busy;
+                            enabled: root.can-import;
                             clicked => {
                                 root.open-recipe();
                             }
@@ -940,7 +429,6 @@ export component MainWindow inherits Window {
                                     root.library-detail=false;
                                 }
                             }
-                            if root.status != "": Text {min-width:0px;text:root.status;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
                             if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
                             if !root.has-results: Text {min-width:0px;
                                 text:"No recipe matches “" + root.query + "”. Clear the search to see every recipe.";
@@ -978,24 +466,25 @@ export component MainWindow inherits Window {
                                     padding: 0px;
                                     vertical-stretch: 0;
                                     StableButton {
-                                        text:root.playback-busy ? "Stop current & play recipe" : "Listen";
-                                        labels:["Listen","Stop current & play recipe"];
-                                        enabled:root.can-play && (!root.busy || root.playback-busy);
+                                        text:root.library-play-action;
+                                        labels:root.library-play-labels;
+                                        enabled:root.can-play;
                                         clicked=> {
                                             root.play-recipe();
                                         }
                                     }
-                                    Button {text:"Preview waveform";enabled:!root.playback-busy;clicked=>{root.preview-selected();}}
+                                    Button {text:"Preview waveform";enabled:root.can-preview;clicked=>{root.preview-selected();}}
                                     Button {
                                         text:"Edit a copy";
-                                        enabled:!root.busy;
+                                        enabled:root.can-copy;
+                                        accessible-description:root.copy-reason;
                                         clicked=> {
                                             root.open-workbench();
                                         }
                                     }
                                     Button {
                                         text:"Export WAV…";
-                                        enabled:!root.busy && root.can-export;
+                                        enabled:root.can-export;
                                         clicked=> {
                                             root.export-wav();
                                         }
@@ -1021,7 +510,7 @@ export component MainWindow inherits Window {
                                 if root.export-settings: ExportRate {
                                     choices:root.export-rates;
                                     selected <=> root.rate-index;
-                                    edit-enabled:!root.busy;
+                                    edit-enabled:true;
                                     changed(i)=> {
                                         root.rate-changed(i);
                                     }
@@ -1069,7 +558,7 @@ export component MainWindow inherits Window {
                         Button {
                             horizontal-stretch:0;
                             text:"New";
-                            enabled:root.can-edit;
+                            enabled:root.can-new;
                             clicked=> {
                                 root.new-draft();
                             }
@@ -1109,7 +598,6 @@ export component MainWindow inherits Window {
                         accessible-label:root.retained-warning;
                         accessible-live-region:polite;
                     }
-                    if root.status != "": Text {min-width:0px;text:root.status;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
                     if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
                     if root.metadata-error != "": Text {min-width:0px;text:root.metadata-error;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
                     if root.save-reason != "": Text {min-width:0px;text:root.save-reason;wrap:word-wrap;vertical-stretch:0;}
@@ -1152,7 +640,7 @@ export component MainWindow inherits Window {
                               }
                             }
                         }
-                        component-options := Disclosure {label:"Routing, modulation and layer options";}
+                        component-options := Disclosure {label:"Routing, modulation and component options";}
                         // Labels beside choices sized to their content; the
                         // shared column keeps the three choices aligned.
                         if component-options.expanded: GridLayout {
@@ -1232,7 +720,7 @@ export component MainWindow inherits Window {
                             Button {
                                 horizontal-stretch:0;
                                 text:"Export WAV…";
-                                enabled:!root.busy && root.can-export;
+                                enabled:root.can-export;
                                 accessible-description:root.export-reason;
                                 clicked=> {
                                     root.export-wav();
@@ -1259,7 +747,7 @@ export component MainWindow inherits Window {
                                 text:"Your notes about this sound";
                                 vertical-stretch:0;
                             }
-                            MetadataField {
+                            NotesField {
                                 key: MetadataKey.summary;
                                 field: root.summary-field;
                                 binding: root.document;
@@ -1326,7 +814,7 @@ export component MainWindow inherits Window {
                             ExportRate {
                                 choices:root.export-rates;
                                 selected <=> root.rate-index;
-                                edit-enabled:!root.busy;
+                                edit-enabled:true;
                                 changed(i)=> {
                                     root.rate-changed(i);
                                 }
@@ -1369,7 +857,7 @@ export component MainWindow inherits Window {
                     hold=>{root.held=!root.held;root.hold-changed();}
                     follow=>{root.follow-motion();}
                     details=>{root.show-diagnostics();}
-                    collapse=>{root.monitor-open=false;monitor-opener.focus();root.window-changed();}
+                    collapse=>{root.monitor-open=false;monitor-opener.focus-button();root.window-changed();}
                 }
             }
         }
@@ -1396,6 +884,14 @@ export component MainWindow inherits Window {
                         elapsed-text := Text {width:parent.width;height:parent.height;text:root.elapsed;horizontal-alignment:right;vertical-alignment:center;}
                     }
                     Button {text:"Details…";horizontal-stretch:0;accessible-label:"Audio details";clicked=>{root.show-diagnostics();}}
+                }
+                VerticalBox {
+                    padding:0px; spacing:0px; min-height:root.ui-size*2.5; max-height:root.ui-size*2.5; vertical-stretch:0;
+                    Text { min-width:0px; min-height:root.ui-size*1.25; max-height:root.ui-size*1.25;
+                        text:root.auxiliary-error != "" ? root.auxiliary-error : root.operation-summary;
+                        wrap:no-wrap; overflow:elide; accessible-label:self.text; accessible-live-region:polite; }
+                    Text { min-width:0px; min-height:root.ui-size*1.25; max-height:root.ui-size*1.25;
+                        text:root.operation-outcome; wrap:no-wrap; overflow:elide; accessible-label:self.text; accessible-live-region:polite; }
                 }
                 Text {min-width:0px;text:root.guidance;wrap:word-wrap;vertical-stretch:0;}
             }

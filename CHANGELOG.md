@@ -4,6 +4,21 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Breaking
+
+- Recipe schema 3 separates current notes from research context and persists one nonrecursive original source content anchor. Prior schema versions are rejected; no migration reader is included. Rust `Recipe`, `About`, `Research` and `Source` reflect this format.
+- Human-facing sound components use Component consistently. Catalog source conditions reference shared citation/DOI records; built-in output is generated standalone recipe text.
+
+### Changed
+
+- Search includes current own notes and attributed retained source context after reopen/reimport. Library action labels and availability come from shared application policy, including playback during Save/Import. Immutable snapshots cache two rate-specific signal successes/errors across details/readiness/export; command-driven controlled file/audio launches exercise result/exit/failure ordering through production bindings.
+
+- Save, Export and Play share side-effect-free preparation with readiness; failed preparation preserves staged input. Path prompts retain invocation-time content, and later edits remain dirty after a captured Save.
+- Removed/replaced GUI bindings retire immediately; Undo receives a fresh token. Library views reuse explicit source/query/selection/rate dependencies. Production callbacks are split by responsibility while preserving row identity and native behavior.
+- Worker launch failures become visible outcomes. Export tasks carry their sound by construction. The portable consumer exports and checks its edited draft.
+- `cargo xtask verify-vendor` authenticates upstream archives, applies exact reviewable patches and verifies vendor trees and product/target Cargo sources. Parley masks no longer depend on deprecated ICU numeric values.
+- Callback qualification sustains full component replacements, warms up and reports 3,000 measurements per configuration, deadlines and explicit optional headroom criteria. Dedicated manual CI records controlled measurements separately from functional CI.
+
 ## [0.5.0] - 2026-10-23
 
 ### Breaking

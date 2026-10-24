@@ -1,0 +1,102 @@
+import { AboutSlint, Button, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+component AboutLabel inherits TextInput {
+    read-only: true;
+    single-line: true;
+    horizontal-alignment: center;
+    accessible-label: self.text;
+    vertical-stretch: 0;
+}
+export component AboutWindow inherits Window {
+    title: "About Auditory Lab";
+    icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
+    in property <string> ui-family;
+    in property <length> ui-size: 13px;
+    default-font-family: root.ui-family;
+    default-font-size: root.ui-size;
+    preferred-width: max(420px, root.ui-size * 30);
+    preferred-height: max(410px, root.ui-size * 27);
+    in property <string> identity;
+    callback open-source();
+    callback open-licenses();
+    callback dismiss();
+    callback focus-website();
+    focus-website => { website.focus(); }
+    MenuBar {
+        Menu { title: "Edit";
+            MenuItem { title: "Copy"; shortcut: @keys(Control + C);
+                enabled: name-text.has-focus || version-text.has-focus || purpose-text.has-focus || copyright-text.has-focus;
+                activated => {
+                    if name-text.has-focus { name-text.copy(); }
+                    if version-text.has-focus { version-text.copy(); }
+                    if purpose-text.has-focus { purpose-text.copy(); }
+                    if copyright-text.has-focus { copyright-text.copy(); }
+                }
+            }
+            MenuItem { title: "Select All"; shortcut: @keys(Control + A);
+                enabled: name-text.has-focus || version-text.has-focus || purpose-text.has-focus || copyright-text.has-focus;
+                activated => {
+                    if name-text.has-focus { name-text.select-all(); }
+                    if version-text.has-focus { version-text.select-all(); }
+                    if purpose-text.has-focus { purpose-text.select-all(); }
+                    if copyright-text.has-focus { copyright-text.select-all(); }
+                }
+            }
+        }
+    }
+    forward-focus: about-focus;
+    about-focus := FocusScope {
+        key-pressed(event) => { if event.text == Key.Escape { root.dismiss(); return accept; } return reject; }
+        VerticalBox {
+            padding: 24px; spacing: 12px; alignment: center;
+            HorizontalBox { alignment: center; padding: 0px;
+                Image { source: root.icon; width: 64px; height: 64px; image-fit: contain; accessible-label: "Application icon"; }
+            }
+            name-text := AboutLabel { text: "Auditory Lab"; font-size: 18px; font-weight: 600; }
+            version-text := AboutLabel { text: root.identity; }
+            purpose-text := AboutLabel { text: "Play and export auditory stimuli.\nEdit sounds as TOML recipes."; single-line: false; }
+            copyright-text := AboutLabel { text: "Copyright © 2026 Ervins Strauhmanis"; }
+            HorizontalBox { alignment: center; spacing: 12px; padding: 0px;
+                website := Button { text: "Project website"; clicked => { root.open-source(); } }
+                Button { text: "Licenses"; clicked => { root.open-licenses(); } }
+            }
+            HorizontalBox { alignment: center; vertical-stretch: 0; padding: 0px;
+                AboutSlint { width: 280px; height: 100px; horizontal-stretch: 0; vertical-stretch: 0; }
+            }
+        }
+    }
+}
+export component LicenseWindow inherits Window {
+    title: "Software and Artwork Licenses";
+    icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
+    in property <string> ui-family;
+    in property <length> ui-size: 13px;
+    default-font-family: root.ui-family;
+    default-font-size: root.ui-size;
+    preferred-width: 720px; preferred-height: 560px;
+    in property <string> licenses;
+    in property <string> notice: "Open bundled component notices and license files.";
+    callback third-party-licenses-requested();
+    callback dismiss();
+    callback focus-start();
+    focus-start => { license-text.focus(); license-text.set-selection-offsets(0, 0); license-text.content-y = 0px; }
+    forward-focus: license-focus;
+    MenuBar {
+        Menu { title: "Edit";
+            MenuItem { title: "Copy"; shortcut: @keys(Control + C); enabled: license-text.has-focus; activated => { license-text.copy(); } }
+            MenuItem { title: "Select All"; shortcut: @keys(Control + A); enabled: license-text.has-focus; activated => { license-text.select-all(); } }
+        }
+    }
+    license-focus := FocusScope {
+        forward-focus: license-text;
+        key-pressed(event) => { if event.text == Key.Escape { root.dismiss(); return accept; } return reject; }
+        VerticalBox {
+            license-text := TextEdit { text: root.licenses; read-only: true; accessible-label: "Complete software and owner artwork license terms"; }
+            HorizontalBox {
+                padding: 12px; spacing: 12px; vertical-stretch: 0;
+                Text { text: root.notice; wrap: word-wrap; horizontal-stretch: 1; }
+                Button { text: "Third-party licenses…"; horizontal-stretch: 0; clicked => { root.third-party-licenses-requested(); } }
+            }
+        }
+    }
+}
+

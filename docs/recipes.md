@@ -2,7 +2,7 @@
 
 A recipe is UTF-8 TOML describing a stereo sound, in hertz, seconds and dBFS. It has no sample rate: `inspect` and `export` choose one, and playback uses the device's. `auditorylab recipe RECIPE_ID --output PATH` saves any built-in recipe as a starting point.
 
-The desktop [Workbench](desktop.md#workbench) also writes schema-2 recipes. Its saved files contain the edited title and summary; study and citation fields are not copied. Inspect them with `auditorylab inspect --file PATH` before playback or export.
+The desktop [Workbench](desktop.md#workbench) also writes schema-3 recipes. Its saved files retain the edited title and own notes, with one original source stimulus and its research context stored separately. Inspect them with `auditorylab inspect --file PATH` before playback or export.
 
 ## Examples
 
@@ -11,7 +11,7 @@ Save an example as `custom.toml` in UTF-8, then run `auditorylab inspect --file 
 Two tones, 250 Hz on the left and 240 Hz on the right, for two seconds:
 
 ```toml
-schema_version = 2
+schema_version = 3
 duration_seconds = 2.0
 fade_seconds = 0.01
 
@@ -31,7 +31,7 @@ peak_dbfs = -20.0
 A 1000 Hz tone whose amplitude swells and fades 40 times a second:
 
 ```toml
-schema_version = 2
+schema_version = 3
 duration_seconds = 1.0
 fade_seconds = 0.01
 
@@ -50,7 +50,7 @@ depth = 1.0
 A 5 kHz tone switched on for 1 ms at the start of every 25 ms, and a 40 Hz train of 1 ms clicks:
 
 ```toml
-schema_version = 2
+schema_version = 3
 duration_seconds = 1.0
 fade_seconds = 0.01
 
@@ -77,11 +77,11 @@ A file with only `schema_version`, `duration_seconds` and `fade_seconds` is sile
 
 ## Fields
 
-Input is bounded by [`Recipe::MAX_BYTES`](../crates/core/src/recipe.rs). `schema_version`, `duration_seconds` and `fade_seconds` are required; components and `[about]` are optional. Unknown or duplicated keys, missing required fields and values of the wrong type are errors. Whole numbers are accepted where a real number is expected. The required `schema_version` is `2`; other version values are rejected.
+Input is bounded by [`Recipe::MAX_BYTES`](../crates/core/src/recipe.rs). `schema_version`, `duration_seconds` and `fade_seconds` are required; components and `[about]` are optional. Unknown or duplicated keys, missing required fields and values of the wrong type are errors. Whole numbers are accepted where a real number is expected. The required `schema_version` is `3`; other version values are rejected.
 
 | Field | Meaning |
 |---|---|
-| `schema_version` | `2`. |
+| `schema_version` | `3`. |
 | `duration_seconds` | Length of the sound. |
 | `fade_seconds` | Length of the fade-in and fade-out at each end; `0` for none. |
 | `[[component]]` | Optional sound source; repeat to add sources. |
@@ -98,19 +98,13 @@ Each component has `ears`, `kind`, `peak_dbfs` and the fields of its kind, and o
 | `modulation.kind = "sinusoidal"` | Amplitude swelling at `rate_hz` with `depth` from 0 to 1. |
 | `modulation.kind = "rectangular"` | The component switched on for `width_seconds` at the start of each `1 / rate_hz` period, and off otherwise. |
 
-Within `[about]`, only `title` is required; the other text fields are optional for custom recipes.
+Within `[about]`, `title` is required and `summary` is optional plain notes about the current sound. `[about.research]` optionally describes research about that exact stimulus: `studied_for`, `summary`, `citation`, `source_url`, `study` and `adaptation` are optional text fields. Notes and research have different subjects when a sound is edited.
 
-| `[about]` field | Meaning |
-|---|---|
-| `title` | A short name, shown by `list`, `describe`, `inspect` and the start line of export and playback. |
-| `studied_for` | What the source studied the sound for, in a few plain words. |
-| `summary` | For listeners: what the sound is, what was studied and what was found, in plain language. |
-| `citation` | The source's authors, year, title and publication. |
-| `source_url` | A link to the source. |
-| `study` | For researchers: the sound's role in the source and the source's reported findings. |
-| `adaptation` | Every choice and difference between this recipe and the source. |
+A derivative stores one `[source]` content anchor containing `duration_seconds`, `fade_seconds`, `[[source.component]]`, optional `[source.about]` and `[source.about.research]`. It has no schema version, nested source, path or runtime identity. **Show source** uses this captured content after reopen, even if the original file changes or disappears. Copies of a derivative retain its original anchor and preserve their own notes. Research remains visibly attributed to that source.
 
-`[about]` text never affects the samples. The running program does not fetch or check source URLs; the [catalog reference](catalog.md) documents source comparisons and evidence limits.
+The whole UTF-8 document, including multibyte notes and source content, is limited to 65,536 bytes. Saving rejects nonfinite numbers in either current or source content before creating a destination; repair nonfinite source documents before deriving them. Finite acoustically invalid values remain serializable for repair. Source content need not be renderable at the selected rate. Parsing is structural, and rejects prior/future schemas and unknown or recursive source fields. No migration reader is provided.
+
+Normal Unicode, escaped quotes and multiline TOML strings are supported. Source URLs are displayed without fetching or certifying their content. Human-readable CLI output escapes terminal controls and bidirectional formatting controls; raw recipe output preserves the generated recipe bytes.
 
 ## Waveforms
 
@@ -147,13 +141,13 @@ An ideal rectangular click train's RMS is its pulse peak plus `10 · log10(width
 
 ## Built-in catalog
 
-Each built-in recipe is a parameterized audio adaptation of a selected condition from a published study. Its `[about]` table distinguishes stated source parameters, unspecified details and explicit synthesis or presentation choices. These recipes do not reproduce the original apparatus, calibrated acoustic levels or every waveform detail. The [catalog reference](catalog.md) documents the primary methods, supplements, adaptations and remaining evidence limits for all nineteen recipes. Built-in sounds use 0.1 s fades, phase-zero starts and a −20 dBFS peak per component unless the study's own level relationships require otherwise; those cases are explained in `adaptation`. Study procedures beyond the sound itself (baselines, condition order, tasks, recordings, calibration, light stimulation) are not part of a recipe.
+Each built-in recipe is a parameterized audio adaptation of a selected condition from a published study. Its `[about.research]` table distinguishes stated source parameters, unspecified details and explicit synthesis or presentation choices. These recipes do not reproduce the original apparatus, calibrated acoustic levels or every waveform detail. The [catalog reference](catalog.md) documents the primary methods, supplements, adaptations and remaining evidence limits for the shipped recipes. Built-in sounds use 0.1 s fades, phase-zero starts and a −20 dBFS peak per component unless the study's own level relationships require otherwise; those cases are explained in `adaptation`. Study procedures beyond the sound itself (baselines, condition order, tasks, recordings, calibration, light stimulation) are not part of a recipe.
 
 ### Adding a built-in recipe
 
 A condition qualifies only when its full primary methods give enough evidence to identify the waveform, frequencies or rates and widths, continuous duration, and original presentation. Headphone routing must be stated; a documented speaker presentation may be explicitly adapted to identical ear channels, without claiming that this recreates the acoustic field. Selecting one stated ear or EEG session from a wider protocol must also be disclosed. Unexplained routing guesses, unreported carrier or pulse parameters, sweeps, live-controlled sounds, unstated maskers/noise and short recording-locked trial reconstructions do not qualify. Record missing phase, ramps, audio rate and calibration instead of inventing them. Check supplements and publisher corrections/retractions, and state unavailable evidence honestly.
 
-Name the file `firstauthor-year-condition.toml`, in lowercase, under `crates/core/catalog/`, and add its recipe to the independent table in `crates/core/tests/catalog.rs`. The build script embeds the directory in natural order, comparing runs of digits as numbers. Write `[about]` values using printable ASCII characters from space through tilde, excluding double quotes, on one line per field:
+Name the file `firstauthor-year-condition.toml`, in lowercase, under `crates/core/catalog/`, and add its recipe to the independent table in `crates/core/tests/catalog.rs`. The build script discovers conditions in natural order and generates standalone schema-3 recipes. Conditions use `[about.research] source = "firstauthor-year"` to refer to a citation/DOI record under `crates/core/studies/`. Citation and URL exist only in that study record; condition-specific methods, findings and adaptations remain in the condition. Add an independent numerical expectation for each condition in `crates/core/tests/catalog.rs`. Text supports Unicode, correctly escaped quotes and multiline TOML strings.
 
 - `studied_for` names what the source investigated, not a benefit.
 - `summary` says what the listener hears, what the study tested on whom, what it found, including null results and the study's size, and whether the result comes from animals. It reports findings and never promises an effect. Where a disease is named, state that the sound is not an established treatment.

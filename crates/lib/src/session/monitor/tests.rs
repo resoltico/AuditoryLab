@@ -374,6 +374,17 @@ fn unchanged_receipts_do_not_hide_stale_observations() {
 #[test]
 #[ignore = "synthetic callback timing qualification; no audio device"]
 fn callback_monitor_costs() {
+    let limit = std::env::var("AUDITORYLAB_PERF_MAX_BUDGET_PERCENT")
+        .ok()
+        .map(|v| v.parse::<u128>().unwrap());
+    assert!(limit.is_none_or(|percent| (1..=100).contains(&percent)));
+    let mut failures = Vec::new();
+    println!(
+        "qualification: os={} arch={} profile=release warmup=100 repeats=3 samples_per_repeat=1000 headroom_percent={:?}",
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        limit.map(|p| 100 - p)
+    );
     for hz in [48000, 768000] {
         for frames in [64_usize, 256, 1024, 4096] {
             for detail in [
@@ -427,14 +438,14 @@ fn callback_monitor_costs() {
                     Transport::new(Source::Live(Box::new(generator)), 2, Arc::clone(&shared))
                         .with_monitor(monitor.clone());
                 let mut output = vec![0.0; frames * 2];
-                let mut timings = Vec::with_capacity(300);
+                let mut timings = Vec::with_capacity(3000);
                 let mut next_poll = 0;
-                for n in 0..300_u64 {
-                    if n > 0 && n % 60 == 0 {
-                        control
-                            .update(if (n / 60) % 2 == 0 { &tones } else { &pulses })
-                            .unwrap();
-                    }
+                for n in 0..3100_u64 {
+                    // Request a full carrier replacement for all 16 components at
+                    // every callback boundary: crossfades use up to 32 slots.
+                    control
+                        .update(if n % 2 == 0 { &pulses } else { &tones })
+                        .unwrap();
                     let guard = if n % 25 == 0 {
                         monitor.as_ref().map(|m| m.0.history.lock().unwrap())
                     } else {
@@ -446,7 +457,10 @@ fn callback_monitor_costs() {
                         time(n * frames as u64 * 1_000_000_000 / u64::from(hz)),
                         &|v| v,
                     );
-                    timings.push(start.elapsed().as_nanos());
+                    let elapsed = start.elapsed().as_nanos();
+                    if n >= 100 {
+                        timings.push(elapsed);
+                    }
                     drop(guard);
                     if n * frames as u64 >= next_poll {
                         if let Some(reader) = reader.as_mut() {
@@ -456,11 +470,23 @@ fn callback_monitor_costs() {
                     }
                 }
                 timings.sort_unstable();
+                let budget = u128::from(frames as u64 * 1_000_000_000 / u64::from(hz));
+                let deadline_misses = timings.iter().filter(|&&ns| ns > budget).count();
+                let maximum = timings[2999];
+                if let Some(percent) = limit
+                    && maximum * 100 > budget * percent
+                {
+                    failures.push(format!("{hz} Hz / {frames} frames / {detail:?}: {maximum} ns exceeds {percent}% of {budget} ns"));
+                }
+                println!(
+                    "deadline_misses={deadline_misses} max_budget_percent={}",
+                    maximum * 100 / budget
+                );
                 println!(
                     "rate={hz} frames={frames} monitor={detail:?} median_ns={} p95_ns={} max_ns={} budget_ns={} retained_bytes={} consumer_bytes={} misses={} backend_underruns={}",
-                    timings[150],
-                    timings[285],
-                    timings[299],
+                    timings[1500],
+                    timings[2850],
+                    timings[2999],
                     frames as u64 * 1_000_000_000 / u64::from(hz),
                     monitor
                         .as_ref()
@@ -474,6 +500,11 @@ fn callback_monitor_costs() {
             }
         }
     }
+    assert!(
+        failures.is_empty(),
+        "controlled performance qualification failed:\n{}",
+        failures.join("\n")
+    );
 }
 
 #[test]

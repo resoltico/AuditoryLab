@@ -36,6 +36,7 @@ pub(crate) struct Worker<E, R> {
     events: Receiver<E>,
     handle: Option<JoinHandle<()>>,
     result: Option<R>,
+    launch_error: Option<String>,
 }
 
 /// One poll of a worker.
@@ -49,11 +50,36 @@ pub(crate) enum Polled<R> {
 impl<E: Send + 'static, R> Worker<E, R> {
     pub(crate) fn spawn(work: impl FnOnce(mpsc::Sender<E>) + Send + 'static) -> Self {
         let (tx, events) = mpsc::channel();
+        let started = thread::Builder::new()
+            .name("auditorylab-worker".into())
+            .spawn(move || work(tx));
+        Self::started(events, started)
+    }
+
+    fn started(events: Receiver<E>, started: std::io::Result<JoinHandle<()>>) -> Self {
+        let (handle, launch_error) = match started {
+            Ok(handle) => (Some(handle), None),
+            Err(error) => (None, Some(format!("Cannot start worker: {error}"))),
+        };
         Self {
             events,
-            handle: Some(thread::spawn(move || work(tx))),
+            handle,
             result: None,
+            launch_error,
         }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn failed() -> Self {
+        let (_, events) = mpsc::channel();
+        Self::started(
+            events,
+            Err(std::io::Error::other("injected launch failure")),
+        )
+    }
+
+    pub(crate) fn launch_error(&self) -> Option<&str> {
+        self.launch_error.as_deref()
     }
 
     /// Drain events, keeping a final result; join only after the thread has
@@ -64,7 +90,8 @@ impl<E: Send + 'static, R> Worker<E, R> {
                 self.result = Some(result);
             }
         }
-        if self.handle.as_ref().is_some_and(JoinHandle::is_finished) {
+        if self.launch_error.is_some() || self.handle.as_ref().is_some_and(JoinHandle::is_finished)
+        {
             // The thread has exited, so this join does not block.
             let panicked = self.handle.take().is_some_and(|h| h.join().is_err());
             // Events sent just before exit are still in the channel.
@@ -149,7 +176,7 @@ pub(crate) enum FileKind {
     Import(PathBuf),
     Save {
         document: DocumentId,
-        content: Recipe,
+        content: std::sync::Arc<Recipe>,
         path: PathBuf,
     },
     Export {
@@ -158,6 +185,7 @@ pub(crate) enum FileKind {
         frames: u64,
         cancel: Cancel,
         progress: Progress,
+        sound: Sound,
     },
 }
 
@@ -190,31 +218,45 @@ pub(crate) struct FileTask {
     pub(crate) worker: Worker<FileOutcome, FileOutcome>,
 }
 
-impl FileTask {
-    pub(crate) fn start(id: TaskId, kind: FileKind, export: Option<Sound>) -> Self {
-        let work = kind.clone();
-        let worker = Worker::spawn(move |tx| {
-            let outcome = match work {
-                FileKind::Import(path) => FileOutcome::Imported(crate::load_file(&path)),
-                FileKind::Save { content, path, .. } => FileOutcome::Saved(
-                    crate::editing::save_content(&content, &path, Replace::Allowed),
-                ),
-                FileKind::Export {
-                    path,
-                    cancel,
-                    progress,
-                    ..
-                } => FileOutcome::Exported(match export {
-                    Some(sound) => {
-                        crate::export(&sound, &path, Replace::Allowed, &cancel, &progress)
-                    }
-                    None => Err(Error::new(ErrorKind::InvalidSound, "nothing to export")),
-                }),
-            };
-            let _ = tx.send(outcome);
-        });
-        Self { id, kind, worker }
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) type FileSpawner = dyn FnMut(FileKind) -> Worker<FileOutcome, FileOutcome>;
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) type AudioSpawner = dyn FnMut(
+    crate::session::Session,
+    AudioKind,
+    Option<crate::Draft>,
+) -> Worker<AudioEvent, Result<PlaybackReport, Error>>;
+
+impl FileKind {
+    pub(crate) fn execute(self) -> FileOutcome {
+        match self {
+            Self::Import(path) => FileOutcome::Imported(crate::load_file(&path)),
+            Self::Save { content, path, .. } => FileOutcome::Saved(crate::editing::save_content(
+                &content,
+                &path,
+                Replace::Allowed,
+            )),
+            Self::Export {
+                path,
+                cancel,
+                progress,
+                sound,
+                ..
+            } => FileOutcome::Exported(crate::export(
+                &sound,
+                &path,
+                Replace::Allowed,
+                &cancel,
+                &progress,
+            )),
+        }
     }
+}
+
+pub(crate) fn file_worker(kind: FileKind) -> Worker<FileOutcome, FileOutcome> {
+    Worker::spawn(move |tx| {
+        let _ = tx.send(kind.execute());
+    })
 }
 
 #[cfg(feature = "device-playback")]
@@ -320,5 +362,39 @@ mod tests {
             }
             thread::yield_now();
         }
+    }
+}
+
+#[cfg(test)]
+mod launch_tests {
+    use super::*;
+    #[test]
+    fn launch_failure_has_no_worker_and_is_a_visible_terminal_outcome() {
+        let (_, events) = mpsc::channel::<u8>();
+        let mut worker: Worker<u8, u8> = Worker::started(
+            events,
+            Err(std::io::Error::other("injected launch failure")),
+        );
+        assert!(worker.handle.is_none());
+        assert!(
+            worker
+                .launch_error()
+                .unwrap()
+                .contains("injected launch failure")
+        );
+        assert!(matches!(
+            worker.poll(Some),
+            Polled::Joined {
+                result: None,
+                panicked: false
+            }
+        ));
+    }
+    #[test]
+    fn panic_before_result_cannot_be_success() {
+        let worker: Worker<u8, u8> = Worker::spawn(|_| panic!("before result"));
+        let (result, panicked) = worker.wait(Some);
+        assert!(result.is_none());
+        assert!(panicked);
     }
 }

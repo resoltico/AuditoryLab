@@ -20,6 +20,8 @@ pub struct Recipe {
     pub stimulus: Stimulus,
     /// What the sound is and where it comes from, when the recipe says.
     pub about: Option<About>,
+    /// The retained original source, with no ancestry or runtime identity.
+    pub source: Option<Source>,
 }
 
 /// What a recipe's sound is, for listeners and for researchers. Parsing
@@ -30,26 +32,39 @@ pub struct Recipe {
 pub struct About {
     /// A short name for the sound.
     pub title: String,
-    /// What the source studied the sound for, in a few plain words.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub studied_for: Option<String>,
-    /// For listeners: what the sound is, what was studied and what was found,
-    /// in plain language.
+    /// Plain notes about this sound, independent of research claims.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
-    /// The source: authors, year, title and publication.
+    /// Research claims about this exact stimulus.
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub research: Option<Research>,
+}
+
+/// Research context about one stimulus; never inherited by changed audio.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Research {
+    /// The study's subject.
+    pub studied_for: Option<String>,
+    /// Plain-language findings and limitations.
+    pub summary: Option<String>,
+    /// Publication citation.
     pub citation: Option<String>,
-    /// A link to the source.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Publication URL.
     pub source_url: Option<String>,
-    /// For researchers: the stimulus's role in the source and what the source
-    /// reports about it.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Condition-specific methods and role.
     pub study: Option<String>,
-    /// How the recipe differs from, or adds to, the source's description.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Condition-specific adaptations.
     pub adaptation: Option<String>,
+}
+
+/// One nonrecursive persisted source content anchor.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Source {
+    /// Original sound parameters.
+    pub stimulus: Stimulus,
+    /// Original description and research context.
+    pub about: Option<About>,
 }
 
 /// Why text is not a recipe.
@@ -112,11 +127,23 @@ struct Document {
     about: Option<About>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     component: Vec<DocumentComponent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<SourceDocument>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SourceDocument {
+    duration_seconds: f64,
+    fade_seconds: f64,
+    about: Option<About>,
+    #[serde(default)]
+    component: Vec<DocumentComponent>,
 }
 
 impl Recipe {
     /// The one recipe schema this build reads.
-    pub const SCHEMA_VERSION: u32 = 2;
+    pub const SCHEMA_VERSION: u32 = 3;
 
     /// The longest recipe, in bytes. A reader can stop after one byte more.
     pub const MAX_BYTES: usize = 65_536;
@@ -165,10 +192,18 @@ impl Recipe {
                 components: document.component.into_iter().map(Into::into).collect(),
             },
             about: document.about,
+            source: document.source.map(|source| Source {
+                stimulus: Stimulus {
+                    duration_seconds: source.duration_seconds,
+                    fade_seconds: source.fade_seconds,
+                    components: source.component.into_iter().map(Into::into).collect(),
+                },
+                about: source.about,
+            }),
         })
     }
 
-    /// Serialize the recipe in the schema-2 TOML recipe layout.
+    /// Serialize the recipe in the schema-3 TOML recipe layout.
     ///
     /// # Errors
     /// Returns the TOML writer's error; finite values always serialize.
@@ -178,6 +213,17 @@ impl Recipe {
             duration_seconds: self.stimulus.duration_seconds,
             fade_seconds: self.stimulus.fade_seconds,
             about: self.about.clone(),
+            source: self.source.as_ref().map(|source| SourceDocument {
+                duration_seconds: source.stimulus.duration_seconds,
+                fade_seconds: source.stimulus.fade_seconds,
+                about: source.about.clone(),
+                component: source
+                    .stimulus
+                    .components
+                    .iter()
+                    .map(|c| (*c).into())
+                    .collect(),
+            }),
             component: self
                 .stimulus
                 .components

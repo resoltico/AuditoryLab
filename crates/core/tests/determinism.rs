@@ -24,7 +24,7 @@ fn digest(frames: &[[f64; 2]]) -> u64 {
 /// Two faded seconds at 48,000 Hz, rendered in buffers of uneven length.
 fn rendered(components: &str) -> Vec<[f64; 2]> {
     let text =
-        format!("schema_version = 2\nduration_seconds = 2.0\nfade_seconds = 0.1\n{components}");
+        format!("schema_version = 3\nduration_seconds = 2.0\nfade_seconds = 0.1\n{components}");
     let session = Recipe::parse(&text)
         .unwrap()
         .stimulus

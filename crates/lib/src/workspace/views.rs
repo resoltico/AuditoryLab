@@ -5,9 +5,7 @@
 //! availability. Building a view evaluates through the editor's caches; an
 //! unchanged document is not evaluated again.
 use super::{FileKind, OutputView, Refusal, View, Workspace};
-use crate::editing::{
-    EditRefusal, EditingField, FieldHandle, InputProblem, MetadataField, SaveRefusal,
-};
+use crate::editing::{EditRefusal, EditingField, FieldHandle, InputProblem, MetadataField};
 use crate::session::{EndReason, PlaybackReport};
 use crate::{
     DocumentId, Exported, RecipeSnapshot, controls, monitor_warning, output_monitor_state,
@@ -18,6 +16,7 @@ use auditorylab_core::{
     interpretation::Structure,
 };
 use std::path::Path;
+use std::sync::Arc;
 
 /// One editable quantity of a component.
 #[derive(Debug, Clone, PartialEq)]
@@ -131,6 +130,24 @@ pub struct LibraryView {
 pub struct ActionView {
     /// Play (or replace playing audio) is admitted.
     pub can_play: bool,
+    /// Label for Library playback or replacement.
+    pub library_play_label: &'static str,
+    /// A file import may be requested.
+    pub can_import: bool,
+    /// A document replacement/copy may be requested (possibly queued).
+    pub can_new: bool,
+    /// The current selection can be copied.
+    pub can_copy: bool,
+    /// Actionable reason a selected source cannot be derived.
+    pub copy_reason: String,
+    /// Bounded global refusal or task outcome beside persistent actions.
+    pub operation_summary: String,
+    /// File outcome retained alongside a current readiness refusal.
+    pub operation_outcome: String,
+    /// Complete selectable operation/refusal details.
+    pub operation_details: String,
+    /// A static preview may replace the last session display.
+    pub can_preview: bool,
     /// Why Play is not admitted.
     pub play_reason: String,
     /// Save is admitted.
@@ -152,7 +169,7 @@ pub struct ActionView {
     pub removed_component: String,
     /// Undo remove is admitted.
     pub can_restore_component: bool,
-    /// Open and Save are blocked by a file task or prompt.
+    /// A file task or prompt is active; command availability remains operation-specific.
     pub file_busy: bool,
     /// An audio task occupies its slot.
     pub playback_busy: bool,
@@ -227,14 +244,26 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
         Refusal::NoSelection => "No recipe matches the search; clear it or choose a recipe.".into(),
         Refusal::NoExport => "No export is running.".into(),
         Refusal::Input(problems) => input_text(problems),
+        Refusal::SourceNotFinite {
+            component,
+            parameter,
+        } => format!(
+            "Cannot edit a copy: original source {}{} is not finite. Correct the source document before deriving a sound.",
+            component.map_or_else(String::new, |index| format!("component {} ", index + 1)),
+            parameter.descriptor().label,
+        ),
         Refusal::NotFinite => "The recipe's numbers must all be finite before it can play.".into(),
-        Refusal::Document(message) | Refusal::Invalid(message) => message.clone(),
+        Refusal::Document(message) => message.clone(),
+        Refusal::Invalid { title, rate, error } => error.as_ref().map_or_else(
+            || format!("Could not prepare “{title}” at {} Hz.", rate.hz()),
+            |error| presentation::invalid_at_rate(title, *rate, error),
+        ),
         Refusal::Edit(EditRefusal::ComponentLimit) => format!(
             "A sound holds at most {} components; remove one to add another.",
             auditorylab_core::Stimulus::MAX_COMPONENTS
         ),
         Refusal::Edit(EditRefusal::NothingRemoved) => {
-            "No removed layer is waiting to be restored.".into()
+            "No removed component is waiting to be restored.".into()
         }
         Refusal::Edit(EditRefusal::IdentitiesExhausted) => {
             "This sound has used every component identity; start a new sound to add more.".into()
@@ -281,13 +310,6 @@ fn input_text(problems: &[(EditingField, InputProblem)]) -> String {
             .join("; "),
     );
     text
-}
-
-pub(super) fn save_refusal_text(refusal: &SaveRefusal) -> String {
-    match refusal {
-        SaveRefusal::Input(problems) => input_text(problems),
-        SaveRefusal::Document(message) => message.clone(),
-    }
 }
 
 /// A path as people read it, quoted, without escapes.
@@ -382,6 +404,13 @@ pub(super) fn received_text(age: std::time::Duration, held: bool) -> String {
     )
 }
 
+#[derive(PartialEq, Eq)]
+pub(super) struct LibraryKey {
+    snapshots: Vec<crate::SnapshotId>,
+    selected: Option<crate::SnapshotId>,
+    rate: SampleRate,
+}
+
 impl Workspace {
     /// The open document's rows, values and diagnostics. Diagnostics use
     /// the bound live session's rate when there is one, otherwise the
@@ -457,7 +486,11 @@ impl Workspace {
                             handle: editor.handle(field),
                             parameter,
                             label: presentation::labeled(parameter),
-                            help: parameter.descriptor().help,
+                            help: match parameter {
+                                ParameterId::Duration => "The length of saved recipes and exported audio; live playback continues until stopped.",
+                                ParameterId::Fade => "The raised-cosine fade at each edge of saved recipes and exported audio.",
+                                _ => parameter.descriptor().help,
+                            },
                             text: editor.text(field),
                             staged: editor.staged(field).is_some(),
                             slider: parameter
@@ -482,7 +515,7 @@ impl Workspace {
                     carrier: committed.carrier.kind(),
                     modulation: committed.modulation.map(|m| m.kind()),
                     heading: shown.role().label(),
-                    name: format!("{} · layer {}", shown.role().label(), index + 1),
+                    name: format!("{} · component {}", shown.role().label(), index + 1),
                     context: match own {
                         Some(Ok(facts)) => presentation::component_description(facts, false),
                         // The error line states it, with its rate.
@@ -534,16 +567,25 @@ impl Workspace {
             peak,
             metadata_error: deduped.join("; "),
             based_on_title: based_on.map_or_else(String::new, |p| {
-                format!("Based on “{}” · Source research in Sound notes", p.title())
+                format!(
+                    "Based on “{}” · Retained source in Sound settings",
+                    p.title()
+                )
             }),
             based_on: based_on.map_or_else(String::new, |p| {
                 format!(
                     "Based on “{}” · {}\n{}\nResearch findings describe the source recipe.",
                     p.title(),
                     p.about()
+                        .and_then(|a| a.research.as_ref())
                         .and_then(|a| a.citation.as_deref())
                         .unwrap_or("source recipe"),
-                    p.about().and_then(|a| a.summary.as_deref()).unwrap_or("")
+                    p.about()
+                        .and_then(|a| a
+                            .summary
+                            .as_deref()
+                            .or_else(|| a.research.as_ref().and_then(|r| r.summary.as_deref())))
+                        .unwrap_or("")
                 )
             }),
             retained_warning,
@@ -579,7 +621,31 @@ impl Workspace {
 
     /// The library rows and the selected recipe at the export rate.
     #[must_use]
-    pub fn library_view(&self) -> LibraryView {
+    pub fn library_view(&self) -> Arc<LibraryView> {
+        let rate = self.export_rate;
+        let key = LibraryKey {
+            snapshots: self
+                .filtered
+                .iter()
+                .map(|&i| self.catalog[i].id())
+                .collect(),
+            selected: self.selected().map(RecipeSnapshot::id),
+            rate,
+        };
+        if let Some((cached, view)) = &*self.library_cache.borrow()
+            && *cached == key
+        {
+            return view.clone();
+        }
+        #[cfg(test)]
+        self.library_evaluations
+            .set(self.library_evaluations.get() + 1);
+        let view = Arc::new(self.build_library_view());
+        *self.library_cache.borrow_mut() = Some((key, view.clone()));
+        view
+    }
+
+    fn build_library_view(&self) -> LibraryView {
         let rate = self.export_rate;
         let rows = self
             .filtered
@@ -609,6 +675,7 @@ impl Workspace {
                 .at(rate)
                 .map_or_else(|e| e.to_string(), |s| presentation::sound_brief(&s)),
             studied: about
+                .and_then(|a| a.research.as_ref())
                 .and_then(|a| a.studied_for.clone())
                 .unwrap_or_default(),
             timing: format!(
@@ -616,9 +683,16 @@ impl Workspace {
                 presentation::human_duration(snapshot.stimulus().duration_seconds),
                 presentation::human_duration(snapshot.stimulus().fade_seconds)
             ),
-            summary: about.and_then(|a| a.summary.clone()).unwrap_or_default(),
+            summary: about
+                .and_then(|a| {
+                    a.summary
+                        .clone()
+                        .or_else(|| a.research.as_ref().and_then(|r| r.summary.clone()))
+                })
+                .unwrap_or_default(),
             details: presentation::recipe_details(snapshot, rate),
             study_url: about
+                .and_then(|a| a.research.as_ref())
                 .and_then(|a| a.source_url.clone())
                 .filter(|url| url.starts_with("https://") || url.starts_with("http://")),
         }
@@ -627,45 +701,55 @@ impl Workspace {
     /// Action availability, from the same admission rules the commands use.
     pub fn action_view(&mut self) -> ActionView {
         let play = self.play_readiness();
-        // While a dialog is open, it is the reason; no line repeats it.
-        let save = if self.prompt.is_some() {
-            Err(String::new())
-        } else if self.file.is_some() {
-            Err(refusal_text(&Refusal::FileBusy))
-        } else {
-            self.editor
-                .save_readiness()
-                .map_err(|r| save_refusal_text(&r))
+        let save = self.prepare_save();
+        let export = self.prepare_export();
+        let copy = self.copy_admission();
+        let refusal = match self.view {
+            View::Workbench => save
+                .as_ref()
+                .err()
+                .filter(|r| matches!(r, Refusal::Input(_) | Refusal::Document(_)))
+                .map(refusal_text),
+            View::Library => copy
+                .as_ref()
+                .err()
+                .filter(|r| {
+                    matches!(
+                        r,
+                        Refusal::SourceNotFinite { .. } | Refusal::TooManyComponents(_)
+                    )
+                })
+                .map(refusal_text),
         };
-        let rate = self.export_rate;
-        let export = if self.audio.is_some() {
-            Err(refusal_text(&Refusal::AudioPlaying))
-        } else if self.prompt.is_some() {
-            Err(String::new())
-        } else if self.file.is_some() || self.pending.is_some() {
-            Err(refusal_text(&Refusal::FileBusy))
-        } else {
-            match self.view {
-                View::Library => self.selected().map_or(Err(String::new()), |s| {
-                    s.at(rate).map(|_| ()).map_err(|e| e.to_string())
-                }),
-                View::Workbench => {
-                    let candidate = self.editor.candidate();
-                    if candidate.is_complete() {
-                        let analysis = self.editor.candidate_analysis(rate);
-                        match analysis.finite_error() {
-                            None => Ok(()),
-                            Some(e) => Err(presentation::invalid_at_rate(
-                                self.editor.draft().title(),
-                                rate,
-                                e,
-                            )),
-                        }
-                    } else {
-                        Err(input_text(candidate.problems()))
-                    }
-                }
+        let outcome_details = [
+            self.file_status.as_str(),
+            self.edit_status.as_str(),
+            self.audio_status.as_str(),
+        ]
+        .into_iter()
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+        let operation_details = refusal
+            .iter()
+            .map(String::as_str)
+            .chain(std::iter::once(outcome_details.as_str()))
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let compact = |text: &str| {
+            let line = text.lines().next().unwrap_or("");
+            let mut short: String = line.chars().take(180).collect();
+            if line.chars().count() > 180 {
+                short.push('…');
             }
+            short
+        };
+        let operation_summary = compact(refusal.as_deref().unwrap_or(&outcome_details));
+        let operation_outcome = if refusal.is_some() {
+            compact(&outcome_details)
+        } else {
+            String::new()
         };
         let full =
             self.editor.draft().components().len() >= auditorylab_core::Stimulus::MAX_COMPONENTS;
@@ -674,11 +758,20 @@ impl Workspace {
         let progress = self.export_progress();
         ActionView {
             can_play: play.is_ok(),
+            library_play_label: presentation::LIBRARY_PLAY_LABELS[usize::from(playing)],
+            can_import: self.import_admission().is_ok(),
+            can_new: self.start_allowed().is_ok(),
+            can_copy: copy.is_ok(),
+            copy_reason: copy.err().as_ref().map(refusal_text).unwrap_or_default(),
+            operation_summary,
+            operation_outcome,
+            operation_details,
+            can_preview: !playing,
             play_reason: play.as_ref().err().map(refusal_text).unwrap_or_default(),
             can_save: save.is_ok(),
-            save_reason: save.err().unwrap_or_default(),
+            save_reason: save.err().as_ref().map(refusal_text).unwrap_or_default(),
             can_export: export.is_ok(),
-            export_reason: export.err().unwrap_or_default(),
+            export_reason: export.err().as_ref().map(refusal_text).unwrap_or_default(),
             can_edit: self.can_edit(),
             can_add_component: self.can_edit() && !full,
             add_component_reason: if full {
@@ -691,7 +784,7 @@ impl Workspace {
                 .removed()
                 .map(|(index, component)| {
                     format!(
-                        "Removed {} · layer {}.",
+                        "Removed {} · component {}.",
                         component.role().label(),
                         index + 1
                     )

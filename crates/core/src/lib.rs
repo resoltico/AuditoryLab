@@ -33,7 +33,7 @@ pub use parameter::{
     CarrierKind, ComponentId, ComponentRole, ModulationKind, ParameterDescriptor, ParameterId, Unit,
 };
 pub use rate::{SampleRate, SampleRateError};
-pub use recipe::{About, Recipe, RecipeError};
+pub use recipe::{About, Recipe, RecipeError, Research, Source};
 pub use signal::Signal;
 pub use stimulus::{
     Carrier, Component, ComponentError, Ear, Ears, Modulation, Stimulus, StimulusError,

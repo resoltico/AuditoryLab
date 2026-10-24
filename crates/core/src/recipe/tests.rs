@@ -9,7 +9,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 const PAIR: &str = r#"# Two tones.
-schema_version = 2
+schema_version = 3
 duration_seconds = 10.0
 fade_seconds = 0.1
 
@@ -26,7 +26,7 @@ frequency_hz = 256.0
 peak_dbfs = -20.0
 "#;
 
-const ABOUT: &str = "\n[about]\ntitle = \"t\"\nstudied_for = \"f\"\nsummary = \"s\"\ncitation = \"c\"\nsource_url = \"u\"\nstudy = \"d\"\nadaptation = \"a\"\n";
+const ABOUT: &str = "\n[about]\ntitle = \"t\"\n[about.research]\nstudied_for = \"f\"\nsummary = \"s\"\ncitation = \"c\"\nsource_url = \"u\"\nstudy = \"d\"\nadaptation = \"a\"\n";
 
 fn edited(from: &str, to: &str) -> Result<Recipe, RecipeError> {
     assert!(PAIR.contains(from), "fixture lacks {from}");
@@ -64,7 +64,7 @@ fn a_recipe_reads_into_its_stimulus_in_file_order() {
 
 #[test]
 fn every_kind_and_modulation_reads_and_whole_numbers_are_accepted_as_reals() {
-    let text = "schema_version = 2\nduration_seconds = 3\nfade_seconds = 0\n\n[[component]]\nears = \"both\"\nkind = \"click\"\nrate_hz = 40\nwidth_seconds = 0.001\npeak_dbfs = -20\n\n[component.modulation]\nkind = \"sinusoidal\"\nrate_hz = 2\ndepth = 1\n";
+    let text = "schema_version = 3\nduration_seconds = 3\nfade_seconds = 0\n\n[[component]]\nears = \"both\"\nkind = \"click\"\nrate_hz = 40\nwidth_seconds = 0.001\npeak_dbfs = -20\n\n[component.modulation]\nkind = \"sinusoidal\"\nrate_hz = 2\ndepth = 1\n";
     let stimulus = Recipe::parse(text).unwrap().stimulus;
     assert_eq!(stimulus.duration_seconds, 3.0);
     assert_eq!(
@@ -87,7 +87,7 @@ fn every_kind_and_modulation_reads_and_whole_numbers_are_accepted_as_reals() {
 #[test]
 fn a_recipe_without_components_is_silence() {
     let recipe =
-        Recipe::parse("schema_version = 2\nduration_seconds = 1.0\nfade_seconds = 0.0\n").unwrap();
+        Recipe::parse("schema_version = 3\nduration_seconds = 1.0\nfade_seconds = 0.0\n").unwrap();
     assert!(recipe.stimulus.components.is_empty());
     assert!(!recipe.stimulus.uses_separate_ears());
 }
@@ -99,14 +99,15 @@ fn about_text_is_optional_strict_and_never_changes_the_stimulus() {
     assert_eq!(annotated.stimulus, plain.stimulus);
     let about = annotated.about.unwrap();
     assert_eq!(about.title, "t");
+    let research = about.research.unwrap();
     assert_eq!(
         [
-            about.studied_for,
-            about.summary,
-            about.citation,
-            about.source_url,
-            about.study,
-            about.adaptation
+            research.studied_for,
+            research.summary,
+            research.citation,
+            research.source_url,
+            research.study,
+            research.adaptation
         ],
         ["f", "s", "c", "u", "d", "a"].map(|value| Some(String::from(value)))
     );
@@ -153,7 +154,7 @@ fn about_text_is_optional_strict_and_never_changes_the_stimulus() {
 #[test]
 fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
     for (from, to) in [
-        ("schema_version = 2\n", ""),
+        ("schema_version = 3\n", ""),
         ("duration_seconds = 10.0\n", ""),
         ("fade_seconds = 0.1\n", ""),
         ("fade_seconds = 0.1", "fade_seconds = 0.1\ngain = 0.1"),
@@ -215,10 +216,10 @@ fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
 
 #[test]
 fn another_schema_version_is_reported_before_its_fields_are_read() {
-    for version in [0, 1, 3, 999, u32::MAX] {
+    for version in [0, 1, 2, 4, 999, u32::MAX] {
         // A later version may add fields this build does not know.
         let text = PAIR
-            .replace("schema_version = 2", &format!("schema_version = {version}"))
+            .replace("schema_version = 3", &format!("schema_version = {version}"))
             .replace(
                 "peak_dbfs = -20.0",
                 "peak_dbfs = -20.0\nphase_degrees = 90.0",
@@ -227,11 +228,11 @@ fn another_schema_version_is_reported_before_its_fields_are_read() {
         assert_eq!(error, RecipeError::UnsupportedVersion { found: version });
         assert_eq!(
             error.to_string(),
-            format!("recipe has schema_version {version}; this build reads 2")
+            format!("recipe has schema_version {version}; this build reads 3")
         );
     }
     assert!(matches!(
-        edited("schema_version = 2", "schema_version = \"1\""),
+        edited("schema_version = 3", "schema_version = \"1\""),
         Err(RecipeError::Format(_))
     ));
 }
@@ -299,7 +300,7 @@ mod writing {
         for entry in crate::catalog::ENTRIES {
             let recipe = Recipe::parse(entry.text).unwrap();
             let text = recipe.to_toml().unwrap();
-            assert!(text.starts_with("schema_version = 2\n"), "{}", entry.id);
+            assert!(text.starts_with("schema_version = 3\n"), "{}", entry.id);
             assert_eq!(Recipe::parse(&text).unwrap(), recipe, "{}", entry.id);
         }
     }
@@ -359,12 +360,15 @@ mod writing {
         .prop_map(|about| {
             about.map(|(title, summary, citation)| About {
                 title,
-                studied_for: None,
                 summary,
-                citation,
-                source_url: None,
-                study: None,
-                adaptation: None,
+                research: Some(crate::Research {
+                    studied_for: None,
+                    summary: None,
+                    citation,
+                    source_url: None,
+                    study: None,
+                    adaptation: None,
+                }),
             })
         });
         let recipe = (
@@ -381,6 +385,7 @@ mod writing {
                         components,
                     },
                     about,
+                    source: None,
                 },
             );
         let config = Config {
@@ -427,5 +432,22 @@ mod writing {
                 Ok(())
             })
             .unwrap();
+    }
+}
+
+#[test]
+fn source_anchors_are_strict_nonrecursive_content_without_runtime_fields() {
+    let source = "\n[source]\nduration_seconds=1\nfade_seconds=0\n";
+    let valid = format!("{PAIR}{source}");
+    assert!(Recipe::parse(&valid).unwrap().source.is_some());
+    for invalid in [
+        valid.replace("[source]", "[source]\npath='original.toml'"),
+        valid.replace("[source]", "[source]\nschema_version=3"),
+        valid.replace("[source]", "[source]\nsnapshot_id=1"),
+        valid.replace(source, "\n[source]\nfade_seconds=0\n"),
+        format!("{valid}\n[source.source]\nduration_seconds=1\nfade_seconds=0\n"),
+        format!("{valid}\n[source.about]\ntitle='Original'\nunknown='x'\n"),
+    ] {
+        assert!(Recipe::parse(&invalid).is_err(), "accepted {invalid}");
     }
 }

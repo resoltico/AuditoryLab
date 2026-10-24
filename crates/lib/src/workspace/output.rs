@@ -93,11 +93,15 @@ pub(crate) struct OutputState {
 
 impl OutputState {
     pub(crate) fn span_ms(&self) -> u32 {
-        if self.span_ms == 0 { 40 } else { self.span_ms }
+        if self.span_ms == 0 {
+            crate::DEFAULT_MONITOR_SPAN_MS
+        } else {
+            self.span_ms
+        }
     }
 
     pub(crate) fn scale(&self) -> WaveformScale {
-        self.scale.unwrap_or(WaveformScale::Fit)
+        self.scale.unwrap_or(crate::DEFAULT_MONITOR_SCALE)
     }
 
     pub(crate) fn held(&self) -> bool {

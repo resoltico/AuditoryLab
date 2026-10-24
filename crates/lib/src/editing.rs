@@ -155,14 +155,30 @@ impl Draft {
     }
 
     /// Copy a snapshot's sound parameters; keep the snapshot as attributed
-    /// source context, separately from the draft's own blank notes.
+    /// source context, separately from the draft's own preserved notes.
     /// Components get the identities their positions give in the snapshot's
     /// own targets.
     #[must_use]
     pub fn from_snapshot(snapshot: &RecipeSnapshot) -> Self {
         let mut draft = Self::new();
         draft.title = format!("{} (edited)", snapshot.title());
-        draft.based_on = Some(snapshot.clone());
+        let recipe = snapshot.recipe();
+        draft.summary = recipe
+            .about
+            .as_ref()
+            .and_then(|a| a.summary.clone())
+            .unwrap_or_default();
+        draft.based_on = Some(match &recipe.source {
+            Some(source) => RecipeSnapshot::new(
+                Origin::Stream("Retained source".into()),
+                Recipe {
+                    stimulus: source.stimulus.clone(),
+                    about: source.about.clone(),
+                    source: None,
+                },
+            ),
+            None => snapshot.clone(),
+        });
         draft.duration = snapshot.stimulus().duration_seconds;
         draft.fade = snapshot.stimulus().fade_seconds;
         for (index, component) in snapshot.stimulus().components.iter().enumerate() {
@@ -348,8 +364,8 @@ impl Draft {
         }
     }
 
-    /// The document a save writes: the current parameters with only the
-    /// title and notes as about text. Attributed source research is not copied.
+    /// Persist current parameters and notes, with research attributed to one
+    /// retained original source content anchor.
     #[must_use]
     pub fn recipe(&self) -> Recipe {
         Recipe {
@@ -357,12 +373,15 @@ impl Draft {
             about: Some(About {
                 title: self.title.clone(),
                 summary: Some(self.summary.clone()),
-                studied_for: None,
-                citation: None,
-                source_url: None,
-                study: None,
-                adaptation: None,
+                research: None,
             }),
+            source: self
+                .based_on
+                .as_ref()
+                .map(|snapshot| auditorylab_core::Source {
+                    stimulus: snapshot.stimulus().clone(),
+                    about: snapshot.about().cloned(),
+                }),
         }
     }
 
@@ -377,7 +396,10 @@ impl Draft {
     #[must_use]
     pub fn content_matches(&self, recipe: &Recipe) -> bool {
         let about = recipe.about.as_ref();
-        about.is_some_and(|a| a.title == self.title)
+        let own = self.recipe();
+        own.source == recipe.source
+            && own.about == recipe.about
+            && about.is_some_and(|a| a.title == self.title)
             && about.and_then(|a| a.summary.as_deref()).unwrap_or("") == self.summary
             && recipe.stimulus.duration_seconds.to_bits() == self.duration.to_bits()
             && recipe.stimulus.fade_seconds.to_bits() == self.fade.to_bits()
@@ -413,6 +435,16 @@ impl Draft {
 /// Returns [`ErrorKind::InvalidRecipe`] for non-finite numbers, a writer
 /// failure or text longer than [`Recipe::MAX_BYTES`].
 pub(crate) fn serialize(recipe: &Recipe) -> Result<String, Error> {
+    if recipe
+        .source
+        .as_ref()
+        .is_some_and(|s| s.stimulus.nonfinite().next().is_some())
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidRecipe,
+            "retained source numbers must be finite; correct the source document before deriving a sound",
+        ));
+    }
     if recipe.stimulus.nonfinite().next().is_some() {
         return Err(Error::new(
             ErrorKind::InvalidRecipe,
@@ -553,12 +585,47 @@ impl Analysis {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 struct AnalysisKey {
-    draft_revision: u64,
-    input_revision: Option<u64>,
+    duration: u64,
+    fade: u64,
+    components: Vec<(ComponentId, Component)>,
     rate: SampleRate,
 }
+
+impl AnalysisKey {
+    fn new(draft: &Draft, rate: SampleRate) -> Self {
+        Self {
+            duration: draft.duration.to_bits(),
+            fade: draft.fade.to_bits(),
+            components: draft.components.clone(),
+            rate,
+        }
+    }
+}
+
+impl PartialEq for AnalysisKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.duration == other.duration
+            && self.fade == other.fade
+            && self.rate == other.rate
+            && self.components.len() == other.components.len()
+            && self
+                .components
+                .iter()
+                .zip(&other.components)
+                .all(|((id, a), (other_id, b))| {
+                    id == other_id
+                        && a.ears == b.ears
+                        && a.carrier.kind() == b.carrier.kind()
+                        && a.modulation.map(|m| m.kind()) == b.modulation.map(|m| m.kind())
+                        && ParameterId::COMPONENT
+                            .iter()
+                            .all(|p| p.read(a).map(f64::to_bits) == p.read(b).map(f64::to_bits))
+                })
+    }
+}
+impl Eq for AnalysisKey {}
 
 /// Bounded memo of evaluations: the selected export rate, the live device
 /// rate and their candidate and committed forms.
@@ -993,12 +1060,8 @@ impl EditorSession {
 
     /// The committed values' evaluation at `rate`.
     pub fn committed_analysis(&mut self, rate: SampleRate) -> Arc<Analysis> {
-        let key = AnalysisKey {
-            draft_revision: self.draft_revision,
-            input_revision: None,
-            rate,
-        };
-        if let Some(analysis) = self.cached(key) {
+        let key = AnalysisKey::new(&self.draft, rate);
+        if let Some(analysis) = self.cached(&key) {
             return analysis;
         }
         let analysis = Arc::new(Analysis::new(&self.draft, rate));
@@ -1010,23 +1073,19 @@ impl EditorSession {
         if self.staged.is_empty() {
             return self.committed_analysis(rate);
         }
-        let key = AnalysisKey {
-            draft_revision: self.draft_revision,
-            input_revision: Some(self.input_revision),
-            rate,
-        };
-        if let Some(analysis) = self.cached(key) {
+        let candidate = self.candidate();
+        let key = AnalysisKey::new(&candidate.draft, rate);
+        if let Some(analysis) = self.cached(&key) {
             return analysis;
         }
-        let candidate = self.candidate();
         let analysis = Arc::new(Analysis::new(&candidate.draft, rate));
         self.store(key, analysis)
     }
 
-    fn cached(&self, key: AnalysisKey) -> Option<Arc<Analysis>> {
+    fn cached(&self, key: &AnalysisKey) -> Option<Arc<Analysis>> {
         self.analyses
             .iter()
-            .find(|(k, _)| *k == key)
+            .find(|(k, _)| k == key)
             .map(|(_, analysis)| Arc::clone(analysis))
     }
 

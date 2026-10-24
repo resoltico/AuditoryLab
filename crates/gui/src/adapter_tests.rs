@@ -51,10 +51,14 @@ pub(crate) struct Harness {
 
 impl Harness {
     pub(crate) fn new() -> Self {
-        install();
-        let windows = Windows::new().unwrap();
         let workspace =
             Workspace::new(auditorylab::catalog().unwrap(), Capabilities::portable()).unwrap();
+        Self::with_workspace(workspace)
+    }
+
+    fn with_workspace(workspace: Workspace) -> Self {
+        install();
+        let windows = Windows::new().unwrap();
         let requests = Rc::new(RefCell::new(Vec::new()));
         let adapter = SlintAdapter::install(
             &windows,
@@ -62,7 +66,7 @@ impl Harness {
             Box::new(Recorder(requests.clone())),
             None,
         );
-        windows.main.show().unwrap();
+        adapter.show_main().unwrap();
         windows
             .main
             .window()
@@ -71,6 +75,8 @@ impl Harness {
             .main
             .window()
             .dispatch_event(WindowEvent::WindowActiveChanged(true));
+        settle(windows.main.window());
+        adapter.main_frame_ready();
         settle(windows.main.window());
         Self {
             windows,
@@ -421,7 +427,7 @@ fn a_focused_field_survives_updates_to_other_rows() {
     }
     h.settle();
     let nested_before = ui.get_components().row_data(1).unwrap().parameters;
-    let input = h.field("Click rhythm · layer 2: Click rate (Hz)");
+    let input = h.field("Click rhythm · component 2: Click rate (Hz)");
     let inner = WindowInner::from_pub(ui.window());
     inner.set_focus_item(&input, true, FocusReason::Programmatic);
     for _ in 0..4 {
@@ -463,7 +469,7 @@ fn a_focused_field_survives_updates_to_other_rows() {
         "the nested model object is kept"
     );
     assert_eq!(
-        field(ui, "Click rhythm · layer 1: Click rate (Hz)"),
+        field(ui, "Click rhythm · component 1: Click rate (Hz)"),
         input,
         "the moved row relabels the same widget"
     );
@@ -561,7 +567,7 @@ fn a_dragged_slider_keeps_following_typed_values() {
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 0);
     h.settle();
-    let label = "Steady tone · layer 1: Tone frequency (Hz) slider";
+    let label = "Steady tone · component 1: Tone frequency (Hz) slider";
     let slider = || {
         let root = WindowInner::from_pub(ui.window()).window_item_rc().unwrap();
         root.visit_descendants(|item| {
@@ -628,7 +634,7 @@ fn an_imported_recipe_is_scrolled_into_view() {
     let path = directory.path().join("imported.toml");
     std::fs::write(
         &path,
-        "schema_version = 2\nduration_seconds = 1.0\nfade_seconds = 0.01\n\n[about]\ntitle = \"Imported probe\"\n",
+        "schema_version = 3\nduration_seconds = 1.0\nfade_seconds = 0.01\n\n[about]\ntitle = \"Imported probe\"\n",
     )
     .unwrap();
     ui.invoke_open_recipe();
@@ -714,7 +720,7 @@ fn dragging_the_pane_handles_resizes_the_panes() {
 }
 
 #[test]
-fn a_removed_layer_returns_through_undo_remove() {
+fn a_removed_component_returns_through_undo_remove() {
     let h = Harness::new();
     let ui = h.ui();
     h.workbench();
@@ -726,7 +732,10 @@ fn a_removed_layer_returns_through_undo_remove() {
     ui.invoke_remove_component(h.component_binding(0));
     h.settle();
     assert_eq!(ui.get_components().row_count(), 1);
-    assert_eq!(ui.get_removed_component(), "Removed Steady tone · layer 1.");
+    assert_eq!(
+        ui.get_removed_component(),
+        "Removed Steady tone · component 1."
+    );
     assert!(ui.get_can_restore_component());
     let button = labelled(ui, "Undo remove");
     let width = ui
@@ -750,13 +759,13 @@ fn a_removed_layer_returns_through_undo_remove() {
 }
 
 #[test]
-fn layer_options_are_sized_to_their_content() {
+fn component_options_are_sized_to_their_content() {
     let h = Harness::new();
     let ui = h.ui();
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 0);
     h.settle();
-    let options = centre(&labelled(ui, "Routing, modulation and layer options"));
+    let options = centre(&labelled(ui, "Routing, modulation and component options"));
     drag(ui, options, options);
     h.settle();
     let name = ui.get_components().row_data(0).unwrap().name;
@@ -879,4 +888,374 @@ fn about_and_licenses_use_production_actions_and_reopen_without_losing_terms() {
         h.windows.about.invoke_open_licenses();
         assert!(h.windows.licenses.window().is_visible());
     }
+}
+
+#[test]
+fn retired_component_callbacks_stay_retired_after_undo_and_mappings_stay_bounded() {
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 0);
+    h.settle();
+    let identity = h.adapter.inspect(|w| w.editor().draft().components()[0].0);
+    let mut previous = h.component_binding(0);
+    for _ in 0..100 {
+        ui.invoke_remove_component(previous);
+        h.settle();
+        assert_eq!(
+            h.adapter.binding_count(),
+            1,
+            "only the document remains bound"
+        );
+        ui.invoke_restore_component(ui.get_document());
+        h.settle();
+        let current = h.component_binding(0);
+        assert!(current > previous);
+        assert_eq!(h.adapter.binding_count(), 2);
+        ui.invoke_commit_parameter(previous, ParameterKey::ToneFrequency, "999".into());
+        assert_eq!(
+            h.adapter
+                .inspect(|w| w.editor().draft().component(identity).unwrap().carrier),
+            auditorylab::Carrier::Tone {
+                frequency_hz: 440.0
+            }
+        );
+        previous = current;
+    }
+}
+
+#[test]
+fn editing_and_telemetry_do_not_project_the_library_again() {
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 0);
+    h.settle();
+    let libraries = h.adapter.counts.library_projections.get();
+    let binding = h.component_binding(0);
+    ui.invoke_commit_parameter(binding, ParameterKey::ToneFrequency, "880".into());
+    ui.invoke_stage_parameter(binding, ParameterKey::ToneFrequency, "900".into());
+    for _ in 0..20 {
+        h.adapter.tick();
+    }
+    assert_eq!(h.adapter.counts.library_projections.get(), libraries);
+    ui.invoke_select(1);
+    assert_eq!(h.adapter.counts.library_projections.get(), libraries + 1);
+}
+
+fn tick_until(h: &Harness, condition: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        h.adapter.tick();
+        if condition() {
+            return;
+        }
+        std::thread::yield_now();
+    }
+    panic!("controlled GUI task did not settle");
+}
+
+fn controlled_harness() -> (
+    Harness,
+    auditorylab::workspace::testing::Execution,
+    tempfile::TempDir,
+) {
+    let mut draft = auditorylab::Draft::new();
+    draft.set_duration_seconds(0.01);
+    draft.set_fade_seconds(0.0);
+    let (workspace, execution) = auditorylab::workspace::testing::workspace(
+        vec![draft.snapshot()],
+        Capabilities {
+            device_playback: true,
+        },
+    )
+    .unwrap();
+    let dir = tempfile::tempdir_in(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
+    )
+    .unwrap();
+    (Harness::with_workspace(workspace), execution, dir)
+}
+
+fn answer_path(h: &Harness, path: &std::path::Path) {
+    let prompt = h
+        .take()
+        .into_iter()
+        .find_map(|request| match request {
+            Request::Path(prompt, _, _) => Some(prompt),
+            _ => None,
+        })
+        .expect("production callback opened a path panel");
+    h.adapter
+        .respond(prompt, Response::Path(Some(path.to_owned())));
+}
+
+#[test]
+fn library_button_admits_play_during_save() {
+    assert_library_play_during_file(true);
+}
+#[test]
+fn library_button_admits_play_during_import() {
+    assert_library_play_during_file(false);
+}
+
+fn action_button(ui: &MainWindow, label: &str) -> ItemRc {
+    WindowInner::from_pub(ui.window())
+        .window_item_rc()
+        .unwrap()
+        .visit_descendants(|item| {
+            if item.is_visible()
+                && item.is_accessible()
+                && item
+                    .accessible_string_property(AccessibleStringProperty::Label)
+                    .is_some_and(|text| text == label)
+            {
+                ControlFlow::Break(item.clone())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .unwrap_or_else(|| panic!("visible accessible action {label:?}"))
+}
+
+fn assert_library_play_during_file(save: bool) {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let (h, execution, dir) = controlled_harness();
+    let ui = h.ui();
+    let path = dir.path().join("sound.toml");
+    if save {
+        h.workbench();
+        ui.invoke_save_recipe();
+        ui.set_tab_index(0);
+        h.settle();
+    } else {
+        std::fs::write(
+            &path,
+            "schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n",
+        )
+        .unwrap();
+        ui.invoke_open_recipe();
+    }
+    assert!(!ui.get_can_play(), "a path prompt blocks new playback");
+    action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    answer_path(&h, &path);
+    let file = execution.file().unwrap();
+    assert!(h.adapter.inspect(|w| w.file_busy()));
+    assert!(ui.get_can_play(), "Save/Import can coexist with audio");
+    assert_eq!(
+        ui.get_library_play_action(),
+        auditorylab::LIBRARY_PLAY_LABELS[0]
+    );
+    action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
+    assert!(
+        h.adapter.inspect(|w| w.audio_busy()),
+        "the actual accessible button must dispatch Play"
+    );
+    let audio = execution.audio().unwrap();
+    assert_eq!(
+        ui.get_library_play_action(),
+        auditorylab::LIBRARY_PLAY_LABELS[1]
+    );
+    audio.result().unwrap();
+    audio.exit().unwrap();
+    tick_until(&h, || !h.adapter.inspect(|w| w.audio_busy()));
+    file.result().unwrap();
+    file.exit().unwrap();
+    tick_until(&h, || !h.adapter.inspect(|w| w.file_busy()));
+}
+
+#[test]
+fn library_button_obeys_export_prompt_pending_and_capability_refusals() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let (h, execution, dir) = controlled_harness();
+    let ui = h.ui();
+    ui.invoke_export_wav();
+    assert!(!ui.get_can_play());
+    action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    answer_path(&h, &dir.path().join("sound.wav"));
+    let export = execution.file().unwrap();
+    assert!(!ui.get_can_play());
+    action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    export.result().unwrap();
+    export.exit().unwrap();
+    tick_until(&h, || !h.adapter.inspect(|w| w.file_busy()));
+    action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
+    let audio = execution.audio().unwrap();
+    action_button(ui, "Stop current & play recipe")
+        .accessible_action(&AccessibilityAction::Default);
+    assert!(h.adapter.inspect(|w| w.action_pending()));
+    assert!(!ui.get_can_play());
+    action_button(ui, "Stop current & play recipe")
+        .accessible_action(&AccessibilityAction::Default);
+    audio.result().unwrap();
+    audio.exit().unwrap();
+    tick_until(&h, || !h.adapter.inspect(|w| w.action_pending()));
+    let replacement = execution.audio().unwrap();
+    replacement.result().unwrap();
+    replacement.exit().unwrap();
+    tick_until(&h, || !h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn library_button_obeys_unavailable_playback_capability() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let portable = Harness::new();
+    assert!(!portable.ui().get_can_play());
+    action_button(portable.ui(), "Listen").accessible_action(&AccessibilityAction::Default);
+    assert!(!portable.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn notes_return_stages_newlines_and_save_preserves_exact_multiline_text() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    labelled(ui, "Sound settings").accessible_action(&AccessibilityAction::Default);
+    ui.set_notes(true);
+    h.settle();
+    let input = h.field("Custom recipe notes");
+    let inner = WindowInner::from_pub(ui.window());
+    inner.set_focus_item(&input, true, FocusReason::Programmatic);
+    h.key("A");
+    h.key("\n");
+    h.key("B");
+    h.key("\n");
+    h.key("\n");
+    h.key("測定 🎧");
+    let text = text_of(&input);
+    assert_eq!(text, "A\nB\n\n測定 🎧");
+    assert_eq!(
+        h.adapter.inspect(|w| w
+            .editor()
+            .staged(EditingField::Metadata(MetadataField::Summary))
+            .map(str::to_owned)),
+        Some(text.clone())
+    );
+    ui.set_ui_size(20.0);
+    h.adapter.tick();
+    h.settle();
+    assert_eq!(text_of(&input), text);
+    h.key(Key::Escape);
+    assert_eq!(text_of(&input), "");
+    h.key("A\nB\n\n測定 🎧");
+    let dir = tempfile::tempdir_in(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
+    )
+    .unwrap();
+    ui.invoke_save_recipe();
+    answer_path(&h, &dir.path().join("notes.toml"));
+    h.wait_for_files();
+    let saved = auditorylab::load_file(&dir.path().join("notes.toml")).unwrap();
+    assert_eq!(
+        saved.about().unwrap().summary.as_deref(),
+        Some(text.as_str())
+    );
+}
+
+#[test]
+fn native_event_filter_keeps_focus_suspension_after_frame_readiness() {
+    use slint::winit_030::winit::event::WindowEvent;
+    let h = Harness::new();
+    h.adapter.main_window_event(&WindowEvent::Focused(false));
+    assert!(h.ui().get_edits_suspended());
+    h.adapter.main_window_event(&WindowEvent::RedrawRequested);
+    h.settle();
+    assert!(h.ui().get_edits_suspended());
+    h.adapter.main_window_event(&WindowEvent::Focused(true));
+    assert!(!h.ui().get_edits_suspended());
+}
+
+#[test]
+fn monitor_presentation_waits_for_main_and_failures_are_visible_and_retryable() {
+    let fail = Rc::new(std::cell::Cell::new(true));
+    crate::test_platform::install_with_auxiliary_failure(fail.clone());
+    let windows = Windows::new().unwrap();
+    let workspace =
+        Workspace::new(auditorylab::catalog().unwrap(), Capabilities::portable()).unwrap();
+    let adapter = SlintAdapter::install(
+        &windows,
+        workspace,
+        Box::new(Recorder(Rc::new(RefCell::new(Vec::new())))),
+        None,
+    );
+    assert!(
+        !adapter.monitor_presented(),
+        "install cannot present an auxiliary before main"
+    );
+    windows.main.set_ui_size(40.0);
+    windows
+        .main
+        .window()
+        .set_size(slint::PhysicalSize::new(680, 700));
+    adapter.show_main().unwrap();
+    settle(windows.main.window());
+    adapter.main_frame_ready();
+    settle(windows.main.window());
+    adapter.tick();
+    assert!(!windows.main.get_drawer_fits());
+    assert!(!adapter.monitor_presented());
+    assert!(
+        windows
+            .main
+            .get_auxiliary_error()
+            .contains("injected Output monitor presentation failure")
+    );
+    windows.main.set_monitor_open(false);
+    adapter.tick();
+    assert_eq!(
+        windows.main.get_auxiliary_error(),
+        "",
+        "disabled monitoring clears its resolved presentation error"
+    );
+    windows.main.set_monitor_open(true);
+    adapter.tick();
+    assert!(
+        windows
+            .main
+            .get_auxiliary_error()
+            .contains("presentation failure")
+    );
+    fail.set(false);
+    adapter.tick();
+    assert!(adapter.monitor_presented());
+    windows
+        .monitor
+        .window()
+        .set_size(slint::PhysicalSize::new(950, 500));
+    settle(windows.monitor.window());
+    adapter.tick();
+    settle(windows.monitor.window());
+    let monitor_root = WindowInner::from_pub(windows.monitor.window())
+        .window_item_rc()
+        .unwrap();
+    for (label, expected) in [
+        ("Waveform time window", "40 ms"),
+        ("Waveform amplitude scale", "Fit signal"),
+    ] {
+        let control = monitor_root
+            .visit_descendants(|item| {
+                if item.is_visible()
+                    && item
+                        .accessible_string_property(AccessibleStringProperty::Label)
+                        .is_some_and(|name| name == label)
+                {
+                    ControlFlow::Break(item.clone())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+            .unwrap();
+        assert_eq!(
+            control
+                .accessible_string_property(AccessibleStringProperty::Value)
+                .as_deref(),
+            Some(expected)
+        );
+    }
+    assert_eq!(windows.main.get_auxiliary_error(), "");
+    adapter.shutdown().unwrap();
 }

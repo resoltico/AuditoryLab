@@ -13,9 +13,12 @@ toml.workspace = true
 zip.workspace = true
 tar.workspace = true
 flate2.workspace = true
+sha2 = "0.10.9"
+
+tempfile.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
+icu_properties = "2.3"
 
 [lints]
 workspace = true

@@ -60,6 +60,9 @@ jobs:
           echo "$ACTIONLINT_LINUX_SHA256  target/$archive" | sha256sum --check
           tar -xzf "target/$archive" -C target actionlint
           target/actionlint
+      - name: Verify maintained dependency patches and target graphs
+        if: github.event_name != 'schedule'
+        run: cargo xtask verify-vendor
       - if: github.event_name != 'schedule'
         run: cargo doc --workspace --no-deps --locked
       - name: Cache cargo-deny
@@ -184,12 +187,15 @@ jobs:
         env:
           CARGO_TARGET_DIR: target/portable-consumer
         run: |
+          cargo check -p auditorylab --no-default-features --features test-support --locked
           cp Cargo.lock consumers/portable/Cargo.lock
           cargo run --manifest-path consumers/portable/Cargo.toml
-          if cargo tree --manifest-path consumers/portable/Cargo.toml -e normal,build --target all -i cpal; then
+          if cargo tree --manifest-path consumers/portable/Cargo.toml -e normal,build --target all -i cpal > target/portable-no-cpal.log 2>&1; then
             echo 'CPAL reaches a consumer without the device-playback feature' >&2
             exit 1
           fi
+          cat target/portable-no-cpal.log
+          grep -E '^error: package ID specification .cpal. did not match any packages$' target/portable-no-cpal.log
           # Negative control: the same query finds CPAL once the feature is on.
           cargo tree --manifest-path consumers/portable/Cargo.toml --features auditorylab/device-playback \
             -e normal,build --target all -i cpal > /dev/null

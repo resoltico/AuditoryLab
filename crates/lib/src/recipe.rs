@@ -54,6 +54,19 @@ pub struct RecipeSnapshot {
     id: SnapshotId,
     origin: Origin,
     recipe: Arc<Recipe>,
+    realizations: Arc<std::sync::Mutex<Realizations>>,
+}
+
+/// Two rates per immutable snapshot cover inspection/export and device use.
+/// Cache ownership follows the snapshot; evictions never retain a Sound back-reference.
+#[derive(Debug, Default)]
+struct Realizations {
+    values: Vec<(
+        SampleRate,
+        Result<Arc<Signal>, auditorylab_core::StimulusError>,
+    )>,
+    #[cfg(test)]
+    compilations: u64,
 }
 
 impl RecipeSnapshot {
@@ -64,6 +77,7 @@ impl RecipeSnapshot {
             id: SnapshotId::next(),
             origin,
             recipe: Arc::new(recipe),
+            realizations: Arc::new(std::sync::Mutex::new(Realizations::default())),
         }
     }
 
@@ -91,11 +105,57 @@ impl RecipeSnapshot {
         self.recipe.about.as_ref()
     }
 
+    /// The exact content retained when deriving this sound.
+    #[must_use]
+    pub fn source_stimulus(&self) -> &Stimulus {
+        self.recipe
+            .source
+            .as_ref()
+            .map_or(&self.recipe.stimulus, |source| &source.stimulus)
+    }
+
     /// The recipe's title, or its origin when it has none.
     #[must_use]
     pub fn title(&self) -> String {
-        self.about()
-            .map_or_else(|| self.origin.to_string(), |a| a.title.clone())
+        self.about().map_or_else(
+            || match &self.origin {
+                Origin::File(path) => path
+                    .file_stem()
+                    .filter(|name| !name.is_empty())
+                    .map_or_else(
+                        || "Untitled sound".into(),
+                        |name| {
+                            name.to_string_lossy()
+                                .chars()
+                                .flat_map(|c| {
+                                    if c.is_control() {
+                                        c.escape_default().collect::<Vec<_>>()
+                                    } else {
+                                        vec![c]
+                                    }
+                                })
+                                .collect()
+                        },
+                    ),
+                other => other.to_string(),
+            },
+            |a| a.title.clone(),
+        )
+    }
+
+    /// A concise safe output filename, independent of full origin diagnostics.
+    #[must_use]
+    pub fn suggested_output_name(&self, extension: &str) -> String {
+        match self.origin() {
+            Origin::BuiltIn(id) => file_name(id, extension),
+            Origin::File(path) if self.about().is_none() => file_name(
+                &path
+                    .file_stem()
+                    .map_or_else(|| "sound".into(), |name| name.to_string_lossy()),
+                extension,
+            ),
+            _ => file_name(&self.title(), extension),
+        }
     }
 
     /// Declared sound parameters.
@@ -110,17 +170,59 @@ impl RecipeSnapshot {
     /// Returns [`ErrorKind::InvalidSound`] naming the origin and the first
     /// failure at that rate.
     pub fn at(&self, rate: SampleRate) -> Result<Sound, Error> {
-        let signal = self.stimulus().signal(rate).map_err(|e| {
+        self.realize(rate).map_err(|e| {
             Error::caused(
                 ErrorKind::InvalidSound,
                 format!("{} at {} Hz: {e}", self.origin, rate.hz()),
                 e,
             )
-        })?;
+        })
+    }
+
+    pub(crate) fn realize(
+        &self,
+        rate: SampleRate,
+    ) -> Result<Sound, auditorylab_core::StimulusError> {
+        // Application/device preparation only; callbacks use the captured Signal.
+        let mut cache = self
+            .realizations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let signal = if let Some((_, result)) = cache.values.iter().find(|(r, _)| *r == rate) {
+            result.clone()?
+        } else {
+            #[cfg(test)]
+            {
+                cache.compilations += 1;
+            }
+            let result = self.stimulus().signal(rate).map(Arc::new);
+            if cache.values.len() == 2 {
+                let _ = cache.values.remove(0);
+            }
+            cache.values.push((rate, result.clone()));
+            result?
+        };
         Ok(Sound {
             snapshot: self.clone(),
-            signal: Arc::new(signal),
+            signal,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn realization_count(&self) -> u64 {
+        self.realizations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .compilations
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cached_rates(&self) -> usize {
+        self.realizations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .values
+            .len()
     }
 }
 
@@ -237,4 +339,28 @@ pub fn load_file(path: &Path) -> Result<RecipeSnapshot, Error> {
         ),
     })?;
     read(file, Origin::File(path.to_owned()))
+}
+
+/// A file name suggested from a title: characters that file systems reject
+/// become spaces, and the name is kept short.
+pub(crate) fn file_name(title: &str, extension: &str) -> String {
+    let cleaned: String = title
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    let mut stem: String = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    if let Some((cut, _)) = stem.char_indices().nth(80) {
+        stem.truncate(cut);
+    }
+    let stem = stem.trim_matches(|c: char| c == '.' || c.is_whitespace());
+    format!(
+        "{}.{extension}",
+        if stem.is_empty() { "sound" } else { stem }
+    )
 }

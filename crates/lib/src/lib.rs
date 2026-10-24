@@ -26,12 +26,14 @@ pub use auditorylab_core::timing::{ModelKind, ModelLane, TimingModel};
 pub use auditorylab_core::{
     About, Carrier, CarrierFacts, CarrierKind, Component, ComponentError, ComponentFacts,
     ComponentId, ComponentRole, Ear, Ears, Extent, Modulation, ModulationFacts, ModulationKind,
-    Observation, ParameterDescriptor, ParameterId, PhaseRate, PulseFacts, Recipe, SampleRate,
-    Signal, SlotRole, Stimulus, StimulusError, Target, TargetCheck, Unit, VoiceObservation,
+    Observation, ParameterDescriptor, ParameterId, PhaseRate, PulseFacts, Recipe, Research,
+    SampleRate, Signal, SlotRole, Source, Stimulus, StimulusError, Target, TargetCheck, Unit,
+    VoiceObservation,
 };
 pub use controls::{
-    EXPORT_RATES, Range, Scale, default_carrier, default_component, default_modulation, quantize,
-    range, slider_position, slider_value,
+    DEFAULT_MONITOR_SCALE, DEFAULT_MONITOR_SPAN_MS, EXPORT_RATES, MONITOR_SCALES, MONITOR_SPANS_MS,
+    Range, Scale, default_carrier, default_component, default_modulation, quantize, range,
+    slider_position, slider_value,
 };
 pub use editing::{
     Analysis, Candidate, CommitRefusal, DocumentId, Draft, EditRefusal, EditingField,
@@ -40,8 +42,8 @@ pub use editing::{
 pub use error::{Error, ErrorKind};
 pub use identity::{BUILD_IDENTITY, BuildIdentity, SOURCE_URL, version_line};
 pub use presentation::{
-    Notice, TRANSPORT_LABELS, axis_limit, capture_error_text, catalog_listing, clock,
-    compact_number, component_description, describe, editable_number, format_dbfs,
+    LIBRARY_PLAY_LABELS, Notice, TRANSPORT_LABELS, axis_limit, capture_error_text, catalog_listing,
+    clock, compact_number, component_description, describe, editable_number, format_dbfs,
     generated_description, generated_details, human_duration, inspection, invalid_at_rate, labeled,
     library_label, notices, playback_elapsed, playback_preamble, playback_result, playback_status,
     recipe_details, research, sound_brief, sound_description, structure_description,

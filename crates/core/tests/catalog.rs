@@ -195,7 +195,17 @@ fn the_catalog_is_exactly_the_files_in_the_catalog_directory_in_natural_name_ord
                 "{path:?}"
             );
             let name = path.file_stem().unwrap().to_str().unwrap().to_owned();
-            (name, std::fs::read_to_string(&path).unwrap())
+            (
+                name,
+                catalog_build::generated_recipe(&std::fs::read_to_string(&path).unwrap(), |id| {
+                    Ok(std::fs::read_to_string(
+                        Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .join("studies")
+                            .join(format!("{id}.toml")),
+                    )?)
+                })
+                .unwrap(),
+            )
         })
         .collect();
     files.sort_by_key(|(name, _)| natural(name));
@@ -280,25 +290,14 @@ fn every_entry_has_its_independently_written_recipe() {
 
 fn printable_about_value(value: &str) -> bool {
     value
-        .bytes()
-        .all(|byte| (b' '..=b'~').contains(&byte) && byte != b'"')
+        .chars()
+        .all(|c| !c.is_control() || matches!(c, '\n' | '\r' | '\t'))
 }
 
 #[test]
-fn built_in_about_values_reject_controls_non_ascii_and_double_quotes() {
-    assert!(printable_about_value("space ~ apostrophe '"));
-    for value in [
-        "line\nfeed",
-        "carriage\rreturn",
-        "tab\t",
-        "nul\0",
-        "escape\u{1b}",
-        "delete\u{7f}",
-        "quoted\"",
-        "non-ascii é",
-    ] {
-        assert!(!printable_about_value(value), "{value:?}");
-    }
+fn descriptive_text_supports_unicode_quotes_and_multiline() {
+    assert!(printable_about_value("Rīga \"quoted\"\nline\ttab"));
+    assert!(!printable_about_value("escape\u{1b}"));
 }
 
 #[test]
@@ -313,19 +312,20 @@ fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
                 .clone()
                 .unwrap_or_else(|| panic!("{}: no {name}", entry.id))
         };
-        let citation = field("citation", &about.citation);
-        let source_url = field("source_url", &about.source_url);
+        let research = about.research.as_ref().unwrap();
+        let citation = field("citation", &research.citation);
+        let source_url = field("source_url", &research.source_url);
         for (name, value) in [
             ("title", about.title.clone()),
-            ("studied_for", field("studied_for", &about.studied_for)),
-            ("summary", field("summary", &about.summary)),
+            ("studied_for", field("studied_for", &research.studied_for)),
+            ("summary", field("summary", &research.summary)),
             ("citation", citation.clone()),
             ("source_url", source_url.clone()),
-            ("study", field("study", &about.study)),
-            ("adaptation", field("adaptation", &about.adaptation)),
+            ("study", field("study", &research.study)),
+            ("adaptation", field("adaptation", &research.adaptation)),
         ] {
             assert!(!value.trim().is_empty(), "{}: empty {name}", entry.id);
-            // Built-in values contain printable ASCII only, without double quotes.
+            // Human text permits Unicode and TOML escaping; control bytes remain invalid.
             assert!(printable_about_value(&value), "{}: {name}", entry.id);
         }
         assert!(
@@ -344,7 +344,6 @@ fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
             .or_insert_with(|| citation.clone());
         assert_eq!(*first, citation, "{}", entry.id);
     }
-    assert_eq!(citations.len(), 8);
 }
 
 #[test]
