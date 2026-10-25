@@ -1,7 +1,7 @@
 //! Independent generated-state, attribution and revision oracles.
 use auditorylab_core::{
-    Carrier, CarrierFacts, ComponentFacts, ComponentId, Ears, Modulation, ModulationFacts,
-    SampleRate, SlotRole, StimulusError, Target, Voice, live::Engine,
+    Carrier, CarrierFacts, Component, ComponentFacts, ComponentId, Ears, LoweringError, Modulation,
+    ModulationFacts, Node, SampleRate, SlotRole, Sound, StimulusError, Target, Voice, live::Engine,
 };
 fn tone(hz: f64, ears: Ears) -> Voice {
     Voice {
@@ -16,7 +16,16 @@ fn tone(hz: f64, ears: Ears) -> Voice {
     reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
 )]
 fn target(rate: SampleRate, component: Voice) -> Target {
-    Target::new(rate, &[(ComponentId::new(7), component)]).unwrap()
+    Sound {
+        duration_seconds: 1.0,
+        fade_seconds: 0.0,
+        components: vec![Component {
+            id: ComponentId::new(7),
+            node: Node::Voice(component),
+        }],
+    }
+    .target(rate)
+    .unwrap()
 }
 #[expect(
     clippy::unwrap_used,
@@ -129,14 +138,22 @@ fn changed_pulses_preserve_both_real_rates_and_roles() {
     assert_eq!(rates, [40.0, 80.0]);
     assert_eq!(voices[0].id, voices[1].id);
     assert!(matches!(
-        Target::new(
-            rate,
-            &[
-                (ComponentId::new(1), clicks(40.0)),
-                (ComponentId::new(1), clicks(80.0))
-            ]
-        ),
-        Err(StimulusError::DuplicateComponentId { id }) if id == ComponentId::new(1)
+        Sound {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components: vec![
+                Component {
+                    id: ComponentId::new(1),
+                    node: Node::Voice(clicks(40.0))
+                },
+                Component {
+                    id: ComponentId::new(1),
+                    node: Node::Voice(clicks(80.0))
+                },
+            ],
+        }
+        .target(rate),
+        Err(StimulusError::Authored(LoweringError::Identity))
     ));
 }
 #[test]

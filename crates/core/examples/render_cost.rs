@@ -1,39 +1,34 @@
 //! Offline rendering cost at 48 kHz: `cargo run -p auditorylab-core --example render_cost --release`.
 //! Each case renders twenty seconds. No audio device is opened.
 use auditorylab_core::{
-    Carrier, ComponentId, Ears, Modulation, SampleRate, Sound, Target, Voice, live::Engine,
+    Carrier, Component, ComponentId, Ears, Modulation, Node, SampleRate, Sound, Voice, live::Engine,
 };
 use std::{error::Error, hint::black_box, time::Instant};
 const RATE: u32 = 48_000;
 const FRAMES: u32 = RATE * 20;
 fn measure(components: Vec<Voice>) -> Result<[f64; 3], Box<dyn Error>> {
     let rate = SampleRate::new(RATE)?;
-    let signal = Sound {
+    let sound = Sound {
         duration_seconds: f64::from(FRAMES) / f64::from(RATE),
         fade_seconds: 0.0,
-        components: (components.clone())
+        components: components
             .into_iter()
             .enumerate()
             .map(|(index, voice)| {
-                Ok(auditorylab_core::Component {
+                Ok(Component {
                     id: ComponentId::new(u32::try_from(index)? + 1),
-                    node: auditorylab_core::Node::Voice(voice),
+                    node: Node::Voice(voice),
                 })
             })
             .collect::<Result<_, std::num::TryFromIntError>>()?,
-    }
-    .signal(rate)?;
-    let identities = |offset| {
-        components
-            .iter()
-            .enumerate()
-            .map(|(i, component)| Ok((ComponentId::new(u32::try_from(i)? + offset), *component)))
-            .collect::<Result<Vec<_>, std::num::TryFromIntError>>()
     };
-    let targets = [
-        Target::new(rate, &identities(0)?)?,
-        Target::new(rate, &identities(16)?)?,
-    ];
+    let signal = sound.signal(rate)?;
+    let mut alternate = sound.clone();
+    let offset = u32::try_from(Sound::MAX_COMPONENTS)?;
+    for component in &mut alternate.components {
+        component.id = ComponentId::new(component.id.get() + offset);
+    }
+    let targets = [sound.target(rate)?, alternate.target(rate)?];
     let mut engine = Engine::new(rate);
     let batch = usize::try_from(engine.ramp_frames())?;
     let mut buffer = vec![[0.0; 2]; batch];

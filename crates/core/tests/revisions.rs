@@ -2,8 +2,8 @@
 //! change facts and revisions, never generated samples, ramps or phases.
 //! Expected samples come from engines that never received those edits.
 use auditorylab_core::{
-    Carrier, CarrierFacts, ComponentId, Ears, Observation, SampleRate, SlotRole, Target, Voice,
-    live::Engine,
+    Carrier, CarrierFacts, Component, ComponentId, Ears, Node, Observation, SampleRate, SlotRole,
+    Sound, Target, Voice, live::Engine,
 };
 
 const fn rate() -> SampleRate {
@@ -30,7 +30,16 @@ fn clicks(rate_hz: f64, width_seconds: f64) -> Voice {
     reason = "Fixture helper panics if its fixed component stops validating, failing the calling test"
 )]
 fn target(component: Voice) -> Target {
-    Target::new(rate(), &[(ComponentId::new(1), component)]).unwrap()
+    Sound {
+        duration_seconds: 1.0,
+        fade_seconds: 0.0,
+        components: vec![Component {
+            id: ComponentId::new(1),
+            node: Node::Voice(component),
+        }],
+    }
+    .target(rate())
+    .unwrap()
 }
 
 /// A at 40 Hz; B at 80 Hz; C a 120 Hz tone. The primed variants request
