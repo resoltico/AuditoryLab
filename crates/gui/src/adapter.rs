@@ -590,8 +590,8 @@ impl SlintAdapter {
             && preferences.font != font
         {
             eprintln!(
-                "Typography: {} · {} logical px · {}",
-                font.family, font.size, font.origin
+                "{}",
+                auditorylab::vocabulary::Caption::typography(&font.family, font.size, &font.origin)
             );
             preferences.font = font;
             if let (
@@ -769,7 +769,8 @@ impl SlintAdapter {
             self.bindings.borrow_mut().map.clear();
             ui.set_can_edit(false);
             ui.set_status(
-                "Editor binding identities exhausted. Save your sound and restart Auditory Lab."
+                auditorylab::vocabulary::Caption::BindingIdentitiesExhausted
+                    .label()
                     .into(),
             );
             ui.set_edits_suspended(true);
@@ -1207,15 +1208,7 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     ui.set_add_choices(strings(
         CarrierKind::ALL
             .iter()
-            .map(|k| {
-                format!(
-                    "Add {}",
-                    auditorylab::controls::default_component(*k)
-                        .role()
-                        .label()
-                        .to_lowercase()
-                )
-            })
+            .map(|k| auditorylab::vocabulary::Action::add_component(*k))
             .collect(),
     ));
     ui.set_modulation_choices(strings(
@@ -1235,13 +1228,13 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     monitor.set_span_choices(spans);
     monitor.set_scale_choices(scales);
     ui.set_library_play_labels(strings(
-        auditorylab::presentation::LIBRARY_PLAY_LABELS
+        auditorylab::vocabulary::Action::library_play_labels()
             .iter()
             .map(|s| (*s).to_owned())
             .collect(),
     ));
     ui.set_transport_labels(strings(
-        auditorylab::presentation::TRANSPORT_LABELS
+        auditorylab::vocabulary::Action::transport_labels()
             .iter()
             .map(|label| (*label).to_owned())
             .collect(),

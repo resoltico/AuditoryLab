@@ -1109,7 +1109,7 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     let ui = MainWindow::new().unwrap();
     ui.set_ui_family(typography::resolve().family.into());
     ui.set_transport_labels(slint::ModelRc::new(VecModel::from(
-        auditorylab::presentation::TRANSPORT_LABELS
+        auditorylab::vocabulary::Action::transport_labels()
             .iter()
             .map(|label| slint::SharedString::from(*label))
             .collect::<Vec<_>>(),
@@ -1123,7 +1123,7 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     for size in [13.0, 26.0] {
         ui.set_ui_size(size);
         let mut reference = None;
-        for label in auditorylab::presentation::TRANSPORT_LABELS {
+        for label in auditorylab::vocabulary::Action::transport_labels() {
             for (elapsed, status) in [
                 ("0:00", "Preparing output… · A"),
                 (

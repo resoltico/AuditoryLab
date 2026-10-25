@@ -1,10 +1,13 @@
+import { BoundButton, BoundTitleEdit } from "library-controls.slint";
+export { Terms } from "vocabulary.slint";
+import { Terms } from "vocabulary.slint";
 import {
     Palette, Button, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, TabWidget, ProgressIndicator
 }
 from "std-widgets.slint";
 export { CatalogRow, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
 import { CatalogRow, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
-import { Disclosure, NumericField, ParameterControl, MetadataField, NotesField, StableButton, BoundButton, BoundTitleEdit, ExportRate } from "editor.slint";
+import { Disclosure, NumericField, ParameterControl, MetadataField, NotesField, StableButton, ExportRate } from "editor.slint";
 export { AboutWindow, LicenseWindow } from "about.slint";
 
 export { MonitorWindow, DetailsWindow, AudioControlsWindow, MonitorData } from "monitor.slint";
@@ -12,7 +15,7 @@ import { Lane, MonitorPanel, MonitorData } from "monitor.slint";
 
 export component MainWindow inherits Window {
     icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
-    title: "Auditory Lab";
+    title: Terms.caption-product-name;
     in-out property <bool> edits-suspended:false;
     in-out property <bool> monitor-open:true;
     in property <bool> native-mac: false;
@@ -251,49 +254,49 @@ export component MainWindow inherits Window {
     callback save-recipe();
     MenuBar {
         Menu {
-            title: "File";
+            title: Terms.caption-file;
             MenuItem {
-                title: "New Sound";
+                title: Terms.action-new-sound;
                 enabled: root.can-new;
                 activated => {
                     root.new-draft();
                 }
             }
             MenuItem {
-                title: "Open Recipe…";
+                title: Terms.action-open-recipe-dialog;
                 enabled: root.can-import;
                 activated => {
                     root.open-recipe();
                 }
             }
             MenuItem {
-                title: "Save sound…";
+                title: Terms.action-save-sound-dialog;
                 enabled: root.can-save && root.tab-index == 1;
                 activated => {
                     root.save-recipe();
                 }
             }
-            MenuItem {title:"Save independent copy";enabled:root.can-edit && root.tab-index==1;activated=>{root.save-copy();}}
-            MenuItem {title:"Export portable recipe…";enabled:root.tab-index==0 ? root.has-results : root.can-save;activated=>{root.export-recipe();}}
+            MenuItem {title:Terms.action-save-independent-copy;enabled:root.can-edit && root.tab-index==1;activated=>{root.save-copy();}}
+            MenuItem {title:Terms.action-export-portable-recipe-dialog;enabled:root.tab-index==0 ? root.has-results : root.can-save;activated=>{root.export-recipe();}}
             MenuItem {
-                title: "Export WAV…";
+                title: Terms.action-export-wav-dialog;
                 enabled: root.can-export;
                 activated => {
                     root.export-wav();
                 }
             }
-            MenuItem {title:"Stop audio";enabled:root.playback-busy;activated=>{root.stop-audio();}}
+            MenuItem {title:Terms.action-stop-audio;enabled:root.playback-busy;activated=>{root.stop-audio();}}
             MenuItem {
-                title: "Quit";
+                title: Terms.action-quit;
                 activated => {
                     root.quit();
                 }
             }
         }
         if !root.native-mac: Menu {
-            title: "Help";
+            title: Terms.caption-help;
             MenuItem {
-                title: "About Auditory Lab";
+                title: Terms.caption-about-product;
 
                 activated => {
                     root.about();
@@ -308,18 +311,18 @@ export component MainWindow inherits Window {
             vertical-stretch:0;
             min-height:root.ui-size*3;
             padding:4px;
-            if !root.compact: Text {text:"Auditory Lab";font-weight:600;vertical-alignment:center;}
+            if !root.compact: Text {text:Terms.caption-product-name;font-weight:600;vertical-alignment:center;}
             Rectangle {horizontal-stretch:1;}
             // Left of the lasting controls, so a late press on Cancel export
             // lands in the space it leaves rather than on another control.
-            if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:"WAV export progress";max-width:120px;}
-            if root.exporting: Button {text:"Cancel export";clicked=>{root.cancel-file();}}
-            if root.status != "" || root.auxiliary-error != "": Button {text:"Task details…";clicked=>{root.show-diagnostics();}}
-            if root.tab-index==1: Button {text:"Save sound";enabled:root.can-save;accessible-description:root.save-reason;clicked=>{root.save-recipe();}}
+            if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:Terms.caption-wav-export-progress;max-width:120px;}
+            if root.exporting: Button {text:Terms.action-cancel-export;clicked=>{root.cancel-file();}}
+            if root.status != "" || root.auxiliary-error != "": Button {text:Terms.caption-task-details-dialog;clicked=>{root.show-diagnostics();}}
+            if root.tab-index==1: Button {text:Terms.action-save-sound;enabled:root.can-save;accessible-description:root.save-reason;clicked=>{root.save-recipe();}}
             monitor-opener := StableButton {
-                text:root.monitor-open ? "Hide monitor" : "Show monitor";
-                labels:["Hide monitor","Show monitor"];
-                accessible-name:(root.monitor-open ? "Hide output monitor" : "Show output monitor");expanded:root.monitor-open;
+                text:root.monitor-open ? Terms.action-hide-monitor : Terms.action-show-monitor;
+                labels:[Terms.action-hide-monitor,Terms.action-show-monitor];
+                accessible-name:(root.monitor-open ? Terms.action-hide-output-monitor : Terms.action-show-output-monitor);expanded:root.monitor-open;
                 clicked=>{root.monitor-open=!root.monitor-open;root.window-changed();}
             }
         }
@@ -330,7 +333,7 @@ export component MainWindow inherits Window {
                 root.tab-changed(self.current-index);
             }
             Tab {
-                title: "Library";
+                title: Terms.collection-library;
                 HorizontalBox {
                     padding: 0px;
                     vertical-stretch: 1;
@@ -338,21 +341,21 @@ export component MainWindow inherits Window {
                         preferred-width: !root.compact ? root.sidebar-width : 600px;
                         max-width: !root.compact ? root.sidebar-width : 3000px;
                         ComboBox {
-                            model: ["All · Built-in + User", "Built-in · Read only", "User", "Open files · Temporary", "Trash"];
+                            model: [Terms.collection-all-built-in-user, Terms.collection-built-in-read-only, Terms.collection-user, Terms.collection-open-files-temporary, Terms.collection-trash];
                             current-index <=> root.collection-choice;
-                            accessible-label: "Library collection";
+                            accessible-label: Terms.caption-library-collection;
                             selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
                         }
                         ComboBox {
-                            model: ["Automatic order", "Nominal rate", "Title", "Created", "Modified", "Added here", "Study", "Collection"];
+                            model: [Terms.caption-automatic-order, Terms.caption-nominal-rate, Terms.caption-title, Terms.caption-created, Terms.caption-modified, Terms.facet-added-here, Terms.caption-study, Terms.caption-collection];
                             current-index <=> root.sort-choice;
-                            accessible-label: "Sort library";
+                            accessible-label: Terms.facet-sort-library;
                             selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
                         }
                         LineEdit {
                             text <=> root.query;
-                            placeholder-text: "Title, ID, sound or study topic";
-                            accessible-label: "Find a recipe";
+                            placeholder-text: Terms.caption-title-id-sound-or-study-topic;
+                            accessible-label: Terms.caption-find-arecipe;
                             edited(value) => {
                                 root.search(value);
                             }
@@ -360,17 +363,17 @@ export component MainWindow inherits Window {
                         ComboBox {
                             model: root.band-labels;
                             current-index <=> root.band-choice;
-                            accessible-label: "Nominal rhythm reference band";
+                            accessible-label: Terms.caption-nominal-rhythm-reference-band;
                             selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
                         }
                         ComboBox {
                             model: root.method-labels;
                             current-index <=> root.method-choice;
-                            accessible-label: "Structural method";
+                            accessible-label: Terms.caption-structural-method;
                             selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
                         }
                         if root.band-choice != 0 || root.method-choice != 0: Button {
-                            text: "Clear rhythm filters";
+                            text: Terms.action-clear-rhythm-filters;
                             clicked => {
                                 root.band-choice = 0;
                                 root.method-choice = 0;
@@ -378,11 +381,11 @@ export component MainWindow inherits Window {
                             }
                         }
                         if !root.has-results: Text {
-                            text: "No recipes in this view. Open a recipe or change the applied filters or collection.";
+                            text: Terms.status-empty-library;
                             wrap:word-wrap;
                         }
                         if root.query != "": Button {
-                            text: "Clear search";
+                            text: Terms.action-clear-search;
                             clicked => {
                                 root.query="";
                                 root.search("");
@@ -390,18 +393,18 @@ export component MainWindow inherits Window {
                         }
                         if root.compact: HorizontalBox {
                             vertical-stretch:0;
-                            Button {text:"Filters / recovery…";clicked=>{root.library-detail=true;}}
-                            Button {text:"Refresh";clicked=>{root.refresh-library();}}
-                            Button {text:"Clear all filters";clicked=>{root.clear-applied-filters();}}
+                            Button {text:Terms.facet-filters-recovery-dialog;clicked=>{root.library-detail=true;}}
+                            Button {text:Terms.action-refresh;clicked=>{root.refresh-library();}}
+                            Button {text:Terms.action-clear-all-filters;clicked=>{root.clear-applied-filters();}}
                         }
                         catalog-scroll := ScrollView {
                             content-y: root.library-scroll-y;
                             changed content-y => {if !root.library-restoring {root.library-scroll-y=self.content-y;}}
                             accessible-role:list;
-                            accessible-label:"Library results";
+                            accessible-label:Terms.caption-library-results;
                             VerticalBox {
                                 spacing: 4px;
-                                if root.compact: Text {text:root.library-count;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-label:"Applied library filters · " + root.library-count;}
+                                if root.compact: Text {text:root.library-count;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-label:Terms.facet-applied-library-filters-prefix + root.library-count;}
                                 if root.compact && root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
                                 for item[index] in root.catalog: catalog-row := Rectangle {
                                     property <bool> selected-row: root.selected==index;
@@ -459,7 +462,7 @@ export component MainWindow inherits Window {
                                                 return accept;
                                             }
 
-                                            if event.text == "\n" || event.text == " " {
+                                            if event.text == Terms.caption-n || event.text == " " {
                                                 root.select(item.binding);
                                                 root.library-detail=true;
                                                 return accept;
@@ -498,14 +501,14 @@ export component MainWindow inherits Window {
                         }
                         HorizontalBox { vertical-stretch:0;
                         Button {
-                            text: "Open Recipe…";
+                            text: Terms.action-open-recipe-dialog;
                             enabled: root.can-import;
                             clicked => {
                                 root.open-recipe();
                             }
                         }
                         if !root.has-results: Button {
-                            text:"Create sound";
+                            text:Terms.caption-create-sound;
                             enabled:root.can-new;
                             clicked=>{root.new-draft();}
                         }
@@ -515,7 +518,7 @@ export component MainWindow inherits Window {
                         width: 6px;
                         background: resize-touch.has-hover || resize-focus.has-focus ? Palette.accent-background : Palette.border;
                         accessible-role: slider;
-                        accessible-label: "Library pane width";
+                        accessible-label: Terms.caption-library-pane-width;
                         accessible-value: root.sidebar-width / 1px;
                         accessible-value-minimum: 230;
                         accessible-value-maximum: 500;
@@ -564,7 +567,7 @@ export component MainWindow inherits Window {
                             width: detail-scroll.visible-width;
                             spacing: 10px;
                             if root.compact: Button {
-                                text:"Back to recipes";
+                                text:Terms.action-back-to-recipes;
                                 clicked => {
                                     root.library-restore-ready=false;
                                     root.library-restoring=true;
@@ -572,39 +575,39 @@ export component MainWindow inherits Window {
                                 }
                             }
                         HorizontalBox { padding:0px; vertical-stretch:0;
-                            Button {text:"Refresh";clicked=>{root.refresh-library();}}
-                            Button {text:"Show saved";clicked=>{root.show-saved();}}
-                            Button {text:"Reset sort";clicked=>{root.reset-library-sort();root.direction-choice=0;}}
+                            Button {text:Terms.action-refresh;clicked=>{root.refresh-library();}}
+                            Button {text:Terms.action-show-saved;clicked=>{root.show-saved();}}
+                            Button {text:Terms.action-reset-sort;clicked=>{root.reset-library-sort();root.direction-choice=0;}}
                         }
-                        Button {text:"Clear all filters";clicked=>{root.clear-applied-filters();}}
+                        Button {text:Terms.action-clear-all-filters;clicked=>{root.clear-applied-filters();}}
                         Text {text:root.library-count;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                        more := Disclosure {label:"More filters and grouping";}
+                        more := Disclosure {label:Terms.facet-more-filters-and-grouping;}
                         if more.expanded: VerticalBox {vertical-stretch:0;
                             Text {text:root.calendar-context;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                            LineEdit {text <=> root.study-query;placeholder-text:"Study DOI or key:source";accessible-label:"Study evidence filter";}
-                            ComboBox {model:["Any population","Human","Mouse","Other animal","Mixed population","Not applicable","Unspecified population"];current-index <=> root.population-choice;accessible-label:"Population evidence filter";}
-                            ComboBox {model:["Any condition role","Test condition","Comparison condition","Mixed roles","Unspecified role"];current-index <=> root.role-choice;accessible-label:"Condition role evidence filter";}
-                            ComboBox {model:["Any analysis coverage","Complete","Partial","Invalid"];current-index <=> root.analysis-choice;accessible-label:"Nominal analysis coverage";}
-                            ComboBox {model:["Automatic direction","Ascending","Descending"];current-index <=> root.direction-choice;accessible-label:"Sort direction";}
-                            ComboBox {model:["No grouping","Band groups","Method groups","Study groups","Collection groups"];current-index <=> root.group-choice;accessible-label:"Library result grouping";}
-                            LineEdit {text <=> root.created-from;placeholder-text:"Created from YYYY-MM-DD";accessible-label:"Created from local calendar date";}
-                            LineEdit {text <=> root.created-through;placeholder-text:"Created through YYYY-MM-DD";accessible-label:"Created through inclusive local calendar date";}
-                            LineEdit {text <=> root.modified-from;placeholder-text:"Modified from YYYY-MM-DD";accessible-label:"Modified from local calendar date";}
-                            LineEdit {text <=> root.modified-through;placeholder-text:"Modified through YYYY-MM-DD";accessible-label:"Modified through inclusive local calendar date";}
-                            LineEdit {text <=> root.added-from;placeholder-text:"Added here from YYYY-MM-DD";accessible-label:"Added here from local calendar date";}
-                            LineEdit {text <=> root.added-through;placeholder-text:"Added here through YYYY-MM-DD";accessible-label:"Added here through inclusive local calendar date";}
-                            Button {text:"Apply filters";clicked=>{root.apply-filters();}}
+                            LineEdit {text <=> root.study-query;placeholder-text:Terms.caption-study-doi-or-key-source;accessible-label:Terms.facet-study-evidence-filter;}
+                            ComboBox {model:[Terms.facet-any-population,Terms.caption-human,Terms.caption-mouse,Terms.caption-other-animal,Terms.facet-mixed-population,Terms.caption-not-applicable,Terms.facet-unspecified-population];current-index <=> root.population-choice;accessible-label:Terms.facet-population-evidence-filter;}
+                            ComboBox {model:[Terms.facet-any-condition-role,Terms.caption-test-condition,Terms.caption-comparison-condition,Terms.caption-mixed-roles,Terms.caption-unspecified-role];current-index <=> root.role-choice;accessible-label:Terms.facet-condition-role-evidence-filter;}
+                            ComboBox {model:[Terms.facet-any-analysis-coverage,Terms.status-complete,Terms.status-partial,Terms.status-invalid];current-index <=> root.analysis-choice;accessible-label:Terms.facet-nominal-analysis-coverage;}
+                            ComboBox {model:[Terms.caption-automatic-direction,Terms.caption-ascending,Terms.caption-descending];current-index <=> root.direction-choice;accessible-label:Terms.facet-sort-direction;}
+                            ComboBox {model:[Terms.facet-no-grouping,Terms.caption-band-groups,Terms.caption-method-groups,Terms.caption-study-groups,Terms.caption-collection-groups];current-index <=> root.group-choice;accessible-label:Terms.facet-library-result-grouping;}
+                            LineEdit {text <=> root.created-from;placeholder-text:Terms.caption-created-from-yyyy-mm-dd;accessible-label:Terms.facet-created-from-local-calendar-date;}
+                            LineEdit {text <=> root.created-through;placeholder-text:Terms.caption-created-through-yyyy-mm-dd;accessible-label:Terms.facet-created-through-inclusive-local-calendar-date;}
+                            LineEdit {text <=> root.modified-from;placeholder-text:Terms.caption-modified-from-yyyy-mm-dd;accessible-label:Terms.facet-modified-from-local-calendar-date;}
+                            LineEdit {text <=> root.modified-through;placeholder-text:Terms.caption-modified-through-yyyy-mm-dd;accessible-label:Terms.facet-modified-through-inclusive-local-calendar-date;}
+                            LineEdit {text <=> root.added-from;placeholder-text:Terms.facet-added-here-from-yyyy-mm-dd;accessible-label:Terms.facet-added-here-from-local-calendar-date;}
+                            LineEdit {text <=> root.added-through;placeholder-text:Terms.facet-added-here-through-yyyy-mm-dd;accessible-label:Terms.facet-added-here-through-inclusive-local-calendar-date;}
+                            Button {text:Terms.action-apply-filters;clicked=>{root.apply-filters();}}
                         }
-                        Disclosure {label:"Library storage and recovery";expanded <=> root.storage-open;}
+                        Disclosure {label:Terms.caption-library-storage-and-recovery;expanded <=> root.storage-open;}
                         if root.storage-open: VerticalBox { vertical-stretch:0;
                             Text {text:root.library-status;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
-                            Button {text:"Initialize configured library";clicked=>{root.initialize-library();}}
-                            Button {text:"Recheck publication";clicked=>{root.recheck-library();}}
+                            Button {text:Terms.action-initialize-configured-library;clicked=>{root.initialize-library();}}
+                            Button {text:Terms.action-recheck-publication;clicked=>{root.recheck-library();}}
                         }
                             if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
                             if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
                         if !root.has-results: Text {min-width:0px;
-                                text:"No recipes match the current filters. Clear the restrictions to see every recipe.";
+                                text:Terms.status-empty-filtered-library;
                                 wrap:word-wrap;
                                 vertical-stretch:0;
                             }
@@ -646,9 +649,9 @@ export component MainWindow inherits Window {
                                             root.play-recipe();
                                         }
                                     }
-                                    Button {text:"Preview waveform";enabled:root.can-preview;clicked=>{root.preview-selected();}}
+                                    Button {text:Terms.action-preview-waveform;enabled:root.can-preview;clicked=>{root.preview-selected();}}
                                     Button {
-                                        text:"Edit a copy";
+                                        text:Terms.action-edit-acopy;
                                         enabled:root.can-copy;
                                         accessible-description:root.copy-reason;
                                         clicked=> {
@@ -656,7 +659,7 @@ export component MainWindow inherits Window {
                                         }
                                     }
                                     Button {
-                                        text:"Export WAV…";
+                                        text:Terms.action-export-wav-dialog;
                                         enabled:root.can-export;
                                         clicked=> {
                                             root.export-wav();
@@ -664,23 +667,23 @@ export component MainWindow inherits Window {
                                     }
                                 }
                                 if root.library-dates != "": Text {text:root.library-dates;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
-                                utc-dates := Disclosure {label:"Exact UTC dates";}
-                                if utc-dates.expanded: TextEdit {text:root.library-dates-utc;read-only:true;wrap:word-wrap;accessible-label:"Exact UTC recipe and membership dates";min-width:0px;height:root.ui-size*8;vertical-stretch:0;}
+                                utc-dates := Disclosure {label:Terms.facet-exact-utc-dates;}
+                                if utc-dates.expanded: TextEdit {text:root.library-dates-utc;read-only:true;wrap:word-wrap;accessible-label:Terms.facet-exact-utc-recipe-and-membership-dates;min-width:0px;height:root.ui-size*8;vertical-stretch:0;}
                                 if root.library-key != "": Text {text:root.library-key;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
-                                if root.library-token != "" && !root.library-trashed: BoundButton {text:"Edit saved User recipe";key:root.library-key;token:root.library-token;activated(k,t)=>{root.edit-saved(k,t);}}
-                                Button {text:"Export portable recipe…";enabled:root.has-results;clicked=>{root.export-recipe();}}
-                                if root.collection-choice == 3: BoundButton {text:"Close open file";key:root.library-key;token:"";activated(k,t)=>{root.close-open-file(k);}}
-                                if root.collection-choice == 3: BoundButton {text:"Edit external file";key:root.library-key;token:"";activated(k,t)=>{root.edit-saved(k,t);}}
-                                if root.collection-choice == 3: BoundButton {text:"Add to User Library";key:root.library-key;token:"";activated(k,t)=>{root.add-to-library(k);}}
+                                if root.library-token != "" && !root.library-trashed: BoundButton {text:Terms.action-edit-saved-user-recipe;key:root.library-key;token:root.library-token;activated(k,t)=>{root.edit-saved(k,t);}}
+                                Button {text:Terms.action-export-portable-recipe-dialog;enabled:root.has-results;clicked=>{root.export-recipe();}}
+                                if root.collection-choice == 3: BoundButton {text:Terms.action-close-open-file;key:root.library-key;token:"";activated(k,t)=>{root.close-open-file(k);}}
+                                if root.collection-choice == 3: BoundButton {text:Terms.action-edit-external-file;key:root.library-key;token:"";activated(k,t)=>{root.edit-saved(k,t);}}
+                                if root.collection-choice == 3: BoundButton {text:Terms.action-add-to-user-library;key:root.library-key;token:"";activated(k,t)=>{root.add-to-library(k);}}
                                 if root.library-token != "": VerticalBox { vertical-stretch:0;
-                                    if !root.library-trashed: BoundTitleEdit {key:root.library-key;token:root.library-token;placeholder-text:"New title";accessible-label:"Rename saved recipe";rename(k,t,value)=>{root.library-action(k,t,"rename",value);} }
-                                    BoundButton {text:root.library-trashed ? "Restore from Trash" : "Move saved entry to Trash";key:root.library-key;token:root.library-token;action:root.library-trashed ? "restore" : "trash";dispatch(k,t,action)=>{root.library-action(k,t,action,"");}}
-                                    if root.library-trashed: BoundButton {text:"Permanently delete…";key:root.library-key;token:root.library-token;activated(k,t)=>{root.library-action(k,t,"purge","");}}
+                                    if !root.library-trashed: BoundTitleEdit {key:root.library-key;token:root.library-token;placeholder-text:Terms.caption-new-title;accessible-label:Terms.action-rename-saved-recipe;rename(k,t,value)=>{root.library-action(k,t,Terms.action-rename,value);} }
+                                    BoundButton {text:root.library-trashed ? Terms.action-restore-from-trash : Terms.action-move-saved-entry-to-trash;key:root.library-key;token:root.library-token;action:root.library-trashed ? Terms.action-restore : Terms.action-trash;dispatch(k,t,action)=>{root.library-action(k,t,action,"");}}
+                                    if root.library-trashed: BoundButton {text:Terms.action-permanently-delete-dialog;key:root.library-key;token:root.library-token;activated(k,t)=>{root.library-action(k,t,Terms.action-purge,"");}}
                                 }
-                                Disclosure {label:"Research, citation and sound adaptations";expanded <=> root.research;}
-                                if root.research && root.can-open-study: Button {text:"Open study source";clicked=>{root.open-study();}}
-                                if root.research: Button {text:"Read selectable research and recipe details…";clicked=>{root.show-research();}}
-                                library-pattern := Disclosure {label:"Pattern explained · static core model";}
+                                Disclosure {label:Terms.caption-research-citation-and-sound-adaptations;expanded <=> root.research;}
+                                if root.research && root.can-open-study: Button {text:Terms.action-open-study-source;clicked=>{root.open-study();}}
+                                if root.research: Button {text:Terms.action-read-selectable-research-and-recipe-details-dialog;clicked=>{root.show-research();}}
+                                library-pattern := Disclosure {label:Terms.caption-pattern-explained-static-core-model;}
                                 if library-pattern.expanded: VerticalBox {
                                     vertical-stretch:0;
                                     Text {min-width:0px;text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
@@ -688,12 +691,12 @@ export component MainWindow inherits Window {
                                         vertical-stretch:0;
                                         Text {min-width:0px;text:lane.label;wrap:word-wrap;vertical-stretch:0;}
                                         Rectangle {height:30px;background:Palette.control-background;
-                                            accessible-role:image;accessible-label:lane.label+" static model";
+                                            accessible-role:image;accessible-label:lane.label+Terms.caption-static-model;
                                             Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
                                         }
                                     }
                                 }
-                                Disclosure {label:"Export settings";expanded <=> root.export-settings;}
+                                Disclosure {label:Terms.action-export-settings;expanded <=> root.export-settings;}
                                 if root.export-settings: ExportRate {
                                     choices:root.export-rates;
                                     selected <=> root.rate-index;
@@ -711,7 +714,7 @@ export component MainWindow inherits Window {
                 }
             }
             Tab {
-                title:"Workbench";
+                title:Terms.caption-workbench;
                 editor-scroll := ScrollView {
                     content-y <=> root.editor-scroll-y;
                     // Follow the visible width so long text wraps rather than widening the page.
@@ -731,7 +734,7 @@ export component MainWindow inherits Window {
                             reset-key:root.document-reset;
                             enabled:root.can-edit;
                             edits-suspended:root.edits-suspended;
-                            accessible-label:"Sound title";
+                            accessible-label:Terms.caption-sound-title;
                             stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
                             commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
                             restore-field(owner, key) => { root.restore-metadata(owner, key); }
@@ -739,13 +742,13 @@ export component MainWindow inherits Window {
                     }
                     HorizontalBox {vertical-stretch:0;
                         Text {min-width:0px;
-                            text:root.dirty ? "Unsaved changes" : "Unmodified draft";
+                            text:root.dirty ? Terms.status-unsaved-changes : Terms.status-unmodified-draft;
                             wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;
                         }
-                        Button {horizontal-stretch:0;text:"Save independent copy";enabled:root.can-edit;clicked=>{root.save-copy();}}
+                        Button {horizontal-stretch:0;text:Terms.action-save-independent-copy;enabled:root.can-edit;clicked=>{root.save-copy();}}
                         Button {
                             horizontal-stretch:0;
-                            text:"New";
+                            text:Terms.action-new;
                             enabled:root.can-new;
                             clicked=> {
                                 root.new-draft();
@@ -766,8 +769,8 @@ export component MainWindow inherits Window {
                     }
                     HorizontalBox {
                         vertical-stretch: 0;
-                        Button { text: "Add binaural pair"; enabled: root.can-add-pair; accessible-description: root.pair-add-reason; clicked => { root.add-component(root.document, 2); } }
-                        Button { text: "Add monaural pair"; enabled: root.can-add-pair; accessible-description: root.pair-add-reason; clicked => { root.add-component(root.document, 3); } }
+                        Button { text: Terms.action-add-binaural-pair; enabled: root.can-add-pair; accessible-description: root.pair-add-reason; clicked => { root.add-component(root.document, 2); } }
+                        Button { text: Terms.action-add-monaural-pair; enabled: root.can-add-pair; accessible-description: root.pair-add-reason; clicked => { root.add-component(root.document, 3); } }
                     }
                     if root.pair-add-reason != "" && root.add-reason == "": Text {min-width:0px;text:root.pair-add-reason;wrap:word-wrap;vertical-stretch:0;}
                     if root.add-reason != "": Text {min-width:0px;text:root.add-reason;wrap:word-wrap;vertical-stretch:0;}
@@ -775,7 +778,7 @@ export component MainWindow inherits Window {
                         padding: 0px;
                         vertical-stretch: 0;
                         Button {
-                            text: "Undo remove";
+                            text: Terms.action-undo-remove;
                             horizontal-stretch: 0;
                             enabled: root.can-restore-component;
                             accessible-description: root.removed-component + " " + root.add-reason;
@@ -816,7 +819,7 @@ export component MainWindow inherits Window {
                             vertical-stretch: 0;
                         }
                         Text {min-width:0px;text:row.context; wrap:word-wrap; vertical-stretch:0;}
-                        pattern := Disclosure {label:"Pattern explained · static core model";}
+                        pattern := Disclosure {label:Terms.caption-pattern-explained-static-core-model;}
                         if pattern.expanded: VerticalBox {
                             vertical-stretch:0;
                             Text {min-width:0px;text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
@@ -828,33 +831,33 @@ export component MainWindow inherits Window {
                                   vertical-stretch:0;
                                   Text {min-width:0px;text:lane.label;wrap:word-wrap;vertical-stretch:0;}
                                   Rectangle {height:36px;background:Palette.control-background;
-                                      accessible-role:image;accessible-label:lane.label+" static model, origin zero";
+                                      accessible-role:image;accessible-label:lane.label+Terms.caption-static-model-origin-zero;
                                       Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
                                   }
                                 }
                               }
                             }
                         }
-                        component-options := Disclosure {label:"Routing, modulation and component options";}
+                        component-options := Disclosure {label:Terms.caption-routing-modulation-and-component-options;}
                         // Labels beside choices sized to their content; the
                         // shared column keeps the three choices aligned.
                         if component-options.expanded: GridLayout {
                             spacing: 6px;
                             vertical-stretch: 0;
                             Row {
-                                if row.routing-editable: Text { text: "Ears"; vertical-alignment: center; }
-                                if row.routing-editable: ComboBox { enabled: root.can-edit; model: root.ears-choices; current-index: row.ears; accessible-label: row.name + ": ears"; selected(value) => { root.set-ears(row.binding, self.current-index); } }
+                                if row.routing-editable: Text { text: Terms.caption-ears; vertical-alignment: center; }
+                                if row.routing-editable: ComboBox { enabled: root.can-edit; model: root.ears-choices; current-index: row.ears; accessible-label: row.name + Terms.caption-ears-suffix; selected(value) => { root.set-ears(row.binding, self.current-index); } }
                                 Rectangle { horizontal-stretch: 1; }
                             }
                             Row {
-                                if row.carrier >= 0: Text { text: "Carrier"; vertical-alignment: center; }
-                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.carrier-choices; current-index: row.carrier; accessible-label: row.name + ": carrier"; selected(value) => { root.set-carrier(row.binding, self.current-index); } }
+                                if row.carrier >= 0: Text { text: Terms.caption-carrier; vertical-alignment: center; }
+                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.carrier-choices; current-index: row.carrier; accessible-label: row.name + Terms.caption-carrier-suffix; selected(value) => { root.set-carrier(row.binding, self.current-index); } }
                             }
                             Row {
-                                if row.carrier >= 0: Text { text: "Modulation"; vertical-alignment: center; }
-                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.modulation-choices; current-index: row.modulation; accessible-label: row.name + ": modulation"; selected(value) => { root.set-modulation(row.binding, self.current-index); } }
+                                if row.carrier >= 0: Text { text: Terms.caption-modulation; vertical-alignment: center; }
+                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.modulation-choices; current-index: row.modulation; accessible-label: row.name + Terms.caption-modulation-suffix; selected(value) => { root.set-modulation(row.binding, self.current-index); } }
                             }
-                            Row { Button { col:1; text: "Remove"; enabled: root.can-edit; accessible-label: "Remove " + row.name; clicked => { root.remove-component(row.binding); } } }
+                            Row { Button { col:1; text: Terms.action-remove; enabled: root.can-edit; accessible-label: Terms.action-remove-prefix + row.name; clicked => { root.remove-component(row.binding); } } }
                         }
                         for parameter in row.parameters: ParameterControl {
                             parameter: parameter;
@@ -882,17 +885,17 @@ export component MainWindow inherits Window {
                         wrap:word-wrap;
                         vertical-stretch:0;
                     }
-                    settings := Disclosure {label:"Sound settings · notes and saved/exported audio";}
+                    settings := Disclosure {label:Terms.caption-sound-settings-notes-and-saved-exported-audio;}
                     if settings.expanded: VerticalBox {
                         vertical-stretch:0;
                         Text {text:root.draft-location-details;min-width:0px;wrap:word-wrap;vertical-stretch:0;}
 
-                        Button {text:"Export portable draft recipe…";enabled:root.can-save;clicked=>{root.export-recipe();}}
+                        Button {text:Terms.action-export-portable-draft-recipe-dialog;enabled:root.can-save;clicked=>{root.export-recipe();}}
 
                         HorizontalLayout {
                             Button {
                                 horizontal-stretch:0;
-                                text:"Export WAV…";
+                                text:Terms.action-export-wav-dialog;
                                 enabled:root.can-export;
                                 accessible-description:root.export-reason;
                                 clicked=> {
@@ -902,7 +905,7 @@ export component MainWindow inherits Window {
                             Rectangle {}
                         }
                         if !root.can-export && root.export-reason != "": Text {min-width:0px;text:root.export-reason;wrap:word-wrap;vertical-stretch:0;}
-                        Disclosure {label:"Sound notes";expanded <=> root.notes;}
+                        Disclosure {label:Terms.caption-sound-notes;expanded <=> root.notes;}
                         if root.notes: VerticalBox {
                             vertical-stretch:0;
                             if root.based-on != "": Text {min-width:0px;
@@ -911,13 +914,13 @@ export component MainWindow inherits Window {
                                 vertical-stretch:0;
                             }
                             if root.based-on != "": Button {
-                                text:"Show copied-from snapshot in Library";
+                                text:Terms.action-show-copied-from-snapshot-in-library;
                                 clicked=> {
                                     root.based-on-source();
                                 }
                             }
                             Text {
-                                text:"Your notes about this sound";
+                                text:Terms.caption-your-notes-about-this-sound;
                                 vertical-stretch:0;
                             }
                             NotesField {
@@ -927,17 +930,17 @@ export component MainWindow inherits Window {
                                 reset-key:root.document-reset;
                                 enabled:root.can-edit;
                                 edits-suspended:root.edits-suspended;
-                                accessible-label:"Custom recipe notes";
+                                accessible-label:Terms.caption-custom-recipe-notes;
                                 stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
                                 commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
                                 restore-field(owner, key) => { root.restore-metadata(owner, key); }
                             }
                         }
-                        Disclosure {label:"Saved audio · duration, fades and export rate";expanded <=> root.saved-audio;}
+                        Disclosure {label:Terms.action-saved-audio-duration-fades-and-export-rate;expanded <=> root.saved-audio;}
                         if root.saved-audio: VerticalBox {
                             vertical-stretch:0;
                             Text {min-width:0px;
-                                text:"Live playback continues until Stop. These settings affect saved recipes and WAV export.";
+                                text:Terms.caption-saved-audio-help;
                                 wrap:word-wrap;
                                 vertical-stretch:0;
                             }
@@ -955,7 +958,7 @@ export component MainWindow inherits Window {
                                     reset-key:root.document-reset;
                                     enabled:root.can-edit;
                                     edits-suspended:root.edits-suspended;
-                                    accessible-label:"Saved duration";
+                                    accessible-label:Terms.action-saved-duration;
                                     horizontal-stretch:0;
                                     preferred-width:root.ui-size*10;
                                     stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
@@ -973,7 +976,7 @@ export component MainWindow inherits Window {
                                     reset-key:root.document-reset;
                                     enabled:root.can-edit;
                                     edits-suspended:root.edits-suspended;
-                                    accessible-label:"Saved fade";
+                                    accessible-label:Terms.action-saved-fade;
                                     horizontal-stretch:0;
                                     preferred-width:root.ui-size*10;
                                     stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
@@ -1013,7 +1016,7 @@ export component MainWindow inherits Window {
             drawer-content := VerticalBox {padding:8px;spacing:3px;
                 Rectangle {
                     height:6px;background:grip-touch.has-hover || grip-focus.has-focus ? Palette.accent-background : Palette.border;
-                    accessible-role:slider;accessible-label:"Output monitor height";
+                    accessible-role:slider;accessible-label:Terms.caption-output-monitor-height;
                     accessible-value:root.effective-drawer-height/1px;accessible-value-minimum:root.minimum-monitor-height/1px;accessible-value-maximum:max(root.minimum-monitor-height,root.maximum-monitor-height)/1px;accessible-value-step:16;
                     accessible-action-set-value(v)=>{if v.is-float(){root.resize-monitor(v.to-float());}}
                     accessible-action-increment=>{root.resize-monitor(root.effective-drawer-height/1px+16);}
@@ -1044,7 +1047,7 @@ export component MainWindow inherits Window {
                     StableButton {text:root.transport-action;labels:root.transport-labels;primary:true;enabled:root.transport-enabled;accessible-name:root.transport-action+(root.playback-busy || root.play-target == "" ? "" : " · "+root.play-target);clicked=>{root.play-stop();}}
                     VerticalBox {padding:0px;spacing:2px;horizontal-stretch:1;
                         // One line each: the transport keeps its height; Details has the full text.
-                        Text {min-width:0px;text:root.player-title+(root.playback-busy || root.play-target == "" ? "" : " · Next Play: "+root.play-target);wrap:no-wrap;overflow:elide;}
+                        Text {min-width:0px;text:root.player-title+(root.playback-busy || root.play-target == "" ? "" : Terms.caption-next-play-prefix+root.play-target);wrap:no-wrap;overflow:elide;}
                         Text {min-width:0px;text:root.generated;wrap:no-wrap;overflow:elide;}
                     }
                     // Sized for the longest clock, so ticking never reflows the row.
@@ -1056,7 +1059,7 @@ export component MainWindow inherits Window {
                         elapsed-template := Text {visible:false;text:"00:00:00 / 00:00:00";}
                         elapsed-text := Text {width:parent.width;height:parent.height;text:root.elapsed;horizontal-alignment:right;vertical-alignment:center;}
                     }
-                    Button {text:"Details…";horizontal-stretch:0;accessible-label:"Audio details";clicked=>{root.show-diagnostics();}}
+                    Button {text:Terms.caption-details-dialog;horizontal-stretch:0;accessible-label:Terms.caption-audio-details;clicked=>{root.show-diagnostics();}}
                 }
                 VerticalBox {
                     padding:0px; spacing:0px; min-height:root.ui-size*2.5; max-height:root.ui-size*2.5; vertical-stretch:0;

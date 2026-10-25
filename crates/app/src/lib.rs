@@ -21,6 +21,7 @@ mod publish;
 pub mod query;
 pub mod recipe;
 pub mod session;
+pub mod vocabulary;
 pub mod wav;
 pub mod waveform_view;
 pub mod workflow;

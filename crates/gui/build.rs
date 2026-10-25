@@ -1,8 +1,19 @@
 //! Compile the desktop interface.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let generated = std::path::PathBuf::from(std::env::var_os("OUT_DIR").ok_or("missing OUT_DIR")?);
+    let mut vocabulary = String::from("export global Terms {\n");
+    for (property, label) in auditorylab::vocabulary::UI_TERMS {
+        // Rust debug string escaping also satisfies Slint's string grammar.
+        vocabulary.push_str(&format!(
+            "    in-out property <string> {property}: {label:?};\n"
+        ));
+    }
+    vocabulary.push_str("}\n");
+    std::fs::write(generated.join("vocabulary.slint"), vocabulary)?;
     slint_build::compile_with_config(
         "ui/main.slint",
         slint_build::CompilerConfiguration::new()
+            .with_include_paths(vec![generated])
             .embed_resources(slint_build::EmbedResourcesKind::EmbedFiles),
     )?;
     println!("cargo:rerun-if-changed=../../LICENSE");

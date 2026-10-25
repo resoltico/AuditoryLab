@@ -825,7 +825,8 @@ impl Workspace {
         let progress = self.export_progress();
         ActionView {
             can_play: play.is_ok(),
-            library_play_label: presentation::LIBRARY_PLAY_LABELS[usize::from(playing)],
+            library_play_label: crate::vocabulary::Action::library_play_labels()
+                [usize::from(playing)],
             can_import: self.import_admission().is_ok(),
             can_new: self.start_allowed().is_ok(),
             can_copy: copy.is_ok(),
@@ -873,11 +874,11 @@ impl Workspace {
             exporting,
             transport_enabled: playing || play.is_ok(),
             transport_label: if playing {
-                presentation::STOP_AUDIO
+                crate::vocabulary::Action::StopAudio.label()
             } else if self.view == View::Workbench {
-                presentation::PLAY_LIVE
+                crate::vocabulary::Action::PlayLive.label()
             } else {
-                presentation::PLAY_SELECTED
+                crate::vocabulary::Action::PlaySelectedSound.label()
             }
             .into(),
             play_target: match self.view {

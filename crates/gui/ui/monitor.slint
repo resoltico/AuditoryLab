@@ -1,3 +1,4 @@
+import { Terms } from "vocabulary.slint";
 import { Button, ComboBox, TextEdit, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 export component Lane inherits Rectangle {
     in property <string> label;
@@ -16,7 +17,7 @@ export component Lane inherits Rectangle {
     // Keep at least a 2:1 plotting area beside the full labels.
     min-width: root.axis-width + root.axis-row-height*4 + 8px;
     accessible-role: image;
-    accessible-label: root.label + " samples, common symmetric scale ±" + root.limit;
+    accessible-label: root.label + Terms.caption-samples-common-symmetric-scale + root.limit;
     title := Text {
         x: 6px;
         y: root.axis-row-height*1.5 - self.preferred-height/2;
@@ -83,25 +84,25 @@ export component MonitorPanel inherits VerticalBox {
     callback span(int);callback scale(int);callback hold();callback follow();callback details();callback collapse();
     spacing:4px;padding:0px;
     HorizontalBox {padding:0px;vertical-stretch:0;cross-axis-alignment:center;
-        Text {min-width:0px;text:"Output monitor";font-weight:700;wrap:word-wrap;}
+        Text {min-width:0px;text:Terms.caption-output-monitor;font-weight:700;wrap:word-wrap;}
         Text {text:root.data.state;font-weight:600;wrap:no-wrap;horizontal-stretch:0;}
         Text {preferred-width:0px;horizontal-stretch:1;text:root.data.age;wrap:no-wrap;overflow:elide;accessible-label:root.data.age;}
-        Button {text:"Details…";accessible-label:"Full audio diagnostics and capture source";clicked=>{root.details();}}
-        Button {text:"Hide";accessible-label:"Hide output monitor";clicked=>{root.collapse();}}
+        Button {text:Terms.caption-details-dialog;accessible-label:Terms.caption-full-audio-diagnostics-and-capture-source;clicked=>{root.details();}}
+        Button {text:Terms.action-hide;accessible-label:Terms.action-hide-output-monitor;clicked=>{root.collapse();}}
     }
     HorizontalBox {padding:0px;spacing:12px;
         VerticalBox {padding:0px;spacing:3px;
             Text {min-width:0px;text:root.data.caption;max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
-            left-lane := Lane {label:"Left";trace:root.data.left;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
-            right-lane := Lane {label:"Right";trace:root.data.right;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
-            HorizontalBox {padding:0px;vertical-stretch:0;Text {text:"−"+root.data.spanlabel;}Rectangle {horizontal-stretch:1;}Text {text:"Captured end";}}
+            left-lane := Lane {label:Terms.caption-left;trace:root.data.left;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
+            right-lane := Lane {label:Terms.caption-right;trace:root.data.right;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
+            HorizontalBox {padding:0px;vertical-stretch:0;Text {text:"−"+root.data.spanlabel;}Rectangle {horizontal-stretch:1;}Text {text:Terms.caption-captured-end;}}
         }
         VerticalBox {padding:0px;spacing:4px;preferred-width:root.ui-size*21;max-width:root.ui-size*25;
-            span-choice := ComboBox {model:root.span-choices;current-index:root.data.spanchoice;enabled:!root.data.held;accessible-label:"Waveform time window";selected(v)=>{root.span(self.current-index);}}
-            scale-choice := ComboBox {model:root.scale-choices;current-index:root.data.scalechoice;enabled:!root.data.held;accessible-label:"Waveform amplitude scale";selected(v)=>{root.scale(self.current-index);}}
+            span-choice := ComboBox {model:root.span-choices;current-index:root.data.spanchoice;enabled:!root.data.held;accessible-label:Terms.caption-waveform-time-window;selected(v)=>{root.span(self.current-index);}}
+            scale-choice := ComboBox {model:root.scale-choices;current-index:root.data.scalechoice;enabled:!root.data.held;accessible-label:Terms.caption-waveform-amplitude-scale;selected(v)=>{root.scale(self.current-index);}}
             HorizontalBox {padding:0px;spacing:4px;
-                Button {text:root.data.held ? "Return to live" : "Hold display";clicked=>{root.hold();}}
-                if root.data.overridden: Button {text:"Follow system";accessible-label:"Follow system motion preference";clicked=>{root.follow();}}
+                Button {text:root.data.held ? Terms.action-return-to-live : Terms.action-hold-display;clicked=>{root.hold();}}
+                if root.data.overridden: Button {text:Terms.action-follow-system;accessible-label:Terms.action-follow-system-motion-preference;clicked=>{root.follow();}}
             }
             Text {min-width:0px;text:root.data.meters;max-height:root.ui-size*4;wrap:word-wrap;overflow:elide;}
         }
@@ -117,7 +118,7 @@ export component MonitorPanel inherits VerticalBox {
 }
 export component MonitorWindow inherits Window {
     public function sync-controls() { panel.sync-controls(); }
-    title:"Output monitor";
+    title:Terms.caption-output-monitor;
     in property <string> ui-family;in property <length> ui-size:13px;
     default-font-family:root.ui-family;default-font-size:root.ui-size;
     preferred-width:950px;preferred-height:420px;
@@ -174,13 +175,13 @@ export component DetailsWindow inherits Window {
     VerticalBox {
         Text {text:root.heading;font-weight:700;vertical-stretch:0;}
         TextEdit {text:root.content;read-only:true;accessible-label:root.heading;}
-        if root.can-refresh: Button {text:"Refresh diagnostics snapshot";clicked=>{root.refresh-content();}}
-        close := Button {text:"Close";clicked=>{root.dismiss();}}
+        if root.can-refresh: Button {text:Terms.action-refresh-diagnostics-snapshot;clicked=>{root.refresh-content();}}
+        close := Button {text:Terms.action-close;clicked=>{root.dismiss();}}
     }
 }
 }
 export component AudioControlsWindow inherits Window {
-    title:"Audio controls";
+    title:Terms.caption-audio-controls;
     in property <string> ui-family;in property <length> ui-size:13px;
     default-font-family:root.ui-family;default-font-size:root.ui-size;
     in property <string> source;in property <string> elapsed;in property <bool> active;
@@ -192,7 +193,7 @@ export component AudioControlsWindow inherits Window {
         padding:16px;spacing:8px;
         Text {min-width:0px;text:root.source;overflow:elide;accessible-label:root.source;}
         Text {text:root.elapsed;}
-        Button {text:"Stop audio";enabled:root.active;clicked=>{root.stop();}}
+        Button {text:Terms.action-stop-audio;enabled:root.active;clicked=>{root.stop();}}
     }
 }
 

@@ -57,19 +57,77 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                           af,
                           at| {
         a.command(|w| {
-            let Some(mut query) = w.catalog_query().cloned() else { return; };
-            let ranges = [auditorylab::calendar::local_range(&cf,&ct), auditorylab::calendar::local_range(&mf,&mt), auditorylab::calendar::local_range(&af,&at)];
-            let [Ok(created),Ok(modified),Ok(added)] = ranges else { w.library_filter_error("Invalid calendar range. Use ordered YYYY-MM-DD dates with a unique local midnight; prior filters retained."); return; };
-            use auditorylab::collection::{Direction,GroupBy};
-            use auditorylab::core::{Population, ConditionRole};
-            query.created=created;query.modified=modified;query.added=added;
-            query.studies=if study.trim().is_empty() { Vec::new() } else { vec![study.to_string()] };
-            query.populations=choice(&[Population::Human,Population::Mouse,Population::OtherAnimal,Population::Mixed,Population::NotApplicable,Population::Unspecified],population-1).into_iter().collect();
-            query.roles=choice(&[ConditionRole::Test,ConditionRole::Comparison,ConditionRole::Mixed,ConditionRole::Unspecified],role-1).into_iter().collect();
-            query.analysis=choice(&[auditorylab::core::nominal::Completeness::Complete,auditorylab::core::nominal::Completeness::Partial,auditorylab::core::nominal::Completeness::Invalid],analysis-1);
-            query.direction=choice(&[Direction::Asc,Direction::Desc],direction-1);
-            query.group_by=choice(&[GroupBy::None,GroupBy::Band,GroupBy::Method,GroupBy::Study,GroupBy::Collection],group).unwrap_or(GroupBy::None);
-            if let Err(error) = w.set_catalog_query(query) { w.library_filter_error(&error.to_string()); }
+            let Some(mut query) = w.catalog_query().cloned() else {
+                return;
+            };
+            let ranges = [
+                auditorylab::calendar::local_range(&cf, &ct),
+                auditorylab::calendar::local_range(&mf, &mt),
+                auditorylab::calendar::local_range(&af, &at),
+            ];
+            let [Ok(created), Ok(modified), Ok(added)] = ranges else {
+                w.library_filter_error(
+                    auditorylab::vocabulary::Caption::CalendarRangeError.label(),
+                );
+                return;
+            };
+            use auditorylab::collection::{Direction, GroupBy};
+            use auditorylab::core::{ConditionRole, Population};
+            query.created = created;
+            query.modified = modified;
+            query.added = added;
+            query.studies = if study.trim().is_empty() {
+                Vec::new()
+            } else {
+                vec![study.to_string()]
+            };
+            query.populations = choice(
+                &[
+                    Population::Human,
+                    Population::Mouse,
+                    Population::OtherAnimal,
+                    Population::Mixed,
+                    Population::NotApplicable,
+                    Population::Unspecified,
+                ],
+                population - 1,
+            )
+            .into_iter()
+            .collect();
+            query.roles = choice(
+                &[
+                    ConditionRole::Test,
+                    ConditionRole::Comparison,
+                    ConditionRole::Mixed,
+                    ConditionRole::Unspecified,
+                ],
+                role - 1,
+            )
+            .into_iter()
+            .collect();
+            query.analysis = choice(
+                &[
+                    auditorylab::core::nominal::Completeness::Complete,
+                    auditorylab::core::nominal::Completeness::Partial,
+                    auditorylab::core::nominal::Completeness::Invalid,
+                ],
+                analysis - 1,
+            );
+            query.direction = choice(&[Direction::Asc, Direction::Desc], direction - 1);
+            query.group_by = choice(
+                &[
+                    GroupBy::None,
+                    GroupBy::Band,
+                    GroupBy::Method,
+                    GroupBy::Study,
+                    GroupBy::Collection,
+                ],
+                group,
+            )
+            .unwrap_or(GroupBy::None);
+            if let Err(error) = w.set_catalog_query(query) {
+                w.library_filter_error(&error.to_string());
+            }
         });
     });
     on!(on_clear_library_filters, |a| a.command(|w| {

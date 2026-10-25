@@ -1,3 +1,4 @@
+import { Terms } from "vocabulary.slint";
 import { Button, LineEdit, TextEdit, Slider, HorizontalBox, ComboBox } from "std-widgets.slint";
 import { ParameterKey, MetadataKey, ParameterRow, MetadataRow } from "models.slint";
 // A compact disclosure: as wide as its label, aligned with the content it opens.
@@ -17,7 +18,7 @@ export component Disclosure inherits Rectangle {
         width: parent.width;
         height: parent.height;
         text: (root.expanded ? "▾ " : "▸ ") + root.label;
-        accessible-label: root.label + (root.expanded ? " · expanded" : " · collapsed");
+        accessible-label: root.label + (root.expanded ? Terms.caption-expanded : Terms.caption-collapsed);
         accessible-expanded: root.expanded;
         clicked => {root.expanded = !root.expanded;}
     }
@@ -109,7 +110,7 @@ export component ParameterControl inherits HorizontalBox {
         // Dragging replaces the value binding; keep following committed values.
         property <float> committed: root.parameter.position;
         changed committed => { self.value = self.committed; }
-        accessible-label: root.context+": "+root.parameter.label + " slider";
+        accessible-label: root.context+": "+root.parameter.label + Terms.caption-slider;
         changed(value) => {
             root.slide(root.owner, root.parameter.key, value);
         }
@@ -256,7 +257,7 @@ export component ExportRate inherits HorizontalBox {
     in property <bool> edit-enabled;
     callback changed(int);
     Text {
-        text:"Export sample rate";
+        text:Terms.facet-export-sample-rate;
         vertical-alignment:center;
     }
     ComboBox {
@@ -271,28 +272,3 @@ export component ExportRate inherits HorizontalBox {
 }
 
 // Retain the capability and exact observed version from gesture start. A list
-// refresh while a pointer or keyboard press is held cannot retarget the action.
-export component BoundButton inherits Button {
-    in property <string> action;
-    private property <string> captured-action;
-    callback dispatch(string,string,string);
-    in property <string> key;
-    in property <string> token;
-    private property <string> captured-key;
-    private property <string> captured-token;
-    private property <bool> armed:false;
-    callback activated(string, string);
-    changed pressed => { if self.pressed { root.captured-key=root.key;root.captured-token=root.token;root.captured-action=root.action;root.armed=true; } }
-    clicked => { root.activated(root.armed ? root.captured-key : root.key, root.armed ? root.captured-token : root.token);root.dispatch(root.armed ? root.captured-key : root.key,root.armed ? root.captured-token : root.token,root.armed ? root.captured-action : root.action);root.armed=false; }
-}
-// A rename retains the entry/version on which text entry started.
-export component BoundTitleEdit inherits LineEdit {
-    in property <string> key;
-    in property <string> token;
-    private property <string> captured-key;
-    private property <string> captured-token;
-    private property <bool> dirty:false;
-    callback rename(string,string,string);
-    edited(value)=> { if !root.dirty {root.captured-key=root.key;root.captured-token=root.token;root.dirty=true;} }
-    accepted(value)=> {root.rename(root.dirty ? root.captured-key : root.key,root.dirty ? root.captured-token : root.token,value);root.dirty=false;}
-}

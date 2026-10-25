@@ -56,9 +56,7 @@ impl fmt::Display for PairIssue {
         f.write_str(match self {
             Self::Nonfinite => "pair carrier/offset arithmetic is nonfinite",
             Self::Nonpositive => "both pair carriers must be positive",
-            Self::UnrepresentablePairDifference => {
-                "UnrepresentablePairDifference: nonzero offset collapses to the first carrier"
-            }
+            Self::UnrepresentablePairDifference => "nonzero offset collapses to the first carrier",
         })
     }
 }

@@ -2,6 +2,10 @@
 /// Identity shared by the command-line and desktop products.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuildIdentity {
+    /// Product name from the root license metadata.
+    pub name: &'static str,
+    /// Copyright line from the root license metadata.
+    pub copyright: &'static str,
     /// Workspace product version.
     pub version: &'static str,
     /// Native build counter in 1..9999.

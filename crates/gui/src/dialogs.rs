@@ -30,18 +30,27 @@ impl Shell for NativeShell {
             adapter.respond(prompt, Response::Cancel);
             return;
         };
-        let title = auditorylab::presentation::display_scalar(&title);
         answer(adapter, prompt, async move {
             use slint::ComponentHandle;
             let choice = rfd::AsyncMessageDialog::new()
                 .set_parent(&ui.window().window_handle())
-                .set_title("Permanently delete saved recipe?")
-                .set_description(format!("Delete “{title}”\n{key}\nThis permanently removes this trashed User entry. External files and independent copies remain unchanged."))
-                .set_buttons(rfd::MessageButtons::OkCancelCustom("Permanently delete".into(), "Cancel".into()))
-                .show().await;
+                .set_title(auditorylab::vocabulary::Action::PurgeConfirmation.label())
+                .set_description(auditorylab::vocabulary::Action::purge_description(
+                    &title, &key,
+                ))
+                .set_buttons(rfd::MessageButtons::OkCancelCustom(
+                    auditorylab::vocabulary::Action::PermanentlyDelete
+                        .label()
+                        .into(),
+                    auditorylab::vocabulary::Action::Cancel.label().into(),
+                ))
+                .show()
+                .await;
             match choice {
                 rfd::MessageDialogResult::Ok => Response::Confirm,
-                rfd::MessageDialogResult::Custom(label) if label == "Permanently delete" => {
+                rfd::MessageDialogResult::Custom(label)
+                    if label == auditorylab::vocabulary::Action::PermanentlyDelete.label() =>
+                {
                     Response::Confirm
                 }
                 _ => Response::Cancel,
@@ -54,28 +63,34 @@ impl Shell for NativeShell {
             adapter.respond(prompt, Response::Cancel);
             return;
         };
-        let description = format!(
-            "Save changes to “{}” before continuing?",
-            adapter.document_title()
-        );
+        let description =
+            auditorylab::vocabulary::Action::unsaved_description(&adapter.document_title());
         answer(adapter, prompt, async move {
             use slint::ComponentHandle;
             let choice = rfd::AsyncMessageDialog::new()
                 .set_parent(&ui.window().window_handle())
-                .set_title("Unsaved sound")
+                .set_title(auditorylab::vocabulary::Status::UnsavedSound.label())
                 .set_description(description)
                 .set_buttons(rfd::MessageButtons::YesNoCancelCustom(
-                    "Save".into(),
-                    "Discard".into(),
-                    "Cancel".into(),
+                    auditorylab::vocabulary::Action::Save.label().into(),
+                    auditorylab::vocabulary::Action::Discard.label().into(),
+                    auditorylab::vocabulary::Action::Cancel.label().into(),
                 ))
                 .show()
                 .await;
             match choice {
                 rfd::MessageDialogResult::Yes => Response::Save,
                 rfd::MessageDialogResult::No => Response::Discard,
-                rfd::MessageDialogResult::Custom(label) if label == "Save" => Response::Save,
-                rfd::MessageDialogResult::Custom(label) if label == "Discard" => Response::Discard,
+                rfd::MessageDialogResult::Custom(label)
+                    if label == auditorylab::vocabulary::Action::Save.label() =>
+                {
+                    Response::Save
+                }
+                rfd::MessageDialogResult::Custom(label)
+                    if label == auditorylab::vocabulary::Action::Discard.label() =>
+                {
+                    Response::Discard
+                }
                 _ => Response::Cancel,
             }
         });
@@ -146,9 +161,9 @@ async fn file_path(
             .set_parent(&ui.window().window_handle())
             .add_filter(
                 if extension == "wav" {
-                    "WAV audio"
+                    auditorylab::vocabulary::Caption::WavAudio.label()
                 } else {
-                    "TOML sound"
+                    auditorylab::vocabulary::Caption::TomlSound.label()
                 },
                 &[extension],
             );

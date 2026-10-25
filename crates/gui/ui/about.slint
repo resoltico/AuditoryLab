@@ -1,3 +1,4 @@
+import { Terms } from "vocabulary.slint";
 import { AboutSlint, Button, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
 component AboutLabel inherits TextInput {
     read-only: true;
@@ -7,7 +8,7 @@ component AboutLabel inherits TextInput {
     vertical-stretch: 0;
 }
 export component AboutWindow inherits Window {
-    title: "About Auditory Lab";
+    title: Terms.caption-about-product;
     icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
     in property <string> ui-family;
     in property <length> ui-size: 13px;
@@ -22,8 +23,8 @@ export component AboutWindow inherits Window {
     callback focus-website();
     focus-website => { website.focus(); }
     MenuBar {
-        Menu { title: "Edit";
-            MenuItem { title: "Copy"; shortcut: @keys(Control + C);
+        Menu { title: Terms.action-edit;
+            MenuItem { title: Terms.action-copy; shortcut: @keys(Control + C);
                 enabled: name-text.has-focus || version-text.has-focus || purpose-text.has-focus || copyright-text.has-focus;
                 activated => {
                     if name-text.has-focus { name-text.copy(); }
@@ -32,7 +33,7 @@ export component AboutWindow inherits Window {
                     if copyright-text.has-focus { copyright-text.copy(); }
                 }
             }
-            MenuItem { title: "Select All"; shortcut: @keys(Control + A);
+            MenuItem { title: Terms.action-select-all; shortcut: @keys(Control + A);
                 enabled: name-text.has-focus || version-text.has-focus || purpose-text.has-focus || copyright-text.has-focus;
                 activated => {
                     if name-text.has-focus { name-text.select-all(); }
@@ -49,15 +50,15 @@ export component AboutWindow inherits Window {
         VerticalBox {
             padding: 24px; spacing: 12px; alignment: center;
             HorizontalBox { alignment: center; padding: 0px;
-                Image { source: root.icon; width: 64px; height: 64px; image-fit: contain; accessible-label: "Application icon"; }
+                Image { source: root.icon; width: 64px; height: 64px; image-fit: contain; accessible-label: Terms.caption-application-icon; }
             }
-            name-text := AboutLabel { text: "Auditory Lab"; font-size: 18px; font-weight: 600; }
+            name-text := AboutLabel { text: Terms.caption-product-name; font-size: 18px; font-weight: 600; }
             version-text := AboutLabel { text: root.identity; }
-            purpose-text := AboutLabel { text: "Play and export auditory stimuli.\nEdit sounds as TOML recipes."; single-line: false; }
-            copyright-text := AboutLabel { text: "Copyright © 2026 Ervins Strauhmanis"; }
+            purpose-text := AboutLabel { text: Terms.caption-product-description; single-line: false; }
+            copyright-text := AboutLabel { text: Terms.caption-copyright; }
             HorizontalBox { alignment: center; spacing: 12px; padding: 0px;
-                website := Button { text: "Project website"; clicked => { root.open-source(); } }
-                Button { text: "Licenses"; clicked => { root.open-licenses(); } }
+                website := Button { text: Terms.caption-project-website; clicked => { root.open-source(); } }
+                Button { text: Terms.action-licenses; clicked => { root.open-licenses(); } }
             }
             HorizontalBox { alignment: center; vertical-stretch: 0; padding: 0px;
                 AboutSlint { width: 280px; height: 100px; horizontal-stretch: 0; vertical-stretch: 0; }
@@ -66,7 +67,7 @@ export component AboutWindow inherits Window {
     }
 }
 export component LicenseWindow inherits Window {
-    title: "Software and Artwork Licenses";
+    title: Terms.caption-software-and-artwork-licenses;
     icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
     in property <string> ui-family;
     in property <length> ui-size: 13px;
@@ -74,27 +75,27 @@ export component LicenseWindow inherits Window {
     default-font-size: root.ui-size;
     preferred-width: 720px; preferred-height: 560px;
     in property <string> licenses;
-    in property <string> notice: "Open bundled component notices and license files.";
+    in property <string> notice: Terms.caption-bundled-notices-help;
     callback third-party-licenses-requested();
     callback dismiss();
     callback focus-start();
     focus-start => { license-text.focus(); license-text.set-selection-offsets(0, 0); license-text.content-y = 0px; }
     forward-focus: license-focus;
     MenuBar {
-        Menu { title: "Edit";
-            MenuItem { title: "Copy"; shortcut: @keys(Control + C); enabled: license-text.has-focus; activated => { license-text.copy(); } }
-            MenuItem { title: "Select All"; shortcut: @keys(Control + A); enabled: license-text.has-focus; activated => { license-text.select-all(); } }
+        Menu { title: Terms.action-edit;
+            MenuItem { title: Terms.action-copy; shortcut: @keys(Control + C); enabled: license-text.has-focus; activated => { license-text.copy(); } }
+            MenuItem { title: Terms.action-select-all; shortcut: @keys(Control + A); enabled: license-text.has-focus; activated => { license-text.select-all(); } }
         }
     }
     license-focus := FocusScope {
         forward-focus: license-text;
         key-pressed(event) => { if event.text == Key.Escape { root.dismiss(); return accept; } return reject; }
         VerticalBox {
-            license-text := TextEdit { text: root.licenses; read-only: true; accessible-label: "Complete software and owner artwork license terms"; }
+            license-text := TextEdit { text: root.licenses; read-only: true; accessible-label: Terms.caption-license-terms-help; }
             HorizontalBox {
                 padding: 12px; spacing: 12px; vertical-stretch: 0;
                 Text { text: root.notice; wrap: word-wrap; horizontal-stretch: 1; }
-                Button { text: "Third-party licenses…"; horizontal-stretch: 0; clicked => { root.third-party-licenses-requested(); } }
+                Button { text: Terms.action-third-party-licenses-dialog; horizontal-stretch: 0; clicked => { root.third-party-licenses-requested(); } }
             }
         }
     }

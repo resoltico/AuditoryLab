@@ -104,11 +104,18 @@ pub(super) fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
             match crate::licenses::notices_directory() {
                 Ok(path) => match path.to_str() {
                     Some(path) => {
-                        window
-                            .set_notice("Open bundled component notices and license files.".into());
+                        window.set_notice(
+                            auditorylab::vocabulary::Caption::BundledNoticesHelp
+                                .label()
+                                .into(),
+                        );
                         open_web(path);
                     }
-                    None => window.set_notice("Cannot open a non-UTF8 notices path.".into()),
+                    None => window.set_notice(
+                        auditorylab::vocabulary::Caption::NoticesPathError
+                            .label()
+                            .into(),
+                    ),
                 },
                 Err(error) => window.set_notice(error.into()),
             }

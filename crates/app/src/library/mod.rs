@@ -61,7 +61,7 @@ impl LibraryKey {
             Self::User(id) => Ok(*id),
             Self::BuiltIn(_) => Err(Error::new(
                 ErrorKind::ReadOnlyBuiltIn,
-                "ReadOnlyBuiltIn: shipped recipes cannot be renamed, replaced, trashed or purged; edit a copy",
+                "shipped recipes cannot be renamed, replaced, trashed or purged; edit a copy",
             )),
             Self::External(_) => Err(Error::new(
                 ErrorKind::InvalidArgument,

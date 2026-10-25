@@ -1056,7 +1056,7 @@ fn assert_library_play_during_file(save: bool) {
     assert!(ui.get_can_play(), "Save/Import can coexist with audio");
     assert_eq!(
         ui.get_library_play_action(),
-        auditorylab::presentation::LIBRARY_PLAY_LABELS[0]
+        auditorylab::vocabulary::Action::library_play_labels()[0]
     );
     action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
     assert!(
@@ -1066,7 +1066,7 @@ fn assert_library_play_during_file(save: bool) {
     let audio = execution.audio().unwrap();
     assert_eq!(
         ui.get_library_play_action(),
-        auditorylab::presentation::LIBRARY_PLAY_LABELS[1]
+        auditorylab::vocabulary::Action::library_play_labels()[1]
     );
     audio.result().unwrap();
     audio.exit().unwrap();
@@ -1656,7 +1656,7 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
 }
 
 slint::slint! {
-    import { BoundButton } from "ui/editor.slint";
+    import { BoundButton } from "ui/library-controls.slint";
     export component LibraryGestureProbe inherits Window {
         width:240px;height:100px;
         in-out property <string> entry-key;
@@ -2718,4 +2718,48 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     h.key("x");
     assert_eq!(text_of(&exact), before, "UTC presentation is read-only");
     assert!(text_of(&exact).contains("2026-10-25T00:30:00.123456789Z"));
+}
+
+#[test]
+fn changing_display_vocabulary_preserves_typed_library_search() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    root.initialize().unwrap();
+    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::recipe::catalog().unwrap(),
+            Capabilities::portable(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    h.ui().invoke_search("clicks 40".into());
+    h.wait_for_files();
+    let before = h
+        .ui()
+        .get_catalog()
+        .iter()
+        .map(|row| row.binding)
+        .collect::<Vec<_>>();
+    assert_eq!(before.len(), 1);
+    h.ui()
+        .global::<crate::generated::Terms>()
+        .set_caption_structural_method("Different display wording".into());
+    h.ui()
+        .global::<crate::generated::Terms>()
+        .set_collection_library("Different collection wording".into());
+    h.ui().invoke_search("".into());
+    h.wait_for_files();
+    assert!(h.ui().get_catalog().row_count() > before.len());
+    h.ui().invoke_search("clicks 40".into());
+    h.wait_for_files();
+    let after = h
+        .ui()
+        .get_catalog()
+        .iter()
+        .map(|row| row.binding)
+        .collect::<Vec<_>>();
+    assert_eq!(after, before);
 }

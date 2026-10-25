@@ -1,0 +1,314 @@
+//! Application vocabulary and stable discovery terms.
+use crate::core::nominal::Method;
+
+/// Structural search terms, independent of labels and explanatory prose.
+#[must_use]
+pub const fn method_search_terms(method: Method) -> &'static str {
+    match method {
+        Method::Binaural => "binaural interaural pair",
+        Method::Monaural => "monaural pair",
+        Method::Clicks => "click clicks",
+        Method::Gate => "gate gated rectangular",
+        Method::AmplitudeModulation => "am amplitude-modulation sinusoidal",
+        Method::SteadyTone => "steady-tone steady tone",
+    }
+}
+
+// The macro derives the UI interface inventory from the typed vocabulary.
+macro_rules! vocabulary {
+    ($($category:ident { $($variant:ident => ($property:literal, $label:expr)),* $(,)? })*) => {
+        $(
+            #[doc = concat!("Application-owned ", stringify!($category), " vocabulary.")]
+            #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+            pub enum $category {
+                $(#[doc = concat!("The ", stringify!($variant), " term.") ] $variant,)*
+            }
+            impl $category {
+                /// Display wording shared by the frontends.
+                #[must_use]
+                pub const fn label(self) -> &'static str {
+                    match self { $(Self::$variant => $label,)* }
+                }
+                /// Accessible name when no more specific context is needed.
+                #[must_use]
+                pub const fn accessible_name(self) -> &'static str { self.label() }
+            }
+        )*
+        /// Slint property names and their labels, derived from the typed terms.
+        pub const UI_TERMS: &[(&str, &str)] = &[$($(($property, $category::$variant.label()),)*)*];
+    }
+}
+vocabulary! {
+    Action {
+        PurgeConfirmation => ("action-purge-confirmation", "Permanently delete saved recipe?"),
+        Listen => ("action-listen", "Listen"),
+        StopCurrentAndPlayRecipe => ("action-stop-current-and-play-recipe", "Stop current & play recipe"),
+        PlaySelectedSound => ("action-play-selected-sound", "Play selected sound"),
+        PlayLive => ("action-play-live", "Play live"),
+        Save => ("action-save", "Save"),
+        Discard => ("action-discard", "Discard"),
+        Cancel => ("action-cancel", "Cancel"),
+        PermanentlyDelete => ("action-permanently-delete", "Permanently delete"),
+        Edit => ("action-edit", "Edit"),
+        Copy => ("action-copy", "Copy"),
+        SelectAll => ("action-select-all", "Select All"),
+        Licenses => ("action-licenses", "Licenses"),
+        ThirdPartyLicensesDialog => ("action-third-party-licenses-dialog", "Third-party licenses…"),
+        Hide => ("action-hide", "Hide"),
+        HideOutputMonitor => ("action-hide-output-monitor", "Hide output monitor"),
+        ReturnToLive => ("action-return-to-live", "Return to live"),
+        HoldDisplay => ("action-hold-display", "Hold display"),
+        FollowSystem => ("action-follow-system", "Follow system"),
+        FollowSystemMotionPreference => ("action-follow-system-motion-preference", "Follow system motion preference"),
+        RefreshDiagnosticsSnapshot => ("action-refresh-diagnostics-snapshot", "Refresh diagnostics snapshot"),
+        Close => ("action-close", "Close"),
+        StopAudio => ("action-stop-audio", "Stop audio"),
+        NewSound => ("action-new-sound", "New Sound"),
+        OpenRecipeDialog => ("action-open-recipe-dialog", "Open Recipe…"),
+        SaveSoundDialog => ("action-save-sound-dialog", "Save sound…"),
+        SaveIndependentCopy => ("action-save-independent-copy", "Save independent copy"),
+        ExportPortableRecipeDialog => ("action-export-portable-recipe-dialog", "Export portable recipe…"),
+        ExportWavDialog => ("action-export-wav-dialog", "Export WAV…"),
+        Quit => ("action-quit", "Quit"),
+        CancelExport => ("action-cancel-export", "Cancel export"),
+        SaveSound => ("action-save-sound", "Save sound"),
+        HideMonitor => ("action-hide-monitor", "Hide monitor"),
+        ShowMonitor => ("action-show-monitor", "Show monitor"),
+        ShowOutputMonitor => ("action-show-output-monitor", "Show output monitor"),
+        ClearRhythmFilters => ("action-clear-rhythm-filters", "Clear rhythm filters"),
+        ClearSearch => ("action-clear-search", "Clear search"),
+        Refresh => ("action-refresh", "Refresh"),
+        ClearAllFilters => ("action-clear-all-filters", "Clear all filters"),
+        BackToRecipes => ("action-back-to-recipes", "Back to recipes"),
+        ShowSaved => ("action-show-saved", "Show saved"),
+        ResetSort => ("action-reset-sort", "Reset sort"),
+        ApplyFilters => ("action-apply-filters", "Apply filters"),
+        InitializeConfiguredLibrary => ("action-initialize-configured-library", "Initialize configured library"),
+        RecheckPublication => ("action-recheck-publication", "Recheck publication"),
+        PreviewWaveform => ("action-preview-waveform", "Preview waveform"),
+        EditACopy => ("action-edit-acopy", "Edit a copy"),
+        EditSavedUserRecipe => ("action-edit-saved-user-recipe", "Edit saved User recipe"),
+        CloseOpenFile => ("action-close-open-file", "Close open file"),
+        EditExternalFile => ("action-edit-external-file", "Edit external file"),
+        AddToUserLibrary => ("action-add-to-user-library", "Add to User Library"),
+        RenameSavedRecipe => ("action-rename-saved-recipe", "Rename saved recipe"),
+        Rename => ("action-rename", "rename"),
+        RestoreFromTrash => ("action-restore-from-trash", "Restore from Trash"),
+        MoveSavedEntryToTrash => ("action-move-saved-entry-to-trash", "Move saved entry to Trash"),
+        Restore => ("action-restore", "restore"),
+        Trash => ("action-trash", "trash"),
+        PermanentlyDeleteDialog => ("action-permanently-delete-dialog", "Permanently delete…"),
+        Purge => ("action-purge", "purge"),
+        OpenStudySource => ("action-open-study-source", "Open study source"),
+        ReadSelectableResearchAndRecipeDetailsDialog => ("action-read-selectable-research-and-recipe-details-dialog", "Read selectable research and recipe details…"),
+        ExportSettings => ("action-export-settings", "Export settings"),
+        New => ("action-new", "New"),
+        AddBinauralPair => ("action-add-binaural-pair", "Add binaural pair"),
+        AddMonauralPair => ("action-add-monaural-pair", "Add monaural pair"),
+        UndoRemove => ("action-undo-remove", "Undo remove"),
+        Remove => ("action-remove", "Remove"),
+        RemovePrefix => ("action-remove-prefix", "Remove "),
+        ExportPortableDraftRecipeDialog => ("action-export-portable-draft-recipe-dialog", "Export portable draft recipe…"),
+        ShowCopiedFromSnapshotInLibrary => ("action-show-copied-from-snapshot-in-library", "Show copied-from snapshot in Library"),
+        SavedAudioDurationFadesAndExportRate => ("action-saved-audio-duration-fades-and-export-rate", "Saved audio · duration, fades and export rate"),
+        SavedDuration => ("action-saved-duration", "Saved duration"),
+        SavedFade => ("action-saved-fade", "Saved fade"),
+    }
+    Collection {
+        Library => ("collection-library", "Library"),
+        AllBuiltInUser => ("collection-all-built-in-user", "All · Built-in + User"),
+        BuiltInReadOnly => ("collection-built-in-read-only", "Built-in · Read only"),
+        User => ("collection-user", "User"),
+        OpenFilesTemporary => ("collection-open-files-temporary", "Open files · Temporary"),
+        Trash => ("collection-trash", "Trash"),
+    }
+    Facet {
+        AddedHereThroughInclusiveLocalCalendarDate => ("facet-added-here-through-inclusive-local-calendar-date", "Added here through inclusive local calendar date"),
+        AddedHereThroughYyyyMmDd => ("facet-added-here-through-yyyy-mm-dd", "Added here through YYYY-MM-DD"),
+        AddedHereFromLocalCalendarDate => ("facet-added-here-from-local-calendar-date", "Added here from local calendar date"),
+        AddedHereFromYyyyMmDd => ("facet-added-here-from-yyyy-mm-dd", "Added here from YYYY-MM-DD"),
+        AddedHere => ("facet-added-here", "Added here"),
+        ExportSampleRate => ("facet-export-sample-rate", "Export sample rate"),
+        SortLibrary => ("facet-sort-library", "Sort library"),
+        FiltersRecoveryDialog => ("facet-filters-recovery-dialog", "Filters / recovery…"),
+        AppliedLibraryFiltersPrefix => ("facet-applied-library-filters-prefix", "Applied library filters · "),
+        MoreFiltersAndGrouping => ("facet-more-filters-and-grouping", "More filters and grouping"),
+        StudyEvidenceFilter => ("facet-study-evidence-filter", "Study evidence filter"),
+        AnyPopulation => ("facet-any-population", "Any population"),
+        MixedPopulation => ("facet-mixed-population", "Mixed population"),
+        UnspecifiedPopulation => ("facet-unspecified-population", "Unspecified population"),
+        PopulationEvidenceFilter => ("facet-population-evidence-filter", "Population evidence filter"),
+        AnyConditionRole => ("facet-any-condition-role", "Any condition role"),
+        ConditionRoleEvidenceFilter => ("facet-condition-role-evidence-filter", "Condition role evidence filter"),
+        AnyAnalysisCoverage => ("facet-any-analysis-coverage", "Any analysis coverage"),
+        NominalAnalysisCoverage => ("facet-nominal-analysis-coverage", "Nominal analysis coverage"),
+        SortDirection => ("facet-sort-direction", "Sort direction"),
+        NoGrouping => ("facet-no-grouping", "No grouping"),
+        LibraryResultGrouping => ("facet-library-result-grouping", "Library result grouping"),
+        CreatedFromLocalCalendarDate => ("facet-created-from-local-calendar-date", "Created from local calendar date"),
+        CreatedThroughInclusiveLocalCalendarDate => ("facet-created-through-inclusive-local-calendar-date", "Created through inclusive local calendar date"),
+        ModifiedFromLocalCalendarDate => ("facet-modified-from-local-calendar-date", "Modified from local calendar date"),
+        ModifiedThroughInclusiveLocalCalendarDate => ("facet-modified-through-inclusive-local-calendar-date", "Modified through inclusive local calendar date"),
+        ExactUtcDates => ("facet-exact-utc-dates", "Exact UTC dates"),
+        ExactUtcRecipeAndMembershipDates => ("facet-exact-utc-recipe-and-membership-dates", "Exact UTC recipe and membership dates"),
+    }
+    Status {
+        UnsavedSound => ("status-unsaved-sound", "Unsaved sound"),
+        EmptyLibrary => ("status-empty-library", "No recipes in this view. Open a recipe or change the applied filters or collection."),
+        Complete => ("status-complete", "Complete"),
+        Partial => ("status-partial", "Partial"),
+        Invalid => ("status-invalid", "Invalid"),
+        EmptyFilteredLibrary => ("status-empty-filtered-library", "No recipes match the current filters. Clear the restrictions to see every recipe."),
+        UnsavedChanges => ("status-unsaved-changes", "Unsaved changes"),
+        UnmodifiedDraft => ("status-unmodified-draft", "Unmodified draft"),
+    }
+    Caption {
+        WavAudio => ("caption-wav-audio", "WAV audio"),
+        TomlSound => ("caption-toml-sound", "TOML sound"),
+        AudioSnapshot => ("caption-audio-snapshot", "Audio details · snapshot"),
+        NoticesPathError => ("caption-notices-path-error", "Cannot open a non-UTF8 notices path."),
+        CalendarRangeError => ("caption-calendar-range-error", "Invalid calendar range. Use ordered YYYY-MM-DD dates with a unique local midnight; prior filters retained."),
+        BindingIdentitiesExhausted => ("caption-binding-identities-exhausted", "Editor binding identities exhausted. Save your sound and restart Auditory Lab."),
+        NewTitle => ("caption-new-title", "New title"),
+        BundledNoticesHelp => ("caption-bundled-notices-help", "Open bundled component notices and license files."),
+        Copyright => ("caption-copyright", crate::identity::BUILD_IDENTITY.copyright),
+        AboutProduct => ("caption-about-product", "About Auditory Lab"),
+        ApplicationIcon => ("caption-application-icon", "Application icon"),
+        ProductName => ("caption-product-name", crate::identity::BUILD_IDENTITY.name),
+        ProductDescription => ("caption-product-description", "Play and export auditory stimuli.\nEdit sounds as TOML recipes."),
+        ProjectWebsite => ("caption-project-website", "Project website"),
+        SoftwareAndArtworkLicenses => ("caption-software-and-artwork-licenses", "Software and Artwork Licenses"),
+        LicenseTermsHelp => ("caption-license-terms-help", "Complete software and owner artwork license terms"),
+        SamplesCommonSymmetricScale => ("caption-samples-common-symmetric-scale", " samples, common symmetric scale ±"),
+        OutputMonitor => ("caption-output-monitor", "Output monitor"),
+        DetailsDialog => ("caption-details-dialog", "Details…"),
+        FullAudioDiagnosticsAndCaptureSource => ("caption-full-audio-diagnostics-and-capture-source", "Full audio diagnostics and capture source"),
+        Left => ("caption-left", "Left"),
+        Right => ("caption-right", "Right"),
+        CapturedEnd => ("caption-captured-end", "Captured end"),
+        WaveformTimeWindow => ("caption-waveform-time-window", "Waveform time window"),
+        WaveformAmplitudeScale => ("caption-waveform-amplitude-scale", "Waveform amplitude scale"),
+        AudioControls => ("caption-audio-controls", "Audio controls"),
+        Expanded => ("caption-expanded", " · expanded"),
+        Collapsed => ("caption-collapsed", " · collapsed"),
+        Slider => ("caption-slider", " slider"),
+        File => ("caption-file", "File"),
+        Help => ("caption-help", "Help"),
+        WavExportProgress => ("caption-wav-export-progress", "WAV export progress"),
+        TaskDetailsDialog => ("caption-task-details-dialog", "Task details…"),
+        LibraryCollection => ("caption-library-collection", "Library collection"),
+        AutomaticOrder => ("caption-automatic-order", "Automatic order"),
+        NominalRate => ("caption-nominal-rate", "Nominal rate"),
+        Title => ("caption-title", "Title"),
+        Created => ("caption-created", "Created"),
+        Modified => ("caption-modified", "Modified"),
+        Study => ("caption-study", "Study"),
+        Collection => ("caption-collection", "Collection"),
+        TitleIdSoundOrStudyTopic => ("caption-title-id-sound-or-study-topic", "Title, ID, sound or study topic"),
+        FindARecipe => ("caption-find-arecipe", "Find a recipe"),
+        NominalRhythmReferenceBand => ("caption-nominal-rhythm-reference-band", "Nominal rhythm reference band"),
+        StructuralMethod => ("caption-structural-method", "Structural method"),
+        LibraryResults => ("caption-library-results", "Library results"),
+        N => ("caption-n", "\n"),
+        CreateSound => ("caption-create-sound", "Create sound"),
+        LibraryPaneWidth => ("caption-library-pane-width", "Library pane width"),
+        StudyDoiOrKeySource => ("caption-study-doi-or-key-source", "Study DOI or key:source"),
+        Human => ("caption-human", "Human"),
+        Mouse => ("caption-mouse", "Mouse"),
+        OtherAnimal => ("caption-other-animal", "Other animal"),
+        NotApplicable => ("caption-not-applicable", "Not applicable"),
+        TestCondition => ("caption-test-condition", "Test condition"),
+        ComparisonCondition => ("caption-comparison-condition", "Comparison condition"),
+        MixedRoles => ("caption-mixed-roles", "Mixed roles"),
+        UnspecifiedRole => ("caption-unspecified-role", "Unspecified role"),
+        AutomaticDirection => ("caption-automatic-direction", "Automatic direction"),
+        Ascending => ("caption-ascending", "Ascending"),
+        Descending => ("caption-descending", "Descending"),
+        BandGroups => ("caption-band-groups", "Band groups"),
+        MethodGroups => ("caption-method-groups", "Method groups"),
+        StudyGroups => ("caption-study-groups", "Study groups"),
+        CollectionGroups => ("caption-collection-groups", "Collection groups"),
+        CreatedFromYyyyMmDd => ("caption-created-from-yyyy-mm-dd", "Created from YYYY-MM-DD"),
+        CreatedThroughYyyyMmDd => ("caption-created-through-yyyy-mm-dd", "Created through YYYY-MM-DD"),
+        ModifiedFromYyyyMmDd => ("caption-modified-from-yyyy-mm-dd", "Modified from YYYY-MM-DD"),
+        ModifiedThroughYyyyMmDd => ("caption-modified-through-yyyy-mm-dd", "Modified through YYYY-MM-DD"),
+        LibraryStorageAndRecovery => ("caption-library-storage-and-recovery", "Library storage and recovery"),
+        ResearchCitationAndSoundAdaptations => ("caption-research-citation-and-sound-adaptations", "Research, citation and sound adaptations"),
+        PatternExplainedStaticCoreModel => ("caption-pattern-explained-static-core-model", "Pattern explained · static core model"),
+        StaticModel => ("caption-static-model", " static model"),
+        Workbench => ("caption-workbench", "Workbench"),
+        SoundTitle => ("caption-sound-title", "Sound title"),
+        StaticModelOriginZero => ("caption-static-model-origin-zero", " static model, origin zero"),
+        RoutingModulationAndComponentOptions => ("caption-routing-modulation-and-component-options", "Routing, modulation and component options"),
+        Ears => ("caption-ears", "Ears"),
+        EarsSuffix => ("caption-ears-suffix", ": ears"),
+        Carrier => ("caption-carrier", "Carrier"),
+        CarrierSuffix => ("caption-carrier-suffix", ": carrier"),
+        Modulation => ("caption-modulation", "Modulation"),
+        ModulationSuffix => ("caption-modulation-suffix", ": modulation"),
+        SoundSettingsNotesAndSavedExportedAudio => ("caption-sound-settings-notes-and-saved-exported-audio", "Sound settings · notes and saved/exported audio"),
+        SoundNotes => ("caption-sound-notes", "Sound notes"),
+        YourNotesAboutThisSound => ("caption-your-notes-about-this-sound", "Your notes about this sound"),
+        CustomRecipeNotes => ("caption-custom-recipe-notes", "Custom recipe notes"),
+        SavedAudioHelp => ("caption-saved-audio-help", "Live playback continues until Stop. These settings affect saved recipes and WAV export."),
+        OutputMonitorHeight => ("caption-output-monitor-height", "Output monitor height"),
+        NextPlayPrefix => ("caption-next-play-prefix", " · Next Play: "),
+        AudioDetails => ("caption-audio-details", "Audio details"),
+    }
+}
+
+impl Action {
+    /// Labels needed to size the library playback button across its states.
+    #[must_use]
+    pub const fn library_play_labels() -> [&'static str; 2] {
+        [Self::Listen.label(), Self::StopCurrentAndPlayRecipe.label()]
+    }
+    /// Labels needed to size the transport across its states.
+    #[must_use]
+    pub const fn transport_labels() -> [&'static str; 3] {
+        [
+            Self::PlaySelectedSound.label(),
+            Self::PlayLive.label(),
+            Self::StopAudio.label(),
+        ]
+    }
+}
+
+impl Action {
+    /// Explanation for permanently deleting a trashed entry.
+    #[must_use]
+    pub fn purge_description(title: &str, key: &str) -> String {
+        let title = crate::presentation::display_scalar(title);
+        format!(
+            "Delete “{title}”\n{key}\nThis permanently removes this trashed User entry. External files and independent copies remain unchanged."
+        )
+    }
+    /// Save/discard prompt for the current document.
+    #[must_use]
+    pub fn unsaved_description(title: &str) -> String {
+        format!("Save changes to “{title}” before continuing?")
+    }
+    /// Add-component label derived from its actual default role.
+    #[must_use]
+    pub fn add_component(kind: crate::core::CarrierKind) -> String {
+        format!(
+            "Add {}",
+            crate::controls::default_component(kind)
+                .role()
+                .label()
+                .to_lowercase()
+        )
+    }
+}
+impl Caption {
+    /// Title of a recipe details window.
+    #[must_use]
+    pub fn sound_details(title: &str) -> String {
+        format!("Sound details · {title}")
+    }
+    /// Caption of a typography diagnostic.
+    #[must_use]
+    pub fn typography(family: &str, size: f32, source: &str) -> String {
+        format!("Typography: {family} · {size} logical px · {source}")
+    }
+}

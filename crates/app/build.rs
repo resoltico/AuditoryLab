@@ -20,8 +20,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(value) = &revision {
         identity_input::revision(value)?;
     }
+    println!("cargo:rerun-if-changed=../../LICENSE");
+    let license = std::fs::read_to_string("../../LICENSE")?;
+    let mut lines = license.lines().filter(|line| !line.is_empty());
+    let name = lines.next().ok_or("LICENSE requires the product name")?;
+    let copyright = lines
+        .next()
+        .filter(|line| line.starts_with("Copyright "))
+        .ok_or("LICENSE requires copyright metadata")?
+        .replace("(c)", "©");
     let source = format!(
-        "/// Canonical identity resolved from workspace metadata.\npub(super) const BUILD: BuildIdentity = BuildIdentity {{ version: {:?}, build: {build}, revision: {:?} }};",
+        "/// Canonical identity resolved from workspace metadata.\npub(super) const BUILD: BuildIdentity = BuildIdentity {{ name: {name:?}, copyright: {copyright:?}, version: {:?}, build: {build}, revision: {:?} }};",
         std::env::var("CARGO_PKG_VERSION")?,
         revision.as_deref()
     );

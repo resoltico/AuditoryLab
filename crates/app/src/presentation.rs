@@ -72,15 +72,6 @@ pub fn playback_elapsed(rate: SampleRate, frames: u64) -> String {
     clock(rate.seconds_in(frames))
 }
 
-/// Library playback labels used for stable button sizing.
-pub const LIBRARY_PLAY_LABELS: [&str; 2] = ["Listen", "Stop current & play recipe"];
-
-/// Labels used to size the persistent play/stop transport.
-pub const TRANSPORT_LABELS: [&str; 3] = [PLAY_SELECTED, PLAY_LIVE, STOP_AUDIO];
-pub(crate) const PLAY_SELECTED: &str = "Play selected sound";
-pub(crate) const PLAY_LIVE: &str = "Play live";
-pub(crate) const STOP_AUDIO: &str = "Stop audio";
-
 /// A waveform axis limit with three significant digits, for tick labels.
 #[must_use]
 pub fn axis_limit(limit: f64) -> String {

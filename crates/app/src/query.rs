@@ -77,26 +77,114 @@ pub(crate) struct SearchIndex {
 }
 impl SearchIndex {
     pub(crate) fn from_snapshot(snapshot: &crate::recipe::RecipeSnapshot) -> Self {
-        let text = normalize(&format!(
-            "{} {} {} {} {} {}",
-            snapshot.origin(),
-            snapshot.title(),
-            crate::presentation::document_notes(snapshot),
-            crate::presentation::research(snapshot)
-                .iter()
-                .map(|(_, value)| *value)
-                .collect::<Vec<_>>()
-                .join(" "),
-            snapshot
-                .stimulus()
-                .components
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(" "),
-            crate::presentation::nominal_description(snapshot.nominal())
-        ));
-        let numbers = numeric_terms(&text);
+        use crate::core::{Carrier, Ears, Modulation, Node, ParameterId};
+        let recipe = snapshot.recipe();
+        let mut facts = vec![recipe.document.id.to_string()];
+        facts.extend(recipe.document.created_at.iter().map(ToString::to_string));
+        facts.extend(recipe.document.modified_at.iter().map(ToString::to_string));
+        match snapshot.origin() {
+            crate::recipe::Origin::BuiltIn(id) => facts.push((*id).into()),
+            crate::recipe::Origin::User { id, .. } => facts.push(id.to_string()),
+            crate::recipe::Origin::File(path) => facts.push(path.to_string_lossy().into_owned()),
+            crate::recipe::Origin::Stream(label) | crate::recipe::Origin::Draft(label) => {
+                facts.push(label.clone())
+            }
+        }
+        if let Some(description) = &recipe.description {
+            facts.push(description.title.clone());
+            facts.extend(description.notes.iter().cloned());
+        }
+        for ancestor in &recipe.lineage {
+            facts.extend([ancestor.title.clone(), ancestor.note.clone()]);
+            facts.extend(ancestor.catalog_id.iter().cloned());
+            facts.extend(ancestor.document_id.iter().map(ToString::to_string));
+        }
+        for source in &recipe.sources {
+            facts.extend([
+                source.key.clone(),
+                source.label.clone(),
+                source.citation.clone(),
+            ]);
+            facts.extend(source.url.iter().cloned());
+            facts.extend(source.doi.iter().cloned());
+        }
+        for evidence in &recipe.evidence {
+            facts.extend([
+                evidence.source.clone(),
+                evidence.methods_locator.clone(),
+                evidence.summary.clone(),
+                evidence.limitations.clone(),
+                evidence.adaptation.clone(),
+            ]);
+            facts.extend(evidence.population_detail.iter().cloned());
+            // Serialized enum keys describe the facts, independent of presentation.
+            facts.push(serde_json::to_string(&evidence.population).unwrap_or_default());
+            facts.push(serde_json::to_string(&evidence.condition_role).unwrap_or_default());
+            facts.push(serde_json::to_string(&evidence.measures).unwrap_or_default());
+        }
+        for method in &snapshot.nominal().methods {
+            facts.push(crate::vocabulary::method_search_terms(*method).into());
+        }
+        for band in &snapshot.nominal().bands {
+            facts.push(band.key().into());
+        }
+        let mut numbers = vec![
+            recipe.stimulus.duration_seconds,
+            recipe.stimulus.fade_seconds,
+        ];
+        for component in &recipe.stimulus.components {
+            let ears = match component.node {
+                Node::Voice(voice) => {
+                    facts.push(
+                        match voice.carrier {
+                            Carrier::Tone { .. } => "tone carrier frequency",
+                            Carrier::Click { .. } => "click clicks rate width",
+                        }
+                        .into(),
+                    );
+                    if let Some(modulation) = voice.modulation {
+                        facts.push(
+                            match modulation {
+                                Modulation::Sinusoidal { .. } => {
+                                    "sinusoidal amplitude modulation am depth rate"
+                                }
+                                Modulation::Rectangular { .. } => "rectangular gate rate width",
+                            }
+                            .into(),
+                        );
+                    }
+                    voice.ears
+                }
+                Node::BinauralPair(_) => {
+                    facts.push("pair left right".into());
+                    Ears::Left
+                }
+                Node::MonauralPair { ears, .. } => {
+                    facts.push("pair".into());
+                    ears
+                }
+            };
+            facts.push(
+                match ears {
+                    Ears::Left => "left",
+                    Ears::Right => "right",
+                    Ears::Both => "both ears",
+                }
+                .into(),
+            );
+            for parameter in ParameterId::COMPONENT {
+                if let Some(value) = component.node.read(parameter) {
+                    numbers.extend([value, parameter.descriptor().unit.to_display(value)]);
+                }
+            }
+            if let Some(pair) = component.node.pair() {
+                numbers.push(pair.first_hz + pair.offset_hz);
+            }
+        }
+        numbers.extend(snapshot.nominal().rhythms.iter().map(|r| r.hz));
+        let text = normalize(&facts.join(" "));
+        numbers.extend(numeric_terms(&text));
+        numbers.retain(|n| n.is_finite());
         let terms = text
             .split_whitespace()
             .map(str::to_owned)
