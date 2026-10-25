@@ -1590,6 +1590,11 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     assert!(ui.get_draft_brief().contains("Saved version · Delta"));
     ui.invoke_rhythm_filter(1, 0);
     ui.invoke_collection_filter(2, 0);
+    h.wait_for_files();
+    assert!(
+        !h.adapter.inspect(|w| w.file_busy()),
+        "selected User content is loaded before Save"
+    );
     assert_eq!(
         ui.get_catalog().row_count(),
         1,
@@ -1744,7 +1749,13 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
         !ui.get_library_alert().is_empty(),
         "the rejected range is shown in the library's live diagnostic banner"
     );
-    assert!(ui.get_library_alert().to_lowercase().contains("date"));
+    let date_error = ui.get_library_alert();
+    assert!(
+        date_error.contains("Created through")
+            && date_error.contains("Created from")
+            && date_error.contains("on or after")
+    );
+    assert!(!date_error.contains("before"));
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
 
@@ -2696,9 +2707,17 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
 
 #[test]
 fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
+    let h = Harness::new();
+    let ui = h.ui();
     for (field, label) in [(0, "Created"), (1, "Modified"), (2, "Added here")] {
-        let h = Harness::new();
-        let ui = h.ui();
+        ui.invoke_clear_library_filters();
+        h.wait_for_files();
+        ui.set_created_from("".into());
+        ui.set_created_through("".into());
+        ui.set_modified_from("".into());
+        ui.set_modified_through("".into());
+        ui.set_added_from("".into());
+        ui.set_added_through("".into());
         let previous = h.adapter.inspect(|w| w.catalog_query().clone());
         let mut from = ["", "", ""];
         let mut through = ["", "", ""];
@@ -2751,6 +2770,11 @@ fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
             ("2026-10-26", "2026-10-25")
         );
         from[field] = "2026-10-25";
+        match field {
+            0 => ui.set_created_from(from[field].into()),
+            1 => ui.set_modified_from(from[field].into()),
+            _ => ui.set_added_from(from[field].into()),
+        }
         ui.invoke_more_filters(
             "".into(),
             0,
