@@ -47,8 +47,20 @@ Judge the whole system, including callers and operators. Improving a metric or s
 Scale review to risk, not line count. Routine low-risk edits need a sanity check; consequential changes need distinct design and challenge passes.
 
 1. **Design.** Establish the outcome, constraints, observable acceptance criteria, alternatives and chosen approach. Consider effects on callers, data, tests, documentation and operations.
-2. **Challenge.** Test assumptions against code, experiments or counterexamples. Look for interactions and failure paths, not just isolated happy paths. Revise where evidence disagrees; restating the design is not review.
+2. **Challenge.** Test assumptions against code, experiments or counterexamples. Check producer/consumer contracts early against governing requirements and actual outputs when available. Look for interactions and failure paths, not just isolated happy paths. Revise where evidence disagrees; restating the design is not review.
 3. **Build.** Implement the reviewed approach. Revisit invalidated choices and dependent work. Do not defer prerequisites past the gate meant to verify them.
+
+## Execution and coordination
+
+Before expensive work, check prerequisites and identify what could block progress. Prefer the least costly check capable of resolving the relevant uncertainty.
+
+When parallel work is authorized and useful, assign bounded responsibilities, shared-file boundaries and completion evidence. Delegate routine decisions within scope; coordinate changes affecting another worker's inputs and verify the combined result.
+
+Use exclusive ownership, isolation or supported concurrency for mutable resources. Avoid unnecessary repeated setup or downloads; investigate unexplained task-related resource growth. Keep check inputs stable or isolated; intended watch/reload workflows are fine.
+
+Keep progress updates proportionate: report delivered behavior or verified findings, any blocker and who can resolve it, and the next decisive check.
+
+Preserve unrelated work. Clean up temporary resources you created for the task, not deliverables or useful failure evidence; leave requested services running. Keep output focused and do not expose secrets.
 
 ## Naming
 
@@ -78,23 +90,18 @@ Follow the change through affected callers, configuration, lockfiles, generated 
 
 Search relevant inputs and inspect tool exclusions, including hidden, ignored or binary files where needed. Retain valid historical, compatibility and rejection-test references. No text matches does not prove completeness.
 
-- Inspect meaningful state changes or related batches. Preserve failure visibility; a later success must not mask an earlier failure.
+- Inspect meaningful state changes or related batches. Record material run outcomes promptly and retain relevant failure evidence; a later success must not conceal an earlier failure.
 - Verify intended delivery contents and required check inputs separately. Check test discovery, skipped tests, packaging and unexpectedly empty results; expected quiet output is not itself a failure.
-- Diagnose from the full relevant failure output. Investigate pre-existing failures that affect the task, fix in-scope issues and report unresolved ones.
-- Use targeted checks during iteration; run required verification where authorized and available. Prefer an isolated, clean environment matching the required platform, toolchain and restore mode.
-- Verify the delivered state, not an earlier working tree. Distinguish implementation, verification and rollout status; report actual outcomes and untested conditions. Do not claim verified readiness while required checks are failing or unrun.
+- Diagnose from the full relevant failure output. After an expensive failure, test corrections with focused checks where feasible. A full rerun may be necessary for diagnosis; state what it should establish, bound retries and reassess recurring failures. Investigate relevant pre-existing failures, fix in-scope issues and report unresolved ones.
+- Reuse verification results or build outputs only when their relevant inputs, conditions and purpose still apply; do not bypass required independent or clean verification.
+- Use targeted checks during iteration; run outstanding required verification where authorized and available. Prefer an isolated, clean environment matching the required platform, toolchain and restore mode.
+- Verify the delivered state, not an earlier working tree. Distinguish implementation, local checks, verification in the required environment and rollout; report actual outcomes and untested conditions. Do not claim verified readiness while required checks are failing or lack applicable passing evidence.
 
 ## Current documentation
 
 Describe supported behavior, assumptions and reasons in documentation, comments, logs, errors and test descriptions; distinguish these from proposed work. Keep history in change or decision records unless it explains a current constraint or migration; retain useful rationale.
 
 Update affected guidance and examples. Prefer links, generated content or consistency checks over manually duplicated reference facts; the authoritative source may be code or configuration. Check affected links and generated blocks proportionately. Do not create documentation machinery merely to satisfy this rule.
-
-## Working hygiene
-
-Check prerequisites cheaply before long runs. Keep check inputs stable or isolated; intended watch/reload workflows are fine.
-
-Preserve unrelated work. Clean up temporary resources you created for the task, not deliverables or useful failure evidence; leave requested services running. Keep output focused and do not expose secrets.
 
 ## Reproducible setup
 
