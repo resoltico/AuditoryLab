@@ -330,7 +330,11 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     }
     assert_eq!(
         editor.restore_removed(editor.document_key()),
-        Err(EditRefusal::ComponentLimit)
+        Err(EditRefusal::BudgetExceeded {
+            components: 16,
+            voices: 16,
+            additional_voices: 1
+        })
     );
     assert_eq!(
         editor.removed(),
@@ -452,7 +456,14 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
     while d.components().len() < Sound::MAX_COMPONENTS {
         d.add(CarrierKind::Tone).unwrap();
     }
-    assert_eq!(d.add(CarrierKind::Clicks), Err(EditRefusal::ComponentLimit));
+    assert_eq!(
+        d.add(CarrierKind::Clicks),
+        Err(EditRefusal::BudgetExceeded {
+            components: 16,
+            voices: 16,
+            additional_voices: 1
+        })
+    );
     let mut exhausted = Draft::new().unwrap();
     exhausted.next_id = None;
     assert_eq!(
@@ -951,4 +962,87 @@ fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_a
             ))
             .is_ok()
     );
+}
+
+#[test]
+fn authored_and_expanded_addition_boundaries_report_current_counts() {
+    use auditorylab_core::PairKind;
+    let primitive = Node::Voice(tone(440.0));
+    let pair = controls::default_pair(PairKind::Binaural);
+    for (primitives, pairs, requested, expected) in [
+        (
+            0,
+            8,
+            primitive,
+            EditRefusal::BudgetExceeded {
+                components: 8,
+                voices: 16,
+                additional_voices: 1,
+            },
+        ),
+        (
+            0,
+            8,
+            pair,
+            EditRefusal::BudgetExceeded {
+                components: 8,
+                voices: 16,
+                additional_voices: 2,
+            },
+        ),
+        (
+            16,
+            0,
+            primitive,
+            EditRefusal::BudgetExceeded {
+                components: 16,
+                voices: 16,
+                additional_voices: 1,
+            },
+        ),
+        (
+            15,
+            0,
+            pair,
+            EditRefusal::BudgetExceeded {
+                components: 15,
+                voices: 15,
+                additional_voices: 2,
+            },
+        ),
+    ] {
+        let mut draft = Draft::new().unwrap();
+        for _ in 0..primitives {
+            draft.add_node(primitive).unwrap();
+        }
+        for _ in 0..pairs {
+            draft.add_node(pair).unwrap();
+        }
+        let before = draft.components().to_vec();
+        assert_eq!(draft.check_addition(requested), Err(expected));
+        assert_eq!(draft.add_node(requested), Err(expected));
+        assert_eq!(
+            draft.restore(
+                0,
+                Component {
+                    id: ComponentId::new(100),
+                    node: requested
+                }
+            ),
+            Err(expected)
+        );
+        assert_eq!(draft.components(), before);
+    }
+    let mut draft = Draft::new().unwrap();
+    for _ in 0..14 {
+        draft.add_node(primitive).unwrap();
+    }
+    draft.add_node(pair).unwrap();
+    assert_eq!(draft.components().len(), 15);
+    let mut draft = Draft::new().unwrap();
+    for _ in 0..15 {
+        draft.add_node(primitive).unwrap();
+    }
+    draft.add_node(primitive).unwrap();
+    assert_eq!(draft.components().len(), 16);
 }

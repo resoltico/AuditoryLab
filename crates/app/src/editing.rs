@@ -185,8 +185,15 @@ pub enum EditRefusal {
     UnknownComponent,
     /// The component's carrier or modulation does not have the quantity.
     Inapplicable,
-    /// The document already has [`Sound::MAX_COMPONENTS`] components.
-    ComponentLimit,
+    /// Adding one component would exceed an authored or expanded budget.
+    BudgetExceeded {
+        /// Current authored component count.
+        components: usize,
+        /// Current expanded voice count.
+        voices: usize,
+        /// Expanded voices required by the component being added or restored.
+        additional_voices: usize,
+    },
     /// No unused component or row-lifetime identity remains in this document.
     IdentitiesExhausted,
     /// No removed component is waiting to be restored.
@@ -305,18 +312,35 @@ impl Draft {
             kind,
         )))
     }
+    /// Check the authored and expanded capacity for one additional component.
+    ///
+    /// # Errors
+    /// Reports current counts and the requested voice cost if either limit is exceeded.
+    pub fn check_addition(&self, node: auditorylab_core::Node) -> Result<(), EditRefusal> {
+        let components = self.components().len();
+        let voices = self
+            .components()
+            .iter()
+            .map(|c| c.node.voices())
+            .sum::<usize>();
+        let additional_voices = node.voices();
+        if components >= Sound::MAX_COMPONENTS || voices + additional_voices > Sound::MAX_VOICES {
+            Err(EditRefusal::BudgetExceeded {
+                components,
+                voices,
+                additional_voices,
+            })
+        } else {
+            Ok(())
+        }
+    }
     /// Add an atomic authored node, including a two-voice pair.
     ///
     /// # Errors
     /// Refuses full budgets or exhausted owner identities.
     pub fn add_node(&mut self, node: auditorylab_core::Node) -> Result<ComponentId, EditRefusal> {
+        self.check_addition(node)?;
         let components = &mut self.content.stimulus.components;
-        if components.len() >= Sound::MAX_COMPONENTS
-            || components.iter().map(|c| c.node.voices()).sum::<usize>() + node.voices()
-                > Sound::MAX_VOICES
-        {
-            return Err(EditRefusal::ComponentLimit);
-        }
         let next = self.next_id.ok_or(EditRefusal::IdentitiesExhausted)?;
         let id = ComponentId::new(next);
         self.next_id = next.checked_add(1);
@@ -353,13 +377,8 @@ impl Draft {
         index: usize,
         component: auditorylab_core::Component,
     ) -> Result<(), EditRefusal> {
+        self.check_addition(component.node)?;
         let components = &mut self.content.stimulus.components;
-        if components.len() >= Sound::MAX_COMPONENTS
-            || components.iter().map(|c| c.node.voices()).sum::<usize>() + component.node.voices()
-                > Sound::MAX_VOICES
-        {
-            return Err(EditRefusal::ComponentLimit);
-        }
         components.insert(index.min(components.len()), component);
         self.demote_evidence();
         Ok(())
@@ -1126,7 +1145,7 @@ impl EditorSession {
     /// Add a default component.
     ///
     /// # Errors
-    /// Returns [`EditRefusal`] for a stale document, the component limit or
+    /// Returns [`EditRefusal`] for a stale document, either capacity limit or
     /// exhausted identities.
     pub fn add_component(
         &mut self,

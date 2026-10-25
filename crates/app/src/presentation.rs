@@ -14,6 +14,51 @@ use auditorylab_core::{
 };
 pub use commands::DesktopDiagnostics;
 
+impl crate::editing::EditRefusal {
+    /// Explain why an editor command was refused without confusing authored components and voices.
+    #[must_use]
+    pub fn description(self) -> String {
+        use crate::editing::EditRefusal;
+        match self {
+            EditRefusal::BudgetExceeded {
+                components,
+                voices,
+                additional_voices,
+            } => {
+                let limit = match (
+                    components >= Sound::MAX_COMPONENTS,
+                    voices + additional_voices > Sound::MAX_VOICES,
+                ) {
+                    (true, true) => format!(
+                        "the {}-component and {}-voice limits",
+                        Sound::MAX_COMPONENTS,
+                        Sound::MAX_VOICES
+                    ),
+                    (true, false) => format!("the {}-component limit", Sound::MAX_COMPONENTS),
+                    _ => format!("the {}-voice limit", Sound::MAX_VOICES),
+                };
+                format!(
+                    "This sound has {components} authored components and {voices} expanded voices. Adding this component requires {additional_voices} more {}; it would exceed {limit}. Each pair uses two voices.",
+                    if additional_voices == 1 {
+                        "voice"
+                    } else {
+                        "voices"
+                    }
+                )
+            }
+            EditRefusal::NothingRemoved => "No removed component is waiting to be restored.".into(),
+            EditRefusal::IdentitiesExhausted => {
+                "This sound has exhausted an editing identity; start a new sound to continue."
+                    .into()
+            }
+            EditRefusal::StaleDocument
+            | EditRefusal::StaleRow
+            | EditRefusal::UnknownComponent
+            | EditRefusal::Inapplicable => "That field no longer belongs to the open sound.".into(),
+        }
+    }
+}
+
 /// Format seconds as hours, minutes and seconds; `~` marks nanosecond rounding.
 #[must_use]
 fn human_duration(value: f64) -> String {
@@ -352,7 +397,7 @@ fn structure_description(structure: &Structure) -> String {
             "Silence · no active generators".into()
         } else if parts.len() > 4 {
             format!(
-                "{} components · {} + {} more processes (component details)",
+                "{} voices · {} + {} more processes (voice details)",
                 structure.voices.len(),
                 parts[..4].join(" + "),
                 parts.len() - 4
@@ -937,6 +982,58 @@ impl Notice {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn capacity_text_names_current_counts_and_the_exceeded_budget() {
+        use crate::editing::EditRefusal;
+        for (components, voices, additional_voices, limit) in [
+            (8, 16, 1, "the 16-voice limit"),
+            (8, 16, 2, "the 16-voice limit"),
+            (16, 16, 1, "the 16-component and 16-voice limits"),
+            (15, 15, 2, "the 16-voice limit"),
+        ] {
+            let text = EditRefusal::BudgetExceeded {
+                components,
+                voices,
+                additional_voices,
+            }
+            .description();
+            assert!(
+                text.starts_with(&format!(
+                    "This sound has {components} authored components and {voices} expanded voices."
+                )),
+                "{text}"
+            );
+            assert!(
+                text.contains(&format!("requires {additional_voices} more ")),
+                "{text}"
+            );
+            assert!(text.contains(&format!("exceed {limit}.")), "{text}");
+            assert!(text.ends_with("Each pair uses two voices."), "{text}");
+        }
+    }
+
+    #[test]
+    fn expanded_pair_structure_counts_voices_instead_of_authored_components() {
+        use crate::controls;
+        use auditorylab_core::{Component, ComponentId, PairKind};
+        let sound = Sound {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components: (1..=8)
+                .map(|id| Component {
+                    id: ComponentId::new(id),
+                    node: controls::default_pair(PairKind::Binaural),
+                })
+                .collect(),
+        };
+        let target = sound.target(SampleRate::DEFAULT).unwrap();
+        let text = structure_description(&Structure::of_target(&target));
+        assert_eq!(sound.components.len(), 8);
+        assert_eq!(target.len(), 16);
+        assert!(text.starts_with("16 voices · "), "{text}");
+        assert!(!text.contains("16 components"), "{text}");
+    }
+
     #[test]
     fn axis_limits_keep_three_significant_digits() {
         assert_eq!(NumberStyle::AxisLimit.format(1.0), "1");
