@@ -638,3 +638,181 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
         Runner::new().shutdown(workspace).unwrap();
     }
 }
+
+fn selected_users() -> (
+    tempfile::TempDir,
+    LibraryStore,
+    Workspace,
+    LibraryKey,
+    LibraryKey,
+) {
+    let (root, store, _) = fixture();
+    let mut keys = Vec::new();
+    for name in ["Shared A", "Shared B"] {
+        let mut draft = Draft::new().unwrap();
+        draft.set_title(name.into());
+        let result = store
+            .apply(
+                Mutation::Create(Arc::new(draft.recipe())),
+                &Cancel::default(),
+            )
+            .unwrap();
+        keys.push(result.key);
+    }
+    let mut workspace = Workspace::with_library(
+        crate::recipe::catalog().unwrap(),
+        Capabilities::available(),
+        store.clone(),
+    )
+    .unwrap();
+    idle(&mut workspace);
+    workspace
+        .set_catalog_query(CatalogQuery {
+            scope: Scope::User,
+            search: "Shared".into(),
+            sort: crate::collection::SortBy::Title,
+            direction: Some(crate::collection::Direction::Desc),
+            group_by: crate::collection::GroupBy::Collection,
+            ..CatalogQuery::default()
+        })
+        .unwrap();
+    idle(&mut workspace);
+    workspace.select_library_key(&keys[0].to_string());
+    idle(&mut workspace);
+    (root, store, workspace, keys.remove(0), keys.remove(0))
+}
+fn captured_file(workspace: &mut Workspace) -> Job {
+    let mut captured = None;
+    let mut retained = Vec::new();
+    for effect in workspace.take_effects() {
+        match effect {
+            Effect::Run(job) if job.kind() == JobKind::File => {
+                assert!(captured.is_none());
+                captured = Some(job);
+            }
+            effect => retained.push(effect),
+        }
+    }
+    workspace.effects.extend(retained);
+    captured.expect("one captured real file job")
+}
+fn complete_file(workspace: &mut Workspace, job: Job) {
+    let response = job.execute(|_| panic!("file work cannot prepare audio"));
+    assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
+}
+fn selected_ready(workspace: &mut Workspace, key: &LibraryKey, title: &str, query: &CatalogQuery) {
+    assert_eq!(workspace.catalog_query(), query);
+    assert_eq!(workspace.library.selection.as_ref(), Some(key));
+    assert_eq!(
+        workspace.library.loaded.as_ref().map(|record| &record.key),
+        Some(key)
+    );
+    assert_eq!(workspace.selected().unwrap().title(), title);
+    let view = workspace.library_view();
+    assert_eq!(view.title, title);
+    assert!(view.details.contains(title));
+    let actions = workspace.action_view();
+    assert!(actions.can_play);
+    assert!(actions.can_copy);
+    assert!(actions.can_export);
+}
+
+#[test]
+fn independent_copy_save_keeps_the_original_selected_user_cache() {
+    let (_root, store, mut workspace, original, _) = selected_users();
+    let query = workspace.catalog_query().clone();
+    let selected = workspace.selected().unwrap().id();
+    workspace.copy_selected();
+    workspace.save_independent_copy().unwrap();
+    let job = captured_file(&mut workspace);
+    complete_file(&mut workspace, job);
+    assert!(
+        !workspace.file_busy(),
+        "saving another key needs no selected-record reload"
+    );
+    assert!(!workspace.editor.session.dirty());
+    assert_eq!(store.scan(&Cancel::default()).entries.len(), 3);
+    assert_ne!(workspace.editor.location.managed().unwrap().0, &original);
+    workspace.set_view(View::Library);
+    selected_ready(&mut workspace, &original, "Shared A", &query);
+    assert_eq!(workspace.selected().unwrap().id(), selected);
+    workspace.select_library_key(&original.to_string());
+    assert!(
+        !workspace.file_busy(),
+        "clicking the same valid selected row needs no Refresh"
+    );
+    selected_ready(&mut workspace, &original, "Shared A", &query);
+}
+
+#[test]
+fn saving_an_existing_nonselected_user_keeps_selected_details_and_filters() {
+    let (_root, store, mut workspace, selected, edited) = selected_users();
+    workspace.select_library_key(&edited.to_string());
+    idle(&mut workspace);
+    workspace.edit_selected();
+    title(&mut workspace, "Shared B edited");
+    workspace.select_library_key(&selected.to_string());
+    idle(&mut workspace);
+    let query = workspace.catalog_query().clone();
+    let snapshot = workspace.selected().unwrap().id();
+    workspace.save().unwrap();
+    let job = captured_file(&mut workspace);
+    complete_file(&mut workspace, job);
+    assert!(!workspace.file_busy());
+    assert_eq!(
+        store.load(&edited).unwrap().snapshot.title(),
+        "Shared B edited"
+    );
+    assert!(!workspace.editor.session.dirty());
+    selected_ready(&mut workspace, &selected, "Shared A", &query);
+    assert_eq!(workspace.selected().unwrap().id(), snapshot);
+}
+
+#[test]
+fn captured_user_save_finishing_after_navigation_loads_only_the_current_selection() {
+    let (_root, store, mut workspace, original, edited) = selected_users();
+    workspace.select_library_key(&edited.to_string());
+    idle(&mut workspace);
+    workspace.edit_selected();
+    title(&mut workspace, "Shared B captured");
+    let query = workspace.catalog_query().clone();
+    workspace.save().unwrap();
+    let save = captured_file(&mut workspace);
+    workspace.select_library_key(&original.to_string());
+    complete_file(&mut workspace, save);
+    assert_eq!(workspace.library.selection.as_ref(), Some(&original));
+    let load = captured_file(&mut workspace);
+    complete_file(&mut workspace, load);
+    assert!(
+        !workspace.file_busy(),
+        "one captured reload reaches the selected record"
+    );
+    assert_eq!(
+        store.load(&edited).unwrap().snapshot.title(),
+        "Shared B captured"
+    );
+    selected_ready(&mut workspace, &original, "Shared A", &query);
+    workspace.select_library_key(&edited.to_string());
+    idle(&mut workspace);
+    selected_ready(&mut workspace, &edited, "Shared B captured", &query);
+}
+
+#[test]
+fn a_load_completed_after_navigation_cannot_own_the_cache_or_suppress_later_reads() {
+    let (_root, _store, mut workspace, original, other) = selected_users();
+    let query = workspace.catalog_query().clone();
+    workspace.select_library_key(&other.to_string());
+    let obsolete = captured_file(&mut workspace);
+    workspace.select_library_key(&original.to_string());
+    complete_file(&mut workspace, obsolete);
+    assert_eq!(workspace.library.selection.as_ref(), Some(&original));
+    let current = captured_file(&mut workspace);
+    complete_file(&mut workspace, current);
+    assert!(!workspace.file_busy());
+    selected_ready(&mut workspace, &original, "Shared A", &query);
+    workspace.select_library_key(&other.to_string());
+    let later = captured_file(&mut workspace);
+    complete_file(&mut workspace, later);
+    assert!(!workspace.file_busy());
+    selected_ready(&mut workspace, &other, "Shared B", &query);
+}

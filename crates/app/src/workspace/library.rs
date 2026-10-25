@@ -168,6 +168,13 @@ impl LibraryState {
             .filter(|r| Some(&r.key) == self.selection.as_ref())
             .map(|r| r.recipe_toml.clone())
     }
+    fn select(&mut self, selection: Option<LibraryKey>) {
+        if self.selection != selection {
+            self.selection = selection;
+            self.loaded = None;
+            self.load_attempted = None;
+        }
+    }
     pub(super) fn refilter(&mut self) {
         // Query edits are validated before assignment; execution cannot fail here.
         self.visible = self.query.execute(&self.entries).map_or_else(
@@ -179,7 +186,7 @@ impl LibraryState {
             .as_ref()
             .is_none_or(|key| !self.visible.contains(key))
         {
-            self.selection = self.visible.first().cloned();
+            self.select(self.visible.first().cloned());
         }
         self.revision += 1;
     }
@@ -299,8 +306,10 @@ impl LibraryState {
         self.root_unavailable = false;
         self.entries.retain(|e| e.key != record.key);
         self.entries.push(record.summary());
-        self.loaded = Some(record);
         self.refilter();
+        if self.selection.as_ref() == Some(&record.key) {
+            self.loaded = Some(record);
+        }
     }
 }
 
@@ -345,6 +354,27 @@ pub enum LibraryOutcome {
     Written(Box<WriteOutcome>),
 }
 impl LibraryJob {
+    pub(super) fn context(&self) -> status::LibraryContext {
+        let selector = match &self.operation {
+            Operation::Load(key) | Operation::DiscardTrash { key, .. } => Some(key.clone()),
+            Operation::Write { mutation, .. } => Some(match mutation {
+                Mutation::Create(recipe) | Mutation::Add(recipe) => {
+                    LibraryKey::User(recipe.document.id)
+                }
+                Mutation::Update { key, .. }
+                | Mutation::Rename { key, .. }
+                | Mutation::Trash { key, .. }
+                | Mutation::Restore { key, .. }
+                | Mutation::Purge { key, .. } => key.clone(),
+            }),
+            Operation::Scan | Operation::Initialize | Operation::ExternalSave { .. } => None,
+        };
+        let path = match &self.operation {
+            Operation::ExternalSave { expected, .. } => expected.path().to_owned(),
+            _ => self.store.root().path().to_owned(),
+        };
+        status::LibraryContext { path, selector }
+    }
     pub(super) fn background_read(&self) -> bool {
         matches!(self.operation, Operation::Scan | Operation::Load(_))
     }
@@ -522,7 +552,7 @@ impl Workspace {
             ..CatalogQuery::default()
         };
         p.refilter();
-        p.selection = Some(key);
+        p.select(Some(key));
         self.library.query.search.clear();
         self.library.query.rhythm = crate::query::RhythmQuery::default();
         self.view = View::Library;
@@ -678,7 +708,7 @@ impl Workspace {
     pub fn select_library_key(&mut self, key: &str) {
         let p = &mut self.library;
         if let Some(found) = p.visible.iter().find(|entry| entry.to_string() == key) {
-            p.selection = Some(found.clone());
+            p.select(Some(found.clone()));
             p.revision += 1;
         }
         self.load_library_selection();
@@ -701,7 +731,7 @@ impl Workspace {
                 .min(p.visible.len().saturating_sub(1)),
         };
         if let Some(key) = p.visible.get(index) {
-            p.selection = Some(key.clone());
+            p.select(Some(key.clone()));
             p.revision += 1;
         }
         self.load_library_selection();
@@ -997,7 +1027,7 @@ impl Workspace {
             ..CatalogQuery::default()
         };
         p.refilter();
-        p.selection = Some(key);
+        p.select(Some(key));
         self.library.query.search.clear();
         self.library.query.rhythm = crate::query::RhythmQuery::default();
         self.load_library_selection();
@@ -1235,7 +1265,7 @@ impl Workspace {
                 Ok(()) => {
                     p.query.scope = Scope::OpenFiles;
                     p.refilter();
-                    p.selection = p.snapshots.last().map(|(k, _)| k.clone());
+                    p.select(p.snapshots.last().map(|(k, _)| k.clone()));
                 }
                 Err(e) => self.files.status = FileStatus::Failed(e),
             }
@@ -1258,6 +1288,7 @@ impl Workspace {
                     FileStatus::Library(LibraryStatus::Failed {
                         error,
                         publishing: job.may_publish(),
+                        context: job.context(),
                     }),
                     document.map(|_| false),
                 );
