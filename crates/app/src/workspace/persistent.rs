@@ -6,6 +6,8 @@ use crate::library::{
     Inventory, LibraryKey, LibraryStore, LoadedRecord, Mutation, MutationKind, OperationReceipt,
     RecheckOutcome, VersionToken, WriteOutcome,
 };
+use crate::presentation::{AudioSummary, DisplayText};
+use crate::vocabulary::{NumberStyle, Term};
 
 #[derive(Debug)]
 pub(super) struct Persistent {
@@ -185,7 +187,7 @@ impl Persistent {
             }
             format!(
                 "{} · {}{}\n{}\nDuration {}\n{}",
-                crate::presentation::display_scalar(&e.title),
+                e.title.display_scalar(),
                 match e.key {
                     LibraryKey::BuiltIn(_) => "Built-in · Read only",
                     LibraryKey::User(_) if e.trashed_at.is_some() => "Trash",
@@ -197,8 +199,8 @@ impl Persistent {
                 } else {
                     ""
                 },
-                presentation::nominal_description(&e.nominal),
-                presentation::human_duration(e.duration_seconds),
+                e.nominal.summary(),
+                NumberStyle::Duration.format(e.duration_seconds),
                 dates,
             )
         };
@@ -504,12 +506,13 @@ impl Workspace {
                 suffix(count(&query))
             ));
         }
-        for (label, state) in [
-            ("Other rates", RhythmState::OutsideBands),
-            ("No rhythmic rate", RhythmState::None),
-            ("Multiple rhythms", RhythmState::Multiple),
-            ("Needs review", RhythmState::NeedsReview),
+        for state in [
+            RhythmState::OutsideBands,
+            RhythmState::None,
+            RhythmState::Multiple,
+            RhythmState::NeedsReview,
         ] {
+            let label = state.label();
             let mut query = unrestricted.clone();
             query.rhythm.state = Some(state);
             bands.push(format!("{label}{}", suffix(count(&query))));
@@ -539,15 +542,16 @@ impl Workspace {
                 )
             };
             let mut lines = vec![format!(
-                "{} · {:?} · Sort {:?} {:?} · Group {:?}",
-                count, q.scope, sort, direction, q.group_by
+                "{} · {} · Sort {} {} · Group {}",
+                count,
+                q.scope.label(),
+                sort.label(),
+                direction.label(),
+                q.group_by.label()
             )];
             let mut restrictions = Vec::new();
             if !q.search.is_empty() {
-                restrictions.push(format!(
-                    "Search: {}",
-                    crate::presentation::display_scalar(&q.search)
-                ));
+                restrictions.push(format!("Search: {}", q.search.display_scalar()));
             }
             if q.include_external {
                 restrictions.push("Include temporary Open files".into());
@@ -559,28 +563,20 @@ impl Workspace {
                 restrictions.push(format!("Method: {}", method.key()));
             }
             if let Some(state) = q.rhythm.state {
-                let label = match state {
-                    crate::query::RhythmState::OutsideBands => "Other rates",
-                    crate::query::RhythmState::None => "No rhythmic rate",
-                    crate::query::RhythmState::Multiple => "Multiple rhythms",
-                    crate::query::RhythmState::NeedsReview => "Needs review",
-                };
+                let label = state.label();
                 restrictions.push(format!("Rhythm state: {label}"));
             }
             for study in &q.studies {
-                restrictions.push(format!(
-                    "Study: {}",
-                    crate::presentation::display_scalar(study)
-                ));
+                restrictions.push(format!("Study: {}", (study).display_scalar()));
             }
             for population in &q.populations {
-                restrictions.push(format!("Population: {population:?}"));
+                restrictions.push(format!("Population: {}", population.label()));
             }
             for role in &q.roles {
-                restrictions.push(format!("Condition role: {role:?}"));
+                restrictions.push(format!("Condition role: {}", role.label()));
             }
             if let Some(analysis) = q.analysis {
-                restrictions.push(format!("Analysis: {analysis:?}"));
+                restrictions.push(format!("Analysis: {}", analysis.label()));
             }
             for (name, range) in [
                 ("Created", &q.created),
@@ -1411,8 +1407,8 @@ impl Workspace {
         p.refilter();
         (
             format!(
-                "{:?} · External file saved from captured draft.\n{}",
-                outcome.status,
+                "{} · External file saved from captured draft.\n{}",
+                outcome.status.label(),
                 outcome.diagnostics.join("\n")
             ),
             Some(true),
@@ -1531,8 +1527,8 @@ impl Workspace {
         p.last_saved = Some(key.clone());
         (
             format!(
-                "{:?} · {key}\n{}{}",
-                outcome.status,
+                "{} · {key}\n{}{}",
+                outcome.status.label(),
                 if document.is_some() {
                     "Saved captured version; later edits remain independent. Use Show saved if filters hide it."
                 } else {

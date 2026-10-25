@@ -9,9 +9,10 @@
 //! is committed even when it is not acoustically valid, so it can be saved and
 //! repaired. Audio sessions own accepted and generated targets; the editor
 //! only supplies candidates.
+use crate::controls;
 use crate::error::{Error, ErrorKind};
+use crate::presentation::ParameterText;
 use crate::recipe::{Origin, RecipeSnapshot};
-use crate::{controls, presentation};
 use auditorylab_core::{
     CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, Recipe, SampleRate, Signal, Sound,
     StimulusError, Target, TargetCheck, Voice,
@@ -739,16 +740,13 @@ impl EditorSession {
         match field {
             EditingField::Metadata(MetadataField::Title) => self.draft.title().to_owned(),
             EditingField::Metadata(MetadataField::Summary) => self.draft.summary().to_owned(),
-            EditingField::Parameter(_, parameter) => {
-                self.draft.value(field).map_or_else(String::new, |value| {
-                    presentation::editable_number(parameter, value)
-                })
-            }
+            EditingField::Parameter(_, parameter) => self
+                .draft
+                .value(field)
+                .map_or_else(String::new, |value| (parameter).input_text(value)),
             EditingField::Metadata(metadata) => {
                 match (metadata.parameter(), self.draft.value(field)) {
-                    (Some(parameter), Some(value)) => {
-                        presentation::editable_number(parameter, value)
-                    }
+                    (Some(parameter), Some(value)) => (parameter).input_text(value),
                     _ => String::new(),
                 }
             }

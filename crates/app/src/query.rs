@@ -15,6 +15,19 @@ pub enum RhythmState {
     /// Incomplete interpretation or document diagnostics.
     NeedsReview,
 }
+impl RhythmState {
+    /// Shared name of the navigation state.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        use crate::vocabulary::Status;
+        match self {
+            Self::OutsideBands => Status::OtherRates.label(),
+            Self::None => Status::NoRhythmicRate.label(),
+            Self::Multiple => Status::MultipleRhythms.label(),
+            Self::NeedsReview => Status::NeedsReview.label(),
+        }
+    }
+}
 impl core::str::FromStr for RhythmState {
     type Err = &'static str;
     fn from_str(text: &str) -> Result<Self, Self::Err> {

@@ -4,6 +4,7 @@ use auditorylab::core::{
     Carrier, CarrierKind, ComponentId, Ears, ParameterId, SampleRate, Target, Voice,
 };
 use auditorylab::editing::Draft;
+use auditorylab::presentation::{AudioDetails, AudioSummary};
 use auditorylab::session::{LiveGenerator, LiveUpdateError};
 
 fn component(frequency_hz: f64, ears: Ears) -> Voice {
@@ -112,7 +113,7 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
 #[test]
 fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint() {
     use auditorylab::core::{Observation, SlotRole, VoiceObservation};
-    use auditorylab::presentation::generated_description;
+
     let check = auditorylab_core::Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
@@ -140,14 +141,15 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
         transitioning: true,
         voices,
     };
-    let text = generated_description(Some(&observation));
+    let text = (Some(&observation)).summary();
     assert!(text.contains("Both ears"), "{text}");
     assert!(
-        auditorylab::presentation::generated_details(&observation)
+        observation
+            .details()
             .contains("gain L -26.0 / R -26.0 dBFS")
     );
     assert!(
-        auditorylab::presentation::generated_details(&observation).contains("Continuing"),
+        observation.details().contains("Continuing"),
         "role label, not Debug"
     );
     assert!(text.starts_with("Changing"));

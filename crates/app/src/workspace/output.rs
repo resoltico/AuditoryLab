@@ -12,6 +12,7 @@
 //! settings or sessions cannot relabel it.
 use super::View;
 use crate::editing::EditorSession;
+use crate::presentation::AudioErrorText;
 use crate::recipe::{RecipeSnapshot, SnapshotId};
 use crate::session::MonitorReader;
 use crate::session::SessionId;
@@ -307,7 +308,7 @@ impl OutputState {
                     }
                     Ok(None) => {}
                     Err(error) => {
-                        self.capture_error = Some(crate::presentation::capture_error_text(error));
+                        self.capture_error = Some((error).description());
                     }
                 }
             }
@@ -379,7 +380,7 @@ impl OutputState {
                             WaveformScale::Fixed,
                         ))),
                         None => Err(analysis.finite_error().map_or_else(String::new, |e| {
-                            crate::presentation::invalid_at_rate(editor.draft().title(), rate, e)
+                            (e).at_rate(editor.draft().title(), rate)
                         })),
                     }
                 }

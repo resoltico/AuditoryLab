@@ -9,6 +9,8 @@
 //! component of one document. A binding is never reused, so a callback that
 //! arrives after its document was replaced still names the old document and
 //! the workspace refuses it.
+use auditorylab::presentation::DisplayText;
+use auditorylab::vocabulary::NumberStyle;
 mod actions;
 mod auxiliary;
 mod editing;
@@ -251,16 +253,11 @@ impl SlintAdapter {
         ui.set_components(ModelRc::from(adapter.components.clone()));
         ui.set_catalog(ModelRc::from(adapter.catalog.clone()));
         ui.set_model_lanes(ModelRc::from(adapter.lanes.clone()));
-        ui.set_guidance(
-            format!(
-                "{} {}",
-                auditorylab::presentation::Notice::LowStartingVolume,
-                auditorylab::presentation::Notice::HeadphonesForSeparateEars
-            )
-            .into(),
-        );
+        ui.set_guidance(auditorylab::presentation::Notice::general_guidance().into());
         ui.set_native_mac(cfg!(target_os = "macos"));
-        windows.about.set_identity(about_identity().into());
+        windows
+            .about
+            .set_identity(auditorylab::identity::BUILD_IDENTITY.about_version().into());
         windows
             .licenses
             .set_licenses(include_str!("../../../LICENSE").into());
@@ -484,7 +481,7 @@ impl SlintAdapter {
             .as_ref()
             .map(|w| w.editor().draft().title().to_owned())
             .unwrap_or_default();
-        let title = auditorylab::presentation::display_scalar(&title);
+        let title = title.display_scalar();
         match title.char_indices().nth(60) {
             Some((cut, _)) => format!("{}…", &title[..cut]),
             None => title,
@@ -521,7 +518,10 @@ impl SlintAdapter {
         }
         if let Some(about) = self.about.upgrade() {
             if let Err(error) = about.show() {
-                eprintln!("About: {error}");
+                eprintln!(
+                    "{}",
+                    auditorylab::vocabulary::InterfaceOperation::About.failure(error)
+                );
             }
             about.invoke_focus_website();
         }
@@ -942,8 +942,12 @@ impl SlintAdapter {
                 let [left, right] = scope::paths(capture.bins(), capture.limit());
                 ui.set_left_path(left.into());
                 ui.set_right_path(right.into());
-                ui.set_scale_label(auditorylab::presentation::axis_limit(capture.limit()).into());
-                ui.set_capture_duration(format!("{:.2} ms", capture.milliseconds()).into());
+                ui.set_scale_label(NumberStyle::AxisLimit.format(capture.limit()).into());
+                ui.set_capture_duration(
+                    NumberStyle::CapturedMilliseconds
+                        .format(capture.milliseconds())
+                        .into(),
+                );
             } else {
                 ui.set_left_path(SharedString::new());
                 ui.set_right_path(SharedString::new());
@@ -982,9 +986,10 @@ impl SlintAdapter {
                 .borrow()
                 .as_ref()
                 .map_or_else(String::new, |p| {
-                    format!(
-                        "{} · {} logical px · {}",
-                        p.font.family, p.font.size, p.font.origin
+                    auditorylab::vocabulary::Caption::typography_values(
+                        &p.font.family,
+                        p.font.size,
+                        &p.font.origin,
                     )
                 })
                 .into(),
@@ -1026,7 +1031,7 @@ impl SlintAdapter {
                     Err(error) => {
                         self.monitor_window_visible.set(false);
                         *self.monitor_error.borrow_mut() =
-                            format!("Cannot show Output monitor: {error}");
+                            auditorylab::vocabulary::InterfaceOperation::ShowMonitor.failure(error);
                     }
                 }
             } else if !focused_monitor
@@ -1049,7 +1054,7 @@ impl SlintAdapter {
                     }
                     Err(error) => {
                         *self.monitor_error.borrow_mut() =
-                            format!("Cannot hide Output monitor: {error}");
+                            auditorylab::vocabulary::InterfaceOperation::HideMonitor.failure(error);
                     }
                 }
             }
@@ -1083,7 +1088,8 @@ impl SlintAdapter {
                     }
                     Err(error) => {
                         *self.controls_error.borrow_mut() =
-                            format!("Cannot present Audio controls: {error}");
+                            auditorylab::vocabulary::InterfaceOperation::AudioControls
+                                .failure(error);
                     }
                 }
             }
@@ -1112,21 +1118,25 @@ impl SlintAdapter {
         let (Some(ui), Some(window)) = (self.main.upgrade(), self.details.upgrade()) else {
             return;
         };
-        window.set_heading("Audio details · snapshot".into());
+        window.set_heading(
+            auditorylab::vocabulary::Caption::AudioSnapshot
+                .label()
+                .into(),
+        );
         window.set_can_refresh(true);
         window.set_content(
-            format!(
-                "{}\n{}\n{}\n{}\n{}\n{}\n{}\nTypography: {}\n{}",
-                ui.get_player_title(),
-                ui.get_generated_details(),
-                ui.get_monitor_state(),
-                ui.get_device(),
-                ui.get_status(),
-                ui.get_auxiliary_error(),
-                ui.get_motion_reason(),
-                ui.get_typography_origin(),
-                ui.get_model_caption()
-            )
+            auditorylab::presentation::DesktopDiagnostics {
+                player: &ui.get_player_title(),
+                generated: &ui.get_generated_details(),
+                monitor: &ui.get_monitor_state(),
+                device: &ui.get_device(),
+                status: &ui.get_status(),
+                auxiliary_error: &ui.get_auxiliary_error(),
+                motion: &ui.get_motion_reason(),
+                typography: &ui.get_typography_origin(),
+                model: &ui.get_model_caption(),
+            }
+            .text()
             .into(),
         );
     }
@@ -1222,7 +1232,12 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
             .chain(ModulationKind::ALL.iter().map(|k| k.label().into()))
             .collect(),
     ));
-    let spans = strings(SPANS_MS.iter().map(|ms| format!("{ms} ms")).collect());
+    let spans = strings(
+        SPANS_MS
+            .iter()
+            .map(|ms| NumberStyle::Milliseconds.format(f64::from(*ms)))
+            .collect(),
+    );
     let scales = strings(
         SCALES
             .iter()
@@ -1248,7 +1263,7 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     ui.set_export_rates(strings(
         Workspace::export_rates()
             .iter()
-            .map(|rate| format!("{} Hz", rate.hz()))
+            .map(|rate| NumberStyle::Hertz.format(f64::from(rate.hz())))
             .collect(),
     ));
 }
@@ -1398,7 +1413,10 @@ fn apply_font(windows: &Windows, font: &typography::Typography) {
 
 fn present_details<C: ComponentHandle + 'static>(window: &DetailsWindow, parent: &C) {
     if let Err(error) = window.show() {
-        eprintln!("Details: {error}");
+        eprintln!(
+            "{}",
+            auditorylab::vocabulary::InterfaceOperation::Details.failure(error)
+        );
         return;
     }
     details_parent::bind(window, parent);
@@ -1423,11 +1441,6 @@ pub(crate) fn hide_monitor_window(
     Ok(())
 }
 
-fn about_identity() -> String {
-    let identity = auditorylab::identity::BUILD_IDENTITY;
-    format!("Version {} (Build {})", identity.version, identity.build)
-}
-
 fn open_web(url: &str) {
     #[cfg(target_os = "macos")]
     let mut command = std::process::Command::new("open");
@@ -1440,13 +1453,16 @@ fn open_web(url: &str) {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let mut command = std::process::Command::new("xdg-open");
     if let Err(error) = command.arg(url).spawn() {
-        eprintln!("Cannot open link: {error}");
+        eprintln!(
+            "{}",
+            auditorylab::vocabulary::InterfaceOperation::OpenLink.failure(error)
+        );
     }
 }
 
 // Keep display escaping separate from lossless editable field models and bindings.
 fn read_only(text: &str) -> SharedString {
-    auditorylab::presentation::display_text(text).into()
+    (text).display_text().into()
 }
 
 #[cfg(test)]

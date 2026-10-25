@@ -13,11 +13,9 @@ use auditorylab::core::Voice;
 use auditorylab::core::interpretation::Structure;
 use auditorylab::core::interpretation::ToneRelationship;
 use auditorylab::core::nominal::Method;
-use auditorylab::presentation::compact_number;
-use auditorylab::presentation::component_description;
-use auditorylab::presentation::editable_number;
-use auditorylab::presentation::labeled;
-use auditorylab::presentation::structure_description;
+use auditorylab::presentation::{AudioDetails, AudioSummary, ParameterText};
+use auditorylab::vocabulary::NumberStyle;
+
 use auditorylab::waveform_view::CaptureError;
 use auditorylab::waveform_view::ModelSource;
 use auditorylab::waveform_view::ModelView;
@@ -55,7 +53,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     let s = summary(&[click, tone(440.0, Ears::Both)]);
     assert_eq!(s.rhythms.len(), 1);
     assert_eq!(s.rhythms[0].kind, Method::Clicks);
-    let text = structure_description(&s);
+    let text = s.summary();
     assert!(
         text.contains("40 Hz clicks")
             && text.contains("440 Hz steady tone")
@@ -74,7 +72,11 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
         summary(&[a, b]).relationship,
         Some(ToneRelationship::Monaural { .. })
     ));
-    assert!(structure_description(&summary(&[a, tone(380.0, Ears::Both)])).contains("Unison"));
+    assert!(
+        summary(&[a, tone(380.0, Ears::Both)])
+            .summary()
+            .contains("Unison")
+    );
     for bad in [vec![a, right], vec![a, b, click]] {
         assert!(summary(&bad).relationship.is_none());
     }
@@ -87,10 +89,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     };
     let s = summary(&[gate, click]);
     assert_eq!(s.rhythms.len(), 2);
-    assert!(
-        structure_description(&s).contains("8 Hz gate")
-            && structure_description(&s).contains("40 Hz clicks")
-    );
+    assert!(s.summary().contains("8 Hz gate") && s.summary().contains("40 Hz clicks"));
     let active = Voice {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 39.0625,
@@ -101,10 +100,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     let am = summary(&[active]);
     assert_eq!(am.rhythms.len(), 1);
     assert_eq!(am.rhythms[0].kind, Method::AmplitudeModulation);
-    assert!(
-        structure_description(&am).contains("39.0625")
-            && structure_description(&am).contains("50%")
-    );
+    assert!(am.summary().contains("39.0625") && am.summary().contains("50%"));
     let inactive = Voice {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 39.0625,
@@ -207,11 +203,11 @@ fn captures_fit_both_ears_without_changing_meters_and_reject_invalid_data() {
 }
 #[test]
 fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized() {
-    assert_eq!(compact_number(39.0625), "39.0625");
-    assert_eq!(compact_number(39.0625123456789), "≈39.0625");
+    assert_eq!(NumberStyle::Compact.format(39.0625), "39.0625");
+    assert_eq!(NumberStyle::Compact.format(39.0625123456789), "≈39.0625");
     let exact = 39.0625123456789;
     assert_eq!(
-        editable_number(ParameterId::ToneFrequency, exact),
+        (ParameterId::ToneFrequency).input_text(exact),
         "39.0625123456789"
     );
     let c = Voice {
@@ -245,7 +241,7 @@ fn a_carrier_is_named_in_sentence_case() {
                 .collect(),
         }
         .check(SampleRate::DEFAULT);
-        component_description(&check.components()[0].1.clone().unwrap(), false)
+        check.components()[0].1.clone().unwrap().summary()
     };
     let modulated = |modulation| Voice {
         modulation: Some(modulation),
@@ -302,8 +298,8 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
         }
         .check(rate);
         let facts = check.components()[0].1.clone().unwrap();
-        let brief = component_description(&facts, false);
-        let detail = component_description(&facts, true);
+        let brief = facts.summary();
+        let detail = facts.details();
         assert!(brief.contains(&format!("{realized} ms open")), "{brief}");
         assert!(
             detail.contains(&format!("requested {} ms", requested * 1000.0)),
@@ -315,7 +311,7 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
         );
         assert!(detail.contains(&format!("at {hz} Hz")), "{detail}");
         assert_eq!(
-            editable_number(ParameterId::ClickWidth, requested),
+            (ParameterId::ClickWidth).input_text(requested),
             (requested * 1000.0).to_string()
         );
     }
@@ -326,7 +322,10 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
     let rate = SampleRate::DEFAULT;
     for id in ParameterId::ALL {
         let d = id.descriptor();
-        assert_eq!(labeled(id), format!("{} ({})", d.label, d.unit.symbol()));
+        assert_eq!(
+            (id).input_label(),
+            format!("{} ({})", d.label, d.unit.symbol())
+        );
     }
     let check = |c: Voice| {
         auditorylab_core::Sound {

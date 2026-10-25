@@ -114,7 +114,9 @@ impl Shell for NativeShell {
         let destination = match purpose {
             PathPurpose::OpenRecipe => None,
             PathPurpose::SaveRecipe | PathPurpose::ExportRecipe | PathPurpose::ExportWav => {
-                Some(suggested_name.unwrap_or_else(|| format!("sound.{extension}")))
+                Some(suggested_name.unwrap_or_else(|| {
+                    auditorylab::vocabulary::Caption::suggested_filename(extension)
+                }))
             }
         };
         // A native Stop control in the panel stops exactly the audio playing now.
@@ -136,7 +138,10 @@ impl Shell for NativeShell {
         #[cfg(not(target_os = "macos"))]
         let _ = adapter;
         if approved && let Err(error) = slint::quit_event_loop() {
-            eprintln!("Quit: {error}");
+            eprintln!(
+                "{}",
+                auditorylab::vocabulary::InterfaceOperation::Quit.failure(error)
+            );
         }
     }
 }

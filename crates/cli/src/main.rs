@@ -1,10 +1,12 @@
 //! Command-line interface to Auditory Lab.
 #![forbid(unsafe_code)]
+use auditorylab::presentation::DisplayText;
 mod library_cli;
 use auditorylab::core::SampleRate;
 use auditorylab::error::ErrorKind;
 use auditorylab::recipe::RecipeSnapshot;
 use auditorylab::session::{EndReason, PlaybackControl, Preparation, Session};
+use auditorylab::vocabulary::{Caption, CommandProblem, InterfaceOperation, Status};
 use auditorylab::workflow::{Cancel, Progress, Replace};
 use auditorylab::{self as lab};
 use clap::{Args, CommandFactory, Parser, Subcommand};
@@ -14,7 +16,7 @@ use std::{
     process::ExitCode,
 };
 #[derive(Parser)]
-#[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = lab::identity::version_line("auditorylab").trim_start_matches("auditorylab ").to_owned())]
+#[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = lab::identity::BUILD_IDENTITY.version_text())]
 struct Cli {
     /// Absolute persistent User Library override (then environment, then native data).
     #[arg(long,global=true,value_name="ABSOLUTE_PATH",value_parser=absolute_path)]
@@ -88,7 +90,7 @@ fn absolute_path(text: &str) -> Result<PathBuf, String> {
     if path.is_absolute() {
         Ok(path)
     } else {
-        Err("--library-dir must be absolute; no fallback is used".into())
+        Err(CommandProblem::RelativeLibraryRoot.message().into())
     }
 }
 #[derive(Debug)]
@@ -105,7 +107,7 @@ fn usage(message: &str) -> Box<dyn std::error::Error> {
 fn exit_code(kind: ErrorKind) -> u8 {
     kind.exit_code()
 }
-use auditorylab::presentation::display_text as escape;
+
 fn prose(text: &str) -> String {
     let width = if io::stdout().is_terminal() {
         textwrap::termwidth().saturating_sub(2).max(1)
@@ -113,7 +115,7 @@ fn prose(text: &str) -> String {
         78
     };
     text.lines()
-        .map(|line| textwrap::fill(&escape(line), width))
+        .map(|line| textwrap::fill(&(line).display_text(), width))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -132,7 +134,7 @@ fn say(text: &str) -> io::Result<()> {
 }
 fn completed(text: &str) {
     if let Err(e) = say(text) {
-        eprintln!("warning: operation completed; cannot report completion: {e}");
+        eprintln!("{}", Status::completion_reporting_failed(e));
     }
 }
 /// The first interrupt runs `request`; a second one exits at once.
@@ -156,7 +158,7 @@ struct StatusLine {
 impl StatusLine {
     fn draw(&mut self, text: &str) {
         self.active = true;
-        let _ = write!(io::stderr(), "\r\x1b[2K{}", escape(text));
+        let _ = write!(io::stderr(), "\r\x1b[2K{}", (text).display_text());
         let _ = io::stderr().flush();
     }
 }
@@ -184,23 +186,17 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> 
     let mut playback = match lab::device::prepare_playback(session, snapshot)? {
         Preparation::Ready(playback) => playback,
         Preparation::Stopped(report) => {
-            eprintln!("{}", prose(&lab::presentation::playback_result(&report)));
+            eprintln!("{}", prose(&report.description()));
             return Ok(Ended::Stopped);
         }
     };
     eprintln!(
-        "{}\nPress Ctrl-C to stop.",
-        prose(&lab::presentation::playback_preamble(
-            snapshot,
-            playback.output(),
-            playback.signal()
-        ))
+        "{}\n{}",
+        prose(&(snapshot).playback_preamble(playback.output(), playback.signal())),
+        Caption::StopKeyboardHint.label()
     );
     let sound = snapshot.at(playback.output().sample_rate)?;
-    eprintln!(
-        "{}",
-        prose(&lab::presentation::sound_description(&sound, false))
-    );
+    eprintln!("{}", prose(&sound.description(false)));
     let report = if io::stderr().is_terminal() {
         let mut reader = playback
             .monitor(lab::session::MonitorDetail::Quantities)
@@ -212,7 +208,7 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> 
                     let mut terminal = StatusLine { active: false };
                     while !done.load(std::sync::atomic::Ordering::Acquire) {
                         reader.poll(0);
-                        terminal.draw(&lab::presentation::playback_status(&reader));
+                        terminal.draw(&reader.status_text());
                         std::thread::sleep(std::time::Duration::from_millis(250));
                     }
                 });
@@ -220,16 +216,16 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> 
                 // shared status crosses to the terminal renderer.
                 let result = playback.play();
                 done.store(true, std::sync::atomic::Ordering::Release);
-                printer
-                    .join()
-                    .map_err(|_| io::Error::other("status renderer failed"))?;
+                printer.join().map_err(|_| {
+                    io::Error::other(InterfaceOperation::StatusRenderer.failure(""))
+                })?;
                 Ok(result?)
             },
         )?
     } else {
         playback.play()?
     };
-    eprintln!("{}", prose(&lab::presentation::playback_result(&report)));
+    eprintln!("{}", prose(&report.description()));
     Ok(if report.end == EndReason::Stopped {
         Ended::Stopped
     } else {
@@ -267,12 +263,12 @@ fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
                         .to_string()
                 }
                 lab::library::LibraryKey::External(_) => {
-                    return Err(usage("temporary selectors are not reusable; use --file"));
+                    return Err(usage(CommandProblem::TemporaryRecipeSelector.message()));
                 }
             };
             if let Some(path) = path {
                 lab::workflow::save_recipe_text(&text, &path, Replace::Never)?;
-                completed(&format!("Exported recipe to {path:?}."));
+                completed(&Caption::recipe_exported(&path));
             } else {
                 output(text.as_bytes())?;
             }
@@ -302,14 +298,7 @@ fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
             let cancel = Cancel::default();
             let request = cancel.clone();
             on_interrupt(move || request.request())?;
-            eprintln!(
-                "{}",
-                prose(&format!(
-                    "Exporting {} to {path:?} at {} Hz. Press Ctrl-C to stop.",
-                    snapshot.title(),
-                    sample_rate.hz()
-                ))
-            );
+            eprintln!("{}", prose(&sound.export_preamble(&path)));
             let result = lab::workflow::export(
                 &sound,
                 &path,
@@ -317,17 +306,12 @@ fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
                 &cancel,
                 &Progress::default(),
             )?;
-            completed(&format!(
-                "Exported {} frames to {path:?} ({}).",
-                result.frames, result.container
-            ));
+            completed(&result.description(&path));
         }
         Some(Command::Play(source)) => {
             let resolved = library_cli::resolve(source, cli.library_dir.as_deref())?;
             if resolved.summary.trashed_at.is_some() {
-                return Err(usage(
-                    "trashed recipes can be inspected/exported; restore before playback",
-                ));
+                return Err(usage(CommandProblem::TrashedPlayback.message()));
             }
             return play(&resolved.snapshot);
         }
@@ -370,12 +354,9 @@ fn main() -> ExitCode {
         Ok(Ended::Stopped) => ExitCode::from(130),
         Ok(Ended::Code(code)) => ExitCode::from(code),
         Err(e) => {
-            let mut message = e.to_string();
-            if e.downcast_ref::<lab::error::Error>()
-                .is_some_and(|e| e.kind() == ErrorKind::UnknownRecipe)
-            {
-                message.push_str("; run `auditorylab list`, or use --file PATH");
-            }
+            let message = e
+                .downcast_ref::<lab::error::Error>()
+                .map_or_else(|| e.to_string(), lab::error::Error::user_message);
             let code = if e.downcast_ref::<Usage>().is_some() {
                 2
             } else {
@@ -384,7 +365,10 @@ fn main() -> ExitCode {
             };
             if json {
                 if let Err(output_error) = library_cli::error_json(operation, e.as_ref(), code) {
-                    eprintln!("cannot report structured failure: {output_error}");
+                    eprintln!(
+                        "{}",
+                        InterfaceOperation::StructuredFailure.failure(output_error)
+                    );
                 }
             } else {
                 eprintln!("{}", prose(&message));

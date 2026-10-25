@@ -88,7 +88,10 @@ pub(super) fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
         if let Some(window) = licenses.upgrade() {
             match window.show() {
                 Ok(()) => window.invoke_focus_start(),
-                Err(error) => eprintln!("Licenses: {error}"),
+                Err(error) => eprintln!(
+                    "{}",
+                    auditorylab::vocabulary::InterfaceOperation::Licenses.failure(error)
+                ),
             }
         }
     });

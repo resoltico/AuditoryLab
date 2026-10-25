@@ -17,17 +17,26 @@ mod generated {
     use super::BuildIdentity;
     include!(concat!(env!("OUT_DIR"), "/identity.rs"));
 }
+/// About title derived from the canonical product name.
+pub const ABOUT_TITLE: &str = generated::ABOUT_TITLE;
 /// Canonical repository URL inherited from workspace package metadata.
 pub const SOURCE_URL: &str = env!("CARGO_PKG_REPOSITORY");
 /// Identity generated from workspace metadata.
 pub const BUILD_IDENTITY: BuildIdentity = generated::BUILD;
-/// Product version, native build counter and optional short source revision.
-pub fn version_line(binary: &str) -> String {
-    let id = BUILD_IDENTITY;
-    let source = id
-        .revision
-        .map_or(String::new(), |revision| format!(" · {}", &revision[..12]));
-    format!("{binary} {} (build {}){source}", id.version, id.build)
+impl BuildIdentity {
+    /// Product version, native build counter and optional short source revision.
+    #[must_use]
+    pub fn version_text(self) -> String {
+        let source = self
+            .revision
+            .map_or(String::new(), |revision| format!(" · {}", &revision[..12]));
+        format!("{} (build {}){source}", self.version, self.build)
+    }
+    /// A binary name followed by its canonical build identity.
+    #[must_use]
+    pub fn version_line(self, binary: &str) -> String {
+        format!("{binary} {}", self.version_text())
+    }
 }
 /// Allocate a fallible random portable identity; never substitute clocks or counters.
 pub(crate) fn fresh_document() -> Result<auditorylab_core::DocumentIdentity, crate::error::Error> {
@@ -57,6 +66,14 @@ fn generate_uuid(
 #[cfg(test)]
 #[path = "../identity_input.rs"]
 mod input;
+
+impl BuildIdentity {
+    /// Version and native build counter shown in the graphical About window.
+    #[must_use]
+    pub fn about_version(self) -> String {
+        format!("Version {} (Build {})", self.version, self.build)
+    }
+}
 #[cfg(test)]
 mod tests {
     #[test]

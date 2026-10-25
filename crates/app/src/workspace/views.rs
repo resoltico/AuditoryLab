@@ -7,8 +7,10 @@
 use super::{FileKind, OutputView, Refusal, View, Workspace};
 use crate::editing::DocumentId;
 use crate::editing::{EditRefusal, EditingField, FieldHandle, InputProblem, MetadataField};
+use crate::presentation::{AudioDetails, AudioErrorText, AudioSummary, ParameterText};
 use crate::recipe::RecipeSnapshot;
 use crate::session::{EndReason, PlaybackReport};
+use crate::vocabulary::NumberStyle;
 use crate::wav::Exported;
 use crate::waveform_view::{
     monitor_warning, output_monitor_state, output_underrun_warning, phase_text,
@@ -267,7 +269,7 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
         Refusal::Document(message) => message.clone(),
         Refusal::Invalid { title, rate, error } => error.as_ref().map_or_else(
             || format!("Could not prepare “{title}” at {} Hz.", rate.hz()),
-            |error| presentation::invalid_at_rate(title, *rate, error),
+            |error| (error).at_rate(title, *rate),
         ),
         Refusal::Edit(EditRefusal::ComponentLimit) => format!(
             "A sound holds at most {} components; remove one to add another.",
@@ -470,7 +472,7 @@ impl Workspace {
             MetadataView {
                 handle: editor.handle(editing),
                 label: match field.parameter() {
-                    Some(p) => presentation::labeled(p),
+                    Some(p) => (p).input_label(),
                     None => field_label(editing),
                 },
                 text: editor.text(editing),
@@ -510,7 +512,7 @@ impl Workspace {
                         ParameterView {
                             handle: editor.handle(field),
                             parameter,
-                            label: presentation::labeled(parameter),
+                            label: (parameter).input_label(),
                             help: match parameter {
                                 ParameterId::Duration => "The length of saved recipes and exported audio; live playback continues until stopped.",
                                 ParameterId::Fade => "The raised-cosine fade at each edge of saved recipes and exported audio.",
@@ -544,7 +546,7 @@ impl Workspace {
                     context: if let Some(pair)=shown.pair() {
                         format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz+pair.offset_hz,pair.offset_hz.abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)
                     } else {match own {
-                        Some(Ok(facts)) => presentation::component_description(facts, false),
+                        Some(Ok(facts)) => (facts).summary(),
                         // The error line states it, with its rate.
                         Some(Err(_)) | None => String::new(),
                     }},
@@ -562,8 +564,8 @@ impl Workspace {
                 } else {
                     ""
                 },
-                presentation::format_dbfs(target.peak_dbfs()[0]),
-                presentation::format_dbfs(target.peak_dbfs()[1])
+                NumberStyle::Decibels.format(target.peak_dbfs()[0]),
+                NumberStyle::Decibels.format(target.peak_dbfs()[1])
             ),
             Err(error) if error.parameters().is_empty() => format!("{error} ({context})"),
             Err(_) => format!("Correct the highlighted fields to apply this sound {context}."),
@@ -581,15 +583,15 @@ impl Workspace {
         }
         let generated_brief = analysis.target().map_or_else(
             || "No valid sound model; correct the fields".into(),
-            |t| presentation::structure_description(&Structure::of_target(t)),
+            |t| Structure::of_target(t).summary(),
         );
         let brief = format!(
             "{} classification · {}\nSaved version · {}\n{}",
             if pending { "Last committed" } else { "Draft" },
-            presentation::nominal_description(&nominal),
+            nominal.summary(),
             editor
                 .saved_nominal()
-                .map_or_else(|| "Not saved".into(), presentation::nominal_description),
+                .map_or_else(|| "Not saved".into(), AudioSummary::summary),
             generated_brief
         );
         let based_on = editor.draft().based_on();
@@ -687,7 +689,7 @@ impl Workspace {
         let rows = self
             .filtered
             .iter()
-            .map(|&i| presentation::library_label(&self.catalog[i]))
+            .map(|&i| self.catalog[i].library_label())
             .collect();
         let keys = self
             .filtered
@@ -721,15 +723,15 @@ impl Workspace {
             title: snapshot.title(),
             structure: snapshot
                 .at(rate)
-                .map_or_else(|e| e.to_string(), |s| presentation::sound_brief(&s)),
+                .map_or_else(|e| e.to_string(), |s| s.brief()),
             studied: about
                 .and_then(|a| a.research.as_ref())
                 .and_then(|a| a.studied_for.clone())
                 .unwrap_or_default(),
             timing: format!(
                 "Duration {} · fade {} at each edge",
-                presentation::human_duration(snapshot.stimulus().duration_seconds),
-                presentation::human_duration(snapshot.stimulus().fade_seconds)
+                NumberStyle::Duration.format(snapshot.stimulus().duration_seconds),
+                NumberStyle::Duration.format(snapshot.stimulus().fade_seconds)
             ),
             summary: about
                 .and_then(|a| {
@@ -738,7 +740,7 @@ impl Workspace {
                         .or_else(|| a.research.as_ref().and_then(|r| r.summary.clone()))
                 })
                 .unwrap_or_default(),
-            details: presentation::recipe_details(snapshot, rate),
+            details: (snapshot).details_at(rate),
             study_url: about
                 .and_then(|a| a.research.as_ref())
                 .and_then(|a| a.source_url.clone())
@@ -1001,16 +1003,14 @@ impl Workspace {
                     (Some(_), _) => "Finite recipe",
                 }
             );
-            let elapsed = presentation::playback_elapsed(
-                descriptor.output.sample_rate,
-                status.estimated_output_frames,
-            );
+            let elapsed = NumberStyle::Clock
+                .format((descriptor.output.sample_rate).seconds_in(status.estimated_output_frames));
             view.elapsed = descriptor.frames.map_or_else(
                 || elapsed.clone(),
                 |frames| {
                     format!(
                         "{elapsed} / {}",
-                        presentation::clock(descriptor.output.sample_rate.seconds_in(frames))
+                        NumberStyle::Clock.format(descriptor.output.sample_rate.seconds_in(frames))
                     )
                 },
             );
@@ -1022,19 +1022,12 @@ impl Workspace {
                     } else {
                         "Last accepted target"
                     },
-                    presentation::structure_description(&Structure::of_target(
-                        &reader.accepted().1
-                    ))
+                    Structure::of_target(&reader.accepted().1).summary()
                 )
             } else {
                 status.observation.as_ref().map_or_else(
-                    || presentation::generated_description(None),
-                    |o| {
-                        format!(
-                            "Generated audio · {}",
-                            presentation::generated_description(Some(o))
-                        )
-                    },
+                    || (None).summary(),
+                    |o| format!("Generated audio · {}", (Some(o)).summary()),
                 )
             };
             view.generated_details = status.observation.map_or_else(String::new, |o| {
@@ -1044,7 +1037,7 @@ impl Workspace {
                     status.accepted_revision,
                     o.active_revision,
                     o.settled_revision,
-                    presentation::generated_details(&o)
+                    o.details()
                 )
             });
             view.device = format!(
@@ -1101,7 +1094,7 @@ impl Workspace {
                     "{}{}\n{}",
                     model.caption(),
                     reader.map_or_else(String::new, |r| model.generation_note(r.status())),
-                    presentation::structure_description(&model.structure)
+                    model.structure.summary()
                 )
             },
         );
@@ -1111,10 +1104,10 @@ impl Workspace {
         if let Some(capture) = &output.capture {
             view.meters = format!(
                 "Captured sample peak L {} / R {} dBFS · RMS L {} / R {} dBFS",
-                presentation::format_dbfs(capture.meters()[0].peak_dbfs),
-                presentation::format_dbfs(capture.meters()[1].peak_dbfs),
-                presentation::format_dbfs(capture.meters()[0].rms_dbfs),
-                presentation::format_dbfs(capture.meters()[1].rms_dbfs)
+                NumberStyle::Decibels.format(capture.meters()[0].peak_dbfs),
+                NumberStyle::Decibels.format(capture.meters()[1].peak_dbfs),
+                NumberStyle::Decibels.format(capture.meters()[0].rms_dbfs),
+                NumberStyle::Decibels.format(capture.meters()[1].rms_dbfs)
             );
             view.caption = capture.label(held, ended);
             view.monitor_state =

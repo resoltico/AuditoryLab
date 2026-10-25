@@ -1,5 +1,6 @@
 //! Library model updates depend only on an immutable library projection.
 use super::*;
+use auditorylab::presentation::DisplayText;
 impl SlintAdapter {
     pub(super) fn project_library(
         &self,
@@ -81,7 +82,7 @@ impl SlintAdapter {
                 .and_then(|i| i32::try_from(i).ok())
                 .unwrap_or(-1),
         );
-        ui.set_sound_title(auditorylab::presentation::display_scalar(&library.title).into());
+        ui.set_sound_title(library.title.display_scalar().into());
         ui.set_structure(read_only(&library.structure));
         ui.set_studied(read_only(&library.studied));
         ui.set_recipe_timing(read_only(&library.timing));

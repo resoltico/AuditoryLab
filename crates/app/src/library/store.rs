@@ -910,7 +910,7 @@ impl LibraryStore {
                 status: MutationStatus::PublicationUnconfirmed,
                 receipt,
                 diagnostics: vec![format!(
-                    "PublicationUnconfirmed: {error}; destination reread could not establish the candidate. Retain draft/receipt and Recheck; do not retry blindly."
+                    "Publication not confirmed: {error}; destination reread could not establish the candidate. Retain draft/receipt and Recheck; do not retry blindly."
                 )],
             });
         }

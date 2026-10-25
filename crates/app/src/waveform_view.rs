@@ -1,6 +1,7 @@
 //! Coherent bounded display captures and target-model provenance, shared by renderers.
 use crate::core::{Extent, Observation, SampleRate};
 use crate::session::{Meter, MonitorReader, SessionDescriptor};
+use crate::vocabulary::NumberStyle;
 use auditorylab_core::{Target, interpretation::Structure, timing::TimingModel};
 /// A view cannot silently hide invalid samples or invent source coverage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,7 +209,7 @@ impl WaveformCapture {
             } else {
                 "Fixed"
             },
-            crate::presentation::compact_number(self.limit)
+            NumberStyle::Compact.format(self.limit)
         )
     }
     /// Full frozen/retained context; current generated status is presented independently.
@@ -326,31 +327,28 @@ impl ModelView {
                 crate::core::CarrierFacts::Tone(rate) => {
                     format!(
                         "{} Hz steady tone",
-                        crate::presentation::compact_number(rate.realized_hz)
+                        NumberStyle::Compact.format(rate.realized_hz)
                     )
                 }
                 _ => "Steady carrier".into(),
             },
             ModelKind::Clicks => match lane.facts.carrier {
                 crate::core::CarrierFacts::Clicks(p) => {
-                    format!(
-                        "{} Hz clicks",
-                        crate::presentation::compact_number(p.rate_hz)
-                    )
+                    format!("{} Hz clicks", NumberStyle::Compact.format(p.rate_hz))
                 }
                 _ => unreachable!("click lane carrier"),
             },
             ModelKind::Gate => match lane.facts.modulation {
                 Some(crate::core::ModulationFacts::Gate(p)) => {
-                    format!("{} Hz gate", crate::presentation::compact_number(p.rate_hz))
+                    format!("{} Hz gate", NumberStyle::Compact.format(p.rate_hz))
                 }
                 _ => unreachable!("gate lane modulation"),
             },
             ModelKind::Envelope => match lane.facts.modulation {
                 Some(crate::core::ModulationFacts::Sinusoidal { rate, depth }) => format!(
                     "{} Hz AM · {}%",
-                    crate::presentation::compact_number(rate.realized_hz),
-                    crate::presentation::compact_number(depth * 100.0)
+                    NumberStyle::Compact.format(rate.realized_hz),
+                    NumberStyle::Compact.format(depth * 100.0)
                 ),
                 _ => unreachable!("envelope lane modulation"),
             },

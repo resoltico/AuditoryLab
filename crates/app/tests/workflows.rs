@@ -3,7 +3,7 @@
 use auditorylab::core::SampleRate;
 use auditorylab::error::Error;
 use auditorylab::error::ErrorKind;
-use auditorylab::identity::version_line;
+use auditorylab::identity::BUILD_IDENTITY;
 use auditorylab::recipe::RecipeSnapshot;
 use auditorylab::recipe::Rendition;
 use auditorylab::recipe::catalog;
@@ -118,7 +118,10 @@ fn shared_values_cross_threads() {
     shared::<Progress>();
     assert!(!catalog().unwrap().is_empty());
     assert_eq!(
-        version_line("auditorylab").split_whitespace().next(),
+        BUILD_IDENTITY
+            .version_line("auditorylab")
+            .split_whitespace()
+            .next(),
         Some("auditorylab")
     );
 }
@@ -144,11 +147,9 @@ fn untitled_file_names_are_concise_and_origins_remain_complete() {
         assert_eq!(snapshot.title(), name);
         assert_eq!(snapshot.suggested_output_name("wav"), suggested);
         assert!(
-            auditorylab::presentation::recipe_details(
-                &snapshot,
-                auditorylab::core::SampleRate::DEFAULT
-            )
-            .contains("/deep/")
+            snapshot
+                .details_at(auditorylab::core::SampleRate::DEFAULT)
+                .contains("/deep/")
         );
         let draft = auditorylab::editing::Draft::from_snapshot(&snapshot).unwrap();
         assert_eq!(draft.title(), format!("{name} (edited)"));

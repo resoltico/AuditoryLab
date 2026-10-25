@@ -108,6 +108,18 @@ impl Error {
         self.kind = ErrorKind::Write;
         self
     }
+    /// Complete user-facing explanation, with discovery guidance for an unknown recipe.
+    #[must_use]
+    pub fn user_message(&self) -> String {
+        if self.kind == ErrorKind::UnknownRecipe {
+            format!(
+                "{}; run `auditorylab list`, or use --file PATH",
+                self.message
+            )
+        } else {
+            self.message.clone()
+        }
+    }
     /// Failure category.
     pub fn kind(&self) -> ErrorKind {
         self.kind

@@ -1,5 +1,6 @@
 //! Workspace commands and path-independent action callbacks.
 use super::*;
+use auditorylab::presentation::DisplayText;
 
 pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     macro_rules! on {
@@ -266,11 +267,8 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             (a.details.upgrade(), a.main.upgrade(), library)
         {
             window.set_heading(
-                format!(
-                    "Sound details · {}",
-                    auditorylab::presentation::display_scalar(&library.title)
-                )
-                .into(),
+                auditorylab::vocabulary::Caption::sound_details(&library.title.display_scalar())
+                    .into(),
             );
             window.set_can_refresh(false);
             window.set_content(read_only(&library.details));

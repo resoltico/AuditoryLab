@@ -8,11 +8,11 @@
 //! when Stop was accepted before stream start was admitted. Playback runs on
 //! the calling thread until the session reaches a terminal outcome; the
 //! stream is torn down before its report is read.
+use crate::presentation::AudioErrorText;
 mod error;
 
 use crate::editing::Draft;
 use crate::error::{Error, ErrorKind};
-use crate::presentation;
 use crate::recipe::{Origin, RecipeSnapshot, Rendition};
 use crate::session::supervisor::{POLL_INTERVAL, STALL_LIMIT, Supervision, time_limit};
 use crate::session::transport::{BufferTime, Transport};
@@ -274,11 +274,7 @@ pub fn prepare_live(session: Session, draft: &Draft) -> Result<Preparation<Prepa
     let target = draft.check(rate).into_result().map_err(|e| {
         failed(
             &session,
-            Error::caused(
-                ErrorKind::InvalidSound,
-                presentation::invalid_at_rate(draft.title(), rate, &e),
-                e,
-            ),
+            Error::caused(ErrorKind::InvalidSound, e.at_rate(draft.title(), rate), e),
         )
     })?;
     if let Some(report) = stopped_before_start(&session) {

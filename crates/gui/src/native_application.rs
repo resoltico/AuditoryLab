@@ -50,7 +50,11 @@ impl slint::winit_030::CustomApplicationHandler for ApplicationHandler {
     }
 
     fn application_about_title(&self) -> Option<String> {
-        Some("About Auditory Lab".into())
+        Some(
+            auditorylab::vocabulary::Caption::AboutProduct
+                .label()
+                .into(),
+        )
     }
 
     fn about_requested(&mut self, _: &ActiveEventLoop) {
@@ -63,7 +67,10 @@ impl slint::winit_030::CustomApplicationHandler for ApplicationHandler {
 /// Answer AppKit's pending termination request.
 pub(crate) fn reply_to_termination(request: TerminationRequest, approve: bool) {
     if let Err(error) = reply(request, approve) {
-        eprintln!("Quit: {error}");
+        eprintln!(
+            "{}",
+            auditorylab::vocabulary::InterfaceOperation::Quit.failure(error)
+        );
     }
 }
 
@@ -88,9 +95,9 @@ define_class!(
                 auditorylab::session::StopRequest::Accepted | auditorylab::session::StopRequest::AlreadyRequested
             );
             sender.setTitle(&NSString::from_str(if requested {
-                "Stop requested · file dialog stays open"
+                auditorylab::vocabulary::Status::StopInFilePanelRequested.label()
             } else {
-                "Audio already stopped · file dialog stays open"
+                auditorylab::vocabulary::Status::FilePanelAudioStopped.label()
             }));
             sender.setEnabled(false);
         }
@@ -128,19 +135,22 @@ pub(crate) async fn choose_file(
 ) -> Result<Option<std::path::PathBuf>, String> {
     use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use std::task::Poll;
-    let mtm = MainThreadMarker::new().ok_or("File panels require the main thread")?;
+    let mtm = MainThreadMarker::new()
+        .ok_or(auditorylab::vocabulary::Caption::NativeFilePanelUnavailable.label())?;
     let owner = ui.window().window_handle();
     let raw = owner
         .window_handle()
         .map_err(|error| error.to_string())?
         .as_raw();
     let RawWindowHandle::AppKit(handle) = raw else {
-        return Err("File panel requires an AppKit document handle".into());
+        return Err(auditorylab::vocabulary::Caption::NativeFilePanelUnavailable
+            .label()
+            .into());
     };
     // SAFETY: the Slint-owned AppKit handle is live for this entire main-thread future.
     let parent = unsafe { handle.ns_view.cast::<NSView>().as_ref() }
         .window()
-        .ok_or("The document has no native window")?;
+        .ok_or(auditorylab::vocabulary::Caption::NativeWindowUnavailable.label())?;
     let panel = if let Some(name) = filename {
         let panel = NSSavePanel::savePanel(mtm);
         panel.setNameFieldStringValue(&NSString::from_str(name));
@@ -168,7 +178,7 @@ pub(crate) async fn choose_file(
         // void/object action signature.
         let button = unsafe {
             NSButton::buttonWithTitle_target_action(
-                &NSString::from_str("Stop audio · file dialog stays open"),
+                &NSString::from_str(auditorylab::vocabulary::Action::StopInFilePanel.label()),
                 Some(target),
                 Some(sel!(stopAudio:)),
                 mtm,
@@ -190,7 +200,11 @@ pub(crate) async fn choose_file(
                 .URL()
                 .and_then(|url| url.path())
                 .map(|path| Some(std::path::PathBuf::from(path.to_string())))
-                .ok_or_else(|| "The native panel returned no local file path".to_owned())
+                .ok_or_else(|| {
+                    auditorylab::vocabulary::Caption::NativeFilePathUnavailable
+                        .label()
+                        .to_owned()
+                })
         } else {
             Ok(None)
         };

@@ -7,6 +7,7 @@ use crate::generated::{MainWindow, MetadataKey, ParameterKey};
 use crate::test_platform::{install, settle};
 use auditorylab::core::ParameterId;
 use auditorylab::editing::{EditingField, MetadataField};
+use auditorylab::presentation::ParameterText;
 use auditorylab::workspace::{Capabilities, PathPurpose, PromptId, Response, View, Workspace};
 use slint::platform::{Key, WindowEvent};
 use slint::private_unstable_api::re_exports::{
@@ -399,7 +400,7 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
             let row = ui.get_components().row_data(0).unwrap();
             for shown in row.parameters.iter() {
                 let id = parameter_id(shown.key);
-                assert_eq!(shown.label, auditorylab::presentation::labeled(id));
+                assert_eq!(shown.label, (id).input_label());
                 assert_eq!(shown.help, id.descriptor().help);
                 assert_eq!(
                     shown.has_slider,

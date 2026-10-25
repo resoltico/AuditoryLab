@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 fn beside_executable(executable: &Path) -> Result<PathBuf, String> {
     let parent = executable
         .parent()
-        .ok_or("Executable directory is missing")?;
+        .ok_or(auditorylab::vocabulary::Caption::ExecutableDirectoryUnavailable.label())?;
     let directory = if parent.file_name().is_some_and(|name| name == "MacOS")
         && parent
             .parent()
@@ -12,7 +12,7 @@ fn beside_executable(executable: &Path) -> Result<PathBuf, String> {
     {
         parent
             .parent()
-            .ok_or("Bundle Contents is missing")?
+            .ok_or(auditorylab::vocabulary::Caption::BundleResourcesUnavailable.label())?
             .join("Resources")
     } else {
         parent.to_owned()
@@ -25,11 +25,7 @@ fn beside_executable(executable: &Path) -> Result<PathBuf, String> {
     ] {
         let path = directory.join(name);
         if !path.is_file() || std::fs::metadata(&path).map_err(|e| e.to_string())?.len() == 0 {
-            return Err(format!(
-                "Bundled notices are missing or empty: {}. Obtain a complete desktop download from {}",
-                path.display(),
-                auditorylab::identity::SOURCE_URL
-            ));
+            return Err(auditorylab::vocabulary::Caption::missing_notices(&path));
         }
     }
     Ok(directory)

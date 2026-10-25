@@ -1,13 +1,15 @@
 //! Ordinary CLI discovery, selectors, structured output and managed lifecycle grammar.
-use super::{Source, escape, output, prose, usage};
+use super::{Source, output, prose, usage};
 use auditorylab::core::SampleRate;
+use auditorylab::presentation::DisplayText;
 use auditorylab::recipe::RecipeSnapshot;
 use auditorylab::reports::Report;
+use auditorylab::vocabulary::{Caption, CommandProblem, Status};
 use auditorylab::workflow::Cancel;
 use auditorylab::{
     self as lab,
     collection::{CatalogQuery, DateRange, Direction, EntrySummary, GroupBy, Scope, SortBy},
-    library::{LibraryKey, LibraryRoot, LibraryStore, Mutation, VersionToken, WriteOutcome},
+    library::{LibraryKey, LibraryRoot, LibraryStore, Mutation, VersionToken},
 };
 use clap::{Args, Subcommand, ValueEnum};
 use serde_json::Value;
@@ -30,8 +32,11 @@ pub(super) enum ListFormat {
 }
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub(super) enum CollectionArg {
+    #[value(name = Scope::All.cli_key(), help = Scope::All.label())]
     All,
+    #[value(name = Scope::BuiltIn.cli_key(), help = Scope::BuiltIn.label())]
     Builtin,
+    #[value(name = Scope::User.cli_key(), help = Scope::User.label())]
     User,
 }
 impl CollectionArg {
@@ -133,7 +138,7 @@ impl QueryArgs {
         };
         query.validate()?;
         if self.format == ListFormat::Ids && query.group_by != GroupBy::None {
-            return Err(usage("--format ids cannot be combined with grouping"));
+            return Err(usage(CommandProblem::GroupedIds.message()));
         }
         Ok((query, self.format))
     }
@@ -270,7 +275,7 @@ fn parse_analysis(text: &str) -> std::result::Result<lab::core::nominal::Complet
         "complete" => Ok(lab::core::nominal::Completeness::Complete),
         "partial" => Ok(lab::core::nominal::Completeness::Partial),
         "invalid" => Ok(lab::core::nominal::Completeness::Invalid),
-        _ => Err("expected complete, partial or invalid".into()),
+        _ => Err(CommandProblem::AnalysisCoverage.message().into()),
     }
 }
 pub(super) fn store(path: Option<&Path>) -> Result<LibraryStore> {
@@ -298,20 +303,16 @@ pub(super) fn resolve(source: Source, path: Option<&Path>) -> Result<Resolved> {
                     summary,
                 })
             }
-            LibraryKey::External(_) => Err(usage(
-                "temporary selectors are not reusable; use --file or --stdin",
-            )),
+            LibraryKey::External(_) => Err(usage(CommandProblem::TemporarySelector.message())),
         }
     } else {
         let snapshot = if let Some(file) = source.file {
             lab::recipe::load_file(&file)?
         } else {
             if io::stdin().is_terminal() {
-                eprintln!(
-                    "Paste a UTF-8 TOML recipe, then end input with Ctrl-D (Unix) or Ctrl-Z followed by Enter (Windows)."
-                );
+                eprintln!("{}", Caption::PasteRecipe.label());
             }
-            lab::recipe::load_reader(io::stdin().lock(), "standard input")?
+            lab::recipe::load_reader(io::stdin().lock(), Caption::StandardInput.label())?
         };
         let key = LibraryKey::External(lab::library::ExternalId::allocate()?);
         let summary = EntrySummary::from_snapshot(key, &snapshot, None);
@@ -324,7 +325,7 @@ fn builtins() -> Result<Vec<EntrySummary>> {
         .map(|snapshot| {
             let key = match snapshot.origin() {
                 lab::recipe::Origin::BuiltIn(id) => LibraryKey::BuiltIn((*id).into()),
-                _ => return Err(usage("catalog returned a non-builtin origin")),
+                _ => return Err(usage(CommandProblem::CatalogOrigin.message())),
             };
             Ok(EntrySummary::from_snapshot(key, &snapshot, None))
         })
@@ -333,15 +334,11 @@ fn builtins() -> Result<Vec<EntrySummary>> {
 pub(super) fn list(args: ListArgs, path: Option<&Path>) -> Result<u8> {
     let scope = args.collection.scope();
     if !args.files.is_empty() && scope != Scope::All {
-        return Err(usage(
-            "temporary --file inputs cannot be combined with a restrictive --collection",
-        ));
+        return Err(usage(CommandProblem::RestrictedTemporaryInput.message()));
     }
     let (mut query, format) = args.query.query(scope)?;
     if format == ListFormat::Ids && !args.files.is_empty() {
-        return Err(usage(
-            "--format ids cannot emit temporary inputs; omit --file",
-        ));
+        return Err(usage(CommandProblem::TemporaryIds.message()));
     }
     let mut entries = if scope == Scope::User {
         Vec::new()
@@ -372,7 +369,7 @@ pub(super) fn list(args: ListArgs, path: Option<&Path>) -> Result<u8> {
                     complete: false,
                     failure_kind: Some(lab::error::ErrorKind::IncompleteInventory),
                     diagnostics: vec![lab::library::LibraryDiagnostic {
-                        storage_id: "configured root".into(),
+                        storage_id: Caption::ConfiguredRoot.label().into(),
                         code: "root_resolution".into(),
                         message: error.to_string(),
                     }],
@@ -442,31 +439,15 @@ fn print_list(
         }
         ListFormat::Text => {
             for entry in &result.entries {
-                let dates = format!(
-                    "Created {} · Edited {} · Added here {}",
-                    date(entry.created_at),
-                    date(entry.modified_at),
-                    date(entry.added_at)
-                );
-                let text = format!(
-                    "{}\n  {}\n  {} · {}\n  {}\n",
-                    scalar(&entry.title),
-                    entry.key,
-                    lab::presentation::nominal_description(&entry.nominal),
-                    lab::presentation::human_duration(entry.duration_seconds),
-                    dates
-                );
-                output(text.as_bytes())?;
+                output(entry.list_description().as_bytes())?;
             }
             if !complete {
-                eprintln!(
-                    "Incomplete inventory: valid results above do not establish an empty/complete library."
-                );
+                eprintln!("{}", Status::InventoryIncomplete.label());
             }
             for diagnostic in diagnostics {
                 eprintln!(
                     "{}: {}",
-                    scalar(&diagnostic.storage_id),
+                    diagnostic.storage_id.display_scalar(),
                     prose(&diagnostic.message)
                 );
             }
@@ -478,24 +459,11 @@ pub(super) fn describe(resolved: &Resolved, format: ReadFormat) -> Result<()> {
     if format == ReadFormat::Json {
         print_json(&Report::describe(&resolved.summary, &resolved.snapshot)?)?;
     } else {
-        let extra = if resolved.summary.added_at.is_some() {
-            format!(
-                "Added here: {}\nTrash: {}\nVersion token: {}\n",
-                date(resolved.summary.added_at),
-                date(resolved.summary.trashed_at),
-                resolved
-                    .summary
-                    .version_token
-                    .as_ref()
-                    .map_or_else(|| "None".into(), ToString::to_string)
-            )
-        } else {
-            String::new()
-        };
+        let extra = resolved.summary.membership_description();
         output(
             format!(
                 "{}{}\n",
-                prose(&lab::presentation::describe(&resolved.snapshot)),
+                prose(&resolved.snapshot.description()),
                 prose(&extra)
             )
             .as_bytes(),
@@ -506,7 +474,7 @@ pub(super) fn describe(resolved: &Resolved, format: ReadFormat) -> Result<()> {
 pub(super) fn inspect(resolved: &Resolved, rate: SampleRate, format: ReadFormat) -> Result<u8> {
     if format == ReadFormat::Text {
         let sound = resolved.snapshot.at(rate);
-        output(format!("{}\n", prose(&lab::presentation::inspection(&sound?))).as_bytes())?;
+        output(format!("{}\n", prose(&sound?.inspection())).as_bytes())?;
         return Ok(0);
     }
     let (report, code) = Report::inspect(&resolved.summary, &resolved.snapshot, rate);
@@ -525,16 +493,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                     if format == ReadFormat::Json {
                         print_json(&Report::unavailable_path(operation, &root, exists, &error))?;
                     } else {
-                        output(
-                            format!(
-                                "{}\nExists: {:?} · Initialized: unverified · Source: {:?}\n{}\n",
-                                root.path().display(),
-                                exists,
-                                root.source(),
-                                error
-                            )
-                            .as_bytes(),
-                        )?;
+                        output(root.inspection_failure(exists, &error).as_bytes())?;
                     }
                     return Ok(
                         if matches!(
@@ -551,36 +510,16 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
             if format == ReadFormat::Json {
                 print_json(&Report::path(operation, info.clone()))?;
             } else {
-                output(
-                    format!(
-                        "{}\nExists: {} · Initialized: {} · Source: {:?}\n",
-                        info.path.display(),
-                        info.exists,
-                        info.initialized,
-                        info.source
-                    )
-                    .as_bytes(),
-                )?;
+                output(info.description().as_bytes())?;
             }
             Ok(0)
         }
         LibraryCommand::Init { format } => {
             let initialized = store(path)?.root().initialize()?;
             if format == ReadFormat::Json {
-                print_mutation_json(&Report::initialized(operation, &initialized), true)?;
+                print_mutation_json(&Report::initialized(operation, &initialized))?;
             } else {
-                output(
-                    format!(
-                        "Library {}: {}\n",
-                        if initialized.created {
-                            "initialized"
-                        } else {
-                            "already initialized"
-                        },
-                        initialized.path.display()
-                    )
-                    .as_bytes(),
-                )?;
+                output(initialized.description().as_bytes())?;
             }
             Ok(0)
         }
@@ -605,23 +544,16 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
             if format == ReadFormat::Json {
                 print_json(&Report::inventory(operation, &inventory))?;
             } else {
-                output(
-                    format!(
-                        "Library check: {} managed records · complete={}\n",
-                        inventory.entries.len(),
-                        inventory.complete
-                    )
-                    .as_bytes(),
-                )?;
+                output(inventory.description().as_bytes())?;
                 for diagnostic in &inventory.diagnostics {
                     eprintln!(
                         "{}: {}",
-                        scalar(&diagnostic.storage_id),
+                        diagnostic.storage_id.display_scalar(),
                         prose(&diagnostic.message)
                     );
                 }
                 for stage in &inventory.stages {
-                    output(format!("Retained stage: {}\n", scalar(stage)).as_bytes())?;
+                    output(Caption::retained_stage(stage).as_bytes())?;
                 }
             }
             Ok(inventory
@@ -710,9 +642,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                     format,
                 } => {
                     if !yes {
-                        return Err(usage(
-                            "permanent deletion requires --yes and a fresh --expect token",
-                        ));
+                        return Err(usage(CommandProblem::PurgeConfirmation.message()));
                     }
                     (
                         Mutation::Purge {
@@ -756,67 +686,19 @@ fn apply_and_report_mutation(
     let mut bytes = if format == ReadFormat::Json {
         json_bytes(&Report::mutation(operation, &outcome))?
     } else {
-        mutation_text(&outcome, store.root().path()).into_bytes()
+        outcome.description(store.root().path()).into_bytes()
     };
     bytes.push(b'\n');
     if let Err(error) = stdout.write_all(&bytes).and_then(|()| stdout.flush()) {
-        // Include every comparison value even if stdout received only a prefix.
-        // A lost completion pipe cannot turn a publication into NotSaved.
-        let mut report = mutation_text(&outcome, store.root().path());
-        if outcome.confirmed() {
-            report.push('\n');
-            report.push_str(&recovery_text(&outcome, store.root().path()));
-        }
-        let truth = if outcome.confirmed() {
-            "Operation confirmed"
-        } else {
-            "Publication remains unconfirmed; Recheck before retry"
-        };
+        // Publication truth is established before this notification can fail.
         let _ = writeln!(
             stderr,
-            "{truth}\n{report}\nCompletion output failed: {error}"
+            "{}",
+            outcome.reporting_failure(store.root().path(), &error)
         );
         let _ = stderr.flush();
     }
     Ok(code)
-}
-fn mutation_text(outcome: &WriteOutcome, root: &Path) -> String {
-    let mut text = format!("{:?}: {}", outcome.status, outcome.receipt.key);
-    for diagnostic in &outcome.diagnostics {
-        text.push('\n');
-        text.push_str(&escape(diagnostic));
-    }
-    if !outcome.confirmed() {
-        text.push('\n');
-        text.push_str(&recovery_text(outcome, root));
-    }
-    text
-}
-fn recovery_text(outcome: &WriteOutcome, root: &Path) -> String {
-    let receipt = &outcome.receipt;
-    let previous = receipt
-        .previous
-        .as_ref()
-        .map_or_else(|| "None (no previous record)".into(), ToString::to_string);
-    let candidate = receipt.candidate_token.as_ref().map_or_else(
-        || "None (purge has no candidate record)".into(),
-        ToString::to_string,
-    );
-    let stage = receipt
-        .owned_stage
-        .as_ref()
-        .map_or_else(|| "None".into(), |stage| scalar(stage));
-    let root = scalar(&root.display().to_string());
-    format!(
-        "Recovery receipt\nLibrary root: {root}\nOperation revision: {}\nSelector: {}\nPrevious version token: {previous}\nCandidate version token: {candidate}\nOwned stage: {stage}\nRecheck in this same library root with: auditorylab describe {} --format json\nCompare the observed version_token with this candidate/previous token before deciding another operation. Do not blindly retry. Absence alone does not attribute a purge.",
-        receipt.operation_revision, receipt.key, receipt.key
-    )
-}
-fn date(value: Option<lab::core::Timestamp>) -> String {
-    value.map_or_else(|| "Unknown".into(), |date| date.to_string())
-}
-fn scalar(value: &str) -> String {
-    escape(value).replace('\n', "\\n").replace('\t', "\\t")
 }
 fn json_bytes(value: &Report) -> Result<Vec<u8>> {
     let text = serde_json::to_string(value)?;
@@ -838,7 +720,7 @@ pub(super) fn print_json(value: &Report) -> Result<()> {
     output(b"\n")?;
     Ok(())
 }
-fn print_mutation_json(value: &Report, confirmed: bool) -> Result<()> {
+fn print_mutation_json(value: &Report) -> Result<()> {
     let mut bytes = json_bytes(value)?;
     bytes.push(b'\n');
     if let Err(error) = io::stdout()
@@ -846,16 +728,7 @@ fn print_mutation_json(value: &Report, confirmed: bool) -> Result<()> {
         .write_all(&bytes)
         .and_then(|()| io::stdout().lock().flush())
     {
-        eprintln!(
-            "{}; completion output failed: {error}; receipt {}",
-            if confirmed {
-                "Operation confirmed"
-            } else {
-                "Publication remains unconfirmed; Recheck before retry"
-            },
-            serde_json::to_string(&value.receipt)
-                .unwrap_or_else(|error| format!("receipt rendering failed: {error}"))
-        );
+        eprintln!("{}", value.reporting_failure(&error));
     }
     Ok(())
 }
@@ -970,7 +843,8 @@ mod recovery_tests {
                     stdout
                 })
                 .unwrap();
-                assert!(report.contains("PublicationUnconfirmed"));
+                assert!(report.contains("Publication not confirmed"));
+                assert!(!report.contains("PublicationUnconfirmed"));
                 assert!(report.contains("Do not blindly retry"));
                 assert!(report.contains("Absence alone does not attribute a purge"));
                 assert!(
@@ -1044,7 +918,7 @@ mod recovery_tests {
         );
         assert!(err.is_empty());
         let text = String::from_utf8(out).unwrap();
-        assert!(text.starts_with("Published: user:"));
+        assert!(text.starts_with("Saved: user:"));
         assert_eq!(text.lines().count(), 1);
         let recipe = Arc::new(lab::editing::Draft::new().unwrap().recipe());
         let key = LibraryKey::User(recipe.document.id);
