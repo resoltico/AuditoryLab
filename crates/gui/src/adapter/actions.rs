@@ -61,12 +61,12 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             let ranges = [auditorylab::calendar::local_range(&cf,&ct), auditorylab::calendar::local_range(&mf,&mt), auditorylab::calendar::local_range(&af,&at)];
             let [Ok(created),Ok(modified),Ok(added)] = ranges else { w.library_filter_error("Invalid calendar range. Use ordered YYYY-MM-DD dates with a unique local midnight; prior filters retained."); return; };
             use auditorylab::collection::{Direction,GroupBy};
-            use auditorylab::{Population,ConditionRole};
+            use auditorylab::core::{Population, ConditionRole};
             query.created=created;query.modified=modified;query.added=added;
             query.studies=if study.trim().is_empty() { Vec::new() } else { vec![study.to_string()] };
             query.populations=choice(&[Population::Human,Population::Mouse,Population::OtherAnimal,Population::Mixed,Population::NotApplicable,Population::Unspecified],population-1).into_iter().collect();
             query.roles=choice(&[ConditionRole::Test,ConditionRole::Comparison,ConditionRole::Mixed,ConditionRole::Unspecified],role-1).into_iter().collect();
-            query.analysis=choice(&[auditorylab::nominal::Completeness::Complete,auditorylab::nominal::Completeness::Partial,auditorylab::nominal::Completeness::Invalid],analysis-1);
+            query.analysis=choice(&[auditorylab::core::nominal::Completeness::Complete,auditorylab::core::nominal::Completeness::Partial,auditorylab::core::nominal::Completeness::Invalid],analysis-1);
             query.direction=choice(&[Direction::Asc,Direction::Desc],direction-1);
             query.group_by=choice(&[GroupBy::None,GroupBy::Band,GroupBy::Method,GroupBy::Study,GroupBy::Collection],group).unwrap_or(GroupBy::None);
             if let Err(error) = w.set_catalog_query(query) { w.library_filter_error(&error.to_string()); }
@@ -121,7 +121,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         .command(|w| w.navigate_library(direction)));
     on!(on_search, |a, query| a.command(|w| w.set_query(&query)));
     on!(on_rhythm_filter, |a, band, method| {
-        use auditorylab::nominal::{Band, Method};
+        use auditorylab::core::nominal::{Band, Method};
         use auditorylab::query::{RhythmQuery, RhythmState};
         let mut query = RhythmQuery::default();
         match band {
@@ -216,7 +216,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             window.set_heading(
                 format!(
                     "Sound details · {}",
-                    auditorylab::display_scalar(&library.title)
+                    auditorylab::presentation::display_scalar(&library.title)
                 )
                 .into(),
             );

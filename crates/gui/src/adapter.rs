@@ -19,13 +19,13 @@ use crate::generated::{
 };
 use crate::{details_parent, motion, scope, typography};
 use actions::install_actions;
+use auditorylab::core::{CarrierKind, ComponentId, Ears, ModulationKind, ParameterId};
+use auditorylab::editing::{DocumentId, EditingField, FieldHandle, MetadataField};
+use auditorylab::session::PlaybackPhase;
+use auditorylab::waveform_view::{ModelView, WaveformCapture};
 use auditorylab::workspace::{
     ComponentView, EditorView, Effect, MetadataView, MotionPreference, ParameterView, PathPurpose,
     PromptId, Response, View, Workspace,
-};
-use auditorylab::{
-    CarrierKind, ComponentId, DocumentId, Ears, EditingField, FieldHandle, MetadataField,
-    ModelView, ModulationKind, ParameterId, PlaybackPhase, WaveformCapture,
 };
 use auxiliary::{install_auxiliary, install_monitor};
 use editing::install_editing;
@@ -38,7 +38,7 @@ use std::{
     time::Duration,
 };
 
-use auditorylab::{MONITOR_SCALES as SCALES, MONITOR_SPANS_MS as SPANS_MS};
+use auditorylab::controls::{MONITOR_SCALES as SCALES, MONITOR_SPANS_MS as SPANS_MS};
 /// Tick intervals while work is running and while idle.
 const ACTIVE_TICK: Duration = Duration::from_millis(50);
 const IDLE_TICK: Duration = Duration::from_millis(200);
@@ -240,10 +240,13 @@ impl SlintAdapter {
             counts: TestCounts::default(),
         });
         set_choices(ui, &windows.monitor);
-        ui.set_window_index(index_of(&SPANS_MS, &auditorylab::DEFAULT_MONITOR_SPAN_MS));
+        ui.set_window_index(index_of(
+            &SPANS_MS,
+            &auditorylab::controls::DEFAULT_MONITOR_SPAN_MS,
+        ));
         ui.set_scale_index(index_of(
             &SCALES.map(|(scale, _)| scale),
-            &auditorylab::DEFAULT_MONITOR_SCALE,
+            &auditorylab::controls::DEFAULT_MONITOR_SCALE,
         ));
         ui.set_components(ModelRc::from(adapter.components.clone()));
         ui.set_catalog(ModelRc::from(adapter.catalog.clone()));
@@ -251,8 +254,8 @@ impl SlintAdapter {
         ui.set_guidance(
             format!(
                 "{} {}",
-                auditorylab::Notice::LowStartingVolume,
-                auditorylab::Notice::HeadphonesForSeparateEars
+                auditorylab::presentation::Notice::LowStartingVolume,
+                auditorylab::presentation::Notice::HeadphonesForSeparateEars
             )
             .into(),
         );
@@ -456,7 +459,7 @@ impl SlintAdapter {
 
     /// The current audio session's Stop control, for a native control bound
     /// to exactly that session.
-    pub(crate) fn audio_control(&self) -> Option<auditorylab::PlaybackControl> {
+    pub(crate) fn audio_control(&self) -> Option<auditorylab::session::PlaybackControl> {
         self.workspace
             .borrow()
             .as_ref()
@@ -481,7 +484,7 @@ impl SlintAdapter {
             .as_ref()
             .map(|w| w.editor().draft().title().to_owned())
             .unwrap_or_default();
-        let title = auditorylab::display_scalar(&title);
+        let title = auditorylab::presentation::display_scalar(&title);
         match title.char_indices().nth(60) {
             Some((cut, _)) => format!("{}…", &title[..cut]),
             None => title,
@@ -706,7 +709,11 @@ impl SlintAdapter {
             let band = rhythm
                 .bands
                 .first()
-                .and_then(|b| auditorylab::nominal::Band::ALL.iter().position(|v| v == b))
+                .and_then(|b| {
+                    auditorylab::core::nominal::Band::ALL
+                        .iter()
+                        .position(|v| v == b)
+                })
                 .and_then(|i| i32::try_from(i + 1).ok())
                 .unwrap_or(match rhythm.state {
                     Some(auditorylab::query::RhythmState::OutsideBands) => 6,
@@ -721,7 +728,7 @@ impl SlintAdapter {
                     .methods
                     .first()
                     .and_then(|m| {
-                        auditorylab::nominal::Method::ALL
+                        auditorylab::core::nominal::Method::ALL
                             .iter()
                             .position(|v| v == m)
                     })
@@ -928,7 +935,7 @@ impl SlintAdapter {
                 let [left, right] = scope::paths(capture.bins(), capture.limit());
                 ui.set_left_path(left.into());
                 ui.set_right_path(right.into());
-                ui.set_scale_label(auditorylab::axis_limit(capture.limit()).into());
+                ui.set_scale_label(auditorylab::presentation::axis_limit(capture.limit()).into());
                 ui.set_capture_duration(format!("{:.2} ms", capture.milliseconds()).into());
             } else {
                 ui.set_left_path(SharedString::new());
@@ -1203,7 +1210,7 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
             .map(|k| {
                 format!(
                     "Add {}",
-                    auditorylab::default_component(*k)
+                    auditorylab::controls::default_component(*k)
                         .role()
                         .label()
                         .to_lowercase()
@@ -1228,13 +1235,13 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     monitor.set_span_choices(spans);
     monitor.set_scale_choices(scales);
     ui.set_library_play_labels(strings(
-        auditorylab::LIBRARY_PLAY_LABELS
+        auditorylab::presentation::LIBRARY_PLAY_LABELS
             .iter()
             .map(|s| (*s).to_owned())
             .collect(),
     ));
     ui.set_transport_labels(strings(
-        auditorylab::TRANSPORT_LABELS
+        auditorylab::presentation::TRANSPORT_LABELS
             .iter()
             .map(|label| (*label).to_owned())
             .collect(),
@@ -1418,7 +1425,7 @@ pub(crate) fn hide_monitor_window(
 }
 
 fn about_identity() -> String {
-    let identity = auditorylab::BUILD_IDENTITY;
+    let identity = auditorylab::identity::BUILD_IDENTITY;
     format!("Version {} (Build {})", identity.version, identity.build)
 }
 
@@ -1440,7 +1447,7 @@ fn open_web(url: &str) {
 
 // Keep display escaping separate from lossless editable field models and bindings.
 fn read_only(text: &str) -> SharedString {
-    auditorylab::display_text(text).into()
+    auditorylab::presentation::display_text(text).into()
 }
 
 #[cfg(test)]

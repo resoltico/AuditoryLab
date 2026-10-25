@@ -1,10 +1,12 @@
 //! Command-line interface to Auditory Lab.
 #![forbid(unsafe_code)]
 mod library_cli;
-use auditorylab::{
-    self as lab, Cancel, EndReason, ErrorKind, PlaybackControl, Preparation, Progress,
-    RecipeSnapshot, Replace, SampleRate, Session,
-};
+use auditorylab::core::SampleRate;
+use auditorylab::error::ErrorKind;
+use auditorylab::recipe::RecipeSnapshot;
+use auditorylab::session::{EndReason, PlaybackControl, Preparation, Session};
+use auditorylab::workflow::{Cancel, Progress, Replace};
+use auditorylab::{self as lab};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use std::{
     io::{self, IsTerminal, Write},
@@ -12,7 +14,7 @@ use std::{
     process::ExitCode,
 };
 #[derive(Parser)]
-#[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = lab::version_line("auditorylab").trim_start_matches("auditorylab ").to_owned())]
+#[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = lab::identity::version_line("auditorylab").trim_start_matches("auditorylab ").to_owned())]
 struct Cli {
     /// Absolute persistent User Library override (then environment, then native data).
     #[arg(long,global=true,value_name="ABSOLUTE_PATH",value_parser=absolute_path)]
@@ -103,7 +105,7 @@ fn usage(message: &str) -> Box<dyn std::error::Error> {
 fn exit_code(kind: ErrorKind) -> u8 {
     kind.exit_code()
 }
-use auditorylab::display_text as escape;
+use auditorylab::presentation::display_text as escape;
 fn prose(text: &str) -> String {
     let width = if io::stdout().is_terminal() {
         textwrap::termwidth().saturating_sub(2).max(1)
@@ -182,30 +184,35 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> 
     let mut playback = match lab::device::prepare_playback(session, snapshot)? {
         Preparation::Ready(playback) => playback,
         Preparation::Stopped(report) => {
-            eprintln!("{}", prose(&lab::playback_result(&report)));
+            eprintln!("{}", prose(&lab::presentation::playback_result(&report)));
             return Ok(Ended::Stopped);
         }
     };
     eprintln!(
         "{}\nPress Ctrl-C to stop.",
-        prose(&lab::playback_preamble(
+        prose(&lab::presentation::playback_preamble(
             snapshot,
             playback.output(),
             playback.signal()
         ))
     );
     let sound = snapshot.at(playback.output().sample_rate)?;
-    eprintln!("{}", prose(&lab::sound_description(&sound, false)));
+    eprintln!(
+        "{}",
+        prose(&lab::presentation::sound_description(&sound, false))
+    );
     let report = if io::stderr().is_terminal() {
-        let mut reader = playback.monitor(lab::MonitorDetail::Quantities).reader();
+        let mut reader = playback
+            .monitor(lab::session::MonitorDetail::Quantities)
+            .reader();
         let done = std::sync::atomic::AtomicBool::new(false);
         std::thread::scope(
-            |scope| -> Result<lab::PlaybackReport, Box<dyn std::error::Error>> {
+            |scope| -> Result<lab::session::PlaybackReport, Box<dyn std::error::Error>> {
                 let printer = scope.spawn(|| {
                     let mut terminal = StatusLine { active: false };
                     while !done.load(std::sync::atomic::Ordering::Acquire) {
                         reader.poll(0);
-                        terminal.draw(&lab::playback_status(&reader));
+                        terminal.draw(&lab::presentation::playback_status(&reader));
                         std::thread::sleep(std::time::Duration::from_millis(250));
                     }
                 });
@@ -222,7 +229,7 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> 
     } else {
         playback.play()?
     };
-    eprintln!("{}", prose(&lab::playback_result(&report)));
+    eprintln!("{}", prose(&lab::presentation::playback_result(&report)));
     Ok(if report.end == EndReason::Stopped {
         Ended::Stopped
     } else {
@@ -250,7 +257,9 @@ fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
         }) => {
             let key: lab::library::LibraryKey = selector.parse()?;
             let text = match &key {
-                lab::library::LibraryKey::BuiltIn(id) => lab::builtin_source(id)?.to_owned(),
+                lab::library::LibraryKey::BuiltIn(id) => {
+                    lab::recipe::builtin_source(id)?.to_owned()
+                }
                 lab::library::LibraryKey::User(_) => {
                     library_cli::store(cli.library_dir.as_deref())?
                         .load(&key)?
@@ -262,7 +271,7 @@ fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
                 }
             };
             if let Some(path) = path {
-                lab::save_recipe_text(&text, &path, Replace::Never)?;
+                lab::workflow::save_recipe_text(&text, &path, Replace::Never)?;
                 completed(&format!("Exported recipe to {path:?}."));
             } else {
                 output(text.as_bytes())?;
@@ -301,7 +310,13 @@ fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
                     sample_rate.hz()
                 ))
             );
-            let result = lab::export(&sound, &path, Replace::Never, &cancel, &Progress::default())?;
+            let result = lab::workflow::export(
+                &sound,
+                &path,
+                Replace::Never,
+                &cancel,
+                &Progress::default(),
+            )?;
             completed(&format!(
                 "Exported {} frames to {path:?} ({}).",
                 result.frames, result.container
@@ -356,7 +371,7 @@ fn main() -> ExitCode {
         Ok(Ended::Code(code)) => ExitCode::from(code),
         Err(e) => {
             let mut message = e.to_string();
-            if e.downcast_ref::<lab::Error>()
+            if e.downcast_ref::<lab::error::Error>()
                 .is_some_and(|e| e.kind() == ErrorKind::UnknownRecipe)
             {
                 message.push_str("; run `auditorylab list`, or use --file PATH");
@@ -364,7 +379,7 @@ fn main() -> ExitCode {
             let code = if e.downcast_ref::<Usage>().is_some() {
                 2
             } else {
-                e.downcast_ref::<lab::Error>()
+                e.downcast_ref::<lab::error::Error>()
                     .map_or(1, |e| exit_code(e.kind()))
             };
             if json {

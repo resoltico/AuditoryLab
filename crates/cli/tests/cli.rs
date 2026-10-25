@@ -63,7 +63,7 @@ fn commands_sources_and_exit_codes() {
     );
     assert_eq!(
         cli(&["recipe", ID]).stdout,
-        auditorylab::builtin_source("chan-2022-clicks-40-hz")
+        auditorylab::recipe::builtin_source("chan-2022-clicks-40-hz")
             .unwrap()
             .as_bytes()
     );
@@ -283,14 +283,15 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
 fn unicode_notes_roundtrip_and_terminal_controls_are_escaped_at_display_boundary() {
     let dir = dir();
     let path = dir.path().join("notes.toml");
-    let mut recipe = auditorylab::Recipe::parse(std::str::from_utf8(SILENCE).unwrap()).unwrap();
-    recipe.description = Some(auditorylab::Description {
+    let mut recipe =
+        auditorylab::core::Recipe::parse(std::str::from_utf8(SILENCE).unwrap()).unwrap();
+    recipe.description = Some(auditorylab::core::Description {
         title: "Rīga \"🎧\"".into(),
         notes: Some("Line one\nLine two \u{1b}[31m \u{202e}reverse".into()),
     });
     let text = recipe.to_toml().unwrap();
     fs::write(&path, &text).unwrap();
-    assert_eq!(auditorylab::Recipe::parse(&text).unwrap(), recipe);
+    assert_eq!(auditorylab::core::Recipe::parse(&text).unwrap(), recipe);
     for command in ["describe", "inspect"] {
         let out = cli(&[command, "--file", path.to_str().unwrap()]);
         assert!(out.status.success(), "{out:?}");

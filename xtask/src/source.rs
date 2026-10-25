@@ -1,7 +1,7 @@
 //! Frozen commit identity and deterministic archive time inputs.
 use crate::{Result, capture};
 use std::{env, process::Command};
-#[path = "../../crates/lib/identity_input.rs"]
+#[path = "../../crates/app/identity_input.rs"]
 mod identity_input;
 
 // ZIP's civil date range is the common representable range for every product.

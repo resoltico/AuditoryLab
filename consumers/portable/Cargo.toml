@@ -7,6 +7,6 @@ edition = "2024"
 publish = false
 
 [dependencies]
-auditorylab = { path = "../../crates/lib", default-features = false }
+auditorylab = { path = "../../crates/app", default-features = false }
 
 [workspace]

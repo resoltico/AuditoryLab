@@ -5,7 +5,7 @@ Auditory Lab has a pure synthesis core, one shared application library and two f
 | Package | Responsibility |
 |---|---|
 | [`auditorylab-core`](../crates/core) | Recipe schema and model, semantic parameter descriptors, validation, compilation into targets, seekable and live synthesis, recipe writing, timing models and waveform extrema. `no_std` with `alloc`. |
-| [`auditorylab`](../crates/lib) | Recipe snapshots, editing sessions, control ranges, WAV export, staged file publication, portable playback sessions and monitoring, the interactive `Workspace`, shared presentation and, with the `device-playback` feature, default-device playback. |
+| [`auditorylab`](../crates/app) | Recipe snapshots, editing sessions, control ranges, WAV export, staged file publication, portable playback sessions and monitoring, the interactive `Workspace`, shared presentation and, with the `device-playback` feature, default-device playback. |
 | [`auditorylab-cli`](../crates/cli) | clap grammar, terminal layout, exit codes and interrupts; binary `auditorylab`. |
 | [`auditorylab-gui`](../crates/gui) | Slint windows, the adapter that binds them to a `Workspace`, native dialogs, preferences and macOS application integration. |
 | [`xtask`](../xtask) | Archives, notices, smoke checks and release notes. |

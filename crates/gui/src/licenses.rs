@@ -28,7 +28,7 @@ fn beside_executable(executable: &Path) -> Result<PathBuf, String> {
             return Err(format!(
                 "Bundled notices are missing or empty: {}. Obtain a complete desktop download from {}",
                 path.display(),
-                auditorylab::SOURCE_URL
+                auditorylab::identity::SOURCE_URL
             ));
         }
     }

@@ -1,13 +1,13 @@
 //! Edit, compile, export and generate live audio with the library's default
 //! features, and confirm the shared workspace refuses device playback.
 use auditorylab::workspace::{Capabilities, Refusal, Workspace};
-use auditorylab::{
-    Cancel, Draft, EditingField, EditorSession, LiveGenerator, ParameterId, Progress, Replace,
-    SampleRate,
-};
+use auditorylab::workflow::{Cancel, Progress, Replace};
+use auditorylab::editing::{Draft, EditingField, EditorSession};
+use auditorylab::session::{LiveGenerator};
+use auditorylab::core::{ParameterId, SampleRate};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let catalog = auditorylab::catalog()?;
+    let catalog = auditorylab::recipe::catalog()?;
     let snapshot = catalog.first().ok_or("empty catalog")?.clone();
     let rate = SampleRate::DEFAULT;
 
@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .components()
         .first()
         .ok_or("recipe without components")?;
-    let parameter=match component.node {auditorylab::Node::Voice(_)=>ParameterId::PeakLevel,_=>ParameterId::PairFirstLevel};
+    let parameter=match component.node {auditorylab::core::Node::Voice(_)=>ParameterId::PeakLevel,_=>ParameterId::PairFirstLevel};
     let level = editor.handle(EditingField::Parameter(component.id, parameter));
     editor
         .stage(level, "-40")
@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let path =
         std::env::temp_dir().join(format!("auditorylab-portable-{}.wav", std::process::id()));
-    let exported = auditorylab::export(
+    let exported = auditorylab::workflow::export(
         &sound,
         &path,
         Replace::Never,

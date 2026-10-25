@@ -81,7 +81,7 @@ impl SlintAdapter {
                 .and_then(|i| i32::try_from(i).ok())
                 .unwrap_or(-1),
         );
-        ui.set_sound_title(auditorylab::display_scalar(&library.title).into());
+        ui.set_sound_title(auditorylab::presentation::display_scalar(&library.title).into());
         ui.set_structure(read_only(&library.structure));
         ui.set_studied(read_only(&library.studied));
         ui.set_recipe_timing(read_only(&library.timing));

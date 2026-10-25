@@ -3,7 +3,8 @@
 use crate::adapter::hide_monitor_window;
 use crate::adapter_tests::Harness;
 use crate::generated::MonitorWindow;
-use auditorylab::{EditingField, ParameterId};
+use auditorylab::core::ParameterId;
+use auditorylab::editing::EditingField;
 use slint::platform::{Key, WindowEvent};
 use slint::private_unstable_api::re_exports::{
     Flickable, FocusReason, ItemRc, TextInput, WindowInner,

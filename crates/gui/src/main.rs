@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if args == ["--version"] {
-        println!("{}", auditorylab::version_line("auditorylab-gui"));
+        println!("{}", auditorylab::identity::version_line("auditorylab-gui"));
         return Ok(());
     }
     if !args.is_empty() {
@@ -71,7 +71,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     selector.select()?;
     let windows = Windows::new()?;
     let workspace =
-        Workspace::configured_library(auditorylab::catalog()?, Capabilities::available())?;
+        Workspace::configured_library(auditorylab::recipe::catalog()?, Capabilities::available())?;
     let adapter = SlintAdapter::install(
         &windows,
         workspace,

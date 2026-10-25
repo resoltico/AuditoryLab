@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/lib", "crates/cli", "crates/gui", "xtask"]
+members = ["crates/core", "crates/app", "crates/cli", "crates/gui", "xtask"]
 # Vendored patch sources are not members; tests needing their own dev-dependencies run from their manifests.
 exclude = ["third_party"]
 
@@ -27,7 +27,7 @@ serde_json = "1"
 sha2 = "0.10"
 unicode-normalization = "0.1.25"
 allocation-counter = "0.8.1"
-auditorylab = { path = "crates/lib" }
+auditorylab = { path = "crates/app" }
 auditorylab-core = { path = "crates/core" }
 cpal = "0.18.2"
 ctrlc = { version = "3.5.2", features = ["termination"] }

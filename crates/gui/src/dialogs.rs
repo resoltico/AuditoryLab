@@ -30,7 +30,7 @@ impl Shell for NativeShell {
             adapter.respond(prompt, Response::Cancel);
             return;
         };
-        let title = auditorylab::display_scalar(&title);
+        let title = auditorylab::presentation::display_scalar(&title);
         answer(adapter, prompt, async move {
             use slint::ComponentHandle;
             let choice = rfd::AsyncMessageDialog::new()
@@ -131,7 +131,7 @@ async fn file_path(
     ui: &crate::MainWindow,
     filename: Option<&str>,
     extension: &str,
-    control: Option<auditorylab::PlaybackControl>,
+    control: Option<auditorylab::session::PlaybackControl>,
 ) -> Result<Option<std::path::PathBuf>, String> {
     #[cfg(target_os = "macos")]
     {

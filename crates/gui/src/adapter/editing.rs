@@ -125,10 +125,10 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                     }
                 }
                 2 => {
-                    a.command(|w| w.add_pair(document, auditorylab::PairKind::Binaural));
+                    a.command(|w| w.add_pair(document, auditorylab::core::PairKind::Binaural));
                 }
                 3 => {
-                    a.command(|w| w.add_pair(document, auditorylab::PairKind::Monaural));
+                    a.command(|w| w.add_pair(document, auditorylab::core::PairKind::Monaural));
                 }
                 _ => {}
             }
