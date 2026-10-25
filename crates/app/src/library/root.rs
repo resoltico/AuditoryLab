@@ -138,12 +138,14 @@ impl LibraryRoot {
                     lease.directory(name)?;
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    let mut builder = cap_std::fs::DirBuilder::new();
+                    let builder = cap_std::fs::DirBuilder::new();
                     #[cfg(unix)]
-                    {
+                    let builder = {
                         use cap_std::fs::DirBuilderExt;
+                        let mut builder = builder;
                         builder.mode(0o700);
-                    }
+                        builder
+                    };
                     lease
                         .dir
                         .create_dir_with(name, &builder)
