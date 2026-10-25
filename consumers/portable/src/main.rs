@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .first()
         .ok_or("recipe without components")?;
     let parameter=match component.node {auditorylab::core::Node::Voice(_)=>ParameterId::PeakLevel,_=>ParameterId::PairFirstLevel};
-    let level = editor.handle(EditingField::Parameter(component.id, parameter));
+    let level = editor.handle(EditingField::Parameter(component.id, parameter)).map_err(|refusal| format!("{refusal:?}"))?;
     editor
         .stage(level, "-40")
         .map_err(|refusal| format!("stage refused: {refusal:?}"))?;

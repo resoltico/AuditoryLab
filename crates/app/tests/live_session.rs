@@ -162,22 +162,28 @@ fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarg
     use auditorylab::editing::{EditingField, EditorSession};
     let mut editor = EditorSession::new(Draft::new().unwrap()).unwrap();
     let owner = editor
-        .add_pair(editor.document(), PairKind::Binaural)
+        .add_pair(editor.document_key(), PairKind::Binaural)
         .unwrap();
     let mut generator = LiveGenerator::new(target(editor.draft()));
     let control = generator.control();
     control.update(&target(editor.draft())).unwrap();
     generator.render(&mut [[0.0; 2]; 2000]);
     let commit = |editor: &mut EditorSession, parameter, value: &str| {
-        let handle = editor.handle(EditingField::Parameter(owner, parameter));
+        let handle = editor
+            .handle(EditingField::Parameter(owner, parameter))
+            .unwrap();
         editor.commit_field(handle, value).unwrap().unwrap();
     };
     for (first, offset) in [(300.0, 6.0), (400.0, -2.0), (200.0, 40.0)] {
-        let first_handle = editor.handle(EditingField::Parameter(
-            owner,
-            ParameterId::PairFirstFrequency,
-        ));
-        let offset_handle = editor.handle(EditingField::Parameter(owner, ParameterId::PairOffset));
+        let first_handle = editor
+            .handle(EditingField::Parameter(
+                owner,
+                ParameterId::PairFirstFrequency,
+            ))
+            .unwrap();
+        let offset_handle = editor
+            .handle(EditingField::Parameter(owner, ParameterId::PairOffset))
+            .unwrap();
         editor.stage(first_handle, &first.to_string()).unwrap();
         editor.stage(offset_handle, &offset.to_string()).unwrap();
         editor.commit().unwrap();
@@ -197,9 +203,11 @@ fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarg
     assert_eq!(generator.observation().unwrap(), before);
     commit(&mut editor, ParameterId::PairOffset, "2");
     let revision = control.update(&target(editor.draft())).unwrap();
-    let title = editor.handle(EditingField::Metadata(
-        auditorylab::editing::MetadataField::Title,
-    ));
+    let title = editor
+        .handle(EditingField::Metadata(
+            auditorylab::editing::MetadataField::Title,
+        ))
+        .unwrap();
     editor
         .commit_field(title, "Metadata only")
         .unwrap()

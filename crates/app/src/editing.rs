@@ -42,6 +42,90 @@ impl DocumentId {
     }
 }
 
+/// Opaque process-local identity of a rendered document or component lifetime.
+/// A restored component retains its authored ID but receives a different row key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RowKey {
+    document: DocumentId,
+    component: Option<ComponentId>,
+    generation: u64,
+}
+impl RowKey {
+    fn for_document(document: DocumentId) -> Self {
+        Self {
+            document,
+            component: None,
+            generation: 0,
+        }
+    }
+    fn for_component(document: DocumentId, component: ComponentId, generation: u64) -> Self {
+        Self {
+            document,
+            component: Some(component),
+            generation,
+        }
+    }
+    /// Bind a semantic parameter to this component lifetime.
+    #[must_use]
+    pub fn parameter(self, parameter: ParameterId) -> Option<FieldHandle> {
+        Some(FieldHandle {
+            row: self,
+            field: EditingField::Parameter(self.component?, parameter),
+        })
+    }
+    /// Bind metadata to this document lifetime; component keys cannot address metadata.
+    #[must_use]
+    pub fn metadata(self, field: MetadataField) -> Option<FieldHandle> {
+        self.component.is_none().then_some(FieldHandle {
+            row: self,
+            field: EditingField::Metadata(field),
+        })
+    }
+}
+impl std::fmt::Display for RowKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:x}:{:x}:{:x}",
+            self.document.0,
+            self.component.map_or(0, ComponentId::get),
+            self.generation
+        )
+    }
+}
+impl std::str::FromStr for RowKey {
+    type Err = &'static str;
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        const INVALID: &str = "invalid editor row key";
+        if text.len() > 42 {
+            return Err(INVALID);
+        }
+        let parse = |part: &str| {
+            if part.is_empty()
+                || part.len() > 1 && part.starts_with('0')
+                || !part
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            {
+                return Err(INVALID);
+            }
+            u64::from_str_radix(part, 16).map_err(|_| INVALID)
+        };
+        let mut parts = text.split(':');
+        let document = parse(parts.next().ok_or(INVALID)?)?;
+        let component = u32::try_from(parse(parts.next().ok_or(INVALID)?)?).map_err(|_| INVALID)?;
+        let generation = parse(parts.next().ok_or(INVALID)?)?;
+        if document == 0 || parts.next().is_some() || component == 0 && generation != 0 {
+            return Err(INVALID);
+        }
+        Ok(Self {
+            document: DocumentId(document),
+            component: (component != 0).then_some(ComponentId::new(component)),
+            generation,
+        })
+    }
+}
+
 /// A recipe-wide quantity or text field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MetadataField {
@@ -79,13 +163,13 @@ pub enum EditingField {
     Metadata(MetadataField),
 }
 
-/// A field of one particular document. Commands carry the handle captured
-/// when the field was rendered, so a late callback cannot edit a replacement
-/// document.
+/// A field of one rendered document/component lifetime. Commands carry the
+/// captured key, so a late callback cannot edit a replacement document or a
+/// component that has been removed and restored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FieldHandle {
-    /// The document the field belongs to.
-    pub document: DocumentId,
+    /// The rendered document or component lifetime the field belongs to.
+    pub row: RowKey,
     /// The field within that document.
     pub field: EditingField,
 }
@@ -95,13 +179,15 @@ pub struct FieldHandle {
 pub enum EditRefusal {
     /// The command addresses a document that is no longer open.
     StaleDocument,
+    /// The authored component exists, but this handle belongs to an older row lifetime.
+    StaleRow,
     /// The component no longer exists.
     UnknownComponent,
     /// The component's carrier or modulation does not have the quantity.
     Inapplicable,
     /// The document already has [`Sound::MAX_COMPONENTS`] components.
     ComponentLimit,
-    /// No unused component identity remains in this document.
+    /// No unused component or row-lifetime identity remains in this document.
     IdentitiesExhausted,
     /// No removed component is waiting to be restored.
     NothingRemoved,
@@ -602,6 +688,7 @@ const CACHED_ANALYSES: usize = 4;
 /// The most recently removed component, with the text that was staged for it.
 #[derive(Debug)]
 struct Removed {
+    generation: u64,
     index: usize,
     id: ComponentId,
     component: auditorylab_core::Component,
@@ -615,6 +702,7 @@ struct Removed {
 #[derive(Debug)]
 pub struct EditorSession {
     document: DocumentId,
+    row_generations: BTreeMap<ComponentId, u64>,
     draft: Draft,
     staged: BTreeMap<EditingField, String>,
     draft_revision: u64,
@@ -637,11 +725,24 @@ impl EditorSession {
     /// dirty until saved.
     ///
     /// # Errors
-    /// Returns an error only when document identities are exhausted.
+    /// Refuses invalid component owner identities or exhausted document identities.
     pub fn new(draft: Draft) -> Result<Self, Error> {
         let saved = Draft::empty(draft.content.document.clone()).recipe();
+        let mut row_generations = BTreeMap::new();
+        for component in draft.components() {
+            if component.id.get() == 0
+                || component.id.lane() != auditorylab_core::Lane::Primary
+                || row_generations.insert(component.id, 0).is_some()
+            {
+                return Err(Error::new(
+                    ErrorKind::InvalidRecipe,
+                    "Each component needs a unique positive owner identity.",
+                ));
+            }
+        }
         Ok(Self {
             document: DocumentId::allocate()?,
+            row_generations,
             draft,
             staged: BTreeMap::new(),
             draft_revision: 0,
@@ -703,13 +804,36 @@ impl EditorSession {
         self.input_revision
     }
 
-    /// A handle for one of this document's fields.
+    /// The metadata/add/Undo row key for this document lifetime.
     #[must_use]
-    pub const fn handle(&self, field: EditingField) -> FieldHandle {
-        FieldHandle {
-            document: self.document,
-            field,
-        }
+    pub fn document_key(&self) -> RowKey {
+        RowKey::for_document(self.document)
+    }
+
+    /// A key for an active authored component's current rendered lifetime.
+    #[must_use]
+    pub fn component_key(&self, id: ComponentId) -> Option<RowKey> {
+        self.draft.component(id)?;
+        Some(RowKey::for_component(
+            self.document,
+            id,
+            *self.row_generations.get(&id)?,
+        ))
+    }
+
+    /// Bind a semantic field to the currently rendered lifetime.
+    ///
+    /// # Errors
+    /// Refuses absent or inapplicable fields rather than minting a future-valid key.
+    pub fn handle(&self, field: EditingField) -> Result<FieldHandle, EditRefusal> {
+        self.draft.has_field(field)?;
+        let row = match field {
+            EditingField::Metadata(_) => self.document_key(),
+            EditingField::Parameter(id, _) => self
+                .component_key(id)
+                .ok_or(EditRefusal::UnknownComponent)?,
+        };
+        Ok(FieldHandle { row, field })
     }
 
     fn admit(&self, document: DocumentId) -> Result<(), EditRefusal> {
@@ -719,10 +843,41 @@ impl EditorSession {
             Err(EditRefusal::StaleDocument)
         }
     }
-
+    fn admit_row(&self, row: RowKey) -> Result<Option<ComponentId>, EditRefusal> {
+        self.admit(row.document)?;
+        if let Some(id) = row.component {
+            let generation = self
+                .row_generations
+                .get(&id)
+                .ok_or(EditRefusal::UnknownComponent)?;
+            if *generation != row.generation {
+                return Err(EditRefusal::StaleRow);
+            }
+            self.draft
+                .component(id)
+                .ok_or(EditRefusal::UnknownComponent)?;
+        }
+        Ok(row.component)
+    }
+    fn admit_component(&self, row: RowKey) -> Result<ComponentId, EditRefusal> {
+        self.admit_row(row)?.ok_or(EditRefusal::Inapplicable)
+    }
+    fn admit_document(&self, row: RowKey) -> Result<(), EditRefusal> {
+        if self.admit_row(row)?.is_some() {
+            Err(EditRefusal::Inapplicable)
+        } else {
+            Ok(())
+        }
+    }
     fn admit_field(&self, handle: FieldHandle) -> Result<(), EditRefusal> {
-        self.admit(handle.document)?;
-        self.draft.has_field(handle.field)
+        let component = self.admit_row(handle.row)?;
+        match (component, handle.field) {
+            (None, EditingField::Metadata(_)) => self.draft.has_field(handle.field),
+            (Some(owner), EditingField::Parameter(id, _)) if owner == id => {
+                self.draft.has_field(handle.field)
+            }
+            _ => Err(EditRefusal::Inapplicable),
+        }
     }
 
     /// Staged text for a field, if any.
@@ -876,11 +1031,10 @@ impl EditorSession {
 
     fn structural(
         &mut self,
-        document: DocumentId,
-        id: ComponentId,
+        row: RowKey,
         change: impl FnOnce(&mut auditorylab_core::Node),
     ) -> Result<(), EditRefusal> {
-        self.admit(document)?;
+        let id = self.admit_component(row)?;
         let component = self
             .draft
             .component_mut(id)
@@ -908,14 +1062,9 @@ impl EditorSession {
     /// Route a component to other ears.
     ///
     /// # Errors
-    /// Returns [`EditRefusal`] for a stale document or unknown component.
-    pub fn set_ears(
-        &mut self,
-        document: DocumentId,
-        id: ComponentId,
-        ears: Ears,
-    ) -> Result<(), EditRefusal> {
-        self.admit(document)?;
+    /// Returns [`EditRefusal`] for a stale component lifetime or unknown component.
+    pub fn set_ears(&mut self, row: RowKey, ears: Ears) -> Result<(), EditRefusal> {
+        let id = self.admit_component(row)?;
         if self
             .draft
             .component(id)
@@ -923,7 +1072,7 @@ impl EditorSession {
         {
             return Err(EditRefusal::Inapplicable);
         }
-        self.structural(document, id, |c| match c {
+        self.structural(row, |c| match c {
             auditorylab_core::Node::Voice(c) => c.ears = ears,
             auditorylab_core::Node::MonauralPair { ears: route, .. } => *route = ears,
             _ => {}
@@ -934,14 +1083,9 @@ impl EditorSession {
     /// Staged text of quantities the new carrier lacks is discarded.
     ///
     /// # Errors
-    /// Returns [`EditRefusal`] for a stale document or unknown component.
-    pub fn set_carrier(
-        &mut self,
-        document: DocumentId,
-        id: ComponentId,
-        kind: CarrierKind,
-    ) -> Result<(), EditRefusal> {
-        self.structural(document, id, |c| match c {
+    /// Returns [`EditRefusal`] for a stale component lifetime or unknown component.
+    pub fn set_carrier(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), EditRefusal> {
+        self.structural(row, |c| match c {
             auditorylab_core::Node::Voice(c) => {
                 if c.carrier.kind() != kind {
                     c.carrier = controls::default_carrier(kind);
@@ -955,15 +1099,14 @@ impl EditorSession {
     /// Staged text of quantities the new modulation lacks is discarded.
     ///
     /// # Errors
-    /// Returns [`EditRefusal`] for a stale document or unknown component.
+    /// Returns [`EditRefusal`] for a stale component lifetime or unknown component.
     pub fn set_modulation(
         &mut self,
-        document: DocumentId,
-        id: ComponentId,
+        row: RowKey,
         kind: Option<ModulationKind>,
         rate: SampleRate,
     ) -> Result<(), EditRefusal> {
-        self.admit(document)?;
+        let id = self.admit_component(row)?;
         if self
             .draft
             .component(id)
@@ -971,7 +1114,7 @@ impl EditorSession {
         {
             return Err(EditRefusal::Inapplicable);
         }
-        self.structural(document, id, |node| {
+        self.structural(row, |node| {
             if let auditorylab_core::Node::Voice(c) = node
                 && c.modulation.map(|m| m.kind()) != kind
             {
@@ -987,11 +1130,12 @@ impl EditorSession {
     /// exhausted identities.
     pub fn add_component(
         &mut self,
-        document: DocumentId,
+        row: RowKey,
         kind: CarrierKind,
     ) -> Result<ComponentId, EditRefusal> {
-        self.admit(document)?;
+        self.admit_document(row)?;
         let id = self.draft.add(kind)?;
+        self.row_generations.insert(id, 0);
         self.draft_revision += 1;
         Ok(id)
     }
@@ -1002,11 +1146,12 @@ impl EditorSession {
     /// Refuses stale documents, owner exhaustion or either voice budget.
     pub fn add_pair(
         &mut self,
-        document: DocumentId,
+        row: RowKey,
         kind: auditorylab_core::PairKind,
     ) -> Result<ComponentId, EditRefusal> {
-        self.admit(document)?;
+        self.admit_document(row)?;
         let id = self.draft.add_node(controls::default_pair(kind))?;
+        self.row_generations.insert(id, 0);
         self.draft_revision += 1;
         Ok(id)
     }
@@ -1014,13 +1159,13 @@ impl EditorSession {
     /// Remove a component and only its staged text.
     ///
     /// # Errors
-    /// Returns [`EditRefusal`] for a stale document or unknown component.
-    pub fn remove_component(
-        &mut self,
-        document: DocumentId,
-        id: ComponentId,
-    ) -> Result<(), EditRefusal> {
-        self.admit(document)?;
+    /// Returns [`EditRefusal`] for a stale component lifetime or unknown component.
+    pub fn remove_component(&mut self, row: RowKey) -> Result<(), EditRefusal> {
+        let id = self.admit_component(row)?;
+        let generation = row
+            .generation
+            .checked_add(1)
+            .ok_or(EditRefusal::IdentitiesExhausted)?;
         let before = self.draft.recipe();
         let (index, component) = self.draft.remove(id).ok_or(EditRefusal::UnknownComponent)?;
         let after = self.draft.recipe();
@@ -1035,7 +1180,9 @@ impl EditorSession {
             self.staged.retain(|field, _| !owned(field));
             self.input_revision += 1;
         }
+        self.row_generations.remove(&id);
         self.removed = Some(Removed {
+            generation,
             index,
             id,
             component,
@@ -1062,15 +1209,20 @@ impl EditorSession {
     /// Returns [`EditRefusal`] for a stale document, when nothing was
     /// removed, or at the component limit, which keeps the component for a
     /// later restore.
-    pub fn restore_removed(&mut self, document: DocumentId) -> Result<ComponentId, EditRefusal> {
-        self.admit(document)?;
+    pub fn restore_removed(&mut self, row: RowKey) -> Result<ComponentId, EditRefusal> {
+        self.admit_document(row)?;
         let removed = self.removed.take().ok_or(EditRefusal::NothingRemoved)?;
+        let Some(generation) = removed.generation.checked_add(1) else {
+            self.removed = Some(removed);
+            return Err(EditRefusal::IdentitiesExhausted);
+        };
         let complete_undo = Arc::ptr_eq(&removed.saved, &self.saved)
             && self.draft.recipe().same_editable_content(&removed.after);
         if let Err(refusal) = self.draft.restore(removed.index, removed.component) {
             self.removed = Some(removed);
             return Err(refusal);
         }
+        self.row_generations.insert(removed.id, generation);
         if complete_undo {
             let document = self.draft.content.document.clone();
             self.draft.content = removed.before;

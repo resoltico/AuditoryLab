@@ -112,8 +112,8 @@ impl Harness {
         std::mem::take(&mut *self.requests.borrow_mut())
     }
 
-    fn component_binding(&self, index: usize) -> i32 {
-        self.ui().get_components().row_data(index).unwrap().binding
+    fn component_key(&self, index: usize) -> slint::SharedString {
+        self.ui().get_components().row_data(index).unwrap().key
     }
 
     fn keys(&self, index: usize) -> Vec<ParameterKey> {
@@ -211,10 +211,10 @@ fn generated_editing_callbacks_reach_the_workspace_and_project_its_results() {
         h.keys(0),
         [ParameterKey::ToneFrequency, ParameterKey::PeakLevel]
     );
-    let binding = h.component_binding(0);
+    let binding = h.component_key(0);
     let frequency = h.adapter.inspect(parameter(0, ParameterId::ToneFrequency));
 
-    ui.invoke_stage_parameter(binding, ParameterKey::ToneFrequency, "bad".into());
+    ui.invoke_stage_parameter(binding.clone(), ParameterKey::ToneFrequency, "bad".into());
     assert_eq!(
         h.adapter
             .inspect(|w| w.editor().staged(frequency).map(str::to_owned)),
@@ -231,15 +231,15 @@ fn generated_editing_callbacks_reach_the_workspace_and_project_its_results() {
     assert!(!ui.get_can_save(), "unparseable staged input blocks Save");
     assert!(!ui.get_save_reason().is_empty());
 
-    ui.invoke_commit_parameter(binding, ParameterKey::ToneFrequency, "3750".into());
+    ui.invoke_commit_parameter(binding.clone(), ParameterKey::ToneFrequency, "3750".into());
     assert_eq!(
         h.adapter.inspect(|w| w.editor().draft().value(frequency)),
         Some(3750.0)
     );
     assert!(ui.get_can_save());
 
-    ui.invoke_stage_parameter(binding, ParameterKey::ToneFrequency, "12".into());
-    ui.invoke_restore_parameter(binding, ParameterKey::ToneFrequency);
+    ui.invoke_stage_parameter(binding.clone(), ParameterKey::ToneFrequency, "12".into());
+    ui.invoke_restore_parameter(binding.clone(), ParameterKey::ToneFrequency);
     assert!(
         h.adapter
             .inspect(|w| w.editor().staged(frequency).is_none())
@@ -270,7 +270,7 @@ fn generated_editing_callbacks_reach_the_workspace_and_project_its_results() {
     ui.invoke_restore_metadata(ui.get_document(), MetadataKey::Title);
     assert_eq!(ui.get_title_field().text, "Probe");
 
-    ui.invoke_set_modulation(binding, 1);
+    ui.invoke_set_modulation(binding.clone(), 1);
     assert_eq!(ui.get_components().row_data(0).unwrap().modulation, 1);
     assert_eq!(
         h.keys(0),
@@ -281,9 +281,9 @@ fn generated_editing_callbacks_reach_the_workspace_and_project_its_results() {
             ParameterKey::ModulationDepth
         ]
     );
-    ui.invoke_set_ears(binding, 1);
+    ui.invoke_set_ears(binding.clone(), 1);
     assert_eq!(ui.get_components().row_data(0).unwrap().ears, 1);
-    ui.invoke_remove_component(binding);
+    ui.invoke_remove_component(binding.clone());
     assert_eq!(ui.get_components().row_count(), 0);
 }
 
@@ -368,7 +368,7 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
         assert_eq!(parameter_id(parameter_key(id)), id);
     }
     ui.invoke_add_component(ui.get_document(), 0);
-    let binding = h.component_binding(0);
+    let binding = h.component_key(0);
     // Independent oracle: the fields each kind has.
     let carriers = [
         (0, vec![ParameterKey::ToneFrequency]),
@@ -387,8 +387,8 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
     ];
     for (carrier, carrier_keys) in &carriers {
         for (modulation, modulation_keys) in &modulations {
-            ui.invoke_set_carrier(binding, *carrier);
-            ui.invoke_set_modulation(binding, *modulation);
+            ui.invoke_set_carrier(binding.clone(), *carrier);
+            ui.invoke_set_modulation(binding.clone(), *modulation);
             let mut expected = carrier_keys.clone();
             expected.push(ParameterKey::PeakLevel);
             expected.extend(modulation_keys);
@@ -406,7 +406,7 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
                     shown.has_slider,
                     auditorylab::controls::range(id, Workspace::export_rates()[1]).is_some()
                 );
-                ui.invoke_stage_parameter(binding, shown.key, "1x".into());
+                ui.invoke_stage_parameter(binding.clone(), shown.key, "1x".into());
                 let field = h.adapter.inspect(parameter(0, id));
                 assert_eq!(
                     h.adapter
@@ -415,14 +415,14 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
                     "{:?} stages its own field",
                     shown.key
                 );
-                ui.invoke_restore_parameter(binding, shown.key);
+                ui.invoke_restore_parameter(binding.clone(), shown.key);
             }
         }
     }
     // A key the component does not have is refused, not redirected.
-    ui.invoke_set_carrier(binding, 0);
-    ui.invoke_set_modulation(binding, 0);
-    ui.invoke_stage_parameter(binding, ParameterKey::GateRate, "5".into());
+    ui.invoke_set_carrier(binding.clone(), 0);
+    ui.invoke_set_modulation(binding.clone(), 0);
+    ui.invoke_stage_parameter(binding.clone(), ParameterKey::GateRate, "5".into());
     assert!(!h.adapter.inspect(|w| w.editor().has_staged()));
 }
 
@@ -450,12 +450,12 @@ fn a_focused_field_survives_updates_to_other_rows() {
         .as_pin_ref()
         .cursor_position_byte_offset();
 
-    let first = h.component_binding(0);
-    let third = h.component_binding(2);
+    let first = h.component_key(0);
+    let third = h.component_key(2);
     // Structural commands change other rows without committing staged text.
-    ui.invoke_set_ears(first, 2);
-    ui.invoke_set_modulation(third, 2);
-    ui.invoke_remove_component(first);
+    ui.invoke_set_ears(first.clone(), 2);
+    ui.invoke_set_modulation(third.clone(), 2);
+    ui.invoke_remove_component(first.clone());
     h.settle();
 
     assert!(
@@ -496,7 +496,7 @@ fn callbacks_from_a_replaced_document_are_refused() {
     let ui = h.ui();
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 0);
-    let old_component = h.component_binding(0);
+    let old_component = h.component_key(0);
     let old_document = ui.get_document();
 
     // Focus and edit the title, then replace the document while it is focused.
@@ -522,10 +522,14 @@ fn callbacks_from_a_replaced_document_are_refused() {
     });
     h.settle();
     // Late callbacks carrying the old bindings.
-    ui.invoke_commit_parameter(old_component, ParameterKey::ToneFrequency, "999".into());
-    ui.invoke_commit_metadata(old_document, MetadataKey::Title, "Old".into());
-    ui.invoke_stage_metadata(old_document, MetadataKey::Summary, "Old".into());
-    ui.invoke_add_component(old_document, 1);
+    ui.invoke_commit_parameter(
+        old_component.clone(),
+        ParameterKey::ToneFrequency,
+        "999".into(),
+    );
+    ui.invoke_commit_metadata(old_document.clone(), MetadataKey::Title, "Old".into());
+    ui.invoke_stage_metadata(old_document.clone(), MetadataKey::Summary, "Old".into());
+    ui.invoke_add_component(old_document.clone(), 1);
     h.adapter.inspect(|w| {
         assert_eq!(w.editor().draft().title(), fresh_title);
         assert!(w.editor().draft().components().is_empty());
@@ -618,8 +622,8 @@ fn a_dragged_slider_keeps_following_typed_values() {
     });
     h.settle();
     let dragged = value();
-    let binding = h.component_binding(0);
-    ui.invoke_commit_parameter(binding, ParameterKey::ToneFrequency, "5000".into());
+    let binding = h.component_key(0);
+    ui.invoke_commit_parameter(binding.clone(), ParameterKey::ToneFrequency, "5000".into());
     h.settle();
     let expected = ui
         .get_components()
@@ -739,7 +743,7 @@ fn a_removed_component_returns_through_undo_remove() {
     h.settle();
     let first = h.adapter.inspect(|w| w.editor().draft().components()[0].id);
     assert_eq!(ui.get_removed_component(), "");
-    ui.invoke_remove_component(h.component_binding(0));
+    ui.invoke_remove_component(h.component_key(0));
     h.settle();
     assert_eq!(ui.get_components().row_count(), 1);
     assert_eq!(
@@ -901,28 +905,24 @@ fn about_and_licenses_use_production_actions_and_reopen_without_losing_terms() {
 }
 
 #[test]
-fn retired_component_callbacks_stay_retired_after_undo_and_mappings_stay_bounded() {
+fn retired_component_callbacks_stay_retired_after_undo() {
     let h = Harness::new();
     let ui = h.ui();
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 0);
     h.settle();
     let identity = h.adapter.inspect(|w| w.editor().draft().components()[0].id);
-    let mut previous = h.component_binding(0);
+    let mut previous = h.component_key(0);
     for _ in 0..100 {
-        ui.invoke_remove_component(previous);
+        ui.invoke_remove_component(previous.clone());
         h.settle();
-        assert_eq!(
-            h.adapter.binding_count(),
-            1,
-            "only the document remains bound"
-        );
+        assert_eq!(ui.get_components().row_count(), 0);
         ui.invoke_restore_component(ui.get_document());
         h.settle();
-        let current = h.component_binding(0);
-        assert!(current > previous);
-        assert_eq!(h.adapter.binding_count(), 2);
-        ui.invoke_commit_parameter(previous, ParameterKey::ToneFrequency, "999".into());
+        let current = h.component_key(0);
+        assert_ne!(current, previous);
+        assert_eq!(ui.get_components().row_count(), 1);
+        ui.invoke_commit_parameter(previous.clone(), ParameterKey::ToneFrequency, "999".into());
         assert_eq!(
             h.adapter.inspect(|w| w
                 .editor()
@@ -944,9 +944,9 @@ fn editing_and_telemetry_do_not_project_the_library_again() {
     ui.invoke_add_component(ui.get_document(), 0);
     h.settle();
     let libraries = h.adapter.counts.library_projections.get();
-    let binding = h.component_binding(0);
-    ui.invoke_commit_parameter(binding, ParameterKey::ToneFrequency, "880".into());
-    ui.invoke_stage_parameter(binding, ParameterKey::ToneFrequency, "900".into());
+    let binding = h.component_key(0);
+    ui.invoke_commit_parameter(binding.clone(), ParameterKey::ToneFrequency, "880".into());
+    ui.invoke_stage_parameter(binding.clone(), ParameterKey::ToneFrequency, "900".into());
     for _ in 0..20 {
         h.adapter.tick();
     }
@@ -1292,18 +1292,18 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
     ui.invoke_rhythm_filter(0, 0);
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 1); // Clicks.
-    let binding = h.component_binding(0);
-    ui.invoke_commit_parameter(binding, ParameterKey::ClickRate, "2".into());
+    let binding = h.component_key(0);
+    ui.invoke_commit_parameter(binding.clone(), ParameterKey::ClickRate, "2".into());
     assert!(
         ui.get_draft_brief()
             .contains("Draft classification · Delta")
     );
-    ui.invoke_stage_parameter(binding, ParameterKey::ClickRate, "bad".into());
+    ui.invoke_stage_parameter(binding.clone(), ParameterKey::ClickRate, "bad".into());
     assert!(
         ui.get_draft_brief()
             .contains("Last committed classification · Delta")
     );
-    ui.invoke_commit_parameter(binding, ParameterKey::ClickRate, "6".into());
+    ui.invoke_commit_parameter(binding.clone(), ParameterKey::ClickRate, "6".into());
     assert!(
         ui.get_draft_brief()
             .contains("Draft classification · Theta")
@@ -1349,8 +1349,8 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
             ParameterKey::PairSecondLevel
         ]
     );
-    let binding = h.component_binding(0);
-    ui.invoke_commit_parameter(binding, ParameterKey::PairOffset, "-6".into());
+    let binding = h.component_key(0);
+    ui.invoke_commit_parameter(binding.clone(), ParameterKey::PairOffset, "-6".into());
     assert!(
         ui.get_components()
             .row_data(0)
@@ -1359,7 +1359,11 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
             .contains("194 Hz")
     );
     assert!(ui.get_draft_brief().contains("Theta"));
-    ui.invoke_commit_parameter(binding, ParameterKey::PairFirstFrequency, "24000".into());
+    ui.invoke_commit_parameter(
+        binding.clone(),
+        ParameterKey::PairFirstFrequency,
+        "24000".into(),
+    );
     let rows = ui.get_components().row_data(0).unwrap().parameters;
     for key in [ParameterKey::PairFirstFrequency, ParameterKey::PairOffset] {
         assert!(
@@ -1374,7 +1378,7 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
         "finite rate-invalid pairs remain serializable for repair"
     );
     ui.invoke_commit_parameter(
-        binding,
+        binding.clone(),
         ParameterKey::PairFirstFrequency,
         "200.00000000000003".into(),
     );
@@ -1435,11 +1439,11 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
     let rows = h.ui().get_components();
     assert_eq!(rows.row_data(0).unwrap().id, u32::MAX.to_string());
     assert_eq!(rows.row_data(1).unwrap().id, (u32::MAX - 1).to_string());
-    let first = h.component_binding(0);
-    let second = h.component_binding(1);
+    let first = h.component_key(0);
+    let second = h.component_key(1);
     assert_ne!(first, second);
     h.ui()
-        .invoke_commit_parameter(first, ParameterKey::PairOffset, "6".into());
+        .invoke_commit_parameter(first.clone(), ParameterKey::PairOffset, "6".into());
     assert_eq!(
         h.adapter.inspect(|w| w.editor().draft().components()[1]
             .node
@@ -1468,7 +1472,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     ui.invoke_open_workbench();
     h.settle();
     assert_eq!(h.adapter.inspect(|w| w.view()), View::Workbench);
-    let binding = h.component_binding(0);
+    let binding = h.component_key(0);
     ui.invoke_commit_metadata(
         ui.get_document(),
         MetadataKey::Title,
@@ -1488,7 +1492,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
         .remove(0);
     assert_eq!(first.title, "Native managed copy");
     assert!(first.created_at.is_some());
-    ui.invoke_commit_parameter(binding, ParameterKey::PairOffset, "6".into());
+    ui.invoke_commit_parameter(binding.clone(), ParameterKey::PairOffset, "6".into());
     assert!(
         ui.get_draft_brief()
             .contains("Draft classification · Theta")

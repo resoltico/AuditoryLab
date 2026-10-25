@@ -299,8 +299,8 @@ fn pending_entry_survives_font_reflow_clipping_and_row_changes() {
     drop(other);
     // Changing kind replaces the field, not its component row.
     let old_field = input.clone();
-    let binding = ui.get_components().row_data(0).unwrap().binding;
-    ui.invoke_set_carrier(binding, 0);
+    let binding = ui.get_components().row_data(0).unwrap().key;
+    ui.invoke_set_carrier(binding.clone(), 0);
     h.settle();
     assert!(
         root.visit_descendants(|item| {
@@ -333,7 +333,7 @@ fn pending_entry_survives_font_reflow_clipping_and_row_changes() {
     let destroyed = frequency.downgrade();
     drop(frequency);
     while let Some(row) = ui.get_components().row_data(0) {
-        ui.invoke_remove_component(row.binding);
+        ui.invoke_remove_component(row.key);
     }
     h.settle();
     assert_eq!(

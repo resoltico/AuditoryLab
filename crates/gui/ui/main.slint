@@ -23,7 +23,7 @@ export component MainWindow inherits Window {
     in property <string> draft-location;
     in property <string> draft-location-details;
     // The open document's binding; field callbacks carry the binding they rendered with.
-    in property <int> document;
+    in property <string> document;
     in property <int> document-reset;
     in property <MetadataRow> title-field;
     in property <MetadataRow> summary-field;
@@ -37,19 +37,19 @@ export component MainWindow inherits Window {
     in property <[string]> modulation-choices;
     in property <[string]> span-choices;
     in property <[string]> scale-choices;
-    callback stage-parameter(int, ParameterKey, string);
-    callback commit-parameter(int, ParameterKey, string);
-    callback restore-parameter(int, ParameterKey);
-    callback slide(int, ParameterKey, float);
-    callback stage-metadata(int, MetadataKey, string);
-    callback commit-metadata(int, MetadataKey, string);
-    callback restore-metadata(int, MetadataKey);
-    callback set-ears(int, int);
-    callback set-carrier(int, int);
-    callback set-modulation(int, int);
-    callback remove-component(int);
-    callback restore-component(int);
-    callback add-component(int, int);
+    callback stage-parameter(string, ParameterKey, string);
+    callback commit-parameter(string, ParameterKey, string);
+    callback restore-parameter(string, ParameterKey);
+    callback slide(string, ParameterKey, float);
+    callback stage-metadata(string, MetadataKey, string);
+    callback commit-metadata(string, MetadataKey, string);
+    callback restore-metadata(string, MetadataKey);
+    callback set-ears(string, int);
+    callback set-carrier(string, int);
+    callback set-modulation(string, int);
+    callback remove-component(string);
+    callback restore-component(string);
+    callback add-component(string, int);
 
     in property <string> output-state;
     in property <string> receipt-age;
@@ -844,22 +844,22 @@ export component MainWindow inherits Window {
                             vertical-stretch: 0;
                             Row {
                                 if row.routing-editable: Text { text: Terms.caption-ears; vertical-alignment: center; }
-                                if row.routing-editable: ComboBox { enabled: root.can-edit; model: root.ears-choices; current-index: row.ears; accessible-label: row.name + Terms.caption-ears-suffix; selected(value) => { root.set-ears(row.binding, self.current-index); } }
+                                if row.routing-editable: ComboBox { enabled: root.can-edit; model: root.ears-choices; current-index: row.ears; accessible-label: row.name + Terms.caption-ears-suffix; selected(value) => { root.set-ears(row.key, self.current-index); } }
                                 Rectangle { horizontal-stretch: 1; }
                             }
                             Row {
                                 if row.carrier >= 0: Text { text: Terms.caption-carrier; vertical-alignment: center; }
-                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.carrier-choices; current-index: row.carrier; accessible-label: row.name + Terms.caption-carrier-suffix; selected(value) => { root.set-carrier(row.binding, self.current-index); } }
+                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.carrier-choices; current-index: row.carrier; accessible-label: row.name + Terms.caption-carrier-suffix; selected(value) => { root.set-carrier(row.key, self.current-index); } }
                             }
                             Row {
                                 if row.carrier >= 0: Text { text: Terms.caption-modulation; vertical-alignment: center; }
-                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.modulation-choices; current-index: row.modulation; accessible-label: row.name + Terms.caption-modulation-suffix; selected(value) => { root.set-modulation(row.binding, self.current-index); } }
+                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.modulation-choices; current-index: row.modulation; accessible-label: row.name + Terms.caption-modulation-suffix; selected(value) => { root.set-modulation(row.key, self.current-index); } }
                             }
-                            Row { Button { col:1; text: Terms.action-remove; enabled: root.can-edit; accessible-label: Terms.action-remove-prefix + row.name; clicked => { root.remove-component(row.binding); } } }
+                            Row { Button { col:1; text: Terms.action-remove; enabled: root.can-edit; accessible-label: Terms.action-remove-prefix + row.name; clicked => { root.remove-component(row.key); } } }
                         }
                         for parameter in row.parameters: ParameterControl {
                             parameter: parameter;
-                            owner: row.binding;
+                            owner: row.key;
                             context: row.name;
                             compact: root.compact;
                             ui-size: root.ui-size;

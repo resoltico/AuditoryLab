@@ -14,9 +14,9 @@ export struct ParameterRow {
     position: float,
     diagnostic: string,
 }
-// `binding` identifies the rendered component of one particular document.
+// The application key identifies one rendered component lifetime.
 export struct ComponentRow {
-    binding: int,
+    key: string,
     id: string,
     ears: int,
     routing-editable: bool,

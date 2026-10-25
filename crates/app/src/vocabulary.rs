@@ -202,7 +202,6 @@ vocabulary! {
         AudioSnapshot => ("caption-audio-snapshot", "Audio details · snapshot"),
         NoticesPathError => ("caption-notices-path-error", "Cannot open a non-UTF8 notices path."),
         CalendarRangeError => ("caption-calendar-range-error", "Invalid calendar range. Use ordered YYYY-MM-DD dates with a unique local midnight; prior filters retained."),
-        BindingIdentitiesExhausted => ("caption-binding-identities-exhausted", "Editor binding identities exhausted. Save your sound and restart Auditory Lab."),
         NewTitle => ("caption-new-title", "New title"),
         BundledNoticesHelp => ("caption-bundled-notices-help", "Open bundled component notices and license files."),
         Copyright => ("caption-copyright", crate::identity::BUILD_IDENTITY.copyright),

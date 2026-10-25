@@ -1509,7 +1509,8 @@ mod tests {
     fn title(w: &mut Workspace, text: &str) {
         let handle = w
             .editor
-            .handle(EditingField::Metadata(crate::editing::MetadataField::Title));
+            .handle(EditingField::Metadata(crate::editing::MetadataField::Title))
+            .unwrap();
         w.editor.stage(handle, text).unwrap();
         w.editor.commit().unwrap();
     }

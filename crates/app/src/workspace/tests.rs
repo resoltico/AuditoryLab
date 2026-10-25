@@ -8,6 +8,7 @@ use super::*;
 use crate::session::{
     LiveGenerator, MonitorDetail, OutputInfo, PlaybackMonitor, SampleFormat, SessionDescriptor,
 };
+use auditorylab_core::ComponentId;
 use auditorylab_core::ParameterId;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -167,11 +168,13 @@ fn settle(ws: &mut Workspace, until: impl Fn(&Workspace) -> bool) {
 fn document(ws: &mut Workspace, frequency: f64) -> (DocumentId, FieldHandle) {
     ws.set_view(View::Workbench);
     let document = ws.editor().document();
-    ws.add_component(document, CarrierKind::Tone).unwrap();
+    ws.add_component(ws.editor().document_key(), CarrierKind::Tone)
+        .unwrap();
     let id = ws.editor().draft().components()[0].id;
     let handle = ws
         .editor()
-        .handle(EditingField::Parameter(id, ParameterId::ToneFrequency));
+        .handle(EditingField::Parameter(id, ParameterId::ToneFrequency))
+        .unwrap();
     ws.commit_field(handle, &frequency.to_string()).unwrap();
     (document, handle)
 }
@@ -792,12 +795,13 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
 fn the_live_model_follows_accepted_revisions_even_for_identical_audio() {
     let (mut ws, fakes) = workspace();
     ws.set_view(View::Workbench);
-    let document = ws.editor().document();
-    ws.add_component(document, CarrierKind::Clicks).unwrap();
+    ws.add_component(ws.editor().document_key(), CarrierKind::Clicks)
+        .unwrap();
     let id = ws.editor().draft().components()[0].id;
     let width = ws
         .editor()
-        .handle(EditingField::Parameter(id, ParameterId::ClickWidth));
+        .handle(EditingField::Parameter(id, ParameterId::ClickWidth))
+        .unwrap();
     ws.commit_field(width, "1").unwrap();
     ws.play().unwrap();
     let fake = fakes.last();
@@ -909,9 +913,12 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
     assert_eq!(ws.editor.staged(frequency.field), Some("30000"));
     assert_eq!(ws.editor.draft_revision(), committed);
     drop(effects);
-    let notes = ws.editor.handle(EditingField::Metadata(
-        crate::editing::MetadataField::Summary,
-    ));
+    let notes = ws
+        .editor
+        .handle(EditingField::Metadata(
+            crate::editing::MetadataField::Summary,
+        ))
+        .unwrap();
     ws.stage(notes, &"🎧".repeat(Recipe::MAX_BYTES)).unwrap();
     assert!(ws.save().is_err());
     assert!(ws.editor.staged(notes.field).is_some());
@@ -1378,7 +1385,8 @@ fn copy_preflight_refuses_nonfinite_or_full_metadata_before_touching_dirty_work(
     let mut ws = Workspace::new(vec![snapshot], Capabilities::portable()).unwrap();
     let doc = ws.editor().document();
     ws.set_view(View::Workbench);
-    ws.add_component(doc, CarrierKind::Tone).unwrap();
+    ws.add_component(ws.editor().document_key(), CarrierKind::Tone)
+        .unwrap();
     ws.set_view(View::Library);
     let before = ws.editor().draft().recipe();
     assert!(!ws.action_view().can_copy);
@@ -1414,9 +1422,12 @@ fn copy_preflight_refuses_nonfinite_or_full_metadata_before_touching_dirty_work(
 fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scroll() {
     let (mut ws, _) = workspace();
     ws.set_view(View::Workbench);
-    let notes = ws.editor.handle(EditingField::Metadata(
-        crate::editing::MetadataField::Summary,
-    ));
+    let notes = ws
+        .editor
+        .handle(EditingField::Metadata(
+            crate::editing::MetadataField::Summary,
+        ))
+        .unwrap();
     ws.stage(notes, &"Z".repeat(66000)).unwrap();
     let actions = ws.action_view();
     assert!(!actions.can_save);

@@ -42,10 +42,12 @@ fn input(path: &Path, title: &str) -> auditorylab::core::Recipe {
     draft.add(auditorylab::core::CarrierKind::Clicks).unwrap();
     let id = draft.components()[0].id;
     let mut editor = auditorylab::editing::EditorSession::new(draft).unwrap();
-    let field = editor.handle(auditorylab::editing::EditingField::Parameter(
-        id,
-        auditorylab::core::ParameterId::ClickRate,
-    ));
+    let field = editor
+        .handle(auditorylab::editing::EditingField::Parameter(
+            id,
+            auditorylab::core::ParameterId::ClickRate,
+        ))
+        .unwrap();
     editor.commit_field(field, "2").unwrap().unwrap();
     let recipe = editor.draft().recipe();
     fs::write(path, recipe.to_toml().unwrap()).unwrap();

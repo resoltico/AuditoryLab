@@ -31,7 +31,7 @@ pub use views::{
 };
 
 use crate::editing::{
-    CommitRefusal, EditRefusal, EditingField, FieldHandle, InputProblem, SaveRefusal,
+    CommitRefusal, EditRefusal, EditingField, FieldHandle, InputProblem, RowKey, SaveRefusal,
 };
 use crate::editing::{DocumentId, Draft, EditorSession};
 use crate::error::{Error, ErrorKind};
@@ -41,7 +41,7 @@ use crate::session::{PlaybackControl, PlaybackPhase, Session, StopRequest};
 use crate::waveform_view::WaveformScale;
 use crate::workflow::{Cancel, Progress};
 use crate::{controls, presentation};
-use auditorylab_core::{CarrierKind, ComponentId, Ears, ModulationKind, Recipe, SampleRate, Sound};
+use auditorylab_core::{CarrierKind, Ears, ModulationKind, Recipe, SampleRate, Sound};
 use output::OutputState;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -734,17 +734,9 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal for stale identities or while editing is blocked.
-    pub fn set_ears(
-        &mut self,
-        document: DocumentId,
-        id: ComponentId,
-        ears: Ears,
-    ) -> Result<(), Refusal> {
+    pub fn set_ears(&mut self, row: RowKey, ears: Ears) -> Result<(), Refusal> {
         self.editing_allowed()?;
-        let result = self
-            .editor
-            .set_ears(document, id, ears)
-            .map_err(Refusal::Edit);
+        let result = self.editor.set_ears(row, ears).map_err(Refusal::Edit);
         self.after_edit(result)
     }
 
@@ -752,17 +744,9 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal for stale identities or while editing is blocked.
-    pub fn set_carrier(
-        &mut self,
-        document: DocumentId,
-        id: ComponentId,
-        kind: CarrierKind,
-    ) -> Result<(), Refusal> {
+    pub fn set_carrier(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
         self.editing_allowed()?;
-        let result = self
-            .editor
-            .set_carrier(document, id, kind)
-            .map_err(Refusal::Edit);
+        let result = self.editor.set_carrier(row, kind).map_err(Refusal::Edit);
         self.after_edit(result)
     }
 
@@ -772,15 +756,14 @@ impl Workspace {
     /// Returns the refusal for stale identities or while editing is blocked.
     pub fn set_modulation(
         &mut self,
-        document: DocumentId,
-        id: ComponentId,
+        row: RowKey,
         kind: Option<ModulationKind>,
     ) -> Result<(), Refusal> {
         self.editing_allowed()?;
         let rate = self.diagnostic_rate();
         let result = self
             .editor
-            .set_modulation(document, id, kind, rate)
+            .set_modulation(row, kind, rate)
             .map_err(Refusal::Edit);
         self.after_edit(result)
     }
@@ -789,15 +772,11 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal at the component limit or while editing is blocked.
-    pub fn add_component(
-        &mut self,
-        document: DocumentId,
-        kind: CarrierKind,
-    ) -> Result<(), Refusal> {
+    pub fn add_component(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
         self.editing_allowed()?;
         let result = self
             .editor
-            .add_component(document, kind)
+            .add_component(row, kind)
             .map(|_| ())
             .map_err(Refusal::Edit);
         self.after_edit(result)
@@ -809,13 +788,13 @@ impl Workspace {
     /// Refuses stale documents, busy editing or the expanded voice budget.
     pub fn add_pair(
         &mut self,
-        document: DocumentId,
+        row: RowKey,
         kind: auditorylab_core::PairKind,
     ) -> Result<(), Refusal> {
         self.editing_allowed()?;
         let result = self
             .editor
-            .add_pair(document, kind)
+            .add_pair(row, kind)
             .map(|_| ())
             .map_err(Refusal::Edit);
         self.after_edit(result)
@@ -825,16 +804,9 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal for stale identities or while editing is blocked.
-    pub fn remove_component(
-        &mut self,
-        document: DocumentId,
-        id: ComponentId,
-    ) -> Result<(), Refusal> {
+    pub fn remove_component(&mut self, row: RowKey) -> Result<(), Refusal> {
         self.editing_allowed()?;
-        let result = self
-            .editor
-            .remove_component(document, id)
-            .map_err(Refusal::Edit);
+        let result = self.editor.remove_component(row).map_err(Refusal::Edit);
         self.after_edit(result)
     }
 
@@ -843,11 +815,11 @@ impl Workspace {
     /// # Errors
     /// Returns the refusal when nothing was removed, at the component limit
     /// or while editing is blocked.
-    pub fn restore_component(&mut self, document: DocumentId) -> Result<(), Refusal> {
+    pub fn restore_component(&mut self, row: RowKey) -> Result<(), Refusal> {
         self.editing_allowed()?;
         let result = self
             .editor
-            .restore_removed(document)
+            .restore_removed(row)
             .map(|_| ())
             .map_err(Refusal::Edit);
         self.after_edit(result)

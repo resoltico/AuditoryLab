@@ -30,14 +30,14 @@ export component NumericField inherits LineEdit {
     in property <string> display-text;
     in property <bool> edits-suspended:false;
     in property <bool> staged:false;
-    in property <int> binding;
+    in property <string> binding;
     in property <int> reset-key;
     private property <bool> dirty: false;
-    private property <int> captured: -1;
-    callback stage(int, string);
-    callback commit(int, string);
-    callback restore(int);
-    function owner() -> int { return root.dirty ? root.captured : root.binding; }
+    private property <string> captured: "";
+    callback stage(string, string);
+    callback commit(string, string);
+    callback restore(string);
+    function owner() -> string { return root.dirty ? root.captured : root.binding; }
     changed reset-key => {
         self.text = root.display-text;
         root.dirty = root.staged;
@@ -82,16 +82,16 @@ export component NumericField inherits LineEdit {
 }
 export component ParameterControl inherits HorizontalBox {
     in property <ParameterRow> parameter;
-    in property <int> owner;
+    in property <string> owner;
     in property <string> context;
     in property <bool> compact:false;
     in property <length> ui-size:13px;
     in property <bool> edits-suspended:false;
     in property <bool> edit-enabled: true;
-    callback stage(int, ParameterKey, string);
-    callback commit(int, ParameterKey, string);
-    callback restore(int, ParameterKey);
-    callback slide(int, ParameterKey, float);
+    callback stage(string, ParameterKey, string);
+    callback commit(string, ParameterKey, string);
+    callback restore(string, ParameterKey);
+    callback slide(string, ParameterKey, float);
     padding: 0px;
     vertical-stretch: 0;
     Text {
@@ -139,14 +139,14 @@ export component NotesInput inherits TextEdit {
     in property <string> display-text;
     in property <bool> edits-suspended:false;
     in property <bool> staged:false;
-    in property <int> binding;
+    in property <string> binding;
     in property <int> reset-key;
     private property <bool> dirty: false;
-    private property <int> captured: -1;
-    callback stage(int, string);
-    callback commit(int, string);
-    callback restore(int);
-    function owner() -> int { return root.dirty ? root.captured : root.binding; }
+    private property <string> captured: "";
+    callback stage(string, string);
+    callback commit(string, string);
+    callback restore(string);
+    function owner() -> string { return root.dirty ? root.captured : root.binding; }
     changed reset-key => {
         self.text = root.display-text;
         root.dirty = root.staged;
@@ -187,9 +187,9 @@ export component NotesInput inherits TextEdit {
 export component MetadataField inherits NumericField {
     in property <MetadataRow> field;
     in property <MetadataKey> key;
-    callback stage-field(int, MetadataKey, string);
-    callback commit-field(int, MetadataKey, string);
-    callback restore-field(int, MetadataKey);
+    callback stage-field(string, MetadataKey, string);
+    callback commit-field(string, MetadataKey, string);
+    callback restore-field(string, MetadataKey);
     display-text: root.field.text;
     staged: root.field.staged;
     accessible-description: root.field.diagnostic;
@@ -200,9 +200,9 @@ export component MetadataField inherits NumericField {
 export component NotesField inherits NotesInput {
     in property <MetadataRow> field;
     in property <MetadataKey> key;
-    callback stage-field(int, MetadataKey, string);
-    callback commit-field(int, MetadataKey, string);
-    callback restore-field(int, MetadataKey);
+    callback stage-field(string, MetadataKey, string);
+    callback commit-field(string, MetadataKey, string);
+    callback restore-field(string, MetadataKey);
     display-text: root.field.text;
     staged: root.field.staged;
     accessible-description: root.field.diagnostic;

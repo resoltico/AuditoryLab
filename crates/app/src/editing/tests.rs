@@ -23,14 +23,16 @@ fn tone(frequency_hz: f64) -> Voice {
 }
 
 fn field(editor: &EditorSession, index: usize, parameter: ParameterId) -> FieldHandle {
-    editor.handle(EditingField::Parameter(
-        editor.draft().components()[index].id,
-        parameter,
-    ))
+    editor
+        .handle(EditingField::Parameter(
+            editor.draft().components()[index].id,
+            parameter,
+        ))
+        .unwrap()
 }
 
 fn metadata(editor: &EditorSession, field: MetadataField) -> FieldHandle {
-    editor.handle(EditingField::Metadata(field))
+    editor.handle(EditingField::Metadata(field)).unwrap()
 }
 
 #[test]
@@ -176,8 +178,8 @@ fn inherited_nonfinite_values_block_commit_save_until_repaired() {
 #[test]
 fn structural_choices_discard_only_inapplicable_or_removed_staging() {
     let mut editor = editor_with(&[tone(440.0), tone(550.0)]);
-    let document = editor.document();
     let first = editor.draft().components()[0].id;
+    let first_row = editor.component_key(first).unwrap();
     let frequency = field(&editor, 0, ParameterId::ToneFrequency);
     let level = field(&editor, 0, ParameterId::PeakLevel);
     let other = field(&editor, 1, ParameterId::ToneFrequency);
@@ -185,7 +187,7 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
     editor.stage(level, "also bad").unwrap();
     editor.stage(other, "660").unwrap();
     editor
-        .set_carrier(document, first, CarrierKind::Clicks)
+        .set_carrier(editor.component_key(first).unwrap(), CarrierKind::Clicks)
         .unwrap();
     assert_eq!(
         editor.staged(frequency.field),
@@ -209,28 +211,33 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
     );
     editor
         .set_modulation(
-            document,
-            first,
+            editor.component_key(first).unwrap(),
             Some(ModulationKind::Rectangular),
             SampleRate::DEFAULT,
         )
         .unwrap();
-    let gate = editor.handle(EditingField::Parameter(first, ParameterId::GateWidth));
+    let gate = editor
+        .handle(EditingField::Parameter(first, ParameterId::GateWidth))
+        .unwrap();
     editor.stage(gate, "2").unwrap();
     editor
-        .set_modulation(document, first, None, SampleRate::DEFAULT)
+        .set_modulation(
+            editor.component_key(first).unwrap(),
+            None,
+            SampleRate::DEFAULT,
+        )
         .unwrap();
     assert_eq!(editor.staged(gate.field), None);
     assert_eq!(editor.restore(level).unwrap(), "-30");
     assert_eq!(editor.staged(level.field), None);
-    editor.remove_component(document, first).unwrap();
+    editor.remove_component(first_row).unwrap();
     assert_eq!(
         editor.staged(other.field),
         Some("660"),
         "unrelated staging survives"
     );
     assert_eq!(
-        editor.remove_component(document, first),
+        editor.remove_component(first_row),
         Err(EditRefusal::UnknownComponent)
     );
 }
@@ -244,11 +251,13 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     let frequency = field(&editor, 1, ParameterId::ToneFrequency);
     let other = field(&editor, 0, ParameterId::ToneFrequency);
     assert_eq!(
-        editor.restore_removed(document),
+        editor.restore_removed(editor.document_key()),
         Err(EditRefusal::NothingRemoved)
     );
     editor.stage(frequency, "bad").unwrap();
-    editor.remove_component(document, middle).unwrap();
+    editor
+        .remove_component(editor.component_key(middle).unwrap())
+        .unwrap();
     assert_eq!(
         editor.removed(),
         Some((
@@ -264,12 +273,12 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
 
     let stale = EditorSession::new(Draft::new().unwrap())
         .unwrap()
-        .document();
+        .document_key();
     assert_eq!(
         editor.restore_removed(stale),
         Err(EditRefusal::StaleDocument)
     );
-    assert_eq!(editor.restore_removed(document), Ok(middle));
+    assert_eq!(editor.restore_removed(editor.document_key()), Ok(middle));
     let ids: Vec<_> = editor.draft().components().iter().map(|c| c.id).collect();
     assert_eq!(ids[1], middle, "the same identity returns to its place");
     assert_eq!(
@@ -284,19 +293,26 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     );
     assert_eq!(editor.removed(), None);
     assert_eq!(
-        editor.restore_removed(document),
+        editor.restore_removed(editor.document_key()),
         Err(EditRefusal::NothingRemoved),
         "one removal restores once"
     );
-    editor.restore(frequency).unwrap();
+    assert_eq!(editor.restore(frequency), Err(EditRefusal::StaleRow));
+    editor
+        .restore(editor.handle(frequency.field).unwrap())
+        .unwrap();
     editor.restore(other).unwrap();
     assert!(!editor.dirty(), "restoring returns the saved content");
 
     // A newer removal replaces the older one, and the limit keeps it waiting.
     let first = editor.draft().components()[0].id;
     let last = editor.draft().components()[2].id;
-    editor.remove_component(document, first).unwrap();
-    editor.remove_component(document, last).unwrap();
+    editor
+        .remove_component(editor.component_key(first).unwrap())
+        .unwrap();
+    editor
+        .remove_component(editor.component_key(last).unwrap())
+        .unwrap();
     assert_eq!(
         editor.removed(),
         Some((
@@ -308,10 +324,12 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
         ))
     );
     while editor.draft().components().len() < Sound::MAX_COMPONENTS {
-        editor.add_component(document, CarrierKind::Tone).unwrap();
+        editor
+            .add_component(editor.document_key(), CarrierKind::Tone)
+            .unwrap();
     }
     assert_eq!(
-        editor.restore_removed(document),
+        editor.restore_removed(editor.document_key()),
         Err(EditRefusal::ComponentLimit)
     );
     assert_eq!(
@@ -325,8 +343,10 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
         ))
     );
     let added = editor.draft().components()[2].id;
-    editor.remove_component(document, added).unwrap();
-    assert_eq!(editor.restore_removed(document), Ok(added));
+    editor
+        .remove_component(editor.component_key(added).unwrap())
+        .unwrap();
+    assert_eq!(editor.restore_removed(editor.document_key()), Ok(added));
 }
 
 #[test]
@@ -334,7 +354,6 @@ fn stale_document_handles_are_rejected_everywhere() {
     let mut old = editor_with(&[tone(440.0)]);
     let handle = field(&old, 0, ParameterId::ToneFrequency);
     let title = metadata(&old, MetadataField::Title);
-    let id = old.draft().components()[0].id;
     let old_document = old.document();
     let mut replacement = EditorSession::new(old.draft().clone()).unwrap();
     assert_ne!(old_document, replacement.document());
@@ -351,7 +370,7 @@ fn stale_document_handles_are_rejected_everywhere() {
         Err(EditRefusal::StaleDocument)
     );
     assert_eq!(
-        replacement.set_ears(old_document, id, Ears::Left),
+        replacement.set_ears(handle.row, Ears::Left),
         Err(EditRefusal::StaleDocument)
     );
     assert!(!replacement.has_staged());
@@ -585,7 +604,9 @@ fn descriptions_and_equivalent_text_do_not_recompile_sound_inputs() {
     let rate = SampleRate::DEFAULT;
     let first = editor.committed_analysis(rate);
     let evaluations = editor.evaluations();
-    let notes = editor.handle(EditingField::Metadata(MetadataField::Summary));
+    let notes = editor
+        .handle(EditingField::Metadata(MetadataField::Summary))
+        .unwrap();
     editor.stage(notes, "Own notes 🎧").unwrap();
     assert!(Arc::ptr_eq(&first, &editor.candidate_analysis(rate)));
     editor.commit().unwrap();
@@ -658,7 +679,9 @@ fn complete_remove_undo_restores_full_metadata_but_partial_or_published_undo_can
         let doc = editor.document();
         editor.record_saved(doc, source.recipe());
         let id = editor.draft().components()[0].id;
-        editor.remove_component(doc, id).unwrap();
+        editor
+            .remove_component(editor.component_key(id).unwrap())
+            .unwrap();
         assert_eq!(
             editor.draft().recipe().evidence[0].scope,
             crate::core::EvidenceScope::Ancestor
@@ -671,7 +694,7 @@ fn complete_remove_undo_restores_full_metadata_but_partial_or_published_undo_can
             let published = editor.draft().recipe();
             editor.record_saved(doc, &published);
         }
-        editor.restore_removed(doc).unwrap();
+        editor.restore_removed(editor.document_key()).unwrap();
         assert_eq!(
             editor.draft().recipe().evidence[0].scope,
             if intervening == 0 {
@@ -703,4 +726,229 @@ fn publication_history_updates_the_same_draft_without_reusing_a_stale_candidate_
     assert_eq!(after.draft().recipe().document, published.document);
     assert_eq!(after.draft().title(), "Later title");
     assert_ne!(after.draft().title(), before.draft().title());
+}
+
+#[test]
+fn row_keys_round_trip_without_losing_any_identity_or_generation_bits() {
+    for generation in [0, 1, u64::MAX] {
+        let key =
+            RowKey::for_component(DocumentId(u64::MAX), ComponentId::new(u32::MAX), generation);
+        assert_eq!(key.to_string().parse::<RowKey>(), Ok(key));
+        assert!(key.to_string().len() <= 42);
+    }
+    let document = RowKey::for_document(DocumentId(1));
+    assert_eq!(document.to_string().parse::<RowKey>(), Ok(document));
+    assert!(document.parameter(ParameterId::PeakLevel).is_none());
+    let component = RowKey::for_component(DocumentId(1), ComponentId::new(1), 0);
+    assert!(component.metadata(MetadataField::Title).is_none());
+    for text in [
+        "",
+        "0:0:0",
+        "01:0:0",
+        "1:01:0",
+        "1:1:00",
+        "1:0:1",
+        "1:100000000:0",
+        "1:1:10000000000000000",
+        "1:1:A",
+        "1:1:0:",
+        "1:1",
+        " 1:1:0",
+        "+1:1:0",
+        "1:1:-1",
+    ] {
+        assert!(text.parse::<RowKey>().is_err(), "{text}");
+    }
+}
+
+#[test]
+fn the_application_rejects_retired_field_and_structural_callbacks_after_undo() {
+    let mut editor = editor_with(&[tone(440.0), tone(550.0)]);
+    let document = editor.document_key();
+    let id = editor.draft().components()[0].id;
+    let current = editor.component_key(id).unwrap();
+    let field = current.parameter(ParameterId::ToneFrequency).unwrap();
+    let unrelated = editor
+        .component_key(editor.draft().components()[1].id)
+        .unwrap();
+    editor.stage(field, "bad").unwrap();
+    editor.remove_component(current).unwrap();
+    assert_eq!(
+        editor.removed.as_ref().unwrap().generation,
+        current.generation + 1
+    );
+    assert!(editor.component_key(id).is_none());
+    assert_eq!(
+        editor.stage(field, "999"),
+        Err(EditRefusal::UnknownComponent)
+    );
+    editor.restore_removed(document).unwrap();
+    let restored = editor.component_key(id).unwrap();
+    assert_eq!(restored.generation, current.generation + 2);
+    assert_ne!(restored, current);
+    assert_eq!(
+        editor.component_key(editor.draft().components()[1].id),
+        Some(unrelated)
+    );
+    assert_eq!(editor.stage(field, "999"), Err(EditRefusal::StaleRow));
+    assert_eq!(
+        editor.commit_field(field, "999"),
+        Err(EditRefusal::StaleRow)
+    );
+    assert_eq!(editor.restore(field), Err(EditRefusal::StaleRow));
+    assert_eq!(
+        editor.set_ears(current, Ears::Left),
+        Err(EditRefusal::StaleRow)
+    );
+    assert_eq!(
+        editor.set_carrier(current, CarrierKind::Clicks),
+        Err(EditRefusal::StaleRow)
+    );
+    assert_eq!(
+        editor.set_modulation(
+            current,
+            Some(ModulationKind::Sinusoidal),
+            SampleRate::DEFAULT
+        ),
+        Err(EditRefusal::StaleRow)
+    );
+    assert_eq!(editor.remove_component(current), Err(EditRefusal::StaleRow));
+    assert_eq!(editor.staged(field.field), Some("bad"));
+    assert_eq!(
+        editor.draft().component(id),
+        Some(&Node::Voice(tone(440.0)))
+    );
+    editor
+        .commit_field(
+            restored.parameter(ParameterId::ToneFrequency).unwrap(),
+            "660",
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        editor
+            .draft()
+            .component(id)
+            .unwrap()
+            .read(ParameterId::ToneFrequency),
+        Some(660.0)
+    );
+}
+
+#[test]
+fn unknown_or_cross_row_field_requests_cannot_acquire_another_lifetime() {
+    let mut editor = EditorSession::new(Draft::new().unwrap()).unwrap();
+    assert_eq!(
+        editor.handle(EditingField::Parameter(
+            ComponentId::new(1),
+            ParameterId::ToneFrequency
+        )),
+        Err(EditRefusal::UnknownComponent)
+    );
+    let document = editor.document_key();
+    let first = editor.add_component(document, CarrierKind::Tone).unwrap();
+    let second = editor.add_component(document, CarrierKind::Tone).unwrap();
+    let first_key = editor.component_key(first).unwrap();
+    let crossed = FieldHandle {
+        row: first_key,
+        field: EditingField::Parameter(second, ParameterId::ToneFrequency),
+    };
+    assert_eq!(editor.stage(crossed, "999"), Err(EditRefusal::Inapplicable));
+    let metadata = FieldHandle {
+        row: first_key,
+        field: EditingField::Metadata(MetadataField::Title),
+    };
+    assert_eq!(
+        editor.stage(metadata, "wrong title"),
+        Err(EditRefusal::Inapplicable)
+    );
+    assert_eq!(
+        editor.add_component(first_key, CarrierKind::Tone),
+        Err(EditRefusal::Inapplicable)
+    );
+    assert_eq!(
+        editor.remove_component(document),
+        Err(EditRefusal::Inapplicable)
+    );
+    assert!(!editor.has_staged());
+}
+
+#[test]
+fn row_generation_storage_is_bounded_and_exhaustion_never_wraps_or_drops_undo() {
+    let mut editor = editor_with(&[tone(440.0)]);
+    let id = editor.draft().components()[0].id;
+    let document = editor.document_key();
+    for _ in 0..100 {
+        editor
+            .remove_component(editor.component_key(id).unwrap())
+            .unwrap();
+        assert!(editor.row_generations.is_empty());
+        editor.restore_removed(document).unwrap();
+        assert_eq!(editor.row_generations.len(), 1);
+    }
+    editor.row_generations.insert(id, u64::MAX);
+    let key = editor.component_key(id).unwrap();
+    let before = editor.draft().recipe();
+    assert_eq!(
+        editor.remove_component(key),
+        Err(EditRefusal::IdentitiesExhausted)
+    );
+    assert!(editor.draft().recipe().same_editable_content(&before));
+    assert!(editor.removed().is_none());
+    editor.row_generations.insert(id, u64::MAX - 1);
+    editor
+        .remove_component(editor.component_key(id).unwrap())
+        .unwrap();
+    assert_eq!(
+        editor.restore_removed(document),
+        Err(EditRefusal::IdentitiesExhausted)
+    );
+    assert!(editor.removed().is_some());
+    assert!(editor.draft().components().is_empty());
+    assert!(editor.row_generations.is_empty());
+}
+
+#[test]
+fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_acoustics() {
+    let mut draft = Draft::new().unwrap();
+    draft.add(CarrierKind::Tone).unwrap();
+    let recipe = draft.recipe();
+    for id in [
+        ComponentId::new(0),
+        ComponentId::new(1).with_lane(auditorylab_core::Lane::Secondary),
+    ] {
+        let mut invalid = recipe.clone();
+        invalid.stimulus.components[0].id = id;
+        assert_eq!(
+            EditorSession::new(Draft::from_recipe(invalid))
+                .unwrap_err()
+                .kind(),
+            ErrorKind::InvalidRecipe
+        );
+    }
+    let mut duplicate = recipe.clone();
+    duplicate
+        .stimulus
+        .components
+        .push(duplicate.stimulus.components[0]);
+    assert_eq!(
+        EditorSession::new(Draft::from_recipe(duplicate))
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidRecipe
+    );
+    let mut acoustic = recipe;
+    acoustic.stimulus.components[0]
+        .node
+        .write(ParameterId::ToneFrequency, -1.0);
+    let editor = EditorSession::new(Draft::from_recipe(acoustic)).unwrap();
+    assert!(editor.component_key(ComponentId::new(1)).is_some());
+    assert!(
+        editor
+            .handle(EditingField::Parameter(
+                ComponentId::new(1),
+                ParameterId::ToneFrequency
+            ))
+            .is_ok()
+    );
 }

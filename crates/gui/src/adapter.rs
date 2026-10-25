@@ -5,10 +5,9 @@
 //! persistent Slint models. Startup and the offscreen tests install exactly
 //! this wiring through [`SlintAdapter::install`].
 //!
-//! Rendered fields carry a binding: an integer naming one document, or one
-//! component of one document. A binding is never reused, so a callback that
-//! arrives after its document was replaced still names the old document and
-//! the workspace refuses it.
+//! Rendered fields carry application-owned opaque row keys. The editor validates
+//! the document, component and generation, so late callbacks cannot address a
+//! replacement document or a restored component lifetime.
 use auditorylab::presentation::DisplayText;
 use auditorylab::vocabulary::NumberStyle;
 mod actions;
@@ -21,8 +20,8 @@ use crate::generated::{
 };
 use crate::{details_parent, motion, scope, typography};
 use actions::install_actions;
-use auditorylab::core::{CarrierKind, ComponentId, Ears, ModulationKind, ParameterId};
-use auditorylab::editing::{DocumentId, EditingField, FieldHandle, MetadataField};
+use auditorylab::core::{CarrierKind, Ears, ModulationKind, ParameterId};
+use auditorylab::editing::{EditingField, FieldHandle, MetadataField, RowKey};
 use auditorylab::session::PlaybackPhase;
 use auditorylab::waveform_view::{ModelView, WaveformCapture};
 use auditorylab::workspace::{
@@ -34,7 +33,6 @@ use editing::install_editing;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
     rc::{Rc, Weak},
     sync::Arc,
     time::Duration,
@@ -109,40 +107,9 @@ impl Preferences {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Binding {
-    Document(DocumentId),
-    Voice(DocumentId, ComponentId),
-}
-
-/// Bindings handed to rendered rows; never reused.
-#[derive(Default)]
-struct Bindings {
-    next: i32,
-    map: HashMap<i32, Binding>,
-}
-
-impl Bindings {
-    fn allocate(&mut self, binding: Binding) -> i32 {
-        // Exhaustion leaves rows unbound; their callbacks are then refused.
-        let Some(next) = self.next.checked_add(1) else {
-            self.map.clear();
-            return -1;
-        };
-        self.next = next;
-        self.map.insert(next, binding);
-        next
-    }
-
-    fn get(&self, binding: i32) -> Option<Binding> {
-        self.map.get(&binding).copied()
-    }
-}
-
 /// One rendered component and its nested parameter model.
 struct ComponentEntry {
-    id: ComponentId,
-    binding: i32,
+    key: RowKey,
     parameters: Rc<VecModel<ParameterRow>>,
 }
 
@@ -161,8 +128,7 @@ pub(crate) struct SlintAdapter {
     catalog: Rc<VecModel<CatalogRow>>,
     library: RefCell<Option<Arc<auditorylab::workspace::LibraryView>>>,
     lanes: Rc<VecModel<ModelLane>>,
-    bindings: RefCell<Bindings>,
-    document: Cell<Option<(DocumentId, i32)>>,
+    document: Cell<Option<RowKey>>,
     projected: Cell<Option<(u64, Option<PlaybackPhase>)>>,
     capture: RefCell<Option<Arc<WaveformCapture>>>,
     model: RefCell<Option<Arc<ModelView>>>,
@@ -218,7 +184,6 @@ impl SlintAdapter {
             catalog: Rc::new(VecModel::default()),
             library: RefCell::new(None),
             lanes: Rc::new(VecModel::default()),
-            bindings: RefCell::new(Bindings::default()),
             document: Cell::new(None),
             projected: Cell::new(None),
             capture: RefCell::new(None),
@@ -545,42 +510,6 @@ impl SlintAdapter {
         self.monitor_window_visible.get()
     }
 
-    #[cfg(test)]
-    pub(crate) fn binding_count(&self) -> usize {
-        self.bindings.borrow().map.len()
-    }
-
-    fn resolve(&self, binding: i32) -> Option<Binding> {
-        self.bindings.borrow().get(binding)
-    }
-
-    fn parameter_handle(&self, binding: i32, key: ParameterKey) -> Option<FieldHandle> {
-        match self.resolve(binding)? {
-            Binding::Voice(document, id) => Some(FieldHandle {
-                document,
-                field: EditingField::Parameter(id, parameter_id(key)),
-            }),
-            Binding::Document(_) => None,
-        }
-    }
-
-    fn metadata_handle(&self, binding: i32, key: MetadataKey) -> Option<FieldHandle> {
-        match self.resolve(binding)? {
-            Binding::Document(document) => Some(FieldHandle {
-                document,
-                field: EditingField::Metadata(metadata_field(key)),
-            }),
-            Binding::Voice(..) => None,
-        }
-    }
-
-    fn component(&self, binding: i32) -> Option<(DocumentId, ComponentId)> {
-        match self.resolve(binding)? {
-            Binding::Voice(document, id) => Some((document, id)),
-            Binding::Document(_) => None,
-        }
-    }
-
     fn drain_preferences(&self) {
         let mut preferences = self.preferences.borrow_mut();
         let Some(preferences) = preferences.as_mut() else {
@@ -771,16 +700,6 @@ impl SlintAdapter {
         ui.set_play_target(read_only(&actions.play_target));
         ui.set_file_activity(read_only(&actions.file_activity));
         ui.set_status(read_only(&actions.operation_details));
-        if self.bindings.borrow().next == i32::MAX {
-            self.bindings.borrow_mut().map.clear();
-            ui.set_can_edit(false);
-            ui.set_status(
-                auditorylab::vocabulary::Caption::BindingIdentitiesExhausted
-                    .label()
-                    .into(),
-            );
-            ui.set_edits_suspended(true);
-        }
         if let Some(index) = Workspace::export_rates().iter().position(|r| *r == rate)
             && let Ok(index) = i32::try_from(index)
         {
@@ -800,27 +719,19 @@ impl SlintAdapter {
     /// resets the models; otherwise rows are inserted, removed or updated
     /// one by one, so surviving fields keep their widgets, focus and caret.
     fn reconcile_document(&self, ui: &MainWindow, editor: &EditorView) {
-        let replaced = self
-            .document
-            .get()
-            .is_none_or(|(d, _)| d != editor.document);
+        let replaced = self.document.get().is_none_or(|key| key != editor.key);
         if replaced {
             // Rebinding: no automatic blur commit may reach the new document.
             let suspended = ui.get_edits_suspended();
             ui.set_edits_suspended(true);
-            self.bindings.borrow_mut().map.clear();
-            let binding = self
-                .bindings
-                .borrow_mut()
-                .allocate(Binding::Document(editor.document));
-            self.document.set(Some((editor.document, binding)));
+            self.document.set(Some(editor.key));
             let mut entries = self.entries.borrow_mut();
             entries.clear();
             let rows: Vec<_> = editor
                 .components
                 .iter()
                 .map(|component| {
-                    let entry = self.new_entry(editor.document, component);
+                    let entry = Self::new_entry(component);
                     let row = component_row(&entry, component);
                     entries.push(entry);
                     row
@@ -828,7 +739,7 @@ impl SlintAdapter {
                 .collect();
             self.components.set_vec(rows);
             set_metadata(ui, &editor.metadata);
-            ui.set_document(binding);
+            ui.set_document(editor.key.to_string().into());
             ui.set_document_reset(ui.get_document_reset().wrapping_add(1));
             ui.set_editor_scroll_y(0.0);
             ui.set_edits_suspended(suspended);
@@ -838,16 +749,19 @@ impl SlintAdapter {
         let mut entries = self.entries.borrow_mut();
         let mut index = 0;
         while index < entries.len() {
-            if editor.components.iter().any(|c| c.id == entries[index].id) {
+            if editor
+                .components
+                .iter()
+                .any(|c| c.key == entries[index].key)
+            {
                 index += 1;
             } else {
-                let retired = entries.remove(index);
-                self.bindings.borrow_mut().map.remove(&retired.binding);
+                entries.remove(index);
                 self.components.remove(index);
             }
         }
         for (index, component) in editor.components.iter().enumerate() {
-            match entries.iter().position(|e| e.id == component.id) {
+            match entries.iter().position(|e| e.key == component.key) {
                 Some(found) if found == index => {}
                 Some(found) => {
                     let entry = entries.remove(found);
@@ -859,7 +773,7 @@ impl SlintAdapter {
                     }
                 }
                 None => {
-                    let entry = self.new_entry(editor.document, component);
+                    let entry = Self::new_entry(component);
                     self.components
                         .insert(index, component_row(&entry, component));
                     entries.insert(index, entry);
@@ -875,13 +789,9 @@ impl SlintAdapter {
         }
     }
 
-    fn new_entry(&self, document: DocumentId, component: &ComponentView) -> ComponentEntry {
+    fn new_entry(component: &ComponentView) -> ComponentEntry {
         ComponentEntry {
-            id: component.id,
-            binding: self
-                .bindings
-                .borrow_mut()
-                .allocate(Binding::Voice(document, component.id)),
+            key: component.key,
             parameters: Rc::new(VecModel::from(
                 component
                     .parameters
@@ -1142,6 +1052,15 @@ impl SlintAdapter {
     }
 }
 
+fn parameter_handle(key: &str, parameter: ParameterKey) -> Option<FieldHandle> {
+    key.parse::<RowKey>()
+        .ok()?
+        .parameter(parameter_id(parameter))
+}
+fn metadata_handle(key: &str, field: MetadataKey) -> Option<FieldHandle> {
+    key.parse::<RowKey>().ok()?.metadata(metadata_field(field))
+}
+
 // ---- semantic binding conversions ----
 
 /// The exhaustive core-to-binding mapping: a new quantity must be added here.
@@ -1288,7 +1207,7 @@ fn parameter_row(view: &ParameterView) -> ParameterRow {
 
 fn component_row(entry: &ComponentEntry, view: &ComponentView) -> ComponentRow {
     ComponentRow {
-        binding: entry.binding,
+        key: entry.key.to_string().into(),
         id: view.id.get().to_string().into(),
         ears: index_of(&Ears::ALL, &view.ears),
         carrier: view
@@ -1463,22 +1382,4 @@ fn open_web(url: &str) {
 // Keep display escaping separate from lossless editable field models and bindings.
 fn read_only(text: &str) -> SharedString {
     (text).display_text().into()
-}
-
-#[cfg(test)]
-mod binding_tests {
-    use super::*;
-    #[test]
-    fn token_exhaustion_retires_all_callbacks_without_reusing_an_identity() {
-        let workspace =
-            Workspace::new(Vec::new(), auditorylab::workspace::Capabilities::portable()).unwrap();
-        let document = workspace.editor().document();
-        let mut bindings = Bindings::default();
-        let old = bindings.allocate(Binding::Document(document));
-        bindings.next = i32::MAX;
-        assert_eq!(bindings.allocate(Binding::Document(document)), -1);
-        assert!(bindings.get(old).is_none());
-        assert_eq!(bindings.next, i32::MAX);
-        assert!(bindings.map.is_empty());
-    }
 }

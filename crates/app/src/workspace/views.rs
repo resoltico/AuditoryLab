@@ -5,7 +5,7 @@
 //! availability. Building a view evaluates through the editor's caches; an
 //! unchanged document is not evaluated again.
 use super::{FileKind, OutputView, Refusal, View, Workspace};
-use crate::editing::DocumentId;
+use crate::editing::RowKey;
 use crate::editing::{EditRefusal, EditingField, FieldHandle, InputProblem, MetadataField};
 use crate::presentation::{AudioDetails, AudioErrorText, AudioSummary, ParameterText};
 use crate::recipe::RecipeSnapshot;
@@ -47,7 +47,9 @@ pub struct ParameterView {
 /// One component of the open document.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentView {
-    /// The component's identity.
+    /// Opaque identity of this rendered component lifetime.
+    pub key: RowKey,
+    /// The authored component identity.
     pub id: ComponentId,
     /// Ear routing.
     pub ears: Ears,
@@ -87,8 +89,8 @@ pub struct MetadataView {
 /// The open document.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditorView {
-    /// The document these rows belong to.
-    pub document: DocumentId,
+    /// Opaque identity of the rendered document lifetime.
+    pub key: RowKey,
     /// Title, notes, duration and fade.
     pub metadata: [MetadataView; 4],
     /// Components in order.
@@ -279,10 +281,13 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
             "No removed component is waiting to be restored.".into()
         }
         Refusal::Edit(EditRefusal::IdentitiesExhausted) => {
-            "This sound has used every component identity; start a new sound to add more.".into()
+            "This sound has exhausted an editing identity; start a new sound to continue.".into()
         }
         Refusal::Edit(
-            EditRefusal::StaleDocument | EditRefusal::UnknownComponent | EditRefusal::Inapplicable,
+            EditRefusal::StaleDocument
+            | EditRefusal::StaleRow
+            | EditRefusal::UnknownComponent
+            | EditRefusal::Inapplicable,
         ) => "That field no longer belongs to the open sound.".into(),
         Refusal::TooManyComponents(count) => format!(
             "The workbench supports at most {} components; this recipe has {count}. Edit the recipe file to reduce them.",
@@ -447,7 +452,6 @@ impl Workspace {
         let analysis = self.editor.candidate_analysis(rate);
         let nominal = self.editor.nominal();
         let editor = &self.editor;
-        let document = editor.document();
         let problem = |field: EditingField| {
             candidate
                 .problems()
@@ -475,7 +479,9 @@ impl Workspace {
                     .unwrap_or_default()
             });
             MetadataView {
-                handle: editor.handle(editing),
+                handle: editor
+                    .handle(editing)
+                    .unwrap_or_else(|_| unreachable!("metadata views use existing fields")),
                 label: match field.parameter() {
                     Some(p) => (p).input_label(),
                     None => field_label(editing),
@@ -515,7 +521,7 @@ impl Workspace {
                                 .unwrap_or_default()})
                         });
                         ParameterView {
-                            handle: editor.handle(field),
+                            handle: editor.handle(field).unwrap_or_else(|_| unreachable!("parameter views use existing fields")),
                             parameter,
                             label: (parameter).input_label(),
                             help: match parameter {
@@ -541,6 +547,7 @@ impl Workspace {
                 for error in [acoustic,second].into_iter().flatten() {errors.push(format!("{error} ({context})"));}
                 if let Some(error)=coupled {errors.push(format!("{error} ({context})"));}
                 ComponentView {
+                    key: editor.component_key(*id).unwrap_or_else(|| unreachable!("an active component has a rendered lifetime")),
                     id: *id,
                     ears: committed.ears(),
                     routing_editable: committed.routing_editable(),
@@ -602,7 +609,7 @@ impl Workspace {
         let based_on = editor.draft().based_on();
         let retained_warning = self.retained_warning(pending, analysis.target().is_none());
         EditorView {
-            document,
+            key: editor.document_key(),
             metadata,
             components,
             dirty: editor.dirty(),
