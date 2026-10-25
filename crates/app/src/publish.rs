@@ -147,7 +147,9 @@ fn cleanup(dir: &Dir, stage: &Path, path: &Path, error: Error) -> Error {
 pub(crate) fn sync_directory(dir: &Dir) -> std::io::Result<()> {
     #[cfg(unix)]
     {
-        dir.try_clone()?.into_std_file().sync_all()
+        // A capability directory can use O_PATH on Linux, which cannot be fsynced.
+        // Opening its own "." yields a read descriptor without resolving an ambient path.
+        dir.open(".")?.sync_all()
     }
     #[cfg(not(unix))]
     {

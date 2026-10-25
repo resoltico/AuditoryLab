@@ -653,3 +653,11 @@ fn cancellation_after_publication_does_not_interrupt_truth_verification() {
     assert!(!result.warnings.is_empty());
     assert_eq!(fs::read(path).unwrap(), candidate);
 }
+
+#[cfg(unix)]
+#[test]
+fn directory_sync_uses_a_synchronizable_read_handle() {
+    let (_temp, dir, _path) = fixture();
+    sync_directory(&dir).unwrap();
+    assert_eq!(dir.read_dir(".").unwrap().count(), 0);
+}
