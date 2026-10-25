@@ -478,16 +478,32 @@ impl Runner {
         let mut errors = Vec::new();
         for response in responses {
             let failure = if let Response::Finished { job, outcome } = &response {
-                Some((outcome.failure(), workspace.job_context(*job)))
+                Some((
+                    outcome.failure(),
+                    workspace.job_context(*job),
+                    workspace
+                        .files
+                        .slot
+                        .as_ref()
+                        .is_some_and(|task| {
+                            task.id == *job
+                                && !matches!(&task.kind, FileKind::Managed(job) if job.background_read())
+                        }),
+                ))
             } else {
                 None
             };
             let disposition = workspace.respond(response);
             if disposition != super::ResponseDisposition::Ignored
-                && let Some((operation_error, context)) = failure
+                && let Some((operation_error, context, active_file)) = failure
             {
                 if let Some(error) = operation_error {
                     errors.push(format!("{error}{context}"));
+                }
+                if active_file && let Some(error) = workspace.files.status.editor_reset_error() {
+                    errors.push(format!(
+                        "Trash confirmed; editor reset failed: {error}{context}"
+                    ));
                 }
                 if disposition == super::ResponseDisposition::Rejected {
                     errors.push(format!(

@@ -116,6 +116,7 @@ pub(super) enum SaveFeedback {
         error: Error,
     },
     EditorRefresh(Error),
+    EditorReset(Error),
 }
 impl SaveFeedback {
     fn description(&self) -> String {
@@ -123,6 +124,9 @@ impl SaveFeedback {
             Self::InvalidAtRate { rate, error } => format!(
                 "Saved with validation errors at {} Hz: {error}. This finite document can be repaired later.",
                 rate.hz()
+            ),
+            Self::EditorReset(error) => format!(
+                "Trash confirmed, but a blank editor could not be created: {error}. Open draft retained; dependent action stopped."
             ),
             Self::EditorRefresh(error) => {
                 format!("Saved, but the editor could not refresh: {error}. Open draft retained.")
@@ -241,6 +245,26 @@ pub(super) enum FileStatus {
     Notice(FileNotice),
 }
 impl FileStatus {
+    pub(super) fn conclusion(
+        &self,
+        operation: super::tasks::Conclusion,
+    ) -> super::tasks::Conclusion {
+        if self.editor_reset_error().is_some() {
+            super::tasks::Conclusion::Failed
+        } else {
+            operation
+        }
+    }
+    pub(super) fn editor_reset_error(&self) -> Option<&Error> {
+        if let Self::Library(LibraryStatus::Written { feedback, .. }) = self {
+            feedback.iter().find_map(|item| match item {
+                SaveFeedback::EditorReset(error) => Some(error),
+                _ => None,
+            })
+        } else {
+            None
+        }
+    }
     pub(super) fn description(&self) -> String {
         match self {
         Self::Idle=>String::new(),Self::Running(activity)=>activity.description(),Self::Refused(refusal)=>super::views::refusal_text(refusal),

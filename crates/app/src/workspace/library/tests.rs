@@ -577,3 +577,64 @@ fn refresh_reloads_membership_state_even_when_recipe_sha_is_unchanged() {
     assert_eq!(loaded.trashed_at, None);
     assert_eq!(loaded.version_token.to_string(), token);
 }
+
+#[test]
+fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
+    for invalid_editor in [false, true] {
+        let (_temp, store, mut workspace) = fixture();
+        workspace.save().unwrap();
+        idle(&mut workspace);
+        let key = store.scan(&Cancel::default()).entries[0].key.clone();
+        let record = store.load(&key).unwrap();
+        let outcome = store
+            .apply(
+                Mutation::Trash {
+                    key: key.clone(),
+                    expect: Some(record.version_token),
+                },
+                &Cancel::default(),
+            )
+            .unwrap();
+        let publication = outcome.status;
+        let result = workspace.accept_managed_outcome(None, outcome);
+        let retained = workspace.editor().document();
+        let replacement = if invalid_editor {
+            let mut recipe = workspace.editor().draft().recipe();
+            recipe.stimulus.components = vec![crate::core::Component {
+                id: crate::core::ComponentId::new(0),
+                node: crate::core::Node::Voice(crate::controls::default_component(
+                    crate::core::CarrierKind::Tone,
+                )),
+            }];
+            EditorSession::new(Draft::from_recipe(recipe))
+        } else {
+            Err(Error::new(
+                ErrorKind::Identity,
+                "secure identity source unavailable",
+            ))
+        };
+        assert!(replacement.is_err());
+        let (status, confirmed) = workspace.finish_discard_reset(result, replacement);
+        assert!(store.load(&key).unwrap().trashed);
+        assert_eq!(workspace.editor().document(), retained);
+        assert!(
+            matches!(workspace.editor.location, DocumentLocation::Detached(ref detached) if detached==&key)
+        );
+        assert!(
+            matches!(&status, FileStatus::Library(LibraryStatus::Written { status, .. }) if *status==publication)
+        );
+        assert!(status.editor_reset_error().is_some());
+        assert_eq!(status.conclusion(Conclusion::Succeeded), Conclusion::Failed);
+        assert_eq!(confirmed, Some(false));
+        let details = status.description();
+        assert!(details.contains("Trash confirmed"));
+        assert!(details.contains("Open draft retained"));
+        assert!(details.contains("dependent action stopped"));
+        // A later background read retains the banner but does not make the old
+        // reset failure a new shutdown failure.
+        workspace.files.status = status;
+        workspace.refresh_library();
+        assert!(workspace.file_busy());
+        Runner::new().shutdown(workspace).unwrap();
+    }
+}

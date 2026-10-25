@@ -1332,7 +1332,7 @@ impl Workspace {
                 (FileStatus::Library(LibraryStatus::Loaded), None)
             }
             LibraryOutcome::Written(outcome) => {
-                let result = self.accept_managed_outcome(document, *outcome);
+                let mut result = self.accept_managed_outcome(document, *outcome);
                 if let Operation::DiscardTrash {
                     document,
                     draft,
@@ -1343,17 +1343,31 @@ impl Workspace {
                     && self.editor.session.draft_revision() == draft
                     && self.editor.session.input_revision() == input
                 {
-                    match Draft::new() {
-                        Ok(draft) => {
-                            self.replace_document(draft);
-                        }
-                        Err(error) => self.files.status = FileStatus::Failed(error),
-                    }
+                    result = self
+                        .finish_discard_reset(result, Draft::new().and_then(EditorSession::new));
                 }
                 result
             }
         }
     }
+    fn finish_discard_reset(
+        &mut self,
+        mut result: (FileStatus, Option<bool>),
+        editor: Result<EditorSession, Error>,
+    ) -> (FileStatus, Option<bool>) {
+        match editor {
+            Ok(editor) => self.install_document(editor),
+            Err(error) => {
+                if let FileStatus::Library(LibraryStatus::Written { feedback, .. }) = &mut result.0
+                {
+                    feedback.push(SaveFeedback::EditorReset(error));
+                }
+                result.1 = Some(false);
+            }
+        }
+        result
+    }
+
     fn accept_external_outcome(
         &mut self,
         document: Option<DocumentId>,

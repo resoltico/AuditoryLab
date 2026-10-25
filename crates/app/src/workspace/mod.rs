@@ -1262,14 +1262,7 @@ impl Workspace {
     fn replace_document(&mut self, draft: Draft) -> bool {
         match EditorSession::new(draft) {
             Ok(editor) => {
-                self.editor.session = editor;
-                {
-                    self.editor.location = DocumentLocation::Unsaved;
-                    self.editor.status = EditStatus::Idle;
-                }
-                self.view = View::Workbench;
-                self.effects.push(Effect::ShowView(View::Workbench));
-                self.files.status = FileStatus::Idle;
+                self.install_document(editor);
                 true
             }
             Err(error) => {
@@ -1277,6 +1270,15 @@ impl Workspace {
                 false
             }
         }
+    }
+
+    fn install_document(&mut self, editor: EditorSession) {
+        self.editor.session = editor;
+        self.editor.location = DocumentLocation::Unsaved;
+        self.editor.status = EditStatus::Idle;
+        self.view = View::Workbench;
+        self.effects.push(Effect::ShowView(View::Workbench));
+        self.files.status = FileStatus::Idle;
     }
 
     // ---- tasks ----
@@ -1679,6 +1681,7 @@ impl Workspace {
                 error: WorkerFailure::InvalidOutcome,
             },
         };
+        let conclusion = status.conclusion(conclusion);
         if let FileKind::Managed(job) = &task.kind
             && job.background_read()
         {
