@@ -261,7 +261,7 @@ impl DateRange {
     }
 }
 /// One correlated catalog query shared by Slint and ordinary CLI.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CatalogQuery {
     /// Persistent/temporary/Trash scope.
     pub scope: Scope,
@@ -346,6 +346,18 @@ pub struct FacetCounts {
     pub methods: Vec<(nominal::Method, usize)>,
 }
 impl CatalogQuery {
+    /// Clear restrictions while retaining collection, sort, direction and grouping.
+    #[must_use]
+    pub fn cleared_filters(&self) -> Self {
+        Self {
+            scope: self.scope,
+            sort: self.sort,
+            direction: self.direction,
+            group_by: self.group_by,
+            ..Self::default()
+        }
+    }
+
     /// Validate explicit interval and study token syntax before discovery/mutation.
     ///
     /// # Errors

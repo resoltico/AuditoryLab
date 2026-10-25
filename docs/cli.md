@@ -96,3 +96,20 @@ A failed save preserves old bytes; a confirmed durability/cleanup warning remain
 Turn device volume down before explicit `play SOURCE`. It validates at the actual default-device rate, sends left/right to output channels 0/1 and silences additional channels. Start/final facts, hearing/headphone notices, underruns and status go to stderr. A terminal gets a 4 Hz clock/status line; redirected output has no carriage-return animation. Trash cannot be played until restored.
 
 During export/play the first Ctrl-C requests cancellation and the second exits immediately with 130; Unix SIGTERM/SIGHUP also request cancellation. Export checks before staging, between blocks and before publication. Playback checks every 10 ms and fades up to 30 ms before queued device audio drains. Cancellation after publication cannot unpublish a file. Forced termination can leave a hidden partial file beside the destination. The CLI has no interactive live-edit grammar.
+
+### JSON report fields
+
+The application defines the serializable reports in [`reports`](../crates/app/src/reports.rs). Every envelope contains `output_schema_version`, `operation`, `complete`, `convention`, `query`, `unique_count`, `entries`, `groups`, and `diagnostics`.
+
+| Operation | Additional fields |
+| --- | --- |
+| List and Trash list | `classifier_revision`, `effective_sort` (sort and direction), `stages` |
+| Describe | Each entry adds `recipe_toml` and `history_warnings` |
+| Inspect | Each entry's `validation` contains `not_checked`, `valid` with rate, frames, peaks and voice facts, or `invalid` with rate and diagnostics |
+| Library path | `root` contains the configured path, source, existence, format and initialization state; unknown existence is null |
+| Library initialization | `root` contains the initialization result; `status` states whether it published or was unchanged |
+| Library check | `stages` names retained stages; entry and diagnostic arrays describe the bounded inventory |
+| Mutations | `status`, `selector`, `version_token`, `candidate`, and `receipt` preserve publication truth and comparison tokens |
+| Errors | `status` classifies the exit outcome and `diagnostics` explains it |
+
+An entry includes its key, collection, title, document identity, duration, declared and membership dates, version token, nominal classification, evidence and validation state. Nominal descriptors carry owner and optional related owner, method, rate, band and derivation. Groups reference keys in the unique entry list. Diagnostics are storage-context objects or operation messages; unknown dates and absent comparison values are JSON null.

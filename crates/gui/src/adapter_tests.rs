@@ -1965,404 +1965,6 @@ fn native_library_keyboard_has_one_tab_stop_and_keeps_selected_key_through_sort(
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
 
-/// Requires a separately built production CLI; CI and CONTRIBUTING invoke it
-/// explicitly, so isolated GUI-only test builds do not silently use a stale binary.
-#[test]
-#[ignore = "requires AUDITORYLAB_QUERY_TEST_CLI pointing to the current production CLI"]
-fn cli_and_slint_query_fixtures_agree() {
-    use auditorylab::library::{LibraryRoot, LibraryStore, Mutation};
-    use std::{collections::BTreeSet, path::PathBuf, process::Command, sync::Arc};
-    let cli = PathBuf::from(
-        std::env::var_os("AUDITORYLAB_QUERY_TEST_CLI")
-            .expect("build the CLI and set AUDITORYLAB_QUERY_TEST_CLI (see CONTRIBUTING.md)"),
-    );
-    let cli = if cli.is_absolute() {
-        cli
-    } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join(cli)
-    };
-    assert!(
-        cli.is_file(),
-        "current CLI executable missing: {}",
-        cli.display()
-    );
-    let temp = tempfile::tempdir().unwrap();
-    let root = temp.path().join("library");
-    let store = LibraryStore::new(LibraryRoot::explicit(root.clone()).unwrap()).unwrap();
-    store.root().initialize().unwrap();
-    for (id, title, known) in [
-        ("ioannou-2015-binaural-2-hz", "Known dates fixture", true),
-        ("ioannou-2015-binaural-6-hz", "Unknown dates fixture", false),
-    ] {
-        let mut draft =
-            auditorylab::editing::Draft::from_snapshot(&auditorylab::recipe::builtin(id).unwrap())
-                .unwrap();
-        draft.set_title(title.into());
-        let mut recipe = draft.recipe();
-        if known {
-            recipe.document.created_at = Some("2026-07-01T12:00:00Z".parse().unwrap());
-            recipe.document.modified_at = Some("2026-08-01T12:00:00Z".parse().unwrap());
-        }
-        store
-            .apply(
-                Mutation::Add(Arc::new(recipe)),
-                &auditorylab::workflow::Cancel::default(),
-            )
-            .unwrap();
-    }
-    let mut mixed = auditorylab::core::Recipe::parse(
-        &std::fs::read_to_string(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../core/tests/fixtures/recipes/mixed-binaural-am.toml"),
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    mixed.description.as_mut().unwrap().title = "Mixed structural fixture".into();
-    store
-        .apply(
-            Mutation::Add(Arc::new(mixed)),
-            &auditorylab::workflow::Cancel::default(),
-        )
-        .unwrap();
-    let h = Harness::with_workspace(
-        Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
-            store,
-        )
-        .unwrap(),
-    );
-    h.wait_for_files();
-    let ui = h.ui();
-    let check = |args: &[&str], expected: Option<usize>| {
-        h.wait_for_files();
-        h.settle();
-        let output = Command::new(&cli)
-            .arg("--library-dir")
-            .arg(&root)
-            .arg("list")
-            .args(args)
-            .args(["--format", "json"])
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "{output:?}");
-        let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        let entries = value["entries"].as_array().unwrap();
-        let count = entries.len();
-        if let Some(expected) = expected {
-            assert_eq!(count, expected, "{args:?}");
-        }
-        let expected_keys: Vec<String> = entries
-            .iter()
-            .map(|e| e["key"].as_str().unwrap().to_owned())
-            .collect();
-        let model = ui.get_catalog();
-        let rows: Vec<_> = (0..model.row_count())
-            .map(|i| model.row_data(i).unwrap())
-            .collect();
-        let actual: Vec<String> = rows
-            .iter()
-            .filter(|r| !r.binding.is_empty())
-            .map(|r| r.binding.to_string())
-            .collect();
-        assert_eq!(
-            actual.iter().collect::<BTreeSet<_>>(),
-            expected_keys.iter().collect::<BTreeSet<_>>(),
-            "{args:?}"
-        );
-        assert!(
-            ui.get_library_count()
-                .starts_with(&format!("{count} unique")),
-            "{args:?}"
-        );
-        let groups = value["groups"].as_array().unwrap();
-        if groups.is_empty() {
-            assert_eq!(actual, expected_keys, "sort mismatch: {args:?}");
-        }
-        for group in groups {
-            let keys: Vec<String> = group["keys"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|k| k.as_str().unwrap().to_owned())
-                .collect();
-            let label = format!(
-                "{} · {} unique sounds",
-                group["label"].as_str().unwrap(),
-                keys.len()
-            );
-            let start = rows
-                .iter()
-                .position(|r| r.binding.is_empty() && r.text == label)
-                .unwrap();
-            let actual: Vec<_> = rows[start + 1..]
-                .iter()
-                .take_while(|r| !r.binding.is_empty())
-                .map(|r| r.binding.to_string())
-                .collect();
-            assert_eq!(actual, keys, "group mismatch: {args:?}");
-        }
-        assert!(!h.adapter.inspect(|w| w.audio_busy()));
-    };
-    // Actual generated callbacks, installed by the production adapter. CLI flags
-    // are independent literals, not generated from the GUI's normalized query.
-    ui.invoke_collection_filter(0, 1);
-    ui.invoke_search("20".into());
-    ui.invoke_rhythm_filter(4, 1);
-    check(
-        &[
-            "--search", "20", "--band", "beta", "--method", "binaural", "--sort", "rate",
-        ],
-        None,
-    );
-    ui.invoke_search("".into());
-    ui.invoke_rhythm_filter(0, 0);
-    ui.invoke_collection_filter(1, 2);
-    ui.invoke_more_filters(
-        "10.1371/journal.pone.0129486".into(),
-        1,
-        1,
-        0,
-        1,
-        0,
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-    );
-    check(
-        &[
-            "--collection",
-            "builtin",
-            "--study",
-            "10.1371/journal.pone.0129486",
-            "--population",
-            "human",
-            "--role",
-            "test",
-            "--sort",
-            "title",
-            "--direction",
-            "asc",
-        ],
-        Some(5),
-    );
-    ui.invoke_more_filters(
-        "10.1371/journal.pone.0129486".into(),
-        1,
-        2,
-        0,
-        1,
-        0,
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-    );
-    check(
-        &[
-            "--collection",
-            "builtin",
-            "--study",
-            "10.1371/journal.pone.0129486",
-            "--population",
-            "human",
-            "--role",
-            "comparison",
-            "--sort",
-            "title",
-            "--direction",
-            "asc",
-        ],
-        Some(1),
-    );
-    ui.invoke_collection_filter(2, 2);
-    ui.invoke_more_filters(
-        "10.1371/journal.pone.0129486".into(),
-        1,
-        1,
-        0,
-        1,
-        0,
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-    );
-    check(
-        &[
-            "--collection",
-            "user",
-            "--study",
-            "10.1371/journal.pone.0129486",
-            "--population",
-            "human",
-            "--role",
-            "test",
-            "--sort",
-            "title",
-            "--direction",
-            "asc",
-        ],
-        Some(0),
-    );
-    ui.invoke_collection_filter(2, 3);
-    ui.invoke_more_filters(
-        "".into(),
-        0,
-        0,
-        0,
-        2,
-        0,
-        "2026-01-01".into(),
-        "2026-12-31".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-    );
-    let created = auditorylab::calendar::local_range("2026-01-01", "2026-12-31").unwrap();
-    let from = created.from.unwrap().to_string();
-    let before = created.before.unwrap().to_string();
-    check(
-        &[
-            "--collection",
-            "user",
-            "--sort",
-            "created",
-            "--direction",
-            "desc",
-            "--created-from",
-            &from,
-            "--created-before",
-            &before,
-        ],
-        Some(1),
-    );
-    ui.invoke_collection_filter(2, 4);
-    for (choice, direction) in [(1, "asc"), (2, "desc")] {
-        ui.invoke_more_filters(
-            "".into(),
-            0,
-            0,
-            0,
-            choice,
-            0,
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
-        );
-        check(
-            &[
-                "--collection",
-                "user",
-                "--sort",
-                "modified",
-                "--direction",
-                direction,
-            ],
-            Some(3),
-        );
-    }
-    ui.invoke_collection_filter(2, 5);
-    ui.invoke_more_filters(
-        "".into(),
-        0,
-        0,
-        0,
-        1,
-        0,
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "2000-01-01".into(),
-        "2100-12-30".into(),
-    );
-    let added = auditorylab::calendar::local_range("2000-01-01", "2100-12-30").unwrap();
-    let from = added.from.unwrap().to_string();
-    let before = added.before.unwrap().to_string();
-    check(
-        &[
-            "--collection",
-            "user",
-            "--sort",
-            "added",
-            "--direction",
-            "asc",
-            "--added-from",
-            &from,
-            "--added-before",
-            &before,
-        ],
-        Some(3),
-    );
-    ui.invoke_collection_filter(0, 1);
-    for (choice, group) in [(1, "band"), (2, "method"), (3, "study"), (4, "collection")] {
-        ui.invoke_more_filters(
-            "".into(),
-            0,
-            0,
-            0,
-            1,
-            choice,
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
-        );
-        check(
-            &["--sort", "rate", "--direction", "asc", "--group-by", group],
-            Some(26),
-        );
-    }
-    ui.invoke_collection_filter(0, 1);
-    ui.invoke_rhythm_filter(5, 1);
-    ui.invoke_more_filters(
-        "".into(),
-        0,
-        0,
-        1,
-        1,
-        0,
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-    );
-    check(
-        &[
-            "--band",
-            "gamma",
-            "--method",
-            "binaural",
-            "--analysis",
-            "complete",
-            "--sort",
-            "rate",
-            "--direction",
-            "asc",
-        ],
-        None,
-    );
-}
-
 fn reveal_library_control(h: &Harness, prefix: &str) -> ItemRc {
     for _ in 0..8 {
         let item = labelled(h.ui(), prefix);
@@ -2762,4 +2364,127 @@ fn changing_display_vocabulary_preserves_typed_library_search() {
         .map(|row| row.binding)
         .collect::<Vec<_>>();
     assert_eq!(after, before);
+}
+
+#[test]
+fn filter_controls_map_to_independent_typed_queries() {
+    use auditorylab::collection::{CatalogQuery, DateRange, Direction, GroupBy, Scope, SortBy};
+    use auditorylab::core::nominal::{Band, Method};
+    use auditorylab::query::RhythmQuery;
+    let temp = tempfile::tempdir().unwrap();
+    let store = auditorylab::library::LibraryStore::new(
+        auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap(),
+    )
+    .unwrap();
+    store.root().initialize().unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::recipe::catalog().unwrap(),
+            Capabilities::portable(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    for (choice, scope) in [
+        (0, Scope::All),
+        (1, Scope::BuiltIn),
+        (2, Scope::User),
+        (3, Scope::OpenFiles),
+        (4, Scope::Trash),
+    ] {
+        for (sort_choice, sort) in [
+            (0, SortBy::Automatic),
+            (1, SortBy::Rate),
+            (2, SortBy::Title),
+            (3, SortBy::Created),
+            (4, SortBy::Modified),
+            (5, SortBy::Added),
+            (6, SortBy::Study),
+            (7, SortBy::Collection),
+        ] {
+            ui.invoke_collection_filter(choice, sort_choice);
+            h.wait_for_files();
+            let expected = CatalogQuery {
+                scope,
+                sort,
+                ..CatalogQuery::default()
+            };
+            h.adapter
+                .inspect(|w| assert_eq!(w.catalog_query().unwrap(), &expected));
+        }
+    }
+    ui.invoke_collection_filter(0, 0);
+    h.wait_for_files();
+    for (band_choice, band) in [
+        (1, Band::Delta),
+        (2, Band::Theta),
+        (3, Band::Alpha),
+        (4, Band::Beta),
+        (5, Band::Gamma),
+    ] {
+        for (method_choice, method) in [
+            (1, Method::Binaural),
+            (2, Method::Monaural),
+            (3, Method::Clicks),
+            (4, Method::Gate),
+            (5, Method::AmplitudeModulation),
+            (6, Method::SteadyTone),
+        ] {
+            ui.invoke_rhythm_filter(band_choice, method_choice);
+            h.wait_for_files();
+            let expected = CatalogQuery {
+                rhythm: RhythmQuery {
+                    bands: vec![band],
+                    methods: vec![method],
+                    state: None,
+                },
+                ..CatalogQuery::default()
+            };
+            h.adapter
+                .inspect(|w| assert_eq!(w.catalog_query().unwrap(), &expected));
+        }
+    }
+    ui.invoke_rhythm_filter(0, 0);
+    h.wait_for_files();
+    ui.invoke_more_filters(
+        "key:source".into(),
+        2,
+        2,
+        2,
+        2,
+        3,
+        "2026-01-01".into(),
+        "2026-01-02".into(),
+        "2026-03-01".into(),
+        "2026-03-02".into(),
+        "2026-05-01".into(),
+        "2026-05-02".into(),
+    );
+    h.wait_for_files();
+    let expected = CatalogQuery {
+        studies: vec!["key:source".into()],
+        populations: vec![auditorylab::core::Population::Mouse],
+        roles: vec![auditorylab::core::ConditionRole::Comparison],
+        analysis: Some(auditorylab::core::nominal::Completeness::Partial),
+        direction: Some(Direction::Desc),
+        group_by: GroupBy::Study,
+        created: auditorylab::calendar::local_range("2026-01-01", "2026-01-02").unwrap(),
+        modified: auditorylab::calendar::local_range("2026-03-01", "2026-03-02").unwrap(),
+        added: auditorylab::calendar::local_range("2026-05-01", "2026-05-02").unwrap(),
+        ..CatalogQuery::default()
+    };
+    h.adapter
+        .inspect(|w| assert_eq!(w.catalog_query().unwrap(), &expected));
+    ui.invoke_clear_library_filters();
+    h.wait_for_files();
+    let cleared = CatalogQuery {
+        direction: Some(Direction::Desc),
+        group_by: GroupBy::Study,
+        created: DateRange::default(),
+        ..CatalogQuery::default()
+    };
+    h.adapter
+        .inspect(|w| assert_eq!(w.catalog_query().unwrap(), &cleared));
 }

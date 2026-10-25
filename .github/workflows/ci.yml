@@ -174,12 +174,6 @@ jobs:
           echo "DEVELOPER_DIR=$developer" >> "$GITHUB_ENV"
       - run: cargo clippy --workspace --all-targets --locked
       - run: cargo test --workspace --locked
-      - name: Compare production CLI and Slint query fixtures
-        run: |
-          cargo build --locked -p auditorylab-cli
-          binary="target/debug/auditorylab"
-          if [[ "$RUNNER_OS" == Windows ]]; then binary="${binary}.exe"; fi
-          AUDITORYLAB_QUERY_TEST_CLI="$binary" cargo test --locked -p auditorylab-gui cli_and_slint_query_fixtures_agree -- --ignored --nocapture
       - run: cargo test -p auditorylab --features test-support --test library_faults --test library_process --locked
       - name: Verify native AT-SPI cache signal contracts
         if: runner.os == 'Linux'

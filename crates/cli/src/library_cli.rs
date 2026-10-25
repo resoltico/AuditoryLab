@@ -2,16 +2,15 @@
 use super::{Source, escape, output, prose, usage};
 use auditorylab::core::SampleRate;
 use auditorylab::recipe::RecipeSnapshot;
+use auditorylab::reports::Report;
 use auditorylab::workflow::Cancel;
 use auditorylab::{
     self as lab,
     collection::{CatalogQuery, DateRange, Direction, EntrySummary, GroupBy, Scope, SortBy},
-    library::{
-        LibraryKey, LibraryRoot, LibraryStore, Mutation, MutationKind, VersionToken, WriteOutcome,
-    },
+    library::{LibraryKey, LibraryRoot, LibraryStore, Mutation, VersionToken, WriteOutcome},
 };
 use clap::{Args, Subcommand, ValueEnum};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::{
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
@@ -34,6 +33,15 @@ pub(super) enum CollectionArg {
     All,
     Builtin,
     User,
+}
+impl CollectionArg {
+    fn scope(self) -> Scope {
+        match self {
+            Self::All => Scope::All,
+            Self::Builtin => Scope::BuiltIn,
+            Self::User => Scope::User,
+        }
+    }
 }
 #[derive(Args)]
 pub(super) struct QueryArgs {
@@ -323,11 +331,7 @@ fn builtins() -> Result<Vec<EntrySummary>> {
         .collect()
 }
 pub(super) fn list(args: ListArgs, path: Option<&Path>) -> Result<u8> {
-    let scope = match args.collection {
-        CollectionArg::All => Scope::All,
-        CollectionArg::Builtin => Scope::BuiltIn,
-        CollectionArg::User => Scope::User,
-    };
+    let scope = args.collection.scope();
     if !args.files.is_empty() && scope != Scope::All {
         return Err(usage(
             "temporary --file inputs cannot be combined with a restrictive --collection",
@@ -433,7 +437,7 @@ fn print_list(
             }
         }
         ListFormat::Json => {
-            let value = json!({"output_schema_version":1,"operation":operation,"complete":complete,"convention":lab::core::nominal::CONVENTION,"classifier_revision":lab::core::nominal::CLASSIFIER_REVISION,"query":query,"effective_sort":query.effective_sort(),"unique_count":result.unique_count(),"entries":result.entries.iter().map(|e|entry_json(e)).collect::<Vec<_>>(),"groups":result.groups,"diagnostics":diagnostics,"stages":stages});
+            let value = Report::listing(operation, query, &result, complete, diagnostics, stages);
             print_json(&value)?;
         }
         ListFormat::Text => {
@@ -470,18 +474,9 @@ fn print_list(
     }
     Ok(())
 }
-pub(super) fn entry_json(entry: &EntrySummary) -> Value {
-    json!({"key":entry.key,"collection":entry.collection(),"title":entry.title,"document_id":entry.document_id,"duration_seconds":entry.duration_seconds,"created_at":entry.created_at,"modified_at":entry.modified_at,"added_at":entry.added_at,"trashed_at":entry.trashed_at,"version_token":entry.version_token,"nominal":{"descriptors":entry.nominal.rhythms.iter().map(|r|json!({"owner":r.owner.get(),"related_owner":r.related.map(|id|id.get()),"method":r.method.key(),"hz":r.hz,"band":r.band,"derivation":match r.derivation {lab::core::nominal::Derivation::Explicit=>"explicit",lab::core::nominal::Derivation::NarrowInference=>"narrow_inference"}})).collect::<Vec<_>>(),"bands":entry.nominal.bands,"methods":entry.nominal.methods,"completeness":entry.nominal.completeness,"multiple_rhythms":entry.nominal.multiple(),"outside_bands":entry.nominal.outside_bands(),"no_rhythm":entry.nominal.no_rhythm(),"diagnostics":entry.nominal.diagnostics},"evidence":entry.evidence,"validation":{"status":"not_checked"}})
-}
 pub(super) fn describe(resolved: &Resolved, format: ReadFormat) -> Result<()> {
     if format == ReadFormat::Json {
-        let mut value = entry_json(&resolved.summary);
-        value["history_warnings"] =
-            json!(lab::library::history_warnings(resolved.snapshot.recipe()));
-        value["recipe_toml"] = Value::String(resolved.snapshot.recipe().to_toml()?);
-        print_json(
-            &json!({"output_schema_version":1,"operation":"describe","complete":true,"convention":lab::core::nominal::CONVENTION,"query":null,"unique_count":1,"entries":[value],"groups":[],"diagnostics":[]}),
-        )?;
+        print_json(&Report::describe(&resolved.summary, &resolved.snapshot)?)?;
     } else {
         let extra = if resolved.summary.added_at.is_some() {
             format!(
@@ -509,25 +504,13 @@ pub(super) fn describe(resolved: &Resolved, format: ReadFormat) -> Result<()> {
     Ok(())
 }
 pub(super) fn inspect(resolved: &Resolved, rate: SampleRate, format: ReadFormat) -> Result<u8> {
-    let sound = resolved.snapshot.at(rate);
     if format == ReadFormat::Text {
+        let sound = resolved.snapshot.at(rate);
         output(format!("{}\n", prose(&lab::presentation::inspection(&sound?))).as_bytes())?;
         return Ok(0);
     }
-    let mut entry = entry_json(&resolved.summary);
-    let mut code = 0;
-    match sound {
-        Ok(sound) => {
-            entry["validation"] = json!({"status":"valid","sample_rate_hz":rate.hz(),"frames":sound.signal().frames(),"peak_dbfs":sound.signal().peak_dbfs(),"components":sound.signal().target().components().map(|(id,f)|json!({"owner":id.get(),"lane":format!("{:?}",id.lane()).to_lowercase(),"facts":f})).collect::<Vec<_>>()});
-        }
-        Err(error) => {
-            code = error.kind().exit_code();
-            entry["validation"] = json!({"status":"invalid","sample_rate_hz":rate.hz(),"diagnostics":[error.to_string()]});
-        }
-    }
-    print_json(
-        &json!({"output_schema_version":1,"operation":"inspect","complete":true,"convention":lab::core::nominal::CONVENTION,"query":null,"unique_count":1,"entries":[entry],"groups":[],"diagnostics":[]}),
-    )?;
+    let (report, code) = Report::inspect(&resolved.summary, &resolved.snapshot, rate);
+    print_json(&report)?;
     Ok(code)
 }
 pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8> {
@@ -540,9 +523,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                 Err(error) => {
                     let exists = root.path().try_exists().ok();
                     if format == ReadFormat::Json {
-                        print_json(
-                            &json!({"output_schema_version":1,"operation":operation,"complete":false,"root":{"path":root.path(),"source":root.source(),"exists":exists,"library_format":null,"initialized":false},"convention":lab::core::nominal::CONVENTION,"query":null,"unique_count":0,"entries":[],"groups":[],"diagnostics":[{"code":"root_inspection","message":error.to_string()}]}),
-                        )?;
+                        print_json(&Report::unavailable_path(operation, &root, exists, &error))?;
                     } else {
                         output(
                             format!(
@@ -568,9 +549,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                 }
             };
             if format == ReadFormat::Json {
-                print_json(
-                    &json!({"output_schema_version":1,"operation":operation,"complete":true,"root":info,"convention":lab::core::nominal::CONVENTION,"query":null,"unique_count":0,"entries":[],"groups":[],"diagnostics":[]}),
-                )?;
+                print_json(&Report::path(operation, info.clone()))?;
             } else {
                 output(
                     format!(
@@ -588,10 +567,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
         LibraryCommand::Init { format } => {
             let initialized = store(path)?.root().initialize()?;
             if format == ReadFormat::Json {
-                print_mutation_json(
-                    &json!({"output_schema_version":1,"operation":operation,"complete":true,"status":if initialized.created {"published"}else{"unchanged"},"root":initialized,"convention":lab::core::nominal::CONVENTION,"query":null,"unique_count":0,"entries":[],"groups":[],"diagnostics":initialized.warnings}),
-                    true,
-                )?;
+                print_mutation_json(&Report::initialized(operation, &initialized), true)?;
             } else {
                 output(
                     format!(
@@ -627,9 +603,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
         LibraryCommand::Check { format } => {
             let inventory = store(path)?.scan(&Cancel::default());
             if format == ReadFormat::Json {
-                print_json(
-                    &json!({"output_schema_version":1,"operation":operation,"complete":inventory.complete,"convention":lab::core::nominal::CONVENTION,"query":null,"unique_count":inventory.entries.len(),"entries":inventory.entries.iter().map(entry_json).collect::<Vec<_>>(),"groups":[],"diagnostics":inventory.diagnostics,"stages":inventory.stages}),
-                )?;
+                print_json(&Report::inventory(operation, &inventory))?;
             } else {
                 output(
                     format!(
@@ -780,7 +754,7 @@ fn apply_and_report_mutation(
     let outcome = store.apply(mutation, cancel)?;
     let code = if outcome.confirmed() { 0 } else { 1 };
     let mut bytes = if format == ReadFormat::Json {
-        json_bytes(&outcome_json(operation, &outcome))?
+        json_bytes(&Report::mutation(operation, &outcome))?
     } else {
         mutation_text(&outcome, store.root().path()).into_bytes()
     };
@@ -838,26 +812,13 @@ fn recovery_text(outcome: &WriteOutcome, root: &Path) -> String {
         receipt.operation_revision, receipt.key, receipt.key
     )
 }
-fn outcome_json(operation: &str, outcome: &WriteOutcome) -> Value {
-    let receipt = &outcome.receipt;
-    let entry = receipt
-        .record
-        .as_ref()
-        .map(|record| entry_json(&record.summary()));
-    let entries = if outcome.confirmed() && receipt.kind != MutationKind::Purge {
-        entry.clone().into_iter().collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
-    json!({"output_schema_version":1,"operation":operation,"complete":outcome.confirmed(),"status":outcome.status,"selector":receipt.key,"version_token":receipt.candidate_token,"convention":lab::core::nominal::CONVENTION,"query":null,"unique_count":entries.len(),"entries":entries,"groups":[],"candidate":if outcome.confirmed(){Value::Null}else{entry.unwrap_or(Value::Null)},"diagnostics":outcome.diagnostics,"receipt":{"operation_revision":receipt.operation_revision,"previous_version_token":receipt.previous,"candidate_version_token":receipt.candidate_token,"owned_stage":receipt.owned_stage}})
-}
 fn date(value: Option<lab::core::Timestamp>) -> String {
     value.map_or_else(|| "Unknown".into(), |date| date.to_string())
 }
 fn scalar(value: &str) -> String {
     escape(value).replace('\n', "\\n").replace('\t', "\\t")
 }
-fn json_bytes(value: &Value) -> Result<Vec<u8>> {
+fn json_bytes(value: &Report) -> Result<Vec<u8>> {
     let text = serde_json::to_string(value)?;
     let mut output = String::with_capacity(text.len());
     for c in text.chars() {
@@ -871,13 +832,13 @@ fn json_bytes(value: &Value) -> Result<Vec<u8>> {
     }
     Ok(output.into_bytes())
 }
-pub(super) fn print_json(value: &Value) -> Result<()> {
+pub(super) fn print_json(value: &Report) -> Result<()> {
     let bytes = json_bytes(value)?;
     output(&bytes)?;
     output(b"\n")?;
     Ok(())
 }
-fn print_mutation_json(value: &Value, confirmed: bool) -> Result<()> {
+fn print_mutation_json(value: &Report, confirmed: bool) -> Result<()> {
     let mut bytes = json_bytes(value)?;
     bytes.push(b'\n');
     if let Err(error) = io::stdout()
@@ -892,15 +853,14 @@ fn print_mutation_json(value: &Value, confirmed: bool) -> Result<()> {
             } else {
                 "Publication remains unconfirmed; Recheck before retry"
             },
-            value["receipt"]
+            serde_json::to_string(&value.receipt)
+                .unwrap_or_else(|error| format!("receipt rendering failed: {error}"))
         );
     }
     Ok(())
 }
 pub(super) fn error_json(operation: &str, error: &dyn std::error::Error, code: u8) -> Result<()> {
-    print_json(
-        &json!({"output_schema_version":1,"operation":operation,"complete":false,"status":match code {3=>"conflict",4=>"busy",5=>"incomplete_inventory",130=>"cancelled",2=>"rejected",_=>"failed_before_publication"},"convention":lab::core::nominal::CONVENTION,"query":null,"unique_count":0,"entries":[],"groups":[],"diagnostics":[error.to_string()]}),
-    )
+    print_json(&Report::error(operation, error, code))
 }
 
 #[cfg(test)]
@@ -1178,6 +1138,101 @@ mod recovery_tests {
                     previous
                 );
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod query_mapping_tests {
+    use super::*;
+    use clap::Parser;
+    #[derive(Parser)]
+    struct Probe {
+        #[command(flatten)]
+        args: ListArgs,
+    }
+    #[test]
+    fn discovery_flags_map_to_an_independent_typed_query() {
+        for (collection, scope) in [
+            ("all", Scope::All),
+            ("builtin", Scope::BuiltIn),
+            ("user", Scope::User),
+        ] {
+            let probe = Probe::try_parse_from([
+                "probe",
+                "--collection",
+                collection,
+                "--search",
+                "actual text",
+                "--band",
+                "theta",
+                "--method",
+                "monaural",
+                "--study",
+                "key:source",
+                "--role",
+                "comparison",
+                "--population",
+                "mouse",
+                "--analysis",
+                "partial",
+                "--rhythms",
+                "outside-bands",
+                "--created-from",
+                "2026-01-01T00:00:00Z",
+                "--created-before",
+                "2026-02-01T00:00:00Z",
+                "--modified-from",
+                "2026-03-01T00:00:00Z",
+                "--modified-before",
+                "2026-04-01T00:00:00Z",
+                "--added-from",
+                "2026-05-01T00:00:00Z",
+                "--added-before",
+                "2026-06-01T00:00:00Z",
+                "--sort",
+                "modified",
+                "--direction",
+                "desc",
+                "--group-by",
+                "study",
+                "--format",
+                "json",
+            ])
+            .unwrap();
+            assert_eq!(probe.args.collection.scope(), scope);
+            let (actual, format) = probe.args.query.query(scope).unwrap();
+            let expected = CatalogQuery {
+                scope,
+                include_external: false,
+                search: "actual text".into(),
+                rhythm: lab::query::RhythmQuery {
+                    bands: vec![lab::core::nominal::Band::Theta],
+                    methods: vec![lab::core::nominal::Method::Monaural],
+                    state: Some(lab::query::RhythmState::OutsideBands),
+                },
+                studies: vec!["key:source".into()],
+                roles: vec![lab::core::ConditionRole::Comparison],
+                populations: vec![lab::core::Population::Mouse],
+                analysis: Some(lab::core::nominal::Completeness::Partial),
+                created: DateRange {
+                    from: Some("2026-01-01T00:00:00Z".parse().unwrap()),
+                    before: Some("2026-02-01T00:00:00Z".parse().unwrap()),
+                },
+                modified: DateRange {
+                    from: Some("2026-03-01T00:00:00Z".parse().unwrap()),
+                    before: Some("2026-04-01T00:00:00Z".parse().unwrap()),
+                },
+                added: DateRange {
+                    from: Some("2026-05-01T00:00:00Z".parse().unwrap()),
+                    before: Some("2026-06-01T00:00:00Z".parse().unwrap()),
+                },
+                sort: SortBy::Modified,
+                direction: Some(Direction::Desc),
+                group_by: GroupBy::Study,
+            };
+            assert_eq!(actual, expected);
+            assert_eq!(format, ListFormat::Json);
         }
     }
 }

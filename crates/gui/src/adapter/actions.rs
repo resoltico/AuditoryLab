@@ -132,13 +132,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     });
     on!(on_clear_library_filters, |a| a.command(|w| {
         if let Some(query) = w.catalog_query().cloned() {
-            let cleared = auditorylab::collection::CatalogQuery {
-                scope: query.scope,
-                sort: query.sort,
-                direction: query.direction,
-                group_by: query.group_by,
-                ..auditorylab::collection::CatalogQuery::default()
-            };
+            let cleared = query.cleared_filters();
             if let Err(error) = w.set_catalog_query(cleared) {
                 w.library_filter_error(&error.to_string());
             }

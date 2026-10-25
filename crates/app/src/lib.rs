@@ -20,6 +20,7 @@ pub mod presentation;
 mod publish;
 pub mod query;
 pub mod recipe;
+pub mod reports;
 pub mod session;
 pub mod vocabulary;
 pub mod wav;

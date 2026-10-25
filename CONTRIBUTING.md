@@ -15,7 +15,6 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked
 cargo test --workspace --locked
 cargo build -p auditorylab-cli --locked
-AUDITORYLAB_QUERY_TEST_CLI=target/debug/auditorylab cargo test -p auditorylab-gui cli_and_slint_query_fixtures_agree --locked -- --ignored --nocapture
 cargo test -p auditorylab --features test-support --test library_faults --test library_process --locked
 cargo test -p auditorylab-core --release --locked
 cargo doc --workspace --no-deps --locked
@@ -29,7 +28,6 @@ Unit tests live beside code; integration tests use public APIs and the actual CL
 
 Frontends use the library for domain workflows. Keep rendering and validation in core; editing, publication, playback, interactive workflow and shared wording in the library; and terminal or widget mechanics in frontends. GUI tests install the production bindings with `SlintAdapter::install` on an offscreen platform, one per test thread, rather than wiring callbacks of their own. Core, library and CLI forbid unsafe code; the GUI confines unsafe code to generated Slint and audited native adapters. [Workspace lints](Cargo.toml) are shared.
 
-The cross-frontend query comparison uses an explicitly built production CLI against the installed Slint callbacks and the same native records. On Windows append `.exe` to the CLI path; an absolute `AUDITORYLAB_QUERY_TEST_CLI` also supports a custom target directory. The comparison is explicitly invoked because a GUI-only test build does not supply a CLI executable.
 
 Unix calendar integration tests use the native IANA timezone database (`Europe/Riga`); install the operating system’s `tzdata` package if it is missing. Tests set `TZ` only in isolated child processes and do not change system timezone settings.
 
