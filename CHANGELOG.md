@@ -6,10 +6,22 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Breaking
 
-- Recipe schema 3 separates current notes from research context and persists one nonrecursive original source content anchor. Prior schema versions are rejected; no migration reader is included. Rust `Recipe`, `About`, `Research` and `Source` reflect this format.
+- CLI selectors are explicit `builtin:ID` / `user:UUID`; plain-ID aliases are not supported. The managed-record and JSON-output formats each start at 1, independently of the existing Unreleased Recipe schema 3.
+- The one Unreleased Recipe schema 3 now requires a canonical document UUID and stable component IDs, supports signed-offset pairs, optional declared UTC history and full bibliography/scoped evidence/flat lineage. Earlier shapes and versions are rejected without migration. The Rust authored model is distinct from primitive DSP; `About`/`Research` are derived presentation views. `Draft` creation/copy is fallible when secure UUID allocation fails.
 - Human-facing sound components use Component consistently. Catalog source conditions reference shared citation/DOI records; built-in output is generated standalone recipe text.
 
+### Added
+
+- Persistent local User Library shared by native Slint and CLI, separate from immutable Built-ins, temporary Open files and Trash. Correlated evidence/date filters, deterministic sorts/groups, JSON and complete-inventory IDs output use one query model.
+- Expected revision/digest writes, bounded streaming discovery, cooperative locks, verified atomic publication, explicit uncertainty receipts/Recheck, scoped copies and managed add/edit/rename/Trash/Restore/purge. External-file Save checks opened identity and exact observed bytes; managed operations preserve original input files.
+- Shared nominal rhythm classification with five reference bands, multiple memberships, explicit outside/no-rhythm/review states and correlated band/method filters in CLI and Slint. Committed-draft and saved-candidate classifications are separate; library rows use cached nominal analysis. Search normalizes Unicode, requires all terms and matches bare numeric terms as whole values.
+- One-minute Ioannou 2015 binaural conditions at 2, 6, 20 and 40 Hz, retaining the existing 10 Hz and steady comparison conditions, with source parameters and adaptation limits documented.
+
 ### Changed
+
+- Compact Library views keep filter/recovery, refresh and clear actions reachable without results, with complete committed-filter summaries and Back scroll restoration. Rows show duration and sort dates; local-time details retain selectable exact UTC dates and honest Unknown history.
+- Live voices reuse a sinusoidal modulation evaluation within a frame only when its exact phase agrees. Each voice retains its own depth, gain and phase clock; sample bits and supported rates are preserved.
+- Inactive sinusoidal modulation retains rate validation but no longer creates a nonexistent upper-sideband restriction. Two-tone interpretation recognizes zero-depth modulation and unequal same-route levels; slowest-rate reporting includes positive monaural differences.
 
 - Search includes current own notes and attributed retained source context after reopen/reimport. Library action labels and availability come from shared application policy, including playback during Save/Import. Immutable snapshots cache two rate-specific signal successes/errors across details/readiness/export; command-driven controlled file/audio launches exercise result/exit/failure ordering through production bindings.
 

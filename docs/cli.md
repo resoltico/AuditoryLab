@@ -1,61 +1,98 @@
 # CLI
 
-Run `auditorylab` for help, `auditorylab COMMAND --help` for command options, or `auditorylab -V` for the [version](#generated-status-and-identity).
+Run `auditorylab` for help, `auditorylab COMMAND --help` for options, or `auditorylab -V` for product version, build counter and optional source revision. These commands open no device.
 
-## Commands
+## Sources and collections
 
-| Command | Result |
-|---|---|
-| `list` | Built-in IDs, titles, research topics and durations. |
-| `describe SOURCE` | Declared parameters, components and study context. |
-| `recipe RECIPE_ID [--output PATH]` | Original built-in TOML bytes, printed or saved. |
-| `inspect SOURCE [--sample-rate HZ]` | Validation, frame count, resolved duration/fade and per-ear peak bounds. |
-| `play SOURCE` | Playback at the default device's sample rate. |
-| `export SOURCE --output PATH [--sample-rate HZ]` | A stereo 32-bit float WAV file. |
-
-`inspect` and `export` default to 48,000 Hz. The accepted rate range is defined by [SampleRate](../crates/core/src/rate.rs). Playback validates at the device rate.
-
-## Choosing input
-
-Use exactly one SOURCE: a positional built-in ID, `--file PATH`, or `--stdin`. Files must be regular files or symlinks to them; pipes, directories and devices are rejected before reading. Use `--stdin` for streams. A positional filename still names a built-in ID.
+Use an explicit persistent selector, `builtin:<catalog-id>` or `user:<canonical-uuid>`. A title or bare catalog ID is not a selector. `describe`, `inspect`, `play` and WAV `export` alternatively accept exactly one `--file PATH` or `--stdin`. Files must resolve to regular files; use stdin for streams. Temporary inputs do not become User Library members.
 
 ```text
-auditorylab describe chan-2022-clicks-40-hz
+auditorylab list --collection builtin --band delta --method binaural
+auditorylab describe builtin:ioannou-2015-binaural-2-hz
 auditorylab inspect --file clicks.toml --sample-rate 44100
 cat clicks.toml | auditorylab inspect --stdin
+auditorylab recipe builtin:chan-2022-clicks-40-hz --output clicks.toml
 ```
 
-`recipe` retrieves only built-in source text. Save a copy with `--output`, edit it as UTF-8, then use `--file` to inspect, export or play it. Keep `[about]` consistent with your edits. See [recipes](recipes.md).
+`list` defaults to active Built-in + User entries. `--collection builtin` bypasses User discovery; `--collection user` includes only active managed entries. Repeat `--file PATH` with All to include explicitly supplied temporary inputs for that invocation. Trash is queried separately through `library list-trash`. Browsing never opens an audio device, initializes a library or rewrites dates.
 
-When stdin is a terminal, the CLI prints an end-of-input cue before reading. Interrupt handling for export/play begins after input has been read.
+`recipe SOURCE [--output PATH]` exports captured saved portable TOML. Built-in output preserves shipped source bytes and User output extracts its stored `recipe_toml`; local envelope fields never leak into it. Export retains identity/history and does not fork a copy. Output files are never overwritten by CLI recipe/WAV export.
 
-## Output and errors
+## Root and lifecycle
 
-Help, version, list, descriptions, inspection, recipe bytes and recipe/export completion lines go to stdout. Playback start, status and completion lines, listening notices, underrun warnings and errors go to stderr. Human prose wraps at 78 columns, and control/bidi characters are escaped for terminal display. Raw recipe output preserves every original byte. A closed output pipe is quiet success. If completion reporting fails after saving, exporting or playing, the operation remains complete and stderr receives a warning.
+CLI and desktop share the native persistent data location. Resolve an absolute `--library-dir PATH` first, then absolute `AUDITORYLAB_LIBRARY_DIR`, then the native per-user application data directory. `library path --format json` reports the actual configured location and initialization state without creating it. There is no fallback to the checkout, bundle, cache or another root when an override is unavailable. Explicit override roots require `library init`; the first publication can initialize a missing default root.
 
-| Exit code | Meaning |
+```text
+auditorylab library path
+auditorylab --library-dir /absolute/path/to/library library init
+auditorylab library add --file clicks.toml --as-copy --format json
+auditorylab list --collection user --format json
+```
+
+`add` preserves portable identity and known/unknown history; `--as-copy` explicitly forks a new identity, scoped ancestry and publication history. A reserved built-in UUID requires a copy. Same-ID identical content/history is unchanged; differing content/history conflicts. The original input file remains untouched.
+
+Use the selector and exact `version_token` returned by list/describe JSON for existing mutations:
+
+```text
+auditorylab library update user:UUID --file edited.toml --expect TOKEN --format json
+auditorylab library rename user:UUID --title "My sound" --expect TOKEN
+auditorylab library trash user:UUID --expect TOKEN
+auditorylab library list-trash --format json
+auditorylab library restore user:UUID --expect TOKEN
+auditorylab library purge user:UUID --expect TOKEN --yes
+```
+
+`UUID` and `TOKEN` above are placeholders for observed values. Obtain a fresh token after each mutation, including Restore. Existing writes check both revision and exact-byte digest, even for a no-op. Missing/stale targets conflict rather than being recreated. Built-ins cannot be updated, renamed, trashed or purged. Purge requires a currently trashed User entry and never cascades to ancestors, copies or external files. Trash/Restore preserve recipe history and Added here.
+
+`library check [--format json]` diagnoses records and recovery stages without modifying, promoting or deleting them. Default text output for an unconfirmed mutation includes the library root, operation revision, selector, candidate/previous version tokens and owned-stage identity. If completion output fails, stderr receives these recovery fields too. Confirmed normal text remains concise. Comparison tokens are unwrapped for copying. Keep this receipt after `publication_unconfirmed`: inspect `describe user:UUID --format json` and compare its token with the receipt's candidate/previous token before deciding another operation. A missing target establishes absence, not attributable purge success. The desktop retains exact receipts and provides Recheck. A fresh CLI invocation is not an automatic retry protocol.
+
+## Shared queries
+
+Search normalizes Unicode/case and requires every term. Bare numeric `20` matches a whole value without matching carrier 200 or year 2015. The [reference convention](catalog.md#nominal-rhythm-references) describes audio structure, not EEG or promised effects.
+
+| Option | Values / semantics |
 |---|---|
-| 0 | Success, including help and an empty invocation. |
-| 1 | Read, device, write, destination conflict or cleanup failure. |
-| 2 | Usage, unknown ID, recipe format or signal validation error. |
-| 130 | Cooperative cancellation. |
+| `--band` | delta, theta, alpha, beta, gamma |
+| `--method` | binaural, monaural, clicks, gate, amplitude-modulation, steady-tone |
+| `--rhythms` | none, multiple, outside-bands, needs-review |
+| `--study` | DOI or local source key (`key:NAME` is explicit) |
+| `--role` | test, comparison, mixed, unspecified |
+| `--population` | human, mouse, other_animal, mixed, not_applicable, unspecified |
+| `--analysis` | complete, partial, invalid nominal coverage |
+| `--created-from/--created-before` | Inclusive/exclusive explicit-offset instants |
+| `--modified-from/--modified-before` | Inclusive/exclusive declared edit instants |
+| `--added-from/--added-before` | Inclusive/exclusive local membership instants |
+| `--sort` | rate, title, study, collection, created, modified, added |
+| `--direction` | asc, desc |
+| `--group-by` | none, band, method, study, collection |
+| `--format` | text, json, ids |
 
-Durations use hours, minutes and seconds, such as `1 h` or `5 min 7.2 s`; `~` marks rounding. Unknown IDs include the `auditorylab list` and `--file PATH` hints. TOML errors retain line, column and snippet text. Validation errors identify the parameter and component. Failed cleanup names the partial file that remains.
+Repeat facet values for alternatives. Band and method must match one descriptor; study, role and population must match one current reference-condition evidence record. Ancestor-only evidence confers no current-study match. Unknown dates fail bounded ranges and sort last in either direction. Date bounds require explicit zones, for example `2026-10-24T00:00:00+03:00`; upper bounds are exclusive. Inverse ranges are errors.
 
-## Playback
+Automatic ordering is rate ascending for All/Built-in, modified descending for User/Trash. Explicit choices survive collection changes; dates default descending, other sorts ascending. Ties use normalized title then stable key ascending. Groups reference unique flat entries; repeated memberships never inflate `unique_count`.
 
-Turn the volume down before `play`. Its start line gives the title, source, duration, device, rate, channel count, format and listening notices. Left and right use output channels 0 and 1; additional channels are silent. Completion follows backend timestamps. The CLI reports nonzero underrun counts after playback. A route change, invalid timing or a stalled stream stops playback with an error.
+## Output and failures
 
-## Files and Ctrl-C
+JSON uses output envelope version 1, numeric quantities, explicit null unknowns, normalized UTC instants, the effective query, unique entries, group-key references and diagnostics. Read-only partial inventories retain healthy rows with `complete:false`. IDs output accepts only reusable persistent selectors, rejects grouping/temporary inputs, and emits **no stdout IDs** when discovery is incomplete.
 
-Recipe saving and WAV export never replace an existing file. Choose another output path when a destination exists. The library writes a hidden `.NAME.RANDOM.partial` file beside the destination, syncs it, then publishes it. WAV uses RIFF when its sizes fit, otherwise RF64. Cancellation or write failure removes the partial file; a cleanup error identifies any leftover. Unix output permissions follow ordinary file creation and the inherited umask.
+Human prose follows terminal width (78 columns when redirected); controls and bidi overrides are escaped. Raw recipe bytes remain unchanged. JSON escapes unsafe display controls without changing decoded data. Read-only broken pipes are quiet success; mutation reporting failure cannot undo publication and reports a retained receipt/warning on stderr.
 
-During export/play, the first Ctrl-C requests cancellation and the second exits immediately with 130. On Unix, SIGTERM and SIGHUP also request cancellation. Export checks before creating the partial file, between blocks and before publication. Playback checks cancellation every 10 ms, then fades over 30 ms of generated sound (or the remaining frames near the end) and exits 130. Sound already queued by the device drains according to its backend. A completed publication stays successful if cancellation arrives afterward. Forced termination can leave the hidden partial file beside the destination.
+| Code | Meaning |
+|---|---|
+| 0 | Completed, unchanged or empty complete result; confirmed publication warnings remain success. |
+| 1 | I/O/device/pre-publication failure, or an explicitly unconfirmed publication with receipt. |
+| 2 | Usage, unknown selector, unsupported recipe/validation or Built-in mutation refusal. |
+| 3 | Conflict, history mismatch or reserved identity. |
+| 4 | Busy or unavailable required locking assurance. |
+| 5 | Incomplete inventory or unreadable requested managed record. |
+| 130 | Cooperative cancellation before completion. |
 
-## Generated status and identity
+A failed save preserves old bytes; a confirmed durability/cleanup warning remains saved. Unconfirmed publication is neither proof of saving nor proof of no change. There is no force-overwrite bypass or automatic stage recovery.
 
-`auditorylab --version` and `-V` print `auditorylab VERSION (build BUILD)`, followed by ` · REVISION` when a source revision is supplied at build time. VERSION and BUILD come from the workspace metadata; REVISION is the first 12 hexadecimal characters of that source revision. They open no audio device.
+## Playback and WAV export
 
-Describe and Inspect use shared typed carrier, modulation, pulse-width and routing facts. Inspect distinguishes requested rates from integer-phase realized rates. Interaural difference appears only for one unmodulated left-only tone and one right-only tone, with no additional active generator.
+`inspect SOURCE [--sample-rate HZ]` and `export SOURCE --output PATH [--sample-rate HZ]` default to 48,000 Hz; [SampleRate](../crates/core/src/rate.rs) defines the supported range. Inspect reports requested and realized rates/widths, frame count, peaks and pair facts without opening a device. Finite invalid documents remain inspectable; export validates at its chosen rate. WAV output is stereo 32-bit float, RIFF or RF64 as required by size.
 
-Play prints source facts at the bound device rate. When stderr is a terminal, a compact status line updates at 4 Hz with estimated output elapsed time as a clock (`m:ss`, or `h:mm:ss` from one hour) and last-generated-frame quantities. Completion, errors and Ctrl-C clear the line; Ctrl-C retains exit 130. Play’s final result is written to stderr. Redirected stderr contains start/final text and meaningful warnings without carriage-return animation. Recipe stdout remains byte-preserving and export remains no-clobber. The CLI has no interactive live-edit grammar; reusable library callers can use `LiveGenerator`, its revisioned control and generated observations directly.
+Turn device volume down before explicit `play SOURCE`. It validates at the actual default-device rate, sends left/right to output channels 0/1 and silences additional channels. Start/final facts, hearing/headphone notices, underruns and status go to stderr. A terminal gets a 4 Hz clock/status line; redirected output has no carriage-return animation. Trash cannot be played until restored.
+
+During export/play the first Ctrl-C requests cancellation and the second exits immediately with 130; Unix SIGTERM/SIGHUP also request cancellation. Export checks before staging, between blocks and before publication. Playback checks every 10 ms and fades up to 30 ms before queued device audio drains. Cancellation after publication cannot unpublish a file. Forced termination can leave a hidden partial file beside the destination. The CLI has no interactive live-edit grammar.

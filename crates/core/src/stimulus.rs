@@ -52,99 +52,6 @@ pub enum Carrier {
         width_seconds: f64,
     },
 }
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum DocumentComponent {
-    /// A sine wave starting at phase zero.
-    Tone {
-        /// The ears that hear this component.
-        ears: Ears,
-        /// Frequency in hertz.
-        frequency_hz: f64,
-        /// Peak amplitude in dBFS.
-        peak_dbfs: f64,
-        /// Optional amplitude modulation.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        modulation: Option<Modulation>,
-    },
-    /// Unipolar rectangular pulses, the first starting at time zero.
-    Click {
-        /// The ears that hear this component.
-        ears: Ears,
-        /// Pulses per second.
-        rate_hz: f64,
-        /// Length of each pulse in seconds.
-        width_seconds: f64,
-        /// Pulse height in dBFS.
-        peak_dbfs: f64,
-        /// Optional amplitude modulation.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        modulation: Option<Modulation>,
-    },
-}
-
-impl From<Component> for DocumentComponent {
-    fn from(value: Component) -> Self {
-        let Component {
-            ears,
-            peak_dbfs,
-            carrier,
-            modulation,
-        } = value;
-        match carrier {
-            Carrier::Tone { frequency_hz } => Self::Tone {
-                ears,
-                frequency_hz,
-                peak_dbfs,
-                modulation,
-            },
-            Carrier::Click {
-                rate_hz,
-                width_seconds,
-            } => Self::Click {
-                ears,
-                rate_hz,
-                width_seconds,
-                peak_dbfs,
-                modulation,
-            },
-        }
-    }
-}
-
-impl From<DocumentComponent> for Component {
-    fn from(value: DocumentComponent) -> Self {
-        match value {
-            DocumentComponent::Tone {
-                ears,
-                peak_dbfs,
-                modulation,
-                frequency_hz,
-            } => Self {
-                ears,
-                peak_dbfs,
-                modulation,
-                carrier: Carrier::Tone { frequency_hz },
-            },
-            DocumentComponent::Click {
-                ears,
-                peak_dbfs,
-                modulation,
-                rate_hz,
-                width_seconds,
-            } => Self {
-                ears,
-                peak_dbfs,
-                modulation,
-                carrier: Carrier::Click {
-                    rate_hz,
-                    width_seconds,
-                },
-            },
-        }
-    }
-}
-
 /// Which ears hear a component.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -229,6 +136,7 @@ impl Component {
                     return Err(ComponentError::Depth { depth });
                 }
                 if let Carrier::Tone { frequency_hz } = self.carrier
+                    && depth > 0.0
                     && frequency_hz + rate_hz >= rate.nyquist_hz()
                 {
                     return Err(ComponentError::Sideband {
@@ -354,6 +262,19 @@ impl Stimulus {
 /// Why a stimulus cannot be rendered at a sample rate.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StimulusError {
+    /// Authored identity, voice-budget or coupled pair arithmetic failure.
+    Authored(crate::LoweringError),
+    /// A pair carrier is invalid at this rate; both coupled inputs are named.
+    PairCarrier {
+        /// Authored owner, including which lane failed.
+        id: ComponentId,
+        /// Requested first carrier.
+        first_hz: f64,
+        /// Requested signed offset.
+        offset_hz: f64,
+        /// Underlying rate-dependent carrier failure.
+        error: ComponentError,
+    },
     /// `duration_seconds` is not finite, gives no frame, or spans more than
     /// [`Signal::MAX_FRAMES`].
     Duration {
@@ -411,6 +332,11 @@ impl StimulusError {
     #[must_use]
     pub const fn parameters(&self) -> &'static [ParameterId] {
         match self {
+            Self::PairCarrier { .. }
+            | Self::Authored(crate::LoweringError::PairDifference { .. }) => {
+                &[ParameterId::PairFirstFrequency, ParameterId::PairOffset]
+            }
+            Self::Authored(_) => &[],
             Self::Duration { .. } => &[ParameterId::Duration],
             Self::Fade { .. } => &[ParameterId::Fade],
             Self::FadesOverlap { .. } => &[ParameterId::Duration, ParameterId::Fade],
@@ -541,6 +467,16 @@ impl Display for Quantity {
 impl Display for StimulusError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Authored(error) => error.fmt(f),
+            Self::PairCarrier {
+                id,
+                first_hz,
+                offset_hz,
+                error,
+            } => write!(
+                f,
+                "component {id}: first carrier {first_hz} Hz and signed offset {offset_hz} Hz: {error}"
+            ),
             Self::DuplicateComponentId { id } => {
                 write!(f, "two components share the identity {id}")
             }
@@ -651,6 +587,8 @@ impl Display for ComponentError {
 impl core::error::Error for StimulusError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
+            Self::Authored(error) => Some(error),
+            Self::PairCarrier { error, .. } => Some(error),
             Self::Component { error, .. } => Some(error),
             _ => None,
         }

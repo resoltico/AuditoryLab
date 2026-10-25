@@ -15,6 +15,16 @@ test-support = []
 device-playback = ["dep:cpal"]
 
 [dependencies]
+same-file.workspace = true
+chrono = { workspace = true, features = ["clock"] }
+cap-std.workspace = true
+cap-fs-ext.workspace = true
+directories.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+getrandom.workspace = true
+unicode-normalization.workspace = true
 cpal = { workspace = true, optional = true }
 auditorylab-core.workspace = true
 tempfile.workspace = true
@@ -31,6 +41,19 @@ toml.workspace = true
 allocation-counter.workspace = true
 proptest.workspace = true
 waveadapter.workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dev-dependencies]
+# Safe OS counters for the ignored callback diagnostic; absent from products.
+nix = { version = "0.31.3", default-features = false, features = ["time", "resource"] }
+
+[[test]]
+name = "library_process"
+required-features = ["test-support"]
+
+[[test]]
+name = "library_faults"
+required-features = ["test-support"]
+
 [[test]]
 name = "default_output"
 required-features = ["device-playback"]

@@ -33,7 +33,7 @@ fn difference(generator: &LiveGenerator) -> f64 {
 
 #[test]
 fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarget() {
-    let mut draft = Draft::new();
+    let mut draft = Draft::new().unwrap();
     let left = draft.add(CarrierKind::Tone).unwrap();
     let right = draft.add(CarrierKind::Tone).unwrap();
     draft.replace(left, component(380.0, Ears::Left));
@@ -73,7 +73,7 @@ fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarg
     assert!(generator.is_finished());
     assert!(out[1440..].iter().all(|f| *f == [0.0; 2]));
     assert_eq!(
-        control.update(&target(&Draft::new())),
+        control.update(&target(&Draft::new().unwrap())),
         Err(LiveUpdateError::SessionClosed)
     );
 }
@@ -83,16 +83,16 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
     for (text, expected) in [
         ("", false),
         (
-            "[[component]]\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=380\n[[component]]\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=420\n",
+            "[[component]]\nid=1\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=380\n[[component]]\nid=2\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=420\n",
             false,
         ),
         (
-            "[[component]]\nears='left'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=380\n[[component]]\nears='right'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=420\n",
+            "[[component]]\nid=1\nears='left'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=380\n[[component]]\nid=2\nears='right'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=420\n",
             true,
         ),
     ] {
         let snapshot = auditorylab::load_reader(
-            format!("schema_version=3\nduration_seconds=1\nfade_seconds=0\n{text}").as_bytes(),
+            format!("schema_version=3\nduration_seconds=1\nfade_seconds=0\n{text}\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n").as_bytes(),
             "called binaural even if not a pair",
         )
         .unwrap();
@@ -138,4 +138,63 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
     );
     assert!(text.starts_with("Changing"));
     assert_eq!(ParameterId::ClickWidth.descriptor().label, "Click width");
+}
+
+#[test]
+fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarget() {
+    use auditorylab::{EditingField, EditorSession, Lane, PairKind};
+    let mut editor = EditorSession::new(Draft::new().unwrap()).unwrap();
+    let owner = editor
+        .add_pair(editor.document(), PairKind::Binaural)
+        .unwrap();
+    let mut generator = LiveGenerator::new(target(editor.draft()));
+    let control = generator.control();
+    control.update(&target(editor.draft())).unwrap();
+    generator.render(&mut [[0.0; 2]; 2000]);
+    let commit = |editor: &mut EditorSession, parameter, value: &str| {
+        let handle = editor.handle(EditingField::Parameter(owner, parameter));
+        editor.commit_field(handle, value).unwrap().unwrap();
+    };
+    for (first, offset) in [(300.0, 6.0), (400.0, -2.0), (200.0, 40.0)] {
+        let first_handle = editor.handle(EditingField::Parameter(
+            owner,
+            ParameterId::PairFirstFrequency,
+        ));
+        let offset_handle = editor.handle(EditingField::Parameter(owner, ParameterId::PairOffset));
+        editor.stage(first_handle, &first.to_string()).unwrap();
+        editor.stage(offset_handle, &offset.to_string()).unwrap();
+        editor.commit().unwrap();
+        control.update(&target(editor.draft())).unwrap();
+        generator.render(&mut [[0.0; 2]; 1440]);
+        let observed = generator.observation().unwrap();
+        let voices: Vec<_> = observed.voices.iter().flatten().collect();
+        assert_eq!(voices.len(), 2);
+        assert_eq!(voices[0].id, owner);
+        assert_eq!(voices[1].id, owner.with_lane(Lane::Secondary));
+        assert_eq!(voices[0].facts.pair, voices[1].facts.pair);
+        assert_eq!(voices[0].facts.pair.unwrap().offset_hz, offset);
+    }
+    let before = generator.observation().unwrap();
+    commit(&mut editor, ParameterId::PairOffset, "-200");
+    assert!(
+        editor
+            .draft()
+            .target_check(SampleRate::DEFAULT)
+            .target()
+            .is_none()
+    );
+    assert_eq!(generator.observation().unwrap(), before);
+    commit(&mut editor, ParameterId::PairOffset, "2");
+    let revision = control.update(&target(editor.draft())).unwrap();
+    let title = editor.handle(EditingField::Metadata(auditorylab::MetadataField::Title));
+    editor
+        .commit_field(title, "Metadata only")
+        .unwrap()
+        .unwrap();
+    assert_eq!(control.update(&target(editor.draft())).unwrap(), revision);
+    generator.stop();
+    let mut output = [[1.0; 2]; 4000];
+    generator.render(&mut output);
+    assert!(generator.is_finished());
+    assert!(output[2880..].iter().all(|frame| *frame == [0.0; 2]));
 }

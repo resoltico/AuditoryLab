@@ -1,0 +1,69 @@
+    Finished `release` profile [optimized] target(s) in 0.31s
+     Running unittests src/lib.rs (target/release/deps/auditorylab-57f1aca5908d5788)
+
+running 1 test
+qualification: os=macos arch=aarch64 profile=release warmup=100 repeats=3 samples_per_repeat=1000 headroom_percent=Some(25)
+deadline_misses=0 max_budget_percent=5
+rate=48000 frames=64 monitor=None median_ns=22083 p95_ns=41666 max_ns=75542 budget_ns=1333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=2
+rate=48000 frames=64 monitor=Some(Quantities) median_ns=17291 p95_ns=19959 max_ns=38917 budget_ns=1333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=6
+rate=48000 frames=64 monitor=Some(Waveform) median_ns=17083 p95_ns=19708 max_ns=82584 budget_ns=1333333 retained_bytes=76800 consumer_bytes=76800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=3
+rate=48000 frames=256 monitor=None median_ns=65459 p95_ns=76375 max_ns=174042 budget_ns=5333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=2
+rate=48000 frames=256 monitor=Some(Quantities) median_ns=65500 p95_ns=76208 max_ns=128334 budget_ns=5333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=2
+rate=48000 frames=256 monitor=Some(Waveform) median_ns=65833 p95_ns=76583 max_ns=112416 budget_ns=5333333 retained_bytes=76800 consumer_bytes=76800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=1
+rate=48000 frames=1024 monitor=None median_ns=262833 p95_ns=290875 max_ns=367250 budget_ns=21333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=2
+rate=48000 frames=1024 monitor=Some(Quantities) median_ns=263083 p95_ns=291083 max_ns=501792 budget_ns=21333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=10
+rate=48000 frames=1024 monitor=Some(Waveform) median_ns=268417 p95_ns=310042 max_ns=2263209 budget_ns=21333333 retained_bytes=76800 consumer_bytes=76800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=1
+rate=48000 frames=4096 monitor=None median_ns=764708 p95_ns=836542 max_ns=1288709 budget_ns=85333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=9
+rate=48000 frames=4096 monitor=Some(Quantities) median_ns=767417 p95_ns=843125 max_ns=8096166 budget_ns=85333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=4
+rate=48000 frames=4096 monitor=Some(Waveform) median_ns=774000 p95_ns=881291 max_ns=4069000 budget_ns=85333333 retained_bytes=76800 consumer_bytes=76800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=32
+rate=768000 frames=64 monitor=None median_ns=15833 p95_ns=18042 max_ns=27417 budget_ns=83333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=35
+rate=768000 frames=64 monitor=Some(Quantities) median_ns=16125 p95_ns=18708 max_ns=29709 budget_ns=83333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=36
+rate=768000 frames=64 monitor=Some(Waveform) median_ns=15958 p95_ns=18250 max_ns=30750 budget_ns=83333 retained_bytes=1228800 consumer_bytes=1228800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=29
+rate=768000 frames=256 monitor=None median_ns=63416 p95_ns=72583 max_ns=97833 budget_ns=333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=27
+rate=768000 frames=256 monitor=Some(Quantities) median_ns=63000 p95_ns=71917 max_ns=91084 budget_ns=333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=2 max_budget_percent=564
+rate=768000 frames=256 monitor=Some(Waveform) median_ns=63584 p95_ns=73208 max_ns=1882291 budget_ns=333333 retained_bytes=1228800 consumer_bytes=1228800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=58
+rate=768000 frames=1024 monitor=None median_ns=250625 p95_ns=285000 max_ns=778792 budget_ns=1333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=61
+rate=768000 frames=1024 monitor=Some(Quantities) median_ns=252916 p95_ns=287125 max_ns=822333 budget_ns=1333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=26
+rate=768000 frames=1024 monitor=Some(Waveform) median_ns=250083 p95_ns=282541 max_ns=352209 budget_ns=1333333 retained_bytes=1228800 consumer_bytes=1228800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=44
+rate=768000 frames=4096 monitor=None median_ns=994416 p95_ns=1106792 max_ns=2366625 budget_ns=5333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=31
+rate=768000 frames=4096 monitor=Some(Quantities) median_ns=1001000 p95_ns=1118500 max_ns=1668542 budget_ns=5333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=1 max_budget_percent=119
+rate=768000 frames=4096 monitor=Some(Waveform) median_ns=1012958 p95_ns=1150084 max_ns=6355000 budget_ns=5333333 retained_bytes=1228800 consumer_bytes=1228800 misses=124 backend_underruns=0
+
+thread 'session::monitor::tests::callback_monitor_costs' (16583296) panicked at crates/lib/src/session/monitor/tests.rs:503:5:
+controlled performance qualification failed:
+768000 Hz / 256 frames / Some(Waveform): 1882291 ns exceeds 75% of 333333 ns
+768000 Hz / 4096 frames / Some(Waveform): 6355000 ns exceeds 75% of 5333333 ns
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test session::monitor::tests::callback_monitor_costs ... FAILED
+
+failures:
+
+failures:
+    session::monitor::tests::callback_monitor_costs
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 180 filtered out; finished in 22.39s
+
+error: test failed, to rerun pass `-p auditorylab --lib`

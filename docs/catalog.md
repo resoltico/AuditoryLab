@@ -2,6 +2,26 @@
 
 This reference describes the source parameters and adaptations of the built-in recipes from eight primary studies. Recipe content is authoritative in the [catalog source](../crates/core/catalog), and the [recipe guide](recipes.md#built-in-catalog) describes admission and fidelity requirements.
 
+## Nominal rhythm references
+
+The CLI and desktop derive reference-band memberships from the same pure structural classifier. These labels describe authored repetition, gating, amplitude modulation and narrowly attributable two-tone differences. They do not measure EEG, predict a mental state or certify a percept. Carrier frequency and endpoint fades are not classification inputs.
+
+| Reference | Nominal frequency |
+|---|---|
+| Delta | 0.1 ≤ Hz < 4 |
+| Theta | 4 ≤ Hz < 8 |
+| Alpha | 8 ≤ Hz ≤ 13 |
+| Beta | 13 < Hz ≤ 30 |
+| Gamma | 30 < Hz ≤ 80 |
+
+The convention identifier is `ifcn-2017-corrected-2019`: [Kane et al. 2017, glossary](https://doi.org/10.1016/j.cnp.2017.07.002), with the [2019 beta correction](https://pure.au.dk/portal/en/publications/corrigendum-to-a-revised-glossary-of-terms-most-commonly-used-by-/). The original glossary's full text was checked through the [publisher-deposited Europe PMC XML](https://www.ebi.ac.uk/europepmc/webservices/rest/PMC6123891/fullTextXML); the publisher HTML and PMC browser view were inaccessible during this review. Study-specific conventions remain in research notes.
+
+One sound can belong to several bands. Two independent processes in one band still count as multiple rhythms. Positive rates outside these intervals remain **Other rates**. **No rhythmic rate** requires complete analysis; ambiguous raw-tone mixtures appear under **Needs review**. A known modulation rate keeps its nominal band even if the carrier cannot play at a particular sample rate. Full target validation remains necessary before playback/export.
+
+Sinusoidal AM contributes a rhythm only at positive depth. Exactly two effectively unmodulated raw tones permit narrow inference when their routes are opposite exclusive ears or identical; unequal levels do not erase a same-route difference. Adding another component makes raw-pair attribution ambiguous. No all-pairs inference is attempted. Finite very quiet levels are not removed by an audibility threshold.
+
+Band and method filters are correlated within one descriptor. A method cannot borrow a band's membership from an unrelated process. The classifier returns exact authored rates independently of the selected device/export rate; presentation retains sufficient decimal precision at boundaries. First-class pair nodes and persistent collections are not supported.
+
 ## Primary sources and evidence limits
 
 | Study | Primary version and source |
@@ -44,13 +64,13 @@ The recipe summary reports: pilot enrolled 15; MRI comparison active 7/control 6
 
 The publisher supplements comprise S1 Checklist; S1–S7 figures (timeline, scalp/intracranial EEG, education/confounding, actigraphy); S1–S5 tables; and the three protocol PDFs. The statistical tables and protocols support the participant/outcome distinctions above; they do not supply the unspecified acoustic phase or audio sample-rate calibration.
 
-## 3. Ioannou 2015 — two recipes
+## 3. Ioannou 2015 — six recipes
 
 **Locators:** Materials and Methods / Participants (`sec003`), Stimuli (`sec004`), Recording and pre-processing; Results / Power analysis, Fig 1; Discussion / Limitations and future extension (`sec020`); [S1 File](https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0129486.s001&type=supplementary), Additional Power Analysis and Figs A/B.
 
-`ioannou-2015-binaural-10-hz`: 200 Hz left/210 Hz right, 60 s. `ioannou-2015-pure-tone-200-hz`: 200 Hz both ears, 60 s. Both match unambiguous source conditions. Blocks contain 20 s silence, then 60 s non-binaural control, then 60 s binaural stimulus. The recipes intentionally omit that sequence. Sixteen musicians plus sixteen non-musicians watched a silent subtitled film and ignored the sounds. Philips in-ear headphones and participant-adjusted constant-within-participant volume are stated. Absolute acoustic/digital level, audio sample rate, starting phase and ramps are not specified; EEG sampling (512 Hz, later 256 Hz) is distinct. The recipes' -20 dBFS, phase-zero and 0.1 s fade adaptations are disclosed.
+`ioannou-2015-binaural-10-hz`: 200 Hz left/210 Hz right, 60 s. `ioannou-2015-pure-tone-200-hz`: 200 Hz both ears, 60 s. Four further one-minute conditions retain 200 Hz left with 202, 206, 220 or 240 Hz right: `ioannou-2015-binaural-2-hz`, `ioannou-2015-binaural-6-hz`, `ioannou-2015-binaural-20-hz` and `ioannou-2015-binaural-40-hz`. These values follow the primary frequency-step schedule; the 2 Hz condition supplies a Delta reference without a sleep claim. All six match explicit source conditions. Blocks contain 20 s silence, then 60 s non-binaural control, then 60 s binaural stimulus. The recipes intentionally omit that sequence. Sixteen musicians plus sixteen non-musicians watched a silent subtitled film and ignored the sounds. Philips in-ear headphones and participant-adjusted constant-within-participant volume are stated. Absolute acoustic/digital level, audio sample rate, starting phase and ramps are not specified; EEG sampling (512 Hz, later 256 Hz) is distinct. The recipes' -20 dBFS, phase-zero and 0.1 s fade adaptations are disclosed.
 
-The strongest robust group frequency-following findings concern the alpha beat band (9–12 Hz), not proof that the individual 10 Hz recipe improves wellbeing. S1 File confirms only alpha SSR remained significant across five bands and a delta-stimulation/alpha-response cross-frequency finding. The recipe summaries describe neural responses. Source limitations include individualized volume/possible cross-hearing, right-ear-only mismatch and no behavioral measure of the illusion. The source's per-band block-count sentence is internally inconsistent with its frequency-step schedule; neither ambiguity changes the explicitly specified 10 Hz or 200 Hz conditions, so do not “repair” those recipes or invent a corrected whole experimental schedule.
+The strongest robust group frequency-following findings concern the alpha beat band (9–12 Hz), not proof that the individual recipe improves wellbeing. S1 File, retrieved and freshly inspected during the 24 October 2026 additions, confirms only alpha SSR remained significant across five bands and a delta-stimulation/alpha-response cross-frequency finding. The recipe summaries describe neural responses. Source limitations include individualized volume/possible cross-hearing, right-ear-only mismatch and no behavioral measure of the illusion. The source's per-band block-count sentence is internally inconsistent with its frequency-step schedule; neither ambiguity changes the selected explicit conditions, so do not “repair” those recipes or invent a corrected whole experimental schedule.
 
 ## 4. Jirakittayakorn 2017 — one recipe
 

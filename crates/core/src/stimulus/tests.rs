@@ -196,15 +196,29 @@ fn guards_accept_and_reject_neighbours() {
         });
         assert!(s.signal(rate(48_000)).is_err());
     }
-    for (frequency, valid) in [(23_960.0_f64.next_down(), true), (23_960.0, false)] {
-        s.components[0].carrier = Carrier::Tone {
-            frequency_hz: frequency,
-        };
+    for depth in [0.0, f64::from_bits(1), 1.0] {
+        for (frequency, active_valid) in [
+            (23_960.0_f64.next_down(), true),
+            (23_960.0, false),
+            (23_999.0, false),
+        ] {
+            s.components[0].carrier = Carrier::Tone {
+                frequency_hz: frequency,
+            };
+            s.components[0].modulation = Some(Modulation::Sinusoidal {
+                rate_hz: 40.0,
+                depth,
+            });
+            assert_eq!(s.signal(rate(48_000)).is_ok(), depth == 0.0 || active_valid);
+        }
+    }
+    // Inactivity does not excuse an invalid stored rate.
+    for rate_hz in [0.0, -1.0, 24_000.0, f64::INFINITY, f64::NAN] {
         s.components[0].modulation = Some(Modulation::Sinusoidal {
-            rate_hz: 40.0,
+            rate_hz,
             depth: 0.0,
         });
-        assert_eq!(s.signal(rate(48_000)).is_ok(), valid);
+        assert!(s.signal(rate(48_000)).is_err());
     }
     s.components = vec![tone(Ears::Both, 1000.0, 0.0)];
     assert!(s.signal(rate(48_000)).is_ok());

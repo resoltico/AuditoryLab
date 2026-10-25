@@ -10,12 +10,14 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+serde_json.workspace = true
 auditorylab = { workspace = true, features = ["device-playback"] }
 ctrlc.workspace = true
 clap.workspace = true
 textwrap.workspace = true
 
 [dev-dependencies]
+auditorylab = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 
 [lints]

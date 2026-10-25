@@ -1,0 +1,55 @@
+
+running 1 test
+qualification: os=macos arch=aarch64 profile=release warmup=100 repeats=3 samples_per_repeat=1000 headroom_percent=Some(25)
+deadline_misses=0 max_budget_percent=4
+rate=48000 frames=64 monitor=None median_ns=17000 p95_ns=31375 max_ns=61084 budget_ns=1333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=1
+rate=48000 frames=64 monitor=Some(Quantities) median_ns=12209 p95_ns=13541 max_ns=21792 budget_ns=1333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=1
+rate=48000 frames=64 monitor=Some(Waveform) median_ns=12083 p95_ns=12625 max_ns=21875 budget_ns=1333333 retained_bytes=76800 consumer_bytes=76800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=1
+rate=48000 frames=256 monitor=None median_ns=46750 p95_ns=49583 max_ns=83959 budget_ns=5333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=1
+rate=48000 frames=256 monitor=Some(Quantities) median_ns=46792 p95_ns=49584 max_ns=78416 budget_ns=5333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=1
+rate=48000 frames=256 monitor=Some(Waveform) median_ns=47208 p95_ns=51000 max_ns=83292 budget_ns=5333333 retained_bytes=76800 consumer_bytes=76800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=1
+rate=48000 frames=1024 monitor=None median_ns=186292 p95_ns=200458 max_ns=220667 budget_ns=21333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=3
+rate=48000 frames=1024 monitor=Some(Quantities) median_ns=186000 p95_ns=198041 max_ns=656208 budget_ns=21333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=1
+rate=48000 frames=1024 monitor=Some(Waveform) median_ns=187500 p95_ns=199542 max_ns=223917 budget_ns=21333333 retained_bytes=76800 consumer_bytes=76800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=0
+rate=48000 frames=4096 monitor=None median_ns=558584 p95_ns=591042 max_ns=632333 budget_ns=85333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=0
+rate=48000 frames=4096 monitor=Some(Quantities) median_ns=555375 p95_ns=601834 max_ns=780833 budget_ns=85333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=1
+rate=48000 frames=4096 monitor=Some(Waveform) median_ns=572500 p95_ns=611209 max_ns=1663875 budget_ns=85333333 retained_bytes=76800 consumer_bytes=76800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=23
+rate=768000 frames=64 monitor=None median_ns=10500 p95_ns=11208 max_ns=19792 budget_ns=83333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=29
+rate=768000 frames=64 monitor=Some(Quantities) median_ns=10666 p95_ns=11625 max_ns=24417 budget_ns=83333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=62
+rate=768000 frames=64 monitor=Some(Waveform) median_ns=10708 p95_ns=11584 max_ns=52083 budget_ns=83333 retained_bytes=1228800 consumer_bytes=1228800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=22
+rate=768000 frames=256 monitor=None median_ns=41375 p95_ns=47209 max_ns=73750 budget_ns=333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=16
+rate=768000 frames=256 monitor=Some(Quantities) median_ns=41083 p95_ns=43833 max_ns=54917 budget_ns=333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=18
+rate=768000 frames=256 monitor=Some(Waveform) median_ns=41333 p95_ns=44291 max_ns=60208 budget_ns=333333 retained_bytes=1228800 consumer_bytes=1228800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=14
+rate=768000 frames=1024 monitor=None median_ns=163084 p95_ns=173125 max_ns=195709 budget_ns=1333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=15
+rate=768000 frames=1024 monitor=Some(Quantities) median_ns=163334 p95_ns=174459 max_ns=207125 budget_ns=1333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=18
+rate=768000 frames=1024 monitor=Some(Waveform) median_ns=164542 p95_ns=177125 max_ns=240625 budget_ns=1333333 retained_bytes=1228800 consumer_bytes=1228800 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=13
+rate=768000 frames=4096 monitor=None median_ns=652583 p95_ns=678792 max_ns=740458 budget_ns=5333333 retained_bytes=0 consumer_bytes=0 misses=0 backend_underruns=0
+deadline_misses=0 max_budget_percent=13
+rate=768000 frames=4096 monitor=Some(Quantities) median_ns=652750 p95_ns=680875 max_ns=740625 budget_ns=5333333 retained_bytes=0 consumer_bytes=0 misses=124 backend_underruns=0
+deadline_misses=0 max_budget_percent=13
+rate=768000 frames=4096 monitor=Some(Waveform) median_ns=658166 p95_ns=686042 max_ns=735750 budget_ns=5333333 retained_bytes=1228800 consumer_bytes=1228800 misses=124 backend_underruns=0
+test session::monitor::tests::callback_monitor_costs ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 181 filtered out; finished in 14.84s
+

@@ -60,7 +60,7 @@ mod tests {
         let path = dir.path().join("recipe");
         fs::write(
             &path,
-            b"schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n",
+            b"schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
         )
         .unwrap();
         let file = open(&path).unwrap_or_else(|_| panic!("regular fixture not admitted"));

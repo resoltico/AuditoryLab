@@ -14,14 +14,48 @@ pub enum ErrorKind {
     InvalidRecipe,
     /// Invalid signal parameters.
     InvalidSound,
+    /// Secure portable identity generation failed; no fallback identity is invented.
+    Identity,
     /// Device failure.
     Device,
     /// Destination was left untouched.
     DestinationExists,
     /// Publication failure.
     Write,
+    /// Invalid command/configuration argument.
+    InvalidArgument,
+    /// A selected built-in cannot be mutated.
+    ReadOnlyBuiltIn,
+    /// Expected record content/revision no longer matches.
+    Conflict,
+    /// Incoming creation history differs from the stored identity's history.
+    HistoryConflict,
+    /// A cooperating reader/writer currently owns the root lock.
+    Busy,
+    /// Required filesystem locking assurance is unavailable.
+    LockUnavailable,
+    /// Discovery or a requested managed record cannot be read completely.
+    IncompleteInventory,
     /// A file operation was cancelled before publication.
     Cancelled,
+}
+impl ErrorKind {
+    /// Shared CLI status policy; publication warnings are confirmed outcomes, not errors.
+    #[must_use]
+    pub const fn exit_code(self) -> u8 {
+        match self {
+            Self::UnknownRecipe
+            | Self::InvalidRecipe
+            | Self::InvalidSound
+            | Self::InvalidArgument
+            | Self::ReadOnlyBuiltIn => 2,
+            Self::Conflict | Self::HistoryConflict => 3,
+            Self::Busy | Self::LockUnavailable => 4,
+            Self::IncompleteInventory => 5,
+            Self::Cancelled => 130,
+            _ => 1,
+        }
+    }
 }
 /// A complete contextual error, optionally naming a leftover partial file.
 #[derive(Debug)]

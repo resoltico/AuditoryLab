@@ -114,7 +114,7 @@ fn rust_standard_library_copyright() -> Result<Vec<u8>> {
     Ok(bytes)
 }
 fn readme(version: &str, gui: bool, target: &str) -> String {
-    include_str!("../templates/archive-readme.txt").replace("{version}",version).replace("{product}",if gui {"Desktop"} else {"CLI"}).replace("{start}",if gui {"Open Auditory Lab.app on macOS, auditorylab-gui.exe on Windows, or auditorylab-gui on Linux. Select a sound, read its summary, then use Listen or Export WAV…."} else {"Run auditorylab --help, then auditorylab list. Use auditorylab describe ID to read about a sound, and auditorylab recipe ID --output recipe.toml to edit one."}).replace("{platform_needs}",if target.contains("apple") {"macOS 15 or later. If first launch is blocked, use System Settings > Privacy & Security > Open Anyway after trying to open the app. Apple instructions: https://support.apple.com/en-us/102445"} else if target.contains("windows") {if gui { "Windows 10 or later on x86_64; Windows 11 on ARM64. Desktop drawing needs an OpenGL 2.0 or newer graphics driver." } else { "Windows 10 or later on x86_64; Windows 11 on ARM64." }} else {if gui { "Linux with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, Pango/GTK 3/GIO for desktop font preferences, OpenGL and an xdg-desktop-portal for file dialogs." } else { "Linux with glibc 2.35 or later and ALSA." }})
+    include_str!("../templates/archive-readme.txt").replace("{version}",version).replace("{product}",if gui {"Desktop"} else {"CLI"}).replace("{start}",if gui {"Open Auditory Lab.app on macOS, auditorylab-gui.exe on Windows, or auditorylab-gui on Linux. Select a sound, read its summary, then use Listen or Export WAV…."} else {"Run auditorylab --help, then auditorylab list. Use auditorylab describe builtin:ID to read about a sound, and auditorylab recipe builtin:ID --output recipe.toml to edit one."}).replace("{platform_needs}",if target.contains("apple") {"macOS 15 or later. If first launch is blocked, use System Settings > Privacy & Security > Open Anyway after trying to open the app. Apple instructions: https://support.apple.com/en-us/102445"} else if target.contains("windows") {if gui { "Windows 10 or later on x86_64; Windows 11 on ARM64. Desktop drawing needs an OpenGL 2.0 or newer graphics driver." } else { "Windows 10 or later on x86_64; Windows 11 on ARM64." }} else {if gui { "Linux with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, Pango/GTK 3/GIO for desktop font preferences, OpenGL and an xdg-desktop-portal for file dialogs." } else { "Linux with glibc 2.35 or later and ALSA." }})
 }
 fn section<'a>(changelog: &'a str, version: &str) -> Result<(&'a str, &'a str)> {
     let marker = format!("## [{version}]");
@@ -262,7 +262,11 @@ fn version_line(binary: &str, version: &str, build: u32, revision: Option<&str>)
     Ok(format!("{binary} {version} (build {build}){source}"))
 }
 fn smoke(cli: &Path, scratch: &Path) -> Result<()> {
-    let listing = String::from_utf8(capture(Command::new(cli).arg("list"))?)?;
+    let listing = String::from_utf8(capture(Command::new(cli).args([
+        "list",
+        "--collection",
+        "builtin",
+    ]))?)?;
     for entry in fs::read_dir("crates/core/catalog")? {
         let path = entry?.path();
         if path.extension().is_some_and(|e| e == "toml")
@@ -292,7 +296,7 @@ fn smoke(cli: &Path, scratch: &Path) -> Result<()> {
             .stdin
             .take()
             .ok_or("stdin missing")?
-            .write_all(b"schema_version=3\nduration_seconds=0.000125\nfade_seconds=0\n")?;
+            .write_all(b"schema_version=3\nduration_seconds=0.000125\nfade_seconds=0\n[document]\nid='00000000-0000-4000-8000-000000000001'\n")?;
         let output = child.wait_with_output()?;
         if output.status.success() != expected_success {
             return Err(format!(

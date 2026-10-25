@@ -2,9 +2,9 @@ import {
     Palette, Button, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, TabWidget, ProgressIndicator
 }
 from "std-widgets.slint";
-export { ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
-import { ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
-import { Disclosure, NumericField, ParameterControl, MetadataField, NotesField, StableButton, ExportRate } from "editor.slint";
+export { CatalogRow, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import { CatalogRow, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import { Disclosure, NumericField, ParameterControl, MetadataField, NotesField, StableButton, BoundButton, BoundTitleEdit, ExportRate } from "editor.slint";
 export { AboutWindow, LicenseWindow } from "about.slint";
 
 export { MonitorWindow, DetailsWindow, AudioControlsWindow, MonitorData } from "monitor.slint";
@@ -17,6 +17,8 @@ export component MainWindow inherits Window {
     in-out property <bool> monitor-open:true;
     in property <bool> native-mac: false;
     in property <string> draft-brief;
+    in property <string> draft-location;
+    in property <string> draft-location-details;
     // The open document's binding; field callbacks carry the binding they rendered with.
     in property <int> document;
     in property <int> document-reset;
@@ -90,8 +92,8 @@ export component MainWindow inherits Window {
     preferred-width: 1100px;
     preferred-height: 900px;
     min-width: 680px;
-    min-height: 700px;
-    in property <[StandardListViewItem]> catalog;
+    min-height: 600px;
+    in property <[CatalogRow]> catalog;
     in-out property <int> selected: 0;
     in property <string> sound-title;
     in property <string> studied;
@@ -117,6 +119,8 @@ export component MainWindow inherits Window {
     in property <[string]> transport-labels;
     in property <bool> can-edit;
     in property <bool> can-add-component;
+    in property <bool> can-add-pair;
+    in property <string> pair-add-reason;
     in property <string> add-reason;
     in property <string> removed-component;
     in property <bool> can-restore-component;
@@ -159,6 +163,9 @@ export component MainWindow inherits Window {
     in-out property <bool> notes: false;
     in-out property <bool> saved-audio: false;
     in-out property <bool> library-detail: false;
+    in-out property <length> library-scroll-y: 0px;
+    private property <bool> library-restoring: false;
+    private property <bool> library-restore-ready: false;
     in-out property <bool> export-settings: false;
     in-out property <length> sidebar-width: 330px;
     public function resize-library-pane(pixels:float) {
@@ -172,14 +179,67 @@ export component MainWindow inherits Window {
         root.compact = self.width < root.ui-size*70;
         root.update-monitor-layout();
     }
-    callback select(int);
+    callback select(string);
+    callback navigate-library(int);
+    in-out property <string> focused-library-key;
+    in property <string> library-key;
+    in property <string> library-token;
+    in property <bool> library-trashed;
+    in property <string> library-status;
+    in property <string> library-alert;
+    in-out property <bool> storage-open:false;
+    callback collection-filter(int, int);
+    in property <string> library-count;
+    in property <string> calendar-context;
+    in property <[string]> band-labels;
+    in property <[string]> method-labels;
+    callback more-filters(string, int, int, int, int, int, string, string, string, string, string, string);
+    callback clear-library-filters();
+    callback reset-library-sort();
+    function clear-applied-filters() {
+        root.clear-library-filters();
+        root.query="";root.band-choice=0;root.method-choice=0;
+        root.study-query="";root.population-choice=0;root.role-choice=0;root.analysis-choice=0;
+        root.created-from="";root.created-through="";root.modified-from="";root.modified-through="";root.added-from="";root.added-through="";
+    }
+    in-out property <string> study-query;
+    in-out property <int> population-choice:0;
+    in-out property <int> role-choice:0;
+    in-out property <int> analysis-choice:0;
+    in-out property <int> direction-choice:0;
+    in-out property <int> group-choice:0;
+    in-out property <string> created-from;
+    in-out property <string> created-through;
+    in-out property <string> modified-from;
+    in-out property <string> modified-through;
+    in-out property <string> added-from;
+    in-out property <string> added-through;
+    function apply-filters() { root.more-filters(root.study-query,root.population-choice,root.role-choice,root.analysis-choice,root.direction-choice,root.group-choice,root.created-from,root.created-through,root.modified-from,root.modified-through,root.added-from,root.added-through); }
+
+    in-out property <int> collection-choice: 0;
+    in-out property <int> sort-choice: 0;
+    callback refresh-library();
+    callback initialize-library();
+    callback edit-saved(string, string);
+    callback save-copy();
+    in property <string> library-dates;
+    in property <string> library-dates-utc;
+    callback add-to-library(string);
+    callback recheck-library();
+    callback show-saved();
+    callback library-action(string, string, string, string);
     callback search(string);
+    callback rhythm-filter(int, int);
+    in-out property <int> band-choice: 0;
+    in-out property <int> method-choice: 0;
     callback open-recipe();
     callback play-stop();
     callback stop-audio();
     callback play-recipe();
     callback preview-selected();
     callback export-wav();
+    callback export-recipe();
+    callback close-open-file(string);
     callback about();
     callback based-on-source();
     callback quit();
@@ -213,6 +273,8 @@ export component MainWindow inherits Window {
                     root.save-recipe();
                 }
             }
+            MenuItem {title:"Save independent copy";enabled:root.can-edit && root.tab-index==1;activated=>{root.save-copy();}}
+            MenuItem {title:"Export portable recipe…";enabled:root.tab-index==0 ? root.has-results : root.can-save;activated=>{root.export-recipe();}}
             MenuItem {
                 title: "Export WAV…";
                 enabled: root.can-export;
@@ -246,14 +308,14 @@ export component MainWindow inherits Window {
             vertical-stretch:0;
             min-height:root.ui-size*3;
             padding:4px;
-            Text {text:"Auditory Lab";font-weight:600;vertical-alignment:center;}
+            if !root.compact: Text {text:"Auditory Lab";font-weight:600;vertical-alignment:center;}
             Rectangle {horizontal-stretch:1;}
             // Left of the lasting controls, so a late press on Cancel export
             // lands in the space it leaves rather than on another control.
             if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:"WAV export progress";max-width:120px;}
             if root.exporting: Button {text:"Cancel export";clicked=>{root.cancel-file();}}
             if root.status != "" || root.auxiliary-error != "": Button {text:"Task details…";clicked=>{root.show-diagnostics();}}
-            if root.tab-index==1: Button {text:"Save sound…";enabled:root.can-save;accessible-description:root.save-reason;clicked=>{root.save-recipe();}}
+            if root.tab-index==1: Button {text:"Save sound";enabled:root.can-save;accessible-description:root.save-reason;clicked=>{root.save-recipe();}}
             monitor-opener := StableButton {
                 text:root.monitor-open ? "Hide monitor" : "Show monitor";
                 labels:["Hide monitor","Show monitor"];
@@ -275,9 +337,17 @@ export component MainWindow inherits Window {
                     if !root.compact || !root.library-detail: VerticalBox {
                         preferred-width: !root.compact ? root.sidebar-width : 600px;
                         max-width: !root.compact ? root.sidebar-width : 3000px;
-                        Text {
-                            text: "Find a recipe";
-                            vertical-stretch: 0;
+                        ComboBox {
+                            model: ["All · Built-in + User", "Built-in · Read only", "User", "Open files · Temporary", "Trash"];
+                            current-index <=> root.collection-choice;
+                            accessible-label: "Library collection";
+                            selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
+                        }
+                        ComboBox {
+                            model: ["Automatic order", "Nominal rate", "Title", "Created", "Modified", "Added here", "Study", "Collection"];
+                            current-index <=> root.sort-choice;
+                            accessible-label: "Sort library";
+                            selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
                         }
                         LineEdit {
                             text <=> root.query;
@@ -287,8 +357,29 @@ export component MainWindow inherits Window {
                                 root.search(value);
                             }
                         }
+                        ComboBox {
+                            model: root.band-labels;
+                            current-index <=> root.band-choice;
+                            accessible-label: "Nominal rhythm reference band";
+                            selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
+                        }
+                        ComboBox {
+                            model: root.method-labels;
+                            current-index <=> root.method-choice;
+                            accessible-label: "Structural method";
+                            selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
+                        }
+                        if root.band-choice != 0 || root.method-choice != 0: Button {
+                            text: "Clear rhythm filters";
+                            clicked => {
+                                root.band-choice = 0;
+                                root.method-choice = 0;
+                                root.rhythm-filter(0, 0);
+                            }
+                        }
                         if !root.has-results: Text {
-                            text: "No matching recipes";
+                            text: "No recipes in this view. Open a recipe or change the applied filters or collection.";
+                            wrap:word-wrap;
                         }
                         if root.query != "": Button {
                             text: "Clear search";
@@ -297,9 +388,21 @@ export component MainWindow inherits Window {
                                 root.search("");
                             }
                         }
+                        if root.compact: HorizontalBox {
+                            vertical-stretch:0;
+                            Button {text:"Filters / recovery…";clicked=>{root.library-detail=true;}}
+                            Button {text:"Refresh";clicked=>{root.refresh-library();}}
+                            Button {text:"Clear all filters";clicked=>{root.clear-applied-filters();}}
+                        }
                         catalog-scroll := ScrollView {
+                            content-y: root.library-scroll-y;
+                            changed content-y => {if !root.library-restoring {root.library-scroll-y=self.content-y;}}
+                            accessible-role:list;
+                            accessible-label:"Library results";
                             VerticalBox {
                                 spacing: 4px;
+                                if root.compact: Text {text:root.library-count;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-label:"Applied library filters · " + root.library-count;}
+                                if root.compact && root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
                                 for item[index] in root.catalog: catalog-row := Rectangle {
                                     property <bool> selected-row: root.selected==index;
                                     // A row created already selected, such as a new import,
@@ -309,11 +412,12 @@ export component MainWindow inherits Window {
                                         running: catalog-row.selected-row;
                                         triggered => {
                                             self.running = false;
-                                            catalog-row.reveal();
+                                            if root.library-restoring {root.library-restore-ready=true;}
+                                            else {catalog-row.reveal();}
                                         }
                                     }
                                     function reveal() {
-                                        if self.selected-row {
+                                        if self.selected-row && !root.library-restoring {
                                             if self.y + catalog-scroll.content-y < 0px {catalog-scroll.content-y=-self.y;}
                                             else if self.y+self.height+catalog-scroll.content-y > catalog-scroll.visible-height {catalog-scroll.content-y=catalog-scroll.visible-height - self.y - self.height;}
                                         }
@@ -326,8 +430,13 @@ export component MainWindow inherits Window {
                                     background: root.selected == index ? Palette.selection-background : Palette.control-background;
                                     border-width: focus.has-focus ? 2px : 0px;
                                     border-color: root.selected == index ? Palette.accent-background : Palette.border;
-                                    accessible-role: button;
+                                    accessible-role: list-item;
                                     accessible-label: item.text;
+                                    accessible-item-selectable: item.binding != "";
+                                    accessible-item-selected: self.selected-row;
+                                    property <bool> wants-focus: self.selected-row && item.binding != "" && root.focused-library-key == item.binding;
+                                    changed wants-focus => {if self.wants-focus {focus.focus();}}
+
                                     accessible-action-default => {
                                         touch.clicked();
                                     }
@@ -340,9 +449,18 @@ export component MainWindow inherits Window {
                                         color: root.selected == index ? Palette.selection-foreground : Palette.control-foreground;
                                     }
                                     focus := FocusScope {
+                                        enabled:item.binding != "";
+                                        focus-on-tab-navigation:catalog-row.selected-row && item.binding != "";
+                                        changed has-focus => { if self.has-focus {root.focused-library-key=item.binding;} else if catalog-row.selected-row && root.focused-library-key==item.binding {root.focused-library-key="";} }
                                         key-pressed(event) => {
+                                            if event.text == Key.DownArrow || event.text == Key.UpArrow || event.text == Key.Home || event.text == Key.End {
+                                                root.navigate-library(event.text == Key.DownArrow ? 1 : event.text == Key.UpArrow ? -1 : event.text == Key.Home ? -2 : 2);
+                                                root.focused-library-key=root.library-key;
+                                                return accept;
+                                            }
+
                                             if event.text == "\n" || event.text == " " {
-                                                root.select(index);
+                                                root.select(item.binding);
                                                 root.library-detail=true;
                                                 return accept;
                                             }
@@ -351,9 +469,15 @@ export component MainWindow inherits Window {
                                     }
                                     // Above the focus scope, so a pointer press reaches it.
                                     touch := TouchArea {
+                                        enabled:item.binding != "";
+                                        private property <string> captured;
+                                        private property <bool> armed:false;
+                                        changed pressed => {if self.pressed {self.captured=item.binding;self.armed=true;}}
                                         clicked => {
                                             focus.focus();
-                                            root.select(index);
+                                            root.select(self.armed ? self.captured : item.binding);
+                                            self.armed=false;
+
                                             root.library-detail=true;
                                         }
                                     }
@@ -363,12 +487,28 @@ export component MainWindow inherits Window {
                                 }
                             }
                         }
+                        // Re-created compact list rows must not replace the saved
+                        // scroll position with their initial selection reveal.
+                        Timer { interval:1ms;running:root.library-restoring && (root.library-restore-ready || !root.has-results);
+                            triggered=>{
+                                catalog-scroll.content-y=max(min(0px,root.library-scroll-y),min(0px,catalog-scroll.visible-height - catalog-scroll.content-height));
+                                root.library-scroll-y=catalog-scroll.content-y;
+                                root.library-restoring=false;
+                            }
+                        }
+                        HorizontalBox { vertical-stretch:0;
                         Button {
                             text: "Open Recipe…";
                             enabled: root.can-import;
                             clicked => {
                                 root.open-recipe();
                             }
+                        }
+                        if !root.has-results: Button {
+                            text:"Create sound";
+                            enabled:root.can-new;
+                            clicked=>{root.new-draft();}
+                        }
                         }
                     }
                     if !root.compact: Rectangle {
@@ -426,12 +566,45 @@ export component MainWindow inherits Window {
                             if root.compact: Button {
                                 text:"Back to recipes";
                                 clicked => {
+                                    root.library-restore-ready=false;
+                                    root.library-restoring=true;
                                     root.library-detail=false;
                                 }
                             }
+                        HorizontalBox { padding:0px; vertical-stretch:0;
+                            Button {text:"Refresh";clicked=>{root.refresh-library();}}
+                            Button {text:"Show saved";clicked=>{root.show-saved();}}
+                            Button {text:"Reset sort";clicked=>{root.reset-library-sort();root.direction-choice=0;}}
+                        }
+                        Button {text:"Clear all filters";clicked=>{root.clear-applied-filters();}}
+                        Text {text:root.library-count;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
+                        more := Disclosure {label:"More filters and grouping";}
+                        if more.expanded: VerticalBox {vertical-stretch:0;
+                            Text {text:root.calendar-context;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
+                            LineEdit {text <=> root.study-query;placeholder-text:"Study DOI or key:source";accessible-label:"Study evidence filter";}
+                            ComboBox {model:["Any population","Human","Mouse","Other animal","Mixed population","Not applicable","Unspecified population"];current-index <=> root.population-choice;accessible-label:"Population evidence filter";}
+                            ComboBox {model:["Any condition role","Test condition","Comparison condition","Mixed roles","Unspecified role"];current-index <=> root.role-choice;accessible-label:"Condition role evidence filter";}
+                            ComboBox {model:["Any analysis coverage","Complete","Partial","Invalid"];current-index <=> root.analysis-choice;accessible-label:"Nominal analysis coverage";}
+                            ComboBox {model:["Automatic direction","Ascending","Descending"];current-index <=> root.direction-choice;accessible-label:"Sort direction";}
+                            ComboBox {model:["No grouping","Band groups","Method groups","Study groups","Collection groups"];current-index <=> root.group-choice;accessible-label:"Library result grouping";}
+                            LineEdit {text <=> root.created-from;placeholder-text:"Created from YYYY-MM-DD";accessible-label:"Created from local calendar date";}
+                            LineEdit {text <=> root.created-through;placeholder-text:"Created through YYYY-MM-DD";accessible-label:"Created through inclusive local calendar date";}
+                            LineEdit {text <=> root.modified-from;placeholder-text:"Modified from YYYY-MM-DD";accessible-label:"Modified from local calendar date";}
+                            LineEdit {text <=> root.modified-through;placeholder-text:"Modified through YYYY-MM-DD";accessible-label:"Modified through inclusive local calendar date";}
+                            LineEdit {text <=> root.added-from;placeholder-text:"Added here from YYYY-MM-DD";accessible-label:"Added here from local calendar date";}
+                            LineEdit {text <=> root.added-through;placeholder-text:"Added here through YYYY-MM-DD";accessible-label:"Added here through inclusive local calendar date";}
+                            Button {text:"Apply filters";clicked=>{root.apply-filters();}}
+                        }
+                        Disclosure {label:"Library storage and recovery";expanded <=> root.storage-open;}
+                        if root.storage-open: VerticalBox { vertical-stretch:0;
+                            Text {text:root.library-status;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
+                            Button {text:"Initialize configured library";clicked=>{root.initialize-library();}}
+                            Button {text:"Recheck publication";clicked=>{root.recheck-library();}}
+                        }
+                            if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
                             if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
-                            if !root.has-results: Text {min-width:0px;
-                                text:"No recipe matches “" + root.query + "”. Clear the search to see every recipe.";
+                        if !root.has-results: Text {min-width:0px;
+                                text:"No recipes match the current filters. Clear the restrictions to see every recipe.";
                                 wrap:word-wrap;
                                 vertical-stretch:0;
                             }
@@ -489,6 +662,20 @@ export component MainWindow inherits Window {
                                             root.export-wav();
                                         }
                                     }
+                                }
+                                if root.library-dates != "": Text {text:root.library-dates;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
+                                utc-dates := Disclosure {label:"Exact UTC dates";}
+                                if utc-dates.expanded: TextEdit {text:root.library-dates-utc;read-only:true;wrap:word-wrap;accessible-label:"Exact UTC recipe and membership dates";min-width:0px;height:root.ui-size*8;vertical-stretch:0;}
+                                if root.library-key != "": Text {text:root.library-key;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
+                                if root.library-token != "" && !root.library-trashed: BoundButton {text:"Edit saved User recipe";key:root.library-key;token:root.library-token;activated(k,t)=>{root.edit-saved(k,t);}}
+                                Button {text:"Export portable recipe…";enabled:root.has-results;clicked=>{root.export-recipe();}}
+                                if root.collection-choice == 3: BoundButton {text:"Close open file";key:root.library-key;token:"";activated(k,t)=>{root.close-open-file(k);}}
+                                if root.collection-choice == 3: BoundButton {text:"Edit external file";key:root.library-key;token:"";activated(k,t)=>{root.edit-saved(k,t);}}
+                                if root.collection-choice == 3: BoundButton {text:"Add to User Library";key:root.library-key;token:"";activated(k,t)=>{root.add-to-library(k);}}
+                                if root.library-token != "": VerticalBox { vertical-stretch:0;
+                                    if !root.library-trashed: BoundTitleEdit {key:root.library-key;token:root.library-token;placeholder-text:"New title";accessible-label:"Rename saved recipe";rename(k,t,value)=>{root.library-action(k,t,"rename",value);} }
+                                    BoundButton {text:root.library-trashed ? "Restore from Trash" : "Move saved entry to Trash";key:root.library-key;token:root.library-token;action:root.library-trashed ? "restore" : "trash";dispatch(k,t,action)=>{root.library-action(k,t,action,"");}}
+                                    if root.library-trashed: BoundButton {text:"Permanently delete…";key:root.library-key;token:root.library-token;activated(k,t)=>{root.library-action(k,t,"purge","");}}
                                 }
                                 Disclosure {label:"Research, citation and sound adaptations";expanded <=> root.research;}
                                 if root.research && root.can-open-study: Button {text:"Open study source";clicked=>{root.open-study();}}
@@ -555,6 +742,7 @@ export component MainWindow inherits Window {
                             text:root.dirty ? "Unsaved changes" : "Unmodified draft";
                             wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;
                         }
+                        Button {horizontal-stretch:0;text:"Save independent copy";enabled:root.can-edit;clicked=>{root.save-copy();}}
                         Button {
                             horizontal-stretch:0;
                             text:"New";
@@ -576,6 +764,12 @@ export component MainWindow inherits Window {
                             }
                         }
                     }
+                    HorizontalBox {
+                        vertical-stretch: 0;
+                        Button { text: "Add binaural pair"; enabled: root.can-add-pair; accessible-description: root.pair-add-reason; clicked => { root.add-component(root.document, 2); } }
+                        Button { text: "Add monaural pair"; enabled: root.can-add-pair; accessible-description: root.pair-add-reason; clicked => { root.add-component(root.document, 3); } }
+                    }
+                    if root.pair-add-reason != "" && root.add-reason == "": Text {min-width:0px;text:root.pair-add-reason;wrap:word-wrap;vertical-stretch:0;}
                     if root.add-reason != "": Text {min-width:0px;text:root.add-reason;wrap:word-wrap;vertical-stretch:0;}
                     if root.removed-component != "": HorizontalBox {
                         padding: 0px;
@@ -601,6 +795,7 @@ export component MainWindow inherits Window {
                     if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
                     if root.metadata-error != "": Text {min-width:0px;text:root.metadata-error;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
                     if root.save-reason != "": Text {min-width:0px;text:root.save-reason;wrap:word-wrap;vertical-stretch:0;}
+                    Text {min-width:0px;text:root.draft-location;wrap:word-wrap;vertical-stretch:0;}
                     Text {min-width:0px;text:root.draft-brief; font-size:root.ui-size*1.5; font-weight:600; wrap:word-wrap; vertical-stretch:0;}
                     if root.based-on-title != "": Text {min-width:0px;
                         text:root.based-on-title;
@@ -647,45 +842,19 @@ export component MainWindow inherits Window {
                             spacing: 6px;
                             vertical-stretch: 0;
                             Row {
-                                Text { text: "Ears"; vertical-alignment: center; }
-                                ComboBox {
-                                    enabled: root.can-edit;
-                                    model: root.ears-choices;
-                                    current-index: row.ears;
-                                    accessible-label: row.name + ": ears";
-                                    selected(value) => { root.set-ears(row.binding, self.current-index); }
-                                }
+                                if row.routing-editable: Text { text: "Ears"; vertical-alignment: center; }
+                                if row.routing-editable: ComboBox { enabled: root.can-edit; model: root.ears-choices; current-index: row.ears; accessible-label: row.name + ": ears"; selected(value) => { root.set-ears(row.binding, self.current-index); } }
                                 Rectangle { horizontal-stretch: 1; }
                             }
                             Row {
-                                Text { text: "Carrier"; vertical-alignment: center; }
-                                ComboBox {
-                                    enabled: root.can-edit;
-                                    model: root.carrier-choices;
-                                    current-index: row.carrier;
-                                    accessible-label: row.name + ": carrier";
-                                    selected(value) => { root.set-carrier(row.binding, self.current-index); }
-                                }
+                                if row.carrier >= 0: Text { text: "Carrier"; vertical-alignment: center; }
+                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.carrier-choices; current-index: row.carrier; accessible-label: row.name + ": carrier"; selected(value) => { root.set-carrier(row.binding, self.current-index); } }
                             }
                             Row {
-                                Text { text: "Modulation"; vertical-alignment: center; }
-                                ComboBox {
-                                    enabled: root.can-edit;
-                                    model: root.modulation-choices;
-                                    current-index: row.modulation;
-                                    accessible-label: row.name + ": modulation";
-                                    selected(value) => { root.set-modulation(row.binding, self.current-index); }
-                                }
+                                if row.carrier >= 0: Text { text: "Modulation"; vertical-alignment: center; }
+                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.modulation-choices; current-index: row.modulation; accessible-label: row.name + ": modulation"; selected(value) => { root.set-modulation(row.binding, self.current-index); } }
                             }
-                            Row {
-                                Button {
-                                    col: 1;
-                                    text: "Remove";
-                                    enabled: root.can-edit;
-                                    accessible-label: "Remove " + row.name;
-                                    clicked => { root.remove-component(row.binding); }
-                                }
-                            }
+                            Row { Button { col:1; text: "Remove"; enabled: root.can-edit; accessible-label: "Remove " + row.name; clicked => { root.remove-component(row.binding); } } }
                         }
                         for parameter in row.parameters: ParameterControl {
                             parameter: parameter;
@@ -716,6 +885,10 @@ export component MainWindow inherits Window {
                     settings := Disclosure {label:"Sound settings · notes and saved/exported audio";}
                     if settings.expanded: VerticalBox {
                         vertical-stretch:0;
+                        Text {text:root.draft-location-details;min-width:0px;wrap:word-wrap;vertical-stretch:0;}
+
+                        Button {text:"Export portable draft recipe…";enabled:root.can-save;clicked=>{root.export-recipe();}}
+
                         HorizontalLayout {
                             Button {
                                 horizontal-stretch:0;
@@ -738,7 +911,7 @@ export component MainWindow inherits Window {
                                 vertical-stretch:0;
                             }
                             if root.based-on != "": Button {
-                                text:"Show source recipe in Library";
+                                text:"Show copied-from snapshot in Library";
                                 clicked=> {
                                     root.based-on-source();
                                 }

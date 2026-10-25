@@ -1,156 +1,35 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
-
+//! Strict one-version portable contract; independent shape, byte and numeric oracles.
 use super::{Recipe, RecipeError};
-use crate::{Component, Ears, Modulation};
-use alloc::format;
-use alloc::string::{String, ToString};
-use alloc::vec;
-use alloc::vec::Vec;
-
-const PAIR: &str = r#"# Two tones.
+use crate::{
+    AuthoredComponent, AuthoredStimulus, Carrier, Component, ComponentId, Description,
+    DocumentIdentity, Node, Pair,
+};
+use alloc::{format, string::ToString, vec, vec::Vec};
+const PAIR: &str = r#"# Two raw tones retain their source order and authored identities.
 schema_version = 3
 duration_seconds = 10.0
 fade_seconds = 0.1
-
+[document]
+id = "00000000-0000-4000-8000-000000000001"
 [[component]]
+id = 7
 ears = "left"
 kind = "tone"
 frequency_hz = 250.0
 peak_dbfs = -20.0
-
 [[component]]
+id = 19
 ears = "right"
 kind = "tone"
 frequency_hz = 256.0
 peak_dbfs = -20.0
 "#;
-
-const ABOUT: &str = "\n[about]\ntitle = \"t\"\n[about.research]\nstudied_for = \"f\"\nsummary = \"s\"\ncitation = \"c\"\nsource_url = \"u\"\nstudy = \"d\"\nadaptation = \"a\"\n";
-
 fn edited(from: &str, to: &str) -> Result<Recipe, RecipeError> {
-    assert!(PAIR.contains(from), "fixture lacks {from}");
+    assert!(PAIR.contains(from));
     Recipe::parse(&PAIR.replacen(from, to, 1))
 }
-
-#[test]
-fn a_recipe_reads_into_its_stimulus_in_file_order() {
-    let recipe = Recipe::parse(PAIR).unwrap();
-    assert_eq!(recipe.about, None);
-    assert_eq!(recipe.stimulus.duration_seconds, 10.0);
-    assert_eq!(recipe.stimulus.fade_seconds, 0.1);
-    assert_eq!(
-        recipe.stimulus.components,
-        vec![
-            Component {
-                ears: Ears::Left,
-                peak_dbfs: -20.0,
-                modulation: None,
-                carrier: crate::Carrier::Tone {
-                    frequency_hz: 250.0
-                }
-            },
-            Component {
-                ears: Ears::Right,
-                peak_dbfs: -20.0,
-                modulation: None,
-                carrier: crate::Carrier::Tone {
-                    frequency_hz: 256.0
-                }
-            },
-        ]
-    );
-}
-
-#[test]
-fn every_kind_and_modulation_reads_and_whole_numbers_are_accepted_as_reals() {
-    let text = "schema_version = 3\nduration_seconds = 3\nfade_seconds = 0\n\n[[component]]\nears = \"both\"\nkind = \"click\"\nrate_hz = 40\nwidth_seconds = 0.001\npeak_dbfs = -20\n\n[component.modulation]\nkind = \"sinusoidal\"\nrate_hz = 2\ndepth = 1\n";
-    let stimulus = Recipe::parse(text).unwrap().stimulus;
-    assert_eq!(stimulus.duration_seconds, 3.0);
-    assert_eq!(
-        stimulus.components,
-        vec![Component {
-            ears: Ears::Both,
-            peak_dbfs: -20.0,
-            modulation: Some(Modulation::Sinusoidal {
-                rate_hz: 2.0,
-                depth: 1.0
-            }),
-            carrier: crate::Carrier::Click {
-                rate_hz: 40.0,
-                width_seconds: 0.001
-            }
-        }]
-    );
-}
-
-#[test]
-fn a_recipe_without_components_is_silence() {
-    let recipe =
-        Recipe::parse("schema_version = 3\nduration_seconds = 1.0\nfade_seconds = 0.0\n").unwrap();
-    assert!(recipe.stimulus.components.is_empty());
-    assert!(!recipe.stimulus.uses_separate_ears());
-}
-
-#[test]
-fn about_text_is_optional_strict_and_never_changes_the_stimulus() {
-    let plain = Recipe::parse(PAIR).unwrap();
-    let annotated = Recipe::parse(&format!("{PAIR}{ABOUT}")).unwrap();
-    assert_eq!(annotated.stimulus, plain.stimulus);
-    let about = annotated.about.unwrap();
-    assert_eq!(about.title, "t");
-    let research = about.research.unwrap();
-    assert_eq!(
-        [
-            research.studied_for,
-            research.summary,
-            research.citation,
-            research.source_url,
-            research.study,
-            research.adaptation
-        ],
-        ["f", "s", "c", "u", "d", "a"].map(|value| Some(String::from(value)))
-    );
-    // Only the title is required; every other field may be omitted alone.
-    let titled = Recipe::parse(&format!("{PAIR}\n[about]\ntitle = \"t\"\n")).unwrap();
-    assert_eq!(titled.about.unwrap().summary, None);
-    for (field, value) in [
-        ("title", "t"),
-        ("studied_for", "f"),
-        ("summary", "s"),
-        ("citation", "c"),
-        ("source_url", "u"),
-        ("study", "d"),
-        ("adaptation", "a"),
-    ] {
-        let entry = format!("{field} = \"{value}\"\n");
-        assert!(ABOUT.contains(&entry), "{entry}");
-        let omitted = Recipe::parse(&format!("{PAIR}{}", ABOUT.replace(&entry, "")));
-        assert_eq!(omitted.is_ok(), field != "title", "{field}");
-        for altered in [
-            ABOUT.replace(&entry, &format!("{field} = 1\n")),
-            ABOUT.replace(&entry, &format!("{entry}{entry}")),
-        ] {
-            assert!(
-                matches!(
-                    Recipe::parse(&format!("{PAIR}{altered}")),
-                    Err(RecipeError::Format(_))
-                ),
-                "{altered}"
-            );
-        }
-    }
-    for unknown in ["reviewed = \"x\"", "description = \"d\""] {
-        let extra = ABOUT.replace("[about]", &format!("[about]\n{unknown}"));
-        assert!(
-            Recipe::parse(&format!("{PAIR}{extra}")).is_err(),
-            "{unknown}"
-        );
-    }
-    let old_table = ABOUT.replace("[about]", "[provenance]");
-    assert!(Recipe::parse(&format!("{PAIR}{old_table}")).is_err());
-}
-
 #[test]
 fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
     for (from, to) in [
@@ -289,165 +168,278 @@ fn messages_say_what_is_wrong_with_the_recipe() {
     assert!(RecipeError::TooLarge.source().is_none());
 }
 
-mod writing {
-    use crate::{About, Carrier, Component, Ears, Modulation, Recipe, Stimulus};
-    use alloc::string::String;
-    use alloc::vec::Vec;
-    use proptest::{prelude::*, test_runner::Config, test_runner::TestRunner};
-
-    #[test]
-    fn every_catalog_recipe_reads_back_equal_after_writing() {
-        for entry in crate::catalog::ENTRIES {
-            let recipe = Recipe::parse(entry.text).unwrap();
-            let text = recipe.to_toml().unwrap();
-            assert!(text.starts_with("schema_version = 3\n"), "{}", entry.id);
-            assert_eq!(Recipe::parse(&text).unwrap(), recipe, "{}", entry.id);
+#[test]
+fn raw_nodes_keep_ids_source_order_and_optional_description_is_not_audio() {
+    let plain = Recipe::parse(PAIR).unwrap();
+    assert_eq!(
+        plain
+            .stimulus
+            .components
+            .iter()
+            .map(|c| c.id.get())
+            .collect::<Vec<_>>(),
+        [7, 19]
+    );
+    assert_eq!(plain.description, None);
+    let with = Recipe::parse(&format!(
+        "{PAIR}\n[description]\ntitle='Rīga'\nnotes='own notes'\n"
+    ))
+    .unwrap();
+    assert_eq!(plain.stimulus, with.stimulus);
+    for extra in [
+        "[description]\nnotes='missing title'",
+        "[description]\ntitle=''",
+        "[description]\ntitle='t'\nverified=true",
+        "[about]\ntitle='old shape'",
+    ] {
+        assert!(Recipe::parse(&format!("{PAIR}\n{extra}\n")).is_err());
+    }
+    for (from, to) in [
+        ("id = 19", "id = 7"),
+        ("id = 7", "id = 0"),
+        ("id = 7\n", ""),
+        ("frequency_hz = 250.0", "frequency_hz = nan"),
+    ] {
+        assert!(edited(from, to).is_err());
+    }
+    let finite = edited("frequency_hz = 250.0", "frequency_hz = -250.0").unwrap();
+    assert!(
+        finite.to_toml().is_ok(),
+        "finite acoustically invalid content remains serializable"
+    );
+    assert!(finite.stimulus.signal(crate::SampleRate::DEFAULT).is_err());
+}
+#[test]
+fn all_owned_proposed_examples_roundtrip_and_all_rejection_examples_fail() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let mut counts = [0, 0];
+    for (i, directory) in ["recipes", "invalid"].into_iter().enumerate() {
+        for entry in std::fs::read_dir(root.join(directory)).unwrap() {
+            let path = entry.unwrap().path();
+            let text = std::fs::read_to_string(&path).unwrap();
+            counts[i] += 1;
+            if i == 0 {
+                let recipe = Recipe::parse(&text).unwrap_or_else(|e| panic!("{path:?}: {e}"));
+                let reopened = Recipe::parse(&recipe.to_toml().unwrap()).unwrap();
+                assert_eq!(recipe, reopened);
+            } else {
+                assert!(Recipe::parse(&text).is_err(), "{path:?}");
+            }
         }
     }
-
-    #[test]
-    fn written_recipes_read_back_equal() {
-        let number = prop_oneof![
-            any::<f64>().prop_filter("finite", |x| x.is_finite()),
-            Just(5e-324),
-            Just(-0.0),
-            Just(0.1),
-        ];
-        let text = prop_oneof![
-            Just(String::new()),
-            "[ -~]{0,40}",
-            Just(String::from(
-                "quote \" backslash \\ newline\n tab\t é 🎧 \u{7}"
-            )),
-        ];
-        let modulation = prop_oneof![
-            Just(None),
-            (number.clone(), number.clone())
-                .prop_map(|(rate_hz, depth)| Some(Modulation::Sinusoidal { rate_hz, depth })),
-            (number.clone(), number.clone()).prop_map(|(rate_hz, width_seconds)| Some(
-                Modulation::Rectangular {
-                    rate_hz,
-                    width_seconds
-                }
-            )),
-        ];
-        let component = (
-            0_u8..3,
-            any::<bool>(),
-            number.clone(),
-            number.clone(),
-            number.clone(),
-            modulation,
-        )
-            .prop_map(|(ears, click, a, b, peak_dbfs, modulation)| Component {
-                ears: [Ears::Left, Ears::Right, Ears::Both][usize::from(ears)],
-                peak_dbfs,
-                carrier: if click {
-                    Carrier::Click {
-                        rate_hz: a,
-                        width_seconds: b,
-                    }
-                } else {
-                    Carrier::Tone { frequency_hz: a }
-                },
-                modulation,
-            });
-        let about = prop::option::of((
-            text.clone(),
-            prop::option::of(text.clone()),
-            prop::option::of(text),
-        ))
-        .prop_map(|about| {
-            about.map(|(title, summary, citation)| About {
-                title,
-                summary,
-                research: Some(crate::Research {
-                    studied_for: None,
-                    summary: None,
-                    citation,
-                    source_url: None,
-                    study: None,
-                    adaptation: None,
-                }),
-            })
-        });
-        let recipe = (
-            number.clone(),
-            number,
-            prop::collection::vec(component, 0..5),
-            about,
-        )
-            .prop_map(
-                |(duration_seconds, fade_seconds, components, about)| Recipe {
-                    stimulus: Stimulus {
-                        duration_seconds,
-                        fade_seconds,
-                        components,
-                    },
-                    about,
-                    source: None,
-                },
-            );
-        let config = Config {
-            cases: 256,
-            failure_persistence: None,
-            max_shrink_iters: 256,
-            ..Config::default()
-        };
-        TestRunner::new(config)
-            .run(&recipe, |recipe| {
-                let text = recipe.to_toml().unwrap();
-                let back = Recipe::parse(&text).unwrap();
-                // Bitwise equality keeps signed zeros and subnormals honest.
-                let bits = |p: &Recipe| -> Vec<u64> {
-                    let s = &p.stimulus;
-                    let mut out =
-                        alloc::vec![s.duration_seconds.to_bits(), s.fade_seconds.to_bits()];
-                    for c in &s.components {
-                        out.push(c.peak_dbfs.to_bits());
-                        match c.carrier {
-                            Carrier::Tone { frequency_hz } => out.push(frequency_hz.to_bits()),
-                            Carrier::Click {
-                                rate_hz,
-                                width_seconds,
-                            } => {
-                                out.extend([rate_hz.to_bits(), width_seconds.to_bits()]);
-                            }
-                        }
-                        match c.modulation {
-                            None => {}
-                            Some(Modulation::Sinusoidal { rate_hz, depth }) => {
-                                out.extend([rate_hz.to_bits(), depth.to_bits()])
-                            }
-                            Some(Modulation::Rectangular {
-                                rate_hz,
-                                width_seconds,
-                            }) => out.extend([rate_hz.to_bits(), width_seconds.to_bits()]),
-                        }
-                    }
-                    out
-                };
-                prop_assert_eq!(bits(&back), bits(&recipe));
-                prop_assert_eq!(back, recipe);
-                Ok(())
-            })
-            .unwrap();
+    assert_eq!(
+        counts,
+        [16, 10],
+        "test fixture discovery must not be empty or silently omit files"
+    );
+}
+#[test]
+fn copies_keep_scoped_sources_and_refuse_capacity_without_dropping_ancestry() {
+    let original = Recipe::parse(include_str!(
+        "../../tests/fixtures/recipes/custom-derived-pair.toml"
+    ))
+    .unwrap();
+    let document = DocumentIdentity {
+        id: "00000000-0000-4000-8000-000000000099".parse().unwrap(),
+        created_at: None,
+        modified_at: None,
+    };
+    let copy = original.fork(document.clone(), None).unwrap();
+    assert_eq!(copy.sources, original.sources);
+    assert!(
+        copy.evidence
+            .iter()
+            .all(|e| e.scope == crate::EvidenceScope::Ancestor)
+    );
+    assert_eq!(copy.lineage.len(), original.lineage.len() + 1);
+    assert_ne!(copy.document.id, original.document.id);
+    let mut full = original;
+    full.lineage.resize(16, full.lineage[0].clone());
+    assert!(full.fork(document, None).is_err());
+    assert_eq!(full.lineage.len(), 16);
+}
+#[test]
+fn bibliography_graph_has_strict_scopes_unique_keys_and_no_recursive_sources() {
+    let valid = include_str!("../../tests/fixtures/recipes/custom-derived-pair.toml");
+    for invalid in [
+        valid.replace("scope = \"ancestor\"", "scope = \"verified\""),
+        valid.replace("source = \"ioannou-2015\"", "source = \"missing\""),
+        format!(
+            "{valid}\n[[source]]\nkey='ioannou-2015'\nlabel='duplicate'\ncitation='c'\ndoi='10.1/x'\n"
+        ),
+        format!("{valid}\n[source.source]\npath='/private/path'\n"),
+    ] {
+        assert!(Recipe::parse(&invalid).is_err());
     }
+}
+#[test]
+fn every_catalog_recipe_reads_back_equal_after_writing() {
+    for entry in crate::catalog::ENTRIES {
+        let recipe = Recipe::parse(entry.text).unwrap();
+        let text = recipe.to_toml().unwrap();
+        assert!(text.starts_with("schema_version = 3\n"));
+        assert_eq!(Recipe::parse(&text).unwrap(), recipe, "{}", entry.id);
+    }
+}
+#[test]
+fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
+    use proptest::{
+        prelude::*,
+        test_runner::{Config, TestRunner},
+    };
+    let finite = prop_oneof![
+        any::<f64>().prop_filter("finite", |v| v.is_finite()),
+        Just(f64::from_bits(1)),
+        Just(-0.0),
+        Just(0.1)
+    ];
+    let generated = (
+        finite.clone(),
+        finite.clone(),
+        finite.clone(),
+        finite.clone(),
+        finite.clone(),
+        finite,
+        any::<bool>(),
+        "[a-zA-Z0-9 é🎧]{1,40}",
+    );
+    let config = Config {
+        cases: 256,
+        max_shrink_iters: 256,
+        failure_persistence: None,
+        ..Config::default()
+    };
+    TestRunner::new(config)
+        .run(
+            &generated,
+            |(duration, fade, base, offset, left, right, compound, title)| {
+                let document = DocumentIdentity {
+                    id: "00000000-0000-4000-8000-000000000001".parse().unwrap(),
+                    created_at: None,
+                    modified_at: None,
+                };
+                let mut recipe = Recipe::silent(document);
+                recipe.description = Some(Description {
+                    title: format!("Title {title}"),
+                    notes: Some("quote \" slash \\ newline\n é 🎧".into()),
+                });
+                recipe.stimulus = AuthoredStimulus {
+                    duration_seconds: duration,
+                    fade_seconds: fade,
+                    components: vec![AuthoredComponent {
+                        id: ComponentId::new(91),
+                        node: if compound {
+                            Node::BinauralPair(Pair {
+                                first_hz: base,
+                                offset_hz: offset,
+                                first_peak_dbfs: left,
+                                second_peak_dbfs: right,
+                            })
+                        } else {
+                            Node::Primitive(Component {
+                                ears: crate::Ears::Both,
+                                peak_dbfs: left,
+                                carrier: Carrier::Click {
+                                    rate_hz: base,
+                                    width_seconds: offset,
+                                },
+                                modulation: Some(crate::Modulation::Sinusoidal {
+                                    rate_hz: right,
+                                    depth: 0.0,
+                                }),
+                            })
+                        },
+                    }],
+                };
+                let back = Recipe::parse(&recipe.to_toml().unwrap()).unwrap();
+                let bits = |recipe: &Recipe| {
+                    let s = &recipe.stimulus;
+                    let mut values = vec![s.duration_seconds.to_bits(), s.fade_seconds.to_bits()];
+                    match s.components[0].node {
+                        Node::BinauralPair(p) => values.extend(
+                            [
+                                p.first_hz,
+                                p.offset_hz,
+                                p.first_peak_dbfs,
+                                p.second_peak_dbfs,
+                            ]
+                            .map(f64::to_bits),
+                        ),
+                        Node::Primitive(c) => {
+                            values.push(c.peak_dbfs.to_bits());
+                            if let Carrier::Click {
+                                rate_hz,
+                                width_seconds,
+                            } = c.carrier
+                            {
+                                values.extend([rate_hz.to_bits(), width_seconds.to_bits()]);
+                            }
+                            if let Some(crate::Modulation::Sinusoidal { rate_hz, depth }) =
+                                c.modulation
+                            {
+                                values.extend([rate_hz.to_bits(), depth.to_bits()]);
+                            }
+                        }
+                        _ => panic!("fixture has exactly two alternatives"),
+                    };
+                    values
+                };
+                prop_assert_eq!(bits(&recipe), bits(&back));
+                prop_assert_eq!(recipe, back);
+                Ok(())
+            },
+        )
+        .unwrap();
 }
 
 #[test]
-fn source_anchors_are_strict_nonrecursive_content_without_runtime_fields() {
-    let source = "\n[source]\nduration_seconds=1\nfade_seconds=0\n";
-    let valid = format!("{PAIR}{source}");
-    assert!(Recipe::parse(&valid).unwrap().source.is_some());
-    for invalid in [
-        valid.replace("[source]", "[source]\npath='original.toml'"),
-        valid.replace("[source]", "[source]\nschema_version=3"),
-        valid.replace("[source]", "[source]\nsnapshot_id=1"),
-        valid.replace(source, "\n[source]\nfade_seconds=0\n"),
-        format!("{valid}\n[source.source]\nduration_seconds=1\nfade_seconds=0\n"),
-        format!("{valid}\n[source.about]\ntitle='Original'\nunknown='x'\n"),
-    ] {
-        assert!(Recipe::parse(&invalid).is_err(), "accepted {invalid}");
+fn documented_toml_examples_are_actual_supported_inputs() {
+    let guide = include_str!("../../../../docs/recipes.md");
+    let mut count = 0;
+    for block in guide.split("```toml").skip(1) {
+        let text = block.split("```").next().unwrap();
+        let recipe = Recipe::parse(text).unwrap();
+        recipe.stimulus.signal(crate::SampleRate::DEFAULT).unwrap();
+        count += 1;
     }
+    assert_eq!(
+        count, 3,
+        "owned example discovery is not empty or incomplete"
+    );
+}
+
+#[test]
+fn metadata_capacity_checks_are_independent_and_never_drop_records() {
+    let original = Recipe::parse(include_str!(
+        "../../tests/fixtures/recipes/custom-derived-pair.toml"
+    ))
+    .unwrap();
+    let mut sources = original.clone();
+    sources.sources = (0..16)
+        .map(|i| {
+            let mut source = original.sources[0].clone();
+            source.key = format!("source-{i}");
+            source
+        })
+        .collect();
+    sources.evidence[0].source = "source-0".into();
+    sources.lineage[0].source_keys = vec!["source-0".into()];
+    assert!(sources.to_toml().is_ok());
+    let mut extra = original.sources[0].clone();
+    extra.key = "source-16".into();
+    sources.sources.push(extra);
+    assert!(sources.to_toml().is_err());
+    assert_eq!(sources.sources.len(), 17);
+    let mut evidence = original.clone();
+    evidence.evidence = vec![original.evidence[0].clone(); 32];
+    assert!(evidence.to_toml().is_ok());
+    evidence.evidence.push(original.evidence[0].clone());
+    assert!(evidence.to_toml().is_err());
+    assert_eq!(evidence.evidence.len(), 33);
+    let mut lineage = original.clone();
+    lineage.lineage = vec![original.lineage[0].clone(); 16];
+    assert!(lineage.to_toml().is_ok());
+    lineage.lineage.push(original.lineage[0].clone());
+    assert!(lineage.to_toml().is_err());
+    assert_eq!(lineage.lineage.len(), 17);
 }

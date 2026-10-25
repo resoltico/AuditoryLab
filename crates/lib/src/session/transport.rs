@@ -216,6 +216,11 @@ impl Transport {
     }
 
     #[cfg(test)]
+    pub(crate) fn diagnostic_observation(&self) -> Option<auditorylab_core::Observation> {
+        self.source.observation()
+    }
+
+    #[cfg(test)]
     pub(crate) const fn submitted(&self) -> u64 {
         self.submitted
     }

@@ -115,10 +115,22 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     let w = with;
     ui.on_add_component(move |binding, index| {
         w(&|a| {
-            if let (Some(Binding::Document(document)), Some(kind)) =
-                (a.resolve(binding), choice(&CarrierKind::ALL, index))
-            {
-                a.command(|w| w.add_component(document, kind));
+            let Some(Binding::Document(document)) = a.resolve(binding) else {
+                return;
+            };
+            match index {
+                0 | 1 => {
+                    if let Some(kind) = choice(&CarrierKind::ALL, index) {
+                        a.command(|w| w.add_component(document, kind));
+                    }
+                }
+                2 => {
+                    a.command(|w| w.add_pair(document, auditorylab::PairKind::Binaural));
+                }
+                3 => {
+                    a.command(|w| w.add_pair(document, auditorylab::PairKind::Monaural));
+                }
+                _ => {}
             }
         });
     });

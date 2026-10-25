@@ -68,11 +68,43 @@ const RECIPES: &[Written] = &[
         &[(B, "click", 40.0, -20.0, None)],
     ),
     (
+        "ioannou-2015-binaural-2-hz",
+        60.0,
+        &[
+            (L, "tone", 200.0, -20.0, None),
+            (R, "tone", 202.0, -20.0, None),
+        ],
+    ),
+    (
+        "ioannou-2015-binaural-6-hz",
+        60.0,
+        &[
+            (L, "tone", 200.0, -20.0, None),
+            (R, "tone", 206.0, -20.0, None),
+        ],
+    ),
+    (
         "ioannou-2015-binaural-10-hz",
         60.0,
         &[
             (L, "tone", 200.0, -20.0, None),
             (R, "tone", 210.0, -20.0, None),
+        ],
+    ),
+    (
+        "ioannou-2015-binaural-20-hz",
+        60.0,
+        &[
+            (L, "tone", 200.0, -20.0, None),
+            (R, "tone", 220.0, -20.0, None),
+        ],
+    ),
+    (
+        "ioannou-2015-binaural-40-hz",
+        60.0,
+        &[
+            (L, "tone", 200.0, -20.0, None),
+            (R, "tone", 240.0, -20.0, None),
         ],
     ),
     (
@@ -239,7 +271,16 @@ fn every_entry_has_its_independently_written_recipe() {
         RECIPES.iter().map(|r| r.0).collect::<Vec<_>>()
     );
     for (entry, (name, seconds, parts)) in catalog::ENTRIES.iter().zip(RECIPES) {
-        let stimulus = recipe(entry).stimulus;
+        let authored = recipe(entry).stimulus;
+        let stimulus = auditorylab_core::Stimulus {
+            duration_seconds: authored.duration_seconds,
+            fade_seconds: authored.fade_seconds,
+            components: auditorylab_core::authored::lower(&authored.components)
+                .unwrap()
+                .into_iter()
+                .map(|(_, c)| c)
+                .collect(),
+        };
         assert_eq!(stimulus.duration_seconds, *seconds, "{name}");
         assert_eq!(stimulus.fade_seconds, 0.1, "{name}");
         assert_eq!(stimulus.components.len(), parts.len(), "{name}");
@@ -305,7 +346,7 @@ fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
     let mut citations = BTreeMap::new();
     for entry in catalog::ENTRIES {
         let about = recipe(entry)
-            .about
+            .display_about()
             .unwrap_or_else(|| panic!("{} has no about table", entry.id));
         let field = |name: &str, value: &Option<String>| {
             value
@@ -350,7 +391,16 @@ fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
 fn every_entry_validates_and_pulses_follow_integer_onsets() {
     for entry in catalog::ENTRIES {
         for hz in [44_100, 48_000, 96_000] {
-            let mut stimulus = recipe(entry).stimulus;
+            let authored = recipe(entry).stimulus;
+            let mut stimulus = auditorylab_core::Stimulus {
+                duration_seconds: authored.duration_seconds,
+                fade_seconds: authored.fade_seconds,
+                components: auditorylab_core::authored::lower(&authored.components)
+                    .unwrap()
+                    .into_iter()
+                    .map(|(_, c)| c)
+                    .collect(),
+            };
             let signal = stimulus.signal(SampleRate::new(hz).unwrap()).unwrap();
             assert_eq!(signal.duration_seconds(), stimulus.duration_seconds);
             stimulus.fade_seconds = 0.0;
@@ -389,3 +439,19 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
     reason = "The integration test imports the real catalog build module to check catalog inputs; its unused Cargo build-script main is not executed by that test"
 )]
 mod catalog_build;
+
+#[test]
+fn builtins_have_unique_curated_identities_and_do_not_invent_creation_dates() {
+    let mut identities = std::collections::BTreeSet::new();
+    for entry in catalog::ENTRIES {
+        let recipe = recipe(entry);
+        assert!(
+            identities.insert(recipe.document.id),
+            "{} duplicates a builtin UUID",
+            entry.id
+        );
+        assert_eq!(recipe.document.created_at, None);
+        assert_eq!(recipe.document.modified_at, None);
+    }
+    assert_eq!(identities.len(), catalog::ENTRIES.len());
+}

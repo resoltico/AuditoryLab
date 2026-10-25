@@ -10,7 +10,9 @@ fn silent(
     auditorylab::device::PreparedPlayback,
     auditorylab::PlaybackControl,
 ) {
-    let recipe = format!("schema_version=3\nduration_seconds={seconds}\nfade_seconds=0\n");
+    let recipe = format!(
+        "schema_version=3\nduration_seconds={seconds}\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n"
+    );
     let snapshot = load_reader(recipe.as_bytes(), "silence").unwrap();
     assert!(snapshot.stimulus().components.is_empty());
     let session = Session::new();
@@ -62,7 +64,7 @@ fn silence_stops() {
 #[test]
 #[ignore = "plays one second of an empty live draft on the default output"]
 fn live_silence_stops() {
-    let draft = Draft::new();
+    let draft = Draft::new().unwrap();
     assert!(draft.components().is_empty());
     let session = Session::new();
     let control = session.control();
@@ -99,7 +101,7 @@ fn live_silence_stops() {
 #[ignore = "opens the default output without playing"]
 fn stop_before_preparation_returns_an_early_report() {
     let snapshot = load_reader(
-        b"schema_version=3\nduration_seconds=1\nfade_seconds=0\n".as_slice(),
+        b"schema_version=3\nduration_seconds=1\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n".as_slice(),
         "silence",
     )
     .unwrap();

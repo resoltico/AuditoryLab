@@ -49,6 +49,15 @@ impl CompiledMix {
         self.rate
     }
 
+    pub(crate) fn voices(&self) -> impl Iterator<Item = VoiceObservation> + '_ {
+        self.entries().map(|entry| VoiceObservation {
+            id: entry.id,
+            role: SlotRole::Continuing,
+            facts: entry.facts,
+            gains: entry.voice.gains(),
+        })
+    }
+
     /// The components in rendering order.
     pub(crate) fn entries(&self) -> impl Iterator<Item = &CompiledComponent> {
         self.entries[..self.len].iter().flatten()
@@ -117,12 +126,7 @@ impl Target {
 
     /// Validated target quantities at model origin zero, not generated engine observations.
     pub fn voices(&self) -> impl Iterator<Item = VoiceObservation> + '_ {
-        self.mix.entries().map(|entry| VoiceObservation {
-            id: entry.id,
-            role: SlotRole::Continuing,
-            facts: entry.facts,
-            gains: entry.voice.gains(),
-        })
+        self.mix.voices()
     }
 
     /// Bounded, origin-zero timing/envelope projection; never advances an engine.
@@ -178,6 +182,75 @@ pub struct TargetCheck {
 }
 
 impl TargetCheck {
+    /// Lower an atomic authored candidate before compiling any generator lane.
+    #[must_use]
+    pub fn authored(rate: SampleRate, components: &[crate::AuthoredComponent]) -> Self {
+        let lowered = match crate::authored::lower(components) {
+            Ok(values) => values,
+            Err(error) => {
+                return Self {
+                    rate,
+                    components: Vec::new(),
+                    result: Err(StimulusError::Authored(error)),
+                };
+            }
+        };
+        let mut check = Self::new(rate, &lowered);
+        let intent = |id: ComponentId| {
+            components
+                .iter()
+                .find(|c| c.id.get() == id.get())
+                .and_then(|c| match c.node {
+                    crate::Node::BinauralPair(pair) => Some((pair, crate::PairKind::Binaural)),
+                    crate::Node::MonauralPair { pair, .. } => {
+                        Some((pair, crate::PairKind::Monaural))
+                    }
+                    _ => None,
+                })
+        };
+        if let Err(StimulusError::Component {
+            number,
+            error: ComponentError::Frequency { .. },
+        }) = &check.result
+        {
+            let id = lowered[*number - 1].0;
+            if let Some((pair, _)) = intent(id) {
+                let error = match &check.result {
+                    Err(StimulusError::Component { error, .. }) => error.clone(),
+                    _ => unreachable!("matched carrier error above"),
+                };
+                check.result = Err(StimulusError::PairCarrier {
+                    id,
+                    first_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    error,
+                });
+            }
+        }
+        let annotate = |id: ComponentId, facts: &mut ComponentFacts| {
+            if let Some((pair, kind)) = intent(id) {
+                facts.pair = Some(crate::PairFacts {
+                    owner: id.with_lane(crate::Lane::Primary),
+                    kind,
+                    first_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    second_hz: pair.first_hz + pair.offset_hz,
+                });
+            }
+        };
+        for (id, result) in &mut check.components {
+            if let Ok(facts) = result {
+                annotate(*id, facts);
+            }
+        }
+        if let Ok(target) = &mut check.result {
+            for entry in target.mix.entries[..target.mix.len].iter_mut().flatten() {
+                annotate(entry.id, &mut entry.facts);
+            }
+        }
+        check
+    }
+
     /// Compile each component once, in order.
     ///
     /// The whole-target error is the first of: too many components; then,

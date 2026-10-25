@@ -18,6 +18,7 @@
 //! only after that join.
 mod operations;
 mod output;
+mod persistent;
 mod tasks;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
@@ -98,6 +99,8 @@ pub enum PathPurpose {
     /// A destination for exported audio; replacement follows the panel's
     /// own overwrite confirmation.
     ExportWav,
+    /// Export a captured portable recipe without changing ownership or history.
+    ExportRecipe,
 }
 
 /// Something the frontend must do on the workspace's behalf.
@@ -105,6 +108,15 @@ pub enum PathPurpose {
 pub enum Effect {
     /// Ask whether to save, discard or keep unsaved changes.
     AskUnsaved(PromptId),
+    /// Confirm deletion of one captured trashed identity before acquiring a lock.
+    AskPurge {
+        /// Prompt receiving the explicit confirmation.
+        prompt: PromptId,
+        /// Captured stable User key.
+        key: String,
+        /// Captured title shown with that identity.
+        title: String,
+    },
     /// Show a file panel.
     ChoosePath {
         /// The prompt the answer belongs to.
@@ -130,6 +142,8 @@ pub enum Response {
     Save,
     /// Continue without saving.
     Discard,
+    /// Confirm the explicitly described permanent deletion.
+    Confirm,
     /// Keep everything as it is.
     Cancel,
     /// The chosen path, or `None` when the panel was cancelled.
@@ -161,8 +175,8 @@ pub enum Refusal {
     Input(Vec<(EditingField, InputProblem)>),
     /// The recipe's numbers are not all finite.
     NotFinite,
-    /// The actual retained original source has a nonfinite number.
-    SourceNotFinite {
+    /// The current authored content has a nonfinite number.
+    NonfiniteContent {
         /// Zero-based source component, or a recipe-wide field.
         component: Option<usize>,
         /// The source quantity requiring correction.
@@ -191,13 +205,25 @@ pub enum Refusal {
 enum DocumentAction {
     New,
     Copy(RecipeSnapshot),
+    EditManaged(crate::library::LoadedRecord),
+    EditExternal(RecipeSnapshot),
+    TrashSaved {
+        key: crate::library::LibraryKey,
+        expect: crate::library::VersionToken,
+    },
     Close,
 }
 
 #[derive(Debug, Clone)]
 enum AudioRequest {
-    Finite(RecipeSnapshot),
-    Live { document: DocumentId, draft: Draft },
+    Finite {
+        snapshot: Box<RecipeSnapshot>,
+        store: Option<crate::library::LibraryStore>,
+    },
+    Live {
+        document: DocumentId,
+        candidate: Arc<crate::Candidate>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -244,6 +270,10 @@ struct Pending {
 #[derive(Debug)]
 enum PromptState {
     Unsaved(DocumentAction),
+    Purge {
+        key: crate::library::LibraryKey,
+        expect: crate::library::VersionToken,
+    },
     SaveBeforeAction {
         action: DocumentAction,
         document: DocumentId,
@@ -255,6 +285,7 @@ enum PromptState {
     },
     Import,
     Export(Sound),
+    ExportRecipe(Arc<str>),
 }
 
 #[derive(Debug)]
@@ -267,7 +298,10 @@ struct Prompt {
 pub struct Workspace {
     capabilities: Capabilities,
     catalog: Vec<RecipeSnapshot>,
+    persistent: Option<persistent::Persistent>,
+    persistent_config_error: Option<String>,
     query: String,
+    rhythm_query: crate::query::RhythmQuery,
     filtered: Vec<usize>,
     selected: usize,
     view: View,
@@ -318,11 +352,14 @@ impl Workspace {
                     && Capabilities::available().device_playback,
             },
             catalog,
+            persistent: None,
+            persistent_config_error: None,
             query: String::new(),
+            rhythm_query: crate::query::RhythmQuery::default(),
             filtered,
             selected: 0,
             view: View::Library,
-            editor: EditorSession::new(Draft::new())?,
+            editor: EditorSession::new(Draft::new()?)?,
             export_rate: SampleRate::DEFAULT,
             audio: None,
             file: None,
@@ -392,7 +429,8 @@ impl Workspace {
         self.export_rate
     }
 
-    /// The library in natural order.
+    /// Loaded in-memory Built-in and temporary snapshots. Managed User summaries
+    /// appear in `library_view`; only selected User content is loaded in full.
     #[must_use]
     pub fn catalog(&self) -> &[RecipeSnapshot] {
         &self.catalog
@@ -402,6 +440,9 @@ impl Workspace {
     /// every recipe leaves nothing selected.
     #[must_use]
     pub fn selected(&self) -> Option<&RecipeSnapshot> {
+        if let Some(persistent) = &self.persistent {
+            return persistent.selected(&self.catalog);
+        }
         self.selected_index().map(|index| &self.catalog[index])
     }
 
@@ -412,7 +453,8 @@ impl Workspace {
             .filter(|&index| index < self.catalog.len())
     }
 
-    /// Positions of the library entries matching the query, in order.
+    /// Matching positions into the in-memory catalog (`Workspace::new`).
+    /// Persistent frontends use `LibraryView::keys` instead of these positions.
     #[must_use]
     pub fn filtered(&self) -> &[usize] {
         &self.filtered
@@ -459,9 +501,17 @@ impl Workspace {
     // ---- library ----
 
     fn refilter(&mut self) {
-        let query = self.query.trim().to_lowercase();
+        if let Some(p) = &mut self.persistent {
+            p.query.search.clone_from(&self.query);
+            p.query.rhythm.clone_from(&self.rhythm_query);
+            p.refilter();
+        }
+        let query = self.query.trim();
         self.filtered = (0..self.catalog.len())
-            .filter(|&i| matches(&self.catalog[i], &query))
+            .filter(|&i| {
+                crate::query::search(&self.catalog[i], query)
+                    && self.rhythm_query.matches(self.catalog[i].nominal())
+            })
             .collect();
     }
 
@@ -475,12 +525,54 @@ impl Workspace {
         {
             self.selected = first;
         }
+        self.load_persistent_selection();
         self.changed();
     }
 
-    /// Select the entry at a position among the filtered entries.
+    /// Change nominal facets without rebinding any playback or editor snapshot.
+    pub fn set_rhythm_query(&mut self, query: crate::query::RhythmQuery) {
+        self.rhythm_query = query;
+        self.refilter();
+        if !self.filtered.contains(&self.selected)
+            && let Some(&first) = self.filtered.first()
+        {
+            self.selected = first;
+        }
+        self.load_persistent_selection();
+        self.changed();
+    }
+
+    /// Current shared nominal restrictions, retained when text search changes.
+    #[must_use]
+    pub const fn rhythm_query(&self) -> &crate::query::RhythmQuery {
+        &self.rhythm_query
+    }
+
+    /// Select a position among unique matches, excluding virtual group headings.
+    /// Persistent frontend callbacks retain `LibraryView::keys` instead.
     pub fn select(&mut self, position: usize) {
+        if let Some(key) = self
+            .persistent
+            .as_ref()
+            .and_then(|p| p.visible_key(position))
+        {
+            self.select_library_key(&key);
+            return;
+        }
         if let Some(&index) = self.filtered.get(position) {
+            self.selected = index;
+            self.changed();
+        }
+    }
+
+    /// Select a still-visible immutable snapshot. Stale callbacks cannot select
+    /// the unrelated entry that later occupies the same row position.
+    pub fn select_snapshot(&mut self, snapshot: crate::SnapshotId) {
+        if let Some(&index) = self
+            .filtered
+            .iter()
+            .find(|&&i| self.catalog[i].id() == snapshot)
+        {
             self.selected = index;
             self.changed();
         }
@@ -509,6 +601,10 @@ impl Workspace {
         let Some(source) = self.editor.draft().based_on().cloned() else {
             return;
         };
+        if self.persistent.is_some() {
+            self.reveal_retained_source(source);
+            return;
+        }
         let index = self
             .catalog
             .iter()
@@ -517,6 +613,10 @@ impl Workspace {
                 self.catalog.push(source);
                 self.catalog.len() - 1
             });
+        if self.rhythm_query != crate::query::RhythmQuery::default() {
+            self.rhythm_query = crate::query::RhythmQuery::default();
+            self.file_status = "Rhythm filters cleared to show the retained source recipe.".into();
+        }
         self.query.clear();
         self.refilter();
         self.selected = index;
@@ -703,6 +803,24 @@ impl Workspace {
         self.after_edit(result)
     }
 
+    /// Add a complete pair as one committed edit/live target submission.
+    ///
+    /// # Errors
+    /// Refuses stale documents, busy editing or the expanded voice budget.
+    pub fn add_pair(
+        &mut self,
+        document: DocumentId,
+        kind: auditorylab_core::PairKind,
+    ) -> Result<(), Refusal> {
+        self.editing_allowed()?;
+        let result = self
+            .editor
+            .add_pair(document, kind)
+            .map(|_| ())
+            .map_err(Refusal::Edit);
+        self.after_edit(result)
+    }
+
     /// Remove a component.
     ///
     /// # Errors
@@ -839,7 +957,7 @@ impl Workspace {
         // Commit staged text when it can be; anything left staged is unsaved.
         let _ = self.editor.commit();
         self.submit_live();
-        if self.editor.dirty() {
+        if self.editor.dirty() || self.has_unconfirmed_publication() {
             let id = self.prompt(PromptState::Unsaved(action));
             self.effects.push(Effect::AskUnsaved(id));
         } else {
@@ -871,6 +989,14 @@ impl Workspace {
             return;
         }
         match (state, response) {
+            (PromptState::Purge { key, expect }, Response::Confirm) => {
+                let result =
+                    self.mutate_library(&key.to_string(), &expect.to_string(), "purge", "", true);
+                if let Err(refusal) = result {
+                    self.file_status = views::refusal_text(&refusal);
+                }
+            }
+
             (PromptState::Unsaved(action), Response::Save) => {
                 let closes = matches!(action, DocumentAction::Close);
                 match self.prepare_save() {
@@ -882,6 +1008,21 @@ impl Workspace {
                         }
                         self.submit_live();
                         let document = self.editor.document();
+                        if self.persistent.is_some() {
+                            match self.start_managed_save(document, content) {
+                                Ok(task) => self.schedule(Action::AfterSave {
+                                    action,
+                                    task,
+                                    document,
+                                }),
+                                Err(refusal) => {
+                                    self.file_status = views::refusal_text(&refusal);
+                                    self.deny(closes);
+                                }
+                            }
+                            self.changed();
+                            return;
+                        }
                         let id = self.prompt(PromptState::SaveBeforeAction {
                             action,
                             document,
@@ -927,6 +1068,9 @@ impl Workspace {
                     content,
                     path,
                 });
+            }
+            (PromptState::ExportRecipe(text), Response::Path(Some(path))) => {
+                self.start_file(FileKind::ExportRecipe { text, path });
             }
             (PromptState::Import, Response::Path(Some(path))) => {
                 self.start_file(FileKind::Import(path));
@@ -1023,12 +1167,37 @@ impl Workspace {
                 self.closing = false;
                 self.effects.push(Effect::CloseResolved { approved: true });
             }
-            Action::Document(DocumentAction::New) => self.replace_document(Draft::new()),
+            Action::Document(DocumentAction::New) => match Draft::new() {
+                Ok(draft) => self.replace_document(draft),
+                Err(e) => self.file_status = e.to_string(),
+            },
             Action::Document(DocumentAction::Copy(snapshot)) => {
                 if let Err(refusal) = Self::copy_content_admission(&snapshot) {
                     self.file_status = views::refusal_text(&refusal);
                 } else {
-                    self.replace_document(Draft::from_snapshot(&snapshot));
+                    match Draft::from_snapshot(&snapshot) {
+                        Ok(draft) => self.replace_document(draft),
+                        Err(e) => self.file_status = e.to_string(),
+                    }
+                }
+            }
+            Action::Document(DocumentAction::TrashSaved { key, expect }) => {
+                self.discard_then_trash(key, expect);
+            }
+            Action::Document(DocumentAction::EditExternal(snapshot)) => {
+                self.replace_document(Draft::from_recipe(snapshot.recipe().clone()));
+                self.editor
+                    .record_saved(self.editor.document(), snapshot.recipe());
+                if let Some(p) = &mut self.persistent {
+                    p.external = snapshot.external_file().cloned();
+                }
+            }
+            Action::Document(DocumentAction::EditManaged(record)) => {
+                self.replace_document(Draft::from_recipe(record.snapshot.recipe().clone()));
+                self.editor
+                    .record_saved(self.editor.document(), record.snapshot.recipe());
+                if let Some(p) = &mut self.persistent {
+                    p.location = Some((record.key, record.version_token));
                 }
             }
             Action::Retry(action) => self.request(action),
@@ -1040,6 +1209,16 @@ impl Workspace {
                     && self.editor.document() == document
                     && !self.editor.dirty()
                 {
+                    let action = if let DocumentAction::TrashSaved { key, expect } = action {
+                        let expect = self
+                            .persistent
+                            .as_ref()
+                            .and_then(|p| p.saved_token(&key))
+                            .unwrap_or(expect);
+                        DocumentAction::TrashSaved { key, expect }
+                    } else {
+                        action
+                    };
                     self.schedule(Action::Document(action));
                 } else {
                     if pending.saved == Some(true) {
@@ -1055,6 +1234,12 @@ impl Workspace {
         match EditorSession::new(draft) {
             Ok(editor) => {
                 self.editor = editor;
+                if let Some(p) = &mut self.persistent {
+                    p.retain_recovery();
+                    p.location = None;
+                    p.detached = None;
+                    p.external = None;
+                }
                 self.view = View::Workbench;
                 self.effects.push(Effect::ShowView(View::Workbench));
                 self.file_status.clear();
@@ -1128,6 +1313,10 @@ impl Workspace {
             .map_err(|CommitRefusal { problems }| Refusal::Input(problems))?;
         self.submit_live();
         let document = self.editor.document();
+        if self.persistent.is_some() {
+            self.start_managed_save(document, content)?;
+            return Ok(());
+        }
         let id = self.prompt(PromptState::Save { document, content });
         self.effects.push(Effect::ChoosePath {
             prompt: id,
@@ -1137,6 +1326,54 @@ impl Workspace {
         Ok(())
     }
 
+    /// Export captured portable content without saving or forking the document.
+    ///
+    /// # Errors
+    /// Refuses occupied slots or an unserializable draft; no playback is started.
+    pub fn export_recipe(&mut self) -> Result<(), Refusal> {
+        self.import_admission()?;
+        let (text, title): (Arc<str>, String) = match self.view {
+            View::Workbench => {
+                let recipe = self.prepare_recipe()?;
+                (
+                    Arc::from(
+                        recipe
+                            .to_toml()
+                            .map_err(|e| Refusal::Document(e.to_string()))?,
+                    ),
+                    self.editor.draft().title().into(),
+                )
+            }
+            View::Library => {
+                let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
+                let text = match snapshot.origin() {
+                    crate::Origin::BuiltIn(id) => Arc::from(
+                        crate::builtin_source(id).map_err(|e| Refusal::Document(e.to_string()))?,
+                    ),
+                    crate::Origin::User { .. } => self
+                        .persistent
+                        .as_ref()
+                        .and_then(|p| p.selected_text())
+                        .ok_or(Refusal::NoSelection)?,
+                    _ => Arc::from(
+                        snapshot
+                            .recipe()
+                            .to_toml()
+                            .map_err(|e| Refusal::Document(e.to_string()))?,
+                    ),
+                };
+                (text, snapshot.title())
+            }
+        };
+        let prompt = self.prompt(PromptState::ExportRecipe(text));
+        self.effects.push(Effect::ChoosePath {
+            prompt,
+            purpose: PathPurpose::ExportRecipe,
+            suggested_name: Some(file_name(&title, "toml")),
+        });
+        self.changed();
+        Ok(())
+    }
     /// Validate the current source at the selected export rate, then choose
     /// where to write it. Export needs idle audio and an idle file slot.
     ///
@@ -1260,14 +1497,24 @@ impl Workspace {
         let session = Session::new();
         let control = session.control();
         let (kind, title, draft) = match request {
-            AudioRequest::Finite(snapshot) => {
+            AudioRequest::Finite { snapshot, store } => {
                 let title = snapshot.title();
-                (AudioKind::Finite(snapshot), title, None)
+                let kind = match store {
+                    Some(store) => AudioKind::Managed {
+                        snapshot: *snapshot,
+                        store,
+                    },
+                    None => AudioKind::Finite(*snapshot),
+                };
+                (kind, title, None)
             }
-            AudioRequest::Live { document, draft } => (
+            AudioRequest::Live {
+                document,
+                candidate,
+            } => (
                 AudioKind::Live(document),
-                draft.title().to_owned(),
-                Some(draft),
+                candidate.draft().title().to_owned(),
+                Some(candidate.draft().clone()),
             ),
         };
         let Some(worker) = self.spawn_audio(session, kind.clone(), draft) else {
@@ -1326,11 +1573,11 @@ impl Workspace {
         self.poll_audio();
         self.poll_file();
         self.resolve_pending();
-        let shown = self.selected_index();
+        self.continue_persistent();
+        let shown = self.selected().cloned();
         if self.output.refresh(
             &mut self.editor,
-            &self.catalog,
-            shown,
+            shown.as_ref(),
             self.view,
             self.export_rate,
             self.audio.is_some(),
@@ -1344,7 +1591,7 @@ impl Workspace {
         };
         if self.output.refresh_model(
             &mut self.editor,
-            shown.map(|index| &self.catalog[index]),
+            shown.as_ref(),
             self.view,
             live_document,
             rate,
@@ -1421,16 +1668,34 @@ impl Workspace {
         let mut saved = None;
         let conclusion = match result {
             None => {
-                self.file_status = presentation::WORKER_ENDED_WITHOUT_RESULT.into();
+                self.file_status = if launch_error.is_none()
+                    && let FileKind::Managed(job) = &task.kind
+                    && job.may_publish()
+                {
+                    self.retain_missing_file_result(job)
+                } else {
+                    presentation::WORKER_ENDED_WITHOUT_RESULT.into()
+                };
                 Conclusion::Failed
             }
             Some(outcome) => {
                 let conclusion = outcome.conclusion();
                 self.file_status = match (&task.kind, outcome) {
+                    (FileKind::Managed(job), FileOutcome::Managed(result)) => {
+                        let (text, was_saved) = self.finish_managed(job, result);
+                        saved = was_saved;
+                        text
+                    }
                     (_, FileOutcome::Imported(Ok(snapshot))) => {
                         let text = views::imported_text(&snapshot);
                         self.add_import(snapshot);
-                        text
+                        if self.selected().is_none() {
+                            format!(
+                                "{text}\nHidden by current filters; clear filters to show the imported recipe."
+                            )
+                        } else {
+                            text
+                        }
                     }
                     (
                         FileKind::Save {
@@ -1444,6 +1709,12 @@ impl Workspace {
                         saved = Some(true);
                         views::saved_text(path, content, same, self.export_rate)
                     }
+                    (FileKind::ExportRecipe { path, .. }, FileOutcome::RecipeExported(Ok(()))) => {
+                        format!(
+                            "Exported captured portable recipe to {}. Recipe identity/history and local membership are unchanged.",
+                            path.display()
+                        )
+                    }
                     (FileKind::Export { path, .. }, FileOutcome::Exported(Ok(exported))) => {
                         views::exported_text(path, &exported)
                     }
@@ -1453,6 +1724,7 @@ impl Workspace {
                     (
                         _,
                         FileOutcome::Saved(Err(e))
+                        | FileOutcome::RecipeExported(Err(e))
                         | FileOutcome::Imported(Err(e))
                         | FileOutcome::Exported(Err(e)),
                     ) => {
@@ -1483,6 +1755,7 @@ impl Workspace {
     }
 
     fn add_import(&mut self, snapshot: RecipeSnapshot) {
+        self.register_external(&snapshot);
         let index = if let Some(index) = self
             .catalog
             .iter()
@@ -1572,6 +1845,8 @@ impl Workspace {
                 Some(outcome) if outcome.conclusion() == Conclusion::Failed => {
                     if let FileOutcome::Imported(Err(e))
                     | FileOutcome::Saved(Err(e))
+                    | FileOutcome::Managed(Err(e))
+                    | FileOutcome::RecipeExported(Err(e))
                     | FileOutcome::Exported(Err(e)) = outcome
                     {
                         errors.push(e.to_string());
@@ -1648,32 +1923,6 @@ impl Workspace {
     pub fn audio_phase(&self) -> Option<PlaybackPhase> {
         self.audio.as_ref().map(|t| t.control.phase())
     }
-}
-
-/// Search identity, title, research text and component meaning together.
-fn matches(snapshot: &RecipeSnapshot, query: &str) -> bool {
-    if query.is_empty() {
-        return true;
-    }
-    let text = format!(
-        "{} {} {} {} {}",
-        snapshot.origin(),
-        snapshot.title(),
-        presentation::document_notes(snapshot),
-        presentation::research(snapshot)
-            .iter()
-            .map(|(_, v)| *v)
-            .collect::<Vec<_>>()
-            .join(" "),
-        snapshot
-            .stimulus()
-            .components
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
-    text.to_lowercase().contains(query)
 }
 
 #[cfg(test)]

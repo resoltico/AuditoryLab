@@ -35,6 +35,8 @@ impl FileDriver {
     #[must_use]
     pub fn path(&self) -> &std::path::Path {
         match &self.kind {
+            FileKind::Managed(job) => job.store.root().path(),
+            FileKind::ExportRecipe { path, .. } => path,
             FileKind::Import(path)
             | FileKind::Save { path, .. }
             | FileKind::Export { path, .. } => path,
@@ -154,6 +156,10 @@ pub fn workspace(
                     Step::Fail(ack) => {
                         let error = Error::new(ErrorKind::Write, "injected file failure");
                         let outcome = match kind {
+                            FileKind::ExportRecipe { .. } => {
+                                FileOutcome::RecipeExported(Err(error))
+                            }
+                            FileKind::Managed(_) => FileOutcome::Managed(Err(error)),
                             FileKind::Import(_) => FileOutcome::Imported(Err(error)),
                             FileKind::Save { .. } => FileOutcome::Saved(Err(error)),
                             FileKind::Export { .. } => FileOutcome::Exported(Err(error)),

@@ -43,7 +43,7 @@ fn text(item: &ItemRc) -> String {
 /// Staged text and committed value of the first component's field.
 fn field_state(h: &Harness, id: ParameterId) -> (Option<String>, Option<f64>) {
     h.adapter.inspect(|w| {
-        let (component, _) = w.editor().draft().components()[0];
+        let component = w.editor().draft().components()[0].id;
         let field = EditingField::Parameter(component, id);
         (
             w.editor().staged(field).map(str::to_owned),
@@ -387,7 +387,7 @@ fn monitor_handoff_and_deactivation_preserve_numeric_entry() {
     // Arrow keys on the way also moved the frequency slider, which commits.
     let base = committed();
     let base_text = h.adapter.inspect(|w| {
-        let (component, _) = w.editor().draft().components()[0];
+        let component = w.editor().draft().components()[0].id;
         w.editor().committed_text(EditingField::Parameter(
             component,
             ParameterId::ToneFrequency,

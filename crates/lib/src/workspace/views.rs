@@ -46,8 +46,10 @@ pub struct ComponentView {
     pub id: ComponentId,
     /// Ear routing.
     pub ears: Ears,
+    /// False for separate-ear pairs whose routes are part of their construction.
+    pub routing_editable: bool,
     /// Carrier kind.
-    pub carrier: CarrierKind,
+    pub carrier: Option<CarrierKind>,
     /// Modulation kind, if any.
     pub modulation: Option<ModulationKind>,
     /// The component's role.
@@ -105,6 +107,8 @@ pub struct EditorView {
 /// The library and the selected recipe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryView {
+    /// Stable collection keys parallel to rows; empty keys are nonselectable group headings.
+    pub keys: Vec<String>,
     /// One label per matching entry.
     pub rows: Vec<String>,
     /// The selected entry's position among the rows.
@@ -162,6 +166,10 @@ pub struct ActionView {
     pub can_edit: bool,
     /// Another component fits in the open sound.
     pub can_add_component: bool,
+    /// Adding a pair requires room for both generator lanes.
+    pub can_add_pair: bool,
+    /// Why a two-tone pair cannot currently be added.
+    pub pair_add_reason: String,
     /// Why no component can be added, when editing is otherwise allowed.
     pub add_component_reason: String,
     /// The most recently removed component, which Undo remove restores;
@@ -244,11 +252,11 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
         Refusal::NoSelection => "No recipe matches the search; clear it or choose a recipe.".into(),
         Refusal::NoExport => "No export is running.".into(),
         Refusal::Input(problems) => input_text(problems),
-        Refusal::SourceNotFinite {
+        Refusal::NonfiniteContent {
             component,
             parameter,
         } => format!(
-            "Cannot edit a copy: original source {}{} is not finite. Correct the source document before deriving a sound.",
+            "Cannot edit a copy: authored content {}{} is not finite. Correct the source document before deriving a sound.",
             component.map_or_else(String::new, |index| format!("component {} ", index + 1)),
             parameter.descriptor().label,
         ),
@@ -319,10 +327,17 @@ fn shown(path: &Path) -> String {
 
 pub(super) fn file_started_text(kind: &FileKind) -> String {
     match kind {
+        FileKind::ExportRecipe { path, .. } => {
+            format!("Exporting portable recipe to {}.", shown(path))
+        }
+        FileKind::Managed(_) => "Updating the persistent library.".into(),
         FileKind::Import(path) => format!("Opening {}.", shown(path)),
         FileKind::Save { content, path, .. } => format!(
             "Saving {} to {}.",
-            content.about.as_ref().map_or("sound", |a| a.title.as_str()),
+            content
+                .description
+                .as_ref()
+                .map_or("sound", |a| a.title.as_str()),
             shown(path)
         ),
         FileKind::Export { title, path, .. } => format!("Exporting {title} to {}.", shown(path)),
@@ -407,6 +422,7 @@ pub(super) fn received_text(age: std::time::Duration, held: bool) -> String {
 #[derive(PartialEq, Eq)]
 pub(super) struct LibraryKey {
     snapshots: Vec<crate::SnapshotId>,
+    persistent_revision: Option<u64>,
     selected: Option<crate::SnapshotId>,
     rate: SampleRate,
 }
@@ -419,6 +435,7 @@ impl Workspace {
         let rate = self.diagnostic_rate();
         let candidate = self.editor.candidate();
         let analysis = self.editor.candidate_analysis(rate);
+        let nominal = self.editor.nominal();
         let editor = &self.editor;
         let document = editor.document();
         let problem = |field: EditingField| {
@@ -463,7 +480,8 @@ impl Workspace {
             .components()
             .iter()
             .enumerate()
-            .map(|(index, (id, committed))| {
+            .map(|(index, component)| {
+                let (id,committed)=(&component.id,&component.node);
                 let shown = candidate
                     .draft()
                     .component(*id)
@@ -471,16 +489,20 @@ impl Workspace {
                     .unwrap_or(*committed);
                 let own = analysis.check().component(*id);
                 let acoustic = own.and_then(|r| r.as_ref().err());
+                let second=analysis.check().component(id.with_lane(auditorylab_core::Lane::Secondary)).and_then(|r|r.as_ref().err());
+                let coupled=analysis.check().result().err().filter(|error|match error {auditorylab_core::StimulusError::Authored(auditorylab_core::LoweringError::PairDifference {id:owner,..})|auditorylab_core::StimulusError::PairCarrier {id:owner,..}=>owner.get()==id.get(),_=>false});
                 let parameters = ParameterId::COMPONENT
                     .into_iter()
-                    .filter(|p| p.read(committed).is_some())
+                    .filter(|p| committed.read(*p).is_some())
                     .map(|parameter| {
                         let field = EditingField::Parameter(*id, parameter);
                         let diagnostic = problem(field).unwrap_or_else(|| {
-                            acoustic
-                                .filter(|e| e.parameters().contains(&parameter))
+                            coupled.filter(|e|e.parameters().contains(&parameter)).map(ToString::to_string).unwrap_or_else(|| {
+                            let error=match parameter {ParameterId::PairSecondLevel=>second,_=>acoustic};
+                            error
+                                .filter(|e| e.parameters().contains(&parameter) || matches!(parameter,ParameterId::PairFirstLevel|ParameterId::PairSecondLevel) && matches!(e,auditorylab_core::ComponentError::PeakDbfs {..}))
                                 .map(ToString::to_string)
-                                .unwrap_or_default()
+                                .unwrap_or_default()})
                         });
                         ParameterView {
                             handle: editor.handle(field),
@@ -493,8 +515,8 @@ impl Workspace {
                             },
                             text: editor.text(field),
                             staged: editor.staged(field).is_some(),
-                            slider: parameter
-                                .read(committed)
+                            slider: committed
+                                .read(parameter)
                                 .and_then(|v| controls::slider_position(parameter, rate, v)),
                             diagnostic,
                         }
@@ -506,21 +528,23 @@ impl Workspace {
                     .filter(|(f, _)| matches!(f, EditingField::Parameter(owner, _) if owner == id))
                     .map(|(f, p)| problem_text(*f, *p))
                     .collect();
-                if let Some(error) = acoustic {
-                    errors.push(format!("{error} ({context})"));
-                }
+                for error in [acoustic,second].into_iter().flatten() {errors.push(format!("{error} ({context})"));}
+                if let Some(error)=coupled {errors.push(format!("{error} ({context})"));}
                 ComponentView {
                     id: *id,
-                    ears: committed.ears,
-                    carrier: committed.carrier.kind(),
-                    modulation: committed.modulation.map(|m| m.kind()),
-                    heading: shown.role().label(),
-                    name: format!("{} · component {}", shown.role().label(), index + 1),
-                    context: match own {
+                    ears: committed.ears(),
+                    routing_editable: committed.routing_editable(),
+                    carrier: committed.primitive_kind(),
+                    modulation: committed.modulation_kind(),
+                    heading: shown.heading(),
+                    name: format!("{} · component {}", shown.heading(), index + 1),
+                    context: if let Some(pair)=shown.pair() {
+                        format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz+pair.offset_hz,pair.offset_hz.abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)
+                    } else {match own {
                         Some(Ok(facts)) => presentation::component_description(facts, false),
                         // The error line states it, with its rate.
                         Some(Err(_)) | None => String::new(),
-                    },
+                    }},
                     error: errors.join("; "),
                     parameters,
                 }
@@ -552,9 +576,18 @@ impl Workspace {
                 deduped.push(item.to_owned());
             }
         }
-        let brief = analysis.target().map_or_else(
+        let generated_brief = analysis.target().map_or_else(
             || "No valid sound model; correct the fields".into(),
             |t| presentation::structure_description(&Structure::of_target(t)),
+        );
+        let brief = format!(
+            "{} classification · {}\nSaved version · {}\n{}",
+            if pending { "Last committed" } else { "Draft" },
+            presentation::nominal_description(&nominal),
+            editor
+                .saved_nominal()
+                .map_or_else(|| "Not saved".into(), presentation::nominal_description),
+            generated_brief
         );
         let based_on = editor.draft().based_on();
         let retained_warning = self.retained_warning(pending, analysis.target().is_none());
@@ -568,7 +601,7 @@ impl Workspace {
             metadata_error: deduped.join("; "),
             based_on_title: based_on.map_or_else(String::new, |p| {
                 format!(
-                    "Based on “{}” · Retained source in Sound settings",
+                    "Copied from “{}” · Session snapshot and ancestry in Sound settings",
                     p.title()
                 )
             }),
@@ -624,6 +657,7 @@ impl Workspace {
     pub fn library_view(&self) -> Arc<LibraryView> {
         let rate = self.export_rate;
         let key = LibraryKey {
+            persistent_revision: self.persistent.as_ref().map(|p| p.revision),
             snapshots: self
                 .filtered
                 .iter()
@@ -650,11 +684,21 @@ impl Workspace {
         let rows = self
             .filtered
             .iter()
-            .map(|&i| presentation::library_label(&self.catalog[i], rate))
+            .map(|&i| presentation::library_label(&self.catalog[i]))
+            .collect();
+        let keys = self
+            .filtered
+            .iter()
+            .map(|&i| format!("snapshot:{}", self.catalog[i].id().get()))
             .collect();
         let selected = self.filtered.iter().position(|&i| i == self.selected);
+        let (keys, rows, selected) = self
+            .persistent
+            .as_ref()
+            .map_or((keys, rows, selected), |p| p.rows());
         let Some(snapshot) = self.selected() else {
             return LibraryView {
+                keys,
                 rows,
                 selected,
                 title: String::new(),
@@ -668,6 +712,7 @@ impl Workspace {
         };
         let about = snapshot.about();
         LibraryView {
+            keys,
             rows,
             selected,
             title: snapshot.title(),
@@ -716,7 +761,9 @@ impl Workspace {
                 .filter(|r| {
                     matches!(
                         r,
-                        Refusal::SourceNotFinite { .. } | Refusal::TooManyComponents(_)
+                        Refusal::NonfiniteContent { .. }
+                            | Refusal::TooManyComponents(_)
+                            | Refusal::Document(_)
                     )
                 })
                 .map(refusal_text),
@@ -751,8 +798,25 @@ impl Workspace {
         } else {
             String::new()
         };
-        let full =
-            self.editor.draft().components().len() >= auditorylab_core::Stimulus::MAX_COMPONENTS;
+        let used_voices = self
+            .editor
+            .draft()
+            .components()
+            .iter()
+            .map(|c| c.node.voices())
+            .sum::<usize>();
+        let pair_full = used_voices + 2 > auditorylab_core::Stimulus::MAX_COMPONENTS
+            || self.editor.draft().components().len() >= auditorylab_core::Stimulus::MAX_COMPONENTS;
+        let full = self.editor.draft().components().len()
+            >= auditorylab_core::Stimulus::MAX_COMPONENTS
+            || self
+                .editor
+                .draft()
+                .components()
+                .iter()
+                .map(|c| c.node.voices())
+                .sum::<usize>()
+                >= auditorylab_core::Stimulus::MAX_COMPONENTS;
         let playing = self.audio.is_some();
         let exporting = self.exporting();
         let progress = self.export_progress();
@@ -774,6 +838,12 @@ impl Workspace {
             export_reason: export.err().as_ref().map(refusal_text).unwrap_or_default(),
             can_edit: self.can_edit(),
             can_add_component: self.can_edit() && !full,
+            can_add_pair: self.can_edit() && !pair_full,
+            pair_add_reason: if pair_full {
+                "No space for a two-tone pair; remove a component first.".into()
+            } else {
+                String::new()
+            },
             add_component_reason: if full {
                 refusal_text(&Refusal::Edit(EditRefusal::ComponentLimit))
             } else {
@@ -785,12 +855,16 @@ impl Workspace {
                 .map(|(index, component)| {
                     format!(
                         "Removed {} · component {}.",
-                        component.role().label(),
+                        component.node.heading(),
                         index + 1
                     )
                 })
                 .unwrap_or_default(),
-            can_restore_component: self.can_edit() && !full && self.editor.removed().is_some(),
+            can_restore_component: self.can_edit()
+                && !full
+                && self.editor.removed().is_some_and(|(_, c)| {
+                    used_voices + c.node.voices() <= auditorylab_core::Stimulus::MAX_COMPONENTS
+                }),
             file_busy: self.file.is_some() || self.prompt.is_some(),
             playback_busy: playing,
             exporting,
@@ -818,6 +892,14 @@ impl Workspace {
                 .join("\n"),
             audio_status: self.audio_status.clone(),
             file_activity: match self.file.as_ref().map(|t| &t.kind) {
+                Some(FileKind::ExportRecipe { .. }) => {
+                    "Exporting a captured portable recipe; identity and history remain unchanged."
+                        .into()
+                }
+                Some(FileKind::Managed(_)) => {
+                    "Reading or publishing the persistent library; later edits remain independent."
+                        .into()
+                }
                 Some(FileKind::Save { .. }) => {
                     "Saving an immutable sound snapshot; audio and later edits remain independent."
                         .into()

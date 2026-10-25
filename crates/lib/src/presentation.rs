@@ -5,8 +5,8 @@
 //! views state requested and realized values together with their rate.
 use crate::{RecipeSnapshot, Sound};
 use auditorylab_core::{
-    CarrierFacts, ComponentFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate,
-    PulseFacts, SampleRate, Stimulus, StimulusError, VoiceObservation,
+    AuthoredStimulus, CarrierFacts, ComponentFacts, Ears, ModulationFacts, Observation,
+    ParameterId, PhaseRate, PulseFacts, SampleRate, StimulusError, VoiceObservation,
     interpretation::{RhythmKind, Structure, ToneRelationship},
 };
 
@@ -245,12 +245,20 @@ const fn route(ears: Ears) -> &'static str {
 /// requested values and the rate they were resolved at.
 #[must_use]
 pub fn component_description(facts: &ComponentFacts, detail: bool) -> String {
-    format!(
+    let generated = format!(
         "{} · {} · component peak bound {} dBFS",
         generator_description(facts, detail),
         route(facts.ears),
         format_dbfs(facts.peak_dbfs)
-    )
+    );
+    if detail && let Some(pair) = facts.pair {
+        format!(
+            "Authored pair {} · nominal signed offset {} Hz · requested carriers {} / {} Hz · {generated}",
+            pair.owner, pair.offset_hz, pair.first_hz, pair.second_hz
+        )
+    } else {
+        generated
+    }
 }
 
 fn gain_route(gains: [f64; 2]) -> &'static str {
@@ -455,7 +463,17 @@ pub fn sound_description(sound: &Sound, detail: bool) -> String {
 }
 
 pub(crate) fn document_notes(snapshot: &RecipeSnapshot) -> String {
-    let mut text = String::new();
+    let document = &snapshot.recipe().document;
+    let mut text = format!(
+        "Document: {}\nCreated (declared): {}\nEdited (declared): {}\n",
+        document.id,
+        document
+            .created_at
+            .map_or_else(|| "Unknown".into(), |t| t.to_string()),
+        document
+            .modified_at
+            .map_or_else(|| "Unknown".into(), |t| t.to_string())
+    );
     if let Some(notes) = snapshot
         .about()
         .and_then(|a| a.summary.as_deref())
@@ -463,36 +481,27 @@ pub(crate) fn document_notes(snapshot: &RecipeSnapshot) -> String {
     {
         text.push_str(&format!("Sound notes: {notes}\n"));
     }
-    if let Some(source) = &snapshot.recipe().source {
+    for ancestor in &snapshot.recipe().lineage {
+        text.push_str(&format!("Based on: {}\nAncestor note: {}\nResearch findings describe the ancestor, not this sound.\n",ancestor.title,ancestor.note));
+    }
+    for source in &snapshot.recipe().sources {
         text.push_str(&format!(
-            "Based on: {}\nResearch findings describe the retained source sound.\n",
-            source
-                .about
-                .as_ref()
-                .map_or("source sound", |a| a.title.as_str())
+            "Source {}: {}\nSource citation: {}\n",
+            source.key, source.label, source.citation
         ));
-        if let Some(notes) = source
-            .about
-            .as_ref()
-            .and_then(|a| a.summary.as_deref())
-            .filter(|s| !s.is_empty())
-        {
-            text.push_str(&format!("Source notes: {notes}\n"));
+        if let Some(url) = &source.url {
+            text.push_str(&format!("Source URL: {url}\n"));
         }
-        if let Some(research) = source.about.as_ref().and_then(|a| a.research.as_ref()) {
-            for (label, value) in [
-                ("Source studied for", &research.studied_for),
-                ("Source summary", &research.summary),
-                ("Source citation", &research.citation),
-                ("Source URL", &research.source_url),
-                ("Source study", &research.study),
-                ("Source adaptation", &research.adaptation),
-            ] {
-                if let Some(value) = value {
-                    text.push_str(&format!("{label}: {value}\n"));
-                }
-            }
+        if let Some(doi) = &source.doi {
+            text.push_str(&format!("Source DOI: {doi}\n"));
         }
+    }
+    for evidence in &snapshot.recipe().evidence {
+        if let Some(detail) = &evidence.population_detail {
+            text.push_str(&format!("Population detail: {detail}\n"));
+        }
+        text.push_str(&format!("Measures: {:?}\n", evidence.measures));
+        text.push_str(&format!("Evidence {:?} · source {} · population {:?} · role {:?}\nSummary: {}\nLimitations: {}\nMethods: {}\nAdaptation: {}\n",evidence.scope,evidence.source,evidence.population,evidence.condition_role,evidence.summary,evidence.limitations,evidence.methods_locator,evidence.adaptation));
     }
     text
 }
@@ -543,7 +552,7 @@ impl std::fmt::Display for Notice {
 
 /// Guidance shown before playing a stimulus.
 #[must_use]
-pub fn notices(stimulus: &Stimulus) -> Vec<Notice> {
+pub fn notices(stimulus: &AuthoredStimulus) -> Vec<Notice> {
     let mut notices = vec![Notice::LowStartingVolume];
     if stimulus.uses_separate_ears() {
         notices.push(Notice::HeadphonesForSeparateEars);
@@ -551,22 +560,23 @@ pub fn notices(stimulus: &Stimulus) -> Vec<Notice> {
     notices
 }
 
-/// A library row: title, structure at `rate`, what it was studied for and
-/// its duration.
+/// A library row using cached nominal classification, without target compilation.
 #[must_use]
-pub fn library_label(snapshot: &RecipeSnapshot, rate: SampleRate) -> String {
-    let structure = snapshot.at(rate).map_or_else(
-        |_| format!("Not valid at {} Hz; see details", rate.hz()),
-        |sound| sound_brief(&sound),
-    );
+pub fn library_label(snapshot: &RecipeSnapshot) -> String {
+    let structure = nominal_description(snapshot.nominal());
     format!(
-        "{}{}\n{}\n{} · {}",
+        "{}{}{}\n{}\n{} · {}",
         if matches!(snapshot.origin(), crate::Origin::File(_)) {
             "Imported · "
         } else {
             ""
         },
-        snapshot.title(),
+        display_scalar(&snapshot.title()),
+        if matches!(snapshot.origin(), crate::Origin::BuiltIn(_)) {
+            " · Built-in · Read only"
+        } else {
+            ""
+        },
         structure,
         snapshot
             .about()
@@ -621,6 +631,9 @@ pub fn describe(snapshot: &RecipeSnapshot) -> String {
         human_duration(s.fade_seconds)
     );
     out.push_str(&document_notes(snapshot));
+    for warning in crate::library::history_warnings(snapshot.recipe()) {
+        out.push_str(&format!("{warning}\n"));
+    }
     for (label, value) in research(snapshot) {
         out.push_str(&format!("{label}: {value}\n"));
     }
@@ -677,6 +690,7 @@ pub fn catalog_listing(snapshots: &[RecipeSnapshot]) -> String {
                 snapshot.title(),
                 human_duration(snapshot.stimulus().duration_seconds)
             ));
+            text.push_str(&format!("  {}\n", nominal_description(snapshot.nominal())));
             if let Some(a) = snapshot
                 .about()
                 .and_then(|a| a.research.as_ref())
@@ -785,6 +799,58 @@ pub fn window_cycle_hint(observation: Option<&Observation>, window_ms: f64) -> O
     let rate = Structure::of_observation(observation?).slowest_rate()?;
     (window_ms * rate < 1000.0)
         .then(|| format!("Window shorter than one {} Hz cycle", compact_number(rate)))
+}
+
+/// Nominal reference memberships and exact attributable rates; no EEG claim.
+#[must_use]
+pub fn nominal_description(analysis: &crate::nominal::Analysis) -> String {
+    let mut labels: Vec<String> = analysis.bands.iter().map(ToString::to_string).collect();
+    if analysis.outside_bands() {
+        labels.push("Other rates".into());
+    }
+    if analysis.no_rhythm() {
+        labels.push("No rhythmic rate".into());
+    }
+    if analysis.multiple() {
+        labels.push("Multiple rhythms".into());
+    }
+    if analysis.completeness != crate::nominal::Completeness::Complete {
+        labels.push("Needs review".into());
+    }
+    let rates = analysis
+        .rhythms
+        .iter()
+        .map(|r| format!("{} Hz {}", r.hz, r.method.key()))
+        .collect::<Vec<_>>()
+        .join(" + ");
+    if rates.is_empty() {
+        labels.join(" · ")
+    } else {
+        format!("{} · {rates}", labels.join(" · "))
+    }
+}
+
+/// Escape controls and bidi overrides at a read-only display boundary. Ordinary
+/// Unicode text, paragraph newlines and tabs retain their meaning. Stored content
+/// and editable fields must continue to use the original text.
+#[must_use]
+pub fn display_text(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    for c in text.chars() {
+        if (c.is_control() && c != '\n' && c != '\t')
+            || matches!(c,'\u{061c}'|'\u{200e}'|'\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2066}'..='\u{2069}')
+        {
+            result.extend(c.escape_default());
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+/// Readable single-line title/path text, without changing its stored value.
+#[must_use]
+pub fn display_scalar(text: &str) -> String {
+    display_text(text).replace('\n', "\\n").replace('\t', "\\t")
 }
 
 #[cfg(test)]

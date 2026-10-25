@@ -134,6 +134,11 @@ impl<E: Send + 'static, R> Worker<E, R> {
 pub(crate) enum AudioKind {
     /// A finite snapshot, validated at the device rate during preparation.
     Finite(RecipeSnapshot),
+    /// Revalidate a managed selection on the worker before device preparation.
+    Managed {
+        snapshot: RecipeSnapshot,
+        store: crate::library::LibraryStore,
+    },
     /// A document's committed components, live until stopped.
     Live(DocumentId),
 }
@@ -174,6 +179,11 @@ pub(crate) struct AudioTask {
 #[derive(Debug, Clone)]
 pub(crate) enum FileKind {
     Import(PathBuf),
+    Managed(super::persistent::Job),
+    ExportRecipe {
+        text: std::sync::Arc<str>,
+        path: PathBuf,
+    },
     Save {
         document: DocumentId,
         content: std::sync::Arc<Recipe>,
@@ -192,14 +202,18 @@ pub(crate) enum FileKind {
 /// A file task's typed result.
 pub(crate) enum FileOutcome {
     Imported(Result<RecipeSnapshot, Error>),
+    Managed(Result<super::persistent::ResultValue, Error>),
     Saved(Result<(), Error>),
+    RecipeExported(Result<(), Error>),
     Exported(Result<Exported, Error>),
 }
 
 impl FileOutcome {
     pub(crate) fn conclusion(&self) -> Conclusion {
         let result = match self {
+            Self::Managed(r) => r.as_ref().err(),
             Self::Imported(r) => r.as_ref().err(),
+            Self::RecipeExported(r) => r.as_ref().err(),
             Self::Saved(r) => r.as_ref().err(),
             Self::Exported(r) => r.as_ref().err(),
         };
@@ -230,6 +244,10 @@ pub(crate) type AudioSpawner = dyn FnMut(
 impl FileKind {
     pub(crate) fn execute(self) -> FileOutcome {
         match self {
+            Self::ExportRecipe { text, path } => {
+                FileOutcome::RecipeExported(crate::save_recipe_text(&text, &path, Replace::Allowed))
+            }
+            Self::Managed(job) => FileOutcome::Managed(job.execute()),
             Self::Import(path) => FileOutcome::Imported(crate::load_file(&path)),
             Self::Save { content, path, .. } => FileOutcome::Saved(crate::editing::save_content(
                 &content,
@@ -259,6 +277,27 @@ pub(crate) fn file_worker(kind: FileKind) -> Worker<FileOutcome, FileOutcome> {
     })
 }
 
+#[cfg(any(feature = "device-playback", test))]
+pub(super) fn revalidate_managed(
+    snapshot: &RecipeSnapshot,
+    store: &crate::library::LibraryStore,
+) -> Result<RecipeSnapshot, Error> {
+    let crate::Origin::User { id, version } = snapshot.origin() else {
+        return Err(Error::new(
+            ErrorKind::InvalidArgument,
+            "expected a captured User selection",
+        ));
+    };
+    let record = store.load(&crate::library::LibraryKey::User(*id))?;
+    if record.trashed_at.is_some() || &record.version_token != version {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            "Saved selection changed or moved to Trash. Refresh before starting playback; no audio was started.",
+        ));
+    }
+    Ok(record.snapshot)
+}
+
 #[cfg(feature = "device-playback")]
 pub(crate) fn audio_worker(
     session: crate::session::Session,
@@ -268,6 +307,16 @@ pub(crate) fn audio_worker(
     use crate::device;
     use crate::session::{MonitorDetail, Preparation};
     Worker::spawn(move |tx| {
+        let kind = match kind {
+            AudioKind::Managed { snapshot, store } => match revalidate_managed(&snapshot, &store) {
+                Ok(snapshot) => AudioKind::Finite(snapshot),
+                Err(error) => {
+                    let _ = tx.send(AudioEvent::Finished(Err(error)));
+                    return;
+                }
+            },
+            kind => kind,
+        };
         let result = match (kind, draft) {
             (AudioKind::Live(_), Some(draft)) => match device::prepare_live(session, &draft) {
                 Ok(Preparation::Ready(mut prepared)) => {
@@ -296,6 +345,9 @@ pub(crate) fn audio_worker(
                     Ok(Preparation::Stopped(report)) => Ok(report),
                     Err(error) => Err(error),
                 }
+            }
+            (AudioKind::Managed { .. }, _) => {
+                unreachable!("managed source is resolved before device preparation")
             }
             (AudioKind::Live(_), None) => Err(Error::new(
                 ErrorKind::InvalidSound,

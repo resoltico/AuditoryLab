@@ -14,6 +14,9 @@ export TMPDIR="$PWD/target/tmp"
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked
 cargo test --workspace --locked
+cargo build -p auditorylab-cli --locked
+AUDITORYLAB_QUERY_TEST_CLI=target/debug/auditorylab cargo test -p auditorylab-gui cli_and_slint_query_fixtures_agree --locked -- --ignored --nocapture
+cargo test -p auditorylab --features test-support --test library_faults --test library_process --locked
 cargo test -p auditorylab-core --release --locked
 cargo doc --workspace --no-deps --locked
 cargo deny check
@@ -25,6 +28,10 @@ The toolchain is pinned in [rust-toolchain.toml](rust-toolchain.toml); the works
 Unit tests live beside code; integration tests use public APIs and the actual CLI executable. Check signal formulas against independent oracles. Give validation guards accepted and rejected neighbours. Change a [pinned digest](crates/core/tests/determinism.rs) only for a deliberate sample change and explain it in the commit. Property tests set bounded case/shrink budgets and disable persistence; turn minimized failures into regression tests. Allocation tests include a negative control. Device tests are ignored by default and use component-free silence; preserve the user's device, routing and volume.
 
 Frontends use the library for domain workflows. Keep rendering and validation in core; editing, publication, playback, interactive workflow and shared wording in the library; and terminal or widget mechanics in frontends. GUI tests install the production bindings with `SlintAdapter::install` on an offscreen platform, one per test thread, rather than wiring callbacks of their own. Core, library and CLI forbid unsafe code; the GUI confines unsafe code to generated Slint and audited native adapters. [Workspace lints](Cargo.toml) are shared.
+
+The cross-frontend query comparison uses an explicitly built production CLI against the installed Slint callbacks and the same native records. On Windows append `.exe` to the CLI path; an absolute `AUDITORYLAB_QUERY_TEST_CLI` also supports a custom target directory. The comparison is explicitly invoked because a GUI-only test build does not supply a CLI executable.
+
+Unix calendar integration tests use the native IANA timezone database (`Europe/Riga`); install the operating system’s `tzdata` package if it is missing. Tests set `TZ` only in isolated child processes and do not change system timezone settings.
 
 ### Lint exceptions
 
@@ -41,7 +48,7 @@ TMPDIR="$PWD/target/tmp" cargo mutants --file crates/core/src/synthesis.rs \
   --timeout 60 --cargo-arg=--locked --output target/mutations
 ```
 
-CI divides synthesis, live and timing into two disjoint shards each; compiled, facts and waveform use one shard each. Every shard runs its unmutated baseline and uses one worker build directory. These nine jobs retain the full selected mutation set. Local runs also default to one worker; increasing `--jobs` multiplies independent compiler directories. Use `--re` to focus a smaller selection. Investigate survivors against an independent oracle. CI mutates each core source file that holds synthesis, compilation, live transitions, facts, timing or waveform reduction; when such code moves to another file, change that file list in [ci.yml](.github/workflows/ci.yml). The CI command excludes equivalent integer-phase mutations by location, with their reasons beside the command; a change that moves those lines must update the locations. Keep the Nyquist guard in the selection.
+CI shards synthesis, live, timing and authored lowering; compiled, facts and waveform have separate selections. The [workflow matrix](.github/workflows/ci.yml) owns the exact scopes. Every shard runs its unmutated baseline and uses one worker build directory. Local runs also default to one worker; increasing `--jobs` multiplies independent compiler directories. Use `--re` to focus a smaller selection. Investigate survivors against an independent oracle. CI mutates each core source file that holds synthesis, compilation, live transitions, facts, timing or waveform reduction; when such code moves to another file, change that file list in [ci.yml](.github/workflows/ci.yml). The CI command excludes equivalent integer-phase mutations by location, with their reasons beside the command; a change that moves those lines must update the locations. Keep the Nyquist guard in the selection.
 
 A downstream program that uses the library without the `device-playback` feature must not reach CPAL. CI runs the [portable consumer](consumers/portable/src/main.rs) and checks its dependency tree:
 
@@ -87,5 +94,7 @@ AUDITORYLAB_PERF_MAX_BUDGET_PERCENT=75 cargo test --locked -p auditorylab --feat
 ```
 
 The controlled criterion requires every measured callback to fit 75% of its buffer budget (25% measured headroom); a failure qualifies no such configuration. Omitting the environment variable produces an observational report only. The manually dispatched `performance.yml` workflow requires a dedicated `auditorylab-performance` self-hosted runner and retains results even on failure. It does not assert universal playback support or remove renderable rates. Native/device qualification remains separate.
+
+For diagnosis, the separately ignored `callback_interval_diagnostics` test writes to a new absolute `AUDITORYLAB_CALLBACK_DIAGNOSTICS` path. It records 18 balanced None/Quantities/Waveform blocks at 768 kHz / 256 frames with the official target-update, warmup, poll and held-publication behavior. Preallocated records retain nested raw wall/CPU boundaries, publication misses, reader-poll adjacency and live transition observations. Process counters sit outside both clock windows and cannot attribute faults/switches to one thread. CPU samples enclose the inner wall reads; their difference is not exact callback CPU or off-CPU time. Empty-call and known-sleep controls characterize overhead and clock resolution, which is not an accuracy guarantee. Keep raw signed differences and report conditional bounds/uncertainty; do not subtract a median overhead or use diagnostic timings as qualification. All output is written after measurement and no device is opened.
 
 Workspace and GUI action tests use the `workspace::testing` controlled execution fixtures (unit-test configuration or the nondefault `test-support` feature). Drive real commands and prompt responses, then acknowledge worker results and explicitly release exit/panic; do not replace a workspace task after launch to claim command-path coverage. Each GUI test installs its offscreen platform once and activates the visible accessible control, excluding StableButton's hidden sizing labels. The fixture never opens an audio device.

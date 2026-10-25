@@ -2,7 +2,7 @@
 
 Auditory Lab plays and exports sounds used in hearing and brain-rhythm research: binaural and monaural beats, steady and amplitude-modulated tones, click trains and pulsed tones. Each built-in sound describes what its published study tested and found, with a citation and the recipe's adaptations. You can edit these sounds in the desktop Workbench or as TOML text files.
 
-Use the `auditorylab` CLI or the `auditorylab-gui` desktop app. Both load the same recipes, validate them at the chosen sample rate, export stereo float WAV files and play through the default audio output.
+Use the `auditorylab` CLI or the `auditorylab-gui` desktop app. Both share immutable built-ins and a persistent User Library, validate recipes at the chosen sample rate, export stereo float WAV files and play through the default audio output.
 
 ## Listening safely
 
@@ -22,26 +22,26 @@ From a download, use `./auditorylab` on macOS/Linux or `.\auditorylab.exe` in Po
 
 ```text
 auditorylab list
-auditorylab describe ioannou-2015-binaural-10-hz
-auditorylab inspect ioannou-2015-binaural-10-hz
-auditorylab export ioannou-2015-binaural-10-hz --output beat.wav
+auditorylab describe builtin:ioannou-2015-binaural-10-hz
+auditorylab inspect builtin:ioannou-2015-binaural-10-hz
+auditorylab export builtin:ioannou-2015-binaural-10-hz --output beat.wav
 ```
 
 `describe` shows declared parameters and study context. `inspect` validates without opening an audio device. To listen after checking the sound and turning the volume down:
 
 ```text
-auditorylab play ioannou-2015-binaural-10-hz
+auditorylab play builtin:ioannou-2015-binaural-10-hz
 ```
 
 Save and edit a recipe, then check and export it:
 
 ```text
-auditorylab recipe chan-2022-clicks-40-hz --output my-clicks.toml
+auditorylab recipe builtin:chan-2022-clicks-40-hz --output my-clicks.toml
 auditorylab inspect --file my-clicks.toml
 auditorylab export --file my-clicks.toml --output my-clicks.wav
 ```
 
-Choose a built-in ID, `--file PATH` for a regular recipe file or `--stdin` for a stream. Ctrl-C stops playback or export. The CLI keeps existing output files untouched. Run `auditorylab` for help or see the [CLI guide](docs/cli.md).
+Choose a `builtin:ID` or `user:UUID` selector, `--file PATH` for a regular recipe file or `--stdin` for a stream. Ctrl-C stops playback or export. The CLI keeps existing output files untouched. Run `auditorylab` for help or see the [CLI guide](docs/cli.md).
 
 ## Desktop
 
@@ -49,7 +49,9 @@ Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `audito
 
 The player at the bottom keeps Stop and the elapsed time in reach on every screen. The optional **Output monitor** above it draws the samples being played, or a labeled preview, with their levels, and can hold a moment for a closer look. **Pattern explained** draws a sound's timing pattern beside its description.
 
-The **Workbench** builds sounds from up to 16 tone or click components. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or **Edit a copy** from Library, then **Save sound…** while audio continues, or stop audio to export a finite WAV. Source research stays attributed separately from your custom notes; dirty drafts are protected on New and Quit. See the [desktop guide](docs/desktop.md).
+Library scopes separate active **All**, read-only **Built-in**, **User**, temporary **Open files**, and recoverable **Trash**. Open does not add a file to persistent membership. Use **Add to User Library** or save a new draft; external originals remain unchanged by managed operations. GUI and CLI resolve the same native data root; an absolute `AUDITORYLAB_LIBRARY_DIR` overrides it. See [root and lifecycle commands](docs/cli.md#root-and-lifecycle).
+
+The **Workbench** builds sounds from up to 16 expanded tone/click voices, including signed-offset pairs. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or **Edit a copy** from Library, then **Save sound** to the User Library while audio continues, or stop audio to export a finite WAV. Source research stays attributed separately from your custom notes; dirty drafts are protected on New and Quit. See the [desktop guide](docs/desktop.md).
 
 ## Build from source
 
@@ -87,4 +89,4 @@ Copyright © 2026 Ervins Strauhmanis. Each download contains product-specific de
 
 Software and documentation use MPL-2.0; third-party components retain their own terms. Owner artwork and drawing sources have separate proprietary terms in [LICENSE](LICENSE), with unchanged artwork permitted in original or modified Auditory Lab distributions. Editable sources and attribution are in the [artwork guide](artwork/README.md).
 
-Recipes use schema 3: current notes are separate from research context, and edited derivatives retain one original source sound with its attribution through save/reopen. Prior schema versions are rejected. See the [recipe format](docs/recipes.md) and [architecture](docs/architecture.md).
+Recipes use the one Unreleased schema 3 contract: stable UUID/history, authored signed-offset pairs, current notes and full scoped bibliography/evidence/flat lineage. Copies receive a fresh identity without inherited validation. Earlier shapes and versions are rejected without migration. See the [recipe format](docs/recipes.md) and [architecture](docs/architecture.md).

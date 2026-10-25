@@ -1,6 +1,6 @@
 //! Bounded origin-zero timing and envelope projections, independent of live phase history.
 use crate::{
-    CarrierFacts, ComponentFacts, ComponentId, Extent, ModulationFacts, SampleRate,
+    ComponentFacts, ComponentId, Extent, SampleRate,
     compiled::CompiledMix,
     synthesis::{Carrier, Modulator, sine},
 };
@@ -48,23 +48,9 @@ pub struct TimingModel {
 )]
 pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
     let rate = mix.rate();
-    let mut slowest = f64::INFINITY;
-    for entry in mix.entries() {
-        let (voice, f) = (&entry.voice, &entry.facts);
-        if voice.amplitude == 0.0 {
-            continue;
-        }
-        if let CarrierFacts::Clicks(p) = f.carrier {
-            slowest = slowest.min(p.rate_hz);
-        }
-        match f.modulation {
-            Some(ModulationFacts::Gate(p)) => slowest = slowest.min(p.rate_hz),
-            Some(ModulationFacts::Sinusoidal { rate, depth }) if depth > 0.0 => {
-                slowest = slowest.min(rate.realized_hz)
-            }
-            _ => {}
-        }
-    }
+    let slowest = crate::interpretation::Structure::classify(mix.voices(), false)
+        .slowest_rate()
+        .unwrap_or(f64::INFINITY);
     let seconds = (4.0 / slowest).clamp(0.25, 4.0);
     let frames = libm::ceil(seconds * f64::from(rate.hz())).max(1.0) as u64;
     let count = bins.clamp(1, 512).min(frames as usize);

@@ -14,8 +14,8 @@ mod auxiliary;
 mod editing;
 mod library;
 use crate::generated::{
-    AboutWindow, AudioControlsWindow, ComponentRow, DetailsWindow, MainWindow, MetadataKey,
-    MetadataRow, ModelLane, MonitorWindow, ParameterKey, ParameterRow,
+    AboutWindow, AudioControlsWindow, CatalogRow, ComponentRow, DetailsWindow, MainWindow,
+    MetadataKey, MetadataRow, ModelLane, MonitorWindow, ParameterKey, ParameterRow,
 };
 use crate::{details_parent, motion, scope, typography};
 use actions::install_actions;
@@ -48,6 +48,8 @@ const IDLE_TICK: Duration = Duration::from_millis(200);
 pub(crate) trait Shell {
     /// Ask whether to save, discard or keep unsaved changes.
     fn ask_unsaved(&self, adapter: &Rc<SlintAdapter>, prompt: PromptId);
+    /// Confirm permanent deletion of an exact identity.
+    fn ask_purge(&self, adapter: &Rc<SlintAdapter>, prompt: PromptId, key: String, title: String);
     /// Show a file panel.
     fn choose_path(
         &self,
@@ -154,7 +156,7 @@ pub(crate) struct SlintAdapter {
     audio_controls: slint::Weak<AudioControlsWindow>,
     components: Rc<VecModel<ComponentRow>>,
     entries: RefCell<Vec<ComponentEntry>>,
-    catalog: Rc<VecModel<slint::StandardListViewItem>>,
+    catalog: Rc<VecModel<CatalogRow>>,
     library: RefCell<Option<Arc<auditorylab::workspace::LibraryView>>>,
     lanes: Rc<VecModel<ModelLane>>,
     bindings: RefCell<Bindings>,
@@ -318,6 +320,9 @@ impl SlintAdapter {
         use slint::winit_030::winit::event::WindowEvent;
         match event {
             WindowEvent::Focused(focused) => {
+                if *focused {
+                    self.command(Workspace::refresh_library);
+                }
                 if let Some(main) = self.main.upgrade() {
                     main.set_edits_suspended(!focused);
                 }
@@ -420,6 +425,10 @@ impl SlintAdapter {
 
     fn perform(self: &Rc<Self>, effect: Effect) {
         match effect {
+            Effect::AskPurge { prompt, key, title } => {
+                self.dialog_open.set(true);
+                self.shell.ask_purge(self, prompt, key, title);
+            }
             Effect::AskUnsaved(prompt) => {
                 self.dialog_open.set(true);
                 self.shell.ask_unsaved(self, prompt);
@@ -472,6 +481,7 @@ impl SlintAdapter {
             .as_ref()
             .map(|w| w.editor().draft().title().to_owned())
             .unwrap_or_default();
+        let title = auditorylab::display_scalar(&title);
         match title.char_indices().nth(60) {
             Some((cut, _)) => format!("{}…", &title[..cut]),
             None => title,
@@ -669,23 +679,55 @@ impl SlintAdapter {
                 w.library_view(),
                 w.action_view(),
                 w.export_rate(),
+                w.rhythm_query().clone(),
             )
         });
-        let Some((editor, library, actions, rate)) = views else {
+        let Some((editor, library, actions, rate, rhythm)) = views else {
             return;
         };
         self.reconcile_document(ui, &editor);
+        if let Some(workspace) = self.workspace.borrow().as_ref() {
+            ui.set_draft_location(workspace.document_location_label().into());
+            ui.set_draft_location_details(read_only(&workspace.document_location()));
+        }
         ui.set_dirty(editor.dirty);
-        ui.set_draft_brief(editor.brief.as_str().into());
-        ui.set_peak(editor.peak.as_str().into());
-        ui.set_metadata_error(editor.metadata_error.as_str().into());
-        ui.set_based_on_title(editor.based_on_title.as_str().into());
-        ui.set_based_on(editor.based_on.as_str().into());
-        ui.set_retained_warning(editor.retained_warning.as_str().into());
+        ui.set_draft_brief(read_only(&editor.brief));
+        ui.set_peak(read_only(&editor.peak));
+        ui.set_metadata_error(read_only(&editor.metadata_error));
+        ui.set_based_on_title(read_only(&editor.based_on_title));
+        ui.set_based_on(read_only(&editor.based_on));
+        ui.set_retained_warning(read_only(&editor.retained_warning));
 
         self.project_library(ui, library);
         if ui.get_query() != self.query() {
             ui.set_query(self.query().into());
+        }
+        {
+            let band = rhythm
+                .bands
+                .first()
+                .and_then(|b| auditorylab::nominal::Band::ALL.iter().position(|v| v == b))
+                .and_then(|i| i32::try_from(i + 1).ok())
+                .unwrap_or(match rhythm.state {
+                    Some(auditorylab::query::RhythmState::OutsideBands) => 6,
+                    Some(auditorylab::query::RhythmState::None) => 7,
+                    Some(auditorylab::query::RhythmState::Multiple) => 8,
+                    Some(auditorylab::query::RhythmState::NeedsReview) => 9,
+                    None => 0,
+                });
+            ui.set_band_choice(band);
+            ui.set_method_choice(
+                rhythm
+                    .methods
+                    .first()
+                    .and_then(|m| {
+                        auditorylab::nominal::Method::ALL
+                            .iter()
+                            .position(|v| v == m)
+                    })
+                    .and_then(|i| i32::try_from(i + 1).ok())
+                    .unwrap_or(0),
+            );
         }
 
         ui.set_can_play(actions.can_play);
@@ -693,27 +735,29 @@ impl SlintAdapter {
         ui.set_can_import(actions.can_import);
         ui.set_can_new(actions.can_new);
         ui.set_can_copy(actions.can_copy);
-        ui.set_copy_reason(actions.copy_reason.as_str().into());
-        ui.set_operation_summary(actions.operation_summary.as_str().into());
-        ui.set_operation_outcome(actions.operation_outcome.as_str().into());
+        ui.set_copy_reason(read_only(&actions.copy_reason));
+        ui.set_operation_summary(read_only(&actions.operation_summary));
+        ui.set_operation_outcome(read_only(&actions.operation_outcome));
         ui.set_can_preview(actions.can_preview);
-        ui.set_play_reason(actions.play_reason.as_str().into());
+        ui.set_play_reason(read_only(&actions.play_reason));
         ui.set_can_save(actions.can_save);
-        ui.set_save_reason(actions.save_reason.as_str().into());
+        ui.set_save_reason(read_only(&actions.save_reason));
         ui.set_can_export(actions.can_export);
-        ui.set_export_reason(actions.export_reason.as_str().into());
+        ui.set_export_reason(read_only(&actions.export_reason));
         ui.set_can_edit(actions.can_edit);
         ui.set_can_add_component(actions.can_add_component);
-        ui.set_add_reason(actions.add_component_reason.as_str().into());
-        ui.set_removed_component(actions.removed_component.as_str().into());
+        ui.set_can_add_pair(actions.can_add_pair);
+        ui.set_pair_add_reason(read_only(&actions.pair_add_reason));
+        ui.set_add_reason(read_only(&actions.add_component_reason));
+        ui.set_removed_component(read_only(&actions.removed_component));
         ui.set_can_restore_component(actions.can_restore_component);
         ui.set_playback_busy(actions.playback_busy);
         ui.set_exporting(actions.exporting);
         ui.set_transport_enabled(actions.transport_enabled);
-        ui.set_transport_action(actions.transport_label.as_str().into());
-        ui.set_play_target(actions.play_target.as_str().into());
-        ui.set_file_activity(actions.file_activity.as_str().into());
-        ui.set_status(actions.operation_details.into());
+        ui.set_transport_action(read_only(&actions.transport_label));
+        ui.set_play_target(read_only(&actions.play_target));
+        ui.set_file_activity(read_only(&actions.file_activity));
+        ui.set_status(read_only(&actions.operation_details));
         if self.bindings.borrow().next == i32::MAX {
             self.bindings.borrow_mut().map.clear();
             ui.set_can_edit(false);
@@ -846,21 +890,21 @@ impl SlintAdapter {
         let Some((transport, output, model, progress)) = views else {
             return;
         };
-        ui.set_player_title(transport.player_title.as_str().into());
-        ui.set_elapsed(transport.elapsed.as_str().into());
-        ui.set_generated(transport.generated.as_str().into());
-        ui.set_generated_details(transport.generated_details.as_str().into());
-        ui.set_device(transport.device.as_str().into());
+        ui.set_player_title(read_only(&transport.player_title));
+        ui.set_elapsed(read_only(&transport.elapsed));
+        ui.set_generated(read_only(&transport.generated));
+        ui.set_generated_details(read_only(&transport.generated_details));
+        ui.set_device(read_only(&transport.device));
         ui.set_output_state(transport.output_state.into());
-        ui.set_receipt_age(transport.receipt_age.as_str().into());
-        ui.set_monitor_warning(transport.warning.0.as_str().into());
+        ui.set_receipt_age(read_only(&transport.receipt_age));
+        ui.set_monitor_warning(read_only(&transport.warning.0));
         ui.set_monitor_warning_live(transport.warning.1);
-        ui.set_backend_warning(transport.backend_warning.as_str().into());
-        ui.set_monitor_state(transport.monitor_state.as_str().into());
-        ui.set_meters(transport.meters.as_str().into());
-        ui.set_waveform_caption(transport.caption.as_str().into());
-        ui.set_model_caption(transport.model_caption.as_str().into());
-        ui.set_motion_reason(transport.motion.as_str().into());
+        ui.set_backend_warning(read_only(&transport.backend_warning));
+        ui.set_monitor_state(read_only(&transport.monitor_state));
+        ui.set_meters(read_only(&transport.meters));
+        ui.set_waveform_caption(read_only(&transport.caption));
+        ui.set_model_caption(read_only(&transport.model_caption));
+        ui.set_motion_reason(read_only(&transport.motion));
         ui.set_motion_overridden(transport.motion_overridden);
         ui.set_held(output.held);
         #[expect(
@@ -909,7 +953,7 @@ impl SlintAdapter {
                             let stereo: Vec<_> = lane.columns.iter().map(|e| [*e; 2]).collect();
                             let [trace, _] = scope::paths(&stereo, 1.0);
                             ModelLane {
-                                component: i32::try_from(lane.id.get()).unwrap_or(-1),
+                                component: lane.id.get().to_string().into(),
                                 label: ModelView::lane_label(lane).into(),
                                 trace: trace.into(),
                             }
@@ -1089,6 +1133,10 @@ pub(crate) const fn parameter_key(id: ParameterId) -> ParameterKey {
         ParameterId::GateWidth => ParameterKey::GateWidth,
         ParameterId::Duration => ParameterKey::Duration,
         ParameterId::Fade => ParameterKey::Fade,
+        ParameterId::PairFirstFrequency => ParameterKey::PairFirstFrequency,
+        ParameterId::PairOffset => ParameterKey::PairOffset,
+        ParameterId::PairFirstLevel => ParameterKey::PairFirstLevel,
+        ParameterId::PairSecondLevel => ParameterKey::PairSecondLevel,
     }
 }
 
@@ -1104,6 +1152,10 @@ pub(crate) const fn parameter_id(key: ParameterKey) -> ParameterId {
         ParameterKey::GateWidth => ParameterId::GateWidth,
         ParameterKey::Duration => ParameterId::Duration,
         ParameterKey::Fade => ParameterId::Fade,
+        ParameterKey::PairFirstFrequency => ParameterId::PairFirstFrequency,
+        ParameterKey::PairOffset => ParameterId::PairOffset,
+        ParameterKey::PairFirstLevel => ParameterId::PairFirstLevel,
+        ParameterKey::PairSecondLevel => ParameterId::PairSecondLevel,
     }
 }
 
@@ -1216,9 +1268,12 @@ fn parameter_row(view: &ParameterView) -> ParameterRow {
 fn component_row(entry: &ComponentEntry, view: &ComponentView) -> ComponentRow {
     ComponentRow {
         binding: entry.binding,
-        id: i32::try_from(view.id.get()).unwrap_or(-1),
+        id: view.id.get().to_string().into(),
         ears: index_of(&Ears::ALL, &view.ears),
-        carrier: index_of(&CarrierKind::ALL, &view.carrier),
+        carrier: view
+            .carrier
+            .map_or(-1, |kind| index_of(&CarrierKind::ALL, &kind)),
+        routing_editable: view.routing_editable,
         modulation: view
             .modulation
             .map_or(0, |kind| index_of(&ModulationKind::ALL, &kind) + 1),
@@ -1381,6 +1436,11 @@ fn open_web(url: &str) {
     if let Err(error) = command.arg(url).spawn() {
         eprintln!("Cannot open link: {error}");
     }
+}
+
+// Keep display escaping separate from lossless editable field models and bindings.
+fn read_only(text: &str) -> SharedString {
+    auditorylab::display_text(text).into()
 }
 
 #[cfg(test)]

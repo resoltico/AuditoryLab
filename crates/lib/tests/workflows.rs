@@ -7,7 +7,7 @@ fn dir() -> tempfile::TempDir {
     fs::create_dir_all(&base).unwrap();
     tempfile::tempdir_in(base).unwrap()
 }
-const SILENCE: &str = "schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n";
+const SILENCE: &str = "schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
 #[test]
 fn bounded_input_and_regular_file_admission() {
     let mut bytes = SILENCE.as_bytes().to_vec();
@@ -114,7 +114,7 @@ fn shared_values_cross_threads() {
 #[test]
 fn untitled_file_names_are_concise_and_origins_remain_complete() {
     let plain =
-        auditorylab::Recipe::parse("schema_version=3\nduration_seconds=1\nfade_seconds=0\n")
+        auditorylab::Recipe::parse("schema_version=3\nduration_seconds=1\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n")
             .unwrap();
     for (path, name, suggested) in [
         (
@@ -133,7 +133,7 @@ fn untitled_file_names_are_concise_and_origins_remain_complete() {
             auditorylab::recipe_details(&snapshot, auditorylab::SampleRate::DEFAULT)
                 .contains("/deep/")
         );
-        let draft = auditorylab::Draft::from_snapshot(&snapshot);
+        let draft = auditorylab::Draft::from_snapshot(&snapshot).unwrap();
         assert_eq!(draft.title(), format!("{name} (edited)"));
     }
 }

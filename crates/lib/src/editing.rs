@@ -11,8 +11,8 @@
 //! only supplies candidates.
 use crate::{Error, ErrorKind, Origin, RecipeSnapshot, controls, presentation};
 use auditorylab_core::{
-    About, CarrierKind, Component, ComponentId, Ears, ModulationKind, ParameterId, Recipe,
-    SampleRate, Signal, Stimulus, StimulusError, Target, TargetCheck,
+    CarrierKind, Component, ComponentId, Ears, ModulationKind, ParameterId, Recipe, SampleRate,
+    Signal, Stimulus, StimulusError, Target, TargetCheck,
 };
 use std::{
     collections::BTreeMap,
@@ -120,347 +120,317 @@ pub struct CommitRefusal {
     pub problems: Vec<(EditingField, InputProblem)>,
 }
 
-/// Editable recipe values with stable component identities. A draft is not
-/// necessarily finite or acoustically valid.
+/// An authored document with complete portable metadata and stable owner IDs.
+/// Committed settings may be finite but acoustically invalid and remain repairable.
 #[derive(Clone, Debug)]
 pub struct Draft {
-    title: String,
-    summary: String,
-    duration: f64,
-    fade: f64,
-    components: Vec<(ComponentId, Component)>,
-    next_id: u32,
+    content: Recipe,
+    next_id: Option<u32>,
     based_on: Option<RecipeSnapshot>,
 }
-
-impl Default for Draft {
-    fn default() -> Self {
-        Self {
+impl Draft {
+    /// Create a provisional random identity for a silent sixty-second document.
+    ///
+    /// # Errors
+    /// Returns an actionable error if secure identity generation fails.
+    pub fn new() -> Result<Self, Error> {
+        Ok(Self::empty(crate::identity::fresh_document()?))
+    }
+    fn empty(document: auditorylab_core::DocumentIdentity) -> Self {
+        let mut content = Recipe::silent(document);
+        content.description = Some(auditorylab_core::Description {
             title: "Untitled sound".into(),
-            summary: String::new(),
-            duration: 60.0,
-            fade: 0.1,
-            components: Vec::new(),
-            next_id: 1,
+            notes: Some(String::new()),
+        });
+        Self::from_recipe(content)
+    }
+    /// Open editable owned content without changing its identity or declared dates.
+    #[must_use]
+    pub fn from_recipe(content: Recipe) -> Self {
+        let next_id = content
+            .stimulus
+            .components
+            .iter()
+            .map(|c| c.id.get())
+            .max()
+            .unwrap_or(0)
+            .checked_add(1);
+        Self {
+            content,
+            next_id,
             based_on: None,
         }
     }
-}
-
-impl Draft {
-    /// An empty, silent draft of sixty seconds with a 0.1-second fade.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    /// Explicitly fork a snapshot; preserve all bibliography and flat scoped ancestry.
+    ///
+    /// # Errors
+    /// Refuses random-identity failure or full ancestry capacity, dropping no history.
+    pub fn from_snapshot(snapshot: &RecipeSnapshot) -> Result<Self, Error> {
+        let catalog = match snapshot.origin() {
+            Origin::BuiltIn(id) => Some((*id).into()),
+            _ => None,
+        };
+        let content = snapshot
+            .recipe()
+            .fork(crate::identity::fresh_document()?, catalog)
+            .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?;
+        let mut draft = Self::from_recipe(content);
+        draft.set_title(format!("{} (edited)", snapshot.title()));
+        draft.based_on = Some(snapshot.clone());
+        Ok(draft)
     }
-
-    /// Copy a snapshot's sound parameters; keep the snapshot as attributed
-    /// source context, separately from the draft's own preserved notes.
-    /// Components get the identities their positions give in the snapshot's
-    /// own targets.
-    #[must_use]
-    pub fn from_snapshot(snapshot: &RecipeSnapshot) -> Self {
-        let mut draft = Self::new();
-        draft.title = format!("{} (edited)", snapshot.title());
-        let recipe = snapshot.recipe();
-        draft.summary = recipe
-            .about
-            .as_ref()
-            .and_then(|a| a.summary.clone())
-            .unwrap_or_default();
-        draft.based_on = Some(match &recipe.source {
-            Some(source) => RecipeSnapshot::new(
-                Origin::Stream("Retained source".into()),
-                Recipe {
-                    stimulus: source.stimulus.clone(),
-                    about: source.about.clone(),
-                    source: None,
-                },
-            ),
-            None => snapshot.clone(),
-        });
-        draft.duration = snapshot.stimulus().duration_seconds;
-        draft.fade = snapshot.stimulus().fade_seconds;
-        for (index, component) in snapshot.stimulus().components.iter().enumerate() {
-            // Loaded recipes are bounded by Recipe::MAX_BYTES, far below u32 positions.
-            if let Some(id) = ComponentId::numbered(index) {
-                draft.components.push((id, *component));
-                draft.next_id = id.get().saturating_add(1);
-            }
-        }
-        draft
-    }
-
-    /// The snapshot this draft was copied from, kept for attribution.
+    /// Immediate in-memory ancestor snapshot, when this session made an explicit copy.
     #[must_use]
     pub const fn based_on(&self) -> Option<&RecipeSnapshot> {
         self.based_on.as_ref()
     }
-
-    /// Components and their stable identities in display order.
+    /// Authored components in source order, including stable owner identities.
     #[must_use]
-    pub fn components(&self) -> &[(ComponentId, Component)] {
-        &self.components
+    pub fn components(&self) -> &[auditorylab_core::AuthoredComponent] {
+        &self.content.stimulus.components
     }
-
-    /// One component by identity.
+    /// One authored node by its primary owner identity.
     #[must_use]
-    pub fn component(&self, id: ComponentId) -> Option<&Component> {
-        self.components
+    pub fn component(&self, id: ComponentId) -> Option<&auditorylab_core::Node> {
+        self.content
+            .stimulus
+            .components
             .iter()
-            .find(|(key, _)| *key == id)
-            .map(|(_, component)| component)
+            .find(|c| c.id == id)
+            .map(|c| &c.node)
     }
-
-    fn component_mut(&mut self, id: ComponentId) -> Option<&mut Component> {
-        self.components
+    fn component_mut(&mut self, id: ComponentId) -> Option<&mut auditorylab_core::Node> {
+        self.content
+            .stimulus
+            .components
             .iter_mut()
-            .find(|(key, _)| *key == id)
-            .map(|(_, component)| component)
+            .find(|c| c.id == id)
+            .map(|c| &mut c.node)
     }
-
-    /// Add a default component, refusing beyond [`Stimulus::MAX_COMPONENTS`]
-    /// or when identities are exhausted.
+    /// Add one default primitive, checking authored and expanded budgets.
     ///
     /// # Errors
-    /// Returns [`EditRefusal::ComponentLimit`] or [`EditRefusal::IdentitiesExhausted`].
+    /// Refuses full budgets or exhausted nonreused owner identities.
     pub fn add(&mut self, kind: CarrierKind) -> Result<ComponentId, EditRefusal> {
-        if self.components.len() >= Stimulus::MAX_COMPONENTS {
+        self.add_node(auditorylab_core::Node::Primitive(
+            controls::default_component(kind),
+        ))
+    }
+    /// Add an atomic authored node, including a two-voice pair.
+    ///
+    /// # Errors
+    /// Refuses full budgets or exhausted owner identities.
+    pub fn add_node(&mut self, node: auditorylab_core::Node) -> Result<ComponentId, EditRefusal> {
+        let components = &mut self.content.stimulus.components;
+        if components.len() >= Stimulus::MAX_COMPONENTS
+            || components.iter().map(|c| c.node.voices()).sum::<usize>() + node.voices()
+                > Stimulus::MAX_COMPONENTS
+        {
             return Err(EditRefusal::ComponentLimit);
         }
-        let next = self
-            .next_id
-            .checked_add(1)
-            .ok_or(EditRefusal::IdentitiesExhausted)?;
-        let id = ComponentId::new(self.next_id);
-        self.next_id = next;
-        self.components
-            .push((id, controls::default_component(kind)));
+        let next = self.next_id.ok_or(EditRefusal::IdentitiesExhausted)?;
+        let id = ComponentId::new(next);
+        self.next_id = next.checked_add(1);
+        components.push(auditorylab_core::AuthoredComponent { id, node });
+        self.demote_evidence();
         Ok(id)
     }
-
-    /// Replace an existing component; returns `false` for an unknown identity.
+    /// Replace one primitive while preserving its authored owner.
     pub fn replace(&mut self, id: ComponentId, component: Component) -> bool {
-        self.component_mut(id)
-            .map(|value| *value = component)
-            .is_some()
+        let Some(before) = self.component(id).copied() else {
+            return false;
+        };
+        let node = auditorylab_core::Node::Primitive(component);
+        if !before.same_content(node) {
+            self.demote_evidence();
+        }
+        if let Some(value) = self.component_mut(id) {
+            *value = node;
+            true
+        } else {
+            false
+        }
     }
-
-    /// Remove a component without reusing its identity, returning its
-    /// position and value, or `None` for an unknown identity.
-    pub fn remove(&mut self, id: ComponentId) -> Option<(usize, Component)> {
-        let index = self.components.iter().position(|(key, _)| *key == id)?;
-        Some((index, self.components.remove(index).1))
+    /// Remove one authored node without reusing its owner identity.
+    pub fn remove(
+        &mut self,
+        id: ComponentId,
+    ) -> Option<(usize, auditorylab_core::AuthoredComponent)> {
+        let components = &mut self.content.stimulus.components;
+        let index = components.iter().position(|c| c.id == id)?;
+        let removed = components.remove(index);
+        self.demote_evidence();
+        Some((index, removed))
     }
-
-    /// Put a removed component back at its position, or at the end if fewer
-    /// components remain, under the identity it had.
     fn restore(
         &mut self,
         index: usize,
-        id: ComponentId,
-        component: Component,
+        component: auditorylab_core::AuthoredComponent,
     ) -> Result<(), EditRefusal> {
-        if self.components.len() >= Stimulus::MAX_COMPONENTS {
+        let components = &mut self.content.stimulus.components;
+        if components.len() >= Stimulus::MAX_COMPONENTS
+            || components.iter().map(|c| c.node.voices()).sum::<usize>() + component.node.voices()
+                > Stimulus::MAX_COMPONENTS
+        {
             return Err(EditRefusal::ComponentLimit);
         }
-        let index = index.min(self.components.len());
-        self.components.insert(index, (id, component));
+        components.insert(index.min(components.len()), component);
+        self.demote_evidence();
         Ok(())
     }
-
-    /// Editable title.
+    /// Current user-visible title; missing imported descriptions remain unmodified.
     #[must_use]
     pub fn title(&self) -> &str {
-        &self.title
+        self.content
+            .description
+            .as_ref()
+            .map_or("Untitled sound", |d| d.title.as_str())
     }
-
-    /// Set the title.
+    /// Set current title; a title edit does not change research scope.
     pub fn set_title(&mut self, title: String) {
-        self.title = title;
+        self.content
+            .description
+            .get_or_insert_with(|| auditorylab_core::Description {
+                title: String::new(),
+                notes: None,
+            })
+            .title = title;
     }
-
-    /// The document's own notes.
+    /// Own notes, independent of attributed source findings.
     #[must_use]
     pub fn summary(&self) -> &str {
-        &self.summary
+        self.content
+            .description
+            .as_ref()
+            .and_then(|d| d.notes.as_deref())
+            .unwrap_or("")
     }
-
-    /// Set the notes.
+    /// Set current own notes.
     pub fn set_summary(&mut self, summary: String) {
-        self.summary = summary;
+        if self.summary() == summary {
+            return;
+        }
+        let title = self.title().into();
+        self.content
+            .description
+            .get_or_insert(auditorylab_core::Description { title, notes: None })
+            .notes = Some(summary);
     }
-
-    /// Duration of saved recipes and exported audio, in seconds.
+    /// Requested finite duration.
     #[must_use]
     pub const fn duration_seconds(&self) -> f64 {
-        self.duration
+        self.content.stimulus.duration_seconds
     }
-
-    /// Set the saved and exported duration.
-    pub fn set_duration_seconds(&mut self, seconds: f64) {
-        self.duration = seconds;
+    /// Set finite duration; invalid finite values remain editable for repair.
+    pub fn set_duration_seconds(&mut self, value: f64) {
+        if self.content.stimulus.duration_seconds.to_bits() != value.to_bits() {
+            self.demote_evidence();
+        }
+        self.content.stimulus.duration_seconds = value;
     }
-
-    /// Edge fade of saved recipes and exported audio, in seconds.
+    /// Requested endpoint fade.
     #[must_use]
     pub const fn fade_seconds(&self) -> f64 {
-        self.fade
+        self.content.stimulus.fade_seconds
     }
-
-    /// Set the saved and exported fade.
-    pub fn set_fade_seconds(&mut self, seconds: f64) {
-        self.fade = seconds;
+    /// Set endpoint fade.
+    pub fn set_fade_seconds(&mut self, value: f64) {
+        if self.content.stimulus.fade_seconds.to_bits() != value.to_bits() {
+            self.demote_evidence();
+        }
+        self.content.stimulus.fade_seconds = value;
     }
-
-    /// A numeric field's model value, if the field exists.
+    /// Applicable semantic quantity, preserving exact binary64 values.
     #[must_use]
     pub fn value(&self, field: EditingField) -> Option<f64> {
         match field {
-            EditingField::Parameter(id, parameter) => parameter.read(self.component(id)?),
-            EditingField::Metadata(MetadataField::Duration) => Some(self.duration),
-            EditingField::Metadata(MetadataField::Fade) => Some(self.fade),
-            EditingField::Metadata(MetadataField::Title | MetadataField::Summary) => None,
+            EditingField::Parameter(id, p) => self.component(id)?.read(p),
+            EditingField::Metadata(MetadataField::Duration) => Some(self.duration_seconds()),
+            EditingField::Metadata(MetadataField::Fade) => Some(self.fade_seconds()),
+            _ => None,
         }
     }
-
     fn set_value(&mut self, field: EditingField, value: f64) -> bool {
         match field {
-            EditingField::Parameter(id, parameter) => self
-                .component_mut(id)
-                .is_some_and(|component| parameter.write(component, value)),
+            EditingField::Parameter(id, p) => {
+                let Some(before) = self.component(id).and_then(|c| c.read(p)) else {
+                    return false;
+                };
+                if before.to_bits() != value.to_bits() {
+                    self.demote_evidence();
+                }
+                self.component_mut(id).is_some_and(|c| c.write(p, value))
+            }
             EditingField::Metadata(MetadataField::Duration) => {
-                self.duration = value;
+                self.set_duration_seconds(value);
                 true
             }
             EditingField::Metadata(MetadataField::Fade) => {
-                self.fade = value;
+                self.set_fade_seconds(value);
                 true
             }
-            EditingField::Metadata(MetadataField::Title | MetadataField::Summary) => false,
+            _ => false,
         }
     }
-
     fn has_field(&self, field: EditingField) -> Result<(), EditRefusal> {
         match field {
-            EditingField::Parameter(id, parameter) => {
-                let component = self.component(id).ok_or(EditRefusal::UnknownComponent)?;
-                parameter
-                    .read(component)
-                    .map(|_| ())
-                    .ok_or(EditRefusal::Inapplicable)
-            }
-            EditingField::Metadata(_) => Ok(()),
+            EditingField::Parameter(id, p) => self
+                .component(id)
+                .ok_or(EditRefusal::UnknownComponent)?
+                .read(p)
+                .map(|_| ())
+                .ok_or(EditRefusal::Inapplicable),
+            _ => Ok(()),
         }
     }
-
-    /// The draft's sound as a stimulus.
+    /// Complete authored sound, with pair intent and stable owners retained.
     #[must_use]
-    pub fn stimulus(&self) -> Stimulus {
-        Stimulus {
-            duration_seconds: self.duration,
-            fade_seconds: self.fade,
-            components: self.components.iter().map(|(_, c)| *c).collect(),
-        }
+    pub fn stimulus(&self) -> auditorylab_core::AuthoredStimulus {
+        self.content.stimulus.clone()
     }
-
-    /// Persist current parameters and notes, with research attributed to one
-    /// retained original source content anchor.
+    /// Immutable full portable candidate. Sound edits demote current-condition evidence.
     #[must_use]
     pub fn recipe(&self) -> Recipe {
-        Recipe {
-            stimulus: self.stimulus(),
-            about: Some(About {
-                title: self.title.clone(),
-                summary: Some(self.summary.clone()),
-                research: None,
-            }),
-            source: self
-                .based_on
-                .as_ref()
-                .map(|snapshot| auditorylab_core::Source {
-                    stimulus: snapshot.stimulus().clone(),
-                    about: snapshot.about().cloned(),
-                }),
+        self.content.clone()
+    }
+    fn demote_evidence(&mut self) {
+        for evidence in &mut self.content.evidence {
+            evidence.scope = auditorylab_core::EvidenceScope::Ancestor;
         }
     }
-
-    /// An immutable snapshot of [`Draft::recipe`].
+    /// Capture full content under a new process-local snapshot identity.
     #[must_use]
     pub fn snapshot(&self) -> RecipeSnapshot {
-        RecipeSnapshot::new(Origin::Draft(self.title.clone()), self.recipe())
+        RecipeSnapshot::new(Origin::Draft(self.title().into()), self.recipe())
     }
-
-    /// Whether the draft's saved content equals `recipe`: title, notes,
-    /// duration, fade and components in order, ignoring identities.
+    /// Exact editable content equality, excluding portable history.
     #[must_use]
     pub fn content_matches(&self, recipe: &Recipe) -> bool {
-        let about = recipe.about.as_ref();
         let own = self.recipe();
-        own.source == recipe.source
-            && own.about == recipe.about
-            && about.is_some_and(|a| a.title == self.title)
-            && about.and_then(|a| a.summary.as_deref()).unwrap_or("") == self.summary
-            && recipe.stimulus.duration_seconds.to_bits() == self.duration.to_bits()
-            && recipe.stimulus.fade_seconds.to_bits() == self.fade.to_bits()
-            && recipe.stimulus.components.len() == self.components.len()
-            && recipe
-                .stimulus
-                .components
-                .iter()
-                .zip(&self.components)
-                .all(|(a, (_, b))| a == b)
+        own.document.id == recipe.document.id && own.same_editable_content(recipe)
     }
-
-    /// The draft's component pairs for target compilation.
+    /// Compile all expanded pair lanes as one atomic target candidate.
     #[must_use]
     pub fn target_check(&self, rate: SampleRate) -> TargetCheck {
-        TargetCheck::new(rate, &self.components)
+        self.content.stimulus.target_check(rate)
     }
-
-    /// Serialize the exact draft within the reader's byte limit, without file
-    /// I/O. Finite values that are acoustically invalid serialize.
+    /// Serialize a complete finite candidate without I/O.
     ///
     /// # Errors
-    /// Returns [`ErrorKind::InvalidRecipe`] for non-finite numbers, a writer
-    /// failure or text longer than [`Recipe::MAX_BYTES`].
+    /// Rejects portable contract violations, including nonfinite values and capacity.
     pub fn to_toml(&self) -> Result<String, Error> {
         serialize(&self.recipe())
     }
 }
-
 /// Serialize finite recipe content within the reader's byte limit.
 ///
 /// # Errors
 /// Returns [`ErrorKind::InvalidRecipe`] for non-finite numbers, a writer
 /// failure or text longer than [`Recipe::MAX_BYTES`].
 pub(crate) fn serialize(recipe: &Recipe) -> Result<String, Error> {
-    if recipe
-        .source
-        .as_ref()
-        .is_some_and(|s| s.stimulus.nonfinite().next().is_some())
-    {
-        return Err(Error::new(
-            ErrorKind::InvalidRecipe,
-            "retained source numbers must be finite; correct the source document before deriving a sound",
-        ));
-    }
-    if recipe.stimulus.nonfinite().next().is_some() {
-        return Err(Error::new(
-            ErrorKind::InvalidRecipe,
-            "recipe numbers must be finite",
-        ));
-    }
-    let text = recipe
+    recipe
         .to_toml()
-        .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?;
-    if text.len() > Recipe::MAX_BYTES {
-        return Err(Error::new(
-            ErrorKind::InvalidRecipe,
-            format!("recipe exceeds {} bytes", Recipe::MAX_BYTES),
-        ));
-    }
-    Ok(text)
+        .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))
 }
 
 /// Save exactly this content with staged publication. Saving cannot be
@@ -526,9 +496,12 @@ pub struct Analysis {
 impl Analysis {
     fn new(draft: &Draft, rate: SampleRate) -> Self {
         let check = draft.target_check(rate);
-        let envelope = Signal::check_envelope(rate, draft.duration, draft.fade);
+        let envelope = Signal::check_envelope(rate, draft.duration_seconds(), draft.fade_seconds());
         let signal = match (&envelope, check.target()) {
-            (Ok(()), Some(target)) => target.signal(draft.duration, draft.fade).ok().map(Arc::new),
+            (Ok(()), Some(target)) => target
+                .signal(draft.duration_seconds(), draft.fade_seconds())
+                .ok()
+                .map(Arc::new),
             _ => None,
         };
         Self {
@@ -589,16 +562,16 @@ impl Analysis {
 struct AnalysisKey {
     duration: u64,
     fade: u64,
-    components: Vec<(ComponentId, Component)>,
+    components: Vec<auditorylab_core::AuthoredComponent>,
     rate: SampleRate,
 }
 
 impl AnalysisKey {
     fn new(draft: &Draft, rate: SampleRate) -> Self {
         Self {
-            duration: draft.duration.to_bits(),
-            fade: draft.fade.to_bits(),
-            components: draft.components.clone(),
+            duration: draft.duration_seconds().to_bits(),
+            fade: draft.fade_seconds().to_bits(),
+            components: draft.components().to_vec(),
             rate,
         }
     }
@@ -614,15 +587,7 @@ impl PartialEq for AnalysisKey {
                 .components
                 .iter()
                 .zip(&other.components)
-                .all(|((id, a), (other_id, b))| {
-                    id == other_id
-                        && a.ears == b.ears
-                        && a.carrier.kind() == b.carrier.kind()
-                        && a.modulation.map(|m| m.kind()) == b.modulation.map(|m| m.kind())
-                        && ParameterId::COMPONENT
-                            .iter()
-                            .all(|p| p.read(a).map(f64::to_bits) == p.read(b).map(f64::to_bits))
-                })
+                .all(|(a, b)| a.id == b.id && a.node.same_content(b.node))
     }
 }
 impl Eq for AnalysisKey {}
@@ -636,7 +601,10 @@ const CACHED_ANALYSES: usize = 4;
 struct Removed {
     index: usize,
     id: ComponentId,
-    component: Component,
+    component: auditorylab_core::AuthoredComponent,
+    before: Recipe,
+    after: Recipe,
+    saved: Arc<Recipe>,
     staged: Vec<(EditingField, String)>,
 }
 
@@ -648,7 +616,9 @@ pub struct EditorSession {
     staged: BTreeMap<EditingField, String>,
     draft_revision: u64,
     input_revision: u64,
-    saved: Recipe,
+    saved: Arc<Recipe>,
+    saved_nominal: Option<crate::nominal::Analysis>,
+    nominal: Option<(u64, Arc<crate::nominal::Analysis>)>,
     analyses: Vec<(AnalysisKey, Arc<Analysis>)>,
     candidate: Option<(u64, u64, Arc<Candidate>)>,
     save_check: Option<(u64, u64, Result<(), SaveRefusal>)>,
@@ -666,13 +636,16 @@ impl EditorSession {
     /// # Errors
     /// Returns an error only when document identities are exhausted.
     pub fn new(draft: Draft) -> Result<Self, Error> {
+        let saved = Draft::empty(draft.content.document.clone()).recipe();
         Ok(Self {
             document: DocumentId::allocate()?,
             draft,
             staged: BTreeMap::new(),
             draft_revision: 0,
             input_revision: 0,
-            saved: Draft::new().recipe(),
+            saved: Arc::new(saved),
+            saved_nominal: None,
+            nominal: None,
             analyses: Vec::new(),
             candidate: None,
             save_check: None,
@@ -682,6 +655,25 @@ impl EditorSession {
             #[cfg(test)]
             serializations: 0,
         })
+    }
+
+    /// Classification of committed values, cached independently of staged text and rate.
+    pub fn nominal(&mut self) -> Arc<crate::nominal::Analysis> {
+        if let Some((revision, analysis)) = &self.nominal
+            && *revision == self.draft_revision
+        {
+            return analysis.clone();
+        }
+        let analysis = Arc::new(crate::nominal::analyze_authored(self.draft.components()));
+        self.nominal = Some((self.draft_revision, analysis.clone()));
+        analysis
+    }
+
+    /// Nominal classification of the exact last confirmed save candidate.
+    /// Later committed edits and staged text cannot change this baseline.
+    #[must_use]
+    pub const fn saved_nominal(&self) -> Option<&crate::nominal::Analysis> {
+        self.saved_nominal.as_ref()
     }
 
     /// The document's identity.
@@ -746,8 +738,8 @@ impl EditorSession {
     #[must_use]
     pub fn committed_text(&self, field: EditingField) -> String {
         match field {
-            EditingField::Metadata(MetadataField::Title) => self.draft.title.clone(),
-            EditingField::Metadata(MetadataField::Summary) => self.draft.summary.clone(),
+            EditingField::Metadata(MetadataField::Title) => self.draft.title().to_owned(),
+            EditingField::Metadata(MetadataField::Summary) => self.draft.summary().to_owned(),
             EditingField::Parameter(_, parameter) => {
                 self.draft.value(field).map_or_else(String::new, |value| {
                     presentation::editable_number(parameter, value)
@@ -801,8 +793,8 @@ impl EditorSession {
         let mut problems = Vec::new();
         for (field, text) in &self.staged {
             match field {
-                EditingField::Metadata(MetadataField::Title) => draft.title.clone_from(text),
-                EditingField::Metadata(MetadataField::Summary) => draft.summary.clone_from(text),
+                EditingField::Metadata(MetadataField::Title) => draft.set_title(text.clone()),
+                EditingField::Metadata(MetadataField::Summary) => draft.set_summary(text.clone()),
                 EditingField::Parameter(_, parameter) => {
                     apply_number(&mut draft, *field, *parameter, text, &mut problems);
                 }
@@ -819,7 +811,7 @@ impl EditorSession {
                     EditingField::Metadata(MetadataField::Duration)
                 }
                 None => EditingField::Metadata(MetadataField::Fade),
-                Some(index) => EditingField::Parameter(draft.components[index].0, parameter),
+                Some(index) => EditingField::Parameter(draft.components()[index].id, parameter),
             };
             if !problems.iter().any(|(other, _)| *other == field) {
                 problems.push((field, InputProblem::Nonfinite));
@@ -886,7 +878,7 @@ impl EditorSession {
         &mut self,
         document: DocumentId,
         id: ComponentId,
-        change: impl FnOnce(&mut Component),
+        change: impl FnOnce(&mut auditorylab_core::Node),
     ) -> Result<(), EditRefusal> {
         self.admit(document)?;
         let component = self
@@ -895,12 +887,13 @@ impl EditorSession {
             .ok_or(EditRefusal::UnknownComponent)?;
         let before = *component;
         change(component);
-        if *component != before {
+        if !component.same_content(before) {
             let after = *component;
+            self.draft.demote_evidence();
             let staged = self.staged.len();
             self.staged.retain(|field, _| match field {
                 EditingField::Parameter(owner, parameter) if *owner == id => {
-                    parameter.read(&after).is_some()
+                    after.read(*parameter).is_some()
                 }
                 _ => true,
             });
@@ -922,7 +915,19 @@ impl EditorSession {
         id: ComponentId,
         ears: Ears,
     ) -> Result<(), EditRefusal> {
-        self.structural(document, id, |c| c.ears = ears)
+        self.admit(document)?;
+        if self
+            .draft
+            .component(id)
+            .is_some_and(|c| matches!(c, auditorylab_core::Node::BinauralPair(_)))
+        {
+            return Err(EditRefusal::Inapplicable);
+        }
+        self.structural(document, id, |c| match c {
+            auditorylab_core::Node::Primitive(c) => c.ears = ears,
+            auditorylab_core::Node::MonauralPair { ears: route, .. } => *route = ears,
+            _ => {}
+        })
     }
 
     /// Give a component another carrier kind with that kind's defaults.
@@ -936,10 +941,13 @@ impl EditorSession {
         id: ComponentId,
         kind: CarrierKind,
     ) -> Result<(), EditRefusal> {
-        self.structural(document, id, |c| {
-            if c.carrier.kind() != kind {
-                c.carrier = controls::default_carrier(kind);
+        self.structural(document, id, |c| match c {
+            auditorylab_core::Node::Primitive(c) => {
+                if c.carrier.kind() != kind {
+                    c.carrier = controls::default_carrier(kind);
+                }
             }
+            node => *node = auditorylab_core::Node::Primitive(controls::default_component(kind)),
         })
     }
 
@@ -955,8 +963,18 @@ impl EditorSession {
         kind: Option<ModulationKind>,
         rate: SampleRate,
     ) -> Result<(), EditRefusal> {
-        self.structural(document, id, |c| {
-            if c.modulation.map(|m| m.kind()) != kind {
+        self.admit(document)?;
+        if self
+            .draft
+            .component(id)
+            .is_some_and(|c| !matches!(c, auditorylab_core::Node::Primitive(_)))
+        {
+            return Err(EditRefusal::Inapplicable);
+        }
+        self.structural(document, id, |node| {
+            if let auditorylab_core::Node::Primitive(c) = node
+                && c.modulation.map(|m| m.kind()) != kind
+            {
                 c.modulation = kind.map(|kind| controls::default_modulation(kind, rate));
             }
         })
@@ -978,6 +996,21 @@ impl EditorSession {
         Ok(id)
     }
 
+    /// Add both lanes of an explicit pair in one committed editor revision.
+    ///
+    /// # Errors
+    /// Refuses stale documents, owner exhaustion or either voice budget.
+    pub fn add_pair(
+        &mut self,
+        document: DocumentId,
+        kind: auditorylab_core::PairKind,
+    ) -> Result<ComponentId, EditRefusal> {
+        self.admit(document)?;
+        let id = self.draft.add_node(controls::default_pair(kind))?;
+        self.draft_revision += 1;
+        Ok(id)
+    }
+
     /// Remove a component and only its staged text.
     ///
     /// # Errors
@@ -988,7 +1021,9 @@ impl EditorSession {
         id: ComponentId,
     ) -> Result<(), EditRefusal> {
         self.admit(document)?;
+        let before = self.draft.recipe();
         let (index, component) = self.draft.remove(id).ok_or(EditRefusal::UnknownComponent)?;
+        let after = self.draft.recipe();
         let owned = |field: &EditingField| matches!(field, EditingField::Parameter(owner, _) if *owner == id);
         let staged: Vec<_> = self
             .staged
@@ -1004,6 +1039,9 @@ impl EditorSession {
             index,
             id,
             component,
+            before,
+            after,
+            saved: self.saved.clone(),
             staged,
         });
         self.draft_revision += 1;
@@ -1013,7 +1051,7 @@ impl EditorSession {
     /// The most recently removed component and the position it had, while it
     /// can still be restored.
     #[must_use]
-    pub fn removed(&self) -> Option<(usize, &Component)> {
+    pub fn removed(&self) -> Option<(usize, &auditorylab_core::AuthoredComponent)> {
         self.removed.as_ref().map(|r| (r.index, &r.component))
     }
 
@@ -1027,12 +1065,16 @@ impl EditorSession {
     pub fn restore_removed(&mut self, document: DocumentId) -> Result<ComponentId, EditRefusal> {
         self.admit(document)?;
         let removed = self.removed.take().ok_or(EditRefusal::NothingRemoved)?;
-        if let Err(refusal) = self
-            .draft
-            .restore(removed.index, removed.id, removed.component)
-        {
+        let complete_undo = Arc::ptr_eq(&removed.saved, &self.saved)
+            && self.draft.recipe().same_editable_content(&removed.after);
+        if let Err(refusal) = self.draft.restore(removed.index, removed.component) {
             self.removed = Some(removed);
             return Err(refusal);
+        }
+        if complete_undo {
+            let document = self.draft.content.document.clone();
+            self.draft.content = removed.before;
+            self.draft.content.document = document;
         }
         if !removed.staged.is_empty() {
             self.staged.extend(removed.staged);
@@ -1051,10 +1093,20 @@ impl EditorSession {
     /// Record successfully published content as this document's saved
     /// baseline. Returns `false`, changing nothing, for another document.
     pub fn record_saved(&mut self, document: DocumentId, content: &Recipe) -> bool {
-        if document != self.document {
+        if document != self.document || content.document.id != self.draft.content.document.id {
             return false;
         }
-        self.saved = content.clone();
+        self.saved_nominal = Some(crate::nominal::analyze_authored(
+            &content.stimulus.components,
+        ));
+        if self.draft.content.document != content.document {
+            self.draft.content.document = content.document.clone();
+            self.candidate = None;
+            self.save_check = None;
+        }
+        if !self.saved.same_document(content) {
+            self.saved = Arc::new(content.clone());
+        }
         true
     }
 

@@ -20,6 +20,10 @@ pub enum RhythmKind {
     Gate,
     /// Active sinusoidal amplitude modulation.
     AmplitudeModulation,
+    /// Two generated lanes belonging to an explicit separate-ear pair.
+    BinauralPair,
+    /// Two generated lanes belonging to an explicit same-route pair.
+    MonauralPair,
 }
 
 impl RhythmKind {
@@ -30,6 +34,8 @@ impl RhythmKind {
             Self::Clicks => "clicks",
             Self::Gate => "gate",
             Self::AmplitudeModulation => "AM",
+            Self::BinauralPair => "interaural pair",
+            Self::MonauralPair => "monaural pair",
         }
     }
 }
@@ -57,7 +63,7 @@ pub enum ToneRelationship {
         /// Right carrier.
         right: f64,
     },
-    /// Equal-level tones with identical routes.
+    /// Two tones with identical routes; their levels may differ.
     Monaural {
         /// First carrier.
         first: f64,
@@ -95,7 +101,7 @@ impl Structure {
         Self::classify(target.voices(), false)
     }
 
-    fn classify(voices: impl Iterator<Item = VoiceObservation>, changing: bool) -> Self {
+    pub(crate) fn classify(voices: impl Iterator<Item = VoiceObservation>, changing: bool) -> Self {
         let voices: Vec<_> = voices
             .filter(|v| v.gains.iter().any(|g| *g > 0.0))
             .collect();
@@ -109,6 +115,26 @@ impl Structure {
                     hz,
                 });
             };
+            if let Some(pair) = v.facts.pair
+                && v.id.lane() == crate::Lane::Primary
+                && let Some(other) = voices.iter().find(|other| {
+                    other.id == v.id.with_lane(crate::Lane::Secondary)
+                        && other.facts.pair == Some(pair)
+                })
+                && let (CarrierFacts::Tone(first), CarrierFacts::Tone(second)) =
+                    (v.facts.carrier, other.facts.carrier)
+            {
+                let difference = (second.realized_hz - first.realized_hz).abs();
+                if difference > 0.0 {
+                    add(
+                        match pair.kind {
+                            crate::PairKind::Binaural => RhythmKind::BinauralPair,
+                            crate::PairKind::Monaural => RhythmKind::MonauralPair,
+                        },
+                        difference,
+                    );
+                }
+            }
             if let CarrierFacts::Clicks(p) = v.facts.carrier {
                 add(RhythmKind::Clicks, p.rate_hz);
             }
@@ -120,35 +146,38 @@ impl Structure {
                 _ => {}
             }
         }
-        let relationship =
-            if voices.len() == 2 && voices.iter().all(|v| v.facts.modulation.is_none()) {
-                match (voices[0].facts.carrier, voices[1].facts.carrier) {
-                    (CarrierFacts::Tone(a), CarrierFacts::Tone(b)) => {
-                        let (x, y) = (voices[0].gains, voices[1].gains);
-                        if x[0] > 0.0 && x[1] == 0.0 && y[0] == 0.0 && y[1] > 0.0 {
-                            Some(ToneRelationship::Interaural {
-                                left: a.realized_hz,
-                                right: b.realized_hz,
-                            })
-                        } else if y[0] > 0.0 && y[1] == 0.0 && x[0] == 0.0 && x[1] > 0.0 {
-                            Some(ToneRelationship::Interaural {
-                                left: b.realized_hz,
-                                right: a.realized_hz,
-                            })
-                        } else if x == y {
-                            Some(ToneRelationship::Monaural {
-                                first: a.realized_hz,
-                                second: b.realized_hz,
-                            })
-                        } else {
-                            None
-                        }
+        let relationship = if voices.len() == 2
+            && voices
+                .iter()
+                .all(|v| effectively_unmodulated(v.facts.modulation))
+        {
+            match (voices[0].facts.carrier, voices[1].facts.carrier) {
+                (CarrierFacts::Tone(a), CarrierFacts::Tone(b)) => {
+                    let (x, y) = (voices[0].gains, voices[1].gains);
+                    if x[0] > 0.0 && x[1] == 0.0 && y[0] == 0.0 && y[1] > 0.0 {
+                        Some(ToneRelationship::Interaural {
+                            left: a.realized_hz,
+                            right: b.realized_hz,
+                        })
+                    } else if y[0] > 0.0 && y[1] == 0.0 && x[0] == 0.0 && x[1] > 0.0 {
+                        Some(ToneRelationship::Interaural {
+                            left: b.realized_hz,
+                            right: a.realized_hz,
+                        })
+                    } else if (x[0] > 0.0) == (y[0] > 0.0) && (x[1] > 0.0) == (y[1] > 0.0) {
+                        Some(ToneRelationship::Monaural {
+                            first: a.realized_hz,
+                            second: b.realized_hz,
+                        })
+                    } else {
+                        None
                     }
-                    _ => None,
                 }
-            } else {
-                None
-            };
+                _ => None,
+            }
+        } else {
+            None
+        };
         Self {
             rhythms,
             voices,
@@ -167,16 +196,26 @@ impl Structure {
         }
     }
 
-    /// The slowest active rhythmic rate, including an interaural difference.
+    /// The slowest active rhythmic rate, including either two-tone difference.
     #[must_use]
     pub fn slowest_rate(&self) -> Option<f64> {
         let difference = self
-            .interaural()
-            .map(|(left, right)| (left - right).abs())
+            .relationship
+            .map(|relationship| match relationship {
+                ToneRelationship::Interaural { left, right } => (left - right).abs(),
+                ToneRelationship::Monaural { first, second } => (first - second).abs(),
+            })
             .filter(|difference| *difference > 0.0);
         difference
             .into_iter()
             .chain(self.rhythms.iter().map(|rhythm| rhythm.hz))
             .reduce(f64::min)
     }
+}
+
+fn effectively_unmodulated(modulation: Option<ModulationFacts>) -> bool {
+    matches!(
+        modulation,
+        None | Some(ModulationFacts::Sinusoidal { depth: 0.0, .. })
+    )
 }

@@ -5,7 +5,7 @@ use crate::{Signal, numeric};
 use core::fmt::{self, Display, Formatter};
 
 /// Frames per second, from [`SampleRate::MIN_HZ`] to [`SampleRate::MAX_HZ`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct SampleRate(u32);
 
 /// A sample rate outside [`SampleRate::MIN_HZ`] through [`SampleRate::MAX_HZ`].

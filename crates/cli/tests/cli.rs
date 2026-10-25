@@ -18,15 +18,15 @@ fn dir() -> tempfile::TempDir {
     fs::create_dir_all(&base).unwrap();
     tempfile::tempdir_in(base).unwrap()
 }
-const ID: &str = "chan-2022-clicks-40-hz";
-const SILENCE: &[u8] = b"schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n";
+const ID: &str = "builtin:chan-2022-clicks-40-hz";
+const SILENCE: &[u8] = b"schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
 #[test]
 fn commands_sources_and_exit_codes() {
     for args in [
         vec![],
         vec!["--help"],
         vec!["-V"],
-        vec!["list"],
+        vec!["list", "--collection", "builtin"],
         vec!["describe", ID],
         vec!["inspect", ID],
         vec!["recipe", ID],
@@ -46,14 +46,14 @@ fn commands_sources_and_exit_codes() {
     ] {
         assert_eq!(cli(&args).status.code(), Some(2), "{args:?}");
     }
-    let unknown = cli(&["inspect", "unknown"]);
+    let unknown = cli(&["inspect", "builtin:unknown"]);
     assert_eq!(unknown.status.code(), Some(2));
     let text = String::from_utf8(unknown.stderr).unwrap();
     assert_eq!(
         text,
         "unknown built-in recipe \"unknown\"; run `auditorylab list`, or use --file PATH\n"
     );
-    let list = String::from_utf8(cli(&["list"]).stdout).unwrap();
+    let list = String::from_utf8(cli(&["list", "--collection", "builtin"]).stdout).unwrap();
     assert!(list.contains("1 h") && list.contains("5 min 7.2 s"));
     assert_eq!(
         cli(&["inspect", "--file", "/missing/auditorylab.toml"])
@@ -63,7 +63,9 @@ fn commands_sources_and_exit_codes() {
     );
     assert_eq!(
         cli(&["recipe", ID]).stdout,
-        auditorylab::builtin_source(ID).unwrap().as_bytes()
+        auditorylab::builtin_source("chan-2022-clicks-40-hz")
+            .unwrap()
+            .as_bytes()
     );
 }
 #[test]
@@ -126,7 +128,7 @@ fn play_reads_stdin_and_reports_native_silent_playback() {
         .stdin
         .take()
         .unwrap()
-        .write_all(b"schema_version=3\nduration_seconds=1\nfade_seconds=0\n")
+        .write_all(b"schema_version=3\nduration_seconds=1\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n")
         .unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(
@@ -147,7 +149,7 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
     let output = dir.path().join("long.wav");
     fs::write(
         &input,
-        b"schema_version=3\nduration_seconds=1000000\nfade_seconds=0\n",
+        b"schema_version=3\nduration_seconds=1000000\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
     )
     .unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_auditorylab"))
@@ -191,33 +193,37 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
 fn public_cli_renders_shared_rhythms_and_rejects_pair_neighbors() {
     let d = dir();
     let file = d.path().join("meaning.toml");
-    let header = "schema_version=3\nduration_seconds=1\nfade_seconds=0\n";
-    let click = "[[component]]\nears=\"both\"\npeak_dbfs=-40\nkind=\"click\"\nrate_hz=40\nwidth_seconds=0.001\n";
-    let tone = |hz, ears: &str, level| {
+    let header = "schema_version=3\nduration_seconds=1\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
+    let click = "[[component]]\nid=1\nears=\"both\"\npeak_dbfs=-40\nkind=\"click\"\nrate_hz=40\nwidth_seconds=0.001\n";
+    let tone = |id, hz, ears: &str, level| {
         format!(
-            "[[component]]\nears=\"{ears}\"\npeak_dbfs={level}\nkind=\"tone\"\nfrequency_hz={hz}\n"
+            "[[component]]\nid={id}\nears=\"{ears}\"\npeak_dbfs={level}\nkind=\"tone\"\nfrequency_hz={hz}\n"
         )
     };
     for (body, needle, rejected) in [
         (
-            format!("{click}{}", tone(440, "both", -40)),
+            format!("{click}{}", tone(2, 440, "both", -40)),
             "40 Hz clicks",
             "400 Hz",
         ),
         (
-            format!("{}{}", tone(380, "left", -40), tone(420, "right", -40)),
+            format!(
+                "{}{}",
+                tone(1, 380, "left", -40),
+                tone(2, 420, "right", -40)
+            ),
             "40 Hz interaural difference",
             "monaural",
         ),
         (
-            format!("{}{}", tone(380, "both", -40), tone(420, "both", -40)),
+            format!("{}{}", tone(1, 380, "both", -40), tone(2, 420, "both", -40)),
             "40 Hz monaural",
             "interaural",
         ),
         (
-            format!("{}{}", tone(380, "both", -40), tone(420, "both", -41)),
-            "steady tone",
-            "monaural",
+            format!("{}{}", tone(1, 380, "both", -40), tone(2, 420, "both", -41)),
+            "40 Hz monaural",
+            "interaural",
         ),
     ] {
         fs::write(&file, format!("{header}{body}")).unwrap();
@@ -235,7 +241,7 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
     let path = dir.path().join("pulse.toml");
     fs::write(
         &path,
-        "schema_version = 3\nduration_seconds = 0.05\nfade_seconds = 0.0\n\n[[component]]\nkind = \"click\"\nears = \"both\"\npeak_dbfs = -30.0\nrate_hz = 40.0\nwidth_seconds = 0.0001\n",
+        "schema_version = 3\nduration_seconds = 0.05\nfade_seconds = 0.0\n\n[[component]]\nid=1\nkind = \"click\"\nears = \"both\"\npeak_dbfs = -30.0\nrate_hz = 40.0\nwidth_seconds = 0.0001\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
     )
     .unwrap();
     let out = cli(&[
@@ -278,10 +284,9 @@ fn unicode_notes_roundtrip_and_terminal_controls_are_escaped_at_display_boundary
     let dir = dir();
     let path = dir.path().join("notes.toml");
     let mut recipe = auditorylab::Recipe::parse(std::str::from_utf8(SILENCE).unwrap()).unwrap();
-    recipe.about = Some(auditorylab::About {
+    recipe.description = Some(auditorylab::Description {
         title: "Rīga \"🎧\"".into(),
-        summary: Some("Line one\nLine two \u{1b}[31m \u{202e}reverse".into()),
-        research: None,
+        notes: Some("Line one\nLine two \u{1b}[31m \u{202e}reverse".into()),
     });
     let text = recipe.to_toml().unwrap();
     fs::write(&path, &text).unwrap();
@@ -299,5 +304,53 @@ fn unicode_notes_roundtrip_and_terminal_controls_are_escaped_at_display_boundary
             "{display}"
         );
         assert!(!display.contains('\u{1b}') && !display.contains('\u{202e}'));
+    }
+}
+
+#[test]
+fn nominal_list_filters_use_the_shared_band_and_method_contract() {
+    let out = cli(&[
+        "list",
+        "--collection",
+        "builtin",
+        "--band",
+        "delta",
+        "--method",
+        "binaural",
+    ]);
+    assert!(out.status.success(), "{out:?}");
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("ioannou-2015-binaural-2-hz"), "{text}");
+    assert!(!text.contains("binaural-10-hz"));
+    let out = cli(&[
+        "list",
+        "--collection",
+        "builtin",
+        "--band",
+        "gamma",
+        "--method",
+        "steady-tone",
+    ]);
+    assert!(out.status.success());
+    assert!(String::from_utf8(out.stdout).unwrap().trim().is_empty());
+    let search = cli(&["list", "--collection", "builtin", "--search", "202"]);
+    assert!(search.status.success());
+    let text = String::from_utf8(search.stdout).unwrap();
+    assert!(
+        text.contains("ioannou-2015-binaural-2-hz")
+            && !text.contains("binaural-20-hz")
+            && !text.contains("orozco-perez-2020"),
+        "{text}"
+    );
+    let out = cli(&["list", "--collection", "builtin", "--rhythms", "none"]);
+    assert!(out.status.success());
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("pure-tone-200-hz") && !text.contains("binaural-2-hz"));
+    for args in [
+        ["list", "--band", "sleep"],
+        ["list", "--method", "unknown"],
+        ["list", "--rhythms", "unknown"],
+    ] {
+        assert_eq!(cli(&args).status.code(), Some(2));
     }
 }

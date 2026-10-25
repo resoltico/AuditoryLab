@@ -10,13 +10,17 @@
 extern crate alloc;
 #[cfg(test)]
 extern crate std;
+pub mod authored;
 pub mod catalog;
 mod compiled;
 mod facts;
+mod history;
 pub mod interpretation;
 pub mod live;
+pub mod nominal;
 mod numeric;
 mod parameter;
+pub mod provenance;
 mod rate;
 mod recipe;
 mod signal;
@@ -24,16 +28,25 @@ mod stimulus;
 mod synthesis;
 pub mod timing;
 pub mod waveform;
+pub use authored::{
+    AuthoredComponent, AuthoredStimulus, LoweringError, Node, Pair, PairIssue, PairKind,
+};
 pub use compiled::{Target, TargetCheck};
 pub use facts::{
-    CarrierFacts, ComponentFacts, ModulationFacts, Observation, PhaseRate, PulseFacts, SlotRole,
-    VoiceObservation,
+    CarrierFacts, ComponentFacts, ModulationFacts, Observation, PairFacts, PhaseRate, PulseFacts,
+    SlotRole, VoiceObservation,
 };
+pub use history::{DocumentIdentity, DocumentUuid, Timestamp};
 pub use parameter::{
-    CarrierKind, ComponentId, ComponentRole, ModulationKind, ParameterDescriptor, ParameterId, Unit,
+    CarrierKind, ComponentId, ComponentRole, Lane, ModulationKind, ParameterDescriptor,
+    ParameterId, Unit,
+};
+pub use provenance::{
+    BibliographySource, ConditionRole, Description, Evidence, EvidenceScope, Lineage, Measure,
+    Population,
 };
 pub use rate::{SampleRate, SampleRateError};
-pub use recipe::{About, Recipe, RecipeError, Research, Source};
+pub use recipe::{About, Recipe, RecipeError, Research};
 pub use signal::Signal;
 pub use stimulus::{
     Carrier, Component, ComponentError, Ear, Ears, Modulation, Stimulus, StimulusError,

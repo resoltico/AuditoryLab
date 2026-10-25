@@ -105,7 +105,12 @@ impl Slot {
     }
 
     #[inline]
-    fn sample(&mut self, frame: u64, progress: Option<f64>) -> f64 {
+    fn sample(
+        &mut self,
+        frame: u64,
+        progress: Option<f64>,
+        modulation_sine: &mut Option<(u64, f64)>,
+    ) -> f64 {
         let p = progress.unwrap_or(1.0);
         let carrier = match self.voice.carrier {
             Carrier::Tone { .. } => {
@@ -120,7 +125,17 @@ impl Slot {
             None => 1.0,
             Some(Modulator::Sinusoidal { .. }) => {
                 let depth = self.depth_at(p);
-                let value = synthesis::sine(self.modulation_phase);
+                // Components often share one modulation clock, including each
+                // side of a crossfade. Reuse only an exactly equal phase within
+                // this frame; each voice still advances its own clock below.
+                let value = match *modulation_sine {
+                    Some((phase, value)) if phase == self.modulation_phase => value,
+                    _ => {
+                        let value = synthesis::sine(self.modulation_phase);
+                        *modulation_sine = Some((self.modulation_phase, value));
+                        value
+                    }
+                };
                 let step = glide(self.modulation_step.0, self.modulation_step.1, p);
                 self.modulation_phase = self.modulation_phase.wrapping_add(step);
                 (1.0 + depth * value) / (1.0 + depth)
@@ -285,8 +300,9 @@ impl Engine {
                 .ramp
                 .map(|done| (done + 1) as f64 / self.ramp_frames as f64);
             let mut frame = [0.0; 2];
+            let mut modulation_sine = None;
             for slot in self.slots.iter_mut().flatten() {
-                let value = slot.sample(self.frame, progress);
+                let value = slot.sample(self.frame, progress, &mut modulation_sine);
                 for (ear, sample) in frame.iter_mut().enumerate() {
                     let level = slot.level(ear, progress);
                     if level != 0.0 {
@@ -523,29 +539,98 @@ mod tests {
     }
 
     #[test]
+    fn shared_modulation_phase_keeps_exact_samples_and_independent_clocks() {
+        for shared_depth in [true, false] {
+            for hz in [8_000, 44_100, 48_000, 96_000, 768_000] {
+                let components: Vec<_> = (0..16)
+                    .map(|n| Component {
+                        modulation: Some(Modulation::Sinusoidal {
+                            rate_hz: 39.0625,
+                            depth: if shared_depth {
+                                1.0
+                            } else {
+                                f64::from(n) / 15.0
+                            },
+                        }),
+                        ..tone(200.0 + f64::from(n) * 20.0, -30.0, Ears::Both)
+                    })
+                    .collect();
+                let mut engine = Engine::new(SampleRate::new(hz).unwrap());
+                engine.set(&Target::new(engine.rate, &numbered(&components)).unwrap());
+                engine.render(&mut [[0.0; 2]]);
+                let mut slots: Vec<_> = engine.slots.into_iter().flatten().collect();
+                for progress in [None, Some(0.0), Some(0.25), Some(0.999), Some(1.0)] {
+                    for frame in 0..64 {
+                        let mut cached = None;
+                        for (n, slot) in slots.iter_mut().enumerate() {
+                            if frame == 32 {
+                                // Equal and unequal phases, a sign change and wrap,
+                                // plus distinct glide steps must remain independent.
+                                slot.modulation_phase = match n % 4 {
+                                    0 => 0,
+                                    1 => 1 << 63,
+                                    2 => u64::MAX,
+                                    _ => u64::try_from(n).unwrap(),
+                                };
+                                slot.modulation_step.1 += u64::try_from(n).unwrap();
+                            }
+                            let p = progress.unwrap_or(1.0);
+                            // Direct pre-optimization formula: no shared cached value.
+                            let carrier = synthesis::sine(slot.carrier_phase);
+                            let depth = slot.depth_at(p);
+                            let gain = (1.0 + depth * synthesis::sine(slot.modulation_phase))
+                                / (1.0 + depth);
+                            let expected = carrier * gain;
+                            let carrier_phase = slot.carrier_phase.wrapping_add(glide(
+                                slot.carrier_step.0,
+                                slot.carrier_step.1,
+                                p,
+                            ));
+                            let modulation_phase = slot.modulation_phase.wrapping_add(glide(
+                                slot.modulation_step.0,
+                                slot.modulation_step.1,
+                                p,
+                            ));
+                            assert_eq!(
+                                slot.sample(frame, progress, &mut cached).to_bits(),
+                                expected.to_bits()
+                            );
+                            assert_eq!(slot.carrier_phase, carrier_phase);
+                            assert_eq!(slot.modulation_phase, modulation_phase);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     #[expect(
         clippy::cast_possible_truncation,
         reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
     )]
     fn an_unedited_session_equals_the_signal_after_its_start_ramp() {
-        let mut stimuli: Vec<Stimulus> = crate::catalog::ENTRIES
+        let mut stimuli: Vec<crate::AuthoredStimulus> = crate::catalog::ENTRIES
             .iter()
             .map(|entry| Recipe::parse(entry.text).unwrap().stimulus)
             .collect();
-        stimuli.push(Stimulus {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: vec![
-                tone(250.0, -20.0, Ears::Left),
-                tone(256.0, -20.0, Ears::Right),
-                clicks(40.0, -20.0),
-            ],
-        });
+        stimuli.push(
+            crate::AuthoredStimulus::from_primitives(Stimulus {
+                duration_seconds: 1.0,
+                fade_seconds: 0.0,
+                components: vec![
+                    tone(250.0, -20.0, Ears::Left),
+                    tone(256.0, -20.0, Ears::Right),
+                    clicks(40.0, -20.0),
+                ],
+            })
+            .unwrap(),
+        );
         for mut stimulus in stimuli {
             stimulus.duration_seconds = 1.0;
             stimulus.fade_seconds = 0.0;
             let signal = stimulus.signal(rate()).unwrap();
-            let target = Target::new(rate(), &numbered(&stimulus.components)).unwrap();
+            let target = stimulus.target(rate()).unwrap();
             let mut engine = Engine::new(rate());
             assert!(engine.set(&target));
             let frames = render(&mut engine, 48_000);
@@ -914,7 +999,7 @@ mod tests {
         let depth = slot.depth.0 * (1.0 - p) + slot.depth.1 * p;
         assert!(0.4 < depth && depth < 0.6);
         let mut copy = slot;
-        let value = copy.sample(engine.frame() - 1, Some(p));
+        let value = copy.sample(engine.frame() - 1, Some(p), &mut None);
         let expected = synthesis::sine(slot.carrier_phase)
             * ((1.0 + depth * synthesis::sine(slot.modulation_phase)) / (1.0 + depth));
         assert_eq!(value.to_bits(), expected.to_bits());

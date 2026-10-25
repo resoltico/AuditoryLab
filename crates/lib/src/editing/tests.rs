@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use auditorylab_core::Carrier;
+use auditorylab_core::{AuthoredComponent, Carrier, Node};
 
 fn editor_with(components: &[Component]) -> EditorSession {
-    let mut draft = Draft::new();
+    let mut draft = Draft::new().unwrap();
     for component in components {
         let id = draft.add(CarrierKind::Tone).unwrap();
         draft.replace(id, *component);
@@ -24,7 +24,7 @@ fn tone(frequency_hz: f64) -> Component {
 
 fn field(editor: &EditorSession, index: usize, parameter: ParameterId) -> FieldHandle {
     editor.handle(EditingField::Parameter(
-        editor.draft().components()[index].0,
+        editor.draft().components()[index].id,
         parameter,
     ))
 }
@@ -113,9 +113,21 @@ fn commit_is_atomic_over_the_whole_candidate() {
 
 #[test]
 fn inherited_nonfinite_values_block_commit_save_until_repaired() {
-    let text = "schema_version=3\nduration_seconds=nan\nfade_seconds=0\n[[component]]\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=inf\n[[component]]\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=440\n";
-    let snapshot = crate::load_reader(text.as_bytes(), "nonfinite import").unwrap();
-    let mut editor = EditorSession::new(Draft::from_snapshot(&snapshot)).unwrap();
+    let text = "schema_version=3\nduration_seconds=nan\nfade_seconds=0\n[[component]]\nid=1\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=inf\n[[component]]\nid=2\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=440\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
+    assert!(
+        crate::load_reader(text.as_bytes(), "nonfinite import").is_err(),
+        "nonfinite portable files are rejected"
+    );
+    let mut draft = Draft::new().unwrap();
+    draft.add(CarrierKind::Tone).unwrap();
+    draft.add(CarrierKind::Tone).unwrap();
+    let first = draft.components()[0].id;
+    draft.set_duration_seconds(f64::NAN);
+    draft.set_value(
+        EditingField::Parameter(first, ParameterId::ToneFrequency),
+        f64::INFINITY,
+    );
+    let mut editor = EditorSession::new(draft).unwrap();
     assert!(
         editor.draft().duration_seconds().is_nan(),
         "kept for repair"
@@ -138,10 +150,11 @@ fn inherited_nonfinite_values_block_commit_save_until_repaired() {
     assert_eq!(editor.commit(), Ok(true));
     assert_eq!(editor.draft().value(other.field), Some(-20.0));
     assert!(
-        matches!(editor.save_readiness(), Err(SaveRefusal::Document(message)) if message.contains("retained source"))
+        editor.save_readiness().is_ok(),
+        "repairing all inherited programmatic values makes the whole document serializable"
     );
     // Programmatic nonfinite values are diagnosed the same way.
-    let mut draft = Draft::new();
+    let mut draft = Draft::new().unwrap();
     let id = draft.add(CarrierKind::Tone).unwrap();
     draft.replace(
         id,
@@ -164,7 +177,7 @@ fn inherited_nonfinite_values_block_commit_save_until_repaired() {
 fn structural_choices_discard_only_inapplicable_or_removed_staging() {
     let mut editor = editor_with(&[tone(440.0), tone(550.0)]);
     let document = editor.document();
-    let first = editor.draft().components()[0].0;
+    let first = editor.draft().components()[0].id;
     let frequency = field(&editor, 0, ParameterId::ToneFrequency);
     let level = field(&editor, 0, ParameterId::PeakLevel);
     let other = field(&editor, 1, ParameterId::ToneFrequency);
@@ -182,8 +195,12 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
     assert_eq!(editor.staged(level.field), Some("also bad"));
     assert_eq!(editor.staged(other.field), Some("660"));
     assert_eq!(
-        editor.draft().component(first).unwrap().carrier,
-        controls::default_carrier(CarrierKind::Clicks)
+        editor
+            .draft()
+            .component(first)
+            .unwrap()
+            .read(ParameterId::ClickRate),
+        Some(40.0)
     );
     assert_eq!(
         editor.stage(frequency, "440"),
@@ -223,7 +240,7 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     let mut editor = editor_with(&[tone(440.0), tone(550.0), tone(660.0)]);
     let document = editor.document();
     editor.record_saved(document, &editor.draft().recipe());
-    let middle = editor.draft().components()[1].0;
+    let middle = editor.draft().components()[1].id;
     let frequency = field(&editor, 1, ParameterId::ToneFrequency);
     let other = field(&editor, 0, ParameterId::ToneFrequency);
     assert_eq!(
@@ -232,24 +249,33 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     );
     editor.stage(frequency, "bad").unwrap();
     editor.remove_component(document, middle).unwrap();
-    assert_eq!(editor.removed(), Some((1, &tone(550.0))));
+    assert_eq!(
+        editor.removed(),
+        Some((
+            1,
+            &AuthoredComponent {
+                id: middle,
+                node: Node::Primitive(tone(550.0))
+            }
+        ))
+    );
     assert_eq!(editor.staged(frequency.field), None);
     editor.stage(other, "450").unwrap();
 
-    let stale = EditorSession::new(Draft::new()).unwrap().document();
+    let stale = EditorSession::new(Draft::new().unwrap())
+        .unwrap()
+        .document();
     assert_eq!(
         editor.restore_removed(stale),
         Err(EditRefusal::StaleDocument)
     );
     assert_eq!(editor.restore_removed(document), Ok(middle));
-    let ids: Vec<_> = editor
-        .draft()
-        .components()
-        .iter()
-        .map(|(id, _)| *id)
-        .collect();
+    let ids: Vec<_> = editor.draft().components().iter().map(|c| c.id).collect();
     assert_eq!(ids[1], middle, "the same identity returns to its place");
-    assert_eq!(editor.draft().component(middle), Some(&tone(550.0)));
+    assert_eq!(
+        editor.draft().component(middle),
+        Some(&Node::Primitive(tone(550.0)))
+    );
     assert_eq!(editor.staged(frequency.field), Some("bad"));
     assert_eq!(
         editor.staged(other.field),
@@ -267,11 +293,20 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     assert!(!editor.dirty(), "restoring returns the saved content");
 
     // A newer removal replaces the older one, and the limit keeps it waiting.
-    let first = editor.draft().components()[0].0;
-    let last = editor.draft().components()[2].0;
+    let first = editor.draft().components()[0].id;
+    let last = editor.draft().components()[2].id;
     editor.remove_component(document, first).unwrap();
     editor.remove_component(document, last).unwrap();
-    assert_eq!(editor.removed(), Some((1, &tone(660.0))));
+    assert_eq!(
+        editor.removed(),
+        Some((
+            1,
+            &AuthoredComponent {
+                id: last,
+                node: Node::Primitive(tone(660.0))
+            }
+        ))
+    );
     while editor.draft().components().len() < Stimulus::MAX_COMPONENTS {
         editor.add_component(document, CarrierKind::Tone).unwrap();
     }
@@ -279,8 +314,17 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
         editor.restore_removed(document),
         Err(EditRefusal::ComponentLimit)
     );
-    assert_eq!(editor.removed(), Some((1, &tone(660.0))));
-    let added = editor.draft().components()[2].0;
+    assert_eq!(
+        editor.removed(),
+        Some((
+            1,
+            &AuthoredComponent {
+                id: last,
+                node: Node::Primitive(tone(660.0))
+            }
+        ))
+    );
+    let added = editor.draft().components()[2].id;
     editor.remove_component(document, added).unwrap();
     assert_eq!(editor.restore_removed(document), Ok(added));
 }
@@ -290,7 +334,7 @@ fn stale_document_handles_are_rejected_everywhere() {
     let mut old = editor_with(&[tone(440.0)]);
     let handle = field(&old, 0, ParameterId::ToneFrequency);
     let title = metadata(&old, MetadataField::Title);
-    let id = old.draft().components()[0].0;
+    let id = old.draft().components()[0].id;
     let old_document = old.document();
     let mut replacement = EditorSession::new(old.draft().clone()).unwrap();
     assert_ne!(old_document, replacement.document());
@@ -311,13 +355,13 @@ fn stale_document_handles_are_rejected_everywhere() {
         Err(EditRefusal::StaleDocument)
     );
     assert!(!replacement.has_staged());
-    assert!(!replacement.record_saved(old_document, &Draft::new().recipe()));
+    assert!(!replacement.record_saved(old_document, &Draft::new().unwrap().recipe()));
     assert!(old.stage(handle, "1").is_ok());
 }
 
 #[test]
 fn saved_baselines_compare_content_and_belong_to_one_document() {
-    let mut editor = EditorSession::new(Draft::new()).unwrap();
+    let mut editor = EditorSession::new(Draft::new().unwrap()).unwrap();
     assert!(!editor.dirty(), "an untouched blank document is clean");
     let title = metadata(&editor, MetadataField::Title);
     editor.commit_field(title, "A").unwrap().unwrap();
@@ -332,7 +376,8 @@ fn saved_baselines_compare_content_and_belong_to_one_document() {
     );
     editor.stage(title, "C").unwrap();
     assert!(editor.dirty(), "staged text is unsaved");
-    let copy = EditorSession::new(Draft::from_snapshot(&crate::catalog().unwrap()[0])).unwrap();
+    let copy =
+        EditorSession::new(Draft::from_snapshot(&crate::catalog().unwrap()[0]).unwrap()).unwrap();
     assert!(copy.dirty(), "a copy needs saving");
 }
 
@@ -370,7 +415,7 @@ fn evaluations_are_cached_by_revision_and_rate_including_invalid_results() {
 
 #[test]
 fn identities_are_never_reused_and_the_limit_is_shared() {
-    let mut d = Draft::new();
+    let mut d = Draft::new().unwrap();
     let a = d.add(CarrierKind::Tone).unwrap();
     let b = d.add(CarrierKind::Clicks).unwrap();
     assert!(d.remove(a).is_some());
@@ -388,8 +433,8 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
         d.add(CarrierKind::Tone).unwrap();
     }
     assert_eq!(d.add(CarrierKind::Clicks), Err(EditRefusal::ComponentLimit));
-    let mut exhausted = Draft::new();
-    exhausted.next_id = u32::MAX;
+    let mut exhausted = Draft::new().unwrap();
+    exhausted.next_id = None;
     assert_eq!(
         exhausted.add(CarrierKind::Tone),
         Err(EditRefusal::IdentitiesExhausted)
@@ -399,15 +444,32 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
 #[test]
 fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids() {
     let snapshot = crate::catalog().unwrap().remove(0);
-    let d = Draft::from_snapshot(&snapshot);
+    let d = Draft::from_snapshot(&snapshot).unwrap();
     assert_eq!(d.title(), format!("{} (edited)", snapshot.title()));
     assert_eq!(d.based_on().unwrap().id(), snapshot.id());
-    let ids: Vec<_> = d.components().iter().map(|(id, _)| *id).collect();
+    let ids: Vec<_> = d.components().iter().map(|c| c.id).collect();
     let target = snapshot.stimulus().target(SampleRate::DEFAULT).unwrap();
     let recipe_ids: Vec<_> = target.components().map(|(id, _)| id).collect();
-    assert_eq!(ids, recipe_ids);
-    let about = d.recipe().about.unwrap();
-    assert_eq!(about.summary.as_deref(), Some(""));
+    assert_eq!(
+        ids,
+        snapshot
+            .stimulus()
+            .components
+            .iter()
+            .map(|c| c.id)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        d.target_check(SampleRate::DEFAULT)
+            .target()
+            .unwrap()
+            .components()
+            .map(|(id, _)| id)
+            .collect::<Vec<_>>(),
+        recipe_ids
+    );
+    let about = d.recipe().display_about().unwrap();
+    assert_eq!(about.summary, snapshot.about().unwrap().summary);
     assert!(about.research.is_none());
 }
 
@@ -417,7 +479,7 @@ fn save_round_trips_and_keeps_existing_destinations() {
     std::fs::create_dir_all(&base).unwrap();
     let dir = tempfile::tempdir_in(base).unwrap();
     let path = dir.path().join("recipe.toml");
-    let mut d = Draft::new();
+    let mut d = Draft::new().unwrap();
     d.add(CarrierKind::Clicks).unwrap();
     d.set_title("Quotes \" 🎧".into());
     save_content(&d.recipe(), &path, crate::Replace::Never).unwrap();
@@ -444,38 +506,40 @@ fn save_round_trips_and_keeps_existing_destinations() {
 }
 
 #[test]
-fn derivatives_reopen_with_one_original_source_and_own_unicode_notes() {
+fn derivatives_reopen_with_full_scoped_graph_and_bounded_flat_ancestry() {
     let source = crate::catalog().unwrap().remove(0);
     let original = source.recipe().clone();
-    let mut draft = Draft::from_snapshot(&source);
+    let mut draft = Draft::from_snapshot(&source).unwrap();
     draft.set_summary("Rīga \"quoted\" 🎧\nsecond line".into());
     draft.set_duration_seconds(2.0);
     let mut bytes = draft.to_toml().unwrap();
-    for _ in 0..20 {
+    for expected in 1..=16 {
         let reopened = crate::load_reader(bytes.as_bytes(), "reopened elsewhere").unwrap();
         assert!(reopened.about().unwrap().research.is_none());
-        assert_eq!(
-            reopened.about().unwrap().summary.as_deref(),
-            Some("Rīga \"quoted\" 🎧\nsecond line")
+        assert_eq!(reopened.recipe().sources, original.sources);
+        assert_eq!(reopened.recipe().lineage.len(), expected);
+        assert!(
+            reopened
+                .recipe()
+                .evidence
+                .iter()
+                .all(|e| e.scope == auditorylab_core::EvidenceScope::Ancestor)
         );
-        let anchor = reopened.recipe().source.as_ref().unwrap();
-        assert_eq!(anchor.stimulus, original.stimulus);
-        assert_eq!(anchor.about, original.about);
-        draft = Draft::from_snapshot(&reopened);
-        assert_eq!(draft.based_on().unwrap().recipe(), &original);
-        // Keep a constant title so the serialized size measures provenance, not UI naming.
+        assert!(!bytes.contains("reopened elsewhere"));
+        if expected == 16 {
+            assert!(Draft::from_snapshot(&reopened).is_err());
+            break;
+        }
+        draft = Draft::from_snapshot(&reopened).unwrap();
         draft.set_title("Derivative".into());
         bytes = draft.to_toml().unwrap();
-        assert_eq!(bytes.matches("[source]").count(), 1);
-        assert!(!bytes.contains("reopened elsewhere"));
-        assert!(!bytes.contains("schema_version = 2"));
     }
 }
 
 #[test]
 fn the_entire_document_including_unicode_anchor_has_exact_byte_neighbours() {
     let source = crate::catalog().unwrap().remove(0);
-    let mut draft = Draft::from_snapshot(&source);
+    let mut draft = Draft::from_snapshot(&source).unwrap();
     draft.set_summary("é🎧".into());
     let remaining = Recipe::MAX_BYTES - draft.to_toml().unwrap().len();
     draft.set_summary(format!("é🎧{}", "a".repeat(remaining)));
@@ -498,41 +562,20 @@ fn the_entire_document_including_unicode_anchor_has_exact_byte_neighbours() {
 }
 
 #[test]
-fn source_content_is_structural_but_saved_numbers_must_be_finite() {
-    let mut recipe = Draft::new().recipe();
-    recipe.source = Some(auditorylab_core::Source {
-        stimulus: Stimulus {
-            duration_seconds: -1.0,
-            fade_seconds: 9.0,
-            components: Vec::new(),
-        },
-        about: None,
-    });
+fn finite_invalid_current_content_saves_and_nonfinite_content_never_touches_a_destination() {
+    let mut recipe = Draft::new().unwrap().recipe();
+    recipe.stimulus.duration_seconds = -1.0;
+    recipe.stimulus.fade_seconds = 9.0;
     let text = serialize(&recipe).unwrap();
-    assert_eq!(
-        Recipe::parse(&text).unwrap(),
-        recipe,
-        "finite invalid anchors are retained for inspection"
-    );
-    recipe.source.as_mut().unwrap().stimulus.duration_seconds = f64::NAN;
-    assert!(
-        serialize(&recipe)
-            .unwrap_err()
-            .to_string()
-            .contains("retained source")
-    );
-    let mut editor = EditorSession::new(Draft::from_snapshot(&crate::RecipeSnapshot::new(
-        Origin::Stream("import".into()),
-        Recipe::parse(&text).unwrap(),
-    )))
-    .unwrap();
+    assert_eq!(Recipe::parse(&text).unwrap(), recipe);
+    recipe.stimulus.duration_seconds = f64::NAN;
+    assert!(serialize(&recipe).is_err());
+    let mut editor = EditorSession::new(Draft::from_recipe(Recipe::parse(&text).unwrap())).unwrap();
     assert!(editor.save_readiness().is_ok());
     let document = editor.document();
     let saved = editor.draft().recipe();
     assert!(editor.record_saved(document, &saved));
     assert!(!editor.dirty());
-    editor.draft.based_on = None;
-    assert!(editor.dirty(), "provenance participates in saved equality");
 }
 
 #[test]
@@ -553,4 +596,110 @@ fn descriptions_and_equivalent_text_do_not_recompile_sound_inputs() {
     editor.stage(frequency, "880").unwrap();
     assert!(!Arc::ptr_eq(&first, &editor.candidate_analysis(rate)));
     assert_eq!(editor.evaluations(), evaluations + 1);
+}
+
+#[test]
+fn nominal_cache_and_saved_memberships_follow_distinct_committed_snapshots() {
+    let mut c = tone(240.0);
+    c.carrier = Carrier::Click {
+        rate_hz: 2.0,
+        width_seconds: 0.001,
+    };
+    let mut editor = editor_with(&[c]);
+    let first = editor.nominal();
+    let saved = editor.draft().recipe();
+    let rate = field(&editor, 0, ParameterId::ClickRate);
+    editor.stage(rate, "bad").unwrap();
+    assert!(Arc::ptr_eq(&first, &editor.nominal()));
+    editor.commit_field(rate, "6").unwrap().unwrap();
+    assert_eq!(editor.nominal().bands, [crate::nominal::Band::Theta]);
+    assert!(editor.record_saved(editor.document(), &saved));
+    assert_eq!(
+        editor.saved_nominal().unwrap().bands,
+        [crate::nominal::Band::Delta]
+    );
+    assert_eq!(editor.nominal().bands, [crate::nominal::Band::Theta]);
+    assert!(editor.dirty());
+    let stale = editor.document();
+    let mut replacement = editor_with(&[tone(440.0)]);
+    assert!(!replacement.record_saved(stale, &saved));
+    assert!(replacement.saved_nominal().is_none());
+}
+
+#[test]
+fn committed_sound_edits_never_repromote_evidence_by_merely_retuning_back() {
+    let source = crate::builtin("ioannou-2015-binaural-2-hz").unwrap();
+    let mut editor = EditorSession::new(Draft::from_recipe(source.recipe().clone())).unwrap();
+    editor.record_saved(editor.document(), source.recipe());
+    let title = metadata(&editor, MetadataField::Title);
+    editor.commit_field(title, "My title").unwrap().unwrap();
+    assert_eq!(
+        editor.draft().recipe().evidence[0].scope,
+        crate::EvidenceScope::ReferenceCondition
+    );
+    let offset = field(&editor, 0, ParameterId::PairOffset);
+    editor.commit_field(offset, "6").unwrap().unwrap();
+    assert_eq!(
+        editor.draft().recipe().evidence[0].scope,
+        crate::EvidenceScope::Ancestor
+    );
+    editor.commit_field(offset, "2").unwrap().unwrap();
+    assert_eq!(
+        editor.draft().recipe().evidence[0].scope,
+        crate::EvidenceScope::Ancestor
+    );
+}
+#[test]
+fn complete_remove_undo_restores_full_metadata_but_partial_or_published_undo_cannot() {
+    let source = crate::builtin("ioannou-2015-binaural-2-hz").unwrap();
+    for intervening in [0, 1, 2] {
+        let mut editor = EditorSession::new(Draft::from_recipe(source.recipe().clone())).unwrap();
+        let doc = editor.document();
+        editor.record_saved(doc, source.recipe());
+        let id = editor.draft().components()[0].id;
+        editor.remove_component(doc, id).unwrap();
+        assert_eq!(
+            editor.draft().recipe().evidence[0].scope,
+            crate::EvidenceScope::Ancestor
+        );
+        if intervening == 1 {
+            let notes = metadata(&editor, MetadataField::Summary);
+            editor.commit_field(notes, "later note").unwrap().unwrap();
+        }
+        if intervening == 2 {
+            let published = editor.draft().recipe();
+            editor.record_saved(doc, &published);
+        }
+        editor.restore_removed(doc).unwrap();
+        assert_eq!(
+            editor.draft().recipe().evidence[0].scope,
+            if intervening == 0 {
+                crate::EvidenceScope::ReferenceCondition
+            } else {
+                crate::EvidenceScope::Ancestor
+            }
+        );
+        if intervening == 0 {
+            assert!(!editor.dirty());
+        }
+        if intervening == 1 {
+            assert_eq!(editor.draft().summary(), "later note");
+        }
+    }
+}
+#[test]
+fn publication_history_updates_the_same_draft_without_reusing_a_stale_candidate_cache() {
+    let mut editor = EditorSession::new(Draft::new().unwrap()).unwrap();
+    let before = editor.candidate();
+    let mut published = before.draft().recipe();
+    published.document.created_at = Some("2026-10-24T09:00:00Z".parse().unwrap());
+    published.document.modified_at = published.document.created_at;
+    let title = metadata(&editor, MetadataField::Title);
+    editor.commit_field(title, "Later title").unwrap().unwrap();
+    assert!(editor.record_saved(editor.document(), &published));
+    assert!(editor.dirty());
+    let after = editor.candidate();
+    assert_eq!(after.draft().recipe().document, published.document);
+    assert_eq!(after.draft().title(), "Later title");
+    assert_ne!(after.draft().title(), before.draft().title());
 }

@@ -70,7 +70,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     selector.select()?;
     let windows = Windows::new()?;
-    let workspace = Workspace::new(auditorylab::catalog()?, Capabilities::available())?;
+    let workspace =
+        Workspace::configured_library(auditorylab::catalog()?, Capabilities::available())?;
     let adapter = SlintAdapter::install(
         &windows,
         workspace,

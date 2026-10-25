@@ -27,28 +27,44 @@ pub(crate) fn generated_recipe(
     read: impl FnOnce(&str) -> Result<String, Box<dyn std::error::Error>>,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut document: toml::Table = toml::from_str(condition)?;
-    let research = document
-        .get_mut("about")
-        .and_then(toml::Value::as_table_mut)
-        .and_then(|a| a.get_mut("research"))
-        .and_then(toml::Value::as_table_mut)
-        .ok_or("missing condition research")?;
-    let source = research.remove("source").ok_or("missing study source")?;
-    let source = source.as_str().ok_or("study source must be text")?;
-    if source.is_empty()
-        || !source
+    let sources = document
+        .get_mut("source")
+        .and_then(toml::Value::as_array_mut)
+        .ok_or("missing condition bibliography")?;
+    if sources.len() != 1 {
+        return Err("catalog conditions require one primary bibliography record".into());
+    }
+    let source = sources[0].as_table_mut().ok_or("source must be a table")?;
+    let key = source
+        .get("key")
+        .and_then(toml::Value::as_str)
+        .ok_or("missing source key")?;
+    if key.is_empty()
+        || !key
             .bytes()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
     {
         return Err("invalid study source ID".into());
     }
-    let study: toml::Table = toml::from_str(&read(source)?)?;
+    let study: toml::Table = toml::from_str(&read(key)?)?;
     if study.len() != 2 || !study.contains_key("citation") || !study.contains_key("source_url") {
         return Err("study must contain only citation and source_url".into());
     }
-    for (name, value) in study {
-        if research.insert(name, value).is_some() {
-            return Err("condition duplicates study citation".into());
+    let citation = study.get("citation").cloned().ok_or("missing citation")?;
+    let url = study
+        .get("source_url")
+        .and_then(toml::Value::as_str)
+        .ok_or("missing URL")?;
+    let doi = url
+        .strip_prefix("https://doi.org/")
+        .ok_or("study URL must be a DOI URL")?;
+    for (field, value) in [
+        ("citation", citation),
+        ("url", toml::Value::String(url.into())),
+        ("doi", toml::Value::String(doi.to_ascii_lowercase())),
+    ] {
+        if source.insert(field.into(), value).is_some() {
+            return Err("condition duplicates authoritative study citation/DOI".into());
         }
     }
     Ok(toml::to_string(&document)?)

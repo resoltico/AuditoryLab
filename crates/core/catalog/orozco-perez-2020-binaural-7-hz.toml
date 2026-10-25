@@ -1,28 +1,36 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
-# Source: Materials and Methods, sections Stimuli and Procedure.
+# Source parameters and adaptations: see docs/catalog.md.
 schema_version = 3
 duration_seconds = 480.0
 fade_seconds = 0.1
 
-[about]
+[document]
+id = "c331e456-b2bd-4446-9a41-5d51fb2f224c"
+
+[description]
 title = "7 Hz binaural beat"
 
-[about.research]
+[[component]]
+id = 1
+kind = "binaural_pair"
+left_hz = 396.5
+offset_hz = 7.0
+left_peak_dbfs = -20.0
+right_peak_dbfs = -20.0
+
+[[source]]
+key = "orozco-perez-2020"
+label = "orozco-perez-2020"
+
+[[evidence]]
 source = "orozco-perez-2020"
-studied_for = "Human study: Relaxation and brain-rhythm response"
+scope = "reference_condition"
+population = "human"
+population_detail = "Human study: Relaxation and brain-rhythm response"
+condition_role = "test"
+measures = ["eeg", "subjective"]
+methods_locator = "Binaural-beat condition: 396.5 Hz in the left ear and 403.5 Hz in the right. Sixteen adults heard each of four 8-minute conditions (7 Hz and 40 Hz, binaural and monaural) during EEG. Both beat types entrained cortical activity at the beat frequency, monaural beats more strongly; ratings of mental relaxation and absorption did not differ between conditions."
 summary = "396.5 Hz in the left ear and 403.5 Hz in the right: a 7-per-second binaural beat for headphones. In one study, 16 adults listened for 8 minutes: their brain recordings followed the beat, the same two tones mixed together in both ears produced a stronger response, and they felt no more relaxed or absorbed than without the beat. Reviews of binaural-beat research report mixed results."
-study = "Binaural-beat condition: 396.5 Hz in the left ear and 403.5 Hz in the right. Sixteen adults heard each of four 8-minute conditions (7 Hz and 40 Hz, binaural and monaural) during EEG. Both beat types entrained cortical activity at the beat frequency, monaural beats more strongly; ratings of mental relaxation and absorption did not differ between conditions."
+limitations = "Source findings concern the stated population and condition; adaptations do not establish efficacy for generated audio. See the summary and adaptation for study-specific limitations."
 adaptation = "The source states equal starting phases and the lower tone in the left ear; both tones start at phase zero here. The Stimuli section gives 396.5 Hz and the FFR analysis 397.5 Hz; this recipe uses 396.5 Hz, which gives the stated 7 Hz difference. The source generated sound live at 48 kHz and calibrated output to 70 dB SPL per ear; it does not specify ramps; this recipe uses a -20 dBFS peak per tone, uncalibrated, and adds 0.1 s fades."
-
-[[component]]
-ears = "left"
-kind = "tone"
-frequency_hz = 396.5
-peak_dbfs = -20.0
-
-[[component]]
-ears = "right"
-kind = "tone"
-frequency_hz = 403.5
-peak_dbfs = -20.0

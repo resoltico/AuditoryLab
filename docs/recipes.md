@@ -1,71 +1,72 @@
 # Recipes
 
-A recipe is UTF-8 TOML describing a stereo sound, in hertz, seconds and dBFS. It has no sample rate: `inspect` and `export` choose one, and playback uses the device's. `auditorylab recipe RECIPE_ID --output PATH` saves any built-in recipe as a starting point.
+A recipe is UTF-8 TOML describing a stereo sound, in hertz, seconds and dBFS. It has no sample rate: `inspect` and `export` choose one, and playback uses the device's. `auditorylab recipe builtin:CATALOG_ID --output PATH` saves any built-in recipe as a starting point.
 
-The desktop [Workbench](desktop.md#workbench) also writes schema-3 recipes. Its saved files retain the edited title and own notes, with one original source stimulus and its research context stored separately. Inspect them with `auditorylab inspect --file PATH` before playback or export.
+The desktop [Workbench](desktop.md#workbench) writes the same strict schema-3 document as the CLI reader. Identity, current notes, bibliography, evidence scope and flat ancestry are portable. Exporting a saved recipe preserves its UUID; **Edit a copy** creates a fresh identity and retains attribution without inherited validation. Inspect custom files with `auditorylab inspect --file PATH` before playback or export.
 
 ## Examples
 
-Save an example as `custom.toml` in UTF-8, then run `auditorylab inspect --file ./custom.toml` to validate it without opening an audio device.
+These UUIDs are illustrative fixtures. Use **New** or **Edit a copy** to allocate a fresh random identity for a new sound. Save UTF-8 text as `custom.toml`, then inspect it without opening an audio device.
 
-Two tones, 250 Hz on the left and 240 Hz on the right, for two seconds:
+An explicit signed-offset pair, 250 Hz left and 240 Hz right:
 
 ```toml
 schema_version = 3
 duration_seconds = 2.0
 fade_seconds = 0.01
-
+[document]
+id = "00000000-0000-4000-8000-000000000001"
+[description]
+title = "Ten-hertz pair example"
 [[component]]
-ears = "left"
-kind = "tone"
-frequency_hz = 250.0
-peak_dbfs = -20.0
-
-[[component]]
-ears = "right"
-kind = "tone"
-frequency_hz = 240.0
-peak_dbfs = -20.0
+id = 17
+kind = "binaural_pair"
+left_hz = 250.0
+offset_hz = -10.0
+left_peak_dbfs = -20.0
+right_peak_dbfs = -20.0
 ```
 
-A 1000 Hz tone whose amplitude swells and fades 40 times a second:
+A 1000 Hz tone with full-depth 40 Hz sinusoidal amplitude modulation:
 
 ```toml
 schema_version = 3
 duration_seconds = 1.0
 fade_seconds = 0.01
-
+[document]
+id = "00000000-0000-4000-8000-000000000002"
 [[component]]
+id = 1
 ears = "both"
 kind = "tone"
 frequency_hz = 1000.0
 peak_dbfs = -20.0
-
 [component.modulation]
 kind = "sinusoidal"
 rate_hz = 40.0
 depth = 1.0
 ```
 
-A 5 kHz tone switched on for 1 ms at the start of every 25 ms, and a 40 Hz train of 1 ms clicks:
+A gated 5 kHz tone and an independent click train, preserving authored order:
 
 ```toml
 schema_version = 3
 duration_seconds = 1.0
 fade_seconds = 0.01
-
+[document]
+id = "00000000-0000-4000-8000-000000000003"
 [[component]]
+id = 7
 ears = "left"
 kind = "tone"
 frequency_hz = 5000.0
 peak_dbfs = -20.0
-
 [component.modulation]
 kind = "rectangular"
 rate_hz = 40.0
 width_seconds = 0.001
-
 [[component]]
+id = 19
 ears = "right"
 kind = "click"
 rate_hz = 40.0
@@ -73,38 +74,37 @@ width_seconds = 0.001
 peak_dbfs = -20.0
 ```
 
-A file with only `schema_version`, `duration_seconds` and `fade_seconds` is silence.
+An empty component array means silence; the document identity and finite envelope fields are still required.
 
-## Fields
+## Fields and identity
 
-Input is bounded by [`Recipe::MAX_BYTES`](../crates/core/src/recipe.rs). `schema_version`, `duration_seconds` and `fade_seconds` are required; components and `[about]` are optional. Unknown or duplicated keys, missing required fields and values of the wrong type are errors. Whole numbers are accepted where a real number is expected. The required `schema_version` is `3`; other version values are rejected.
+`schema_version = 3`, `duration_seconds`, `fade_seconds` and `[document] id` are required. Schema 3 is extended in place while Unreleased; only this shape is read. Earlier shapes/versions are rejected, without migration, fallback parsing or silent identity insertion. Unknown/duplicate keys, mistyped fields, nonfinite numbers and duplicate/nonpositive component IDs fail. Whole numeric literals are accepted as reals. A finite sound may still be invalid at a selected sample rate and can be saved for repair.
 
 | Field | Meaning |
 |---|---|
-| `schema_version` | `3`. |
-| `duration_seconds` | Length of the sound. |
-| `fade_seconds` | Length of the fade-in and fade-out at each end; `0` for none. |
-| `[[component]]` | Optional sound source; repeat to add sources. |
-| `[about]` | Optional text describing the sound; `title` is required when present. |
+| `[document] id` | Canonical lowercase UUIDv4; declares identity, never ownership or scientific trust. |
+| `document.created_at`, `document.modified_at` | Optional declared recipe history; omission is Unknown. |
+| `[description] title`, `notes` | Current sound's nonempty title and optional own notes. |
+| `[[component]] id` | Unique positive u32 owner, stable across edits/removals; source order determines summation. |
+| `[[source]]` | Bibliography: unique `key`, `label`, `citation`, DOI and/or explicit http(s) `url`. |
+| `[[evidence]]` | Source key, scope, population/role/measures, methods locator, summary, limitations and adaptations. |
+| `[[lineage]]` | Flat ancestor title/note, optional declared UUID/catalog ID and bibliography keys; no recursive documents or private path field. |
 
-Each component has `ears`, `kind`, `peak_dbfs` and the fields of its kind, and optionally a `[component.modulation]` table, which applies to the component written just above it.
+Dates use years 0001–9999, uppercase `T`/`Z`, explicit `Z` or numeric offset, seconds 00–59 and at most nine fractional digits. Unknown offset `-00:00`, leap seconds and missing zones are rejected. Accepted instants normalize to UTC with nine fractional digits without inventing precision. Reading, playback and export preserve declared dates; they never come from filesystem timestamps or study years. Copy drafts receive a new UUID and unknown dates. Local membership history belongs outside portable TOML.
 
-| Component field | Meaning |
-|---|---|
-| `ears` | `"left"`, `"right"`, or `"both"` for the same samples in both channels. |
-| `kind = "tone"` | A sine wave of `frequency_hz`. |
-| `kind = "click"` | Rectangular pulses: `rate_hz` per second, each `width_seconds` long. |
-| `peak_dbfs` | The component's peak amplitude; 0 dBFS is full scale. Modulation never raises it. |
-| `modulation.kind = "sinusoidal"` | Amplitude swelling at `rate_hz` with `depth` from 0 to 1. |
-| `modulation.kind = "rectangular"` | The component switched on for `width_seconds` at the start of each `1 / rate_hz` period, and off otherwise. |
+Raw `tone` and `click` nodes use `ears = "left"|"right"|"both"`, `peak_dbfs`, and their frequency or rate/width. Optional `[component.modulation]` is `sinusoidal` (rate/depth) or `rectangular` (rate/width). Each node's modulation applies to that node only.
 
-Within `[about]`, `title` is required and `summary` is optional plain notes about the current sound. `[about.research]` optionally describes research about that exact stimulus: `studied_for`, `summary`, `citation`, `source_url`, `study` and `adaptation` are optional text fields. Notes and research have different subjects when a sound is edited.
+`binaural_pair` uses `left_hz`, signed `offset_hz`, `left_peak_dbfs` and `right_peak_dbfs`; right carrier is left + offset. `monaural_pair` uses `ears`, `first_hz`, signed `offset_hz`, `first_peak_dbfs` and `second_peak_dbfs`. Pairs have no modulation table, duplicate second-carrier field or recursive children. Zero offset is a valid no-rhythm construction. Nonzero offsets that disappear during carrier addition cannot compile, with both coupled fields identified. Pair lowering preserves left/first then right/second order, levels, primitive phase/generator formulas and stable owner/lane attribution. Both authored nodes and expanded voices are limited by the [core budget](../crates/core/src/stimulus.rs); a pair costs two voices.
 
-A derivative stores one `[source]` content anchor containing `duration_seconds`, `fade_seconds`, `[[source.component]]`, optional `[source.about]` and `[source.about.research]`. It has no schema version, nested source, path or runtime identity. **Show source** uses this captured content after reopen, even if the original file changes or disappears. Copies of a derivative retain its original anchor and preserve their own notes. Research remains visibly attributed to that source.
+## Evidence and copies
 
-The whole UTF-8 document, including multibyte notes and source content, is limited to 65,536 bytes. Saving rejects nonfinite numbers in either current or source content before creating a destination; repair nonfinite source documents before deriving them. Finite acoustically invalid values remain serializable for repair. Source content need not be renderable at the selected rate. Parsing is structural, and rejects prior/future schemas and unknown or recursive source fields. No migration reader is provided.
+At most 16 bibliography sources, 32 evidence records and 16 flat lineage descriptors are retained. Dangling keys and ancestry overflow fail; no history is silently dropped. DOI identity normalizes independently of displayed citation text. The app does not fetch or authenticate declared sources automatically.
 
-Normal Unicode, escaped quotes and multiline TOML strings are supported. Source URLs are displayed without fetching or certifying their content. Human-readable CLI output escapes terminal controls and bidirectional formatting controls; raw recipe output preserves the generated recipe bytes.
+Each evidence record requires `scope` (`reference_condition` or `ancestor`), `population` (`human`, `mouse`, `other_animal`, `mixed`, `not_applicable`, `unspecified`), `condition_role` (`test`, `comparison`, `mixed`, `unspecified`), `measures` (zero or more `eeg`, `behavior`, `subjective`, `sleep`, `hearing`, `other`), `methods_locator`, `summary`, `limitations` and `adaptation`. `population_detail` is optional. A reference condition describes a published condition with disclosed adaptations; it does not validate generated output. Copying demotes reference evidence to ancestor scope. Sound-setting edits likewise demote applicable current evidence; title/notes edits alone do not.
+
+A copied-from snapshot is available during the editor session. After reopen, flat lineage retains declared attribution, bibliography and notes, not a reconstructed ancestor waveform. A catalog pointer does not certify or recreate the original document. Full metadata roundtrips through the same writer/parser and immutable save candidates.
+
+The whole UTF-8 document, including multibyte notes and all metadata, is limited to 65,536 bytes. Neither band/category tags nor ownership, local Added here/Trash/revision fields, safety flags or efficacy flags are accepted in portable content. Classification is read-only derived data. Terminal control/bidi characters are escaped for human display; recipe export preserves its captured portable bytes.
 
 ## Waveforms
 
@@ -127,7 +127,7 @@ A recipe can be valid at one sample rate and invalid at another. `inspect`, `exp
 
 - Duration and fade are finite and not negative, duration gives at least one frame within [`Signal::MAX_FRAMES`](../crates/core/src/signal.rs), and the fades leave at least one frame between them (`2F < N`).
 - Component count stays within [`Stimulus::MAX_COMPONENTS`](../crates/core/src/stimulus.rs), and each component has a finite `peak_dbfs` of at most 0.
-- Every frequency and rate is finite, positive and below half the sample rate. A tone with sinusoidal modulation also needs `frequency_hz + rate_hz` below half the sample rate.
+- Every frequency and rate is finite, positive and below half the sample rate. A tone with positive-depth sinusoidal modulation also needs `frequency_hz + rate_hz` below half the sample rate.
 - Pulse widths must give a whole-frame count `1 ≤ W ≤ Signal::MAX_FRAMES` (2^36 frames) and satisfy `(W + 1) × rate_hz ≤ fs`, compared exactly. This leaves at least one closed frame in every period, including fractional-frame periods.
 - Each ear's summed component peaks are at most full scale, so no sample ever needs clipping.
 
@@ -141,16 +141,16 @@ An ideal rectangular click train's RMS is its pulse peak plus `10 · log10(width
 
 ## Built-in catalog
 
-Each built-in recipe is a parameterized audio adaptation of a selected condition from a published study. Its `[about.research]` table distinguishes stated source parameters, unspecified details and explicit synthesis or presentation choices. These recipes do not reproduce the original apparatus, calibrated acoustic levels or every waveform detail. The [catalog reference](catalog.md) documents the primary methods, supplements, adaptations and remaining evidence limits for the shipped recipes. Built-in sounds use 0.1 s fades, phase-zero starts and a −20 dBFS peak per component unless the study's own level relationships require otherwise; those cases are explained in `adaptation`. Study procedures beyond the sound itself (baselines, condition order, tasks, recordings, calibration, light stimulation) are not part of a recipe.
+Each built-in recipe is a parameterized audio adaptation of a selected condition from a published study. Its scoped evidence distinguishes stated source parameters, unspecified details and explicit synthesis or presentation choices. These recipes do not reproduce the original apparatus, calibrated acoustic levels or every waveform detail. The [catalog reference](catalog.md) documents the primary methods, supplements, adaptations and remaining evidence limits for the shipped recipes. Built-in sounds use 0.1 s fades, phase-zero starts and a −20 dBFS peak per component unless the study's own level relationships require otherwise; those cases are explained in `adaptation`. Study procedures beyond the sound itself (baselines, condition order, tasks, recordings, calibration, light stimulation) are not part of a recipe.
 
 ### Adding a built-in recipe
 
 A condition qualifies only when its full primary methods give enough evidence to identify the waveform, frequencies or rates and widths, continuous duration, and original presentation. Headphone routing must be stated; a documented speaker presentation may be explicitly adapted to identical ear channels, without claiming that this recreates the acoustic field. Selecting one stated ear or EEG session from a wider protocol must also be disclosed. Unexplained routing guesses, unreported carrier or pulse parameters, sweeps, live-controlled sounds, unstated maskers/noise and short recording-locked trial reconstructions do not qualify. Record missing phase, ramps, audio rate and calibration instead of inventing them. Check supplements and publisher corrections/retractions, and state unavailable evidence honestly.
 
-Name the file `firstauthor-year-condition.toml`, in lowercase, under `crates/core/catalog/`, and add its recipe to the independent table in `crates/core/tests/catalog.rs`. The build script discovers conditions in natural order and generates standalone schema-3 recipes. Conditions use `[about.research] source = "firstauthor-year"` to refer to a citation/DOI record under `crates/core/studies/`. Citation and URL exist only in that study record; condition-specific methods, findings and adaptations remain in the condition. Add an independent numerical expectation for each condition in `crates/core/tests/catalog.rs`. Text supports Unicode, correctly escaped quotes and multiline TOML strings.
+Name the file `firstauthor-year-condition.toml`, in lowercase, under `crates/core/catalog/`, and add its recipe to the independent table in `crates/core/tests/catalog.rs`. The build script discovers conditions in natural order and generates standalone schema-3 recipes. Conditions use a bibliography key under `[[source]]` to refer to a citation/DOI record under `crates/core/studies/`. Citation and URL exist only in that study record; condition-specific methods, findings and adaptations remain in the condition. Add an independent numerical expectation for each condition in `crates/core/tests/catalog.rs`. Text supports Unicode, correctly escaped quotes and multiline TOML strings.
 
-- `studied_for` names what the source investigated, not a benefit.
+- Population, condition role and measures name what was investigated; they do not state a benefit.
 - `summary` says what the listener hears, what the study tested on whom, what it found, including null results and the study's size, and whether the result comes from animals. It reports findings and never promises an effect. Where a disease is named, state that the sound is not an established treatment.
-- `study` and `adaptation` are for researchers and use the source's terms.
+- `methods_locator` and `adaptation` are for researchers and use the source's terms.
 
 Then run the [contributor checks](../CONTRIBUTING.md#checks).

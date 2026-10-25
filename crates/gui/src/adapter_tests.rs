@@ -17,6 +17,7 @@ use std::{cell::RefCell, ops::ControlFlow, rc::Rc, time::Duration};
 #[derive(Debug, Clone, PartialEq)]
 enum Request {
     Unsaved(PromptId),
+    Purge(PromptId, String, String),
     Path(PromptId, PathPurpose, Option<String>),
     Close(bool),
 }
@@ -24,6 +25,9 @@ enum Request {
 struct Recorder(Rc<RefCell<Vec<Request>>>);
 
 impl Shell for Recorder {
+    fn ask_purge(&self, _: &Rc<SlintAdapter>, prompt: PromptId, key: String, title: String) {
+        self.0.borrow_mut().push(Request::Purge(prompt, key, title));
+    }
     fn ask_unsaved(&self, _: &Rc<SlintAdapter>, prompt: PromptId) {
         self.0.borrow_mut().push(Request::Unsaved(prompt));
     }
@@ -184,7 +188,7 @@ fn text_of(item: &ItemRc) -> String {
 
 fn parameter(component: usize, id: ParameterId) -> impl Fn(&mut Workspace) -> EditingField {
     move |w| {
-        let (cid, _) = w.editor().draft().components()[component];
+        let cid = w.editor().draft().components()[component].id;
         EditingField::Parameter(cid, id)
     }
 }
@@ -540,7 +544,8 @@ fn unchanged_state_projects_nothing_and_paths_follow_only_new_captures() {
     assert_eq!(h.adapter.counts.document_projections.get(), documents);
     assert_eq!(h.adapter.counts.path_builds.get(), paths);
     // Selecting another recipe projects once and draws its new preview once.
-    h.ui().invoke_select(1);
+    h.ui()
+        .invoke_select(h.ui().get_catalog().row_data(1).unwrap().binding);
     h.adapter.tick();
     h.adapter.tick();
     assert_eq!(h.adapter.counts.path_builds.get(), paths + 1);
@@ -634,7 +639,7 @@ fn an_imported_recipe_is_scrolled_into_view() {
     let path = directory.path().join("imported.toml");
     std::fs::write(
         &path,
-        "schema_version = 3\nduration_seconds = 1.0\nfade_seconds = 0.01\n\n[about]\ntitle = \"Imported probe\"\n",
+        "schema_version = 3\nduration_seconds = 1.0\nfade_seconds = 0.01\n\n[description]\ntitle = \"Imported probe\"\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
     )
     .unwrap();
     ui.invoke_open_recipe();
@@ -727,7 +732,7 @@ fn a_removed_component_returns_through_undo_remove() {
     ui.invoke_add_component(ui.get_document(), 0);
     ui.invoke_add_component(ui.get_document(), 1);
     h.settle();
-    let first = h.adapter.inspect(|w| w.editor().draft().components()[0].0);
+    let first = h.adapter.inspect(|w| w.editor().draft().components()[0].id);
     assert_eq!(ui.get_removed_component(), "");
     ui.invoke_remove_component(h.component_binding(0));
     h.settle();
@@ -752,7 +757,7 @@ fn a_removed_component_returns_through_undo_remove() {
     h.settle();
     assert_eq!(ui.get_components().row_count(), 2);
     assert_eq!(
-        h.adapter.inspect(|w| w.editor().draft().components()[0].0),
+        h.adapter.inspect(|w| w.editor().draft().components()[0].id),
         first
     );
     assert_eq!(ui.get_removed_component(), "");
@@ -897,7 +902,7 @@ fn retired_component_callbacks_stay_retired_after_undo_and_mappings_stay_bounded
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 0);
     h.settle();
-    let identity = h.adapter.inspect(|w| w.editor().draft().components()[0].0);
+    let identity = h.adapter.inspect(|w| w.editor().draft().components()[0].id);
     let mut previous = h.component_binding(0);
     for _ in 0..100 {
         ui.invoke_remove_component(previous);
@@ -914,11 +919,13 @@ fn retired_component_callbacks_stay_retired_after_undo_and_mappings_stay_bounded
         assert_eq!(h.adapter.binding_count(), 2);
         ui.invoke_commit_parameter(previous, ParameterKey::ToneFrequency, "999".into());
         assert_eq!(
-            h.adapter
-                .inspect(|w| w.editor().draft().component(identity).unwrap().carrier),
-            auditorylab::Carrier::Tone {
-                frequency_hz: 440.0
-            }
+            h.adapter.inspect(|w| w
+                .editor()
+                .draft()
+                .component(identity)
+                .unwrap()
+                .read(ParameterId::ToneFrequency)),
+            Some(440.0)
         );
         previous = current;
     }
@@ -939,7 +946,7 @@ fn editing_and_telemetry_do_not_project_the_library_again() {
         h.adapter.tick();
     }
     assert_eq!(h.adapter.counts.library_projections.get(), libraries);
-    ui.invoke_select(1);
+    ui.invoke_select(ui.get_catalog().row_data(1).unwrap().binding);
     assert_eq!(h.adapter.counts.library_projections.get(), libraries + 1);
 }
 
@@ -960,7 +967,7 @@ fn controlled_harness() -> (
     auditorylab::workspace::testing::Execution,
     tempfile::TempDir,
 ) {
-    let mut draft = auditorylab::Draft::new();
+    let mut draft = auditorylab::Draft::new().unwrap();
     draft.set_duration_seconds(0.01);
     draft.set_fade_seconds(0.0);
     let (workspace, execution) = auditorylab::workspace::testing::workspace(
@@ -1031,7 +1038,7 @@ fn assert_library_play_during_file(save: bool) {
     } else {
         std::fs::write(
             &path,
-            "schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n",
+            "schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
         )
         .unwrap();
         ui.invoke_open_recipe();
@@ -1258,4 +1265,1431 @@ fn monitor_presentation_waits_for_main_and_failures_are_visible_and_retryable() 
     }
     assert_eq!(windows.main.get_auxiliary_error(), "");
     adapter.shutdown().unwrap();
+}
+
+#[test]
+fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings() {
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.invoke_rhythm_filter(1, 1); // Delta and binaural.
+    h.adapter.inspect(|w| {
+        assert_eq!(w.filtered().len(), 1);
+        assert_eq!(
+            w.selected().unwrap().origin(),
+            &auditorylab::Origin::BuiltIn("ioannou-2015-binaural-2-hz")
+        );
+    });
+    ui.invoke_rhythm_filter(5, 6); // A steady carrier cannot borrow Gamma.
+    assert!(!ui.get_has_results());
+    ui.invoke_rhythm_filter(0, 0);
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 1); // Clicks.
+    let binding = h.component_binding(0);
+    ui.invoke_commit_parameter(binding, ParameterKey::ClickRate, "2".into());
+    assert!(
+        ui.get_draft_brief()
+            .contains("Draft classification · Delta")
+    );
+    ui.invoke_stage_parameter(binding, ParameterKey::ClickRate, "bad".into());
+    assert!(
+        ui.get_draft_brief()
+            .contains("Last committed classification · Delta")
+    );
+    ui.invoke_commit_parameter(binding, ParameterKey::ClickRate, "6".into());
+    assert!(
+        ui.get_draft_brief()
+            .contains("Draft classification · Theta")
+    );
+    assert!(ui.get_draft_brief().contains("Saved version · Not saved"));
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn catalog_callback_keeps_snapshot_identity_after_filter_reorders_rows() {
+    let h = Harness::new();
+    let ui = h.ui();
+    let stale = ui.get_catalog().row_data(0).unwrap().binding;
+    ui.invoke_rhythm_filter(1, 1);
+    let selected = h.adapter.inspect(|w| w.selected().unwrap().id());
+    ui.invoke_select(stale.clone());
+    assert_eq!(h.adapter.inspect(|w| w.selected().unwrap().id()), selected);
+    ui.invoke_rhythm_filter(0, 0);
+    ui.invoke_select(stale.clone());
+    assert_eq!(
+        h.adapter.inspect(|w| w.selected().unwrap().id().get()),
+        stale
+            .strip_prefix("snapshot:")
+            .unwrap()
+            .parse::<u64>()
+            .unwrap()
+    );
+}
+
+#[test]
+fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() {
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 2);
+    assert_eq!(ui.get_components().row_count(), 1);
+    assert_eq!(
+        h.keys(0),
+        [
+            ParameterKey::PairFirstFrequency,
+            ParameterKey::PairOffset,
+            ParameterKey::PairFirstLevel,
+            ParameterKey::PairSecondLevel
+        ]
+    );
+    let binding = h.component_binding(0);
+    ui.invoke_commit_parameter(binding, ParameterKey::PairOffset, "-6".into());
+    assert!(
+        ui.get_components()
+            .row_data(0)
+            .unwrap()
+            .context
+            .contains("194 Hz")
+    );
+    assert!(ui.get_draft_brief().contains("Theta"));
+    ui.invoke_commit_parameter(binding, ParameterKey::PairFirstFrequency, "24000".into());
+    let rows = ui.get_components().row_data(0).unwrap().parameters;
+    for key in [ParameterKey::PairFirstFrequency, ParameterKey::PairOffset] {
+        assert!(
+            rows.iter()
+                .find(|p| p.key == key)
+                .is_some_and(|p| !p.diagnostic.is_empty())
+        );
+    }
+    assert!(!ui.get_can_export());
+    assert!(
+        ui.get_can_save(),
+        "finite rate-invalid pairs remain serializable for repair"
+    );
+    ui.invoke_commit_parameter(
+        binding,
+        ParameterKey::PairFirstFrequency,
+        "200.00000000000003".into(),
+    );
+    let value = h.adapter.inspect(|w| {
+        w.editor().draft().components()[0]
+            .node
+            .read(ParameterId::PairFirstFrequency)
+            .unwrap()
+    });
+    assert_eq!(
+        value.to_bits(),
+        200.00000000000003_f64.to_bits(),
+        "text never passes through a Slint f32 property"
+    );
+    for _ in 0..6 {
+        ui.invoke_add_component(ui.get_document(), 2);
+    }
+    ui.invoke_add_component(ui.get_document(), 0); // 7 pairs + one primitive = 15 voices.
+    assert!(ui.get_can_add_component());
+    assert!(!ui.get_can_add_pair());
+    assert!(!ui.get_pair_add_reason().is_empty());
+    let before = ui.get_components().row_count();
+    ui.invoke_add_component(ui.get_document(), 2);
+    assert_eq!(ui.get_components().row_count(), before);
+    ui.invoke_add_component(ui.get_document(), 0);
+    assert!(!ui.get_can_add_component());
+    assert!(!ui.get_can_add_pair());
+}
+
+#[test]
+fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
+    let mut recipe = auditorylab::Draft::new().unwrap().recipe();
+    recipe.stimulus.components = vec![
+        auditorylab::AuthoredComponent {
+            id: auditorylab::ComponentId::new(u32::MAX),
+            node: auditorylab::Node::BinauralPair(auditorylab::Pair {
+                first_hz: 200.0,
+                offset_hz: 2.0,
+                first_peak_dbfs: -30.0,
+                second_peak_dbfs: -30.0,
+            }),
+        },
+        auditorylab::AuthoredComponent {
+            id: auditorylab::ComponentId::new(u32::MAX - 1),
+            node: auditorylab::Node::Primitive(auditorylab::default_component(
+                auditorylab::CarrierKind::Clicks,
+            )),
+        },
+    ];
+    let snapshot = auditorylab::RecipeSnapshot::new(
+        auditorylab::Origin::Stream("large owners".into()),
+        recipe,
+    );
+    let mut workspace = Workspace::new(vec![snapshot.clone()], Capabilities::portable()).unwrap();
+    workspace.copy_selected();
+    let h = Harness::with_workspace(workspace);
+    h.workbench();
+    let rows = h.ui().get_components();
+    assert_eq!(rows.row_data(0).unwrap().id, u32::MAX.to_string());
+    assert_eq!(rows.row_data(1).unwrap().id, (u32::MAX - 1).to_string());
+    let first = h.component_binding(0);
+    let second = h.component_binding(1);
+    assert_ne!(first, second);
+    h.ui()
+        .invoke_commit_parameter(first, ParameterKey::PairOffset, "6".into());
+    assert_eq!(
+        h.adapter.inspect(|w| w.editor().draft().components()[1]
+            .node
+            .read(ParameterId::ClickRate)),
+        Some(40.0)
+    );
+}
+
+#[test]
+fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identity() {
+    use auditorylab::library::{LibraryRoot, LibraryStore};
+    let temp = tempfile::tempdir().unwrap();
+    let store =
+        LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
+    store.root().initialize().unwrap();
+    let workspace = Workspace::with_library(
+        auditorylab::catalog().unwrap(),
+        Capabilities::portable(),
+        store.clone(),
+    )
+    .unwrap();
+    let h = Harness::with_workspace(workspace);
+    h.wait_for_files();
+    let ui = h.ui();
+    ui.invoke_search("ioannou 2".into());
+    ui.invoke_open_workbench();
+    h.settle();
+    assert_eq!(h.adapter.inspect(|w| w.view()), View::Workbench);
+    let binding = h.component_binding(0);
+    ui.invoke_commit_metadata(
+        ui.get_document(),
+        MetadataKey::Title,
+        "Native managed copy".into(),
+    );
+    ui.invoke_save_recipe();
+    h.wait_for_files();
+    assert!(
+        h.take().is_empty(),
+        "managed Save must not ask for an external destination"
+    );
+    assert!(!ui.get_dirty());
+    assert!(ui.get_draft_location().starts_with("User Library"));
+    let first = store
+        .scan(&auditorylab::Cancel::default())
+        .entries
+        .remove(0);
+    assert_eq!(first.title, "Native managed copy");
+    assert!(first.created_at.is_some());
+    ui.invoke_commit_parameter(binding, ParameterKey::PairOffset, "6".into());
+    assert!(
+        ui.get_draft_brief()
+            .contains("Draft classification · Theta")
+    );
+    assert!(ui.get_draft_brief().contains("Saved version · Delta"));
+    ui.invoke_rhythm_filter(1, 0);
+    ui.invoke_collection_filter(2, 0);
+    assert_eq!(
+        ui.get_catalog().row_count(),
+        1,
+        "saved Delta remains visible while the Theta draft is unsaved"
+    );
+    ui.invoke_save_recipe();
+    h.wait_for_files();
+    assert!(
+        h.adapter
+            .inspect(|w| w.catalog_query().unwrap().search.contains("ioannou"))
+    );
+    assert_eq!(
+        ui.get_catalog().row_count(),
+        0,
+        "Save must retain restrictions"
+    );
+    ui.invoke_show_saved();
+    h.wait_for_files();
+    assert_eq!(ui.get_collection_choice(), 2);
+    assert_eq!(ui.get_catalog().row_count(), 1);
+    assert_eq!(ui.get_sound_title(), "Native managed copy");
+    assert!(ui.get_catalog().row_data(0).unwrap().text.contains("Theta"));
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    let key = ui.get_library_key();
+    let token = ui.get_library_token();
+    ui.invoke_library_action(key.clone(), token, "trash".into(), "".into());
+    h.wait_for_files();
+    ui.invoke_collection_filter(4, 0);
+    h.wait_for_files();
+    assert!(ui.get_library_trashed());
+    assert!(!ui.get_can_play());
+    ui.invoke_library_action(
+        key.clone(),
+        ui.get_library_token(),
+        "restore".into(),
+        "".into(),
+    );
+    h.wait_for_files();
+    ui.invoke_collection_filter(2, 0);
+    h.wait_for_files();
+    ui.invoke_library_action(
+        key.clone(),
+        ui.get_library_token(),
+        "trash".into(),
+        "".into(),
+    );
+    h.wait_for_files();
+    ui.invoke_collection_filter(4, 0);
+    h.wait_for_files();
+    ui.invoke_library_action(
+        key.clone(),
+        ui.get_library_token(),
+        "purge".into(),
+        "".into(),
+    );
+    let [Request::Purge(prompt, ref prompted, ref title)] = h.take()[..] else {
+        panic!("native purge confirmation missing")
+    };
+    assert_eq!(prompted, key.as_str());
+    assert_eq!(title, "Native managed copy");
+    assert!(store.load(&key.parse().unwrap()).is_ok());
+    h.adapter.respond(prompt, Response::Confirm);
+    h.wait_for_files();
+    assert!(
+        store
+            .scan(&auditorylab::Cancel::default())
+            .entries
+            .is_empty()
+    );
+}
+
+#[test]
+fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
+    use auditorylab::library::{LibraryRoot, LibraryStore};
+    let temp = tempfile::tempdir().unwrap();
+    let store =
+        LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
+    store.root().initialize().unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::catalog().unwrap(),
+            Capabilities::portable(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    ui.invoke_collection_filter(1, 2);
+    ui.invoke_more_filters(
+        "".into(),
+        0,
+        0,
+        0,
+        0,
+        1,
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+    );
+    let expected = h.adapter.inspect(|w| {
+        w.catalog_query()
+            .unwrap()
+            .clone()
+            .execute(
+                &w.catalog()
+                    .iter()
+                    .map(|s| {
+                        auditorylab::collection::EntrySummary::from_snapshot(
+                            auditorylab::library::LibraryKey::BuiltIn(match s.origin() {
+                                auditorylab::Origin::BuiltIn(id) => id.to_string(),
+                                _ => unreachable!(),
+                            }),
+                            s,
+                            None,
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap()
+            .unique_count()
+    });
+    assert!(
+        ui.get_library_count()
+            .starts_with(&format!("{expected} unique sounds"))
+    );
+    assert!(
+        ui.get_catalog().row_count() > expected,
+        "virtual band groups repeat references, not counted sounds"
+    );
+    ui.invoke_more_filters(
+        "".into(),
+        0,
+        0,
+        0,
+        0,
+        1,
+        "2026-10-24".into(),
+        "2026-10-23".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+    );
+    assert!(
+        h.adapter
+            .inspect(|w| w.catalog_query().unwrap().created.from.is_none())
+    );
+    assert!(
+        ui.get_status().contains("Invalid calendar range")
+            || ui
+                .get_operation_outcome()
+                .contains("Invalid calendar range")
+    );
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+slint::slint! {
+    import { BoundButton } from "ui/editor.slint";
+    export component LibraryGestureProbe inherits Window {
+        width:240px;height:100px;
+        in-out property <string> entry-key;
+        in-out property <string> version;
+        in-out property <string> operation;
+        callback delivered(string,string,string);
+        BoundButton {x:10px;y:10px;width:220px;height:50px;text:"Bound library action";key:root.entry-key;token:root.version;action:root.operation;dispatch(k,t,a)=>{root.delivered(k,t,a);}}
+    }
+}
+#[test]
+fn native_library_pointer_gesture_keeps_key_token_and_action_through_rebind() {
+    install();
+    let probe = LibraryGestureProbe::new().unwrap();
+    probe.set_entry_key("user:first".into());
+    probe.set_version("observed-first".into());
+    probe.set_operation("trash".into());
+    let received = Rc::new(RefCell::new(None));
+    let result = received.clone();
+    probe.on_delivered(move |k, t, a| {
+        *result.borrow_mut() = Some((k.to_string(), t.to_string(), a.to_string()))
+    });
+    probe.show().unwrap();
+    settle(probe.window());
+    let position = slint::LogicalPosition::new(50.0, 30.0);
+    probe.window().dispatch_event(WindowEvent::PointerPressed {
+        position,
+        button: slint::platform::PointerEventButton::Left,
+    });
+    probe.set_entry_key("user:replacement".into());
+    probe.set_version("replacement-token".into());
+    probe.set_operation("restore".into());
+    settle(probe.window());
+    probe.window().dispatch_event(WindowEvent::PointerReleased {
+        position,
+        button: slint::platform::PointerEventButton::Left,
+    });
+    assert_eq!(
+        *received.borrow(),
+        Some(("user:first".into(), "observed-first".into(), "trash".into()))
+    );
+}
+#[test]
+fn persistent_native_transport_stays_inside_800_by_600_with_large_text() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    root.initialize().unwrap();
+    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::catalog().unwrap(),
+            Capabilities::portable(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    for (width, height, size) in [
+        (1440.0, 960.0, 13.0),
+        (800.0, 600.0, 13.0),
+        (800.0, 600.0, 26.0),
+    ] {
+        h.ui().set_ui_size(size);
+        h.ui()
+            .window()
+            .set_size(slint::LogicalSize::new(width, height));
+        h.settle();
+        for tab in [0, 1] {
+            h.ui().set_tab_index(tab);
+            h.settle();
+            let button = labelled(h.ui(), "Audio details");
+            let rectangle = button.geometry();
+            let origin = button.map_to_window(rectangle.origin);
+            assert!(
+                origin.x >= 0.0
+                    && origin.y >= 0.0
+                    && origin.x + rectangle.size.width <= width + 0.5
+                    && origin.y + rectangle.size.height <= height + 0.5,
+                "transport outside {width}x{height} at {size}px: {origin:?} {rectangle:?}"
+            );
+        }
+    }
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_distinct() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    root.initialize().unwrap();
+    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let file = temp.path().join("external.toml");
+    let mut draft = auditorylab::Draft::new().unwrap();
+    draft.set_title("External original".into());
+    let original = draft.recipe();
+    std::fs::write(&file, original.to_toml().unwrap()).unwrap();
+    let initial_bytes = std::fs::read(&file).unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::catalog().unwrap(),
+            Capabilities::portable(),
+            store.clone(),
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    ui.invoke_open_recipe();
+    let [Request::Path(prompt, PathPurpose::OpenRecipe, _)] = h.take()[..] else {
+        panic!("Open picker missing")
+    };
+    h.adapter
+        .respond(prompt, Response::Path(Some(file.clone())));
+    h.wait_for_files();
+    assert_eq!(ui.get_collection_choice(), 3);
+    assert!(
+        store
+            .scan(&auditorylab::Cancel::default())
+            .entries
+            .is_empty()
+    );
+    let external_key = ui.get_library_key();
+    ui.invoke_add_to_library(external_key.clone());
+    h.wait_for_files();
+    assert_eq!(store.scan(&auditorylab::Cancel::default()).entries.len(), 1);
+    assert_eq!(std::fs::read(&file).unwrap(), initial_bytes);
+    ui.invoke_edit_saved(external_key, "".into());
+    h.settle();
+    assert!(ui.get_draft_location().starts_with("External file"));
+    assert_eq!(
+        h.adapter
+            .inspect(|w| w.editor().draft().recipe().document.id),
+        original.document.id
+    );
+    ui.invoke_commit_metadata(
+        ui.get_document(),
+        MetadataKey::Title,
+        "External edited".into(),
+    );
+    ui.invoke_save_recipe();
+    h.wait_for_files();
+    assert_eq!(
+        auditorylab::load_file(&file).unwrap().title(),
+        "External edited"
+    );
+    assert_eq!(
+        store.scan(&auditorylab::Cancel::default()).entries[0].title,
+        "External original"
+    );
+    assert!(!ui.get_dirty());
+    let mut other = auditorylab::load_file(&file).unwrap().recipe().clone();
+    other.description.as_mut().unwrap().title = "Other application".into();
+    std::fs::write(&file, other.to_toml().unwrap()).unwrap();
+    ui.invoke_commit_metadata(
+        ui.get_document(),
+        MetadataKey::Title,
+        "Retained after conflict".into(),
+    );
+    ui.invoke_save_recipe();
+    h.wait_for_files();
+    assert!(ui.get_dirty());
+    assert!(ui.get_status().contains("Conflict"));
+    assert_eq!(
+        auditorylab::load_file(&file).unwrap().title(),
+        "Other application"
+    );
+    ui.invoke_save_copy();
+    h.wait_for_files();
+    assert!(!ui.get_dirty());
+    assert_ne!(
+        h.adapter
+            .inspect(|w| w.editor().draft().recipe().document.id),
+        original.document.id
+    );
+    assert_eq!(store.scan(&auditorylab::Cancel::default()).entries.len(), 2);
+    assert_eq!(
+        auditorylab::load_file(&file).unwrap().title(),
+        "Other application"
+    );
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_content() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    root.initialize().unwrap();
+    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let raw = "Label \u{202e}User\u{001b}";
+    let mut draft = auditorylab::Draft::new().unwrap();
+    draft.set_title(raw.into());
+    let record = store
+        .apply(
+            auditorylab::library::Mutation::Add(std::sync::Arc::new(draft.recipe())),
+            &auditorylab::Cancel::default(),
+        )
+        .unwrap()
+        .receipt
+        .record
+        .unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::catalog().unwrap(),
+            Capabilities::portable(),
+            store.clone(),
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    ui.invoke_collection_filter(2, 0);
+    h.wait_for_files();
+    assert_eq!(ui.get_sound_title(), "Label \\u{202e}User\\u{1b}");
+    assert!(
+        !ui.get_catalog()
+            .row_data(0)
+            .unwrap()
+            .text
+            .contains('\u{202e}')
+    );
+    ui.invoke_edit_saved(ui.get_library_key(), ui.get_library_token());
+    h.settle();
+    assert_eq!(ui.get_title_field().text, raw);
+    assert_eq!(
+        store
+            .load(&record.key)
+            .unwrap()
+            .snapshot
+            .recipe()
+            .description
+            .as_ref()
+            .unwrap()
+            .title,
+        raw
+    );
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn native_library_keyboard_has_one_tab_stop_and_keeps_selected_key_through_sort() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    root.initialize().unwrap();
+    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::catalog().unwrap(),
+            Capabilities::portable(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    let label = ui
+        .get_catalog()
+        .row_data(usize::try_from(ui.get_selected()).unwrap())
+        .unwrap()
+        .text;
+    let row = labelled(ui, &label);
+    let focus = row
+        .visit_descendants(|item| {
+            if item
+                .downcast::<slint::private_unstable_api::re_exports::FocusScope>()
+                .is_some()
+            {
+                ControlFlow::Break(item.clone())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .unwrap();
+    WindowInner::from_pub(ui.window()).set_focus_item(&focus, true, FocusReason::Programmatic);
+    h.settle();
+    let first = ui.get_library_key();
+    h.key(Key::DownArrow);
+    assert_ne!(ui.get_library_key(), first);
+    let selected = ui.get_library_key();
+    assert_eq!(ui.get_focused_library_key(), selected);
+    ui.invoke_collection_filter(1, 2);
+    h.settle();
+    assert_eq!(ui.get_library_key(), selected);
+    assert_eq!(ui.get_focused_library_key(), selected);
+    h.key(Key::Tab);
+    assert!(
+        ui.get_focused_library_key().is_empty(),
+        "Tab must leave the results instead of traversing every row"
+    );
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+/// Requires a separately built production CLI; CI and CONTRIBUTING invoke it
+/// explicitly, so isolated GUI-only test builds do not silently use a stale binary.
+#[test]
+#[ignore = "requires AUDITORYLAB_QUERY_TEST_CLI pointing to the current production CLI"]
+fn cli_and_slint_query_fixtures_agree() {
+    use auditorylab::library::{LibraryRoot, LibraryStore, Mutation};
+    use std::{collections::BTreeSet, path::PathBuf, process::Command, sync::Arc};
+    let cli = PathBuf::from(
+        std::env::var_os("AUDITORYLAB_QUERY_TEST_CLI")
+            .expect("build the CLI and set AUDITORYLAB_QUERY_TEST_CLI (see CONTRIBUTING.md)"),
+    );
+    let cli = if cli.is_absolute() {
+        cli
+    } else {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(cli)
+    };
+    assert!(
+        cli.is_file(),
+        "current CLI executable missing: {}",
+        cli.display()
+    );
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("library");
+    let store = LibraryStore::new(LibraryRoot::explicit(root.clone()).unwrap()).unwrap();
+    store.root().initialize().unwrap();
+    for (id, title, known) in [
+        ("ioannou-2015-binaural-2-hz", "Known dates fixture", true),
+        ("ioannou-2015-binaural-6-hz", "Unknown dates fixture", false),
+    ] {
+        let mut draft =
+            auditorylab::Draft::from_snapshot(&auditorylab::builtin(id).unwrap()).unwrap();
+        draft.set_title(title.into());
+        let mut recipe = draft.recipe();
+        if known {
+            recipe.document.created_at = Some("2026-07-01T12:00:00Z".parse().unwrap());
+            recipe.document.modified_at = Some("2026-08-01T12:00:00Z".parse().unwrap());
+        }
+        store
+            .apply(
+                Mutation::Add(Arc::new(recipe)),
+                &auditorylab::Cancel::default(),
+            )
+            .unwrap();
+    }
+    let mut mixed = auditorylab::Recipe::parse(
+        &std::fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../core/tests/fixtures/recipes/mixed-binaural-am.toml"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    mixed.description.as_mut().unwrap().title = "Mixed structural fixture".into();
+    store
+        .apply(
+            Mutation::Add(Arc::new(mixed)),
+            &auditorylab::Cancel::default(),
+        )
+        .unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::catalog().unwrap(),
+            Capabilities::portable(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    let check = |args: &[&str], expected: Option<usize>| {
+        h.wait_for_files();
+        h.settle();
+        let output = Command::new(&cli)
+            .arg("--library-dir")
+            .arg(&root)
+            .arg("list")
+            .args(args)
+            .args(["--format", "json"])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let entries = value["entries"].as_array().unwrap();
+        let count = entries.len();
+        if let Some(expected) = expected {
+            assert_eq!(count, expected, "{args:?}");
+        }
+        let expected_keys: Vec<String> = entries
+            .iter()
+            .map(|e| e["key"].as_str().unwrap().to_owned())
+            .collect();
+        let model = ui.get_catalog();
+        let rows: Vec<_> = (0..model.row_count())
+            .map(|i| model.row_data(i).unwrap())
+            .collect();
+        let actual: Vec<String> = rows
+            .iter()
+            .filter(|r| !r.binding.is_empty())
+            .map(|r| r.binding.to_string())
+            .collect();
+        assert_eq!(
+            actual.iter().collect::<BTreeSet<_>>(),
+            expected_keys.iter().collect::<BTreeSet<_>>(),
+            "{args:?}"
+        );
+        assert!(
+            ui.get_library_count()
+                .starts_with(&format!("{count} unique")),
+            "{args:?}"
+        );
+        let groups = value["groups"].as_array().unwrap();
+        if groups.is_empty() {
+            assert_eq!(actual, expected_keys, "sort mismatch: {args:?}");
+        }
+        for group in groups {
+            let keys: Vec<String> = group["keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|k| k.as_str().unwrap().to_owned())
+                .collect();
+            let label = format!(
+                "{} · {} unique sounds",
+                group["label"].as_str().unwrap(),
+                keys.len()
+            );
+            let start = rows
+                .iter()
+                .position(|r| r.binding.is_empty() && r.text == label)
+                .unwrap();
+            let actual: Vec<_> = rows[start + 1..]
+                .iter()
+                .take_while(|r| !r.binding.is_empty())
+                .map(|r| r.binding.to_string())
+                .collect();
+            assert_eq!(actual, keys, "group mismatch: {args:?}");
+        }
+        assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    };
+    // Actual generated callbacks, installed by the production adapter. CLI flags
+    // are independent literals, not generated from the GUI's normalized query.
+    ui.invoke_collection_filter(0, 1);
+    ui.invoke_search("20".into());
+    ui.invoke_rhythm_filter(4, 1);
+    check(
+        &[
+            "--search", "20", "--band", "beta", "--method", "binaural", "--sort", "rate",
+        ],
+        None,
+    );
+    ui.invoke_search("".into());
+    ui.invoke_rhythm_filter(0, 0);
+    ui.invoke_collection_filter(1, 2);
+    ui.invoke_more_filters(
+        "10.1371/journal.pone.0129486".into(),
+        1,
+        1,
+        0,
+        1,
+        0,
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+    );
+    check(
+        &[
+            "--collection",
+            "builtin",
+            "--study",
+            "10.1371/journal.pone.0129486",
+            "--population",
+            "human",
+            "--role",
+            "test",
+            "--sort",
+            "title",
+            "--direction",
+            "asc",
+        ],
+        Some(5),
+    );
+    ui.invoke_more_filters(
+        "10.1371/journal.pone.0129486".into(),
+        1,
+        2,
+        0,
+        1,
+        0,
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+    );
+    check(
+        &[
+            "--collection",
+            "builtin",
+            "--study",
+            "10.1371/journal.pone.0129486",
+            "--population",
+            "human",
+            "--role",
+            "comparison",
+            "--sort",
+            "title",
+            "--direction",
+            "asc",
+        ],
+        Some(1),
+    );
+    ui.invoke_collection_filter(2, 2);
+    ui.invoke_more_filters(
+        "10.1371/journal.pone.0129486".into(),
+        1,
+        1,
+        0,
+        1,
+        0,
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+    );
+    check(
+        &[
+            "--collection",
+            "user",
+            "--study",
+            "10.1371/journal.pone.0129486",
+            "--population",
+            "human",
+            "--role",
+            "test",
+            "--sort",
+            "title",
+            "--direction",
+            "asc",
+        ],
+        Some(0),
+    );
+    ui.invoke_collection_filter(2, 3);
+    ui.invoke_more_filters(
+        "".into(),
+        0,
+        0,
+        0,
+        2,
+        0,
+        "2026-01-01".into(),
+        "2026-12-31".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+    );
+    let created = auditorylab::calendar::local_range("2026-01-01", "2026-12-31").unwrap();
+    let from = created.from.unwrap().to_string();
+    let before = created.before.unwrap().to_string();
+    check(
+        &[
+            "--collection",
+            "user",
+            "--sort",
+            "created",
+            "--direction",
+            "desc",
+            "--created-from",
+            &from,
+            "--created-before",
+            &before,
+        ],
+        Some(1),
+    );
+    ui.invoke_collection_filter(2, 4);
+    for (choice, direction) in [(1, "asc"), (2, "desc")] {
+        ui.invoke_more_filters(
+            "".into(),
+            0,
+            0,
+            0,
+            choice,
+            0,
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+        );
+        check(
+            &[
+                "--collection",
+                "user",
+                "--sort",
+                "modified",
+                "--direction",
+                direction,
+            ],
+            Some(3),
+        );
+    }
+    ui.invoke_collection_filter(2, 5);
+    ui.invoke_more_filters(
+        "".into(),
+        0,
+        0,
+        0,
+        1,
+        0,
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "2000-01-01".into(),
+        "2100-12-30".into(),
+    );
+    let added = auditorylab::calendar::local_range("2000-01-01", "2100-12-30").unwrap();
+    let from = added.from.unwrap().to_string();
+    let before = added.before.unwrap().to_string();
+    check(
+        &[
+            "--collection",
+            "user",
+            "--sort",
+            "added",
+            "--direction",
+            "asc",
+            "--added-from",
+            &from,
+            "--added-before",
+            &before,
+        ],
+        Some(3),
+    );
+    ui.invoke_collection_filter(0, 1);
+    for (choice, group) in [(1, "band"), (2, "method"), (3, "study"), (4, "collection")] {
+        ui.invoke_more_filters(
+            "".into(),
+            0,
+            0,
+            0,
+            1,
+            choice,
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+        );
+        check(
+            &["--sort", "rate", "--direction", "asc", "--group-by", group],
+            Some(26),
+        );
+    }
+    ui.invoke_collection_filter(0, 1);
+    ui.invoke_rhythm_filter(5, 1);
+    ui.invoke_more_filters(
+        "".into(),
+        0,
+        0,
+        1,
+        1,
+        0,
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+    );
+    check(
+        &[
+            "--band",
+            "gamma",
+            "--method",
+            "binaural",
+            "--analysis",
+            "complete",
+            "--sort",
+            "rate",
+            "--direction",
+            "asc",
+        ],
+        None,
+    );
+}
+
+fn reveal_library_control(h: &Harness, prefix: &str) -> ItemRc {
+    for _ in 0..8 {
+        let item = labelled(h.ui(), prefix);
+        let position = centre(&item);
+        if item.is_visible() && (0.0..850.0).contains(&position.y) {
+            return item;
+        }
+        h.ui()
+            .window()
+            .dispatch_event(WindowEvent::PointerScrolled {
+                position: slint::LogicalPosition::new(780.0, 400.0),
+                delta_x: 0.0,
+                delta_y: 400.0 - position.y,
+            });
+        h.settle();
+    }
+    panic!("control {prefix} did not scroll into view");
+}
+
+#[test]
+fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let temp = tempfile::tempdir().unwrap();
+    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    root.initialize().unwrap();
+    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::catalog().unwrap(),
+            Capabilities::portable(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window().set_size(slint::LogicalSize::new(800.0, 900.0));
+    h.settle();
+    assert!(ui.get_compact());
+    let open_tools = || {
+        let button = action_button(ui, "Filters / recovery…");
+        let position = centre(&button);
+        assert!(position.x >= 0.0 && position.x < 800.0 && position.y < 900.0);
+        drag(ui, position, position);
+        h.settle();
+        assert!(ui.get_library_detail());
+    };
+    open_tools();
+    labelled(ui, "More filters and grouping").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    ui.set_study_query("missing-study".into());
+    ui.set_analysis_choice(2);
+    ui.set_created_from("2026-01-01".into());
+    reveal_library_control(&h, "Apply filters").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert_eq!(ui.get_catalog().row_count(), 0);
+    let committed = ui.get_library_count();
+    assert!(
+        committed.contains("Study: missing-study")
+            && committed.contains("Analysis: Partial")
+            && committed.contains("Created from inclusive:")
+    );
+    ui.set_study_query("UNSUBMITTED".into());
+    ui.set_created_from("invalid".into());
+    reveal_library_control(&h, "Apply filters").accessible_action(&AccessibilityAction::Default);
+    assert_eq!(
+        ui.get_library_count(),
+        committed,
+        "invalid staged fields cannot replace applied summary"
+    );
+    reveal_library_control(&h, "Back to recipes").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(!ui.get_library_detail());
+    assert!(labelled(ui, "Applied library filters").is_visible());
+    // Keyboard activation reaches the same production button with no result row.
+    let tools = action_button(ui, "Filters / recovery…");
+    WindowInner::from_pub(ui.window()).set_focus_item(&tools, true, FocusReason::Programmatic);
+    h.key(Key::Return);
+    assert!(ui.get_library_detail());
+    reveal_library_control(&h, "Back to recipes").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    let clear = centre(&action_button(ui, "Clear all filters"));
+    drag(ui, clear, clear);
+    h.settle();
+    assert_eq!(ui.get_catalog().row_count(), 23);
+    assert!(ui.get_library_count().contains("Applied filters: None"));
+    for scope in [2, 3, 4] {
+        ui.invoke_collection_filter(scope, 2);
+        h.settle();
+        assert_eq!(ui.get_catalog().row_count(), 0);
+        open_tools();
+        if !ui.get_storage_open() {
+            reveal_library_control(&h, "Library storage and recovery")
+                .accessible_action(&AccessibilityAction::Default);
+        }
+        h.settle();
+        assert!(reveal_library_control(&h, "Recheck publication").is_visible());
+        reveal_library_control(&h, "Back to recipes")
+            .accessible_action(&AccessibilityAction::Default);
+        h.settle();
+        let refresh = centre(&action_button(ui, "Refresh"));
+        drag(ui, refresh, refresh);
+        h.wait_for_files();
+        assert_eq!(
+            h.adapter.inspect(|w| w.catalog_query().unwrap().sort),
+            auditorylab::collection::SortBy::Title
+        );
+        assert_eq!(ui.get_collection_choice(), scope);
+    }
+    ui.invoke_collection_filter(2, 0);
+    h.settle();
+    action_button(ui, "Create sound").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert_eq!(h.adapter.inspect(|w| w.view()), View::Workbench);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("library");
+    let root = auditorylab::library::LibraryRoot::explicit(path.clone()).unwrap();
+    root.initialize().unwrap();
+    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    std::fs::rename(&path, temp.path().join("offline")).unwrap();
+    std::fs::write(&path, "not a directory").unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::catalog().unwrap(),
+            Capabilities::portable(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window().set_size(slint::LogicalSize::new(800.0, 900.0));
+    ui.invoke_collection_filter(2, 0);
+    h.settle();
+    assert_eq!(ui.get_catalog().row_count(), 0);
+    for size in [13.0, 26.0] {
+        ui.set_ui_size(size);
+        ui.window().set_size(slint::LogicalSize::new(800.0, 600.0));
+        h.settle();
+        for name in [
+            "Filters / recovery…",
+            "Refresh",
+            "Clear all filters",
+            "Open Recipe…",
+            "Create sound",
+            "Play selected sound",
+        ] {
+            let position = centre(&action_button(ui, name));
+            assert!(
+                position.x >= 0.0 && position.x < 800.0 && position.y >= 0.0 && position.y < 600.0,
+                "{name} must remain reachable at {size}px, got {position:?}"
+            );
+        }
+    }
+    ui.set_ui_size(13.0);
+    ui.window().set_size(slint::LogicalSize::new(800.0, 900.0));
+    h.settle();
+
+    assert!(ui.get_library_count().contains("Inventory incomplete"));
+    assert!(ui.get_library_alert().contains("incomplete"));
+    action_button(ui, "Filters / recovery…").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    labelled(ui, "Library storage and recovery").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(reveal_library_control(&h, "Initialize configured library").is_visible());
+    assert!(reveal_library_control(&h, "Recheck publication").is_visible());
+}
+
+#[test]
+fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let temp = tempfile::tempdir().unwrap();
+    let store = auditorylab::library::LibraryStore::new(
+        auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap(),
+    )
+    .unwrap();
+    store.root().initialize().unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::catalog().unwrap(),
+            Capabilities::portable(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window().set_size(slint::LogicalSize::new(800.0, 900.0));
+    h.settle();
+    std::thread::sleep(Duration::from_millis(15));
+    h.settle();
+    ui.window().dispatch_event(WindowEvent::PointerScrolled {
+        position: slint::LogicalPosition::new(700.0, 650.0),
+        delta_x: 0.0,
+        delta_y: -350.0,
+    });
+    h.settle();
+    let scroll = ui.get_library_scroll_y();
+    assert!(scroll < 0.0);
+    let key = ui.get_library_key();
+    action_button(ui, "Filters / recovery…").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    reveal_library_control(&h, "Back to recipes").accessible_action(&AccessibilityAction::Default);
+    // A late native frame must not let the enclosing restore timer race
+    // the selected row's deferred initial reveal.
+    std::thread::sleep(Duration::from_millis(30));
+    h.settle();
+    std::thread::sleep(Duration::from_millis(20));
+    h.settle();
+    assert!(
+        (ui.get_library_scroll_y() - scroll).abs() < 1.0,
+        "Back keeps scroll {scroll}, got {}",
+        ui.get_library_scroll_y()
+    );
+    assert_eq!(ui.get_library_key(), key);
+    action_button(ui, "Filters / recovery…").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    ui.invoke_more_filters(
+        "no-such-study".into(),
+        0,
+        0,
+        0,
+        0,
+        0,
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+    );
+    h.settle();
+    reveal_library_control(&h, "Back to recipes").accessible_action(&AccessibilityAction::Default);
+    // A late native frame must not let the enclosing restore timer race
+    // the selected row's deferred initial reveal.
+    std::thread::sleep(Duration::from_millis(30));
+    h.settle();
+    std::thread::sleep(Duration::from_millis(20));
+    h.settle();
+    assert_eq!(ui.get_catalog().row_count(), 0);
+    assert!(
+        ui.get_library_scroll_y().abs() < 1.0,
+        "empty results must clamp the previous result scroll, got {}",
+        ui.get_library_scroll_y()
+    );
+    action_button(ui, "Clear all filters").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    ui.set_ui_size(26.0);
+    h.settle();
+    let label = ui.get_catalog().row_data(0).unwrap().text;
+    assert!(label.contains("Duration") && label.contains("Created: Unknown"));
+    let row = labelled(ui, &label);
+    let row_rect = row.geometry();
+    assert!(
+        row_rect.size.width <= 800.0 && row_rect.size.height > 26.0 * 4.5,
+        "multi-line row grows rather than clipping its new metadata"
+    );
+    let child = row.visit_descendants(|item| {
+        if item
+            .accessible_string_property(AccessibleStringProperty::Label)
+            .as_deref()
+            == Some(label.as_str())
+            && item.geometry().size.width < row_rect.size.width
+        {
+            ControlFlow::Break(item.clone())
+        } else {
+            ControlFlow::Continue(())
+        }
+    });
+    let child = child.expect("wrapped row text is present within the row");
+    assert!(child.geometry().size.height <= row_rect.size.height);
+}
+
+#[test]
+fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
+    use auditorylab::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation};
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let temp = tempfile::tempdir().unwrap();
+    let store =
+        LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
+    store.root().initialize().unwrap();
+    let draft = auditorylab::Draft::from_snapshot(
+        &auditorylab::builtin("ioannou-2015-binaural-2-hz").unwrap(),
+    )
+    .unwrap();
+    let mut recipe = draft.recipe();
+    let created = "2026-10-25T00:30:00.123456789Z".parse().unwrap();
+    recipe.document.created_at = Some(created);
+    recipe.document.modified_at = None;
+    let id = recipe.document.id;
+    store
+        .apply(
+            Mutation::Add(std::sync::Arc::new(recipe)),
+            &auditorylab::Cancel::default(),
+        )
+        .unwrap();
+    let h = Harness::with_workspace(
+        Workspace::with_library(
+            auditorylab::catalog().unwrap(),
+            Capabilities::portable(),
+            store,
+        )
+        .unwrap(),
+    );
+    h.wait_for_files();
+    let ui = h.ui();
+    ui.invoke_collection_filter(2, 3);
+    h.wait_for_files();
+    let row = ui.get_catalog().row_data(0).unwrap().text;
+    assert!(
+        row.contains("Edited: Unknown") && row.contains("Added here:") && row.contains("Created:")
+    );
+    assert!(
+        ui.get_library_dates()
+            .contains(&auditorylab::calendar::local_timestamp(created))
+    );
+    assert!(
+        ui.get_library_dates_utc()
+            .contains("2026-10-25T00:30:00.123456789Z")
+    );
+    assert!(ui.get_library_dates_utc().contains("Modified: Unknown"));
+    ui.invoke_search("2".into());
+    h.settle();
+    let key = LibraryKey::User(id).to_string();
+    assert_eq!(ui.get_library_key(), key);
+    action_button(ui, "Reset sort").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    h.adapter.inspect(|w| {
+        let q = w.catalog_query().unwrap();
+        assert_eq!(q.scope, auditorylab::collection::Scope::User);
+        assert_eq!(q.sort, auditorylab::collection::SortBy::Automatic);
+        assert!(q.direction.is_none());
+        assert_eq!(q.search, "2");
+    });
+    reveal_library_control(&h, "Exact UTC dates").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    let exact = field(ui, "Exact UTC recipe and membership dates");
+    assert!(
+        exact.geometry().size.height >= ui.get_ui_size() * 3.0,
+        "UTC text must have visible selectable geometry"
+    );
+    let before = text_of(&exact);
+    WindowInner::from_pub(ui.window()).set_focus_item(&exact, true, FocusReason::Programmatic);
+    h.key("x");
+    assert_eq!(text_of(&exact), before, "UTC presentation is read-only");
+    assert!(text_of(&exact).contains("2026-10-25T00:30:00.123456789Z"));
 }

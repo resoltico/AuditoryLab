@@ -3,14 +3,16 @@ use super::*;
 
 pub(super) enum PreparedExport {
     Library(Sound, String),
-    Draft(Draft, Arc<auditorylab_core::Signal>, String),
+    Draft(Arc<crate::Candidate>, Arc<auditorylab_core::Signal>, String),
 }
 
 impl PreparedExport {
     pub(super) fn capture(self) -> (Sound, String) {
         match self {
             Self::Library(sound, name) => (sound, name),
-            Self::Draft(draft, signal, name) => (Sound::from_parts(draft.snapshot(), signal), name),
+            Self::Draft(draft, signal, name) => {
+                (Sound::from_parts(draft.draft().snapshot(), signal), name)
+            }
         }
     }
 }
@@ -26,11 +28,20 @@ impl Workspace {
         if count > Stimulus::MAX_COMPONENTS {
             return Err(Refusal::TooManyComponents(count));
         }
-        if let Some((component, parameter)) = snapshot.source_stimulus().nonfinite().next() {
-            return Err(Refusal::SourceNotFinite {
+        if let Some((component, parameter)) = snapshot.stimulus().nonfinite().next() {
+            return Err(Refusal::NonfiniteContent {
                 component,
                 parameter,
             });
+        }
+        snapshot
+            .recipe()
+            .validate()
+            .map_err(|e| Refusal::Document(e.to_string()))?;
+        if snapshot.recipe().lineage.len() >= auditorylab_core::provenance::MAX_LINEAGE {
+            return Err(Refusal::Document(
+                "Lineage capacity reached; review metadata before making a copy.".into(),
+            ));
         }
         Ok(())
     }
@@ -44,10 +55,26 @@ impl Workspace {
     }
 
     pub(super) fn prepare_save(&mut self) -> Result<Arc<Recipe>, Refusal> {
+        if let Some(error) = &self.persistent_config_error {
+            return Err(Refusal::Document(format!(
+                "User Library unavailable: {error}"
+            )));
+        }
         self.start_allowed()?;
         if self.file.is_some() {
             return Err(Refusal::FileBusy);
         }
+        if let Some(key) = self.persistent.as_ref().and_then(|p| p.detached.as_ref()) {
+            return Err(Refusal::Document(format!(
+                "Detached draft from {key}. Edit the restored saved entry or Save independent copy."
+            )));
+        }
+        if self.has_unconfirmed_publication() {
+            return Err(Refusal::Document("Publication unconfirmed. Recheck before retrying, reload an observed version, or save an independent copy.".into()));
+        }
+        self.prepare_recipe()
+    }
+    pub(super) fn prepare_recipe(&mut self) -> Result<Arc<Recipe>, Refusal> {
         self.editor
             .save_readiness()
             .map_err(|refusal| match refusal {
@@ -89,11 +116,7 @@ impl Workspace {
                     error: analysis.finite_error().cloned(),
                 })?;
                 let name = file_name(candidate.draft().title(), "wav");
-                Ok(PreparedExport::Draft(
-                    candidate.draft().clone(),
-                    signal,
-                    name,
-                ))
+                Ok(PreparedExport::Draft(candidate, signal, name))
             }
         }
     }
@@ -108,11 +131,27 @@ impl Workspace {
         }
         match self.view {
             View::Library => {
+                if self.selected_unreadable() {
+                    return Err(Refusal::Document("Saved entry is unreadable; the retained snapshot is for inspection. Refresh or recover an independent copy before playback.".into()));
+                }
+                if self.selected_trashed() {
+                    return Err(Refusal::Document(
+                        "Restore this saved recipe before playback.".into(),
+                    ));
+                }
                 let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
                 if snapshot.stimulus().nonfinite().next().is_some() {
                     return Err(Refusal::NotFinite);
                 }
-                Ok(AudioRequest::Finite(snapshot.clone()))
+                let store = self
+                    .persistent
+                    .as_ref()
+                    .filter(|p| p.selected_user())
+                    .map(|p| p.store_clone());
+                Ok(AudioRequest::Finite {
+                    snapshot: Box::new(snapshot.clone()),
+                    store,
+                })
             }
             View::Workbench => {
                 let candidate = self.editor.candidate();
@@ -121,7 +160,7 @@ impl Workspace {
                 }
                 Ok(AudioRequest::Live {
                     document: self.editor.document(),
-                    draft: candidate.draft().clone(),
+                    candidate,
                 })
             }
         }

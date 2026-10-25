@@ -52,27 +52,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
         Some(ToneRelationship::Monaural { .. })
     ));
     assert!(structure_description(&summary(&[a, tone(380.0, Ears::Both)])).contains("Unison"));
-    for bad in [
-        vec![
-            a,
-            Component {
-                peak_dbfs: -41.0,
-                ..b
-            },
-        ],
-        vec![a, right],
-        vec![a, b, click],
-        vec![
-            a,
-            Component {
-                modulation: Some(Modulation::Sinusoidal {
-                    rate_hz: 8.0,
-                    depth: 0.0,
-                }),
-                ..b
-            },
-        ],
-    ] {
+    for bad in [vec![a, right], vec![a, b, click]] {
         assert!(summary(&bad).relationship.is_none());
     }
     let gate = Component {
@@ -370,5 +350,29 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
     }
     for ears in Ears::ALL {
         assert!(ears.label().ends_with("ear") || ears.label().ends_with("ears"));
+    }
+}
+
+#[test]
+fn two_tone_timing_includes_monaural_and_inactive_am_without_inventing_an_envelope() {
+    for (ears, interaural) in [(Ears::Both, false), (Ears::Left, true)] {
+        let a = tone(200.0, ears);
+        let mut b = tone(202.0, if interaural { Ears::Right } else { ears });
+        b.peak_dbfs = -41.0;
+        b.modulation = Some(Modulation::Sinusoidal {
+            rate_hz: 40.0,
+            depth: 0.0,
+        });
+        let s = summary(&[a, b]);
+        // Generated phase steps can shift the realized difference slightly.
+        assert!((s.slowest_rate().unwrap() - 2.0).abs() < 1e-10);
+        assert!(s.rhythms.is_empty());
+        assert_eq!(s.interaural().is_some(), interaural);
+        b.modulation = Some(Modulation::Sinusoidal {
+            rate_hz: 40.0,
+            depth: 0.001,
+        });
+        assert!(summary(&[a, b]).relationship.is_none());
+        assert_eq!(summary(&[a, a]).slowest_rate(), None);
     }
 }

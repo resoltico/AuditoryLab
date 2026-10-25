@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
+#[path = "callback_diagnostics.rs"]
+mod diagnostics;
 use crate::session::live::LiveGenerator;
 use crate::session::source::{FiniteSource, Source};
 use crate::session::transport::{BufferTime, Transport};

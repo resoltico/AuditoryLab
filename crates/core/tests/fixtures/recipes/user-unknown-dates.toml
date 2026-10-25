@@ -1,0 +1,19 @@
+schema_version = 3
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[document]
+id = "00000000-0000-4000-8000-000000000101"
+
+[description]
+title = "Imported sound with unknown dates"
+notes = "Design fixture, not a clinical claim."
+
+[[component]]
+id = 1
+kind = "binaural_pair"
+left_hz = 200.0
+offset_hz = 3.0
+left_peak_dbfs = -20.0
+right_peak_dbfs = -20.0
+

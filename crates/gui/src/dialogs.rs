@@ -25,6 +25,30 @@ fn answer(
 }
 
 impl Shell for NativeShell {
+    fn ask_purge(&self, adapter: &Rc<SlintAdapter>, prompt: PromptId, key: String, title: String) {
+        let Some(ui) = adapter.main_window() else {
+            adapter.respond(prompt, Response::Cancel);
+            return;
+        };
+        let title = auditorylab::display_scalar(&title);
+        answer(adapter, prompt, async move {
+            use slint::ComponentHandle;
+            let choice = rfd::AsyncMessageDialog::new()
+                .set_parent(&ui.window().window_handle())
+                .set_title("Permanently delete saved recipe?")
+                .set_description(format!("Delete “{title}”\n{key}\nThis permanently removes this trashed User entry. External files and independent copies remain unchanged."))
+                .set_buttons(rfd::MessageButtons::OkCancelCustom("Permanently delete".into(), "Cancel".into()))
+                .show().await;
+            match choice {
+                rfd::MessageDialogResult::Ok => Response::Confirm,
+                rfd::MessageDialogResult::Custom(label) if label == "Permanently delete" => {
+                    Response::Confirm
+                }
+                _ => Response::Cancel,
+            }
+        });
+    }
+
     fn ask_unsaved(&self, adapter: &Rc<SlintAdapter>, prompt: PromptId) {
         let Some(ui) = adapter.main_window() else {
             adapter.respond(prompt, Response::Cancel);
@@ -69,12 +93,12 @@ impl Shell for NativeShell {
             return;
         };
         let extension = match purpose {
-            PathPurpose::OpenRecipe | PathPurpose::SaveRecipe => "toml",
+            PathPurpose::OpenRecipe | PathPurpose::SaveRecipe | PathPurpose::ExportRecipe => "toml",
             PathPurpose::ExportWav => "wav",
         };
         let destination = match purpose {
             PathPurpose::OpenRecipe => None,
-            PathPurpose::SaveRecipe | PathPurpose::ExportWav => {
+            PathPurpose::SaveRecipe | PathPurpose::ExportRecipe | PathPurpose::ExportWav => {
                 Some(suggested_name.unwrap_or_else(|| format!("sound.{extension}")))
             }
         };

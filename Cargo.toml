@@ -16,6 +16,16 @@ publish = false
 build-number = 2
 
 [workspace.dependencies]
+same-file = "1"
+cap-std = "4"
+cap-fs-ext = "4"
+directories = "6"
+chrono = { version = "0.4", default-features = false, features = ["alloc"] }
+uuid = { version = "1", default-features = false }
+getrandom = "0.4"
+serde_json = "1"
+sha2 = "0.10"
+unicode-normalization = "0.1.25"
 allocation-counter = "0.8.1"
 auditorylab = { path = "crates/lib" }
 auditorylab-core = { path = "crates/core" }
@@ -36,7 +46,7 @@ libc = "0.2"
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
 
 clap = { version = "4", features = ["derive", "string"] }
-textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }
+textwrap = { version = "0.16", default-features = false, features = ["unicode-width", "terminal_size"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"

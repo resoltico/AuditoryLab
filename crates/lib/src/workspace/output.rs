@@ -283,8 +283,7 @@ impl OutputState {
     pub(crate) fn refresh(
         &mut self,
         editor: &mut EditorSession,
-        catalog: &[RecipeSnapshot],
-        selected: Option<usize>,
+        selected: Option<&RecipeSnapshot>,
         view: View,
         export_rate: SampleRate,
         audio: bool,
@@ -313,7 +312,7 @@ impl OutputState {
                 }
             }
         } else if !audio {
-            self.refresh_preview(editor, catalog, selected, view, export_rate, span_ms, scale);
+            self.refresh_preview(editor, selected, view, export_rate, span_ms, scale);
         }
         if !self.held() {
             self.held = None;
@@ -323,22 +322,17 @@ impl OutputState {
         before != self.current().map(|c| Arc::as_ptr(&c))
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "The preview key's inputs are the editor, library selection, view, rate, span and scale; bundling them adds a type only for this call"
-    )]
     fn refresh_preview(
         &mut self,
         editor: &mut EditorSession,
-        catalog: &[RecipeSnapshot],
-        selected: Option<usize>,
+        selected: Option<&RecipeSnapshot>,
         view: View,
         rate: SampleRate,
         span_ms: u32,
         scale: WaveformScale,
     ) {
         let source = match view {
-            View::Library => match selected.and_then(|index| catalog.get(index)) {
+            View::Library => match selected {
                 Some(snapshot) => SourceKey::Snapshot(snapshot.id()),
                 None => {
                     self.preview = None;
@@ -360,7 +354,7 @@ impl OutputState {
             }
             let result = match view {
                 View::Library => {
-                    let Some(snapshot) = selected.and_then(|index| catalog.get(index)) else {
+                    let Some(snapshot) = selected else {
                         return;
                     };
                     snapshot

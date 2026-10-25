@@ -1,6 +1,6 @@
 //! Immutable loaded recipes, their provenance and identity.
 use crate::{Error, ErrorKind, input_admission};
-use auditorylab_core::{About, Recipe, SampleRate, Signal, Stimulus};
+use auditorylab_core::{About, AuthoredStimulus, Recipe, SampleRate, Signal};
 use std::{
     io::Read,
     path::{Path, PathBuf},
@@ -15,6 +15,13 @@ use std::{
 pub enum Origin {
     /// A built-in recipe, by catalog ID.
     BuiltIn(&'static str),
+    /// Captured managed identity and observed version, separate from snapshot ID.
+    User {
+        /// Portable User identity.
+        id: auditorylab_core::DocumentUuid,
+        /// Exact observed managed-record version.
+        version: crate::library::VersionToken,
+    },
     /// A recipe file, by the path it was read from.
     File(PathBuf),
     /// A labelled stream, such as standard input.
@@ -27,6 +34,7 @@ impl std::fmt::Display for Origin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::BuiltIn(id) => write!(f, "{id}"),
+            Self::User { id, .. } => write!(f, "user:{id}"),
             Self::File(path) => write!(f, "{path:?}"),
             Self::Stream(label) | Self::Draft(label) => write!(f, "{label}"),
         }
@@ -41,8 +49,17 @@ pub struct SnapshotId(u64);
 static NEXT_SNAPSHOT: AtomicU64 = AtomicU64::new(1);
 
 impl SnapshotId {
+    /// Process-local opaque number for native bindings; never a persistent selector.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+
     fn next() -> Self {
-        Self(NEXT_SNAPSHOT.fetch_add(1, Ordering::Relaxed))
+        match NEXT_SNAPSHOT.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1)) {
+            Ok(value) => Self(value),
+            Err(_) => panic!("process-local snapshot identities exhausted"),
+        }
     }
 }
 
@@ -53,8 +70,11 @@ impl SnapshotId {
 pub struct RecipeSnapshot {
     id: SnapshotId,
     origin: Origin,
+    external: Option<crate::external::ObservedFile>,
     recipe: Arc<Recipe>,
+    about: Arc<Option<About>>,
     realizations: Arc<std::sync::Mutex<Realizations>>,
+    nominal: Arc<auditorylab_core::nominal::Analysis>,
 }
 
 /// Two rates per immutable snapshot cover inspection/export and device use.
@@ -73,14 +93,30 @@ impl RecipeSnapshot {
     /// Capture content under a new identity.
     #[must_use]
     pub fn new(origin: Origin, recipe: Recipe) -> Self {
+        let nominal = Arc::new(auditorylab_core::nominal::analyze_authored(
+            &recipe.stimulus.components,
+        ));
+        let about = Arc::new(recipe.display_about());
         Self {
+            nominal,
+            about,
             id: SnapshotId::next(),
             origin,
+            external: None,
             recipe: Arc::new(recipe),
             realizations: Arc::new(std::sync::Mutex::new(Realizations::default())),
         }
     }
 
+    pub(crate) fn with_external(mut self, external: crate::external::ObservedFile) -> Self {
+        self.external = Some(external);
+        self
+    }
+    /// Exact external file observation captured from the same opened content.
+    #[must_use]
+    pub const fn external_file(&self) -> Option<&crate::external::ObservedFile> {
+        self.external.as_ref()
+    }
     /// The snapshot's identity.
     #[must_use]
     pub const fn id(&self) -> SnapshotId {
@@ -99,19 +135,16 @@ impl RecipeSnapshot {
         &self.recipe
     }
 
+    /// Cached sample-rate-independent nominal classification of this snapshot.
+    #[must_use]
+    pub fn nominal(&self) -> &auditorylab_core::nominal::Analysis {
+        &self.nominal
+    }
+
     /// Research and listening description.
     #[must_use]
     pub fn about(&self) -> Option<&About> {
-        self.recipe.about.as_ref()
-    }
-
-    /// The exact content retained when deriving this sound.
-    #[must_use]
-    pub fn source_stimulus(&self) -> &Stimulus {
-        self.recipe
-            .source
-            .as_ref()
-            .map_or(&self.recipe.stimulus, |source| &source.stimulus)
+        self.about.as_ref().as_ref()
     }
 
     /// The recipe's title, or its origin when it has none.
@@ -137,6 +170,7 @@ impl RecipeSnapshot {
                                 .collect()
                         },
                     ),
+                Origin::User { .. } => "Untitled sound".into(),
                 other => other.to_string(),
             },
             |a| a.title.clone(),
@@ -160,7 +194,7 @@ impl RecipeSnapshot {
 
     /// Declared sound parameters.
     #[must_use]
-    pub fn stimulus(&self) -> &Stimulus {
+    pub fn stimulus(&self) -> &AuthoredStimulus {
         &self.recipe.stimulus
     }
 
@@ -338,7 +372,15 @@ pub fn load_file(path: &Path) -> Result<RecipeSnapshot, Error> {
             format!("cannot read {path:?}: expected a regular file"),
         ),
     })?;
-    read(file, Origin::File(path.to_owned()))
+    let mut bytes = Vec::new();
+    let mut file = file;
+    (&mut file)
+        .take((Recipe::MAX_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|e| Error::caused(ErrorKind::Unreadable, "cannot read external recipe", e))?;
+    let snapshot = parse(&bytes, Origin::File(path.to_owned()))?;
+    let observed = crate::external::ObservedFile::capture(path, file, &bytes)?;
+    Ok(snapshot.with_external(observed))
 }
 
 /// A file name suggested from a title: characters that file systems reject

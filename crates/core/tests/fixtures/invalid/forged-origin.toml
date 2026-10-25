@@ -1,0 +1,22 @@
+schema_version = 3
+origin = "builtin"
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[document]
+id = "00000000-0000-4000-8000-000000000108"
+created_at = "2026-10-22T08:00:00.000000000Z"
+modified_at = "2026-10-24T06:30:00.000000000Z"
+
+[description]
+title = "My 6 Hz exploration"
+notes = "Design fixture, not a clinical claim."
+
+[[component]]
+id = 1
+kind = "binaural_pair"
+left_hz = 200.0
+offset_hz = 6.0
+left_peak_dbfs = -20.0
+right_peak_dbfs = -20.0
+

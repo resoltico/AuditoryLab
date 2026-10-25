@@ -1,7 +1,7 @@
 // Semantic quantities; the application maps each to exactly one domain field.
 export enum ParameterKey {
     tone-frequency, click-rate, click-width, peak-level, amplitude-modulation-rate,
-    modulation-depth, gate-rate, gate-width, duration, fade
+    modulation-depth, gate-rate, gate-width, duration, fade, pair-first-frequency, pair-offset, pair-first-level, pair-second-level
 }
 export enum MetadataKey { title, summary, duration, fade }
 export struct ParameterRow {
@@ -17,8 +17,9 @@ export struct ParameterRow {
 // `binding` identifies the rendered component of one particular document.
 export struct ComponentRow {
     binding: int,
-    id: int,
+    id: string,
     ears: int,
+    routing-editable: bool,
     carrier: int,
     modulation: int,
     heading: string,
@@ -28,4 +29,7 @@ export struct ComponentRow {
     parameters: [ParameterRow],
 }
 export struct MetadataRow { label: string, text: string, staged: bool, diagnostic: string }
-export struct ModelLane { component: int, label: string, trace: string }
+export struct ModelLane { component: string, label: string, trace: string }
+
+// A process-local immutable snapshot binding, independent of row position.
+export struct CatalogRow { text: string, binding: string }

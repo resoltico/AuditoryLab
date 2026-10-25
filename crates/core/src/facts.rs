@@ -1,7 +1,8 @@
 //! Typed requested and realized generator quantities.
 use crate::{Carrier, Component, ComponentId, Ears, Modulation, SampleRate, Stimulus};
+use serde::Serialize;
 /// Requested rate and the rate represented by the renderer's phase increment.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct PhaseRate {
     /// Requested frequency in Hz.
     pub requested_hz: f64,
@@ -23,7 +24,7 @@ impl PhaseRate {
 /// A pulse train's requested and realized quantities. Repetition uses
 /// rational onset scheduling, not a rounded period, so the requested rate is
 /// also the generated long-run rate.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct PulseFacts {
     /// Configured rational repetition rate, in Hz.
     pub rate_hz: f64,
@@ -42,7 +43,8 @@ impl PulseFacts {
     }
 }
 /// A component's carrier quantities.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CarrierFacts {
     /// Sinusoidal carrier.
     Tone(PhaseRate),
@@ -50,7 +52,8 @@ pub enum CarrierFacts {
     Clicks(PulseFacts),
 }
 /// A component's envelope quantities.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModulationFacts {
     /// Sinusoidal amplitude modulation; depth zero is inactive.
     Sinusoidal {
@@ -62,9 +65,26 @@ pub enum ModulationFacts {
     /// Rectangular gating.
     Gate(PulseFacts),
 }
+/// Authored pair intent retained with its generated lanes, never reconstructed
+/// by subtracting generated frequencies. Actual lane rates remain in CarrierFacts.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct PairFacts {
+    /// Authored primary owner shared by both lanes.
+    pub owner: ComponentId,
+    /// Separate-ear or same-route construction.
+    pub kind: crate::PairKind,
+    /// Requested first/left carrier.
+    pub first_hz: f64,
+    /// Exact authored signed offset, independent of phase-step rounding.
+    pub offset_hz: f64,
+    /// Computed requested second/right carrier.
+    pub second_hz: f64,
+}
 /// Validated component facts at a specific rendering rate.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ComponentFacts {
+    /// Authored pair intent, absent for unpaired raw primitives.
+    pub pair: Option<PairFacts>,
     /// Declared ear route.
     pub ears: Ears,
     /// Declared component peak bound in dBFS.
@@ -118,6 +138,7 @@ impl ComponentFacts {
             _ => unreachable!("validated modulation matches component"),
         };
         Self {
+            pair: None,
             ears: c.ears,
             peak_dbfs: c.peak_dbfs,
             carrier,

@@ -12,13 +12,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rate = SampleRate::DEFAULT;
 
     // Editing: stage and commit through a field handle.
-    let mut editor = EditorSession::new(Draft::from_snapshot(&snapshot))?;
-    let (id, _) = *editor
+    let mut editor = EditorSession::new(Draft::from_snapshot(&snapshot)?)?;
+    let component = *editor
         .draft()
         .components()
         .first()
         .ok_or("recipe without components")?;
-    let level = editor.handle(EditingField::Parameter(id, ParameterId::PeakLevel));
+    let parameter=match component.node {auditorylab::Node::Primitive(_)=>ParameterId::PeakLevel,_=>ParameterId::PairFirstLevel};
+    let level = editor.handle(EditingField::Parameter(component.id, parameter));
     editor
         .stage(level, "-40")
         .map_err(|refusal| format!("stage refused: {refusal:?}"))?;

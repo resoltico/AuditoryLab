@@ -62,14 +62,27 @@ const fn rate(hz: u32) -> SampleRate {
 pub fn range(id: ParameterId, rate: SampleRate) -> Option<Range> {
     use Scale::{Linear, Logarithmic};
     let (min, max, default, scale) = match id {
-        ParameterId::ToneFrequency => {
+        ParameterId::ToneFrequency | ParameterId::PairFirstFrequency => {
             let max = 20_000.0_f64.min(0.45 * f64::from(rate.hz()));
             let min = 20.0_f64.min(max / 2.0);
-            (min, max, 440.0_f64.clamp(min, max), Logarithmic)
+            (
+                min,
+                max,
+                (if id == ParameterId::PairFirstFrequency {
+                    200.0_f64
+                } else {
+                    440.0_f64
+                })
+                .clamp(min, max),
+                Logarithmic,
+            )
         }
+        ParameterId::PairOffset => (-80.0, 80.0, 6.0, Linear),
         ParameterId::ClickRate => (0.5, 1000.0, 40.0, Logarithmic),
         ParameterId::ClickWidth | ParameterId::GateWidth => (0.1, 50.0, 1.0, Logarithmic),
-        ParameterId::PeakLevel => (-80.0, 0.0, -30.0, Linear),
+        ParameterId::PeakLevel | ParameterId::PairFirstLevel | ParameterId::PairSecondLevel => {
+            (-80.0, 0.0, -30.0, Linear)
+        }
         ParameterId::AmplitudeModulationRate => (0.1, 100.0, 40.0, Logarithmic),
         ParameterId::ModulationDepth => (0.0, 100.0, 100.0, Linear),
         ParameterId::GateRate => (0.5, 100.0, 40.0, Logarithmic),
@@ -91,6 +104,24 @@ pub fn default_component(kind: CarrierKind) -> Component {
         peak_dbfs: model_default(ParameterId::PeakLevel),
         carrier: default_carrier(kind),
         modulation: None,
+    }
+}
+
+/// Default explicit pair: 200 Hz first carrier, +6 Hz offset and quiet levels.
+#[must_use]
+pub fn default_pair(kind: auditorylab_core::PairKind) -> auditorylab_core::Node {
+    let pair = auditorylab_core::Pair {
+        first_hz: 200.0,
+        offset_hz: 6.0,
+        first_peak_dbfs: -30.0,
+        second_peak_dbfs: -30.0,
+    };
+    match kind {
+        auditorylab_core::PairKind::Binaural => auditorylab_core::Node::BinauralPair(pair),
+        auditorylab_core::PairKind::Monaural => auditorylab_core::Node::MonauralPair {
+            ears: Ears::Both,
+            pair,
+        },
     }
 }
 
@@ -154,7 +185,9 @@ pub fn quantize(id: ParameterId, value: f64) -> f64 {
     }
     let rounded = match id {
         ParameterId::ModulationDepth => value.round(),
-        ParameterId::PeakLevel => format!("{value:.1}").parse().unwrap_or(value),
+        id if id.descriptor().unit == auditorylab_core::Unit::DecibelsFullScale => {
+            format!("{value:.1}").parse().unwrap_or(value)
+        }
         _ => format!("{value:.2e}").parse().unwrap_or(value),
     };
     if rounded.is_finite() { rounded } else { value }
@@ -204,7 +237,9 @@ mod tests {
                     };
                     let value = slider_value(id, rate, position).unwrap();
                     let tolerance = match id {
-                        ParameterId::PeakLevel => 0.0500001,
+                        ParameterId::PeakLevel
+                        | ParameterId::PairFirstLevel
+                        | ParameterId::PairSecondLevel => 0.0500001,
                         ParameterId::ModulationDepth => 0.500001,
                         _ => raw.abs() * 0.005 + 1e-12,
                     };
@@ -274,6 +309,27 @@ mod tests {
                 assert!(r.min < r.max && r.default >= r.min && r.default <= r.max);
                 if r.scale == Scale::Logarithmic {
                     assert!(r.min > 0.0);
+                }
+                if matches!(
+                    id,
+                    ParameterId::PairFirstFrequency
+                        | ParameterId::PairOffset
+                        | ParameterId::PairFirstLevel
+                        | ParameterId::PairSecondLevel
+                ) {
+                    for kind in [
+                        auditorylab_core::PairKind::Binaural,
+                        auditorylab_core::PairKind::Monaural,
+                    ] {
+                        let mut node = default_pair(kind);
+                        assert!(node.write(id, id.descriptor().unit.to_model(r.default)));
+                        let authored = [auditorylab_core::AuthoredComponent {
+                            id: ComponentId::new(1),
+                            node,
+                        }];
+                        assert!(TargetCheck::authored(rate, &authored).target().is_some());
+                    }
+                    continue;
                 }
                 let mut component = default_component(CarrierKind::Tone);
                 if matches!(id, ParameterId::ClickRate | ParameterId::ClickWidth) {

@@ -23,8 +23,9 @@ fn digest(frames: &[[f64; 2]]) -> u64 {
 
 /// Two faded seconds at 48,000 Hz, rendered in buffers of uneven length.
 fn rendered(components: &str) -> Vec<[f64; 2]> {
-    let text =
-        format!("schema_version = 3\nduration_seconds = 2.0\nfade_seconds = 0.1\n{components}");
+    let text = format!(
+        "schema_version = 3\nduration_seconds = 2.0\nfade_seconds = 0.1\n{components}\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n"
+    );
     let session = Recipe::parse(&text)
         .unwrap()
         .stimulus
@@ -46,23 +47,23 @@ fn rendered(components: &str) -> Vec<[f64; 2]> {
 const CASES: [(&str, &str); 5] = [
     (
         "separate-ear tones",
-        "[[component]]\nears = \"left\"\nkind = \"tone\"\nfrequency_hz = 250.0\npeak_dbfs = -20.0\n[[component]]\nears = \"right\"\nkind = \"tone\"\nfrequency_hz = 256.0\npeak_dbfs = -20.0\n",
+        "[[component]]\nid=1\nears = \"left\"\nkind = \"tone\"\nfrequency_hz = 250.0\npeak_dbfs = -20.0\n[[component]]\nid=2\nears = \"right\"\nkind = \"tone\"\nfrequency_hz = 256.0\npeak_dbfs = -20.0\n",
     ),
     (
         "summed tones",
-        "[[component]]\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 396.5\npeak_dbfs = -23.0103\n[[component]]\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 403.5\npeak_dbfs = -23.0103\n",
+        "[[component]]\nid=1\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 396.5\npeak_dbfs = -23.0103\n[[component]]\nid=2\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 403.5\npeak_dbfs = -23.0103\n",
     ),
     (
         "modulated tone",
-        "[[component]]\nears = \"left\"\nkind = \"tone\"\nfrequency_hz = 1000.0\npeak_dbfs = -20.0\n[component.modulation]\nkind = \"sinusoidal\"\nrate_hz = 39.0625\ndepth = 1.0\n",
+        "[[component]]\nid=1\nears = \"left\"\nkind = \"tone\"\nfrequency_hz = 1000.0\npeak_dbfs = -20.0\n[component.modulation]\nkind = \"sinusoidal\"\nrate_hz = 39.0625\ndepth = 1.0\n",
     ),
     (
         "gated tone",
-        "[[component]]\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 5000.0\npeak_dbfs = -20.0\n[component.modulation]\nkind = \"rectangular\"\nrate_hz = 40.0\nwidth_seconds = 0.001\n",
+        "[[component]]\nid=1\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 5000.0\npeak_dbfs = -20.0\n[component.modulation]\nkind = \"rectangular\"\nrate_hz = 40.0\nwidth_seconds = 0.001\n",
     ),
     (
         "clicks",
-        "[[component]]\nears = \"both\"\nkind = \"click\"\nrate_hz = 40.0\nwidth_seconds = 0.001\npeak_dbfs = -20.0\n",
+        "[[component]]\nid=1\nears = \"both\"\nkind = \"click\"\nrate_hz = 40.0\nwidth_seconds = 0.001\npeak_dbfs = -20.0\n",
     ),
 ];
 

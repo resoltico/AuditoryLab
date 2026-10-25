@@ -1,5 +1,6 @@
 //! Command-line interface to Auditory Lab.
 #![forbid(unsafe_code)]
+mod library_cli;
 use auditorylab::{
     self as lab, Cancel, EndReason, ErrorKind, PlaybackControl, Preparation, Progress,
     RecipeSnapshot, Replace, SampleRate, Session,
@@ -13,23 +14,38 @@ use std::{
 #[derive(Parser)]
 #[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = lab::version_line("auditorylab").trim_start_matches("auditorylab ").to_owned())]
 struct Cli {
+    /// Absolute persistent User Library override (then environment, then native data).
+    #[arg(long,global=true,value_name="ABSOLUTE_PATH",value_parser=absolute_path)]
+    library_dir: Option<PathBuf>,
     #[command(subcommand)]
     command: Option<Command>,
 }
 #[derive(Subcommand)]
 enum Command {
-    /// Find built-in recipes and their durations.
-    List,
+    /// Query persistent Built-in/User entries and explicit temporary inputs.
+    List(library_cli::ListArgs),
+    /// Persistent User Library lifecycle, diagnostics and root configuration.
+    Library {
+        #[command(subcommand)]
+        command: library_cli::LibraryCommand,
+    },
     /// Read a recipe's description and research context.
-    Describe(Source),
+    Describe {
+        #[command(flatten)]
+        source: Source,
+        #[arg(long, value_enum, default_value = "text")]
+        format: library_cli::ReadFormat,
+    },
     /// Print or save an editable built-in TOML recipe.
     Recipe {
-        recipe_id: String,
+        selector: String,
         #[arg(long, value_name = "PATH")]
         output: Option<PathBuf>,
     },
     /// Validate a recipe and inspect its technical parameters at one sample rate.
     Inspect {
+        #[arg(long, value_enum, default_value = "text")]
+        format: library_cli::ReadFormat,
         #[command(flatten)]
         source: Source,
         #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(), value_parser=rate, value_name="HZ")]
@@ -50,8 +66,9 @@ enum Command {
 #[derive(Args)]
 #[group(id = "source", required = true, multiple = false)]
 struct Source {
-    /// Exact built-in recipe ID (see list).
-    recipe_id: Option<String>,
+    /// Persistent builtin:<catalog-id> or user:<canonical-uuid> selector.
+    #[arg(value_name = "SOURCE")]
+    selector: Option<String>,
     /// Read a UTF-8 TOML recipe file.
     #[arg(long, value_name = "PATH")]
     file: Option<PathBuf>,
@@ -64,33 +81,37 @@ fn rate(text: &str) -> Result<SampleRate, String> {
         .map_err(|e| e.to_string())
         .and_then(|n| SampleRate::new(n).map_err(|e| e.to_string()))
 }
-fn read(source: Source) -> Result<RecipeSnapshot, lab::Error> {
-    if let Some(id) = source.recipe_id {
-        lab::builtin(&id)
-    } else if let Some(path) = source.file {
-        lab::load_file(&path)
+fn absolute_path(text: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(text);
+    if path.is_absolute() {
+        Ok(path)
     } else {
-        if io::stdin().is_terminal() {
-            eprintln!(
-                "Paste a UTF-8 TOML recipe, then end input with Ctrl-D (Unix) or Ctrl-Z followed by Enter (Windows)."
-            );
-        }
-        lab::load_reader(io::stdin().lock(), "standard input")
+        Err("--library-dir must be absolute; no fallback is used".into())
     }
+}
+#[derive(Debug)]
+struct Usage(String);
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl std::error::Error for Usage {}
+fn usage(message: &str) -> Box<dyn std::error::Error> {
+    Box::new(Usage(message.into()))
 }
 fn exit_code(kind: ErrorKind) -> u8 {
-    match kind {
-        ErrorKind::UnknownRecipe | ErrorKind::InvalidRecipe | ErrorKind::InvalidSound => 2,
-        ErrorKind::Cancelled => 130,
-        _ => 1,
-    }
+    kind.exit_code()
 }
-fn escape(text: &str) -> String {
-    text.chars().flat_map(|c| { if (c.is_control() && c != '\n' && c != '\t') || matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') { c.escape_default().collect::<Vec<_>>() } else { vec![c] } }).collect()
-}
+use auditorylab::display_text as escape;
 fn prose(text: &str) -> String {
+    let width = if io::stdout().is_terminal() {
+        textwrap::termwidth().saturating_sub(2).max(1)
+    } else {
+        78
+    };
     text.lines()
-        .map(|line| textwrap::fill(&escape(line), 78))
+        .map(|line| textwrap::fill(&escape(line), width))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -149,6 +170,7 @@ impl Drop for StatusLine {
 enum Ended {
     Normally,
     Stopped,
+    Code(u8),
 }
 fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> {
     let session = Session::new();
@@ -210,29 +232,63 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> 
 fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
     match cli.command {
         None => output(format!("{}\n", Cli::command().render_help()).as_bytes())?,
-        Some(Command::List) => say(&lab::catalog_listing(&lab::catalog()?))?,
+        Some(Command::List(args)) => {
+            return Ok(Ended::Code(library_cli::list(
+                args,
+                cli.library_dir.as_deref(),
+            )?));
+        }
+        Some(Command::Library { command }) => {
+            return Ok(Ended::Code(library_cli::library(
+                command,
+                cli.library_dir.as_deref(),
+            )?));
+        }
         Some(Command::Recipe {
-            recipe_id,
+            selector,
             output: path,
         }) => {
+            let key: lab::library::LibraryKey = selector.parse()?;
+            let text = match &key {
+                lab::library::LibraryKey::BuiltIn(id) => lab::builtin_source(id)?.to_owned(),
+                lab::library::LibraryKey::User(_) => {
+                    library_cli::store(cli.library_dir.as_deref())?
+                        .load(&key)?
+                        .recipe_toml
+                        .to_string()
+                }
+                lab::library::LibraryKey::External(_) => {
+                    return Err(usage("temporary selectors are not reusable; use --file"));
+                }
+            };
             if let Some(path) = path {
-                lab::save_builtin(&recipe_id, &path, Replace::Never)?;
-                completed(&format!("Saved recipe to {path:?}."));
+                lab::save_recipe_text(&text, &path, Replace::Never)?;
+                completed(&format!("Exported recipe to {path:?}."));
             } else {
-                output(lab::builtin_source(&recipe_id)?.as_bytes())?;
+                output(text.as_bytes())?;
             }
         }
-        Some(Command::Describe(source)) => say(&lab::describe(&read(source)?))?,
+        Some(Command::Describe { source, format }) => library_cli::describe(
+            &library_cli::resolve(source, cli.library_dir.as_deref())?,
+            format,
+        )?,
         Some(Command::Inspect {
             source,
             sample_rate,
-        }) => say(&lab::inspection(&read(source)?.at(sample_rate)?))?,
+            format,
+        }) => {
+            return Ok(Ended::Code(library_cli::inspect(
+                &library_cli::resolve(source, cli.library_dir.as_deref())?,
+                sample_rate,
+                format,
+            )?));
+        }
         Some(Command::Export {
             source,
             output: path,
             sample_rate,
         }) => {
-            let snapshot = read(source)?;
+            let snapshot = library_cli::resolve(source, cli.library_dir.as_deref())?.snapshot;
             let sound = snapshot.at(sample_rate)?;
             let cancel = Cancel::default();
             let request = cancel.clone();
@@ -251,9 +307,30 @@ fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
                 result.frames, result.container
             ));
         }
-        Some(Command::Play(source)) => return play(&read(source)?),
+        Some(Command::Play(source)) => {
+            let resolved = library_cli::resolve(source, cli.library_dir.as_deref())?;
+            if resolved.summary.trashed_at.is_some() {
+                return Err(usage(
+                    "trashed recipes can be inspected/exported; restore before playback",
+                ));
+            }
+            return play(&resolved.snapshot);
+        }
     }
     Ok(Ended::Normally)
+}
+fn command_output(command: &Option<Command>) -> (bool, &'static str) {
+    match command {
+        Some(Command::List(args)) => (args.json(), "list"),
+        Some(Command::Library { command }) => (command.json(), command.operation()),
+        Some(Command::Describe { format, .. }) => {
+            (*format == library_cli::ReadFormat::Json, "describe")
+        }
+        Some(Command::Inspect { format, .. }) => {
+            (*format == library_cli::ReadFormat::Json, "inspect")
+        }
+        _ => (false, "command"),
+    }
 }
 fn main() -> ExitCode {
     let cli = match Cli::try_parse() {
@@ -272,9 +349,11 @@ fn main() -> ExitCode {
         }
         Err(e) => e.exit(),
     };
+    let (json, operation) = command_output(&cli.command);
     match run(cli) {
         Ok(Ended::Normally) => ExitCode::SUCCESS,
         Ok(Ended::Stopped) => ExitCode::from(130),
+        Ok(Ended::Code(code)) => ExitCode::from(code),
         Err(e) => {
             let mut message = e.to_string();
             if e.downcast_ref::<lab::Error>()
@@ -282,11 +361,20 @@ fn main() -> ExitCode {
             {
                 message.push_str("; run `auditorylab list`, or use --file PATH");
             }
-            eprintln!("{}", prose(&message));
-            ExitCode::from(
+            let code = if e.downcast_ref::<Usage>().is_some() {
+                2
+            } else {
                 e.downcast_ref::<lab::Error>()
-                    .map_or(1, |e| exit_code(e.kind())),
-            )
+                    .map_or(1, |e| exit_code(e.kind()))
+            };
+            if json {
+                if let Err(output_error) = library_cli::error_json(operation, e.as_ref(), code) {
+                    eprintln!("cannot report structured failure: {output_error}");
+                }
+            } else {
+                eprintln!("{}", prose(&message));
+            }
+            ExitCode::from(code)
         }
     }
 }
