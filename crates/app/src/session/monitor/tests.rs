@@ -24,12 +24,21 @@ fn descriptor(hz: u32) -> SessionDescriptor {
     }
 }
 fn numbered(rate: SampleRate, components: &[Voice]) -> Target {
-    let pairs: Vec<_> = components
+    let components = components
         .iter()
         .enumerate()
-        .map(|(i, c)| (auditorylab_core::ComponentId::numbered(i).unwrap(), *c))
+        .map(|(i, c)| auditorylab_core::Component {
+            id: auditorylab_core::ComponentId::numbered(i).unwrap(),
+            node: auditorylab_core::Node::Voice(*c),
+        })
         .collect();
-    Target::new(rate, &pairs).unwrap()
+    Sound {
+        duration_seconds: 1.0,
+        fade_seconds: 0.0,
+        components,
+    }
+    .target(rate)
+    .unwrap()
 }
 fn finite(signal: crate::core::Signal) -> Source {
     Source::Finite(FiniteSource::new(Arc::new(signal)))

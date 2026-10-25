@@ -20,18 +20,20 @@ const TERMINALS: [Outcome; 11] = [
 ];
 
 fn tone(frequency_hz: f64) -> Target {
-    Target::new(
-        SampleRate::new(8_000).unwrap(),
-        &[(
-            ComponentId::new(1),
-            Voice {
+    crate::core::Sound {
+        duration_seconds: 1.0,
+        fade_seconds: 0.0,
+        components: vec![crate::core::Component {
+            id: ComponentId::new(1),
+            node: crate::core::Node::Voice(Voice {
                 ears: Ears::Both,
                 peak_dbfs: -30.0,
                 carrier: Carrier::Tone { frequency_hz },
                 modulation: None,
-            },
-        )],
-    )
+            }),
+        }],
+    }
+    .target(SampleRate::new(8_000).unwrap())
     .unwrap()
 }
 

@@ -8,7 +8,6 @@ use auditorylab::core::Modulation;
 use auditorylab::core::ModulationKind;
 use auditorylab::core::ParameterId;
 use auditorylab::core::SampleRate;
-use auditorylab::core::Target;
 use auditorylab::core::Voice;
 use auditorylab::core::interpretation::Structure;
 use auditorylab::core::interpretation::ToneRelationship;
@@ -34,12 +33,23 @@ fn tone(hz: f64, ears: Ears) -> Voice {
     reason = "Test fixture helper deliberately panics if an enumerated component ID or specified target is invalid, causing its calling presentation test to fail"
 )]
 fn summary(components: &[Voice]) -> Structure {
-    let pairs: Vec<_> = components
+    let components = components
         .iter()
         .enumerate()
-        .map(|(i, c)| (ComponentId::numbered(i).unwrap(), *c))
+        .map(|(i, c)| auditorylab::core::Component {
+            id: ComponentId::numbered(i).unwrap(),
+            node: auditorylab::core::Node::Voice(*c),
+        })
         .collect();
-    Structure::of_target(&Target::new(SampleRate::DEFAULT, &pairs).unwrap())
+    Structure::of_target(
+        &auditorylab::core::Sound {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components,
+        }
+        .target(SampleRate::DEFAULT)
+        .unwrap(),
+    )
 }
 #[test]
 fn physical_meaning_has_positive_and_rejected_neighbors() {
@@ -217,7 +227,16 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
         },
         ..tone(440.0, Ears::Both)
     };
-    let t = Target::new(SampleRate::new(44100).unwrap(), &[(ComponentId::new(9), c)]).unwrap();
+    let t = auditorylab::core::Sound {
+        duration_seconds: 1.0,
+        fade_seconds: 0.0,
+        components: vec![auditorylab::core::Component {
+            id: ComponentId::new(9),
+            node: auditorylab::core::Node::Voice(c),
+        }],
+    }
+    .target(SampleRate::new(44100).unwrap())
+    .unwrap();
     let m = ModelView::new(t, "draft".into(), ModelSource::Draft);
     assert!(m.caption().contains("origin 0") && m.caption().contains("44100 Hz"));
     let CarrierFacts::Clicks(p) = m.projection.lanes[0].facts.carrier else {

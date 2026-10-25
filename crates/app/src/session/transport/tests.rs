@@ -466,20 +466,22 @@ fn live_callback() -> (Transport, crate::session::live::Mailbox) {
 #[test]
 fn mailbox_is_polled_once_per_buffer_and_updates_wait_for_the_next_buffer() {
     let (mut c, mailbox) = live_callback();
-    let target = Target::new(
-        rate(8_000),
-        &[(
-            ComponentId::new(1),
-            Voice {
+    let target = Sound {
+        duration_seconds: 1.0,
+        fade_seconds: 0.0,
+        components: vec![crate::core::Component {
+            id: ComponentId::new(1),
+            node: crate::core::Node::Voice(Voice {
                 ears: Ears::Both,
                 peak_dbfs: -30.0,
                 carrier: crate::core::Carrier::Tone {
                     frequency_hz: 440.0,
                 },
                 modulation: None,
-            },
-        )],
-    )
+            }),
+        }],
+    }
+    .target(rate(8_000))
     .unwrap();
     let mut output = [1.0; 4_096];
     let calls = std::cell::Cell::new(0);
