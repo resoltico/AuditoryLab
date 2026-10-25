@@ -163,21 +163,28 @@ impl Source {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auditorylab_core::{Carrier, Component, Ears, Stimulus};
+    use auditorylab_core::{Carrier, Ears, Sound, Voice};
 
     fn signal(frames: u32) -> Arc<Signal> {
         Arc::new(
-            Stimulus {
+            Sound {
                 duration_seconds: f64::from(frames) / 8_000.0,
                 fade_seconds: 0.0,
-                components: vec![Component {
+                components: (vec![Voice {
                     ears: Ears::Both,
                     peak_dbfs: -20.0,
                     carrier: Carrier::Tone {
                         frequency_hz: 100.0,
                     },
                     modulation: None,
-                }],
+                }])
+                .into_iter()
+                .enumerate()
+                .map(|(index, voice)| auditorylab_core::Component {
+                    id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+                    node: auditorylab_core::Node::Voice(voice),
+                })
+                .collect(),
             }
             .signal(SampleRate::new(8_000).unwrap())
             .unwrap(),

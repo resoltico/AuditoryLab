@@ -26,17 +26,17 @@ mod wav;
 mod waveform_view;
 pub mod workspace;
 
-pub use auditorylab_core::interpretation::{Rhythm, RhythmKind, Structure, ToneRelationship};
+pub use auditorylab_core::interpretation::{Rhythm, Structure, ToneRelationship};
 pub use auditorylab_core::nominal;
+pub use auditorylab_core::nominal::Method;
 pub use auditorylab_core::timing::{ModelKind, ModelLane, TimingModel};
 pub use auditorylab_core::{
-    About, AuthoredComponent, AuthoredStimulus, BibliographySource, Carrier, CarrierFacts,
-    CarrierKind, Component, ComponentError, ComponentFacts, ComponentId, ComponentRole,
-    ConditionRole, Description, DocumentIdentity, DocumentUuid, Ear, Ears, Evidence, EvidenceScope,
-    Extent, Lane, Lineage, Measure, Modulation, ModulationFacts, ModulationKind, Node, Observation,
-    Pair, PairKind, ParameterDescriptor, ParameterId, PhaseRate, Population, PulseFacts, Recipe,
-    Research, SampleRate, Signal, SlotRole, Stimulus, StimulusError, Target, TargetCheck,
-    Timestamp, Unit, VoiceObservation,
+    About, BibliographySource, Carrier, CarrierFacts, CarrierKind, Component, ComponentError,
+    ComponentFacts, ComponentId, ComponentRole, ConditionRole, Description, DocumentIdentity,
+    DocumentUuid, Ear, Ears, Evidence, EvidenceScope, Extent, Lane, Lineage, Measure, Modulation,
+    ModulationFacts, ModulationKind, Node, Observation, Pair, PairKind, ParameterDescriptor,
+    ParameterId, PhaseRate, Population, PulseFacts, Recipe, Research, SampleRate, Signal, SlotRole,
+    Sound, StimulusError, Target, TargetCheck, Timestamp, Unit, Voice, VoiceObservation,
 };
 pub use controls::{
     DEFAULT_MONITOR_SCALE, DEFAULT_MONITOR_SPAN_MS, EXPORT_RATES, MONITOR_SCALES, MONITOR_SPANS_MS,
@@ -58,7 +58,7 @@ pub use presentation::{
     research, sound_brief, sound_description, structure_description, window_cycle_hint,
 };
 pub use recipe::{
-    Origin, RecipeSnapshot, SnapshotId, Sound, builtin, builtin_source, catalog, load_file,
+    Origin, RecipeSnapshot, Rendition, SnapshotId, builtin, builtin_source, catalog, load_file,
     load_reader,
 };
 pub use session::{
@@ -134,7 +134,7 @@ impl Progress {
 /// [`ErrorKind::Write`]. A cancellation requested after the file was
 /// published does not unpublish it.
 pub fn export(
-    sound: &Sound,
+    sound: &Rendition,
     path: &Path,
     replace: Replace,
     cancel: &Cancel,

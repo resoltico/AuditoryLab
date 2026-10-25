@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::{
-    AuthoredComponent, AuthoredStimulus, BibliographySource, Description, DocumentIdentity,
-    Evidence, EvidenceScope, Lineage,
+    BibliographySource, Component, Description, DocumentIdentity, Evidence, EvidenceScope, Lineage,
+    Sound,
 };
 use alloc::{
     string::{String, ToString},
@@ -20,7 +20,7 @@ pub struct Recipe {
     /// Stable identity and optional declared history, never filesystem dates.
     pub document: DocumentIdentity,
     /// Ordered authored sound; pairs retain their signed nominal offset.
-    pub stimulus: AuthoredStimulus,
+    pub stimulus: Sound,
     /// Current title and notes, independent of source evidence.
     pub description: Option<Description>,
     /// Bounded bibliography referenced by evidence and lineage.
@@ -118,7 +118,7 @@ struct Document {
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<Description>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    component: Vec<AuthoredComponent>,
+    component: Vec<Component>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     source: Vec<BibliographySource>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -136,7 +136,7 @@ impl Recipe {
     pub fn silent(document: DocumentIdentity) -> Self {
         Self {
             document,
-            stimulus: AuthoredStimulus {
+            stimulus: Sound {
                 duration_seconds: 60.0,
                 fade_seconds: 0.1,
                 components: Vec::new(),
@@ -182,7 +182,7 @@ impl Recipe {
         let d: Document = toml::from_str(text).map_err(RecipeError::Format)?;
         let mut value = Self {
             document: d.document,
-            stimulus: AuthoredStimulus {
+            stimulus: Sound {
                 duration_seconds: d.duration_seconds,
                 fade_seconds: d.fade_seconds,
                 components: d.component,
@@ -219,9 +219,8 @@ impl Recipe {
             )));
         }
         let nodes = &self.stimulus.components;
-        if nodes.len() > crate::Stimulus::MAX_COMPONENTS
-            || nodes.iter().map(|c| c.node.voices()).sum::<usize>()
-                > crate::Stimulus::MAX_COMPONENTS
+        if nodes.len() > crate::Sound::MAX_COMPONENTS
+            || nodes.iter().map(|c| c.node.voices()).sum::<usize>() > crate::Sound::MAX_VOICES
         {
             return Err(invalid(
                 "at most 16 authored nodes and 16 expanded voices; a pair costs two",

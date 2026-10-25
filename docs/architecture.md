@@ -30,8 +30,6 @@ Catalog source files are embedded by the core build script in natural ID order. 
 
 Tone and sinusoidal-modulation oscillators advance integer phase accumulators. Constant settings match the seekable signal after the start ramp. A transition interpolates per-ear levels, phase steps and depth. Matching component identities and generator kinds retain phase; pulse or kind changes crossfade generators. Each transition connects validated endpoints with shared progress, bounding the per-ear sum. Stop queues silence after the current transition; its fade takes 30 ms. The engine ends at `Signal::MAX_FRAMES`.
 
-Within each live frame, voices with exactly equal modulation phase reuse the portable sine result. This bounded one-entry value is discarded at the next frame. Each voice still evaluates its own depth and normalized gain and advances its own phase; carrier evaluation and mixing order stay unchanged.
-
 ## Recipes, editing and files
 
 A loaded `RecipeSnapshot` is immutable: complete authored content, `Origin` and a process-local `SnapshotId`, distinct from the document UUID and its declared dates. Loading the same path again gives a new identity. `RecipeSnapshot::at(rate)` returns a `Sound` with an `Arc<Signal>`. Files are opened nonblocking on Unix, and admission checks the opened handle before bounded reading. Errors carry a category, contextual message, original cause and an optional leftover path; frontends branch on the category.

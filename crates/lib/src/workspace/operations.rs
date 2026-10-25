@@ -2,17 +2,18 @@
 use super::*;
 
 pub(super) enum PreparedExport {
-    Library(Sound, String),
+    Library(Rendition, String),
     Draft(Arc<crate::Candidate>, Arc<auditorylab_core::Signal>, String),
 }
 
 impl PreparedExport {
-    pub(super) fn capture(self) -> (Sound, String) {
+    pub(super) fn capture(self) -> (Rendition, String) {
         match self {
             Self::Library(sound, name) => (sound, name),
-            Self::Draft(draft, signal, name) => {
-                (Sound::from_parts(draft.draft().snapshot(), signal), name)
-            }
+            Self::Draft(draft, signal, name) => (
+                Rendition::from_parts(draft.draft().snapshot(), signal),
+                name,
+            ),
         }
     }
 }
@@ -25,7 +26,7 @@ impl Workspace {
 
     pub(super) fn copy_content_admission(snapshot: &RecipeSnapshot) -> Result<(), Refusal> {
         let count = snapshot.stimulus().components.len();
-        if count > Stimulus::MAX_COMPONENTS {
+        if count > Sound::MAX_COMPONENTS {
             return Err(Refusal::TooManyComponents(count));
         }
         if let Some((component, parameter)) = snapshot.stimulus().nonfinite().next() {

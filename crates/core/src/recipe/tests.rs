@@ -3,8 +3,7 @@
 //! Strict one-version portable contract; independent shape, byte and numeric oracles.
 use super::{Recipe, RecipeError};
 use crate::{
-    AuthoredComponent, AuthoredStimulus, Carrier, Component, ComponentId, Description,
-    DocumentIdentity, Node, Pair,
+    Carrier, Component, ComponentId, Description, DocumentIdentity, Node, Pair, Sound, Voice,
 };
 use alloc::{format, string::ToString, vec, vec::Vec};
 const PAIR: &str = r#"# Two raw tones retain their source order and authored identities.
@@ -323,10 +322,10 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                     title: format!("Title {title}"),
                     notes: Some("quote \" slash \\ newline\n é 🎧".into()),
                 });
-                recipe.stimulus = AuthoredStimulus {
+                recipe.stimulus = Sound {
                     duration_seconds: duration,
                     fade_seconds: fade,
-                    components: vec![AuthoredComponent {
+                    components: vec![Component {
                         id: ComponentId::new(91),
                         node: if compound {
                             Node::BinauralPair(Pair {
@@ -336,7 +335,7 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                                 second_peak_dbfs: right,
                             })
                         } else {
-                            Node::Primitive(Component {
+                            Node::Voice(Voice {
                                 ears: crate::Ears::Both,
                                 peak_dbfs: left,
                                 carrier: Carrier::Click {
@@ -365,7 +364,7 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                             ]
                             .map(f64::to_bits),
                         ),
-                        Node::Primitive(c) => {
+                        Node::Voice(c) => {
                             values.push(c.peak_dbfs.to_bits());
                             if let Carrier::Click {
                                 rate_hz,

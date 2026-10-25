@@ -1,6 +1,6 @@
 //! Immutable loaded recipes, their provenance and identity.
 use crate::{Error, ErrorKind, input_admission};
-use auditorylab_core::{About, AuthoredStimulus, Recipe, SampleRate, Signal};
+use auditorylab_core::{About, Recipe, SampleRate, Signal, Sound};
 use std::{
     io::Read,
     path::{Path, PathBuf},
@@ -78,7 +78,7 @@ pub struct RecipeSnapshot {
 }
 
 /// Two rates per immutable snapshot cover inspection/export and device use.
-/// Cache ownership follows the snapshot; evictions never retain a Sound back-reference.
+/// Cache ownership follows the snapshot; evictions never retain a Rendition back-reference.
 #[derive(Debug, Default)]
 struct Realizations {
     values: Vec<(
@@ -93,7 +93,7 @@ impl RecipeSnapshot {
     /// Capture content under a new identity.
     #[must_use]
     pub fn new(origin: Origin, recipe: Recipe) -> Self {
-        let nominal = Arc::new(auditorylab_core::nominal::analyze_authored(
+        let nominal = Arc::new(auditorylab_core::nominal::analyze(
             &recipe.stimulus.components,
         ));
         let about = Arc::new(recipe.display_about());
@@ -194,7 +194,7 @@ impl RecipeSnapshot {
 
     /// Declared sound parameters.
     #[must_use]
-    pub fn stimulus(&self) -> &AuthoredStimulus {
+    pub fn stimulus(&self) -> &Sound {
         &self.recipe.stimulus
     }
 
@@ -203,7 +203,7 @@ impl RecipeSnapshot {
     /// # Errors
     /// Returns [`ErrorKind::InvalidSound`] naming the origin and the first
     /// failure at that rate.
-    pub fn at(&self, rate: SampleRate) -> Result<Sound, Error> {
+    pub fn at(&self, rate: SampleRate) -> Result<Rendition, Error> {
         self.realize(rate).map_err(|e| {
             Error::caused(
                 ErrorKind::InvalidSound,
@@ -216,7 +216,7 @@ impl RecipeSnapshot {
     pub(crate) fn realize(
         &self,
         rate: SampleRate,
-    ) -> Result<Sound, auditorylab_core::StimulusError> {
+    ) -> Result<Rendition, auditorylab_core::StimulusError> {
         // Application/device preparation only; callbacks use the captured Signal.
         let mut cache = self
             .realizations
@@ -236,7 +236,7 @@ impl RecipeSnapshot {
             cache.values.push((rate, result.clone()));
             result?
         };
-        Ok(Sound {
+        Ok(Rendition {
             snapshot: self.clone(),
             signal,
         })
@@ -262,12 +262,12 @@ impl RecipeSnapshot {
 
 /// A snapshot realized as a validated signal at one rate.
 #[derive(Debug, Clone)]
-pub struct Sound {
+pub struct Rendition {
     snapshot: RecipeSnapshot,
     signal: Arc<Signal>,
 }
 
-impl Sound {
+impl Rendition {
     /// The realized snapshot.
     #[must_use]
     pub const fn snapshot(&self) -> &RecipeSnapshot {

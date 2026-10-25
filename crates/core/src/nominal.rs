@@ -5,7 +5,7 @@
 //!
 //! These reference bands describe authored audio schedules, never measured EEG
 //! or a promised percept. Carrier frequencies and endpoint fades are excluded.
-use crate::{Carrier, Component, ComponentId, Ears, Modulation, Stimulus};
+use crate::{Carrier, ComponentId, Ears, Modulation, Voice};
 use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 use serde::Serialize;
@@ -120,6 +120,31 @@ pub enum Method {
     SteadyTone,
 }
 impl Method {
+    /// A short display name for the structural process.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Binaural => "interaural pair",
+            Self::Monaural => "monaural pair",
+            Self::Clicks => "clicks",
+            Self::Gate => "gate",
+            Self::AmplitudeModulation => "AM",
+            Self::SteadyTone => "steady tone",
+        }
+    }
+    pub(crate) const fn of_pair(kind: crate::PairKind) -> Self {
+        match kind {
+            crate::PairKind::Binaural => Self::Binaural,
+            crate::PairKind::Monaural => Self::Monaural,
+        }
+    }
+    pub(crate) fn pair_routes(first: [bool; 2], second: [bool; 2]) -> Option<Self> {
+        match (first, second) {
+            ([true, false], [false, true]) | ([false, true], [true, false]) => Some(Self::Binaural),
+            (a, b) if a == b && a != [false, false] => Some(Self::Monaural),
+            _ => None,
+        }
+    }
     /// Supported query vocabulary.
     pub const ALL: [Self; 6] = [
         Self::Binaural,
@@ -272,161 +297,18 @@ impl Analysis {
     }
 }
 
-fn unmodulated(component: &Component) -> bool {
+fn unmodulated(component: &Voice) -> bool {
     matches!(
         component.modulation,
         None | Some(Modulation::Sinusoidal { depth: 0.0, .. })
     )
 }
-/// Analyze raw authored primitives without compiling or rendering audio.
-/// Callers invoke this on application-owned revisions outside audio callbacks.
-///
-/// The operation allocates its result; it is deliberately separate from realtime
-/// synthesis. Finite invalid carriers keep identifiable nominal modulation rates.
-#[must_use]
-pub fn analyze(stimulus: &Stimulus) -> Analysis {
-    let mut analysis = Analysis {
-        rhythms: Vec::new(),
-        methods: Vec::new(),
-        bands: Vec::new(),
-        completeness: Completeness::Complete,
-        diagnostics: Vec::new(),
-    };
-    if stimulus.nonfinite().next().is_some() {
-        analysis.invalid("document contains nonfinite numeric settings");
-    }
-    let mut tones = Vec::new();
-    for (index, component) in stimulus.components.iter().enumerate() {
-        let Some(id) = ComponentId::numbered(index) else {
-            analysis.invalid("component identity exceeds its supported range");
-            break;
-        };
-        if !component.peak_dbfs.is_finite() || component.peak_dbfs > 0.0 {
-            analysis.invalid("component peak must be finite and at most 0 dBFS");
-        }
-        match component.carrier {
-            Carrier::Click {
-                rate_hz,
-                width_seconds,
-            } => {
-                analysis.add(id, None, Method::Clicks, rate_hz, Derivation::Explicit);
-                if !width_seconds.is_finite() || width_seconds <= 0.0 {
-                    analysis.invalid("click width must be finite and positive");
-                }
-            }
-            Carrier::Tone { frequency_hz } => {
-                if !frequency_hz.is_finite() || frequency_hz <= 0.0 {
-                    analysis.invalid("tone carrier must be finite and positive");
-                }
-                if unmodulated(component) {
-                    analysis.methods.push(Method::SteadyTone);
-                    tones.push((id, *component, frequency_hz));
-                }
-            }
-        }
-        match component.modulation {
-            Some(Modulation::Sinusoidal { rate_hz, depth }) => {
-                if !rate_hz.is_finite()
-                    || rate_hz <= 0.0
-                    || !depth.is_finite()
-                    || !(0.0..=1.0).contains(&depth)
-                {
-                    analysis.invalid("AM requires a finite positive rate and depth from 0 to 1");
-                }
-                if depth > 0.0 {
-                    analysis.add(
-                        id,
-                        None,
-                        Method::AmplitudeModulation,
-                        rate_hz,
-                        Derivation::Explicit,
-                    );
-                }
-            }
-            Some(Modulation::Rectangular {
-                rate_hz,
-                width_seconds,
-            }) => {
-                analysis.add(id, None, Method::Gate, rate_hz, Derivation::Explicit);
-                if !width_seconds.is_finite() || width_seconds <= 0.0 {
-                    analysis.invalid("gate width must be finite and positive");
-                }
-            }
-            None => {}
-        }
-    }
-    let relationship = if stimulus.components.len() == 2 && tones.len() == 2 {
-        let a = tones[0];
-        let b = tones[1];
-        let method = match (a.1.ears, b.1.ears) {
-            (Ears::Left, Ears::Right) | (Ears::Right, Ears::Left) => Some(Method::Binaural),
-            (x, y) if x == y => Some(Method::Monaural),
-            _ => None,
-        };
-        if let Some(method) = method {
-            analysis.methods.retain(|m| *m != Method::SteadyTone);
-            analysis.methods.push(method);
-            if a.2 != b.2 {
-                analysis.add(
-                    a.0,
-                    Some(b.0),
-                    method,
-                    (a.2 - b.2).abs(),
-                    Derivation::NarrowInference,
-                );
-            }
-        }
-        method.is_some()
-    } else {
-        false
-    };
-    if tones.len() > 1 && !relationship && analysis.completeness != Completeness::Invalid {
-        analysis.completeness = Completeness::Partial;
-        analysis
-            .diagnostics
-            .push("ambiguous raw-tone mixture; no arbitrary pairwise differences inferred".into());
-    }
-    analysis.methods.sort();
-    analysis.methods.dedup();
-    analysis.bands = Band::ALL
-        .into_iter()
-        .filter(|b| analysis.rhythms.iter().any(|r| r.band == Some(*b)))
-        .collect();
-    analysis
-}
-
 /// Analyze authored nodes, retaining signed-offset intent in arbitrary mixtures.
 /// The explicit offset is the rate authority even when carrier addition cannot
 /// represent it. Such a document is classified and marked for review, not played.
 #[must_use]
-pub fn analyze_authored(components: &[crate::AuthoredComponent]) -> Analysis {
+pub fn analyze(components: &[crate::Component]) -> Analysis {
     use crate::{Node, authored};
-    let raw = components
-        .iter()
-        .filter_map(|c| match c.node {
-            Node::Primitive(value) => Some(value),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    if raw.len() == components.len() {
-        let mut analysis = analyze(&Stimulus {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: raw,
-        });
-        for rhythm in &mut analysis.rhythms {
-            rhythm.owner = components[usize::try_from(rhythm.owner.get() - 1).unwrap_or(0)].id;
-            rhythm.related = rhythm.related.and_then(|id| {
-                components
-                    .get(usize::try_from(id.get() - 1).ok()?)
-                    .map(|c| c.id)
-            });
-        }
-        if let Err(error) = authored::lower(components) {
-            analysis.invalid(&alloc::format!("{error}"));
-        }
-        return analysis;
-    }
     let mut analysis = Analysis {
         rhythms: Vec::new(),
         methods: Vec::new(),
@@ -434,33 +316,75 @@ pub fn analyze_authored(components: &[crate::AuthoredComponent]) -> Analysis {
         completeness: Completeness::Complete,
         diagnostics: Vec::new(),
     };
-    let mut raw_tones = 0;
+    let mut tones = Vec::new();
     for component in components {
         match component.node {
-            Node::Primitive(value) => {
-                if matches!(value.carrier, Carrier::Tone { .. }) && unmodulated(&value) {
-                    raw_tones += 1;
+            Node::Voice(value) => {
+                let id = component.id;
+                let value = &value;
+                if !value.peak_dbfs.is_finite() || value.peak_dbfs > 0.0 {
+                    analysis.invalid("component peak must be finite and at most 0 dBFS");
                 }
-                let part = analyze(&Stimulus {
-                    duration_seconds: 1.0,
-                    fade_seconds: 0.0,
-                    components: alloc::vec![value],
-                });
-                for mut rhythm in part.rhythms {
-                    rhythm.owner = component.id;
-                    analysis.rhythms.push(rhythm);
+                match value.carrier {
+                    Carrier::Click {
+                        rate_hz,
+                        width_seconds,
+                    } => {
+                        analysis.add(id, None, Method::Clicks, rate_hz, Derivation::Explicit);
+                        if !width_seconds.is_finite() || width_seconds <= 0.0 {
+                            analysis.invalid("click width must be finite and positive");
+                        }
+                    }
+                    Carrier::Tone { frequency_hz } => {
+                        if !frequency_hz.is_finite() || frequency_hz <= 0.0 {
+                            analysis.invalid("tone carrier must be finite and positive");
+                        }
+                        if unmodulated(value) {
+                            analysis.methods.push(Method::SteadyTone);
+                            tones.push((id, *value, frequency_hz));
+                        }
+                    }
                 }
-                analysis.methods.extend(part.methods);
-                if part.completeness == Completeness::Invalid {
-                    analysis.completeness = Completeness::Invalid;
+                match value.modulation {
+                    Some(Modulation::Sinusoidal { rate_hz, depth }) => {
+                        if !rate_hz.is_finite()
+                            || rate_hz <= 0.0
+                            || !depth.is_finite()
+                            || !(0.0..=1.0).contains(&depth)
+                        {
+                            analysis.invalid(
+                                "AM requires a finite positive rate and depth from 0 to 1",
+                            );
+                        }
+                        if depth > 0.0 {
+                            analysis.add(
+                                id,
+                                None,
+                                Method::AmplitudeModulation,
+                                rate_hz,
+                                Derivation::Explicit,
+                            );
+                        }
+                    }
+                    Some(Modulation::Rectangular {
+                        rate_hz,
+                        width_seconds,
+                    }) => {
+                        analysis.add(id, None, Method::Gate, rate_hz, Derivation::Explicit);
+                        if !width_seconds.is_finite() || width_seconds <= 0.0 {
+                            analysis.invalid("gate width must be finite and positive");
+                        }
+                    }
+                    None => {}
                 }
-                analysis.diagnostics.extend(part.diagnostics);
             }
             node => {
                 let (pair, method) = match node {
-                    Node::BinauralPair(pair) => (pair, Method::Binaural),
-                    Node::MonauralPair { pair, .. } => (pair, Method::Monaural),
-                    Node::Primitive(_) => unreachable!("raw node handled above"),
+                    Node::BinauralPair(pair) => (pair, Method::of_pair(crate::PairKind::Binaural)),
+                    Node::MonauralPair { pair, .. } => {
+                        (pair, Method::of_pair(crate::PairKind::Monaural))
+                    }
+                    Node::Voice(_) => unreachable!("raw node handled above"),
                 };
                 analysis.methods.push(method);
                 if pair.offset_hz != 0.0 {
@@ -485,9 +409,37 @@ pub fn analyze_authored(components: &[crate::AuthoredComponent]) -> Analysis {
             }
         }
     }
-    if raw_tones > 1 && analysis.completeness == Completeness::Complete {
+    let relationship = if components.len() == 2 && tones.len() == 2 {
+        let a = tones[0];
+        let b = tones[1];
+        let routes = |ears| match ears {
+            Ears::Left => [true, false],
+            Ears::Right => [false, true],
+            Ears::Both => [true, true],
+        };
+        let method = Method::pair_routes(routes(a.1.ears), routes(b.1.ears));
+        if let Some(method) = method {
+            analysis.methods.retain(|m| *m != Method::SteadyTone);
+            analysis.methods.push(method);
+            if a.2 != b.2 {
+                analysis.add(
+                    a.0,
+                    Some(b.0),
+                    method,
+                    (a.2 - b.2).abs(),
+                    Derivation::NarrowInference,
+                );
+            }
+        }
+        method.is_some()
+    } else {
+        false
+    };
+    if tones.len() > 1 && !relationship && analysis.completeness != Completeness::Invalid {
         analysis.completeness = Completeness::Partial;
-        analysis.diagnostics.push("raw-tone attribution in a larger mix is ambiguous; explicit pairs remain independently classified".into());
+        analysis
+            .diagnostics
+            .push("ambiguous raw-tone mixture; no arbitrary pairwise differences inferred".into());
     }
     if let Err(error) = authored::lower(components)
         && !analysis

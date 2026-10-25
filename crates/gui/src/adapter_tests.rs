@@ -1400,7 +1400,7 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
 fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
     let mut recipe = auditorylab::Draft::new().unwrap().recipe();
     recipe.stimulus.components = vec![
-        auditorylab::AuthoredComponent {
+        auditorylab::Component {
             id: auditorylab::ComponentId::new(u32::MAX),
             node: auditorylab::Node::BinauralPair(auditorylab::Pair {
                 first_hz: 200.0,
@@ -1409,9 +1409,9 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
                 second_peak_dbfs: -30.0,
             }),
         },
-        auditorylab::AuthoredComponent {
+        auditorylab::Component {
             id: auditorylab::ComponentId::new(u32::MAX - 1),
-            node: auditorylab::Node::Primitive(auditorylab::default_component(
+            node: auditorylab::Node::Voice(auditorylab::default_component(
                 auditorylab::CarrierKind::Clicks,
             )),
         },

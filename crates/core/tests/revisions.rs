@@ -2,7 +2,7 @@
 //! change facts and revisions, never generated samples, ramps or phases.
 //! Expected samples come from engines that never received those edits.
 use auditorylab_core::{
-    Carrier, CarrierFacts, Component, ComponentId, Ears, Observation, SampleRate, SlotRole, Target,
+    Carrier, CarrierFacts, ComponentId, Ears, Observation, SampleRate, SlotRole, Target, Voice,
     live::Engine,
 };
 
@@ -13,8 +13,8 @@ const fn rate() -> SampleRate {
     }
 }
 
-fn clicks(rate_hz: f64, width_seconds: f64) -> Component {
-    Component {
+fn clicks(rate_hz: f64, width_seconds: f64) -> Voice {
+    Voice {
         ears: Ears::Both,
         peak_dbfs: -20.0,
         carrier: Carrier::Click {
@@ -29,7 +29,7 @@ fn clicks(rate_hz: f64, width_seconds: f64) -> Component {
     clippy::unwrap_used,
     reason = "Fixture helper panics if its fixed component stops validating, failing the calling test"
 )]
-fn target(component: Component) -> Target {
+fn target(component: Voice) -> Target {
     Target::new(rate(), &[(ComponentId::new(1), component)]).unwrap()
 }
 
@@ -48,7 +48,7 @@ fn b_prime() -> Target {
     target(clicks(80.0, 0.000_11))
 }
 fn c() -> Target {
-    target(Component {
+    target(Voice {
         carrier: Carrier::Tone {
             frequency_hz: 120.0,
         },

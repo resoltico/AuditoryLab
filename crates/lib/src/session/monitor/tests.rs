@@ -8,7 +8,7 @@ use crate::session::live::LiveGenerator;
 use crate::session::source::{FiniteSource, Source};
 use crate::session::transport::{BufferTime, Transport};
 use crate::session::{Outcome, SampleFormat};
-use crate::{Carrier, Component, Ears, Origin, Stimulus};
+use crate::{Carrier, Ears, Origin, Sound, Voice};
 fn descriptor(hz: u32) -> SessionDescriptor {
     SessionDescriptor {
         id: SessionState::new().id(),
@@ -24,7 +24,7 @@ fn descriptor(hz: u32) -> SessionDescriptor {
         target: Target::silence(SampleRate::new(hz).unwrap()),
     }
 }
-fn numbered(rate: SampleRate, components: &[Component]) -> Target {
+fn numbered(rate: SampleRate, components: &[Voice]) -> Target {
     let pairs: Vec<_> = components
         .iter()
         .enumerate()
@@ -36,17 +36,24 @@ fn finite(signal: crate::Signal) -> Source {
     Source::Finite(FiniteSource::new(Arc::new(signal)))
 }
 fn signal(hz: u32) -> crate::Signal {
-    Stimulus {
+    Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
-        components: vec![Component {
+        components: (vec![Voice {
             ears: Ears::Left,
             peak_dbfs: -20.0,
             carrier: Carrier::Tone {
                 frequency_hz: 100.0,
             },
             modulation: None,
-        }],
+        }])
+        .into_iter()
+        .enumerate()
+        .map(|(index, voice)| auditorylab_core::Component {
+            id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+            node: auditorylab_core::Node::Voice(voice),
+        })
+        .collect(),
     }
     .signal(SampleRate::new(hz).unwrap())
     .unwrap()
@@ -251,8 +258,8 @@ fn digital_meters_and_extrema_use_the_entire_window() {
 #[test]
 fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
     let rate = SampleRate::DEFAULT;
-    let tones: Vec<Component> = (0..16)
-        .map(|n| Component {
+    let tones: Vec<Voice> = (0..16)
+        .map(|n| Voice {
             ears: Ears::Both,
             peak_dbfs: -30.0,
             carrier: Carrier::Tone {
@@ -261,9 +268,9 @@ fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
             modulation: None,
         })
         .collect();
-    let clicks: Vec<Component> = tones
+    let clicks: Vec<Voice> = tones
         .iter()
-        .map(|c| Component {
+        .map(|c| Voice {
             carrier: Carrier::Click {
                 rate_hz: 40.0,
                 width_seconds: 0.001,
@@ -395,8 +402,8 @@ fn callback_monitor_costs() {
                 Some(MonitorDetail::Waveform),
             ] {
                 let rate = SampleRate::new(hz).unwrap();
-                let components: Vec<Component> = (0..16)
-                    .map(|n| Component {
+                let components: Vec<Voice> = (0..16)
+                    .map(|n| Voice {
                         ears: Ears::Both,
                         peak_dbfs: -30.0,
                         carrier: Carrier::Tone {
@@ -413,7 +420,7 @@ fn callback_monitor_costs() {
                     rate,
                     &components
                         .iter()
-                        .map(|c| Component {
+                        .map(|c| Voice {
                             carrier: Carrier::Click {
                                 rate_hz: 40.0,
                                 width_seconds: 0.001,
@@ -740,15 +747,22 @@ fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
 #[test]
 fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
     for hz in [3750.0, 3751.0] {
-        let signal = Stimulus {
+        let signal = Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
-            components: vec![Component {
+            components: (vec![Voice {
                 ears: Ears::Both,
                 peak_dbfs: -15.3,
                 carrier: Carrier::Tone { frequency_hz: hz },
                 modulation: None,
-            }],
+            }])
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| auditorylab_core::Component {
+                id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+                node: auditorylab_core::Node::Voice(voice),
+            })
+            .collect(),
         }
         .signal(SampleRate::DEFAULT)
         .unwrap();

@@ -1,7 +1,7 @@
 //! Shared query counterexamples using actual authored classification and typed evidence.
 use auditorylab::{
-    AuthoredComponent, AuthoredStimulus, Carrier, Component, ComponentId, DocumentIdentity, Ears,
-    Node, Origin, Pair, Recipe, RecipeSnapshot, Timestamp,
+    Carrier, Component, ComponentId, DocumentIdentity, Ears, Node, Origin, Pair, Recipe,
+    RecipeSnapshot, Sound, Timestamp, Voice,
     collection::{CatalogQuery, DateRange, Direction, EntrySummary, GroupBy, Scope, SortBy},
     library::LibraryKey,
     nominal::{Band, Method},
@@ -10,12 +10,7 @@ use auditorylab::{
     clippy::unwrap_used,
     reason = "Curated UUID/time fixture construction must fail rather than silently substitute data"
 )]
-fn entry(
-    id: u32,
-    title: &str,
-    nodes: Vec<AuthoredComponent>,
-    modified: Option<&str>,
-) -> EntrySummary {
+fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) -> EntrySummary {
     let document = DocumentIdentity {
         id: format!("00000000-0000-4000-8000-{id:012}").parse().unwrap(),
         created_at: None,
@@ -26,7 +21,7 @@ fn entry(
         title: title.into(),
         notes: None,
     });
-    recipe.stimulus = AuthoredStimulus {
+    recipe.stimulus = Sound {
         duration_seconds: 60.0,
         fade_seconds: 0.1,
         components: nodes,
@@ -35,8 +30,8 @@ fn entry(
     let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe);
     EntrySummary::from_snapshot(key, &snapshot, None)
 }
-fn pair(offset_hz: f64) -> AuthoredComponent {
-    AuthoredComponent {
+fn pair(offset_hz: f64) -> Component {
+    Component {
         id: ComponentId::new(7),
         node: Node::BinauralPair(Pair {
             first_hz: 200.0,
@@ -46,10 +41,10 @@ fn pair(offset_hz: f64) -> AuthoredComponent {
         }),
     }
 }
-fn am(rate_hz: f64) -> AuthoredComponent {
-    AuthoredComponent {
+fn am(rate_hz: f64) -> Component {
+    Component {
         id: ComponentId::new(90),
-        node: Node::Primitive(Component {
+        node: Node::Voice(Voice {
             ears: Ears::Both,
             peak_dbfs: -30.0,
             carrier: Carrier::Tone {

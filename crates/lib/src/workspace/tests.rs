@@ -74,9 +74,7 @@ fn scripted(fakes: &Fakes) -> Box<AudioSpawner> {
                             continue;
                         }
                         let target = match (&kind, &draft) {
-                            (AudioKind::Live(_), Some(draft)) => {
-                                draft.target_check(rate).into_result()
-                            }
+                            (AudioKind::Live(_), Some(draft)) => draft.check(rate).into_result(),
                             (AudioKind::Finite(snapshot), _) => snapshot.stimulus().target(rate),
                             (AudioKind::Managed { snapshot, store }, _) => {
                                 tasks::revalidate_managed(snapshot, store)
@@ -1325,10 +1323,10 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
 #[test]
 fn copy_availability_and_execution_share_the_component_limit() {
     let mut recipe = Draft::new().unwrap().recipe();
-    recipe.stimulus.components = (0..=Stimulus::MAX_COMPONENTS)
-        .map(|i| crate::AuthoredComponent {
+    recipe.stimulus.components = (0..=Sound::MAX_COMPONENTS)
+        .map(|i| crate::Component {
             id: ComponentId::numbered(i).unwrap(),
-            node: crate::Node::Primitive(crate::default_component(CarrierKind::Tone)),
+            node: crate::Node::Voice(crate::default_component(CarrierKind::Tone)),
         })
         .collect();
     let snapshot = RecipeSnapshot::new(crate::Origin::Stream("too many".into()), recipe);
@@ -1348,9 +1346,9 @@ fn copy_availability_and_execution_share_the_component_limit() {
 #[test]
 fn copy_preflight_refuses_nonfinite_or_full_metadata_before_touching_dirty_work() {
     let mut source = Draft::new().unwrap().recipe();
-    source.stimulus.components.push(crate::AuthoredComponent {
+    source.stimulus.components.push(crate::Component {
         id: ComponentId::new(1),
-        node: crate::Node::Primitive(crate::Component {
+        node: crate::Node::Voice(crate::Voice {
             carrier: crate::Carrier::Tone {
                 frequency_hz: f64::NAN,
             },

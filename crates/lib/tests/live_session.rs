@@ -1,11 +1,11 @@
 //! Public-library live generation without an audio device.
 use auditorylab::{
-    Carrier, CarrierKind, Component, ComponentId, Draft, Ears, LiveGenerator, LiveUpdateError,
-    ParameterId, SampleRate, Structure, Target,
+    Carrier, CarrierKind, ComponentId, Draft, Ears, LiveGenerator, LiveUpdateError, ParameterId,
+    SampleRate, Structure, Target, Voice,
 };
 
-fn component(frequency_hz: f64, ears: Ears) -> Component {
-    Component {
+fn component(frequency_hz: f64, ears: Ears) -> Voice {
+    Voice {
         ears,
         peak_dbfs: -30.0,
         carrier: Carrier::Tone { frequency_hz },
@@ -15,7 +15,7 @@ fn component(frequency_hz: f64, ears: Ears) -> Component {
 
 fn target(draft: &Draft) -> Target {
     draft
-        .target_check(SampleRate::DEFAULT)
+        .check(SampleRate::DEFAULT)
         .into_result()
         .unwrap_or_else(|e| panic!("{e}"))
 }
@@ -66,7 +66,7 @@ fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarg
     assert_eq!(difference(&generator), 68.0);
     // An invalid edit never becomes a target, so nothing changes.
     draft.replace(right, component(f64::NAN, Ears::Right));
-    assert!(draft.target_check(SampleRate::DEFAULT).target().is_none());
+    assert!(draft.check(SampleRate::DEFAULT).target().is_none());
     assert_eq!(generator.observation().unwrap(), settled);
     generator.stop();
     generator.render(&mut out);
@@ -110,10 +110,18 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
 #[test]
 fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint() {
     use auditorylab::{Observation, SlotRole, VoiceObservation, generated_description};
-    let check = auditorylab::TargetCheck::new(
-        SampleRate::DEFAULT,
-        &[(ComponentId::new(1), component(440.0, Ears::Right))],
-    );
+    let check = auditorylab_core::Sound {
+        duration_seconds: 1.0,
+        fade_seconds: 0.0,
+        components: ([(ComponentId::new(1), component(440.0, Ears::Right))])
+            .iter()
+            .map(|(id, voice)| auditorylab_core::Component {
+                id: *id,
+                node: auditorylab_core::Node::Voice(*voice),
+            })
+            .collect(),
+    }
+    .check(SampleRate::DEFAULT);
     let facts = *check.target().unwrap().components().next().unwrap().1;
     let mut voices = [None; Observation::MAX_VOICES];
     voices[0] = Some(VoiceObservation {
@@ -176,13 +184,7 @@ fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarg
     }
     let before = generator.observation().unwrap();
     commit(&mut editor, ParameterId::PairOffset, "-200");
-    assert!(
-        editor
-            .draft()
-            .target_check(SampleRate::DEFAULT)
-            .target()
-            .is_none()
-    );
+    assert!(editor.draft().check(SampleRate::DEFAULT).target().is_none());
     assert_eq!(generator.observation().unwrap(), before);
     commit(&mut editor, ParameterId::PairOffset, "2");
     let revision = control.update(&target(editor.draft())).unwrap();

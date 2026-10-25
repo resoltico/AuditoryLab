@@ -226,8 +226,8 @@ fn callback_interval_diagnostics() {
     let frames = 256;
     let frame_count = 256_u64;
     let budget = frame_count * 1_000_000_000 / u64::from(hz);
-    let components: Vec<Component> = (0..16)
-        .map(|n| Component {
+    let components: Vec<Voice> = (0..16)
+        .map(|n| Voice {
             ears: Ears::Both,
             peak_dbfs: -30.0,
             carrier: Carrier::Tone {
@@ -245,7 +245,7 @@ fn callback_interval_diagnostics() {
         rate,
         &components
             .iter()
-            .map(|c| Component {
+            .map(|c| Voice {
                 carrier: Carrier::Click {
                     rate_hz: 40.0,
                     width_seconds: 0.001,

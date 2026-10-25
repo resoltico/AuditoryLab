@@ -11,34 +11,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 
-/// Kind of temporal process, retained even when two rates coincide.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RhythmKind {
-    /// Click onset schedule.
-    Clicks,
-    /// Rectangular gate.
-    Gate,
-    /// Active sinusoidal amplitude modulation.
-    AmplitudeModulation,
-    /// Two generated lanes belonging to an explicit separate-ear pair.
-    BinauralPair,
-    /// Two generated lanes belonging to an explicit same-route pair.
-    MonauralPair,
-}
-
-impl RhythmKind {
-    /// A short name for the process.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Clicks => "clicks",
-            Self::Gate => "gate",
-            Self::AmplitudeModulation => "AM",
-            Self::BinauralPair => "interaural pair",
-            Self::MonauralPair => "monaural pair",
-        }
-    }
-}
+use crate::nominal::Method;
 
 /// One rhythmic process with stable voice attribution.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -48,7 +21,7 @@ pub struct Rhythm {
     /// Role during structural transitions.
     pub role: SlotRole,
     /// Physical mechanism.
-    pub kind: RhythmKind,
+    pub kind: Method,
     /// Actual/model-realized rate, never inferred from a title.
     pub hz: f64,
 }
@@ -126,22 +99,16 @@ impl Structure {
             {
                 let difference = (second.realized_hz - first.realized_hz).abs();
                 if difference > 0.0 {
-                    add(
-                        match pair.kind {
-                            crate::PairKind::Binaural => RhythmKind::BinauralPair,
-                            crate::PairKind::Monaural => RhythmKind::MonauralPair,
-                        },
-                        difference,
-                    );
+                    add(Method::of_pair(pair.kind), difference);
                 }
             }
             if let CarrierFacts::Clicks(p) = v.facts.carrier {
-                add(RhythmKind::Clicks, p.rate_hz);
+                add(Method::Clicks, p.rate_hz);
             }
             match v.facts.modulation {
-                Some(ModulationFacts::Gate(p)) => add(RhythmKind::Gate, p.rate_hz),
+                Some(ModulationFacts::Gate(p)) => add(Method::Gate, p.rate_hz),
                 Some(ModulationFacts::Sinusoidal { rate, depth }) if depth > 0.0 => {
-                    add(RhythmKind::AmplitudeModulation, rate.realized_hz);
+                    add(Method::AmplitudeModulation, rate.realized_hz);
                 }
                 _ => {}
             }
@@ -154,23 +121,22 @@ impl Structure {
             match (voices[0].facts.carrier, voices[1].facts.carrier) {
                 (CarrierFacts::Tone(a), CarrierFacts::Tone(b)) => {
                     let (x, y) = (voices[0].gains, voices[1].gains);
-                    if x[0] > 0.0 && x[1] == 0.0 && y[0] == 0.0 && y[1] > 0.0 {
-                        Some(ToneRelationship::Interaural {
-                            left: a.realized_hz,
-                            right: b.realized_hz,
-                        })
-                    } else if y[0] > 0.0 && y[1] == 0.0 && x[0] == 0.0 && x[1] > 0.0 {
-                        Some(ToneRelationship::Interaural {
+                    match Method::pair_routes(x.map(|g| g > 0.0), y.map(|g| g > 0.0)) {
+                        Some(Method::Binaural) if x[0] > 0.0 => {
+                            Some(ToneRelationship::Interaural {
+                                left: a.realized_hz,
+                                right: b.realized_hz,
+                            })
+                        }
+                        Some(Method::Binaural) => Some(ToneRelationship::Interaural {
                             left: b.realized_hz,
                             right: a.realized_hz,
-                        })
-                    } else if (x[0] > 0.0) == (y[0] > 0.0) && (x[1] > 0.0) == (y[1] > 0.0) {
-                        Some(ToneRelationship::Monaural {
+                        }),
+                        Some(Method::Monaural) => Some(ToneRelationship::Monaural {
                             first: a.realized_hz,
                             second: b.realized_hz,
-                        })
-                    } else {
-                        None
+                        }),
+                        _ => None,
                     }
                 }
                 _ => None,
@@ -184,6 +150,31 @@ impl Structure {
             relationship,
             changing,
         }
+    }
+
+    /// Deduplicated structural methods, including nonrhythmic steady tones.
+    #[must_use]
+    pub fn methods(&self) -> Vec<Method> {
+        let mut methods: Vec<_> = self.rhythms.iter().map(|r| r.kind).collect();
+        if let Some(relationship) = self.relationship {
+            methods.push(match relationship {
+                ToneRelationship::Interaural { .. } => Method::Binaural,
+                ToneRelationship::Monaural { .. } => Method::Monaural,
+            });
+        }
+        for voice in &self.voices {
+            if let Some(pair) = voice.facts.pair {
+                methods.push(Method::of_pair(pair.kind));
+            } else if self.relationship.is_none()
+                && matches!(voice.facts.carrier, CarrierFacts::Tone(_))
+                && effectively_unmodulated(voice.facts.modulation)
+            {
+                methods.push(Method::SteadyTone);
+            }
+        }
+        methods.sort();
+        methods.dedup();
+        methods
     }
 
     /// The narrow interaural relationship, when exactly one unmodulated tone

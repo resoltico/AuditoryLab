@@ -17,7 +17,7 @@ use crate::session::{
     PlaybackMonitor, PlaybackReport, Preparation, SampleFormat, Session, SessionDescriptor,
     source::{FiniteSource, Source},
 };
-use crate::{Draft, Error, ErrorKind, Origin, RecipeSnapshot, Sound, presentation};
+use crate::{Draft, Error, ErrorKind, Origin, RecipeSnapshot, Rendition, presentation};
 use auditorylab_core::{SampleRate, Signal};
 use cpal::{
     OutputCallbackInfo, Sample, SizedSample, Stream, StreamConfig, StreamInstant,
@@ -145,7 +145,7 @@ impl Output {
 /// A finite source bound to the default device at the device's rate.
 pub struct PreparedPlayback {
     output: Output,
-    sound: Sound,
+    sound: Rendition,
     session: Session,
     descriptor: SessionDescriptor,
     monitor: Option<PlaybackMonitor>,
@@ -268,7 +268,7 @@ pub fn prepare_live(session: Session, draft: &Draft) -> Result<Preparation<Prepa
     }
     let output = Output::default_device().map_err(|e| failed(&session, device_error(e)))?;
     let rate = output.description.sample_rate;
-    let target = draft.target_check(rate).into_result().map_err(|e| {
+    let target = draft.check(rate).into_result().map_err(|e| {
         failed(
             &session,
             Error::caused(

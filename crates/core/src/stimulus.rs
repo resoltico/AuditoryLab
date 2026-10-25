@@ -1,32 +1,15 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::signal::{Envelope, Signal};
-use crate::synthesis::{self, Carrier as Generator, Modulator, Pulse, Voice};
-use crate::{ComponentId, ParameterId, SampleRate, Target, TargetCheck, numeric};
-use alloc::vec::Vec;
+use crate::signal::Signal;
+use crate::synthesis::{self, Carrier as Generator, GeneratorVoice, Modulator, Pulse};
+use crate::{ComponentId, ParameterId, SampleRate, Sound, numeric};
 use core::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
-/// A sound for the two ears, described in physical units and independent
-/// of any sample rate.
-///
-/// Each ear hears the sum of the components routed to it, multiplied by an
-/// envelope that fades in over `fade_seconds`, holds, and fades out over
-/// `fade_seconds`. A stimulus without components is silence.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Stimulus {
-    /// Length of the stimulus.
-    pub duration_seconds: f64,
-    /// Length of the raised-cosine fade at each edge; zero disables fading.
-    pub fade_seconds: f64,
-    /// The components, summed in this order.
-    pub components: Vec<Component>,
-}
-
 /// One carrier routed to one or both ears.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Component {
+pub struct Voice {
     /// Ear routing.
     pub ears: Ears,
     /// Peak amplitude in dBFS.
@@ -107,9 +90,9 @@ impl Ears {
     }
 }
 
-impl Component {
+impl Voice {
     /// Check every value at `rate` and build the generator.
-    pub(crate) fn voice(&self, rate: SampleRate) -> Result<Voice, ComponentError> {
+    pub(crate) fn voice(&self, rate: SampleRate) -> Result<GeneratorVoice, ComponentError> {
         let peak_dbfs = self.peak_dbfs;
         if !(peak_dbfs.is_finite() && peak_dbfs <= 0.0) {
             return Err(ComponentError::PeakDbfs { peak_dbfs });
@@ -158,7 +141,7 @@ impl Component {
             )?)),
         };
         let ears = self.ears;
-        Ok(Voice {
+        Ok(GeneratorVoice {
             left: ears.hears(Ear::Left),
             right: ears.hears(Ear::Right),
             amplitude: numeric::amplitude(peak_dbfs),
@@ -192,71 +175,6 @@ fn pulse_train(
         rate_hz,
         sample_rate_hz: rate.hz(),
     })
-}
-
-impl Stimulus {
-    /// The most components a stimulus may have. It bounds the work done
-    /// for every frame, which playback does on the device's real-time thread.
-    pub const MAX_COMPONENTS: usize = 16;
-
-    /// Check the stimulus at a sample rate and build its seekable signal.
-    ///
-    /// Durations become whole frames at that rate. Each ear's components must
-    /// add up to a peak of at most full scale, so no sample ever needs
-    /// clipping. Components get the identities [`ComponentId::numbered`]
-    /// gives their positions.
-    ///
-    /// # Errors
-    /// Returns the first [`StimulusError`] found, checking the duration, the
-    /// fade, the number of components, each component in order (level,
-    /// carrier, modulation), and then each ear's peak.
-    pub fn signal(&self, rate: SampleRate) -> Result<Signal, StimulusError> {
-        let envelope = Envelope::resolve(rate, self.duration_seconds, self.fade_seconds)?;
-        Ok(Signal::new(self.target(rate)?, envelope))
-    }
-
-    /// Check the components at a sample rate, without a duration or fade,
-    /// keeping every component's own result. Components get the identities
-    /// [`ComponentId::numbered`] gives their positions.
-    #[must_use]
-    pub fn target_check(&self, rate: SampleRate) -> TargetCheck {
-        TargetCheck::numbered(rate, &self.components)
-    }
-
-    /// Validate the components as a target at a sample rate.
-    ///
-    /// # Errors
-    /// Returns what [`Stimulus::target_check`] finds first.
-    pub fn target(&self, rate: SampleRate) -> Result<Target, StimulusError> {
-        self.target_check(rate).into_result()
-    }
-
-    /// Return whether any component uses a separate ear route.
-    ///
-    /// This describes routing, not waveform equality: matching components
-    /// on separate left and right routes can still produce identical ears.
-    /// A stimulus without components uses no separate ear route.
-    #[must_use]
-    pub fn uses_separate_ears(&self) -> bool {
-        self.components
-            .iter()
-            .any(|component| component.ears != Ears::Both)
-    }
-
-    /// The stimulus's quantities that are not finite numbers: the duration
-    /// and fade, then each component's by position.
-    pub fn nonfinite(&self) -> impl Iterator<Item = (Option<usize>, ParameterId)> + '_ {
-        [ParameterId::Duration, ParameterId::Fade]
-            .into_iter()
-            .filter(|id| id.read_envelope(self).is_some_and(|v| !v.is_finite()))
-            .map(|id| (None, id))
-            .chain(
-                self.components
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(index, c)| c.nonfinite().map(move |id| (Some(index), id))),
-            )
-    }
 }
 
 /// Why a stimulus cannot be rendered at a sample rate.
@@ -305,7 +223,7 @@ pub enum StimulusError {
         /// The duplicated identity.
         id: ComponentId,
     },
-    /// More than [`Stimulus::MAX_COMPONENTS`] components.
+    /// More than [`Sound::MAX_COMPONENTS`] components.
     TooManyComponents {
         /// The number of components.
         count: usize,
@@ -514,7 +432,7 @@ impl Display for StimulusError {
             Self::TooManyComponents { count } => write!(
                 f,
                 "{count} components exceed the limit of {}",
-                Stimulus::MAX_COMPONENTS
+                Sound::MAX_COMPONENTS
             ),
             Self::Component { number, error } => write!(f, "component {number}: {error}"),
             Self::Peak { ear, amplitude } => {
@@ -633,7 +551,7 @@ impl Display for Modulation {
     }
 }
 
-impl Display for Component {
+impl Display for Voice {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.carrier {
             Carrier::Tone { frequency_hz } => write!(f, "tone {frequency_hz} Hz")?,

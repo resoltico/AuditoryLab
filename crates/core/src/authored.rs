@@ -1,7 +1,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 //! Ordered authored components and lossless lowering into primitive generator lanes.
-use crate::{Carrier, Component, ComponentId, Ears, Lane, Modulation, Stimulus};
+use crate::{Carrier, ComponentId, Ears, Lane, Modulation, Voice};
 use alloc::vec::Vec;
 use core::fmt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
@@ -22,7 +22,7 @@ pub struct Pair {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Node {
     /// Existing raw tone/click and optional modulation semantics.
-    Primitive(Component),
+    Voice(Voice),
     /// First tone exclusively left; second tone exclusively right.
     BinauralPair(Pair),
     /// Both tones have this identical ear route; unequal levels remain explicit.
@@ -35,7 +35,7 @@ pub enum Node {
 }
 /// An authored node and its positive stable owner identity.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct AuthoredComponent {
+pub struct Component {
     /// Owner identity. Portable nodes always use the primary lane.
     pub id: ComponentId,
     /// Authored sound structure.
@@ -90,8 +90,8 @@ impl fmt::Display for LoweringError {
             Self::VoiceBudget => write!(
                 f,
                 "at most {} authored nodes and {} expanded voices are supported; a pair costs two voices",
-                Stimulus::MAX_COMPONENTS,
-                Stimulus::MAX_COMPONENTS
+                Sound::MAX_COMPONENTS,
+                Sound::MAX_VOICES
             ),
             Self::PairDifference {
                 issue,
@@ -110,17 +110,13 @@ impl Node {
     /// Number of primitive generators needed, before live crossfade expansion.
     #[must_use]
     pub const fn voices(self) -> usize {
-        if matches!(self, Self::Primitive(_)) {
-            1
-        } else {
-            2
-        }
+        if matches!(self, Self::Voice(_)) { 1 } else { 2 }
     }
     /// Explicit signed pair parameters, independent of the selected sample rate.
     #[must_use]
     pub const fn pair(self) -> Option<Pair> {
         match self {
-            Self::Primitive(_) => None,
+            Self::Voice(_) => None,
             Self::BinauralPair(pair) | Self::MonauralPair { pair, .. } => Some(pair),
         }
     }
@@ -130,11 +126,9 @@ impl Node {
 ///
 /// # Errors
 /// Refuses invalid owners, either voice budget, and unrepresentable pair sums.
-pub fn lower(
-    components: &[AuthoredComponent],
-) -> Result<Vec<(ComponentId, Component)>, LoweringError> {
-    if components.len() > Stimulus::MAX_COMPONENTS
-        || components.iter().map(|c| c.node.voices()).sum::<usize>() > Stimulus::MAX_COMPONENTS
+pub(crate) fn lower(components: &[Component]) -> Result<Vec<(ComponentId, Voice)>, LoweringError> {
+    if components.len() > Sound::MAX_COMPONENTS
+        || components.iter().map(|c| c.node.voices()).sum::<usize>() > Sound::MAX_VOICES
     {
         return Err(LoweringError::VoiceBudget);
     }
@@ -148,12 +142,12 @@ pub fn lower(
             return Err(LoweringError::Identity);
         }
         match component.node {
-            Node::Primitive(value) => output.push((id, value)),
+            Node::Voice(value) => output.push((id, value)),
             node => {
                 let (pair, first_ears, second_ears) = match node {
                     Node::BinauralPair(pair) => (pair, Ears::Left, Ears::Right),
                     Node::MonauralPair { pair, ears } => (pair, ears, ears),
-                    Node::Primitive(_) => unreachable!("raw node handled above"),
+                    Node::Voice(_) => unreachable!("raw node handled above"),
                 };
                 let second_hz = pair.first_hz + pair.offset_hz;
                 // A finite IEEE binary64 sum requires finite operands; this
@@ -175,7 +169,7 @@ pub fn lower(
                         offset_hz: pair.offset_hz,
                     });
                 }
-                let tone = |frequency_hz, peak_dbfs, ears| Component {
+                let tone = |frequency_hz, peak_dbfs, ears| Voice {
                     carrier: Carrier::Tone { frequency_hz },
                     peak_dbfs,
                     ears,
@@ -228,11 +222,11 @@ enum DocumentNode {
         second_peak_dbfs: f64,
     },
 }
-impl From<AuthoredComponent> for DocumentNode {
-    fn from(value: AuthoredComponent) -> Self {
+impl From<Component> for DocumentNode {
+    fn from(value: Component) -> Self {
         let id = value.id.get();
         match value.node {
-            Node::Primitive(Component {
+            Node::Voice(Voice {
                 ears,
                 peak_dbfs,
                 modulation,
@@ -289,7 +283,7 @@ impl From<AuthoredComponent> for DocumentNode {
         }
     }
 }
-impl From<DocumentNode> for AuthoredComponent {
+impl From<DocumentNode> for Component {
     fn from(value: DocumentNode) -> Self {
         let (id, node) = match value {
             DocumentNode::Tone {
@@ -300,7 +294,7 @@ impl From<DocumentNode> for AuthoredComponent {
                 modulation,
             } => (
                 id,
-                Node::Primitive(Component {
+                Node::Voice(Voice {
                     ears,
                     peak_dbfs,
                     modulation,
@@ -316,7 +310,7 @@ impl From<DocumentNode> for AuthoredComponent {
                 modulation,
             } => (
                 id,
-                Node::Primitive(Component {
+                Node::Voice(Voice {
                     ears,
                     peak_dbfs,
                     modulation,
@@ -367,7 +361,7 @@ impl From<DocumentNode> for AuthoredComponent {
         }
     }
 }
-impl Serialize for AuthoredComponent {
+impl Serialize for Component {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if self.id.get() == 0 || self.id.lane() != Lane::Primary {
             return Err(serde::ser::Error::custom(
@@ -377,7 +371,7 @@ impl Serialize for AuthoredComponent {
         DocumentNode::from(*self).serialize(serializer)
     }
 }
-impl<'de> Deserialize<'de> for AuthoredComponent {
+impl<'de> Deserialize<'de> for Component {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = Self::from(DocumentNode::deserialize(deserializer)?);
         if value.id.get() == 0 {
@@ -389,40 +383,23 @@ impl<'de> Deserialize<'de> for AuthoredComponent {
 
 /// The authored sound definition; pairs remain explicit until target compilation.
 #[derive(Debug, Clone, PartialEq)]
-pub struct AuthoredStimulus {
+pub struct Sound {
     /// Finite audio duration requested in seconds.
     pub duration_seconds: f64,
     /// Requested endpoint fade in seconds.
     pub fade_seconds: f64,
     /// Authored nodes summed in this order after stable-lane lowering.
-    pub components: Vec<AuthoredComponent>,
+    pub components: Vec<Component>,
 }
-impl AuthoredStimulus {
-    /// Preserve a primitive definition without regrouping or changing sample order.
-    ///
-    /// # Errors
-    /// Fails if a positional owner cannot fit a positive u32.
-    pub fn from_primitives(value: Stimulus) -> Result<Self, LoweringError> {
-        let components = value
-            .components
-            .into_iter()
-            .enumerate()
-            .map(|(i, node)| {
-                Ok(AuthoredComponent {
-                    id: ComponentId::numbered(i).ok_or(LoweringError::Identity)?,
-                    node: Node::Primitive(node),
-                })
-            })
-            .collect::<Result<_, _>>()?;
-        Ok(Self {
-            duration_seconds: value.duration_seconds,
-            fade_seconds: value.fade_seconds,
-            components,
-        })
-    }
+impl Sound {
+    /// Maximum number of authored components.
+    pub const MAX_COMPONENTS: usize = 16;
+    /// Maximum number of expanded generator voices.
+    pub const MAX_VOICES: usize = 16;
+
     /// Check a whole authored candidate and its expanded generator budget.
     #[must_use]
-    pub fn target_check(&self, rate: crate::SampleRate) -> crate::TargetCheck {
+    pub fn check(&self, rate: crate::SampleRate) -> crate::TargetCheck {
         crate::TargetCheck::authored(rate, &self.components)
     }
     /// Compile the complete atomic authored target.
@@ -430,7 +407,7 @@ impl AuthoredStimulus {
     /// # Errors
     /// Rejects pair arithmetic, budgets and all existing target-specific rules.
     pub fn target(&self, rate: crate::SampleRate) -> Result<crate::Target, crate::StimulusError> {
-        self.target_check(rate).into_result()
+        self.check(rate).into_result()
     }
     /// Give the authored target a finite envelope using the existing generators.
     ///
@@ -468,7 +445,7 @@ impl Node {
     #[must_use]
     pub const fn ears(self) -> Ears {
         match self {
-            Self::Primitive(c) => c.ears,
+            Self::Voice(c) => c.ears,
             Self::BinauralPair(_) => Ears::Left,
             Self::MonauralPair { ears, .. } => ears,
         }
@@ -478,7 +455,7 @@ impl Node {
     pub fn read(self, parameter: crate::ParameterId) -> Option<f64> {
         use crate::ParameterId as P;
         match self {
-            Self::Primitive(c) => parameter.read(&c),
+            Self::Voice(c) => parameter.read(&c),
             node => {
                 let p = node.pair()?;
                 match parameter {
@@ -495,7 +472,7 @@ impl Node {
     pub fn write(&mut self, parameter: crate::ParameterId, value: f64) -> bool {
         use crate::ParameterId as P;
         match self {
-            Self::Primitive(c) => parameter.write(c, value),
+            Self::Voice(c) => parameter.write(c, value),
             Self::BinauralPair(p) | Self::MonauralPair { pair: p, .. } => {
                 let slot = match parameter {
                     P::PairFirstFrequency => &mut p.first_hz,
@@ -510,15 +487,15 @@ impl Node {
         }
     }
 }
-impl fmt::Display for AuthoredComponent {
+impl fmt::Display for Component {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.node {
-            Node::Primitive(c) => c.fmt(f),
+            Node::Voice(c) => c.fmt(f),
             node => {
                 let (p, method) = match node {
                     Node::BinauralPair(p) => (p, "binaural"),
                     Node::MonauralPair { pair, .. } => (pair, "monaural"),
-                    Node::Primitive(_) => unreachable!("primitive handled above"),
+                    Node::Voice(_) => unreachable!("primitive handled above"),
                 };
                 write!(
                     f,
@@ -539,7 +516,7 @@ impl Node {
     #[must_use]
     pub fn same_content(self, other: Self) -> bool {
         let same_shape = match (self, other) {
-            (Self::Primitive(a), Self::Primitive(b)) => {
+            (Self::Voice(a), Self::Voice(b)) => {
                 a.ears == b.ears
                     && a.carrier.kind() == b.carrier.kind()
                     && a.modulation.map(|m| m.kind()) == b.modulation.map(|m| m.kind())
@@ -560,7 +537,7 @@ impl Node {
     #[must_use]
     pub const fn primitive_kind(self) -> Option<crate::CarrierKind> {
         match self {
-            Self::Primitive(c) => Some(c.carrier.kind()),
+            Self::Voice(c) => Some(c.carrier.kind()),
             _ => None,
         }
     }
@@ -568,7 +545,7 @@ impl Node {
     #[must_use]
     pub const fn modulation_kind(self) -> Option<crate::ModulationKind> {
         match self {
-            Self::Primitive(c) => match c.modulation {
+            Self::Voice(c) => match c.modulation {
                 Some(m) => Some(m.kind()),
                 None => None,
             },
@@ -579,7 +556,7 @@ impl Node {
     #[must_use]
     pub fn heading(self) -> &'static str {
         match self {
-            Self::Primitive(c) => c.role().label(),
+            Self::Voice(c) => c.role().label(),
             Self::BinauralPair(_) => "Binaural pair",
             Self::MonauralPair { .. } => "Monaural pair",
         }
@@ -603,7 +580,7 @@ impl Node {
     }
 }
 
-impl AuthoredStimulus {
+impl Sound {
     /// Exact authored sound equality, including owner/order and signed-zero bits.
     #[must_use]
     pub fn same_content(&self, other: &Self) -> bool {
@@ -617,3 +594,6 @@ impl AuthoredStimulus {
                 .all(|(a, b)| a.id == b.id && a.node.same_content(b.node))
     }
 }
+
+#[cfg(test)]
+mod tests;

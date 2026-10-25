@@ -3,11 +3,12 @@
 //! Frontends render these strings; they do not compose domain sentences of
 //! their own. Generated and model views describe realized quantities; detail
 //! views state requested and realized values together with their rate.
-use crate::{RecipeSnapshot, Sound};
+use crate::{RecipeSnapshot, Rendition};
 use auditorylab_core::{
-    AuthoredStimulus, CarrierFacts, ComponentFacts, Ears, ModulationFacts, Observation,
-    ParameterId, PhaseRate, PulseFacts, SampleRate, StimulusError, VoiceObservation,
-    interpretation::{RhythmKind, Structure, ToneRelationship},
+    CarrierFacts, ComponentFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate,
+    PulseFacts, SampleRate, Sound, StimulusError, VoiceObservation,
+    interpretation::{Structure, ToneRelationship},
+    nominal::Method,
 };
 
 /// Format seconds as hours, minutes and seconds; `~` marks nanosecond rounding.
@@ -355,14 +356,14 @@ pub fn structure_description(structure: &Structure) -> String {
             .find(|v| v.id == r.id && v.role == r.role)
             .map(|v| match (r.kind, v.facts.carrier, v.facts.modulation) {
                 (
-                    RhythmKind::AmplitudeModulation,
+                    Method::AmplitudeModulation,
                     _,
                     Some(ModulationFacts::Sinusoidal { depth, .. }),
                 ) => {
                     format!(" · depth {}%", compact_number(depth * 100.0))
                 }
-                (RhythmKind::Gate, _, Some(ModulationFacts::Gate(p)))
-                | (RhythmKind::Clicks, CarrierFacts::Clicks(p), _) => {
+                (Method::Gate, _, Some(ModulationFacts::Gate(p)))
+                | (Method::Clicks, CarrierFacts::Clicks(p), _) => {
                     format!(
                         " · {} ms",
                         compact_number(p.realized_width_seconds() * 1000.0)
@@ -436,14 +437,14 @@ pub fn structure_description(structure: &Structure) -> String {
 
 /// A realized sound's structure in one line.
 #[must_use]
-pub fn sound_brief(sound: &Sound) -> String {
+pub fn sound_brief(sound: &Rendition) -> String {
     structure_description(&Structure::of_target(sound.signal().target()))
 }
 
 /// Facts of a realized sound at its own rate, every line at that rate.
 /// `detail` adds the model caption and requested-versus-realized values.
 #[must_use]
-pub fn sound_description(sound: &Sound, detail: bool) -> String {
+pub fn sound_description(sound: &Rendition, detail: bool) -> String {
     let mut text = sound_brief(sound);
     if detail {
         let model = crate::ModelView::new(
@@ -552,7 +553,7 @@ impl std::fmt::Display for Notice {
 
 /// Guidance shown before playing a stimulus.
 #[must_use]
-pub fn notices(stimulus: &AuthoredStimulus) -> Vec<Notice> {
+pub fn notices(stimulus: &Sound) -> Vec<Notice> {
     let mut notices = vec![Notice::LowStartingVolume];
     if stimulus.uses_separate_ears() {
         notices.push(Notice::HeadphonesForSeparateEars);
@@ -656,7 +657,7 @@ pub fn describe(snapshot: &RecipeSnapshot) -> String {
 
 /// A realized sound's facts, every one at the sound's own rate.
 #[must_use]
-pub fn inspection(sound: &Sound) -> String {
+pub fn inspection(sound: &Rendition) -> String {
     let snapshot = sound.snapshot();
     let signal = sound.signal();
     let mut out = format!("{}\nSource: {}\n", snapshot.title(), snapshot.origin());

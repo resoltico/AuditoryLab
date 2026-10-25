@@ -100,7 +100,7 @@ fn public_export_progress_no_clobber_replace_and_cancellation() {
 fn shared_values_cross_threads() {
     fn shared<T: Send + Sync + 'static>() {}
     shared::<RecipeSnapshot>();
-    shared::<Sound>();
+    shared::<Rendition>();
     shared::<Error>();
     shared::<Cancel>();
     shared::<Progress>();

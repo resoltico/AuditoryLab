@@ -1,13 +1,15 @@
 //! Independent signed-pair, owner/lane, strict shape and sample-preservation oracles.
+use crate as auditorylab_core;
 use auditorylab_core::{
-    AuthoredComponent, Carrier, Component, ComponentId, Ears, Lane, LoweringError, Node, Pair,
-    PairIssue, SampleRate, Stimulus, Target, authored,
+    Carrier, Component, ComponentId, Ears, Lane, LoweringError, Node, Pair, PairIssue, SampleRate,
+    Sound, Target, Voice, authored,
 };
 use serde::{Deserialize, Serialize};
+use std::{format, vec, vec::Vec};
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Document {
-    component: Vec<AuthoredComponent>,
+    component: Vec<Component>,
 }
 fn pair(offset_hz: f64) -> Pair {
     Pair {
@@ -17,14 +19,14 @@ fn pair(offset_hz: f64) -> Pair {
         second_peak_dbfs: -30.0,
     }
 }
-fn node(id: u32, node: Node) -> AuthoredComponent {
-    AuthoredComponent {
+fn node(id: u32, node: Node) -> Component {
+    Component {
         id: ComponentId::new(id),
         node,
     }
 }
-fn tone(hz: f64, level: f64, ears: Ears) -> Component {
-    Component {
+fn tone(hz: f64, level: f64, ears: Ears) -> Voice {
+    Voice {
         ears,
         peak_dbfs: level,
         carrier: Carrier::Tone { frequency_hz: hz },
@@ -60,13 +62,20 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
                 let rate = SampleRate::new(hz).unwrap();
                 let target = Target::new(rate, &lowered).unwrap();
                 let actual = target.signal(1.0, 0.1).unwrap();
-                let expected = Stimulus {
+                let expected = Sound {
                     duration_seconds: 1.0,
                     fade_seconds: 0.1,
-                    components: vec![
+                    components: (vec![
                         tone(200.0, -20.0, routes[0]),
                         tone(second, -30.0, routes[1]),
-                    ],
+                    ])
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, voice)| auditorylab_core::Component {
+                        id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+                        node: auditorylab_core::Node::Voice(voice),
+                    })
+                    .collect(),
                 }
                 .signal(rate)
                 .unwrap();
@@ -84,9 +93,9 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
 fn raw_order_is_never_regrouped_and_both_budgets_are_enforced() {
     let raw = tone(401.0, -40.0, Ears::Both);
     let values = [
-        node(7, Node::Primitive(raw)),
+        node(7, Node::Voice(raw)),
         node(2, Node::BinauralPair(pair(6.0))),
-        node(9, Node::Primitive(raw)),
+        node(9, Node::Voice(raw)),
     ];
     let lowered = authored::lower(&values).unwrap();
     assert_eq!(
@@ -100,10 +109,10 @@ fn raw_order_is_never_regrouped_and_both_budgets_are_enforced() {
         .collect::<Vec<_>>();
     assert_eq!(authored::lower(&eight).unwrap().len(), 16);
     let mut nine = eight;
-    nine.push(node(9, Node::Primitive(raw)));
+    nine.push(node(9, Node::Voice(raw)));
     assert_eq!(authored::lower(&nine), Err(LoweringError::VoiceBudget));
     let raw17 = (1..=17)
-        .map(|id| node(id, Node::Primitive(raw)))
+        .map(|id| node(id, Node::Voice(raw)))
         .collect::<Vec<_>>();
     assert_eq!(authored::lower(&raw17), Err(LoweringError::VoiceBudget));
     assert_eq!(
@@ -159,17 +168,17 @@ fn authored_wire_shape_has_one_carrier_authority_and_preserves_ids() {
 
 #[test]
 fn requested_pair_intent_survives_identical_realized_audio_without_a_new_live_ramp() {
-    use auditorylab_core::{AuthoredStimulus, ParameterId, StimulusError};
+    use auditorylab_core::{ParameterId, Sound, StimulusError};
     let rate = SampleRate::new(768_000).unwrap();
     let mut p = pair(13.0);
     p.first_hz = 200_000.0;
-    let a = AuthoredStimulus {
+    let a = Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
         components: vec![node(1, Node::BinauralPair(p))],
     };
     p.offset_hz = 13.0_f64.next_up();
-    let b = AuthoredStimulus {
+    let b = Sound {
         components: vec![node(1, Node::BinauralPair(p))],
         ..a.clone()
     };
@@ -178,11 +187,11 @@ fn requested_pair_intent_survives_identical_realized_audio_without_a_new_live_ra
     assert!(first.same_audio(&second));
     assert_ne!(first, second);
     assert_eq!(
-        auditorylab_core::nominal::analyze_authored(&a.components).bands,
+        auditorylab_core::nominal::analyze(&a.components).bands,
         [auditorylab_core::nominal::Band::Alpha]
     );
     assert_eq!(
-        auditorylab_core::nominal::analyze_authored(&b.components).bands,
+        auditorylab_core::nominal::analyze(&b.components).bands,
         [auditorylab_core::nominal::Band::Beta]
     );
     assert_eq!(
@@ -212,7 +221,7 @@ fn requested_pair_intent_survives_identical_realized_audio_without_a_new_live_ra
             .all(|v| v.facts.pair.unwrap().offset_hz == 13.0_f64.next_up())
     );
     // Both coupled fields are attributed when the second requested carrier fails.
-    let bad = AuthoredStimulus {
+    let bad = Sound {
         components: vec![node(
             1,
             Node::BinauralPair(Pair {
@@ -331,20 +340,20 @@ fn pair_timing_extends_only_the_bounded_model_not_the_audio_history() {
 fn every_raw_budget_and_owner_lane_boundary_is_checked_at_the_authored_boundary() {
     let raw = tone(440.0, -40.0, Ears::Both);
     let sixteen = (1..=16)
-        .map(|id| node(id, Node::Primitive(raw)))
+        .map(|id| node(id, Node::Voice(raw)))
         .collect::<Vec<_>>();
     assert_eq!(authored::lower(&sixteen).unwrap().len(), 16);
     let mut seventeen = sixteen;
-    seventeen.push(node(17, Node::Primitive(raw)));
+    seventeen.push(node(17, Node::Voice(raw)));
     assert_eq!(authored::lower(&seventeen), Err(LoweringError::VoiceBudget));
     for invalid in [
-        AuthoredComponent {
+        Component {
             id: ComponentId::new(0),
-            node: Node::Primitive(raw),
+            node: Node::Voice(raw),
         },
-        AuthoredComponent {
+        Component {
             id: ComponentId::new(1).with_lane(Lane::Secondary),
-            node: Node::Primitive(raw),
+            node: Node::Voice(raw),
         },
     ] {
         assert_eq!(authored::lower(&[invalid]), Err(LoweringError::Identity));
@@ -391,7 +400,7 @@ fn every_raw_budget_and_owner_lane_boundary_is_checked_at_the_authored_boundary(
 fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
     use auditorylab_core::{PairFacts, PairKind, TargetCheck};
     let authored = [
-        node(7, Node::Primitive(tone(400.0, -60.0, Ears::Both))),
+        node(7, Node::Voice(tone(400.0, -60.0, Ears::Both))),
         node(
             11,
             Node::BinauralPair(Pair {
@@ -469,5 +478,33 @@ fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
                 Some(facts)
             );
         }
+    }
+}
+
+#[test]
+fn lowering_failures_explain_the_rejected_owner_budget_or_pair() {
+    let identity = format!("{}", LoweringError::Identity);
+    assert!(identity.contains("unique positive"));
+    let budget = format!("{}", LoweringError::VoiceBudget);
+    assert!(budget.contains("16"));
+    assert!(budget.contains("pair costs two voices"));
+    for (issue, explanation) in [
+        (PairIssue::Nonfinite, "nonfinite"),
+        (PairIssue::Nonpositive, "positive"),
+        (PairIssue::UnrepresentablePairDifference, "offset collapses"),
+    ] {
+        let message = format!(
+            "{}",
+            LoweringError::PairDifference {
+                issue,
+                id: ComponentId::new(42),
+                first_hz: 200.0,
+                offset_hz: -6.0,
+            }
+        );
+        assert!(message.contains("42"));
+        assert!(message.contains("200"));
+        assert!(message.contains("-6"));
+        assert!(message.contains(explanation), "{message}");
     }
 }

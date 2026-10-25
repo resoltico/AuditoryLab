@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use alloc::{string::ToString, vec};
+use alloc::{string::ToString, vec, vec::Vec};
 use core::f64::consts::TAU;
 
 fn rate(hz: u32) -> SampleRate {
     SampleRate::new(hz).unwrap()
 }
 
-fn tone(ears: Ears, frequency_hz: f64, peak_dbfs: f64) -> Component {
-    Component {
+fn tone(ears: Ears, frequency_hz: f64, peak_dbfs: f64) -> Voice {
+    Voice {
         ears,
         peak_dbfs,
         modulation: None,
@@ -18,15 +18,22 @@ fn tone(ears: Ears, frequency_hz: f64, peak_dbfs: f64) -> Component {
     }
 }
 
-fn stimulus(components: Vec<Component>) -> Stimulus {
-    Stimulus {
+fn stimulus(components: Vec<Voice>) -> Sound {
+    Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
-        components,
+        components: components
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| crate::Component {
+                id: crate::ComponentId::numbered(index).unwrap(),
+                node: crate::Node::Voice(voice),
+            })
+            .collect(),
     }
 }
 
-fn render(stimulus: &Stimulus, hz: u32) -> Vec<[f64; 2]> {
+fn render(stimulus: &Sound, hz: u32) -> Vec<[f64; 2]> {
     let session = stimulus.signal(rate(hz)).unwrap();
     let mut frames = vec![[9.0; 2]; usize::try_from(session.frames()).unwrap()];
     assert_eq!(session.render(0, &mut frames), frames.len());
@@ -133,7 +140,7 @@ fn silence_renders_zeros_for_its_duration() {
     );
 }
 
-fn signal_error(stimulus: &Stimulus, hz: u32) -> StimulusError {
+fn signal_error(stimulus: &Sound, hz: u32) -> StimulusError {
     stimulus.signal(rate(hz)).unwrap_err()
 }
 
@@ -172,25 +179,25 @@ fn durations_and_fades_must_give_whole_frames_that_fit() {
 fn guards_accept_and_reject_neighbours() {
     let mut s = stimulus(vec![tone(Ears::Both, 1000.0, -20.0)]);
     for hz in [0.0, -1.0, f64::NAN, f64::INFINITY, 24_000.0] {
-        s.components[0].carrier = Carrier::Tone { frequency_hz: hz };
+        first_voice(&mut s).carrier = Carrier::Tone { frequency_hz: hz };
         assert!(s.signal(rate(48_000)).is_err());
     }
     for hz in [f64::from_bits(1), 24_000.0_f64.next_down()] {
-        s.components[0].carrier = Carrier::Tone { frequency_hz: hz };
+        first_voice(&mut s).carrier = Carrier::Tone { frequency_hz: hz };
         assert!(s.signal(rate(48_000)).is_ok());
     }
-    s.components[0].carrier = Carrier::Tone {
+    first_voice(&mut s).carrier = Carrier::Tone {
         frequency_hz: 1000.0,
     };
     for depth in [0.0, 1.0] {
-        s.components[0].modulation = Some(Modulation::Sinusoidal {
+        first_voice(&mut s).modulation = Some(Modulation::Sinusoidal {
             rate_hz: 40.0,
             depth,
         });
         assert!(s.signal(rate(48_000)).is_ok());
     }
     for depth in [-f64::EPSILON, 1.0_f64.next_up(), f64::NAN] {
-        s.components[0].modulation = Some(Modulation::Sinusoidal {
+        first_voice(&mut s).modulation = Some(Modulation::Sinusoidal {
             rate_hz: 40.0,
             depth,
         });
@@ -202,10 +209,10 @@ fn guards_accept_and_reject_neighbours() {
             (23_960.0, false),
             (23_999.0, false),
         ] {
-            s.components[0].carrier = Carrier::Tone {
+            first_voice(&mut s).carrier = Carrier::Tone {
                 frequency_hz: frequency,
             };
-            s.components[0].modulation = Some(Modulation::Sinusoidal {
+            first_voice(&mut s).modulation = Some(Modulation::Sinusoidal {
                 rate_hz: 40.0,
                 depth,
             });
@@ -214,25 +221,28 @@ fn guards_accept_and_reject_neighbours() {
     }
     // Inactivity does not excuse an invalid stored rate.
     for rate_hz in [0.0, -1.0, 24_000.0, f64::INFINITY, f64::NAN] {
-        s.components[0].modulation = Some(Modulation::Sinusoidal {
+        first_voice(&mut s).modulation = Some(Modulation::Sinusoidal {
             rate_hz,
             depth: 0.0,
         });
         assert!(s.signal(rate(48_000)).is_err());
     }
-    s.components = vec![tone(Ears::Both, 1000.0, 0.0)];
+    s.components = stimulus(vec![tone(Ears::Both, 1000.0, 0.0)]).components;
     assert!(s.signal(rate(48_000)).is_ok());
-    s.components.push(tone(Ears::Both, 1000.0, -20.0));
+    s.components.push(crate::Component {
+        id: ComponentId::new(2),
+        node: crate::Node::Voice(tone(Ears::Both, 1000.0, -20.0)),
+    });
     assert!(matches!(
         s.signal(rate(48_000)),
         Err(StimulusError::Peak { .. })
     ));
-    s.components = vec![tone(Ears::Both, 1000.0, -60.0); 16];
+    s.components = stimulus(vec![tone(Ears::Both, 1000.0, -60.0); 16]).components;
     assert!(s.signal(rate(48_000)).is_ok());
     s.components.push(s.components[0]);
     assert!(matches!(
         s.signal(rate(48_000)),
-        Err(StimulusError::TooManyComponents { .. })
+        Err(StimulusError::Authored(crate::LoweringError::VoiceBudget))
     ));
     s.components.clear();
     s.duration_seconds = rate(48_000).seconds_in(Signal::MAX_FRAMES);
@@ -250,7 +260,7 @@ fn peak_and_pulse_width_guards_reject_invalid_values() {
         f64::NEG_INFINITY,
         f64::MIN_POSITIVE,
     ] {
-        s.components[0].peak_dbfs = peak;
+        first_voice(&mut s).peak_dbfs = peak;
         assert!(matches!(
             s.signal(rate(48000)),
             Err(StimulusError::Component {
@@ -259,9 +269,9 @@ fn peak_and_pulse_width_guards_reject_invalid_values() {
             })
         ));
     }
-    s.components[0].peak_dbfs = -20.0;
+    first_voice(&mut s).peak_dbfs = -20.0;
     for width in [f64::NAN, f64::INFINITY, -1.0, 0.0, 0.4 / 48000.0] {
-        s.components[0].carrier = Carrier::Click {
+        first_voice(&mut s).carrier = Carrier::Click {
             rate_hz: 40.0,
             width_seconds: width,
         };
@@ -273,7 +283,7 @@ fn peak_and_pulse_width_guards_reject_invalid_values() {
             })
         ));
     }
-    s.components[0].carrier = Carrier::Click {
+    first_voice(&mut s).carrier = Carrier::Click {
         rate_hz: 40.0,
         width_seconds: 0.5 / 48000.0,
     };
@@ -282,7 +292,7 @@ fn peak_and_pulse_width_guards_reject_invalid_values() {
 
 #[test]
 fn click_nyquist_rejection_is_not_masked_by_the_closed_frame_rule() {
-    let mut s = stimulus(vec![Component {
+    let mut s = stimulus(vec![Voice {
         ears: Ears::Both,
         peak_dbfs: -20.0,
         carrier: Carrier::Click {
@@ -301,7 +311,7 @@ fn click_nyquist_rejection_is_not_masked_by_the_closed_frame_rule() {
             ..
         })
     ));
-    s.components[0].carrier = Carrier::Click {
+    first_voice(&mut s).carrier = Carrier::Click {
         rate_hz: 24000.0_f64.next_down(),
         width_seconds: 1.0 / 48000.0,
     };
@@ -310,12 +320,12 @@ fn click_nyquist_rejection_is_not_masked_by_the_closed_frame_rule() {
 
 mod validate {
     use crate::{
-        Carrier, Component, ComponentError, ComponentId, Ears, Modulation, SampleRate, Stimulus,
-        TargetCheck,
+        Carrier, ComponentError, ComponentId, Ears, Modulation, SampleRate, Sound, TargetCheck,
+        Voice,
     };
     use alloc::vec;
 
-    pub(super) fn own(component: Component, rate: SampleRate) -> Result<(), ComponentError> {
+    pub(super) fn own(component: Voice, rate: SampleRate) -> Result<(), ComponentError> {
         let check = TargetCheck::new(rate, &[(ComponentId::new(1), component)]);
         check.components()[0].1.clone().map(|_| ())
     }
@@ -323,7 +333,7 @@ mod validate {
     #[test]
     fn each_guard_accepts_and_rejects_like_signal() {
         let rate = SampleRate::new(48_000).unwrap();
-        let base = Component {
+        let base = Voice {
             ears: Ears::Both,
             peak_dbfs: -20.0,
             carrier: Carrier::Tone {
@@ -334,21 +344,21 @@ mod validate {
         let cases = [
             (base, true),
             (
-                Component {
+                Voice {
                     peak_dbfs: 0.0,
                     ..base
                 },
                 true,
             ),
             (
-                Component {
+                Voice {
                     peak_dbfs: 0.1,
                     ..base
                 },
                 false,
             ),
             (
-                Component {
+                Voice {
                     carrier: Carrier::Tone {
                         frequency_hz: 23_999.0,
                     },
@@ -357,7 +367,7 @@ mod validate {
                 true,
             ),
             (
-                Component {
+                Voice {
                     carrier: Carrier::Tone {
                         frequency_hz: 24_000.0,
                     },
@@ -366,7 +376,7 @@ mod validate {
                 false,
             ),
             (
-                Component {
+                Voice {
                     modulation: Some(Modulation::Sinusoidal {
                         rate_hz: 40.0,
                         depth: 1.0,
@@ -376,7 +386,7 @@ mod validate {
                 true,
             ),
             (
-                Component {
+                Voice {
                     modulation: Some(Modulation::Sinusoidal {
                         rate_hz: 40.0,
                         depth: 1.01,
@@ -386,7 +396,7 @@ mod validate {
                 false,
             ),
             (
-                Component {
+                Voice {
                     carrier: Carrier::Tone {
                         frequency_hz: 23_959.0,
                     },
@@ -399,7 +409,7 @@ mod validate {
                 true,
             ),
             (
-                Component {
+                Voice {
                     carrier: Carrier::Tone {
                         frequency_hz: 23_960.0,
                     },
@@ -412,7 +422,7 @@ mod validate {
                 false,
             ),
             (
-                Component {
+                Voice {
                     carrier: Carrier::Click {
                         rate_hz: 40.0,
                         width_seconds: 0.001,
@@ -422,7 +432,7 @@ mod validate {
                 true,
             ),
             (
-                Component {
+                Voice {
                     carrier: Carrier::Click {
                         rate_hz: 40.0,
                         width_seconds: 0.000_001,
@@ -432,7 +442,7 @@ mod validate {
                 false,
             ),
             (
-                Component {
+                Voice {
                     modulation: Some(Modulation::Rectangular {
                         rate_hz: 40.0,
                         width_seconds: 1_199.0 / 48_000.0,
@@ -442,7 +452,7 @@ mod validate {
                 true,
             ),
             (
-                Component {
+                Voice {
                     modulation: Some(Modulation::Rectangular {
                         rate_hz: 40.0,
                         width_seconds: 1_200.0 / 48_000.0,
@@ -455,10 +465,17 @@ mod validate {
         for (component, valid) in cases {
             let own = own(component, rate);
             assert_eq!(own.is_ok(), valid, "{component:?}");
-            let whole = Stimulus {
+            let whole = Sound {
                 duration_seconds: 1.0,
                 fade_seconds: 0.0,
-                components: vec![component],
+                components: (vec![component])
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, voice)| crate::Component {
+                        id: crate::ComponentId::numbered(index).unwrap(),
+                        node: crate::Node::Voice(voice),
+                    })
+                    .collect(),
             }
             .signal(rate);
             match (own, whole) {
@@ -477,7 +494,7 @@ mod validate {
         }
         assert!(matches!(
             own(
-                Component {
+                Voice {
                     peak_dbfs: f64::NAN,
                     ..base
                 },
@@ -490,7 +507,7 @@ mod validate {
 
 #[test]
 fn excessive_width_names_the_signal_frame_limit() {
-    let component = crate::Component {
+    let component = crate::Voice {
         ears: crate::Ears::Both,
         peak_dbfs: -30.0,
         carrier: crate::Carrier::Click {
@@ -555,4 +572,11 @@ fn length_messages_speak_in_time_not_frames() {
         overlap,
         "a 0.5 s fade at each edge does not fit in 1 s; the two fades together must be shorter than the duration"
     );
+}
+
+fn first_voice(sound: &mut Sound) -> &mut Voice {
+    let crate::Node::Voice(voice) = &mut sound.components[0].node else {
+        panic!("fixture must be a voice")
+    };
+    voice
 }

@@ -157,14 +157,14 @@ pub(crate) enum Modulator {
     Rectangular(Pulse),
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Voice {
+pub(crate) struct GeneratorVoice {
     pub(crate) left: bool,
     pub(crate) right: bool,
     pub(crate) amplitude: f64,
     pub(crate) carrier: Carrier,
     pub(crate) modulation: Option<Modulator>,
 }
-impl Voice {
+impl GeneratorVoice {
     /// The linear routing gains at full envelope, left and right.
     pub(crate) const fn gains(&self) -> [f64; 2] {
         [
@@ -383,7 +383,7 @@ mod pulses {
     #[test]
     fn exact_gates_keep_the_tones_bits_and_have_half_open_edges() {
         let pulse = pulse(3.0 / 8000.0, 1000.0, 8000).unwrap();
-        let plain = Voice {
+        let plain = GeneratorVoice {
             left: true,
             right: true,
             amplitude: 1.0,
@@ -392,11 +392,11 @@ mod pulses {
             },
             modulation: None,
         };
-        let gated = Voice {
+        let gated = GeneratorVoice {
             modulation: Some(Modulator::Rectangular(pulse)),
             ..plain
         };
-        let clicks = Voice {
+        let clicks = GeneratorVoice {
             carrier: Carrier::Pulse(pulse),
             ..plain
         };

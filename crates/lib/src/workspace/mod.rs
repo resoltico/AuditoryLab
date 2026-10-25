@@ -36,12 +36,10 @@ use crate::editing::{
 use crate::recipe::file_name;
 use crate::session::{PlaybackControl, PlaybackPhase, Session, StopRequest};
 use crate::{
-    Cancel, DocumentId, Draft, EditorSession, Error, ErrorKind, Progress, RecipeSnapshot, Sound,
-    WaveformScale, controls, presentation,
+    Cancel, DocumentId, Draft, EditorSession, Error, ErrorKind, Progress, RecipeSnapshot,
+    Rendition, WaveformScale, controls, presentation,
 };
-use auditorylab_core::{
-    CarrierKind, ComponentId, Ears, ModulationKind, Recipe, SampleRate, Stimulus,
-};
+use auditorylab_core::{CarrierKind, ComponentId, Ears, ModulationKind, Recipe, SampleRate, Sound};
 use output::OutputState;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -284,7 +282,7 @@ enum PromptState {
         content: std::sync::Arc<Recipe>,
     },
     Import,
-    Export(Sound),
+    Export(Rendition),
     ExportRecipe(Arc<str>),
 }
 

@@ -110,7 +110,7 @@ impl Preferences {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Binding {
     Document(DocumentId),
-    Component(DocumentId, ComponentId),
+    Voice(DocumentId, ComponentId),
 }
 
 /// Bindings handed to rendered rows; never reused.
@@ -553,7 +553,7 @@ impl SlintAdapter {
 
     fn parameter_handle(&self, binding: i32, key: ParameterKey) -> Option<FieldHandle> {
         match self.resolve(binding)? {
-            Binding::Component(document, id) => Some(FieldHandle {
+            Binding::Voice(document, id) => Some(FieldHandle {
                 document,
                 field: EditingField::Parameter(id, parameter_id(key)),
             }),
@@ -567,13 +567,13 @@ impl SlintAdapter {
                 document,
                 field: EditingField::Metadata(metadata_field(key)),
             }),
-            Binding::Component(..) => None,
+            Binding::Voice(..) => None,
         }
     }
 
     fn component(&self, binding: i32) -> Option<(DocumentId, ComponentId)> {
         match self.resolve(binding)? {
-            Binding::Component(document, id) => Some((document, id)),
+            Binding::Voice(document, id) => Some((document, id)),
             Binding::Document(_) => None,
         }
     }
@@ -867,7 +867,7 @@ impl SlintAdapter {
             binding: self
                 .bindings
                 .borrow_mut()
-                .allocate(Binding::Component(document, component.id)),
+                .allocate(Binding::Voice(document, component.id)),
             parameters: Rc::new(VecModel::from(
                 component
                     .parameters

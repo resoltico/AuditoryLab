@@ -23,3 +23,6 @@ include!(concat!(env!("OUT_DIR"), "/catalog.rs"));
 pub fn find(name: &str) -> Option<&'static Entry> {
     ENTRIES.iter().find(|entry| entry.id == name)
 }
+
+#[cfg(test)]
+mod tests;

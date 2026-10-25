@@ -1,14 +1,14 @@
 //! Timing-model oracles use integer rationals, never the projection's pulse helper.
 use auditorylab_core::{
-    Carrier, Component, ComponentId, Ears, Modulation, SampleRate, Target, live::Engine,
+    Carrier, ComponentId, Ears, Modulation, SampleRate, Target, Voice, live::Engine,
     timing::ModelKind,
 };
 
 fn id(n: u32) -> ComponentId {
     ComponentId::new(n)
 }
-fn clicks(hz: f64, width: f64) -> Component {
-    Component {
+fn clicks(hz: f64, width: f64) -> Voice {
+    Voice {
         ears: Ears::Both,
         peak_dbfs: -30.0,
         carrier: Carrier::Click {
@@ -64,7 +64,7 @@ fn every_column_contains_all_rational_pulses_including_single_frame_impulses() {
 #[test]
 fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
     let rate = SampleRate::new(48000).unwrap();
-    let component = Component {
+    let component = Voice {
         carrier: Carrier::Tone {
             frequency_hz: 1000.0,
         },
@@ -83,10 +83,17 @@ fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
     // Negative control: the single point at a selected point just after the midpoint misses every one-frame pulse.
     let point = model.frames / 2 + 1;
     assert_ne!(point % 1200, 0);
-    let signal = auditorylab_core::Stimulus {
+    let signal = auditorylab_core::Sound {
         duration_seconds: 0.25,
         fade_seconds: 0.0,
-        components: vec![component],
+        components: (vec![component])
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| auditorylab_core::Component {
+                id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+                node: auditorylab_core::Node::Voice(voice),
+            })
+            .collect(),
     }
     .signal(rate)
     .unwrap();
@@ -106,7 +113,7 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
         rate,
         &[(
             id(1),
-            Component {
+            Voice {
                 peak_dbfs: -10000.0,
                 ..c
             },
@@ -123,7 +130,7 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
     assert_eq!(m.lanes[0].columns.len(), 512);
     let t = Target::new(rate, &[(id(1), clicks(8.0, 0.001))]).unwrap();
     assert_eq!(t.timing_model(256).frames, 24000);
-    let c = Component {
+    let c = Voice {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 39.0625,
             depth: 1.0,
@@ -168,7 +175,7 @@ fn am_bounds_contain_independent_sine_samples_and_depth_zero_is_steady() {
     for fs in [44100, 48000, 768000] {
         for depth in [0.0, 0.5, 1.0] {
             let rate = SampleRate::new(fs).unwrap();
-            let c = Component {
+            let c = Voice {
                 carrier: Carrier::Tone {
                     frequency_hz: 1000.0,
                 },
@@ -201,7 +208,7 @@ fn am_bounds_contain_independent_sine_samples_and_depth_zero_is_steady() {
 #[test]
 fn maximum_rate_projection_has_fixed_storage_and_measured_cost() {
     let rate = SampleRate::new(768000).unwrap();
-    let c = Component {
+    let c = Voice {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 383999.0,
             depth: 1.0,
@@ -227,7 +234,7 @@ fn maximum_rate_projection_has_fixed_storage_and_measured_cost() {
 #[test]
 fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
     let rate = SampleRate::new(48000).unwrap();
-    let tone = Component {
+    let tone = Voice {
         carrier: Carrier::Tone {
             frequency_hz: 1000.0,
         },
@@ -247,7 +254,7 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
             rate,
             &[(
                 id(1),
-                Component {
+                Voice {
                     modulation: Some(modulation),
                     ..tone
                 },
@@ -270,7 +277,7 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
         rate,
         &[(
             id(1),
-            Component {
+            Voice {
                 modulation: Some(Modulation::Sinusoidal {
                     rate_hz: 0.1,
                     depth: 0.0,
@@ -293,7 +300,7 @@ fn envelope_bounds_match_endpoints_and_quarter_cycle_extrema() {
     // Eight cycles/second gives quarter-cycle extrema exactly every 1500 frames.
     // Independent rational phases also constrain partial columns, not just inclusion.
     for depth in [0.5, 1.0] {
-        let component = Component {
+        let component = Voice {
             modulation: Some(Modulation::Sinusoidal {
                 rate_hz: 8.0,
                 depth,

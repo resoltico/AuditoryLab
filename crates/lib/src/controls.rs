@@ -3,7 +3,7 @@
 //! This is control convenience, not validation: typed values outside a
 //! slider's span are kept exactly and validated by the core.
 use auditorylab_core::{
-    Carrier, CarrierKind, Component, Ears, Modulation, ModulationKind, ParameterId, SampleRate,
+    Carrier, CarrierKind, Ears, Modulation, ModulationKind, ParameterId, SampleRate, Voice,
 };
 
 /// Waveform spans offered by application monitors, in milliseconds.
@@ -98,8 +98,8 @@ pub fn range(id: ParameterId, rate: SampleRate) -> Option<Range> {
 
 /// A quiet unmodulated component, routed to both ears.
 #[must_use]
-pub fn default_component(kind: CarrierKind) -> Component {
-    Component {
+pub fn default_component(kind: CarrierKind) -> Voice {
+    Voice {
         ears: Ears::Both,
         peak_dbfs: model_default(ParameterId::PeakLevel),
         carrier: default_carrier(kind),
@@ -214,12 +214,23 @@ pub fn slider_position(id: ParameterId, rate: SampleRate, model: f64) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auditorylab_core::{ComponentId, TargetCheck};
+    use auditorylab_core::ComponentId;
 
-    fn valid(component: Component, rate: SampleRate) -> bool {
-        TargetCheck::new(rate, &[(ComponentId::new(1), component)])
-            .target()
-            .is_some()
+    fn valid(component: Voice, rate: SampleRate) -> bool {
+        auditorylab_core::Sound {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components: ([(ComponentId::new(1), component)])
+                .iter()
+                .map(|(id, voice)| auditorylab_core::Component {
+                    id: *id,
+                    node: auditorylab_core::Node::Voice(*voice),
+                })
+                .collect(),
+        }
+        .check(rate)
+        .target()
+        .is_some()
     }
 
     #[test]
@@ -323,11 +334,20 @@ mod tests {
                     ] {
                         let mut node = default_pair(kind);
                         assert!(node.write(id, id.descriptor().unit.to_model(r.default)));
-                        let authored = [auditorylab_core::AuthoredComponent {
+                        let authored = [auditorylab_core::Component {
                             id: ComponentId::new(1),
                             node,
                         }];
-                        assert!(TargetCheck::authored(rate, &authored).target().is_some());
+                        assert!(
+                            auditorylab_core::Sound {
+                                duration_seconds: 1.0,
+                                fade_seconds: 0.0,
+                                components: authored.to_vec()
+                            }
+                            .check(rate)
+                            .target()
+                            .is_some()
+                        );
                     }
                     continue;
                 }
@@ -354,7 +374,7 @@ mod tests {
             let rate = SampleRate::new(hz).unwrap();
             let r = range(ParameterId::ToneFrequency, rate).unwrap();
             assert!(r.min > 0.0 && r.min < r.max && r.max < 0.5 * f64::from(hz));
-            let component = Component {
+            let component = Voice {
                 carrier: Carrier::Tone {
                     frequency_hz: r.default,
                 },

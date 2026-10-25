@@ -9,7 +9,7 @@
 //! the handle. A panic or a missing result is a failure.
 use crate::session::{LiveControl, MonitorReader, PlaybackControl, PlaybackReport};
 use crate::{
-    Cancel, DocumentId, Error, ErrorKind, Exported, Progress, RecipeSnapshot, Replace, Sound,
+    Cancel, DocumentId, Error, ErrorKind, Exported, Progress, RecipeSnapshot, Rendition, Replace,
 };
 use auditorylab_core::{Recipe, SampleRate};
 use std::path::PathBuf;
@@ -195,7 +195,7 @@ pub(crate) enum FileKind {
         frames: u64,
         cancel: Cancel,
         progress: Progress,
-        sound: Sound,
+        sound: Rendition,
     },
 }
 

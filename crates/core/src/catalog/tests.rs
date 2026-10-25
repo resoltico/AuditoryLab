@@ -6,10 +6,12 @@
 
 #![cfg(test)]
 
+use crate as auditorylab_core;
 use auditorylab_core::catalog::{self, Entry};
 use auditorylab_core::{Carrier, Ears, Modulation, Recipe, SampleRate};
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::{borrow::ToOwned, format, string::String, vec::Vec};
 
 /// How an independently written recipe modulates a component.
 #[derive(Clone, Copy)]
@@ -272,14 +274,21 @@ fn every_entry_has_its_independently_written_recipe() {
     );
     for (entry, (name, seconds, parts)) in catalog::ENTRIES.iter().zip(RECIPES) {
         let authored = recipe(entry).stimulus;
-        let stimulus = auditorylab_core::Stimulus {
+        let stimulus = auditorylab_core::Sound {
             duration_seconds: authored.duration_seconds,
             fade_seconds: authored.fade_seconds,
-            components: auditorylab_core::authored::lower(&authored.components)
+            components: (auditorylab_core::authored::lower(&authored.components)
                 .unwrap()
                 .into_iter()
                 .map(|(_, c)| c)
-                .collect(),
+                .collect::<Vec<_>>())
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| auditorylab_core::Component {
+                id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+                node: auditorylab_core::Node::Voice(voice),
+            })
+            .collect(),
         };
         assert_eq!(stimulus.duration_seconds, *seconds, "{name}");
         assert_eq!(stimulus.fade_seconds, 0.1, "{name}");
@@ -287,6 +296,9 @@ fn every_entry_has_its_independently_written_recipe() {
         for (component, (ears, kind, hz, level, modulation)) in
             stimulus.components.iter().zip(*parts)
         {
+            let auditorylab_core::Node::Voice(component) = component.node else {
+                panic!("voice fixture")
+            };
             assert_eq!(component.ears, *ears, "{name}");
             assert_eq!(component.peak_dbfs, *level, "{name}");
             assert_eq!(
@@ -392,20 +404,30 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
     for entry in catalog::ENTRIES {
         for hz in [44_100, 48_000, 96_000] {
             let authored = recipe(entry).stimulus;
-            let mut stimulus = auditorylab_core::Stimulus {
+            let mut stimulus = auditorylab_core::Sound {
                 duration_seconds: authored.duration_seconds,
                 fade_seconds: authored.fade_seconds,
-                components: auditorylab_core::authored::lower(&authored.components)
+                components: (auditorylab_core::authored::lower(&authored.components)
                     .unwrap()
                     .into_iter()
                     .map(|(_, c)| c)
-                    .collect(),
+                    .collect::<Vec<_>>())
+                .into_iter()
+                .enumerate()
+                .map(|(index, voice)| auditorylab_core::Component {
+                    id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+                    node: auditorylab_core::Node::Voice(voice),
+                })
+                .collect(),
             };
             let signal = stimulus.signal(SampleRate::new(hz).unwrap()).unwrap();
             assert_eq!(signal.duration_seconds(), stimulus.duration_seconds);
             stimulus.fade_seconds = 0.0;
             let signal = stimulus.signal(SampleRate::new(hz).unwrap()).unwrap();
             if let [part] = &stimulus.components[..] {
+                let auditorylab_core::Node::Voice(part) = part.node else {
+                    panic!("voice fixture")
+                };
                 let pulse_rate = match part.carrier {
                     Carrier::Click { rate_hz, .. } => Some(rate_hz),
                     _ => match part.modulation {
@@ -432,14 +454,6 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
         }
     }
 }
-// Compile the build script's pure ordering test as part of this integration target.
-#[path = "../build.rs"]
-#[expect(
-    dead_code,
-    reason = "The integration test imports the real catalog build module to check catalog inputs; its unused Cargo build-script main is not executed by that test"
-)]
-mod catalog_build;
-
 #[test]
 fn builtins_have_unique_curated_identities_and_do_not_invent_creation_dates() {
     let mut identities = std::collections::BTreeSet::new();
@@ -455,3 +469,11 @@ fn builtins_have_unique_curated_identities_and_do_not_invent_creation_dates() {
     }
     assert_eq!(identities.len(), catalog::ENTRIES.len());
 }
+
+// Compile the build script's pure ordering test as part of this integration target.
+#[path = "../../build.rs"]
+#[expect(
+    dead_code,
+    reason = "The integration test imports the real catalog build module to check catalog inputs; its unused Cargo build-script main is not executed by that test"
+)]
+mod catalog_build;

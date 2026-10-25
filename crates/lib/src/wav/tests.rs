@@ -4,7 +4,7 @@
 // Independently decode caller-owned encoded streams and test writer boundaries.
 
 use crate::wav::{Container, Exported, encode};
-use auditorylab_core::{Component, Ears, Recipe, SampleRate, Signal, Stimulus, catalog};
+use auditorylab_core::{Ears, Recipe, SampleRate, Signal, Sound, Voice, catalog};
 fn export(
     session: Signal,
     path: &Path,
@@ -26,17 +26,24 @@ fn rate() -> SampleRate {
 }
 
 fn tone_session(frames: u32, sample_rate: SampleRate) -> Signal {
-    Stimulus {
+    Sound {
         duration_seconds: f64::from(frames) / f64::from(sample_rate.hz()),
         fade_seconds: 0.001,
-        components: vec![Component {
+        components: (vec![Voice {
             ears: Ears::Both,
             peak_dbfs: -20.0,
             modulation: None,
             carrier: crate::Carrier::Tone {
                 frequency_hz: 500.0,
             },
-        }],
+        }])
+        .into_iter()
+        .enumerate()
+        .map(|(index, voice)| auditorylab_core::Component {
+            id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+            node: auditorylab_core::Node::Voice(voice),
+        })
+        .collect(),
     }
     .signal(sample_rate)
     .unwrap()
@@ -115,10 +122,17 @@ fn an_independent_decoder_reads_the_format_length_and_nearest_f32_samples() {
 fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("silence.wav");
-    let silence = Stimulus {
+    let silence = Sound {
         duration_seconds: 5.0 / 8_000.0,
         fade_seconds: 0.0,
-        components: vec![],
+        components: (vec![])
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| auditorylab_core::Component {
+                id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+                node: auditorylab_core::Node::Voice(voice),
+            })
+            .collect(),
     }
     .signal(rate())
     .unwrap();

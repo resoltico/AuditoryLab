@@ -1,7 +1,7 @@
 //! Public shared interpretation and capture contracts, independent of UI widgets.
 use auditorylab::*;
-fn tone(hz: f64, ears: Ears) -> Component {
-    Component {
+fn tone(hz: f64, ears: Ears) -> Voice {
+    Voice {
         ears,
         peak_dbfs: -40.0,
         carrier: Carrier::Tone { frequency_hz: hz },
@@ -12,7 +12,7 @@ fn tone(hz: f64, ears: Ears) -> Component {
     clippy::unwrap_used,
     reason = "Test fixture helper deliberately panics if an enumerated component ID or specified target is invalid, causing its calling presentation test to fail"
 )]
-fn summary(components: &[Component]) -> Structure {
+fn summary(components: &[Voice]) -> Structure {
     let pairs: Vec<_> = components
         .iter()
         .enumerate()
@@ -22,7 +22,7 @@ fn summary(components: &[Component]) -> Structure {
 }
 #[test]
 fn physical_meaning_has_positive_and_rejected_neighbors() {
-    let click = Component {
+    let click = Voice {
         carrier: Carrier::Click {
             rate_hz: 40.0,
             width_seconds: 0.001,
@@ -31,7 +31,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     };
     let s = summary(&[click, tone(440.0, Ears::Both)]);
     assert_eq!(s.rhythms.len(), 1);
-    assert_eq!(s.rhythms[0].kind, RhythmKind::Clicks);
+    assert_eq!(s.rhythms[0].kind, Method::Clicks);
     let text = structure_description(&s);
     assert!(
         text.contains("40 Hz clicks")
@@ -55,7 +55,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     for bad in [vec![a, right], vec![a, b, click]] {
         assert!(summary(&bad).relationship.is_none());
     }
-    let gate = Component {
+    let gate = Voice {
         modulation: Some(Modulation::Rectangular {
             rate_hz: 8.0,
             width_seconds: 0.001,
@@ -68,7 +68,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
         structure_description(&s).contains("8 Hz gate")
             && structure_description(&s).contains("40 Hz clicks")
     );
-    let active = Component {
+    let active = Voice {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 39.0625,
             depth: 0.5,
@@ -77,12 +77,12 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     };
     let am = summary(&[active]);
     assert_eq!(am.rhythms.len(), 1);
-    assert_eq!(am.rhythms[0].kind, RhythmKind::AmplitudeModulation);
+    assert_eq!(am.rhythms[0].kind, Method::AmplitudeModulation);
     assert!(
         structure_description(&am).contains("39.0625")
             && structure_description(&am).contains("50%")
     );
-    let inactive = Component {
+    let inactive = Voice {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 39.0625,
             depth: 0.0,
@@ -191,7 +191,7 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
         editable_number(ParameterId::ToneFrequency, exact),
         "39.0625123456789"
     );
-    let c = Component {
+    let c = Voice {
         carrier: Carrier::Click {
             rate_hz: 40.0,
             width_seconds: 0.001,
@@ -209,15 +209,26 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
 
 #[test]
 fn a_carrier_is_named_in_sentence_case() {
-    let describe = |component: Component| {
-        let check = TargetCheck::new(SampleRate::DEFAULT, &[(ComponentId::new(1), component)]);
+    let describe = |component: Voice| {
+        let check = auditorylab_core::Sound {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components: ([(ComponentId::new(1), component)])
+                .iter()
+                .map(|(id, voice)| auditorylab_core::Component {
+                    id: *id,
+                    node: auditorylab_core::Node::Voice(*voice),
+                })
+                .collect(),
+        }
+        .check(SampleRate::DEFAULT);
         component_description(&check.components()[0].1.clone().unwrap(), false)
     };
-    let modulated = |modulation| Component {
+    let modulated = |modulation| Voice {
         modulation: Some(modulation),
         ..tone(440.0, Ears::Both)
     };
-    let clicks = Component {
+    let clicks = Voice {
         carrier: Carrier::Click {
             rate_hz: 40.0,
             width_seconds: 0.001,
@@ -248,14 +259,25 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
         (44_100, 0.001, 44, "≈0.997732"),
     ] {
         let rate = SampleRate::new(hz).unwrap();
-        let component = Component {
+        let component = Voice {
             carrier: Carrier::Click {
                 rate_hz: 40.0,
                 width_seconds: requested,
             },
             ..tone(440.0, Ears::Both)
         };
-        let check = TargetCheck::new(rate, &[(ComponentId::new(1), component)]);
+        let check = auditorylab_core::Sound {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components: ([(ComponentId::new(1), component)])
+                .iter()
+                .map(|(id, voice)| auditorylab_core::Component {
+                    id: *id,
+                    node: auditorylab_core::Node::Voice(*voice),
+                })
+                .collect(),
+        }
+        .check(rate);
         let facts = check.components()[0].1.clone().unwrap();
         let brief = component_description(&facts, false);
         let detail = component_description(&facts, true);
@@ -283,8 +305,20 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         let d = id.descriptor();
         assert_eq!(labeled(id), format!("{} ({})", d.label, d.unit.symbol()));
     }
-    let check = |c: Component| {
-        TargetCheck::new(rate, &[(ComponentId::new(1), c)]).components()[0]
+    let check = |c: Voice| {
+        auditorylab_core::Sound {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components: ([(ComponentId::new(1), c)])
+                .iter()
+                .map(|(id, voice)| auditorylab_core::Component {
+                    id: *id,
+                    node: auditorylab_core::Node::Voice(*voice),
+                })
+                .collect(),
+        }
+        .check(rate)
+        .components()[0]
             .1
             .clone()
             .unwrap_err()
@@ -295,7 +329,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         check(tone(30000.0, Ears::Both)),
         [ParameterId::ToneFrequency]
     );
-    let clicks = Component {
+    let clicks = Voice {
         carrier: Carrier::Click {
             rate_hz: 160.0,
             width_seconds: 0.010,
@@ -306,7 +340,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         check(clicks),
         [ParameterId::ClickRate, ParameterId::ClickWidth]
     );
-    let sideband = Component {
+    let sideband = Voice {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 10000.0,
             depth: 0.5,
@@ -321,20 +355,32 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         ]
     );
     assert_eq!(
-        check(Component {
+        check(Voice {
             peak_dbfs: 1.0,
             ..tone(440.0, Ears::Both)
         }),
         [ParameterId::PeakLevel]
     );
-    let depth = Component {
+    let depth = Voice {
         modulation: Some(Modulation::Sinusoidal {
             rate_hz: 40.0,
             depth: 1.5,
         }),
         ..tone(440.0, Ears::Both)
     };
-    let error = TargetCheck::new(rate, &[(ComponentId::new(1), depth)]).components()[0]
+    let error = auditorylab_core::Sound {
+        duration_seconds: 1.0,
+        fade_seconds: 0.0,
+        components: ([(ComponentId::new(1), depth)])
+            .iter()
+            .map(|(id, voice)| auditorylab_core::Component {
+                id: *id,
+                node: auditorylab_core::Node::Voice(*voice),
+            })
+            .collect(),
+    }
+    .check(rate)
+    .components()[0]
         .1
         .clone()
         .unwrap_err();

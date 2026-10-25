@@ -8,10 +8,10 @@
 //! whole-target error in the established order. A valid check yields a
 //! [`Target`]: the compiled mix, which a finite [`Signal`] and the live
 //! engine reuse without compiling the raw components again.
-use crate::synthesis::Voice;
+use crate::synthesis::GeneratorVoice;
 use crate::{
-    Component, ComponentError, ComponentFacts, ComponentId, Ear, SampleRate, Signal, SlotRole,
-    Stimulus, StimulusError, VoiceObservation, numeric, signal::Envelope,
+    ComponentError, ComponentFacts, ComponentId, Ear, SampleRate, Signal, SlotRole, Sound,
+    StimulusError, Voice, VoiceObservation, numeric, signal::Envelope,
 };
 use alloc::vec::Vec;
 
@@ -21,7 +21,7 @@ use alloc::vec::Vec;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct CompiledComponent {
     pub(crate) id: ComponentId,
-    pub(crate) voice: Voice,
+    pub(crate) voice: GeneratorVoice,
     pub(crate) facts: ComponentFacts,
 }
 
@@ -31,7 +31,7 @@ pub(crate) struct CompiledComponent {
 pub(crate) struct CompiledMix {
     rate: SampleRate,
     len: usize,
-    entries: [Option<CompiledComponent>; Stimulus::MAX_COMPONENTS],
+    entries: [Option<CompiledComponent>; Sound::MAX_VOICES],
     peak: [f64; 2],
 }
 
@@ -40,7 +40,7 @@ impl CompiledMix {
         Self {
             rate,
             len: 0,
-            entries: [None; Stimulus::MAX_COMPONENTS],
+            entries: [None; Sound::MAX_VOICES],
             peak: [0.0; 2],
         }
     }
@@ -86,13 +86,13 @@ impl Target {
     }
 
     /// Validate components at `rate` with the same rules as
-    /// [`Stimulus::signal`], without a duration or fade.
+    /// [`Sound::signal`], without a duration or fade.
     ///
     /// # Errors
-    /// Returns what [`TargetCheck::new`] finds first.
+    /// Returns what [`Sound::check`] finds first.
     pub fn new(
         rate: SampleRate,
-        components: &[(ComponentId, Component)],
+        components: &[(ComponentId, Voice)],
     ) -> Result<Self, StimulusError> {
         TargetCheck::new(rate, components).into_result()
     }
@@ -184,7 +184,7 @@ pub struct TargetCheck {
 impl TargetCheck {
     /// Lower an atomic authored candidate before compiling any generator lane.
     #[must_use]
-    pub fn authored(rate: SampleRate, components: &[crate::AuthoredComponent]) -> Self {
+    pub(crate) fn authored(rate: SampleRate, components: &[crate::Component]) -> Self {
         let lowered = match crate::authored::lower(components) {
             Ok(values) => values,
             Err(error) => {
@@ -260,8 +260,8 @@ impl TargetCheck {
     /// rejected without compiling any component. Otherwise every component
     /// is compiled, so each has its own result even after an earlier one fails.
     #[must_use]
-    pub fn new(rate: SampleRate, components: &[(ComponentId, Component)]) -> Self {
-        if components.len() > Stimulus::MAX_COMPONENTS {
+    pub(crate) fn new(rate: SampleRate, components: &[(ComponentId, Voice)]) -> Self {
+        if components.len() > Sound::MAX_VOICES {
             return Self {
                 rate,
                 components: Vec::new(),
@@ -326,25 +326,6 @@ impl TargetCheck {
         }
     }
 
-    /// Check components given the identities [`ComponentId::numbered`] gives
-    /// their positions.
-    pub(crate) fn numbered(rate: SampleRate, components: &[Component]) -> Self {
-        if components.len() > Stimulus::MAX_COMPONENTS {
-            return Self::new(rate, &[]).over_capacity(components.len());
-        }
-        let numbered: Vec<_> = components
-            .iter()
-            .enumerate()
-            .filter_map(|(index, c)| Some((ComponentId::numbered(index)?, *c)))
-            .collect();
-        Self::new(rate, &numbered)
-    }
-
-    fn over_capacity(mut self, count: usize) -> Self {
-        self.result = Err(StimulusError::TooManyComponents { count });
-        self
-    }
-
     /// The rate the components were checked at.
     #[must_use]
     pub const fn sample_rate(&self) -> SampleRate {
@@ -352,7 +333,7 @@ impl TargetCheck {
     }
 
     /// Each component's own result in input order; empty when the input
-    /// exceeds [`Stimulus::MAX_COMPONENTS`].
+    /// exceeds [`Sound::MAX_VOICES`].
     #[must_use]
     pub fn components(&self) -> &[(ComponentId, Result<ComponentFacts, ComponentError>)] {
         &self.components

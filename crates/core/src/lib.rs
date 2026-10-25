@@ -1,7 +1,8 @@
 //! Auditory recipes, validation and pure seekable and live stereo synthesis.
 //!
-//! A [`Recipe`] is the raw document: a [`Stimulus`] and optional [`About`]
-//! text. A [`TargetCheck`] compiles a stimulus's components at one
+//! A [`Recipe`] is a portable document containing a [`Sound`] and attributed
+//! research. A Sound contains identified [`Component`]s, each a [`Node`] built
+//! from a [`Voice`] or an explicit pair. [`Sound::check`] compiles it at one
 //! [`SampleRate`] into a validated [`Target`]; a [`Signal`] adds the finite
 //! envelope. [`live::Engine`] renders targets as an open-ended stream, and an
 //! [`Observation`] states the facts of a generated frame.
@@ -28,9 +29,7 @@ mod stimulus;
 mod synthesis;
 pub mod timing;
 pub mod waveform;
-pub use authored::{
-    AuthoredComponent, AuthoredStimulus, LoweringError, Node, Pair, PairIssue, PairKind,
-};
+pub use authored::{Component, LoweringError, Node, Pair, PairIssue, PairKind, Sound};
 pub use compiled::{Target, TargetCheck};
 pub use facts::{
     CarrierFacts, ComponentFacts, ModulationFacts, Observation, PairFacts, PhaseRate, PulseFacts,
@@ -48,7 +47,5 @@ pub use provenance::{
 pub use rate::{SampleRate, SampleRateError};
 pub use recipe::{About, Recipe, RecipeError, Research};
 pub use signal::Signal;
-pub use stimulus::{
-    Carrier, Component, ComponentError, Ear, Ears, Modulation, Stimulus, StimulusError,
-};
+pub use stimulus::{Carrier, ComponentError, Ear, Ears, Modulation, StimulusError, Voice};
 pub use waveform::Extent;

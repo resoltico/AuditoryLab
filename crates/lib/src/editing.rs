@@ -11,8 +11,8 @@
 //! only supplies candidates.
 use crate::{Error, ErrorKind, Origin, RecipeSnapshot, controls, presentation};
 use auditorylab_core::{
-    CarrierKind, Component, ComponentId, Ears, ModulationKind, ParameterId, Recipe, SampleRate,
-    Signal, Stimulus, StimulusError, Target, TargetCheck,
+    CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, Recipe, SampleRate, Signal, Sound,
+    StimulusError, Target, TargetCheck, Voice,
 };
 use std::{
     collections::BTreeMap,
@@ -96,7 +96,7 @@ pub enum EditRefusal {
     UnknownComponent,
     /// The component's carrier or modulation does not have the quantity.
     Inapplicable,
-    /// The document already has [`Stimulus::MAX_COMPONENTS`] components.
+    /// The document already has [`Sound::MAX_COMPONENTS`] components.
     ComponentLimit,
     /// No unused component identity remains in this document.
     IdentitiesExhausted,
@@ -186,7 +186,7 @@ impl Draft {
     }
     /// Authored components in source order, including stable owner identities.
     #[must_use]
-    pub fn components(&self) -> &[auditorylab_core::AuthoredComponent] {
+    pub fn components(&self) -> &[auditorylab_core::Component] {
         &self.content.stimulus.components
     }
     /// One authored node by its primary owner identity.
@@ -212,9 +212,9 @@ impl Draft {
     /// # Errors
     /// Refuses full budgets or exhausted nonreused owner identities.
     pub fn add(&mut self, kind: CarrierKind) -> Result<ComponentId, EditRefusal> {
-        self.add_node(auditorylab_core::Node::Primitive(
-            controls::default_component(kind),
-        ))
+        self.add_node(auditorylab_core::Node::Voice(controls::default_component(
+            kind,
+        )))
     }
     /// Add an atomic authored node, including a two-voice pair.
     ///
@@ -222,25 +222,25 @@ impl Draft {
     /// Refuses full budgets or exhausted owner identities.
     pub fn add_node(&mut self, node: auditorylab_core::Node) -> Result<ComponentId, EditRefusal> {
         let components = &mut self.content.stimulus.components;
-        if components.len() >= Stimulus::MAX_COMPONENTS
+        if components.len() >= Sound::MAX_COMPONENTS
             || components.iter().map(|c| c.node.voices()).sum::<usize>() + node.voices()
-                > Stimulus::MAX_COMPONENTS
+                > Sound::MAX_VOICES
         {
             return Err(EditRefusal::ComponentLimit);
         }
         let next = self.next_id.ok_or(EditRefusal::IdentitiesExhausted)?;
         let id = ComponentId::new(next);
         self.next_id = next.checked_add(1);
-        components.push(auditorylab_core::AuthoredComponent { id, node });
+        components.push(auditorylab_core::Component { id, node });
         self.demote_evidence();
         Ok(id)
     }
     /// Replace one primitive while preserving its authored owner.
-    pub fn replace(&mut self, id: ComponentId, component: Component) -> bool {
+    pub fn replace(&mut self, id: ComponentId, component: Voice) -> bool {
         let Some(before) = self.component(id).copied() else {
             return false;
         };
-        let node = auditorylab_core::Node::Primitive(component);
+        let node = auditorylab_core::Node::Voice(component);
         if !before.same_content(node) {
             self.demote_evidence();
         }
@@ -252,10 +252,7 @@ impl Draft {
         }
     }
     /// Remove one authored node without reusing its owner identity.
-    pub fn remove(
-        &mut self,
-        id: ComponentId,
-    ) -> Option<(usize, auditorylab_core::AuthoredComponent)> {
+    pub fn remove(&mut self, id: ComponentId) -> Option<(usize, auditorylab_core::Component)> {
         let components = &mut self.content.stimulus.components;
         let index = components.iter().position(|c| c.id == id)?;
         let removed = components.remove(index);
@@ -265,12 +262,12 @@ impl Draft {
     fn restore(
         &mut self,
         index: usize,
-        component: auditorylab_core::AuthoredComponent,
+        component: auditorylab_core::Component,
     ) -> Result<(), EditRefusal> {
         let components = &mut self.content.stimulus.components;
-        if components.len() >= Stimulus::MAX_COMPONENTS
+        if components.len() >= Sound::MAX_COMPONENTS
             || components.iter().map(|c| c.node.voices()).sum::<usize>() + component.node.voices()
-                > Stimulus::MAX_COMPONENTS
+                > Sound::MAX_VOICES
         {
             return Err(EditRefusal::ComponentLimit);
         }
@@ -385,10 +382,10 @@ impl Draft {
     }
     /// Complete authored sound, with pair intent and stable owners retained.
     #[must_use]
-    pub fn stimulus(&self) -> auditorylab_core::AuthoredStimulus {
+    pub fn stimulus(&self) -> auditorylab_core::Sound {
         self.content.stimulus.clone()
     }
-    /// Immutable full portable candidate. Sound edits demote current-condition evidence.
+    /// Immutable full portable candidate. Rendition edits demote current-condition evidence.
     #[must_use]
     pub fn recipe(&self) -> Recipe {
         self.content.clone()
@@ -411,8 +408,8 @@ impl Draft {
     }
     /// Compile all expanded pair lanes as one atomic target candidate.
     #[must_use]
-    pub fn target_check(&self, rate: SampleRate) -> TargetCheck {
-        self.content.stimulus.target_check(rate)
+    pub fn check(&self, rate: SampleRate) -> TargetCheck {
+        self.content.stimulus.check(rate)
     }
     /// Serialize a complete finite candidate without I/O.
     ///
@@ -495,7 +492,7 @@ pub struct Analysis {
 
 impl Analysis {
     fn new(draft: &Draft, rate: SampleRate) -> Self {
-        let check = draft.target_check(rate);
+        let check = draft.check(rate);
         let envelope = Signal::check_envelope(rate, draft.duration_seconds(), draft.fade_seconds());
         let signal = match (&envelope, check.target()) {
             (Ok(()), Some(target)) => target
@@ -562,7 +559,7 @@ impl Analysis {
 struct AnalysisKey {
     duration: u64,
     fade: u64,
-    components: Vec<auditorylab_core::AuthoredComponent>,
+    components: Vec<auditorylab_core::Component>,
     rate: SampleRate,
 }
 
@@ -601,7 +598,7 @@ const CACHED_ANALYSES: usize = 4;
 struct Removed {
     index: usize,
     id: ComponentId,
-    component: auditorylab_core::AuthoredComponent,
+    component: auditorylab_core::Component,
     before: Recipe,
     after: Recipe,
     saved: Arc<Recipe>,
@@ -664,7 +661,7 @@ impl EditorSession {
         {
             return analysis.clone();
         }
-        let analysis = Arc::new(crate::nominal::analyze_authored(self.draft.components()));
+        let analysis = Arc::new(crate::nominal::analyze(self.draft.components()));
         self.nominal = Some((self.draft_revision, analysis.clone()));
         analysis
     }
@@ -924,7 +921,7 @@ impl EditorSession {
             return Err(EditRefusal::Inapplicable);
         }
         self.structural(document, id, |c| match c {
-            auditorylab_core::Node::Primitive(c) => c.ears = ears,
+            auditorylab_core::Node::Voice(c) => c.ears = ears,
             auditorylab_core::Node::MonauralPair { ears: route, .. } => *route = ears,
             _ => {}
         })
@@ -942,12 +939,12 @@ impl EditorSession {
         kind: CarrierKind,
     ) -> Result<(), EditRefusal> {
         self.structural(document, id, |c| match c {
-            auditorylab_core::Node::Primitive(c) => {
+            auditorylab_core::Node::Voice(c) => {
                 if c.carrier.kind() != kind {
                     c.carrier = controls::default_carrier(kind);
                 }
             }
-            node => *node = auditorylab_core::Node::Primitive(controls::default_component(kind)),
+            node => *node = auditorylab_core::Node::Voice(controls::default_component(kind)),
         })
     }
 
@@ -967,12 +964,12 @@ impl EditorSession {
         if self
             .draft
             .component(id)
-            .is_some_and(|c| !matches!(c, auditorylab_core::Node::Primitive(_)))
+            .is_some_and(|c| !matches!(c, auditorylab_core::Node::Voice(_)))
         {
             return Err(EditRefusal::Inapplicable);
         }
         self.structural(document, id, |node| {
-            if let auditorylab_core::Node::Primitive(c) = node
+            if let auditorylab_core::Node::Voice(c) = node
                 && c.modulation.map(|m| m.kind()) != kind
             {
                 c.modulation = kind.map(|kind| controls::default_modulation(kind, rate));
@@ -1051,7 +1048,7 @@ impl EditorSession {
     /// The most recently removed component and the position it had, while it
     /// can still be restored.
     #[must_use]
-    pub fn removed(&self) -> Option<(usize, &auditorylab_core::AuthoredComponent)> {
+    pub fn removed(&self) -> Option<(usize, &auditorylab_core::Component)> {
         self.removed.as_ref().map(|r| (r.index, &r.component))
     }
 
@@ -1096,9 +1093,7 @@ impl EditorSession {
         if document != self.document || content.document.id != self.draft.content.document.id {
             return false;
         }
-        self.saved_nominal = Some(crate::nominal::analyze_authored(
-            &content.stimulus.components,
-        ));
+        self.saved_nominal = Some(crate::nominal::analyze(&content.stimulus.components));
         if self.draft.content.document != content.document {
             self.draft.content.document = content.document.clone();
             self.candidate = None;

@@ -268,7 +268,7 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
         ),
         Refusal::Edit(EditRefusal::ComponentLimit) => format!(
             "A sound holds at most {} components; remove one to add another.",
-            auditorylab_core::Stimulus::MAX_COMPONENTS
+            auditorylab_core::Sound::MAX_COMPONENTS
         ),
         Refusal::Edit(EditRefusal::NothingRemoved) => {
             "No removed component is waiting to be restored.".into()
@@ -281,7 +281,7 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
         ) => "That field no longer belongs to the open sound.".into(),
         Refusal::TooManyComponents(count) => format!(
             "The workbench supports at most {} components; this recipe has {count}. Edit the recipe file to reduce them.",
-            auditorylab_core::Stimulus::MAX_COMPONENTS
+            auditorylab_core::Sound::MAX_COMPONENTS
         ),
     }
 }
@@ -805,10 +805,10 @@ impl Workspace {
             .iter()
             .map(|c| c.node.voices())
             .sum::<usize>();
-        let pair_full = used_voices + 2 > auditorylab_core::Stimulus::MAX_COMPONENTS
-            || self.editor.draft().components().len() >= auditorylab_core::Stimulus::MAX_COMPONENTS;
+        let pair_full = used_voices + 2 > auditorylab_core::Sound::MAX_VOICES
+            || self.editor.draft().components().len() >= auditorylab_core::Sound::MAX_COMPONENTS;
         let full = self.editor.draft().components().len()
-            >= auditorylab_core::Stimulus::MAX_COMPONENTS
+            >= auditorylab_core::Sound::MAX_COMPONENTS
             || self
                 .editor
                 .draft()
@@ -816,7 +816,7 @@ impl Workspace {
                 .iter()
                 .map(|c| c.node.voices())
                 .sum::<usize>()
-                >= auditorylab_core::Stimulus::MAX_COMPONENTS;
+                >= auditorylab_core::Sound::MAX_VOICES;
         let playing = self.audio.is_some();
         let exporting = self.exporting();
         let progress = self.export_progress();
@@ -863,7 +863,7 @@ impl Workspace {
             can_restore_component: self.can_edit()
                 && !full
                 && self.editor.removed().is_some_and(|(_, c)| {
-                    used_voices + c.node.voices() <= auditorylab_core::Stimulus::MAX_COMPONENTS
+                    used_voices + c.node.voices() <= auditorylab_core::Sound::MAX_VOICES
                 }),
             file_busy: self.file.is_some() || self.prompt.is_some(),
             playback_busy: playing,

@@ -1,10 +1,10 @@
 //! Independent generated-state, attribution and revision oracles.
 use auditorylab_core::{
-    Carrier, CarrierFacts, Component, ComponentFacts, ComponentId, Ears, Modulation,
-    ModulationFacts, SampleRate, SlotRole, StimulusError, Target, TargetCheck, live::Engine,
+    Carrier, CarrierFacts, ComponentFacts, ComponentId, Ears, Modulation, ModulationFacts,
+    SampleRate, SlotRole, StimulusError, Target, Voice, live::Engine,
 };
-fn tone(hz: f64, ears: Ears) -> Component {
-    Component {
+fn tone(hz: f64, ears: Ears) -> Voice {
+    Voice {
         ears,
         peak_dbfs: -30.0,
         carrier: Carrier::Tone { frequency_hz: hz },
@@ -15,15 +15,26 @@ fn tone(hz: f64, ears: Ears) -> Component {
     clippy::unwrap_used,
     reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
 )]
-fn target(rate: SampleRate, component: Component) -> Target {
+fn target(rate: SampleRate, component: Voice) -> Target {
     Target::new(rate, &[(ComponentId::new(7), component)]).unwrap()
 }
 #[expect(
     clippy::unwrap_used,
     reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
 )]
-fn facts(component: Component, rate: SampleRate) -> ComponentFacts {
-    let check = TargetCheck::new(rate, &[(ComponentId::new(1), component)]);
+fn facts(component: Voice, rate: SampleRate) -> ComponentFacts {
+    let check = auditorylab_core::Sound {
+        duration_seconds: 1.0,
+        fade_seconds: 0.0,
+        components: ([(ComponentId::new(1), component)])
+            .iter()
+            .map(|(id, voice)| auditorylab_core::Component {
+                id: *id,
+                node: auditorylab_core::Node::Voice(*voice),
+            })
+            .collect(),
+    }
+    .check(rate);
     *check.target().unwrap().components().next().unwrap().1
 }
 #[test]
@@ -88,7 +99,7 @@ fn glide_reports_the_increment_used_for_the_last_sample() {
 #[test]
 fn changed_pulses_preserve_both_real_rates_and_roles() {
     let rate = SampleRate::new(48000).unwrap();
-    let clicks = |hz| Component {
+    let clicks = |hz| Voice {
         carrier: Carrier::Click {
             rate_hz: hz,
             width_seconds: 0.001,
@@ -157,7 +168,7 @@ fn latest_revision_wins_and_stop_does_not_claim_the_skipped_target() {
 fn realized_rates_widths_depth_and_tiny_frequencies_are_explicit() {
     for hz in [44100, 48000, 768000] {
         let rate = SampleRate::new(hz).unwrap();
-        let c = Component {
+        let c = Voice {
             modulation: Some(Modulation::Sinusoidal {
                 rate_hz: 39.0625,
                 depth: 0.0,

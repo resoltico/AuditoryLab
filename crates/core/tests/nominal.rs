@@ -1,19 +1,31 @@
 //! Independent nominal boundary and structural counterexamples. No signal rendering.
-use auditorylab_core::{Carrier, Component, Ears, Modulation, Stimulus, nominal::*};
-fn tone(hz: f64, ears: Ears) -> Component {
-    Component {
+use auditorylab_core::{Carrier, Ears, Modulation, Sound, Voice, nominal::*};
+fn tone(hz: f64, ears: Ears) -> Voice {
+    Voice {
         ears,
         peak_dbfs: -20.0,
         carrier: Carrier::Tone { frequency_hz: hz },
         modulation: None,
     }
 }
-fn stimulus(components: Vec<Component>) -> Stimulus {
-    Stimulus {
+#[expect(
+    clippy::unwrap_used,
+    reason = "Fixture identities must fit the finite test component list"
+)]
+fn stimulus(components: Vec<Voice>) -> Vec<auditorylab_core::Component> {
+    Sound {
         duration_seconds: 60.0,
         fade_seconds: 0.1,
-        components,
+        components: components
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| auditorylab_core::Component {
+                id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+                node: auditorylab_core::Node::Voice(voice),
+            })
+            .collect(),
     }
+    .components
 }
 #[test]
 fn exact_boundaries_and_adjacent_binary64_values_follow_the_disclosed_policy() {
@@ -67,7 +79,7 @@ fn carrier_is_not_a_band_and_nominal_am_survives_target_invalidity() {
 }
 #[test]
 fn independent_processes_deduplicate_bands_but_never_rates() {
-    let click = |hz| Component {
+    let click = |hz| Voice {
         carrier: Carrier::Click {
             rate_hz: hz,
             width_seconds: 0.001,
@@ -124,7 +136,7 @@ fn raw_inference_is_exact_and_restricted_to_the_whole_two_tone_document() {
     assert_eq!(a.completeness, Completeness::Partial);
     let a = analyze(&stimulus(vec![
         tone(200.0, Ears::Both),
-        Component {
+        Voice {
             ears: Ears::Both,
             peak_dbfs: -40.0,
             ..right
@@ -169,8 +181,8 @@ fn correlated_facets_cannot_borrow_rates_from_another_process() {
 
 #[test]
 fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
-    use auditorylab_core::{AuthoredComponent, ComponentId, Node, Pair};
-    let pair = |id, offset_hz| AuthoredComponent {
+    use auditorylab_core::{Component, ComponentId, Node, Pair};
+    let pair = |id, offset_hz| Component {
         id: ComponentId::new(id),
         node: Node::BinauralPair(Pair {
             first_hz: 200.0,
@@ -179,9 +191,9 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
             second_peak_dbfs: -30.0,
         }),
     };
-    let am = AuthoredComponent {
+    let am = Component {
         id: ComponentId::new(90),
-        node: Node::Primitive(Component {
+        node: Node::Voice(Voice {
             modulation: Some(Modulation::Sinusoidal {
                 rate_hz: 40.0,
                 depth: 1.0,
@@ -189,7 +201,7 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
             ..tone(1000.0, Ears::Both)
         }),
     };
-    let a = analyze_authored(&[pair(7, 6.0), am]);
+    let a = analyze(&[pair(7, 6.0), am]);
     assert_eq!(a.bands, [Band::Theta, Band::Gamma]);
     assert_eq!(a.completeness, Completeness::Complete);
     assert_eq!(
@@ -198,35 +210,78 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
     );
     assert!(!a.matches(&[Band::Gamma], &[Method::Binaural]));
     assert!(a.matches(&[Band::Gamma], &[Method::AmplitudeModulation]));
-    assert_eq!(
-        analyze_authored(&[pair(1, 2.0), pair(2, 3.0)]).bands,
-        [Band::Delta]
-    );
-    assert!(analyze_authored(&[pair(1, 2.0), pair(2, 3.0)]).multiple());
+    assert_eq!(analyze(&[pair(1, 2.0), pair(2, 3.0)]).bands, [Band::Delta]);
+    assert!(analyze(&[pair(1, 2.0), pair(2, 3.0)]).multiple());
     for offset in [-6.0, 6.0] {
-        assert_eq!(analyze_authored(&[pair(1, offset)]).bands, [Band::Theta]);
+        assert_eq!(analyze(&[pair(1, offset)]).bands, [Band::Theta]);
     }
-    assert!(analyze_authored(&[pair(1, 0.0)]).no_rhythm());
-    let collapsed = analyze_authored(&[pair(1, f64::from_bits(1))]);
+    assert!(analyze(&[pair(1, 0.0)]).no_rhythm());
+    let collapsed = analyze(&[pair(1, f64::from_bits(1))]);
     assert_eq!(collapsed.rhythms[0].hz, f64::from_bits(1));
     assert!(collapsed.outside_bands());
     assert_eq!(collapsed.completeness, Completeness::Invalid);
     let mut raw = vec![pair(1, 6.0), am];
     raw.extend([
-        AuthoredComponent {
+        Component {
             id: ComponentId::new(5),
-            node: Node::Primitive(tone(200.0, Ears::Left)),
+            node: Node::Voice(tone(200.0, Ears::Left)),
         },
-        AuthoredComponent {
+        Component {
             id: ComponentId::new(6),
-            node: Node::Primitive(tone(206.0, Ears::Right)),
+            node: Node::Voice(tone(206.0, Ears::Right)),
         },
     ]);
-    let a = analyze_authored(&raw);
+    let a = analyze(&raw);
     assert_eq!(a.completeness, Completeness::Partial);
     assert_eq!(
         a.rhythms.len(),
         2,
         "raw tones inside a larger mix cannot add inferred processes"
     );
+}
+
+#[test]
+fn catalog_methods_match_independent_expectations_at_48_khz() {
+    use auditorylab_core::{Recipe, SampleRate, catalog, interpretation::Structure};
+    let expected = [
+        Method::Binaural,
+        Method::Binaural,
+        Method::Binaural,
+        Method::SteadyTone,
+        Method::Clicks,
+        Method::Binaural,
+        Method::Binaural,
+        Method::Binaural,
+        Method::Binaural,
+        Method::Binaural,
+        Method::SteadyTone,
+        Method::Binaural,
+        Method::Gate,
+        Method::Gate,
+        Method::Gate,
+        Method::Gate,
+        Method::Binaural,
+        Method::Binaural,
+        Method::Monaural,
+        Method::Monaural,
+        Method::AmplitudeModulation,
+        Method::AmplitudeModulation,
+        Method::AmplitudeModulation,
+    ];
+    assert_eq!(catalog::ENTRIES.len(), expected.len());
+    for (entry, method) in catalog::ENTRIES.iter().zip(expected) {
+        let sound = Recipe::parse(entry.text).unwrap().stimulus;
+        assert_eq!(
+            analyze(&sound.components).methods,
+            [method],
+            "{} nominal",
+            entry.id
+        );
+        assert_eq!(
+            Structure::of_target(&sound.target(SampleRate::DEFAULT).unwrap()).methods(),
+            [method],
+            "{} realized",
+            entry.id
+        );
+    }
 }

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use auditorylab_core::{AuthoredComponent, Carrier, Node};
+use auditorylab_core::{Carrier, Component, Node};
 
-fn editor_with(components: &[Component]) -> EditorSession {
+fn editor_with(components: &[Voice]) -> EditorSession {
     let mut draft = Draft::new().unwrap();
     for component in components {
         let id = draft.add(CarrierKind::Tone).unwrap();
@@ -13,8 +13,8 @@ fn editor_with(components: &[Component]) -> EditorSession {
     EditorSession::new(draft).unwrap()
 }
 
-fn tone(frequency_hz: f64) -> Component {
-    Component {
+fn tone(frequency_hz: f64) -> Voice {
+    Voice {
         ears: Ears::Both,
         peak_dbfs: -30.0,
         carrier: Carrier::Tone { frequency_hz },
@@ -158,7 +158,7 @@ fn inherited_nonfinite_values_block_commit_save_until_repaired() {
     let id = draft.add(CarrierKind::Tone).unwrap();
     draft.replace(
         id,
-        Component {
+        Voice {
             peak_dbfs: f64::NEG_INFINITY,
             ..tone(440.0)
         },
@@ -253,9 +253,9 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
         editor.removed(),
         Some((
             1,
-            &AuthoredComponent {
+            &Component {
                 id: middle,
-                node: Node::Primitive(tone(550.0))
+                node: Node::Voice(tone(550.0))
             }
         ))
     );
@@ -274,7 +274,7 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     assert_eq!(ids[1], middle, "the same identity returns to its place");
     assert_eq!(
         editor.draft().component(middle),
-        Some(&Node::Primitive(tone(550.0)))
+        Some(&Node::Voice(tone(550.0)))
     );
     assert_eq!(editor.staged(frequency.field), Some("bad"));
     assert_eq!(
@@ -301,13 +301,13 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
         editor.removed(),
         Some((
             1,
-            &AuthoredComponent {
+            &Component {
                 id: last,
-                node: Node::Primitive(tone(660.0))
+                node: Node::Voice(tone(660.0))
             }
         ))
     );
-    while editor.draft().components().len() < Stimulus::MAX_COMPONENTS {
+    while editor.draft().components().len() < Sound::MAX_COMPONENTS {
         editor.add_component(document, CarrierKind::Tone).unwrap();
     }
     assert_eq!(
@@ -318,9 +318,9 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
         editor.removed(),
         Some((
             1,
-            &AuthoredComponent {
+            &Component {
                 id: last,
-                node: Node::Primitive(tone(660.0))
+                node: Node::Voice(tone(660.0))
             }
         ))
     );
@@ -423,13 +423,13 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
     assert_ne!(a, c);
     assert!(d.replace(
         b,
-        Component {
+        Voice {
             peak_dbfs: -50.0,
             ..controls::default_component(CarrierKind::Tone)
         }
     ));
     assert!(!d.replace(a, controls::default_component(CarrierKind::Clicks)));
-    while d.components().len() < Stimulus::MAX_COMPONENTS {
+    while d.components().len() < Sound::MAX_COMPONENTS {
         d.add(CarrierKind::Tone).unwrap();
     }
     assert_eq!(d.add(CarrierKind::Clicks), Err(EditRefusal::ComponentLimit));
@@ -460,7 +460,7 @@ fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids()
             .collect::<Vec<_>>()
     );
     assert_eq!(
-        d.target_check(SampleRate::DEFAULT)
+        d.check(SampleRate::DEFAULT)
             .target()
             .unwrap()
             .components()

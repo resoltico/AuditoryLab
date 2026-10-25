@@ -1,5 +1,5 @@
 //! Typed requested and realized generator quantities.
-use crate::{Carrier, Component, ComponentId, Ears, Modulation, SampleRate, Stimulus};
+use crate::{Carrier, ComponentId, Ears, Modulation, SampleRate, Sound, Voice};
 use serde::Serialize;
 /// Requested rate and the rate represented by the renderer's phase increment.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -95,7 +95,11 @@ pub struct ComponentFacts {
     pub modulation: Option<ModulationFacts>,
 }
 impl ComponentFacts {
-    pub(crate) fn from_voice(c: &Component, v: &crate::synthesis::Voice, rate: SampleRate) -> Self {
+    pub(crate) fn from_voice(
+        c: &Voice,
+        v: &crate::synthesis::GeneratorVoice,
+        rate: SampleRate,
+    ) -> Self {
         let pulse = |rate_hz, width_seconds, frames| PulseFacts {
             rate_hz,
             requested_width_seconds: width_seconds,
@@ -196,5 +200,5 @@ pub struct Observation {
 impl Observation {
     /// The most generators that run at once: every component of an outgoing
     /// target crossfading with every component of its replacement.
-    pub const MAX_VOICES: usize = 2 * Stimulus::MAX_COMPONENTS;
+    pub const MAX_VOICES: usize = 2 * Sound::MAX_VOICES;
 }

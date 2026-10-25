@@ -16,17 +16,17 @@
 //! the engine's current destination changes only its facts and revision: it
 //! starts no ramp, resets no phase and discards an older waiting target.
 //! Rendering allocates nothing, takes no lock and performs no I/O.
-use crate::synthesis::{self, Carrier, Modulator, Voice};
+use crate::synthesis::{self, Carrier, GeneratorVoice, Modulator};
 use crate::{ComponentId, Observation, SampleRate, Signal, SlotRole, Target};
 
-const SLOTS: usize = Observation::MAX_VOICES;
+const SLOTS: usize = Engine::SLOTS;
 
 #[derive(Debug, Clone, Copy)]
 struct Slot {
     id: ComponentId,
     facts: crate::ComponentFacts,
     role: SlotRole,
-    voice: Voice,
+    voice: GeneratorVoice,
     gain: (f64, f64, f64, f64),
     carrier_step: (u64, u64),
     modulation_step: (u64, u64),
@@ -36,7 +36,7 @@ struct Slot {
     origin: u64,
 }
 
-fn steps(voice: &Voice) -> (u64, u64, f64) {
+fn steps(voice: &GeneratorVoice) -> (u64, u64, f64) {
     let carrier = match voice.carrier {
         Carrier::Tone { step } => step,
         Carrier::Pulse(_) => 0,
@@ -49,7 +49,7 @@ fn steps(voice: &Voice) -> (u64, u64, f64) {
 }
 
 /// Whether `next` can continue `current`'s generator: same kinds, same pulses.
-fn continues(current: &Voice, next: &Voice) -> bool {
+fn continues(current: &GeneratorVoice, next: &GeneratorVoice) -> bool {
     let carrier = match (current.carrier, next.carrier) {
         (Carrier::Tone { .. }, Carrier::Tone { .. }) => true,
         (Carrier::Pulse(a), Carrier::Pulse(b)) => a == b,
@@ -105,12 +105,7 @@ impl Slot {
     }
 
     #[inline]
-    fn sample(
-        &mut self,
-        frame: u64,
-        progress: Option<f64>,
-        modulation_sine: &mut Option<(u64, f64)>,
-    ) -> f64 {
+    fn sample(&mut self, frame: u64, progress: Option<f64>) -> f64 {
         let p = progress.unwrap_or(1.0);
         let carrier = match self.voice.carrier {
             Carrier::Tone { .. } => {
@@ -125,17 +120,7 @@ impl Slot {
             None => 1.0,
             Some(Modulator::Sinusoidal { .. }) => {
                 let depth = self.depth_at(p);
-                // Components often share one modulation clock, including each
-                // side of a crossfade. Reuse only an exactly equal phase within
-                // this frame; each voice still advances its own clock below.
-                let value = match *modulation_sine {
-                    Some((phase, value)) if phase == self.modulation_phase => value,
-                    _ => {
-                        let value = synthesis::sine(self.modulation_phase);
-                        *modulation_sine = Some((self.modulation_phase, value));
-                        value
-                    }
-                };
+                let value = synthesis::sine(self.modulation_phase);
                 let step = glide(self.modulation_step.0, self.modulation_step.1, p);
                 self.modulation_phase = self.modulation_phase.wrapping_add(step);
                 (1.0 + depth * value) / (1.0 + depth)
@@ -167,6 +152,9 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// Maximum simultaneous generator slots during a target crossfade.
+    pub const SLOTS: usize = 2 * crate::Sound::MAX_VOICES;
+
     /// How long every change takes, in seconds.
     pub const RAMP_SECONDS: f64 = 0.03;
 
@@ -300,9 +288,8 @@ impl Engine {
                 .ramp
                 .map(|done| (done + 1) as f64 / self.ramp_frames as f64);
             let mut frame = [0.0; 2];
-            let mut modulation_sine = None;
             for slot in self.slots.iter_mut().flatten() {
-                let value = slot.sample(self.frame, progress, &mut modulation_sine);
+                let value = slot.sample(self.frame, progress);
                 for (ear, sample) in frame.iter_mut().enumerate() {
                     let level = slot.level(ear, progress);
                     if level != 0.0 {
@@ -480,9 +467,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        Carrier as Source, Component, Ear, Ears, Modulation, Recipe, Stimulus, StimulusError,
-    };
+    use crate::{Carrier as Source, Ear, Ears, Modulation, Recipe, Sound, StimulusError, Voice};
     use alloc::vec;
     use alloc::vec::Vec;
     use proptest::{prelude::*, test_runner::Config, test_runner::TestRunner};
@@ -491,8 +476,8 @@ mod tests {
         SampleRate::new(48_000).unwrap()
     }
 
-    fn tone(hz: f64, peak_dbfs: f64, ears: Ears) -> Component {
-        Component {
+    fn tone(hz: f64, peak_dbfs: f64, ears: Ears) -> Voice {
+        Voice {
             ears,
             peak_dbfs,
             carrier: Source::Tone { frequency_hz: hz },
@@ -500,8 +485,8 @@ mod tests {
         }
     }
 
-    fn clicks(hz: f64, peak_dbfs: f64) -> Component {
-        Component {
+    fn clicks(hz: f64, peak_dbfs: f64) -> Voice {
+        Voice {
             ears: Ears::Both,
             peak_dbfs,
             carrier: Source::Click {
@@ -516,7 +501,7 @@ mod tests {
         ComponentId::new(n)
     }
 
-    fn numbered(components: &[Component]) -> Vec<(ComponentId, Component)> {
+    fn numbered(components: &[Voice]) -> Vec<(ComponentId, Voice)> {
         components
             .iter()
             .enumerate()
@@ -543,7 +528,7 @@ mod tests {
         for shared_depth in [true, false] {
             for hz in [8_000, 44_100, 48_000, 96_000, 768_000] {
                 let components: Vec<_> = (0..16)
-                    .map(|n| Component {
+                    .map(|n| Voice {
                         modulation: Some(Modulation::Sinusoidal {
                             rate_hz: 39.0625,
                             depth: if shared_depth {
@@ -561,7 +546,6 @@ mod tests {
                 let mut slots: Vec<_> = engine.slots.into_iter().flatten().collect();
                 for progress in [None, Some(0.0), Some(0.25), Some(0.999), Some(1.0)] {
                     for frame in 0..64 {
-                        let mut cached = None;
                         for (n, slot) in slots.iter_mut().enumerate() {
                             if frame == 32 {
                                 // Equal and unequal phases, a sign change and wrap,
@@ -575,7 +559,7 @@ mod tests {
                                 slot.modulation_step.1 += u64::try_from(n).unwrap();
                             }
                             let p = progress.unwrap_or(1.0);
-                            // Direct pre-optimization formula: no shared cached value.
+                            // Independent sample and clock expectations.
                             let carrier = synthesis::sine(slot.carrier_phase);
                             let depth = slot.depth_at(p);
                             let gain = (1.0 + depth * synthesis::sine(slot.modulation_phase))
@@ -591,10 +575,7 @@ mod tests {
                                 slot.modulation_step.1,
                                 p,
                             ));
-                            assert_eq!(
-                                slot.sample(frame, progress, &mut cached).to_bits(),
-                                expected.to_bits()
-                            );
+                            assert_eq!(slot.sample(frame, progress).to_bits(), expected.to_bits());
                             assert_eq!(slot.carrier_phase, carrier_phase);
                             assert_eq!(slot.modulation_phase, modulation_phase);
                         }
@@ -610,22 +591,26 @@ mod tests {
         reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
     )]
     fn an_unedited_session_equals_the_signal_after_its_start_ramp() {
-        let mut stimuli: Vec<crate::AuthoredStimulus> = crate::catalog::ENTRIES
+        let mut stimuli: Vec<crate::Sound> = crate::catalog::ENTRIES
             .iter()
             .map(|entry| Recipe::parse(entry.text).unwrap().stimulus)
             .collect();
-        stimuli.push(
-            crate::AuthoredStimulus::from_primitives(Stimulus {
-                duration_seconds: 1.0,
-                fade_seconds: 0.0,
-                components: vec![
-                    tone(250.0, -20.0, Ears::Left),
-                    tone(256.0, -20.0, Ears::Right),
-                    clicks(40.0, -20.0),
-                ],
+        stimuli.push(Sound {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components: (vec![
+                tone(250.0, -20.0, Ears::Left),
+                tone(256.0, -20.0, Ears::Right),
+                clicks(40.0, -20.0),
+            ])
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| crate::Component {
+                id: crate::ComponentId::numbered(index).unwrap(),
+                node: crate::Node::Voice(voice),
             })
-            .unwrap(),
-        );
+            .collect(),
+        });
         for mut stimulus in stimuli {
             stimulus.duration_seconds = 1.0;
             stimulus.fade_seconds = 0.0;
@@ -653,13 +638,20 @@ mod tests {
     #[test]
     fn targets_reject_what_signals_reject_with_the_same_errors() {
         let too_high = tone(30_000.0, -20.0, Ears::Both);
-        let stimulus = Stimulus {
+        let stimulus = Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
-            components: vec![tone(440.0, -20.0, Ears::Both), too_high],
+            components: (vec![tone(440.0, -20.0, Ears::Both), too_high])
+                .into_iter()
+                .enumerate()
+                .map(|(index, voice)| crate::Component {
+                    id: crate::ComponentId::numbered(index).unwrap(),
+                    node: crate::Node::Voice(voice),
+                })
+                .collect(),
         };
         assert_eq!(
-            Target::new(rate(), &numbered(&stimulus.components)).unwrap_err(),
+            stimulus.check(rate()).into_result().unwrap_err(),
             stimulus.signal(rate()).unwrap_err()
         );
         let loud = [tone(440.0, -3.0, Ears::Left), tone(441.0, -3.0, Ears::Left)];
@@ -719,7 +711,7 @@ mod tests {
     )]
     fn a_level_change_moves_linearly_over_one_ramp() {
         // A pulse wider than the session holds the carrier at one.
-        let held = Component {
+        let held = Voice {
             ears: Ears::Both,
             peak_dbfs: -20.0,
             carrier: Source::Click {
@@ -731,7 +723,7 @@ mod tests {
         let mut engine = Engine::new(rate());
         engine.set(&Target::new(rate(), &[(id(1), held)]).unwrap());
         render(&mut engine, 2_000);
-        let louder = Component {
+        let louder = Voice {
             peak_dbfs: -6.0,
             ..held
         };
@@ -816,10 +808,10 @@ mod tests {
 
     #[test]
     fn sixteen_components_changing_kind_use_every_slot_within_full_scale() {
-        let tones: Vec<Component> = (0..16)
+        let tones: Vec<Voice> = (0..16)
             .map(|i| tone(200.0 + 50.0 * f64::from(i), -24.1, Ears::Both))
             .collect();
-        let pulses: Vec<Component> = (0..16).map(|_| clicks(40.0, -24.1)).collect();
+        let pulses: Vec<Voice> = (0..16).map(|_| clicks(40.0, -24.1)).collect();
         let mut engine = Engine::new(rate());
         engine.set(&Target::new(rate(), &numbered(&tones)).unwrap());
         render(&mut engine, 2_000);
@@ -879,14 +871,14 @@ mod tests {
                 for (parts, frames) in edits {
                     // Scale levels so that each ear's sum is exactly at most one.
                     let n = parts.len().max(1) as f64;
-                    let components: Vec<(ComponentId, Component)> = parts
+                    let components: Vec<(ComponentId, Voice)> = parts
                         .iter()
                         .enumerate()
                         .map(|(i, (id, ears, carrier, modulation, level))| {
                             let amplitude = (0.05 + 0.95 * level) / n;
                             (
                                 ComponentId::new(id * 16 + u32::try_from(i).unwrap()),
-                                Component {
+                                Voice {
                                     ears: *ears,
                                     peak_dbfs: 20.0 * libm::log10(amplitude),
                                     carrier: *carrier,
@@ -943,8 +935,8 @@ mod tests {
         assert!(engine.is_finished());
     }
 
-    fn gated(hz: f64, peak_dbfs: f64, width_seconds: f64) -> Component {
-        Component {
+    fn gated(hz: f64, peak_dbfs: f64, width_seconds: f64) -> Voice {
+        Voice {
             modulation: Some(Modulation::Rectangular {
                 rate_hz: 40.0,
                 width_seconds,
@@ -977,7 +969,7 @@ mod tests {
         reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
     )]
     fn frequencies_glide_through_intermediate_steps_during_a_ramp() {
-        let am = |hz: f64, rate_hz: f64, depth: f64| Component {
+        let am = |hz: f64, rate_hz: f64, depth: f64| Voice {
             modulation: Some(Modulation::Sinusoidal { rate_hz, depth }),
             ..tone(hz, -20.0, Ears::Both)
         };
@@ -999,7 +991,7 @@ mod tests {
         let depth = slot.depth.0 * (1.0 - p) + slot.depth.1 * p;
         assert!(0.4 < depth && depth < 0.6);
         let mut copy = slot;
-        let value = copy.sample(engine.frame() - 1, Some(p), &mut None);
+        let value = copy.sample(engine.frame() - 1, Some(p));
         let expected = synthesis::sine(slot.carrier_phase)
             * ((1.0 + depth * synthesis::sine(slot.modulation_phase)) / (1.0 + depth));
         assert_eq!(value.to_bits(), expected.to_bits());

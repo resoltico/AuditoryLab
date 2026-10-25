@@ -80,7 +80,7 @@ impl Signal {
     }
 
     /// Check a duration and fade at `rate` with the same rules and order as
-    /// [`Stimulus::signal`](crate::Stimulus::signal), without components.
+    /// [`Sound::signal`](crate::Sound::signal), without components.
     ///
     /// # Errors
     /// Returns [`StimulusError::Duration`], [`StimulusError::Fade`] or

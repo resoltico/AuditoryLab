@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use auditorylab_core::{Carrier, Component, ComponentId, Ears, SampleRate, Target};
+use auditorylab_core::{Carrier, ComponentId, Ears, SampleRate, Target, Voice};
 use std::sync::Barrier;
 
 const TERMINALS: [Outcome; 11] = [
@@ -24,7 +24,7 @@ fn tone(frequency_hz: f64) -> Target {
         SampleRate::new(8_000).unwrap(),
         &[(
             ComponentId::new(1),
-            Component {
+            Voice {
                 ears: Ears::Both,
                 peak_dbfs: -30.0,
                 carrier: Carrier::Tone { frequency_hz },

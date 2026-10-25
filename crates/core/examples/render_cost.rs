@@ -1,17 +1,26 @@
 //! Offline rendering cost at 48 kHz: `cargo run -p auditorylab-core --example render_cost --release`.
 //! Each case renders twenty seconds. No audio device is opened.
 use auditorylab_core::{
-    Carrier, Component, ComponentId, Ears, Modulation, SampleRate, Stimulus, Target, live::Engine,
+    Carrier, ComponentId, Ears, Modulation, SampleRate, Sound, Target, Voice, live::Engine,
 };
 use std::{error::Error, hint::black_box, time::Instant};
 const RATE: u32 = 48_000;
 const FRAMES: u32 = RATE * 20;
-fn measure(components: Vec<Component>) -> Result<[f64; 3], Box<dyn Error>> {
+fn measure(components: Vec<Voice>) -> Result<[f64; 3], Box<dyn Error>> {
     let rate = SampleRate::new(RATE)?;
-    let signal = Stimulus {
+    let signal = Sound {
         duration_seconds: f64::from(FRAMES) / f64::from(RATE),
         fade_seconds: 0.0,
-        components: components.clone(),
+        components: (components.clone())
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| {
+                Ok(auditorylab_core::Component {
+                    id: ComponentId::new(u32::try_from(index)? + 1),
+                    node: auditorylab_core::Node::Voice(voice),
+                })
+            })
+            .collect::<Result<_, std::num::TryFromIntError>>()?,
     }
     .signal(rate)?;
     let identities = |offset| {
@@ -64,7 +73,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let tones = [Ears::Left, Ears::Right]
         .into_iter()
         .zip([250.0, 256.0])
-        .map(|(ears, frequency_hz)| Component {
+        .map(|(ears, frequency_hz)| Voice {
             ears,
             peak_dbfs: -20.0,
             carrier: Carrier::Tone { frequency_hz },
@@ -72,7 +81,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         })
         .collect();
     let am = (0..16)
-        .map(|i| Component {
+        .map(|i| Voice {
             ears: Ears::Both,
             peak_dbfs: -30.0,
             carrier: Carrier::Tone {

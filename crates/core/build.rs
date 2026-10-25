@@ -1,5 +1,7 @@
 //! Embed catalog files in natural order.
-use std::{env, fs, path::PathBuf};
+use std::{
+    borrow::ToOwned, boxed::Box, env, format, fs, path::PathBuf, println, string::String, vec::Vec,
+};
 fn number(run: &str) -> String {
     let digits = run.trim_start_matches('0');
     format!("{:020}{digits}", digits.len())

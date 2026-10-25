@@ -7,7 +7,7 @@
 //! states the label, the unit people read and type it in, and a short help
 //! text. Model values keep the recipe's units (seconds, hertz, a 0..1 depth);
 //! [`Unit`] converts them to and from the displayed unit.
-use crate::{Carrier, Component, Ears, Modulation, Stimulus};
+use crate::{Carrier, Ears, Modulation, Sound, Voice};
 use core::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
@@ -297,7 +297,7 @@ impl ParameterId {
     /// The component's value of this quantity in model units, or `None` when
     /// its carrier or modulation does not have it.
     #[must_use]
-    pub fn read(self, component: &Component) -> Option<f64> {
+    pub fn read(self, component: &Voice) -> Option<f64> {
         match (self, component.carrier, component.modulation) {
             (Self::PeakLevel, _, _) => Some(component.peak_dbfs),
             (Self::ToneFrequency, Carrier::Tone { frequency_hz }, _) => Some(frequency_hz),
@@ -315,7 +315,7 @@ impl ParameterId {
 
     /// Set the component's value of this quantity in model units. Returns
     /// `false`, changing nothing, when the component does not have it.
-    pub fn write(self, component: &mut Component, value: f64) -> bool {
+    pub fn write(self, component: &mut Voice, value: f64) -> bool {
         let slot = match (self, &mut component.carrier, &mut component.modulation) {
             (Self::PeakLevel, _, _) => &mut component.peak_dbfs,
             (Self::ToneFrequency, Carrier::Tone { frequency_hz }, _) => frequency_hz,
@@ -335,7 +335,7 @@ impl ParameterId {
 
     /// The stimulus's value of [`ParameterId::Duration`] or [`ParameterId::Fade`].
     #[must_use]
-    pub const fn read_envelope(self, stimulus: &Stimulus) -> Option<f64> {
+    pub const fn read_envelope(self, stimulus: &Sound) -> Option<f64> {
         match self {
             Self::Duration => Some(stimulus.duration_seconds),
             Self::Fade => Some(stimulus.fade_seconds),
@@ -462,7 +462,7 @@ impl ComponentRole {
     }
 }
 
-impl Component {
+impl Voice {
     /// The component's role; active modulation is never hidden.
     #[must_use]
     pub fn role(&self) -> ComponentRole {
@@ -491,7 +491,7 @@ mod tests {
     use super::*;
     use alloc::vec::Vec;
 
-    fn every_shape() -> Vec<Component> {
+    fn every_shape() -> Vec<Voice> {
         let mut shapes = Vec::new();
         for carrier in [
             Carrier::Tone {
@@ -513,7 +513,7 @@ mod tests {
                     width_seconds: 0.002,
                 }),
             ] {
-                shapes.push(Component {
+                shapes.push(Voice {
                     ears: Ears::Both,
                     peak_dbfs: -30.0,
                     carrier,

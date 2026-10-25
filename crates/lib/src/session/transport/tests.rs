@@ -5,7 +5,7 @@ use super::*;
 use crate::session::live::LiveGenerator;
 use crate::session::source::FiniteSource;
 use crate::session::{Outcome, SessionState};
-use auditorylab_core::{Component, ComponentId, Ears, SampleRate, Signal, Stimulus, Target};
+use auditorylab_core::{ComponentId, Ears, SampleRate, Signal, Sound, Target, Voice};
 use proptest::{prelude::*, test_runner::TestRunner};
 
 fn rate(hz: u32) -> SampleRate {
@@ -13,17 +13,24 @@ fn rate(hz: u32) -> SampleRate {
 }
 
 fn signal(frames: u64, hz: u32) -> Signal {
-    Stimulus {
+    Sound {
         duration_seconds: f64::from(u32::try_from(frames).unwrap()) / f64::from(hz),
         fade_seconds: 0.0,
-        components: vec![Component {
+        components: (vec![Voice {
             ears: Ears::Both,
             peak_dbfs: -20.0,
             modulation: None,
             carrier: crate::Carrier::Tone {
                 frequency_hz: 100.0,
             },
-        }],
+        }])
+        .into_iter()
+        .enumerate()
+        .map(|(index, voice)| auditorylab_core::Component {
+            id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+            node: auditorylab_core::Node::Voice(voice),
+        })
+        .collect(),
     }
     .signal(rate(hz))
     .unwrap()
@@ -463,7 +470,7 @@ fn mailbox_is_polled_once_per_buffer_and_updates_wait_for_the_next_buffer() {
         rate(8_000),
         &[(
             ComponentId::new(1),
-            Component {
+            Voice {
                 ears: Ears::Both,
                 peak_dbfs: -30.0,
                 carrier: crate::Carrier::Tone {
@@ -534,11 +541,11 @@ fn live_callbacks_do_not_allocate_or_wait_for_a_busy_or_poisoned_mailbox() {
 }
 
 fn routed(frames: u32) -> Signal {
-    Stimulus {
+    Sound {
         duration_seconds: f64::from(frames) / 8_000.0,
         fade_seconds: 0.0,
-        components: vec![
-            Component {
+        components: (vec![
+            Voice {
                 ears: Ears::Left,
                 peak_dbfs: -20.0,
                 modulation: None,
@@ -546,7 +553,7 @@ fn routed(frames: u32) -> Signal {
                     frequency_hz: 257.3,
                 },
             },
-            Component {
+            Voice {
                 ears: Ears::Right,
                 peak_dbfs: -14.0,
                 modulation: None,
@@ -555,7 +562,14 @@ fn routed(frames: u32) -> Signal {
                     width_seconds: 0.001,
                 },
             },
-        ],
+        ])
+        .into_iter()
+        .enumerate()
+        .map(|(index, voice)| auditorylab_core::Component {
+            id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+            node: auditorylab_core::Node::Voice(voice),
+        })
+        .collect(),
     }
     .signal(rate(8_000))
     .unwrap()

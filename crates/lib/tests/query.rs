@@ -3,10 +3,10 @@ use auditorylab::{Origin, RecipeSnapshot, query};
 #[test]
 fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
     let mut recipe = auditorylab::Draft::new().unwrap().recipe();
-    recipe.stimulus = auditorylab::AuthoredStimulus::from_primitives(auditorylab::Stimulus {
+    recipe.stimulus = auditorylab::Sound {
         duration_seconds: 60.0,
         fade_seconds: 0.1,
-        components: vec![auditorylab::Component {
+        components: (vec![auditorylab::Voice {
             ears: auditorylab::Ears::Both,
             peak_dbfs: -30.0,
             carrier: auditorylab::Carrier::Tone {
@@ -16,9 +16,15 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
                 rate_hz: 20.0,
                 depth: 1.0,
             }),
-        }],
-    })
-    .unwrap();
+        }])
+        .into_iter()
+        .enumerate()
+        .map(|(index, voice)| auditorylab_core::Component {
+            id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+            node: auditorylab_core::Node::Voice(voice),
+        })
+        .collect(),
+    };
     recipe.description = Some(auditorylab::Description {
         title: "Rīga reference 2015".into(),
         notes: Some("two words".into()),
@@ -44,7 +50,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         assert!(!query::search(&snapshot, search), "{search}");
     }
     let mut steady = snapshot.recipe().clone();
-    if let auditorylab::Node::Primitive(c) = &mut steady.stimulus.components[0].node {
+    if let auditorylab::Node::Voice(c) = &mut steady.stimulus.components[0].node {
         c.modulation = None;
     }
     let steady = RecipeSnapshot::new(Origin::Stream("steady".into()), steady);

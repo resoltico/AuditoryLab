@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .components()
         .first()
         .ok_or("recipe without components")?;
-    let parameter=match component.node {auditorylab::Node::Primitive(_)=>ParameterId::PeakLevel,_=>ParameterId::PairFirstLevel};
+    let parameter=match component.node {auditorylab::Node::Voice(_)=>ParameterId::PeakLevel,_=>ParameterId::PairFirstLevel};
     let level = editor.handle(EditingField::Parameter(component.id, parameter));
     editor
         .stage(level, "-40")

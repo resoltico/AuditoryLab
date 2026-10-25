@@ -141,18 +141,25 @@ mod quantization {
     }
     #[test]
     fn actual_encoded_peaks_can_round_above_the_binary64_generation_bound() {
-        use auditorylab_core::{Component, Ears, Stimulus};
-        let session = Stimulus {
+        use auditorylab_core::{Ears, Sound, Voice};
+        let session = Sound {
             duration_seconds: 4.0 / 8_000.0,
             fade_seconds: 0.0,
-            components: vec![Component {
+            components: (vec![Voice {
                 ears: Ears::Left,
                 peak_dbfs: -20.0,
                 modulation: None,
                 carrier: crate::Carrier::Tone {
                     frequency_hz: 2_000.0,
                 },
-            }],
+            }])
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| auditorylab_core::Component {
+                id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+                node: auditorylab_core::Node::Voice(voice),
+            })
+            .collect(),
         }
         .signal(SampleRate::new(8_000).unwrap())
         .unwrap();
@@ -172,17 +179,24 @@ mod quantization {
         for frame in bytes[58..].as_chunks::<8>().0 {
             assert_eq!(&frame[4..], &[0; 4]);
         }
-        let session = Stimulus {
+        let session = Sound {
             duration_seconds: 4.0 / 8_000.0,
             fade_seconds: 0.0,
-            components: vec![Component {
+            components: (vec![Voice {
                 ears: Ears::Both,
                 peak_dbfs: -1_000.0,
                 modulation: None,
                 carrier: crate::Carrier::Tone {
                     frequency_hz: 2_000.0,
                 },
-            }],
+            }])
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| auditorylab_core::Component {
+                id: auditorylab_core::ComponentId::numbered(index).unwrap(),
+                node: auditorylab_core::Node::Voice(voice),
+            })
+            .collect(),
         }
         .signal(SampleRate::new(8_000).unwrap())
         .unwrap();
