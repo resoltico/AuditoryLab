@@ -62,9 +62,21 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             let mut query = w.catalog_query().clone();
             let ranges = (|| -> Result<_, auditorylab::error::Error> {
                 Ok([
-                    auditorylab::calendar::local_range(&cf, &ct)?,
-                    auditorylab::calendar::local_range(&mf, &mt)?,
-                    auditorylab::calendar::local_range(&af, &at)?,
+                    auditorylab::calendar::local_range(
+                        auditorylab::calendar::CalendarField::Created,
+                        &cf,
+                        &ct,
+                    )?,
+                    auditorylab::calendar::local_range(
+                        auditorylab::calendar::CalendarField::Modified,
+                        &mf,
+                        &mt,
+                    )?,
+                    auditorylab::calendar::local_range(
+                        auditorylab::calendar::CalendarField::Added,
+                        &af,
+                        &at,
+                    )?,
                 ])
             })();
             let [created, modified, added] = match ranges {

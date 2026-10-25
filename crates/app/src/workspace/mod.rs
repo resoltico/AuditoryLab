@@ -1770,13 +1770,12 @@ impl Workspace {
     }
     fn job_context(&self, job: TaskId) -> String {
         if let Some(task) = self.files.slot.as_ref().filter(|task| task.id == job) {
-            let path = match &task.kind {
-                FileKind::Managed(job) => job.store.root().path(),
+            return match &task.kind {
+                FileKind::Managed(job) => format!(" · {}", job.context().description()),
                 FileKind::Import(path)
                 | FileKind::ExportRecipe { path, .. }
-                | FileKind::Export { path, .. } => path,
+                | FileKind::Export { path, .. } => format!(" · {}", path.display()),
             };
-            return format!(" · {}", path.display());
         }
         self.audio
             .slot

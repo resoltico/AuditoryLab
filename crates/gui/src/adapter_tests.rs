@@ -2561,9 +2561,24 @@ fn filter_controls_map_to_independent_typed_queries() {
         analysis: Some(auditorylab::core::nominal::Completeness::Partial),
         direction: Some(Direction::Desc),
         group_by: GroupBy::Study,
-        created: auditorylab::calendar::local_range("2026-01-01", "2026-01-02").unwrap(),
-        modified: auditorylab::calendar::local_range("2026-03-01", "2026-03-02").unwrap(),
-        added: auditorylab::calendar::local_range("2026-05-01", "2026-05-02").unwrap(),
+        created: auditorylab::calendar::local_range(
+            auditorylab::calendar::CalendarField::Created,
+            "2026-01-01",
+            "2026-01-02",
+        )
+        .unwrap(),
+        modified: auditorylab::calendar::local_range(
+            auditorylab::calendar::CalendarField::Modified,
+            "2026-03-01",
+            "2026-03-02",
+        )
+        .unwrap(),
+        added: auditorylab::calendar::local_range(
+            auditorylab::calendar::CalendarField::Added,
+            "2026-05-01",
+            "2026-05-02",
+        )
+        .unwrap(),
         ..CatalogQuery::default()
     };
     h.adapter
@@ -2677,4 +2692,89 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
         details.to_lowercase().contains("conflict") || details.to_lowercase().contains("changed"),
         "foreground save failure remains visible after background reads: {details}"
     );
+}
+
+#[test]
+fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
+    for (field, label) in [(0, "Created"), (1, "Modified"), (2, "Added here")] {
+        let h = Harness::new();
+        let ui = h.ui();
+        let previous = h.adapter.inspect(|w| w.catalog_query().clone());
+        let mut from = ["", "", ""];
+        let mut through = ["", "", ""];
+        from[field] = "2026-10-26";
+        through[field] = "2026-10-25";
+        match field {
+            0 => {
+                ui.set_created_from(from[field].into());
+                ui.set_created_through(through[field].into());
+            }
+            1 => {
+                ui.set_modified_from(from[field].into());
+                ui.set_modified_through(through[field].into());
+            }
+            _ => {
+                ui.set_added_from(from[field].into());
+                ui.set_added_through(through[field].into());
+            }
+        }
+        ui.invoke_more_filters(
+            "".into(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            from[0].into(),
+            through[0].into(),
+            from[1].into(),
+            through[1].into(),
+            from[2].into(),
+            through[2].into(),
+        );
+        h.wait_for_files();
+        h.adapter.inspect(|w| {
+            assert_eq!(w.catalog_query(), &previous);
+            let error = w.library_alert();
+            assert!(error.contains(&format!(
+                "{label} through (2026-10-25) must be on or after {label} from (2026-10-26)."
+            )));
+            assert!(!error.contains("before"));
+        });
+        let values = match field {
+            0 => (ui.get_created_from(), ui.get_created_through()),
+            1 => (ui.get_modified_from(), ui.get_modified_through()),
+            _ => (ui.get_added_from(), ui.get_added_through()),
+        };
+        assert_eq!(
+            (values.0.as_str(), values.1.as_str()),
+            ("2026-10-26", "2026-10-25")
+        );
+        from[field] = "2026-10-25";
+        ui.invoke_more_filters(
+            "".into(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            from[0].into(),
+            through[0].into(),
+            from[1].into(),
+            through[1].into(),
+            from[2].into(),
+            through[2].into(),
+        );
+        h.wait_for_files();
+        h.adapter.inspect(|w| {
+            assert!(w.library_alert().is_empty());
+            let query = w.catalog_query();
+            let range = match field {
+                0 => query.created,
+                1 => query.modified,
+                _ => query.added,
+            };
+            assert!(range.from.unwrap() < range.before.unwrap());
+        });
+    }
 }

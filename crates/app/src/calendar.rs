@@ -4,13 +4,33 @@ use crate::core::Timestamp;
 use crate::error::{Error, ErrorKind};
 use chrono::{Local, NaiveDate, TimeZone};
 
+/// The visible calendar-date field pair being edited.
+#[derive(Debug, Clone, Copy)]
+pub enum CalendarField {
+    /// Recipe creation dates.
+    Created,
+    /// Recipe modification dates.
+    Modified,
+    /// Library membership dates.
+    Added,
+}
+impl CalendarField {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Created => "Created",
+            Self::Modified => "Modified",
+            Self::Added => "Added here",
+        }
+    }
+}
+
 /// Convert inclusive YYYY-MM-DD calendar bounds in the current native timezone.
 /// The upper bound is the next local midnight, including DST offset changes.
 ///
 /// # Errors
 /// Refuses invalid/inverted dates and ambiguous or nonexistent local midnights.
-pub fn local_range(from: &str, through: &str) -> Result<DateRange, Error> {
-    in_zone(&Local, from, through)
+pub fn local_range(field: CalendarField, from: &str, through: &str) -> Result<DateRange, Error> {
+    in_zone(&Local, field, from, through)
 }
 /// Native timezone context shown beside calendar fields; no fixed offset is cached.
 #[must_use]
@@ -38,7 +58,12 @@ pub fn local_timestamp(date: Timestamp) -> String {
             },
         )
 }
-fn in_zone<T: TimeZone>(zone: &T, from: &str, through: &str) -> Result<DateRange, Error> {
+fn in_zone<T: TimeZone>(
+    zone: &T,
+    field: CalendarField,
+    from: &str,
+    through: &str,
+) -> Result<DateRange, Error> {
     let boundary = |text: &str, next: bool| -> Result<Option<Timestamp>, Error> {
         if text.trim().is_empty() {
             return Ok(None);
@@ -70,7 +95,16 @@ fn in_zone<T: TimeZone>(zone: &T, from: &str, through: &str) -> Result<DateRange
         from: boundary(from, false)?,
         before: boundary(through, true)?,
     };
-    range.validate()?;
+    range.validate().map_err(|_| {
+        Error::new(
+            ErrorKind::InvalidArgument,
+            format!(
+                "{} through ({through}) must be on or after {} from ({from}).",
+                field.label(),
+                field.label()
+            ),
+        )
+    })?;
     Ok(range)
 }
 #[cfg(test)]
@@ -108,7 +142,13 @@ mod tests {
     }
     #[test]
     fn inclusive_calendar_days_use_next_local_midnight_not_24_hours() {
-        let spring = in_zone(&Transition, "2026-03-29", "2026-03-29").unwrap();
+        let spring = in_zone(
+            &Transition,
+            CalendarField::Created,
+            "2026-03-29",
+            "2026-03-29",
+        )
+        .unwrap();
         assert_eq!(
             spring.from.unwrap().to_string(),
             "2026-03-28T22:00:00.000000000Z"
@@ -117,14 +157,59 @@ mod tests {
             spring.before.unwrap().to_string(),
             "2026-03-29T21:00:00.000000000Z"
         );
-        let fall = in_zone(&Transition, "2026-10-25", "2026-10-25").unwrap();
+        let fall = in_zone(
+            &Transition,
+            CalendarField::Created,
+            "2026-10-25",
+            "2026-10-25",
+        )
+        .unwrap();
         assert_eq!(
             fall.before.unwrap().unix_seconds() - fall.from.unwrap().unix_seconds(),
             25 * 3600
         );
-        assert!(in_zone(&Transition, "2026-3-29", "").is_err());
-        assert!(in_zone(&Transition, "2026-05-03", "2026-05-01").is_err());
+        assert!(in_zone(&Transition, CalendarField::Created, "2026-3-29", "").is_err());
+        assert!(
+            in_zone(
+                &Transition,
+                CalendarField::Created,
+                "2026-05-03",
+                "2026-05-01"
+            )
+            .is_err()
+        );
         assert!(!spring.contains(None));
-        assert_eq!(local_range("", "").unwrap(), DateRange::default());
+        assert_eq!(
+            local_range(CalendarField::Created, "", "").unwrap(),
+            DateRange::default()
+        );
+    }
+}
+
+#[cfg(test)]
+mod order_tests {
+    use super::*;
+    #[test]
+    fn calendar_order_errors_name_visible_fields_and_same_day_is_inclusive() {
+        for (field, label) in [
+            (CalendarField::Created, "Created"),
+            (CalendarField::Modified, "Modified"),
+            (CalendarField::Added, "Added here"),
+        ] {
+            let error = local_range(field, "2026-10-26", "2026-10-25")
+                .unwrap_err()
+                .to_string();
+            assert_eq!(
+                error,
+                format!(
+                    "{label} through (2026-10-25) must be on or after {label} from (2026-10-26)."
+                )
+            );
+            assert!(!error.contains("before"));
+            let range = local_range(field, "2026-10-25", "2026-10-25").unwrap();
+            assert!(range.from.unwrap() < range.before.unwrap());
+            assert!(range.contains(range.from));
+            assert!(!range.contains(range.before));
+        }
     }
 }

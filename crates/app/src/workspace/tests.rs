@@ -1234,3 +1234,77 @@ fn managed_save_can_run_beside_admitted_audio_and_stop_does_not_cancel_it() {
     assert!(!workspace.editor().dirty());
     drop(audio);
 }
+
+#[test]
+fn committed_brief_never_borrows_pending_pair_facts() {
+    let mut ws = workspace();
+    ws.set_view(View::Workbench);
+    let key = ws.editor().document_key();
+    ws.add_pair(key, crate::core::PairKind::Binaural).unwrap();
+    let id = ws.editor().draft().components()[0].id;
+    let first = ws
+        .editor()
+        .handle(EditingField::Parameter(id, ParameterId::PairFirstFrequency))
+        .unwrap();
+    let offset = ws
+        .editor()
+        .handle(EditingField::Parameter(id, ParameterId::PairOffset))
+        .unwrap();
+    ws.commit_field(first, "317").unwrap();
+    ws.commit_field(offset, "-7").unwrap();
+    let original = ws.editor_view().brief;
+    assert!(original.contains("7 Hz") && original.contains("317") && original.contains("310"));
+    for text in ["40", "NaN"] {
+        ws.stage(offset, text).unwrap();
+        let view = ws.editor_view();
+        assert_eq!(
+            view.brief,
+            original.replace("Draft classification", "Last committed classification")
+        );
+        assert!(!view.brief.contains("357") && !view.brief.contains("No valid sound"));
+        assert_eq!(
+            ws.editor().draft().components()[0]
+                .node
+                .pair()
+                .unwrap()
+                .offset_hz,
+            -7.0
+        );
+        assert_eq!(ws.restore(offset).unwrap(), "-7");
+        assert_eq!(ws.editor_view().brief, original);
+    }
+    ws.stage(offset, "40").unwrap();
+    ws.commit().unwrap();
+    let committed = ws.editor_view().brief;
+    assert!(committed.contains("40 Hz") && committed.contains("357"));
+    assert!(!committed.contains("Last committed"));
+}
+
+#[test]
+fn action_budget_messages_distinguish_components_from_expanded_voices() {
+    for (primitives, pairs, components, voices) in [(0, 8, 8, 16), (16, 0, 16, 16), (15, 0, 15, 15)]
+    {
+        let mut ws = workspace();
+        ws.set_view(View::Workbench);
+        let key = ws.editor().document_key();
+        for _ in 0..primitives {
+            ws.add_component(key, CarrierKind::Tone).unwrap();
+        }
+        for _ in 0..pairs {
+            ws.add_pair(key, crate::core::PairKind::Binaural).unwrap();
+        }
+        let view = ws.action_view();
+        assert!(!view.can_add_pair);
+        assert!(view.pair_add_reason.contains(&format!(
+            "{components} authored components and {voices} expanded voices"
+        )));
+        assert!(view.pair_add_reason.contains("2 more voices"));
+        assert_eq!(view.can_add_component, voices < 16 && components < 16);
+        if !view.can_add_component {
+            assert!(view.add_component_reason.contains(&format!(
+                "{components} authored components and {voices} expanded voices"
+            )));
+            assert!(view.add_component_reason.contains("1 more voice"));
+        }
+    }
+}

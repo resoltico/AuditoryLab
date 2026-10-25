@@ -276,22 +276,7 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
             || format!("Could not prepare “{title}” at {} Hz.", rate.hz()),
             |error| (error).at_rate(title, *rate),
         ),
-        Refusal::Edit(EditRefusal::ComponentLimit) => format!(
-            "A sound holds at most {} components; remove one to add another.",
-            auditorylab_core::Sound::MAX_COMPONENTS
-        ),
-        Refusal::Edit(EditRefusal::NothingRemoved) => {
-            "No removed component is waiting to be restored.".into()
-        }
-        Refusal::Edit(EditRefusal::IdentitiesExhausted) => {
-            "This sound has exhausted an editing identity; start a new sound to continue.".into()
-        }
-        Refusal::Edit(
-            EditRefusal::StaleDocument
-            | EditRefusal::StaleRow
-            | EditRefusal::UnknownComponent
-            | EditRefusal::Inapplicable,
-        ) => "That field no longer belongs to the open sound.".into(),
+        Refusal::Edit(error) => error.description(),
         Refusal::TooManyComponents(count) => format!(
             "The workbench supports at most {} components; this recipe has {count}. Edit the recipe file to reduce them.",
             auditorylab_core::Sound::MAX_COMPONENTS
@@ -406,6 +391,7 @@ impl Workspace {
         let rate = self.diagnostic_rate();
         let candidate = self.editor.session.candidate();
         let analysis = self.editor.session.candidate_analysis(rate);
+        let committed_analysis = self.editor.session.committed_analysis(rate);
         let nominal = self.editor.session.nominal();
         let editor = &self.editor.session;
         let problem = |field: EditingField| {
@@ -549,7 +535,7 @@ impl Workspace {
                 deduped.push(item.to_owned());
             }
         }
-        let generated_brief = analysis.target().map_or_else(
+        let generated_brief = committed_analysis.target().map_or_else(
             || "No valid sound model; correct the fields".into(),
             |t| Structure::of_target(t).summary(),
         );
@@ -753,28 +739,12 @@ impl Workspace {
         } else {
             String::new()
         };
-        let used_voices = self
-            .editor
-            .session
-            .draft()
-            .components()
-            .iter()
-            .map(|c| c.node.voices())
-            .sum::<usize>();
-        let pair_full = used_voices + 2 > auditorylab_core::Sound::MAX_VOICES
-            || self.editor.session.draft().components().len()
-                >= auditorylab_core::Sound::MAX_COMPONENTS;
-        let full = self.editor.session.draft().components().len()
-            >= auditorylab_core::Sound::MAX_COMPONENTS
-            || self
-                .editor
-                .session
-                .draft()
-                .components()
-                .iter()
-                .map(|c| c.node.voices())
-                .sum::<usize>()
-                >= auditorylab_core::Sound::MAX_VOICES;
+        let draft = self.editor.session.draft();
+        let component_add = draft.check_addition(auditorylab_core::Node::Voice(
+            controls::default_component(CarrierKind::Tone),
+        ));
+        let pair_add =
+            draft.check_addition(controls::default_pair(auditorylab_core::PairKind::Binaural));
         let playing = self.audio.slot.is_some();
         let exporting = self.exporting();
         let progress = self.export_progress();
@@ -796,18 +766,16 @@ impl Workspace {
             can_export: export.is_ok(),
             export_reason: export.err().as_ref().map(refusal_text).unwrap_or_default(),
             can_edit: self.can_edit(),
-            can_add_component: self.can_edit() && !full,
-            can_add_pair: self.can_edit() && !pair_full,
-            pair_add_reason: if pair_full {
-                "No space for a two-tone pair; remove a component first.".into()
-            } else {
-                String::new()
-            },
-            add_component_reason: if full {
-                refusal_text(&Refusal::Edit(EditRefusal::ComponentLimit))
-            } else {
-                String::new()
-            },
+            can_add_component: self.can_edit() && component_add.is_ok(),
+            can_add_pair: self.can_edit() && pair_add.is_ok(),
+            pair_add_reason: pair_add
+                .err()
+                .map(EditRefusal::description)
+                .unwrap_or_default(),
+            add_component_reason: component_add
+                .err()
+                .map(EditRefusal::description)
+                .unwrap_or_default(),
             removed_component: self
                 .editor
                 .session
@@ -821,10 +789,11 @@ impl Workspace {
                 })
                 .unwrap_or_default(),
             can_restore_component: self.can_edit()
-                && !full
-                && self.editor.session.removed().is_some_and(|(_, c)| {
-                    used_voices + c.node.voices() <= auditorylab_core::Sound::MAX_VOICES
-                }),
+                && self
+                    .editor
+                    .session
+                    .removed()
+                    .is_some_and(|(_, component)| draft.check_addition(component.node).is_ok()),
             file_busy: self.files.slot.is_some() || self.prompt.is_some(),
             playback_busy: playing,
             exporting,

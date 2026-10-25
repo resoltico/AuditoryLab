@@ -6,7 +6,12 @@ use std::{fs, process::Command};
 #[ignore = "subprocess fixture, explicitly invoked by native_calendar_uses_actual_timezone_database"]
 fn calendar_child() {
     let date = std::env::var("AUDITORYLAB_CALENDAR_TEST_DATE").unwrap();
-    let range = auditorylab::calendar::local_range(&date, &date).unwrap();
+    let range = auditorylab::calendar::local_range(
+        auditorylab::calendar::CalendarField::Created,
+        &date,
+        &date,
+    )
+    .unwrap();
     let shown: Vec<_> = [
         "2026-03-28T22:30:00.123456789Z",
         "2026-03-29T01:30:00Z",
