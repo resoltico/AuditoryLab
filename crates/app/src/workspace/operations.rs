@@ -53,23 +53,21 @@ impl Workspace {
 
     pub(super) fn import_admission(&self) -> Result<(), Refusal> {
         self.start_allowed()?;
-        if self.file.is_some() {
+        if self.files.slot.is_some() {
             return Err(Refusal::FileBusy);
         }
         Ok(())
     }
 
     pub(super) fn prepare_save(&mut self) -> Result<Arc<Recipe>, Refusal> {
-        if let Some(error) = &self.persistent_config_error {
-            return Err(Refusal::Document(format!(
-                "User Library unavailable: {error}"
-            )));
+        if let Some(problem) = self.library.binding.problem() {
+            return Err(Refusal::LibraryUnavailable(problem.clone()));
         }
         self.start_allowed()?;
-        if self.file.is_some() {
+        if self.files.slot.is_some() {
             return Err(Refusal::FileBusy);
         }
-        if let Some(key) = self.persistent.as_ref().and_then(|p| p.detached.as_ref()) {
+        if let Some(key) = self.editor.location.detached() {
             return Err(Refusal::Document(format!(
                 "Detached draft from {key}. Edit the restored saved entry or Save independent copy."
             )));
@@ -79,23 +77,24 @@ impl Workspace {
     }
     pub(super) fn prepare_recipe(&mut self) -> Result<Arc<Recipe>, Refusal> {
         self.editor
+            .session
             .save_readiness()
             .map_err(|refusal| match refusal {
                 SaveRefusal::Input(problems) => Refusal::Input(problems),
                 SaveRefusal::Document(message) => Refusal::Document(message),
             })?;
-        Ok(Arc::new(self.editor.candidate().draft().recipe()))
+        Ok(Arc::new(self.editor.session.candidate().draft().recipe()))
     }
 
     pub(super) fn prepare_export(&mut self) -> Result<PreparedExport, Refusal> {
         self.start_allowed()?;
-        if self.file.is_some() {
+        if self.files.slot.is_some() {
             return Err(Refusal::FileBusy);
         }
-        if self.audio.is_some() {
+        if self.audio.slot.is_some() {
             return Err(Refusal::AudioPlaying);
         }
-        let rate = self.export_rate;
+        let rate = self.editor.export_rate;
         match self.view {
             View::Library => {
                 let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
@@ -108,11 +107,11 @@ impl Workspace {
                 Ok(PreparedExport::Library(sound, name))
             }
             View::Workbench => {
-                let candidate = self.editor.candidate();
+                let candidate = self.editor.session.candidate();
                 if !candidate.is_complete() {
                     return Err(Refusal::Input(candidate.problems().to_vec()));
                 }
-                let analysis = self.editor.candidate_analysis(rate);
+                let analysis = self.editor.session.candidate_analysis(rate);
                 let signal = analysis.signal().cloned().ok_or_else(|| Refusal::Invalid {
                     title: candidate.draft().title().to_owned(),
                     rate,
@@ -125,7 +124,7 @@ impl Workspace {
     }
 
     pub(super) fn prepare_audio(&mut self) -> Result<AudioRequest, Refusal> {
-        if !self.capabilities.device_playback {
+        if !self.audio.capabilities.device_playback {
             return Err(Refusal::DevicePlaybackUnavailable);
         }
         self.start_allowed()?;
@@ -146,23 +145,23 @@ impl Workspace {
                 if snapshot.stimulus().nonfinite().next().is_some() {
                     return Err(Refusal::NotFinite);
                 }
-                let store = self
-                    .persistent
-                    .as_ref()
-                    .filter(|p| p.selected_user())
-                    .map(|p| p.store_clone());
+                let store = if self.library.selected_user() {
+                    self.library.store_clone()
+                } else {
+                    None
+                };
                 Ok(AudioRequest::Finite {
                     snapshot: Box::new(snapshot.clone()),
                     store,
                 })
             }
             View::Workbench => {
-                let candidate = self.editor.candidate();
+                let candidate = self.editor.session.candidate();
                 if !candidate.is_complete() {
                     return Err(Refusal::Input(candidate.problems().to_vec()));
                 }
                 Ok(AudioRequest::Live {
-                    document: self.editor.document(),
+                    document: self.editor.session.document(),
                     candidate,
                 })
             }

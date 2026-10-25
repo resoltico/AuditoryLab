@@ -1,175 +1,97 @@
-// Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
-
-//! Workspace orchestration through its public commands, with scripted audio
-//! workers in place of a device and controllable file workers.
-use super::tasks::Worker;
+//! Coordinator semantics with real persistent stores and directly executed file jobs.
 use super::*;
-use crate::session::{
-    LiveGenerator, MonitorDetail, OutputInfo, PlaybackMonitor, SampleFormat, SessionDescriptor,
-};
-use auditorylab_core::ComponentId;
-use auditorylab_core::ParameterId;
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use auditorylab_core::{ComponentId, ParameterId};
+use std::sync::Arc;
 
-pub(super) type AudioSpawner =
-    dyn FnMut(
-        Session,
-        AudioKind,
-        Option<Draft>,
-    ) -> Worker<AudioEvent, Result<crate::session::PlaybackReport, Error>>;
-
-/// Steps a scripted audio worker performs, in order.
-enum Step {
-    /// Validate at this device rate and report Ready, or fail.
-    Prepare(SampleRate),
-    /// End playback: Stopped if Stop was accepted, otherwise Completed.
-    Finish,
-    /// Report a playback failure.
-    Fail,
-    /// Exit the thread.
-    Exit,
+struct TestWorkspace {
+    inner: Workspace,
+    store: crate::library::LibraryStore,
+    _root: tempfile::TempDir,
 }
-
-#[derive(Clone)]
-struct Fake {
-    control: crate::session::PlaybackControl,
-    steps: Sender<Step>,
-}
-
-#[derive(Clone, Default)]
-struct Fakes(Arc<Mutex<Vec<Fake>>>);
-
-impl Fakes {
-    fn last(&self) -> Fake {
-        self.0
-            .lock()
-            .unwrap()
-            .last()
-            .cloned()
-            .expect("an audio worker started")
-    }
-    fn count(&self) -> usize {
-        self.0.lock().unwrap().len()
+impl std::ops::Deref for TestWorkspace {
+    type Target = Workspace;
+    fn deref(&self) -> &Workspace {
+        &self.inner
     }
 }
-
-fn scripted(fakes: &Fakes) -> Box<AudioSpawner> {
-    let fakes = fakes.clone();
-    Box::new(move |session, kind, draft| {
-        let (steps, script): (Sender<Step>, Receiver<Step>) = mpsc::channel();
-        fakes.0.lock().unwrap().push(Fake {
-            control: session.control(),
-            steps,
-        });
-        Worker::spawn(move |tx| {
-            let state = Arc::clone(session.state());
-            let mut generator = None;
-            for step in script {
-                match step {
-                    Step::Prepare(rate) => {
-                        if state.outcome() == crate::session::Outcome::StopRequested {
-                            state.finish_drained(crate::session::Outcome::Completed);
-                            let _ = tx.send(AudioEvent::Finished(Ok(state.report().unwrap())));
-                            continue;
-                        }
-                        let target = match (&kind, &draft) {
-                            (AudioKind::Live(_), Some(draft)) => draft.check(rate).into_result(),
-                            (AudioKind::Finite(snapshot), _) => snapshot.stimulus().target(rate),
-                            (AudioKind::Managed { snapshot, store }, _) => {
-                                tasks::revalidate_managed(snapshot, store)
-                                    .unwrap()
-                                    .stimulus()
-                                    .target(rate)
-                            }
-                            _ => unreachable!(),
-                        };
-                        let target = match target {
-                            Ok(target) => target,
-                            Err(e) => {
-                                state.finish(crate::session::Outcome::PreparationFailed);
-                                let _ = tx.send(AudioEvent::Finished(Err(Error::new(
-                                    ErrorKind::InvalidSound,
-                                    e.to_string(),
-                                ))));
-                                continue;
-                            }
-                        };
-                        let live = LiveGenerator::with_state(target, Arc::clone(&state));
-                        let monitor = PlaybackMonitor::new(
-                            SessionDescriptor {
-                                id: state.id(),
-                                title: "scripted".into(),
-                                origin: crate::recipe::Origin::Stream("scripted".into()),
-                                output: OutputInfo {
-                                    name: None,
-                                    channels: 2,
-                                    sample_rate: rate,
-                                    format: SampleFormat::F32,
-                                },
-                                frames: None,
-                                target,
-                            },
-                            MonitorDetail::Quantities,
-                            Arc::clone(&state),
-                            Some(Arc::clone(live.mailbox())),
-                        );
-                        let control = matches!(kind, AudioKind::Live(_)).then(|| live.control());
-                        let _ = tx.send(AudioEvent::Prepared {
-                            reader: monitor.reader().unwrap(),
-                            rate,
-                            live: control,
-                        });
-                        generator = Some(live);
-                    }
-                    Step::Finish => {
-                        state.finish_drained(crate::session::Outcome::Completed);
-                        let _ = tx.send(AudioEvent::Finished(Ok(state.report().unwrap())));
-                    }
-                    Step::Fail => {
-                        state.finish(crate::session::Outcome::Backend);
-                        let _ = tx.send(AudioEvent::Finished(Err(Error::new(
-                            ErrorKind::Device,
-                            "scripted failure",
-                        ))));
-                    }
-                    Step::Exit => break,
-                }
-            }
-            drop(generator);
-            drop(session);
-        })
-    })
+impl std::ops::DerefMut for TestWorkspace {
+    fn deref_mut(&mut self) -> &mut Workspace {
+        &mut self.inner
+    }
 }
-
-fn workspace() -> (Workspace, Fakes) {
-    let mut ws =
-        Workspace::new(crate::recipe::catalog().unwrap(), Capabilities::available()).unwrap();
-    ws.capabilities.device_playback = true;
-    let fakes = Fakes::default();
-    ws.audio_spawner = Some(scripted(&fakes));
-    (ws, fakes)
-}
-
-fn settle(ws: &mut Workspace, until: impl Fn(&Workspace) -> bool) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while std::time::Instant::now() < deadline {
-        ws.poll();
-        if until(ws) {
-            return;
+impl TestWorkspace {
+    fn new(catalog: Vec<RecipeSnapshot>, capabilities: Capabilities) -> Result<Self, Error> {
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
+        std::fs::create_dir_all(&base).unwrap();
+        let root = tempfile::tempdir_in(base).unwrap();
+        let store = crate::library::LibraryStore::new(crate::library::LibraryRoot::explicit(
+            root.path().join("library"),
+        )?)?;
+        store.root().initialize()?;
+        let open_files = !catalog.is_empty()
+            && catalog
+                .iter()
+                .all(|snapshot| !matches!(snapshot.origin(), crate::recipe::Origin::BuiltIn(_)));
+        let mut inner = Workspace::with_library(catalog, capabilities, store.clone())?;
+        drain_files(&mut inner);
+        if open_files {
+            inner.set_catalog_query(crate::collection::CatalogQuery {
+                scope: crate::collection::Scope::OpenFiles,
+                ..Default::default()
+            })?;
+            drain_files(&mut inner);
         }
-        std::thread::yield_now();
+        Ok(Self {
+            inner,
+            store,
+            _root: root,
+        })
     }
-    panic!("workspace did not settle");
+    fn poll(&mut self) -> bool {
+        drain_files(&mut self.inner);
+        self.inner.poll()
+    }
+    fn select(&mut self, position: usize) {
+        let key = self.library_view().keys[position].clone();
+        self.select_library_key(&key);
+    }
+    fn visible_count(&self) -> usize {
+        self.library_view()
+            .keys
+            .iter()
+            .filter(|key| !key.is_empty())
+            .count()
+    }
 }
-
-/// A workbench document with one tone.
+fn drain_files(workspace: &mut Workspace) {
+    loop {
+        let effects = workspace.take_effects();
+        let mut retained = Vec::new();
+        let mut ran = false;
+        for effect in effects {
+            match effect {
+                Effect::Run(job) if job.kind() == JobKind::File => {
+                    let response = execute_file(job);
+                    assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
+                    ran = true;
+                }
+                effect => retained.push(effect),
+            }
+        }
+        workspace.effects.splice(0..0, retained);
+        if !ran {
+            break;
+        }
+    }
+}
+fn workspace() -> TestWorkspace {
+    TestWorkspace::new(crate::recipe::catalog().unwrap(), Capabilities::available()).unwrap()
+}
 fn document(ws: &mut Workspace, frequency: f64) -> (DocumentId, FieldHandle) {
     ws.set_view(View::Workbench);
     let document = ws.editor().document();
-    ws.add_component(ws.editor().document_key(), CarrierKind::Tone)
-        .unwrap();
+    let document_key = ws.editor().document_key();
+    ws.add_component(document_key, CarrierKind::Tone).unwrap();
     let id = ws.editor().draft().components()[0].id;
     let handle = ws
         .editor()
@@ -178,500 +100,17 @@ fn document(ws: &mut Workspace, frequency: f64) -> (DocumentId, FieldHandle) {
     ws.commit_field(handle, &frequency.to_string()).unwrap();
     (document, handle)
 }
-
-/// A file worker that sends `outcome` when released, then exits when released again.
-fn held_file(ws: &mut Workspace, kind: FileKind, outcome: FileOutcome) -> (Sender<()>, TaskId) {
-    let (release, wait) = mpsc::channel::<()>();
-    let id = TaskId(ws.next_id());
-    let worker = Worker::spawn(move |tx| {
-        wait.recv().unwrap();
-        let _ = tx.send(outcome);
-        let _ = wait.recv();
-    });
-    ws.file = Some(FileTask { id, kind, worker });
-    (release, id)
-}
-
-fn export_kind() -> FileKind {
-    FileKind::Export {
-        title: "export".into(),
-        sound: Draft::new()
-            .unwrap()
-            .snapshot()
-            .at(SampleRate::DEFAULT)
-            .unwrap(),
-        path: "unused.wav".into(),
-        frames: 1,
-        cancel: Cancel::default(),
-        progress: Progress::default(),
-    }
-}
-
-#[test]
-fn the_admission_table_has_one_audio_and_one_file_slot() {
-    let (mut ws, fakes) = workspace();
-    document(&mut ws, 440.0);
-    ws.play().unwrap();
-    assert!(ws.audio_busy());
-    // Save may run beside audio; export may not.
-    assert_eq!(ws.export(), Err(Refusal::AudioPlaying));
-    ws.save().unwrap();
-    let effects = ws.take_effects();
-    assert!(matches!(
-        effects[0],
-        Effect::ChoosePath {
-            purpose: PathPurpose::SaveRecipe,
-            ..
-        }
-    ));
-    let Effect::ChoosePath { prompt, .. } = effects[0] else {
-        unreachable!()
-    };
-    ws.respond(prompt, Response::Path(None));
-    // A file task blocks a second file task, not audio.
-    let (release, _) = held_file(
-        &mut ws,
-        export_kind(),
-        FileOutcome::Exported(Err(Error::new(ErrorKind::Cancelled, "x"))),
-    );
-    assert_eq!(ws.import(), Err(Refusal::FileBusy));
-    // Stop never cancels the file task; cancelling the export never stops audio.
-    assert_eq!(ws.stop(), Ok(StopRequest::Accepted));
-    let FileKind::Export { cancel, .. } = &ws.file.as_ref().unwrap().kind else {
-        unreachable!()
-    };
-    assert!(!cancel.is_requested());
-    let fake = fakes.last();
-    fake.steps.send(Step::Finish).unwrap();
-    fake.steps.send(Step::Exit).unwrap();
-    settle(&mut ws, |ws| !ws.audio_busy());
-    // While exporting, audio cannot start.
-    ws.set_view(View::Library);
-    assert_eq!(ws.play(), Err(Refusal::Exporting));
-    ws.cancel_export().unwrap();
-    assert!(ws.audio.is_none());
-    release.send(()).unwrap();
-    release.send(()).unwrap();
-    settle(&mut ws, |ws| !ws.file_busy());
-    assert_eq!(ws.cancel_export(), Err(Refusal::NoExport));
-    assert_eq!(ws.stop(), Err(Refusal::NoAudio));
-}
-
-#[test]
-fn a_received_result_keeps_its_slot_finishing_until_the_thread_is_joined() {
-    let (mut ws, _) = workspace();
-    let (release, _) = held_file(
-        &mut ws,
-        FileKind::Import("unused.toml".into()),
-        FileOutcome::Imported(Err(Error::new(ErrorKind::Unreadable, "scripted"))),
-    );
-    ws.close();
-    assert!(ws.action_pending(), "close waits for the file task");
-    release.send(()).unwrap();
-    for _ in 0..50 {
-        ws.poll();
-        std::thread::sleep(std::time::Duration::from_millis(1));
-    }
-    assert!(
-        ws.file.as_ref().unwrap().worker.finishing(),
-        "result received"
-    );
-    assert!(ws.file_busy(), "the slot stays occupied until the join");
-    assert!(
-        ws.take_effects().is_empty(),
-        "no dependent continuation yet"
-    );
-    assert_eq!(ws.import(), Err(Refusal::ActionPending));
-    release.send(()).unwrap();
-    settle(&mut ws, |ws| !ws.file_busy());
-    // Close depended on that task, so its actual failure denies the close.
-    let effects = ws.take_effects();
-    assert_eq!(effects, [Effect::CloseResolved { approved: false }]);
-    assert!(ws.action_view().file_status.contains("scripted"));
-}
-
-#[test]
-fn closing_cancels_an_export_and_treats_the_cancellation_as_cleanup() {
-    let (mut ws, _) = workspace();
-    let (release, _) = held_file(
-        &mut ws,
-        export_kind(),
-        FileOutcome::Exported(Err(Error::new(ErrorKind::Cancelled, "export cancelled"))),
-    );
-    ws.close();
-    let FileKind::Export { cancel, .. } = &ws.file.as_ref().unwrap().kind else {
-        unreachable!()
-    };
-    assert!(cancel.is_requested(), "close requests export cancellation");
-    release.send(()).unwrap();
-    release.send(()).unwrap();
-    settle(&mut ws, |ws| !ws.file_busy());
-    assert_eq!(
-        ws.take_effects(),
-        [Effect::CloseResolved { approved: true }]
-    );
-}
-
-#[test]
-fn an_unrelated_file_failure_does_not_cancel_audio_replacement() {
-    let (mut ws, fakes) = workspace();
-    ws.play().unwrap();
-    let first = fakes.last();
-    let document = ws.editor().document();
-    let (release, _) = held_file(
-        &mut ws,
-        FileKind::Save {
-            document,
-            content: Arc::new(Draft::new().unwrap().recipe()),
-            path: "unused.toml".into(),
-        },
-        FileOutcome::Saved(Err(Error::new(ErrorKind::Write, "disk full"))),
-    );
-    ws.play().unwrap();
-    assert!(
-        ws.action_pending(),
-        "replacement waits for the first audio task"
-    );
-    assert_eq!(first.control.phase(), PlaybackPhase::Stopping);
-    release.send(()).unwrap();
-    release.send(()).unwrap();
-    settle(&mut ws, |ws| !ws.file_busy());
-    assert!(ws.action_pending(), "the file failure is not a dependency");
-    assert!(ws.action_view().file_status.contains("disk full"));
-    first.steps.send(Step::Finish).unwrap();
-    first.steps.send(Step::Exit).unwrap();
-    settle(&mut ws, |_| fakes.count() == 2);
-    assert!(ws.audio_busy(), "replacement audio started");
-    let second = fakes.last();
-    second.steps.send(Step::Exit).unwrap();
-}
-
-#[test]
-fn a_panic_after_publication_cannot_authorize_save_and_close() {
-    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
-    std::fs::create_dir_all(&base).unwrap();
-    let dir = tempfile::tempdir_in(base).unwrap();
-    let target = dir.path().join("saved.toml");
-    let (mut ws, execution) = controlled();
-    let (_, handle) = document(&mut ws, 440.0);
-    let _ = handle;
-    ws.close();
-    let Effect::AskUnsaved(prompt) = ws.take_effects()[0] else {
-        panic!("unsaved prompt")
-    };
-    ws.respond(prompt, Response::Save);
-    let Effect::ChoosePath { prompt, .. } = ws.take_effects()[0] else {
-        panic!("save panel")
-    };
-    ws.respond(prompt, Response::Path(Some(target.clone())));
-    let worker = execution.file().unwrap();
-    worker.result().unwrap();
-    ws.poll();
-    assert!(ws.file_busy());
-    assert!(target.exists(), "the captured content really published");
-    worker.panic().unwrap();
-    settle(&mut ws, |ws| !ws.file_busy());
-    assert_eq!(
-        ws.take_effects(),
-        [Effect::CloseResolved { approved: false }]
-    );
-    assert!(!ws.editor().dirty(), "publication truth is recorded");
-    assert!(
-        ws.action_view()
-            .file_status
-            .contains(presentation::WORKER_FAILED)
-    );
-}
-
-#[test]
-fn one_prompt_coalesced_quit_stale_answers_and_failed_panels() {
-    let (mut ws, fakes) = workspace();
-    document(&mut ws, 440.0);
-    ws.play().unwrap();
-    ws.close();
-    ws.close();
-    let effects = ws.take_effects();
-    assert_eq!(effects.len(), 1, "repeated Quit coalesces: {effects:?}");
-    let Effect::AskUnsaved(prompt) = effects[0] else {
-        panic!()
-    };
-    ws.new_document();
-    assert!(
-        ws.take_effects().is_empty(),
-        "conflicting commands are rejected"
-    );
-    assert!(ws.action_view().file_status.contains("dialog"));
-    assert_eq!(ws.stop(), Ok(StopRequest::Accepted), "Stop stays available");
-    ws.respond(PromptId(prompt.0 + 1000), Response::Discard);
-    assert!(ws.prompt_open(), "a stale answer changes nothing");
-    ws.respond(prompt, Response::Failed("panel unavailable".into()));
-    assert!(!ws.prompt_open(), "a failed panel resolves the prompt");
-    assert_eq!(
-        ws.take_effects(),
-        [Effect::CloseResolved { approved: false }]
-    );
-    let fake = fakes.last();
-    fake.steps.send(Step::Exit).unwrap();
-}
-
-#[test]
-fn a_live_preparation_binds_committed_edits_at_the_actual_rate_only() {
-    let (mut ws, fakes) = workspace();
-    let (document, frequency) = document(&mut ws, 440.0);
-    ws.play().unwrap();
-    // During preparation: commit B, then stage C.
-    ws.commit_field(frequency, "30000").unwrap();
-    ws.stage(frequency, "500").unwrap();
-    let fake = fakes.last();
-    fake.steps
-        .send(Step::Prepare(SampleRate::new(96_000).unwrap()))
-        .unwrap();
-    settle(&mut ws, |ws| ws.live_rate().is_some());
-    let accepted = ws
-        .audio
-        .as_ref()
-        .unwrap()
-        .live
-        .as_ref()
-        .unwrap()
-        .accepted()
-        .unwrap();
-    assert_eq!(accepted.0, 2, "committed B was submitted");
-    assert_eq!(accepted.1.sample_rate().hz(), 96_000);
-    let (_, facts) = accepted.1.components().next().unwrap();
-    let auditorylab_core::CarrierFacts::Tone(rate) = facts.carrier else {
-        panic!()
-    };
-    assert_eq!(rate.requested_hz, 30_000.0, "staged C was never sent");
-    assert_eq!(ws.editor().staged(frequency.field), Some("500"));
-    // Diagnostics use the live rate; the export rate selection is unchanged.
-    assert_eq!(ws.diagnostic_rate().hz(), 96_000);
-    assert_eq!(ws.export_rate(), SampleRate::DEFAULT);
-    assert!(
-        !ws.action_view().can_export,
-        "30 kHz is invalid for 48 kHz export"
-    );
-    // An invalid committed edit keeps the last valid accepted target.
-    ws.commit_field(frequency, "60000").unwrap();
-    let still = ws
-        .audio
-        .as_ref()
-        .unwrap()
-        .live
-        .as_ref()
-        .unwrap()
-        .accepted()
-        .unwrap();
-    assert_eq!(still.0, 2);
-    // Stop closes admission; later commits are not accepted.
-    ws.stop().unwrap();
-    ws.commit_field(frequency, "440").unwrap();
-    let closed = ws
-        .audio
-        .as_ref()
-        .unwrap()
-        .live
-        .as_ref()
-        .unwrap()
-        .accepted()
-        .unwrap();
-    assert_eq!(closed.0, 2);
-    let _ = document;
-    fake.steps.send(Step::Finish).unwrap();
-    fake.steps.send(Step::Exit).unwrap();
-    settle(&mut ws, |ws| !ws.audio_busy());
-    assert!(ws.transport_view().player_title.starts_with("Stopped"));
-    assert_eq!(
-        ws.action_view().audio_status,
-        "",
-        "the transport names an ordinary Stop; the status line does not repeat it"
-    );
-}
-
-#[test]
-fn device_rate_validation_is_independent_of_the_export_rate() {
-    let (mut ws, fakes) = workspace();
-    document(&mut ws, 30_000.0);
-    // Selected 48 kHz export: export invalid, preparation still eligible.
-    let actions = ws.action_view();
-    assert!(!actions.can_export);
-    assert!(actions.can_play, "{}", actions.play_reason);
-    ws.play().unwrap();
-    fakes
-        .last()
-        .steps
-        .send(Step::Prepare(SampleRate::new(96_000).unwrap()))
-        .unwrap();
-    settle(&mut ws, |ws| ws.live_rate().is_some());
-    fakes.last().steps.send(Step::Finish).unwrap();
-    fakes.last().steps.send(Step::Exit).unwrap();
-    settle(&mut ws, |ws| !ws.audio_busy());
-    // Selected 96 kHz export, actual 48 kHz device: preparation fails before streaming.
-    ws.set_export_rate(SampleRate::new(96_000).unwrap());
-    assert!(ws.action_view().can_export);
-    ws.play().unwrap();
-    fakes
-        .last()
-        .steps
-        .send(Step::Prepare(SampleRate::new(48_000).unwrap()))
-        .unwrap();
-    fakes.last().steps.send(Step::Exit).unwrap();
-    settle(&mut ws, |ws| !ws.audio_busy());
-    assert!(ws.action_view().audio_status.contains("half the 48000 Hz"));
-    assert_eq!(
-        ws.export_rate().hz(),
-        96_000,
-        "device attempts never change the selection"
-    );
-}
-
-#[test]
-fn stop_before_preparation_never_revives_playback() {
-    let (mut ws, fakes) = workspace();
-    document(&mut ws, 440.0);
-    ws.play().unwrap();
-    ws.stop().unwrap();
-    fakes
-        .last()
-        .steps
-        .send(Step::Prepare(SampleRate::DEFAULT))
-        .unwrap();
-    fakes.last().steps.send(Step::Exit).unwrap();
-    settle(&mut ws, |ws| !ws.audio_busy());
-    assert!(ws.output.reader().is_none(), "no Ready, no monitor binding");
-    assert!(ws.action_view().audio_status.starts_with("Stopped"));
-}
-
-#[test]
-fn a_late_preparation_for_a_replaced_document_attaches_monitoring_only() {
-    let (mut ws, fakes) = workspace();
-    let (old, frequency) = document(&mut ws, 440.0);
-    ws.play().unwrap();
-    // Replace the document while preparation runs (Discard the unsaved copy).
-    ws.new_document();
-    let Effect::AskUnsaved(prompt) = ws.take_effects()[0] else {
-        panic!()
-    };
-    ws.respond(prompt, Response::Discard);
-    assert_ne!(ws.editor().document(), old);
-    assert_eq!(
-        ws.commit_field(frequency, "880"),
-        Err(Refusal::Edit(EditRefusal::StaleDocument))
-    );
-    fakes
-        .last()
-        .steps
-        .send(Step::Prepare(SampleRate::DEFAULT))
-        .unwrap();
-    settle(&mut ws, |ws| ws.output.reader().is_some());
-    assert_eq!(
-        ws.live_rate(),
-        None,
-        "the new document is not bound to the old session"
-    );
-    let accepted = ws
-        .audio
-        .as_ref()
-        .unwrap()
-        .live
-        .as_ref()
-        .unwrap()
-        .accepted()
-        .unwrap();
-    assert_eq!(accepted.0, 1, "nothing from the new document was submitted");
-    fakes.last().steps.send(Step::Fail).unwrap();
-    fakes.last().steps.send(Step::Exit).unwrap();
-    settle(&mut ws, |ws| !ws.audio_busy());
-    assert!(ws.action_view().audio_status.contains("scripted failure"));
-}
-
-#[test]
-fn saving_records_only_the_captured_snapshot_for_its_own_document() {
-    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
-    std::fs::create_dir_all(&base).unwrap();
-    let dir = tempfile::tempdir_in(base).unwrap();
-    let (mut ws, _) = workspace();
-    let (_, frequency) = document(&mut ws, 440.0);
-    ws.save().unwrap();
-    let Effect::ChoosePath { prompt, .. } = ws.take_effects()[0] else {
-        panic!()
-    };
-    // The open panel blocks editing; edits after the choice do not reach the file.
-    assert_eq!(ws.commit_field(frequency, "880"), Err(Refusal::PromptOpen));
-    let path = dir.path().join("a.toml");
-    ws.respond(prompt, Response::Path(Some(path.clone())));
-    ws.commit_field(frequency, "880").unwrap();
-    settle(&mut ws, |ws| !ws.file_busy());
-    let saved = crate::recipe::load_file(&path).unwrap();
-    assert_eq!(
-        saved.stimulus().components[0]
-            .node
-            .read(ParameterId::ToneFrequency),
-        Some(440.0),
-        "only the captured snapshot is written"
-    );
-    assert!(ws.editor().dirty(), "newer edits stay dirty");
-    // A save completing after replacement leaves the replacement untouched.
-    ws.save().unwrap();
-    let Effect::ChoosePath { prompt, .. } = ws.take_effects()[0] else {
-        panic!()
-    };
-    ws.respond(prompt, Response::Path(Some(dir.path().join("b.toml"))));
-    ws.editor = EditorSession::new(Draft::new().unwrap()).unwrap();
-    settle(&mut ws, |ws| !ws.file_busy());
-    assert!(!ws.editor().dirty());
-    assert!(ws.action_view().file_status.contains("different document"));
-}
-
-#[test]
-fn shutdown_joins_both_workers_and_reports_real_failures() {
-    let (mut ws, fakes) = workspace();
-    ws.play().unwrap();
-    let fake = fakes.last();
-    let (release, _) = held_file(
-        &mut ws,
-        FileKind::Import("unused.toml".into()),
-        FileOutcome::Imported(Err(Error::new(ErrorKind::Unreadable, "unreadable import"))),
-    );
-    let stopper = std::thread::spawn(move || {
-        fake.steps.send(Step::Finish).unwrap();
-        fake.steps.send(Step::Exit).unwrap();
-        release.send(()).unwrap();
-        release.send(()).unwrap();
-    });
-    let result = ws.shutdown();
-    stopper.join().unwrap();
-    let errors = result.unwrap_err();
-    assert!(errors.contains("unreadable import"), "{errors}");
-    assert!(
-        !errors.contains("Stopped"),
-        "expected Stop is not a failure"
-    );
-}
-
-#[test]
-fn portable_workspaces_refuse_audio_before_taking_a_slot() {
-    let mut ws =
-        Workspace::new(crate::recipe::catalog().unwrap(), Capabilities::portable()).unwrap();
-    assert_eq!(ws.play(), Err(Refusal::DevicePlaybackUnavailable));
-    assert!(!ws.audio_busy());
-    assert!(!ws.action_view().can_play);
-    let (_, frequency) = document(&mut ws, 440.0);
-    ws.commit_field(frequency, "880").unwrap();
-    assert!(ws.action_view().can_save);
-}
-
 #[test]
 fn idle_ticks_do_no_evaluation_or_preview_work() {
-    let (mut ws, _) = workspace();
+    let mut ws = workspace();
     document(&mut ws, 440.0);
     ws.poll();
     let view = ws.editor_view();
     let actions = ws.action_view();
-    let previews = ws.output.previews;
-    let models = ws.output.models;
-    let evaluations = ws.editor.evaluations();
-    let serializations = ws.editor.serializations();
+    let previews = ws.audio.output.previews;
+    let models = ws.audio.output.models;
+    let evaluations = ws.editor.session.evaluations();
+    let serializations = ws.editor.session.serializations();
     let revision = ws.revision();
     let capture = ws.output_view().capture.unwrap();
     let model = ws.model_view().unwrap();
@@ -679,11 +118,11 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
         assert!(!ws.poll());
     }
     assert_eq!(ws.action_view(), actions);
-    assert_eq!(ws.output.previews, previews);
-    assert_eq!(ws.output.models, models);
-    assert_eq!(ws.editor.evaluations(), evaluations);
+    assert_eq!(ws.audio.output.previews, previews);
+    assert_eq!(ws.audio.output.models, models);
+    assert_eq!(ws.editor.session.evaluations(), evaluations);
     assert_eq!(
-        ws.editor.serializations(),
+        ws.editor.session.serializations(),
         serializations,
         "save readiness is checked once per candidate"
     );
@@ -692,24 +131,24 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     assert!(Arc::ptr_eq(&capture, &ws.output_view().capture.unwrap()));
     assert_eq!(ws.editor_view(), view);
     assert_eq!(
-        ws.editor.evaluations(),
+        ws.editor.session.evaluations(),
         evaluations,
         "views reuse cached evaluations"
     );
     // A scale change reuses the preview's samples.
     ws.set_waveform(40, WaveformScale::Fit);
     ws.poll();
-    assert_eq!(ws.output.previews, previews);
+    assert_eq!(ws.audio.output.previews, previews);
     // A relevant change recomputes once.
     ws.set_waveform(10, WaveformScale::Fit);
     ws.poll();
     ws.poll();
-    assert_eq!(ws.output.previews, previews + 1);
+    assert_eq!(ws.audio.output.previews, previews + 1);
 }
 
 #[test]
 fn invalid_commits_clear_unheld_previews_and_held_captures_stay_frozen() {
-    let (mut ws, _) = workspace();
+    let mut ws = workspace();
     let (_, frequency) = document(&mut ws, 440.0);
     ws.poll();
     let valid = ws.output_view().capture.unwrap();
@@ -736,106 +175,15 @@ fn invalid_commits_clear_unheld_previews_and_held_captures_stay_frozen() {
         "invalid committed source clears the preview"
     );
     assert!(current.unavailable.unwrap().contains("48000 Hz"));
-    let evaluations = ws.editor.evaluations();
+    let evaluations = ws.editor.session.evaluations();
     for _ in 0..10 {
         ws.poll();
     }
     assert_eq!(
-        ws.editor.evaluations(),
+        ws.editor.session.evaluations(),
         evaluations,
         "invalid results are cached"
     );
-}
-
-#[test]
-fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot() {
-    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
-    std::fs::create_dir_all(&base).unwrap();
-    let dir = tempfile::tempdir_in(base).unwrap();
-    let path = dir.path().join("same.toml");
-    let first_text = "schema_version=3\nduration_seconds=1\nfade_seconds=0\n[description]\ntitle='First'\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
-    std::fs::write(&path, first_text).unwrap();
-    let (mut ws, _) = workspace();
-    for text in [
-        first_text,
-        "schema_version=3\nduration_seconds=2\nfade_seconds=0\n[description]\ntitle='Second'\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
-    ] {
-        std::fs::write(&path, text).unwrap();
-        ws.import().unwrap();
-        let Effect::ChoosePath { prompt, .. } = ws.take_effects()[0] else {
-            panic!()
-        };
-        ws.respond(prompt, Response::Path(Some(path.clone())));
-        settle(&mut ws, |ws| !ws.file_busy());
-        if text == first_text {
-            ws.copy_selected();
-            assert_eq!(ws.take_effects(), [Effect::ShowView(View::Workbench)]);
-        }
-    }
-    let first_copy = ws.editor().draft().based_on().unwrap().clone();
-    assert_eq!(first_copy.title(), "First");
-    let current = ws.selected().unwrap().clone();
-    assert_eq!(current.title(), "Second");
-    assert_ne!(current.id(), first_copy.id(), "same path, new identity");
-    assert_eq!(
-        ws.catalog().len(),
-        crate::recipe::catalog().unwrap().len() + 1,
-        "row replaced in place"
-    );
-    ws.show_based_on_source();
-    assert_eq!(
-        ws.selected().unwrap().id(),
-        first_copy.id(),
-        "not resolved by path"
-    );
-    assert_eq!(ws.view(), View::Library);
-}
-
-#[test]
-fn the_live_model_follows_accepted_revisions_even_for_identical_audio() {
-    let (mut ws, fakes) = workspace();
-    ws.set_view(View::Workbench);
-    ws.add_component(ws.editor().document_key(), CarrierKind::Clicks)
-        .unwrap();
-    let id = ws.editor().draft().components()[0].id;
-    let width = ws
-        .editor()
-        .handle(EditingField::Parameter(id, ParameterId::ClickWidth))
-        .unwrap();
-    ws.commit_field(width, "1").unwrap();
-    ws.play().unwrap();
-    let fake = fakes.last();
-    fake.steps
-        .send(Step::Prepare(SampleRate::new(8_000).unwrap()))
-        .unwrap();
-    settle(&mut ws, |ws| ws.live_rate().is_some());
-    ws.poll();
-    let first = ws.model_view().unwrap();
-    let crate::waveform_view::ModelSource::Accepted(first_revision) = first.source else {
-        panic!("a bound live document explains its accepted target");
-    };
-    let models = ws.output.models;
-    for _ in 0..20 {
-        ws.poll();
-    }
-    assert_eq!(
-        ws.output.models, models,
-        "unchanged revisions build nothing"
-    );
-    // 1.01 ms is still 8 frames at 8 kHz: identical samples, new definition.
-    ws.commit_field(width, "1.01").unwrap();
-    ws.poll();
-    let second = ws.model_view().unwrap();
-    let crate::waveform_view::ModelSource::Accepted(second_revision) = second.source else {
-        panic!("still the accepted target");
-    };
-    assert!(second_revision > first_revision);
-    assert!(second.target.same_audio(&first.target));
-    assert_ne!(second.target, first.target);
-    assert_eq!(ws.output.models, models + 1);
-    fake.steps.send(Step::Finish).unwrap();
-    fake.steps.send(Step::Exit).unwrap();
-    settle(&mut ws, |ws| !ws.audio_busy());
 }
 
 #[test]
@@ -856,13 +204,18 @@ fn receipt_age_reads_in_human_units() {
 
 #[test]
 fn a_search_that_hides_every_recipe_leaves_nothing_to_play_or_export() {
-    let (mut ws, fakes) = workspace();
+    let mut ws = workspace();
     let chosen = ws.selected().unwrap().id();
     ws.set_query("no recipe has this text");
     assert!(ws.selected().is_none());
     assert_eq!(ws.play(), Err(Refusal::NoSelection));
     assert_eq!(ws.export(), Err(Refusal::NoSelection));
-    assert_eq!(fakes.count(), 0, "no audio task started");
+    assert!(
+        ws.take_effects()
+            .iter()
+            .all(|effect| !matches!(effect, Effect::Run(_))),
+        "refused commands never admit jobs"
+    );
     assert!(!ws.action_view().can_play);
     assert!(ws.library_view().selected.is_none());
     ws.copy_selected();
@@ -890,12 +243,12 @@ fn suggested_file_names_come_from_titles() {
 
 #[test]
 fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
-    let (mut ws, _) = workspace();
+    let mut ws = workspace();
     let (_, frequency) = document(&mut ws, 440.0);
     ws.stage(frequency, "30000").unwrap();
     let revision = ws.revision();
-    let committed = ws.editor.draft_revision();
-    let input = ws.editor.input_revision();
+    let committed = ws.editor.session.draft_revision();
+    let input = ws.editor.session.input_revision();
     let next_id = ws.next_id;
     let effects = ws.take_effects();
     for _ in 0..10 {
@@ -905,48 +258,49 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
     }
     assert_eq!(ws.next_id, next_id);
     assert_eq!(ws.revision(), revision);
-    assert_eq!(ws.editor.draft_revision(), committed);
-    assert_eq!(ws.editor.input_revision(), input);
+    assert_eq!(ws.editor.session.draft_revision(), committed);
+    assert_eq!(ws.editor.session.input_revision(), input);
     assert!(ws.take_effects().is_empty());
     assert!(!ws.audio_busy() && !ws.file_busy());
     assert!(ws.export().is_err());
-    assert_eq!(ws.editor.staged(frequency.field), Some("30000"));
-    assert_eq!(ws.editor.draft_revision(), committed);
+    assert_eq!(ws.editor.session.staged(frequency.field), Some("30000"));
+    assert_eq!(ws.editor.session.draft_revision(), committed);
     drop(effects);
     let notes = ws
         .editor
+        .session
         .handle(EditingField::Metadata(
             crate::editing::MetadataField::Summary,
         ))
         .unwrap();
     ws.stage(notes, &"🎧".repeat(Recipe::MAX_BYTES)).unwrap();
     assert!(ws.save().is_err());
-    assert!(ws.editor.staged(notes.field).is_some());
-    assert_eq!(ws.editor.draft_revision(), committed);
+    assert!(ws.editor.session.staged(notes.field).is_some());
+    assert_eq!(ws.editor.session.draft_revision(), committed);
 }
 
 #[test]
 fn library_dependencies_exclude_editor_and_telemetry_but_include_selection_query_and_rate() {
-    let (mut ws, _) = workspace();
+    let mut ws = workspace();
     let initial = ws.library_view();
-    let evaluations = ws.library_evaluations.get();
+    let evaluations = ws.library.evaluations.get();
     let (_, field) = document(&mut ws, 440.0);
     ws.stage(field, "880").unwrap();
     ws.action_view();
     ws.editor_view();
     ws.poll();
     assert_eq!(ws.library_view(), initial);
-    assert_eq!(ws.library_evaluations.get(), evaluations);
+    assert_eq!(ws.library.evaluations.get(), evaluations);
     ws.select(1);
     assert_ne!(ws.library_view().title, initial.title);
-    assert_eq!(ws.library_evaluations.get(), evaluations + 1);
+    assert_eq!(ws.library.evaluations.get(), evaluations + 1);
     ws.set_query("no matching result");
     let empty = ws.library_view();
     assert!(empty.rows.is_empty() && empty.title.is_empty() && empty.details.is_empty());
     ws.set_query("");
     ws.set_export_rate(SampleRate::new(96000).unwrap());
     assert!(!ws.library_view().rows.is_empty());
-    assert_eq!(ws.library_evaluations.get(), evaluations + 3);
+    assert_eq!(ws.library.evaluations.get(), evaluations + 3);
 }
 
 #[test]
@@ -971,7 +325,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
     .unwrap();
     std::fs::remove_file(path).unwrap();
     let reopened = crate::recipe::load_file(&derivative).unwrap();
-    let (mut ws, _) = workspace();
+    let mut ws = workspace();
     ws.replace_document(Draft::from_snapshot(&reopened).unwrap());
     ws.show_based_on_source();
     assert_eq!(
@@ -995,7 +349,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
             .iter()
             .all(|e| e.scope == crate::core::EvidenceScope::Ancestor)
     );
-    assert_eq!(ws.editor.draft().summary(), "Own notes");
+    assert_eq!(ws.editor.session.draft().summary(), "Own notes");
 }
 
 #[test]
@@ -1014,38 +368,41 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
     draft.set_summary("unique-own-notes-marker 🎧".into());
     let bytes = draft.to_toml().unwrap();
     let reopened = crate::recipe::load_reader(bytes.as_bytes(), "reopened derivative").unwrap();
-    let mut ws = Workspace::new(vec![reopened], Capabilities::portable()).unwrap();
+    let mut ws = TestWorkspace::new(vec![reopened], Capabilities::no_device_playback()).unwrap();
     for query in ["unique-own-notes-marker", &citation] {
         ws.set_query(query);
-        assert_eq!(ws.filtered().len(), 1, "{query}");
+        assert_eq!(ws.visible_count(), 1, "{query}");
         assert!(ws.library_view().details.contains("Source citation:"));
         assert!(ws.selected().unwrap().about().unwrap().research.is_none());
     }
     ws.set_query("not-present-anywhere-marker");
-    assert!(ws.filtered().is_empty());
+    assert!((ws.visible_count() == 0));
     let mut custom = Draft::new().unwrap();
     custom.set_summary("custom-notes-marker".into());
     ws.add_import(custom.snapshot());
     ws.set_query("custom-notes-marker");
-    assert_eq!(ws.filtered().len(), 1);
+    assert_eq!(ws.visible_count(), 1);
     ws.set_query("unique-own-notes-marker");
-    assert_eq!(ws.filtered().len(), 1);
+    assert_eq!(ws.visible_count(), 1);
     ws.add_import(crate::recipe::RecipeSnapshot::new(
         crate::recipe::Origin::Stream("reopened derivative".into()),
         custom.recipe(),
     ));
     ws.set_query("unique-own-notes-marker");
     // A reimport under the same origin must remove stale search text.
-    assert_eq!(ws.filtered().len(), 0);
-    let mut direct = Workspace::new(vec![source], Capabilities::portable()).unwrap();
+    assert_eq!(ws.visible_count(), 0);
+    let mut direct = TestWorkspace::new(vec![source], Capabilities::no_device_playback()).unwrap();
     direct.set_query(&citation);
-    assert_eq!(direct.filtered().len(), 1);
+    assert_eq!(direct.visible_count(), 1);
 }
 
 #[test]
 fn readiness_details_and_export_share_actual_snapshot_realizations_including_errors() {
-    let mut ws =
-        Workspace::new(crate::recipe::catalog().unwrap(), Capabilities::portable()).unwrap();
+    let mut ws = TestWorkspace::new(
+        crate::recipe::catalog().unwrap(),
+        Capabilities::no_device_playback(),
+    )
+    .unwrap();
     let selected = ws.selected().unwrap().clone();
     let _ = ws.library_view();
     let count = selected.realization_count();
@@ -1062,7 +419,10 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     assert_eq!(selected.realization_count(), count);
     ws.export().unwrap();
     let prompt = ws.prompt.as_ref().unwrap().id;
-    ws.respond(prompt, Response::Path(None));
+    ws.respond(Response::Prompt {
+        prompt,
+        answer: PromptAnswer::Path(None),
+    });
     assert_eq!(selected.realization_count(), count);
     ws.set_export_rate(SampleRate::new(96000).unwrap());
     ws.action_view();
@@ -1073,7 +433,8 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     let mut invalid = Draft::new().unwrap();
     invalid.set_duration_seconds(-1.0);
     let snapshot = invalid.snapshot();
-    let mut bad = Workspace::new(vec![snapshot.clone()], Capabilities::portable()).unwrap();
+    let mut bad =
+        TestWorkspace::new(vec![snapshot.clone()], Capabilities::no_device_playback()).unwrap();
     for _ in 0..10 {
         assert!(!bad.action_view().can_export);
         let _ = bad.library_view();
@@ -1091,7 +452,11 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
         crate::recipe::Origin::File("same.toml".into()),
         selected.recipe().clone(),
     );
-    let mut imported = Workspace::new(vec![replacement.clone()], Capabilities::portable()).unwrap();
+    let mut imported = TestWorkspace::new(
+        vec![replacement.clone()],
+        Capabilities::no_device_playback(),
+    )
+    .unwrap();
     imported.action_view();
     assert_eq!(replacement.realization_count(), 1);
     let fresh = crate::recipe::RecipeSnapshot::new(
@@ -1108,210 +473,6 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     assert_eq!(replacement.realization_count(), 1);
 }
 
-fn controlled() -> (Workspace, testing::Execution) {
-    testing::workspace(
-        crate::recipe::catalog().unwrap(),
-        Capabilities {
-            device_playback: true,
-        },
-    )
-    .unwrap()
-}
-
-fn chosen_path(ws: &mut Workspace, path: &std::path::Path) {
-    let prompt = ws
-        .take_effects()
-        .into_iter()
-        .find_map(|effect| match effect {
-            Effect::ChoosePath { prompt, .. } => Some(prompt),
-            _ => None,
-        })
-        .expect("command opened a path prompt");
-    ws.respond(prompt, Response::Path(Some(path.to_owned())));
-}
-
-#[test]
-fn commanded_save_preserves_dialog_capture_and_owns_the_slot_through_real_join() {
-    let dir = tempfile::tempdir_in(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
-    )
-    .unwrap();
-    let path = dir.path().join("captured.toml");
-    let (mut ws, execution) = controlled();
-    let (_, field) = document(&mut ws, 440.0);
-    ws.save().unwrap();
-    // Simulate independently changed editor content before the delayed panel reply.
-    ws.editor.commit_field(field, "880").unwrap().unwrap();
-    chosen_path(&mut ws, &path);
-    let save = execution.file().unwrap();
-    assert_eq!(save.path(), path);
-    assert_eq!(
-        save.captured_recipe().unwrap().stimulus.components[0]
-            .node
-            .read(ParameterId::ToneFrequency),
-        Some(440.0)
-    );
-    assert_eq!(ws.import(), Err(Refusal::FileBusy));
-    save.result().unwrap();
-    ws.poll();
-    assert!(ws.file_busy(), "result is not exit");
-    assert!(ws.editor().dirty());
-    assert_eq!(
-        crate::recipe::load_file(&path)
-            .unwrap()
-            .stimulus()
-            .components[0]
-            .node
-            .read(ParameterId::ToneFrequency),
-        Some(440.0)
-    );
-    ws.commit_field(field, "990").unwrap();
-    save.exit().unwrap();
-    settle(&mut ws, |w| !w.file_busy());
-    assert!(
-        ws.editor().dirty(),
-        "later edits are not the published baseline"
-    );
-}
-
-#[test]
-fn commanded_import_launch_missing_result_and_panic_are_visible_without_reviving_work() {
-    let dir = tempfile::tempdir_in(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
-    )
-    .unwrap();
-    let path = dir.path().join("import.toml");
-    crate::editing::save_content(
-        &Draft::new().unwrap().recipe(),
-        &path,
-        crate::workflow::Replace::Never,
-    )
-    .unwrap();
-    let (mut ws, execution) = controlled();
-    let before = ws.catalog().len();
-    ws.import().unwrap();
-    chosen_path(&mut ws, &path);
-    let import = execution.file().unwrap();
-    import.result().unwrap();
-    ws.poll();
-    assert!(ws.file_busy());
-    assert_eq!(ws.catalog().len(), before);
-    import.exit().unwrap();
-    settle(&mut ws, |w| !w.file_busy());
-    assert_eq!(ws.catalog().len(), before + 1);
-    for panic in [false, true] {
-        ws.import().unwrap();
-        chosen_path(&mut ws, &path);
-        let import = execution.file().unwrap();
-        if panic {
-            import.panic().unwrap();
-        } else {
-            import.exit().unwrap();
-        }
-        settle(&mut ws, |w| !w.file_busy());
-        assert!(ws.action_view().file_status.contains(if panic {
-            presentation::WORKER_FAILED
-        } else {
-            presentation::WORKER_ENDED_WITHOUT_RESULT
-        }));
-        assert_eq!(ws.catalog().len(), before + 1);
-    }
-    execution.fail_file_launch();
-    ws.import().unwrap();
-    chosen_path(&mut ws, &path);
-    ws.poll();
-    assert!(!ws.file_busy());
-    assert!(ws.action_view().file_status.contains("Cannot start worker"));
-}
-
-#[test]
-fn commanded_export_cancellation_and_unrelated_file_failure_preserve_audio_dependencies() {
-    let dir = tempfile::tempdir_in(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
-    )
-    .unwrap();
-    let path = dir.path().join("cancelled.wav");
-    let (mut ws, execution) = controlled();
-    ws.export().unwrap();
-    assert_eq!(ws.play(), Err(Refusal::PromptOpen));
-    chosen_path(&mut ws, &path);
-    let export = execution.file().unwrap();
-    assert_eq!(ws.play(), Err(Refusal::Exporting));
-    ws.cancel_export().unwrap();
-    assert!(export.cancelled());
-    export.result().unwrap();
-    ws.poll();
-    assert!(ws.file_busy());
-    export.exit().unwrap();
-    settle(&mut ws, |w| !w.file_busy());
-    assert!(!path.exists());
-    ws.import().unwrap();
-    chosen_path(&mut ws, &path);
-    let import = execution.file().unwrap();
-    ws.play().unwrap();
-    let first = execution.audio().unwrap();
-    ws.play().unwrap();
-    assert!(ws.action_pending());
-    import.fail().unwrap();
-    import.exit().unwrap();
-    settle(&mut ws, |w| !w.file_busy());
-    first.result().unwrap();
-    first.exit().unwrap();
-    settle(&mut ws, |w| !w.action_pending());
-    let replacement = execution.audio().unwrap();
-    assert!(
-        ws.audio_busy(),
-        "unrelated import failure cannot block replacement audio"
-    );
-    replacement.result().unwrap();
-    replacement.exit().unwrap();
-    settle(&mut ws, |w| !w.audio_busy());
-    ws.shutdown().unwrap();
-}
-
-#[test]
-fn commanded_launch_failure_blocks_dependent_close_and_save_success_waits_for_join() {
-    let (mut ws, execution) = controlled();
-    execution.fail_audio_launch();
-    ws.play().unwrap();
-    ws.close();
-    ws.poll();
-    assert_eq!(
-        ws.take_effects(),
-        [Effect::CloseResolved { approved: false }]
-    );
-    assert!(
-        ws.action_view()
-            .audio_status
-            .contains("Cannot start worker")
-    );
-    let dir = tempfile::tempdir_in(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
-    )
-    .unwrap();
-    let path = dir.path().join("close.toml");
-    document(&mut ws, 440.0);
-    ws.close();
-    let Effect::AskUnsaved(prompt) = ws.take_effects()[0] else {
-        panic!("unsaved prompt");
-    };
-    ws.respond(prompt, Response::Save);
-    chosen_path(&mut ws, &path);
-    let save = execution.file().unwrap();
-    save.result().unwrap();
-    ws.poll();
-    assert!(
-        ws.take_effects().is_empty(),
-        "publication alone cannot authorize close"
-    );
-    save.exit().unwrap();
-    settle(&mut ws, |w| !w.file_busy());
-    assert_eq!(
-        ws.take_effects(),
-        [Effect::CloseResolved { approved: true }]
-    );
-}
-
 #[test]
 fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
     let mut original = Draft::new().unwrap();
@@ -1325,9 +486,10 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
         crate::recipe::Origin::File("same.toml".into()),
         recipe.clone(),
     );
-    let mut ws = Workspace::new(vec![first.clone()], Capabilities::portable()).unwrap();
+    let mut ws =
+        TestWorkspace::new(vec![first.clone()], Capabilities::no_device_playback()).unwrap();
     ws.set_query("original-custom-note-marker");
-    assert_eq!(ws.filtered().len(), 1);
+    assert_eq!(ws.visible_count(), 1);
     let initial = first.realization_count();
     let mut changed = recipe;
     changed.lineage[0].note = "reimport-source-marker".into();
@@ -1336,7 +498,7 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
     ws.set_query("original-custom-note-marker");
     assert!(ws.library_view().rows.is_empty());
     ws.set_query("reimport-source-marker");
-    assert_eq!(ws.filtered().len(), 1);
+    assert_eq!(ws.visible_count(), 1);
     assert!(ws.library_view().details.contains("reimport-source-marker"));
     ws.action_view();
     assert_eq!(replacement.realization_count(), 1);
@@ -1353,7 +515,7 @@ fn copy_availability_and_execution_share_the_component_limit() {
         })
         .collect();
     let snapshot = RecipeSnapshot::new(crate::recipe::Origin::Stream("too many".into()), recipe);
-    let mut ws = Workspace::new(vec![snapshot], Capabilities::portable()).unwrap();
+    let mut ws = TestWorkspace::new(vec![snapshot], Capabilities::no_device_playback()).unwrap();
     let document = ws.editor().document();
     assert!(!ws.action_view().can_copy);
     ws.copy_selected();
@@ -1382,11 +544,11 @@ fn copy_preflight_refuses_nonfinite_or_full_metadata_before_touching_dirty_work(
         crate::recipe::Origin::Stream("nonfinite source".into()),
         source.clone(),
     );
-    let mut ws = Workspace::new(vec![snapshot], Capabilities::portable()).unwrap();
+    let mut ws = TestWorkspace::new(vec![snapshot], Capabilities::no_device_playback()).unwrap();
     let doc = ws.editor().document();
     ws.set_view(View::Workbench);
-    ws.add_component(ws.editor().document_key(), CarrierKind::Tone)
-        .unwrap();
+    let document_key = ws.editor().document_key();
+    ws.add_component(document_key, CarrierKind::Tone).unwrap();
     ws.set_view(View::Library);
     let before = ws.editor().draft().recipe();
     assert!(!ws.action_view().can_copy);
@@ -1420,10 +582,11 @@ fn copy_preflight_refuses_nonfinite_or_full_metadata_before_touching_dirty_work(
 
 #[test]
 fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scroll() {
-    let (mut ws, _) = workspace();
+    let mut ws = workspace();
     ws.set_view(View::Workbench);
     let notes = ws
         .editor
+        .session
         .handle(EditingField::Metadata(
             crate::editing::MetadataField::Summary,
         ))
@@ -1432,13 +595,24 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
     let actions = ws.action_view();
     assert!(!actions.can_save);
     assert!(actions.operation_summary.contains("65536"));
-    ws.file_status = "Exported 100 frames at 48000 Hz".into();
+    ws.files.status = FileStatus::Exported {
+        path: PathBuf::from("capture.wav"),
+        exported: crate::wav::Exported {
+            frames: 100,
+            sample_rate: SampleRate::DEFAULT,
+            container: crate::wav::Container::Riff,
+            warnings: Vec::new(),
+        },
+    };
     let actions = ws.action_view();
     assert!(actions.operation_summary.contains("65536"));
     assert!(actions.operation_outcome.starts_with("Exported 100"));
     assert!(actions.operation_summary.chars().count() <= 181);
-    ws.editor.restore(notes).unwrap();
-    ws.file_status = format!("Export failed: {}", "deep/path/".repeat(50));
+    ws.editor.session.restore(notes).unwrap();
+    ws.files.status = FileStatus::Failed(Error::new(
+        ErrorKind::Write,
+        format!("Export failed: {}", "deep/path/".repeat(50)),
+    ));
     let actions = ws.action_view();
     assert!(actions.operation_summary.starts_with("Export failed"));
     assert!(actions.operation_details.len() > actions.operation_summary.len());
@@ -1455,7 +629,7 @@ fn nominal_listing_a_thousand_rows_does_not_compile_every_sound() {
             )
         })
         .collect::<Vec<_>>();
-    let mut ws = Workspace::new(snapshots.clone(), Capabilities::portable()).unwrap();
+    let mut ws = TestWorkspace::new(snapshots.clone(), Capabilities::no_device_playback()).unwrap();
     ws.set_rhythm_query(crate::query::RhythmQuery {
         bands: vec![crate::core::nominal::Band::Delta],
         ..Default::default()
@@ -1478,4 +652,585 @@ fn nominal_listing_a_thousand_rows_does_not_compile_every_sound() {
             .sum::<u64>(),
         2
     );
+}
+
+#[test]
+fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot() {
+    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
+    std::fs::create_dir_all(&base).unwrap();
+    let dir = tempfile::tempdir_in(base).unwrap();
+    let path = dir.path().join("same.toml");
+    let first_text = "schema_version=3\nduration_seconds=1\nfade_seconds=0\n[description]\ntitle='First'\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
+    std::fs::write(&path, first_text).unwrap();
+    let mut ws = workspace();
+    for text in [
+        first_text,
+        "schema_version=3\nduration_seconds=2\nfade_seconds=0\n[description]\ntitle='Second'\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
+    ] {
+        std::fs::write(&path, text).unwrap();
+        ws.import().unwrap();
+        let Effect::ChoosePath { prompt, .. } = ws.take_effects()[0] else {
+            panic!()
+        };
+        ws.respond(Response::Prompt {
+            prompt,
+            answer: PromptAnswer::Path(Some(path.clone())),
+        });
+        drain_files(&mut ws);
+        if text == first_text {
+            ws.copy_selected();
+            assert!(matches!(
+                ws.take_effects().as_slice(),
+                [Effect::ShowView(View::Workbench)]
+            ));
+        }
+    }
+    let first_copy = ws.editor().draft().based_on().unwrap().clone();
+    assert_eq!(first_copy.title(), "First");
+    let current = ws.selected().unwrap().clone();
+    assert_eq!(current.title(), "Second");
+    assert_ne!(current.id(), first_copy.id(), "same path, new identity");
+    assert_eq!(
+        ws.catalog().len(),
+        crate::recipe::catalog().unwrap().len() + 1,
+        "row replaced in place"
+    );
+    ws.show_based_on_source();
+    assert_eq!(
+        ws.selected().unwrap().id(),
+        first_copy.id(),
+        "not resolved by path"
+    );
+    assert_eq!(ws.view(), View::Library);
+}
+
+fn take_file_job(workspace: &mut Workspace) -> Job {
+    let mut captured = None;
+    let mut retained = Vec::new();
+    for effect in workspace.take_effects() {
+        match effect {
+            Effect::Run(job) if job.kind() == JobKind::File => {
+                assert!(captured.is_none(), "one file slot admits one immutable job");
+                captured = Some(job);
+            }
+            effect => retained.push(effect),
+        }
+    }
+    workspace.effects.extend(retained);
+    captured.expect("the real command admitted a file job")
+}
+
+fn execute_file(job: Job) -> Response {
+    assert_eq!(job.kind(), JobKind::File);
+    job.execute(|_| panic!("a file job cannot prepare audio"))
+}
+
+fn take_path_prompt(workspace: &mut Workspace) -> (PromptId, PathPurpose, Option<String>) {
+    let mut captured = None;
+    let mut retained = Vec::new();
+    for effect in workspace.take_effects() {
+        match effect {
+            Effect::ChoosePath {
+                prompt,
+                purpose,
+                suggested_name,
+            } => {
+                assert!(captured.is_none(), "one native panel at a time");
+                captured = Some((prompt, purpose, suggested_name));
+            }
+            effect => retained.push(effect),
+        }
+    }
+    workspace.effects.extend(retained);
+    captured.expect("the command requested a native file panel")
+}
+
+fn answer_path(workspace: &mut Workspace, purpose: PathPurpose, path: Option<PathBuf>) -> PromptId {
+    let (prompt, actual, _) = take_path_prompt(workspace);
+    assert_eq!(actual, purpose);
+    assert_eq!(
+        workspace.respond(Response::Prompt {
+            prompt,
+            answer: PromptAnswer::Path(path)
+        }),
+        ResponseDisposition::Applied
+    );
+    prompt
+}
+
+fn take_unsaved_prompt(workspace: &mut Workspace) -> PromptId {
+    let effects = workspace.take_effects();
+    let [Effect::AskUnsaved(prompt)] = effects.as_slice() else {
+        panic!("one unsaved-changes prompt: {effects:?}");
+    };
+    *prompt
+}
+
+fn assert_close_resolution(workspace: &mut Workspace, approved: bool) {
+    let effects = workspace.take_effects();
+    assert!(
+        matches!(effects.as_slice(), [Effect::CloseResolved { approved: actual }] if *actual == approved),
+        "{effects:?}"
+    );
+}
+
+fn temporary_directory() -> tempfile::TempDir {
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
+    std::fs::create_dir_all(&base).unwrap();
+    tempfile::tempdir_in(base).unwrap()
+}
+
+fn short_silent_source() -> RecipeSnapshot {
+    let mut draft = Draft::new().unwrap();
+    draft.set_duration_seconds(0.01);
+    draft.set_fade_seconds(0.0);
+    draft.snapshot()
+}
+
+#[test]
+fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
+    let mut workspace = workspace();
+    let (_, field) = document(&mut workspace, 440.0);
+    let captured = workspace.editor().draft().recipe();
+    workspace.save().unwrap();
+    let job = take_file_job(&mut workspace);
+    let identity = job.id();
+    assert!(workspace.file_busy());
+    assert!(
+        workspace.store.scan(&Cancel::default()).entries.is_empty(),
+        "admission itself performs no disk IO"
+    );
+    assert_eq!(workspace.import(), Err(Refusal::FileBusy));
+    assert_eq!(workspace.save(), Err(Refusal::FileBusy));
+    assert_eq!(workspace.export(), Err(Refusal::FileBusy));
+    workspace.commit_field(field, "880").unwrap();
+    for _ in 0..10 {
+        workspace.inner.poll();
+    }
+    assert!(workspace.file_busy());
+    assert!(workspace.store.scan(&Cancel::default()).entries.is_empty());
+    let response = execute_file(job);
+    let key = crate::library::LibraryKey::User(captured.document.id);
+    let saved = workspace.store.load(&key).unwrap();
+    assert_eq!(
+        saved.snapshot.stimulus().components[0]
+            .node
+            .read(ParameterId::ToneFrequency),
+        Some(440.0)
+    );
+    assert!(
+        workspace.file_busy(),
+        "published bytes alone do not release the admitted slot"
+    );
+    assert!(workspace.editor().dirty());
+    assert!(matches!(&response, Response::Finished { job, .. } if *job == identity));
+    assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
+    assert!(!workspace.file_busy());
+    assert!(
+        workspace.editor().dirty(),
+        "the saved baseline is the captured 440 Hz version"
+    );
+    assert_eq!(
+        workspace.editor().draft().components()[0]
+            .node
+            .read(ParameterId::ToneFrequency),
+        Some(880.0)
+    );
+    assert_eq!(
+        workspace.editor().draft().recipe().document.created_at,
+        saved.snapshot.recipe().document.created_at
+    );
+}
+
+#[test]
+fn captured_save_completion_never_replaces_a_different_editor_document() {
+    let mut workspace = workspace();
+    document(&mut workspace, 440.0);
+    let captured = workspace.editor().draft().recipe();
+    workspace.save().unwrap();
+    let job = take_file_job(&mut workspace);
+    // The identity guard must also protect an independently replaced embedding/editor session.
+    let mut replacement = Draft::new().unwrap();
+    replacement.set_summary("Replacement content must stay independent".into());
+    assert!(workspace.replace_document(replacement));
+    let replacement_id = workspace.editor().document();
+    let before = workspace.editor().draft().recipe();
+    let dirty = workspace.editor().dirty();
+    assert_eq!(
+        workspace.respond(execute_file(job)),
+        ResponseDisposition::Applied
+    );
+    assert_eq!(workspace.editor().document(), replacement_id);
+    assert_eq!(workspace.editor().draft().recipe(), before);
+    assert_eq!(workspace.editor().dirty(), dirty);
+    assert!(matches!(
+        workspace.editor.location,
+        DocumentLocation::Unsaved
+    ));
+    let saved = workspace
+        .store
+        .load(&crate::library::LibraryKey::User(captured.document.id))
+        .unwrap();
+    assert_eq!(
+        saved.snapshot.stimulus().components[0]
+            .node
+            .read(ParameterId::ToneFrequency),
+        Some(440.0)
+    );
+}
+
+#[test]
+fn save_before_close_waits_for_the_captured_job_completion() {
+    let mut workspace = workspace();
+    document(&mut workspace, 440.0);
+    let captured = workspace.editor().draft().recipe();
+    workspace.close();
+    workspace.close();
+    let prompt = take_unsaved_prompt(&mut workspace);
+    assert_eq!(
+        workspace.respond(Response::Prompt {
+            prompt,
+            answer: PromptAnswer::Save
+        }),
+        ResponseDisposition::Applied
+    );
+    let job = take_file_job(&mut workspace);
+    assert!(workspace.action_pending());
+    assert_eq!(workspace.import(), Err(Refusal::ActionPending));
+    let response = execute_file(job);
+    assert!(
+        workspace
+            .store
+            .load(&crate::library::LibraryKey::User(captured.document.id))
+            .is_ok()
+    );
+    for _ in 0..10 {
+        workspace.inner.poll();
+    }
+    assert!(workspace.file_busy());
+    assert!(workspace.action_pending());
+    assert!(
+        workspace.take_effects().is_empty(),
+        "publication is not an executor completion"
+    );
+    assert!(workspace.editor().dirty());
+    assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
+    assert!(!workspace.file_busy());
+    assert!(!workspace.action_pending());
+    assert!(!workspace.editor().dirty());
+    assert_close_resolution(&mut workspace, true);
+}
+
+#[test]
+fn failed_captured_save_denies_close_and_preserves_foreign_storage() {
+    let mut workspace = workspace();
+    document(&mut workspace, 440.0);
+    let captured = workspace.editor().draft().recipe();
+    workspace.close();
+    let prompt = take_unsaved_prompt(&mut workspace);
+    workspace.respond(Response::Prompt {
+        prompt,
+        answer: PromptAnswer::Save,
+    });
+    let job = take_file_job(&mut workspace);
+    let path = workspace
+        .store
+        .root()
+        .path()
+        .join("recipes")
+        .join(format!("{}.toml", captured.document.id));
+    std::fs::write(&path, b"foreign malformed content must remain").unwrap();
+    assert_eq!(
+        workspace.respond(execute_file(job)),
+        ResponseDisposition::Applied
+    );
+    assert!(!workspace.file_busy());
+    assert!(!workspace.action_pending());
+    assert!(workspace.editor().dirty());
+    assert_eq!(
+        std::fs::read(path).unwrap(),
+        b"foreign malformed content must remain"
+    );
+    assert!(matches!(
+        &workspace.files.status,
+        FileStatus::Library(LibraryStatus::Failed {
+            publishing: true,
+            ..
+        })
+    ));
+    assert_close_resolution(&mut workspace, false);
+}
+
+#[test]
+fn one_prompt_coalesces_quit_and_ignores_an_older_real_panel_answer() {
+    let mut workspace = workspace();
+    workspace.import().unwrap();
+    let stale = answer_path(&mut workspace, PathPurpose::OpenRecipe, None);
+    document(&mut workspace, 440.0);
+    workspace.close();
+    workspace.close();
+    let prompt = take_unsaved_prompt(&mut workspace);
+    workspace.new_document();
+    assert!(workspace.take_effects().is_empty());
+    assert!(matches!(
+        &workspace.files.status,
+        FileStatus::Refused(Refusal::PromptOpen)
+    ));
+    assert_eq!(
+        workspace.stop(),
+        Err(Refusal::NoAudio),
+        "Stop admission is independent of a native panel"
+    );
+    assert_eq!(
+        workspace.respond(Response::Prompt {
+            prompt: stale,
+            answer: PromptAnswer::Discard
+        }),
+        ResponseDisposition::Ignored
+    );
+    assert!(workspace.prompt_open());
+    assert_eq!(
+        workspace.respond(Response::Prompt {
+            prompt,
+            answer: PromptAnswer::Failed("panel unavailable".into())
+        }),
+        ResponseDisposition::Applied
+    );
+    assert!(!workspace.prompt_open());
+    assert!(workspace.editor().dirty());
+    assert_close_resolution(&mut workspace, false);
+    assert_eq!(
+        workspace.respond(Response::Prompt {
+            prompt,
+            answer: PromptAnswer::Discard
+        }),
+        ResponseDisposition::Ignored
+    );
+    assert!(workspace.take_effects().is_empty());
+}
+
+#[test]
+fn invalid_staged_input_denies_save_before_close_without_starting_a_job() {
+    let mut workspace = workspace();
+    let (_, field) = document(&mut workspace, 440.0);
+    workspace.stage(field, "not a frequency").unwrap();
+    workspace.close();
+    let prompt = take_unsaved_prompt(&mut workspace);
+    assert_eq!(
+        workspace.respond(Response::Prompt {
+            prompt,
+            answer: PromptAnswer::Save
+        }),
+        ResponseDisposition::Applied
+    );
+    assert_eq!(
+        workspace.editor().staged(field.field),
+        Some("not a frequency")
+    );
+    assert!(workspace.editor().dirty());
+    assert!(!workspace.file_busy());
+    assert!(workspace.store.scan(&Cancel::default()).entries.is_empty());
+    assert_close_resolution(&mut workspace, false);
+    workspace.close();
+    let prompt = take_unsaved_prompt(&mut workspace);
+    workspace.respond(Response::Prompt {
+        prompt,
+        answer: PromptAnswer::Discard,
+    });
+    assert_close_resolution(&mut workspace, true);
+}
+
+#[test]
+fn actual_import_completion_controls_dependent_close_and_never_runs_on_poll() {
+    for exists in [false, true] {
+        let mut workspace = workspace();
+        let directory = temporary_directory();
+        let path = directory.path().join("chosen.toml");
+        if exists {
+            crate::editing::save_content(
+                short_silent_source().recipe(),
+                &path,
+                crate::workflow::Replace::Never,
+            )
+            .unwrap();
+        }
+        let count = workspace.catalog().len();
+        workspace.import().unwrap();
+        assert_eq!(workspace.save(), Err(Refusal::PromptOpen));
+        answer_path(&mut workspace, PathPurpose::OpenRecipe, Some(path.clone()));
+        let job = take_file_job(&mut workspace);
+        assert!(
+            !workspace.can_edit(),
+            "admitted import excludes editor changes"
+        );
+        assert_eq!(workspace.import(), Err(Refusal::FileBusy));
+        workspace.close();
+        assert!(workspace.action_pending());
+        for _ in 0..10 {
+            workspace.inner.poll();
+        }
+        assert_eq!(workspace.catalog().len(), count);
+        assert!(workspace.take_effects().is_empty());
+        let response = execute_file(job);
+        assert_eq!(
+            workspace.catalog().len(),
+            count,
+            "IO does not mutate the coordinator before its completion response"
+        );
+        assert!(workspace.file_busy());
+        assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
+        assert!(!workspace.file_busy());
+        assert_eq!(workspace.catalog().len(), count + usize::from(exists));
+        assert_close_resolution(&mut workspace, exists);
+    }
+}
+
+#[test]
+fn portable_export_keeps_the_prompt_capture_and_does_not_advance_the_save_baseline() {
+    let mut workspace = workspace();
+    let (_, field) = document(&mut workspace, 440.0);
+    let identity = workspace.editor().draft().recipe().document.id;
+    let directory = temporary_directory();
+    let path = directory.path().join("portable.toml");
+    workspace.export_recipe().unwrap();
+    assert_eq!(
+        workspace.commit_field(field, "880"),
+        Err(Refusal::PromptOpen)
+    );
+    answer_path(
+        &mut workspace,
+        PathPurpose::ExportRecipe,
+        Some(path.clone()),
+    );
+    let job = take_file_job(&mut workspace);
+    workspace.commit_field(field, "880").unwrap();
+    let response = execute_file(job);
+    let saved = crate::recipe::load_file(&path).unwrap();
+    assert_eq!(saved.recipe().document.id, identity);
+    assert_eq!(
+        saved.stimulus().components[0]
+            .node
+            .read(ParameterId::ToneFrequency),
+        Some(440.0)
+    );
+    assert!(workspace.file_busy());
+    assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
+    assert!(workspace.editor().dirty());
+    assert!(matches!(
+        workspace.editor.location,
+        DocumentLocation::Unsaved
+    ));
+    assert!(
+        workspace.store.scan(&Cancel::default()).entries.is_empty(),
+        "portable export does not create managed membership"
+    );
+}
+
+#[test]
+fn canceled_real_exports_cleanup_and_close_treats_requested_cancellation_as_expected() {
+    for close in [false, true] {
+        let mut workspace =
+            TestWorkspace::new(vec![short_silent_source()], Capabilities::available()).unwrap();
+        let directory = temporary_directory();
+        let path = directory.path().join("cancelled.wav");
+        workspace.export().unwrap();
+        assert_eq!(workspace.play(), Err(Refusal::PromptOpen));
+        answer_path(&mut workspace, PathPurpose::ExportWav, Some(path.clone()));
+        let job = take_file_job(&mut workspace);
+        assert_eq!(workspace.play(), Err(Refusal::Exporting));
+        assert_eq!(workspace.import(), Err(Refusal::FileBusy));
+        if close {
+            workspace.close();
+        } else {
+            workspace.cancel_export().unwrap();
+        }
+        let response = execute_file(job);
+        assert!(!path.exists());
+        assert!(workspace.file_busy());
+        assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
+        assert!(!workspace.file_busy());
+        assert!(!workspace.audio_busy());
+        assert!(matches!(
+            workspace.files.status,
+            FileStatus::Notice(FileNotice::ExportCancelled)
+        ));
+        if close {
+            assert_close_resolution(&mut workspace, true);
+        } else {
+            assert!(workspace.take_effects().is_empty());
+        }
+        assert_eq!(workspace.cancel_export(), Err(Refusal::NoExport));
+    }
+}
+
+#[test]
+fn a_close_request_after_export_publication_does_not_unpublish_the_real_file() {
+    let mut workspace =
+        TestWorkspace::new(vec![short_silent_source()], Capabilities::available()).unwrap();
+    let directory = temporary_directory();
+    let path = directory.path().join("complete.wav");
+    workspace.export().unwrap();
+    answer_path(&mut workspace, PathPurpose::ExportWav, Some(path.clone()));
+    let job = take_file_job(&mut workspace);
+    let response = execute_file(job);
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(&bytes[..4], b"RIFF");
+    assert_eq!(bytes.len(), 58 + 480 * 8);
+    assert!(workspace.file_busy());
+    workspace.close();
+    assert!(workspace.action_pending());
+    assert!(workspace.take_effects().is_empty());
+    assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
+    assert_eq!(std::fs::read(path).unwrap(), bytes);
+    assert!(matches!(
+        workspace.files.status,
+        FileStatus::Exported { .. }
+    ));
+    assert_close_resolution(&mut workspace, true);
+}
+
+#[test]
+fn managed_save_can_run_beside_admitted_audio_and_stop_does_not_cancel_it() {
+    let mut workspace = workspace();
+    document(&mut workspace, 440.0);
+    let identity = workspace.editor().draft().recipe().document.id;
+    workspace.play().unwrap();
+    let effects = workspace.take_effects();
+    let mut jobs = effects.into_iter().filter_map(|effect| match effect {
+        Effect::Run(job) => Some(job),
+        _ => None,
+    });
+    let audio = jobs
+        .next()
+        .expect("the command captured audio without starting a device");
+    assert!(
+        jobs.next().is_none(),
+        "one audio admission produces one job"
+    );
+    assert_eq!(audio.kind(), JobKind::Audio);
+    // Audio is deliberately never executed: this test opens no output device.
+    assert!(workspace.audio_busy());
+    assert_eq!(workspace.export(), Err(Refusal::AudioPlaying));
+    workspace.save().unwrap();
+    let save = take_file_job(&mut workspace);
+    assert!(workspace.file_busy());
+    assert_eq!(workspace.import(), Err(Refusal::FileBusy));
+    assert_eq!(workspace.stop(), Ok(StopRequest::Accepted));
+    assert_eq!(
+        workspace.respond(execute_file(save)),
+        ResponseDisposition::Applied
+    );
+    assert!(!workspace.file_busy());
+    assert!(
+        workspace.audio_busy(),
+        "an admitted audio job remains owned until an executor completion"
+    );
+    assert!(
+        workspace
+            .store
+            .load(&crate::library::LibraryKey::User(identity))
+            .is_ok()
+    );
+    assert!(!workspace.editor().dirty());
+    drop(audio);
 }

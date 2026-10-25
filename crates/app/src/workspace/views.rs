@@ -17,7 +17,7 @@ use crate::waveform_view::{
 };
 use crate::{controls, presentation};
 use auditorylab_core::{
-    CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, Recipe, SampleRate,
+    CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, SampleRate,
     interpretation::Structure,
 };
 use std::path::Path;
@@ -243,8 +243,11 @@ pub struct TransportView {
 
 pub(super) fn refusal_text(refusal: &Refusal) -> String {
     match refusal {
+        Refusal::LibraryUnavailable(problem) => {
+            format!("User Library unavailable: {}", problem.message)
+        }
         Refusal::DevicePlaybackUnavailable => {
-            "Device playback is not available in this build.".into()
+            "Device playback is disabled for this workspace.".into()
         }
         Refusal::PromptOpen => {
             "Finish or cancel the open dialog before closing or replacing this sound.".into()
@@ -335,52 +338,6 @@ fn shown(path: &Path) -> String {
     format!("“{}”", path.display())
 }
 
-pub(super) fn file_started_text(kind: &FileKind) -> String {
-    match kind {
-        FileKind::ExportRecipe { path, .. } => {
-            format!("Exporting portable recipe to {}.", shown(path))
-        }
-        FileKind::Managed(_) => "Updating the persistent library.".into(),
-        FileKind::Import(path) => format!("Opening {}.", shown(path)),
-        FileKind::Save { content, path, .. } => format!(
-            "Saving {} to {}.",
-            content
-                .description
-                .as_ref()
-                .map_or("sound", |a| a.title.as_str()),
-            shown(path)
-        ),
-        FileKind::Export { title, path, .. } => format!("Exporting {title} to {}.", shown(path)),
-    }
-}
-
-pub(super) fn imported_text(snapshot: &RecipeSnapshot) -> String {
-    format!("Opened {}.", snapshot.title())
-}
-
-pub(super) fn saved_text(
-    path: &Path,
-    content: &Recipe,
-    same_document: bool,
-    rate: SampleRate,
-) -> String {
-    let valid = content.stimulus.signal(rate).is_ok();
-    format!(
-        "{} to {}.{}",
-        if valid {
-            "Saved sound"
-        } else {
-            "Saved with validation errors"
-        },
-        shown(path),
-        if same_document {
-            ""
-        } else {
-            " The current sound is a different document; its saved state is unchanged."
-        }
-    )
-}
-
 pub(super) fn exported_text(path: &Path, exported: &Exported) -> String {
     let mut text = format!(
         "Exported {} frames at {} Hz to {} ({}).",
@@ -434,10 +391,9 @@ pub(super) fn received_text(age: std::time::Duration, held: bool) -> String {
     )
 }
 
-#[derive(PartialEq, Eq)]
-pub(super) struct LibraryKey {
-    snapshots: Vec<crate::recipe::SnapshotId>,
-    persistent_revision: Option<u64>,
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct LibraryViewKey {
+    revision: u64,
     selected: Option<crate::recipe::SnapshotId>,
     rate: SampleRate,
 }
@@ -448,10 +404,10 @@ impl Workspace {
     /// selected export rate; each is labelled.
     pub fn editor_view(&mut self) -> EditorView {
         let rate = self.diagnostic_rate();
-        let candidate = self.editor.candidate();
-        let analysis = self.editor.candidate_analysis(rate);
-        let nominal = self.editor.nominal();
-        let editor = &self.editor;
+        let candidate = self.editor.session.candidate();
+        let analysis = self.editor.session.candidate_analysis(rate);
+        let nominal = self.editor.session.nominal();
+        let editor = &self.editor.session;
         let problem = |field: EditingField| {
             candidate
                 .problems()
@@ -643,9 +599,9 @@ impl Workspace {
     }
 
     fn retained_warning(&self, pending: bool, invalid: bool) -> String {
-        let unrelated = self.audio.as_ref().is_some_and(|t| {
+        let unrelated = self.audio.slot.as_ref().is_some_and(|t| {
             self.view == View::Workbench
-                && !matches!(t.kind, super::AudioKind::Live(d) if d == self.editor.document())
+                && !matches!(t.kind, super::AudioKind::Live(d) if d == self.editor.session.document())
         });
         let retained = if pending {
             "Pending edits — not yet applied".to_owned()
@@ -659,7 +615,7 @@ impl Workspace {
             String::new()
         };
         if unrelated {
-            let title = self.audio.as_ref().map_or("", |t| t.title.as_str());
+            let title = self.audio.slot.as_ref().map_or("", |t| t.title.as_str());
             format!(
                 "Editing a separate sound; current audio remains “{title}”. Stop, then Play this sound to replace it.{}{retained}",
                 if retained.is_empty() { "" } else { "\n" }
@@ -672,47 +628,29 @@ impl Workspace {
     /// The library rows and the selected recipe at the export rate.
     #[must_use]
     pub fn library_view(&self) -> Arc<LibraryView> {
-        let rate = self.export_rate;
-        let key = LibraryKey {
-            persistent_revision: self.persistent.as_ref().map(|p| p.revision),
-            snapshots: self
-                .filtered
-                .iter()
-                .map(|&i| self.catalog[i].id())
-                .collect(),
+        let rate = self.editor.export_rate;
+        let key = LibraryViewKey {
+            revision: self.library.revision,
             selected: self.selected().map(RecipeSnapshot::id),
             rate,
         };
-        if let Some((cached, view)) = &*self.library_cache.borrow()
+        if let Some((cached, view)) = &*self.library.cache.borrow()
             && *cached == key
         {
             return view.clone();
         }
         #[cfg(test)]
-        self.library_evaluations
-            .set(self.library_evaluations.get() + 1);
+        self.library
+            .evaluations
+            .set(self.library.evaluations.get() + 1);
         let view = Arc::new(self.build_library_view());
-        *self.library_cache.borrow_mut() = Some((key, view.clone()));
+        *self.library.cache.borrow_mut() = Some((key, view.clone()));
         view
     }
 
     fn build_library_view(&self) -> LibraryView {
-        let rate = self.export_rate;
-        let rows = self
-            .filtered
-            .iter()
-            .map(|&i| self.catalog[i].library_label())
-            .collect();
-        let keys = self
-            .filtered
-            .iter()
-            .map(|&i| format!("snapshot:{}", self.catalog[i].id().get()))
-            .collect();
-        let selected = self.filtered.iter().position(|&i| i == self.selected);
-        let (keys, rows, selected) = self
-            .persistent
-            .as_ref()
-            .map_or((keys, rows, selected), |p| p.rows());
+        let rate = self.editor.export_rate;
+        let (keys, rows, selected) = self.library.rows();
         let Some(snapshot) = self.selected() else {
             return LibraryView {
                 keys,
@@ -786,9 +724,9 @@ impl Workspace {
                 .map(refusal_text),
         };
         let outcome_details = [
-            self.file_status.as_str(),
-            self.edit_status.as_str(),
-            self.audio_status.as_str(),
+            self.files.status.description(),
+            self.editor.status.description(),
+            self.audio.status.description(),
         ]
         .into_iter()
         .filter(|text| !text.is_empty())
@@ -817,24 +755,27 @@ impl Workspace {
         };
         let used_voices = self
             .editor
+            .session
             .draft()
             .components()
             .iter()
             .map(|c| c.node.voices())
             .sum::<usize>();
         let pair_full = used_voices + 2 > auditorylab_core::Sound::MAX_VOICES
-            || self.editor.draft().components().len() >= auditorylab_core::Sound::MAX_COMPONENTS;
-        let full = self.editor.draft().components().len()
+            || self.editor.session.draft().components().len()
+                >= auditorylab_core::Sound::MAX_COMPONENTS;
+        let full = self.editor.session.draft().components().len()
             >= auditorylab_core::Sound::MAX_COMPONENTS
             || self
                 .editor
+                .session
                 .draft()
                 .components()
                 .iter()
                 .map(|c| c.node.voices())
                 .sum::<usize>()
                 >= auditorylab_core::Sound::MAX_VOICES;
-        let playing = self.audio.is_some();
+        let playing = self.audio.slot.is_some();
         let exporting = self.exporting();
         let progress = self.export_progress();
         ActionView {
@@ -869,6 +810,7 @@ impl Workspace {
             },
             removed_component: self
                 .editor
+                .session
                 .removed()
                 .map(|(index, component)| {
                     format!(
@@ -880,10 +822,10 @@ impl Workspace {
                 .unwrap_or_default(),
             can_restore_component: self.can_edit()
                 && !full
-                && self.editor.removed().is_some_and(|(_, c)| {
+                && self.editor.session.removed().is_some_and(|(_, c)| {
                     used_voices + c.node.voices() <= auditorylab_core::Sound::MAX_VOICES
                 }),
-            file_busy: self.file.is_some() || self.prompt.is_some(),
+            file_busy: self.files.slot.is_some() || self.prompt.is_some(),
             playback_busy: playing,
             exporting,
             transport_enabled: playing || play.is_ok(),
@@ -896,30 +838,29 @@ impl Workspace {
             }
             .into(),
             play_target: match self.view {
-                View::Workbench => self.editor.draft().title().to_owned(),
+                View::Workbench => self.editor.session.draft().title().to_owned(),
                 View::Library => self
                     .selected()
                     .map(RecipeSnapshot::title)
                     .unwrap_or_default(),
             },
             progress,
-            file_status: [self.file_status.as_str(), self.edit_status.as_str()]
-                .into_iter()
-                .filter(|text| !text.is_empty())
-                .collect::<Vec<_>>()
-                .join("\n"),
-            audio_status: self.audio_status.clone(),
-            file_activity: match self.file.as_ref().map(|t| &t.kind) {
+            file_status: [
+                self.files.status.description(),
+                self.editor.status.description(),
+            ]
+            .into_iter()
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n"),
+            audio_status: self.audio.status.description(),
+            file_activity: match self.files.slot.as_ref().map(|t| &t.kind) {
                 Some(FileKind::ExportRecipe { .. }) => {
                     "Exporting a captured portable recipe; identity and history remain unchanged."
                         .into()
                 }
                 Some(FileKind::Managed(_)) => {
                     "Reading or publishing the persistent library; later edits remain independent."
-                        .into()
-                }
-                Some(FileKind::Save { .. }) => {
-                    "Saving an immutable sound snapshot; audio and later edits remain independent."
                         .into()
                 }
                 Some(FileKind::Export { .. }) => {
@@ -936,7 +877,7 @@ impl Workspace {
     /// The running export's completed fraction, from 0 to 1; 0 otherwise.
     #[must_use]
     pub fn export_progress(&self) -> f64 {
-        match &self.file {
+        match &self.files.slot {
             Some(super::FileTask {
                 kind: FileKind::Export {
                     frames, progress, ..
@@ -957,16 +898,16 @@ impl Workspace {
     /// The displayed capture.
     #[must_use]
     pub fn output_view(&self) -> OutputView {
-        self.output.view()
+        self.audio.output.view()
     }
 
     /// The transport and monitor text for the bound session or preview.
     #[must_use]
     pub fn transport_view(&self) -> TransportView {
-        let output = self.output.view();
-        let reader = self.output.reader();
-        let audio = self.audio.is_some();
-        let span = self.output.span_ms();
+        let output = self.audio.output.view();
+        let reader = self.audio.output.reader();
+        let audio = self.audio.slot.is_some();
+        let span = self.audio.output.span_ms();
         let held = output.held;
         let ended = reader.is_some_and(|r| r.status().phase.is_terminal());
         let mut view = TransportView {
@@ -974,7 +915,10 @@ impl Workspace {
             elapsed: String::new(),
             generated: String::new(),
             generated_details: String::new(),
-            device: format!("Preview/export sample rate: {} Hz", self.export_rate.hz()),
+            device: format!(
+                "Preview/export sample rate: {} Hz",
+                self.editor.export_rate.hz()
+            ),
             output_state: output_monitor_state(reader, output.capture.as_deref(), held, audio)
                 .label(),
             receipt_age: String::new(),
@@ -986,7 +930,7 @@ impl Workspace {
             model_caption: String::new(),
             motion: format!(
                 "{}{}",
-                match self.output.motion() {
+                match self.audio.output.motion() {
                     super::MotionPreference::Reduced =>
                         "System Reduce Motion is enabled: display held by default.",
                     super::MotionPreference::Enabled =>
@@ -994,13 +938,13 @@ impl Workspace {
                     super::MotionPreference::Unknown =>
                         "System motion preference is unknown; drawing live.",
                 },
-                match self.output.hold_overridden() {
+                match self.audio.output.hold_overridden() {
                     Some(true) => " User chose Hold display.",
                     Some(false) => " User chose Return to live.",
                     None => "",
                 }
             ),
-            motion_overridden: self.output.hold_overridden().is_some(),
+            motion_overridden: self.audio.output.hold_overridden().is_some(),
         };
         if let Some(reader) = reader {
             let status = reader.status();
@@ -1083,9 +1027,9 @@ impl Workspace {
                 status.underruns
             );
         } else {
-            view.player_title = if let Some(title) = self.output.failed_title() {
+            view.player_title = if let Some(title) = self.audio.output.failed_title() {
                 format!("Failed · {title}")
-            } else if let Some(task) = &self.audio {
+            } else if let Some(task) = &self.audio.slot {
                 format!("Preparing · {}", task.title)
             } else if self.view == View::Workbench {
                 "Draft preview · not playing".into()
@@ -1099,7 +1043,7 @@ impl Workspace {
                 "Seekable preview; not generated playback".into()
             };
         }
-        view.model_caption = self.output.model().map_or_else(
+        view.model_caption = self.audio.output.model().map_or_else(
             || "No valid timing model available".to_owned(),
             |model| {
                 format!(

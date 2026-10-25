@@ -167,7 +167,6 @@ impl LiveGenerator {
         }
     }
 
-    #[cfg(any(feature = "device-playback", test))]
     pub(crate) fn mailbox(&self) -> &Mailbox {
         &self.mailbox
     }

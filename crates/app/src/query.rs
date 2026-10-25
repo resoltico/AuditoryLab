@@ -75,13 +75,6 @@ pub fn normalize(text: &str) -> String {
     text.nfkc().flat_map(char::to_lowercase).collect()
 }
 
-/// Search the stable identity, current notes, attributed sources and nominal
-/// parameters. Text terms are ANDed; numeric terms never use substring matching.
-#[must_use]
-pub fn search(snapshot: &crate::recipe::RecipeSnapshot, query: &str) -> bool {
-    SearchIndex::from_snapshot(snapshot).matches(query)
-}
-
 /// Compact deduplicated terms, derived once per immutable content revision.
 #[derive(Debug, Clone)]
 pub(crate) struct SearchIndex {

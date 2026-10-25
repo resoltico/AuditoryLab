@@ -13,11 +13,8 @@
 pub(crate) mod live;
 mod monitor;
 mod output;
-#[cfg(any(feature = "device-playback", test))]
 pub(crate) mod source;
-#[cfg(any(feature = "device-playback", test))]
 pub(crate) mod supervisor;
-#[cfg(any(feature = "device-playback", test))]
 pub(crate) mod transport;
 
 pub use live::{LiveControl, LiveGenerator, LiveUpdateError};
@@ -110,7 +107,6 @@ pub(crate) struct SessionState {
     generated: AtomicU64,
     estimated_output: AtomicU64,
     source_ended: AtomicBool,
-    #[cfg(any(feature = "device-playback", test))]
     progress: AtomicU64,
     underruns: AtomicU64,
 }
@@ -123,7 +119,6 @@ impl SessionState {
             generated: AtomicU64::new(0),
             estimated_output: AtomicU64::new(0),
             source_ended: AtomicBool::new(false),
-            #[cfg(any(feature = "device-playback", test))]
             progress: AtomicU64::new(0),
             underruns: AtomicU64::new(0),
         })
@@ -179,7 +174,6 @@ impl SessionState {
     /// Publish successful drain: Completed or FrameLimit while running,
     /// Stopped when Stop was accepted first. The choice and the publication
     /// use the same word, so Stop cannot slip between them.
-    #[cfg(any(feature = "device-playback", feature = "test-support", test))]
     pub(crate) fn finish_drained(&self, natural: Outcome) -> Outcome {
         let mut current = self.outcome.load(Ordering::Acquire);
         loop {
@@ -201,7 +195,6 @@ impl SessionState {
     }
 
     /// Force the end of an accepted Stop whose drain did not complete.
-    #[cfg(any(feature = "device-playback", test))]
     pub(crate) fn finish_stop_undrained(&self) -> Outcome {
         match self.outcome.compare_exchange(
             Outcome::StopRequested as u8,
@@ -228,7 +221,6 @@ impl SessionState {
         self.source_ended.load(Ordering::Acquire)
     }
 
-    #[cfg(any(feature = "device-playback", test))]
     pub(crate) fn set_generated(&self, frames: u64) {
         self.generated.store(frames, Ordering::Relaxed);
     }
@@ -237,7 +229,6 @@ impl SessionState {
         self.generated.load(Ordering::Relaxed)
     }
 
-    #[cfg(any(feature = "device-playback", test))]
     pub(crate) fn set_estimated_output(&self, frames: u64) {
         self.estimated_output.store(frames, Ordering::Relaxed);
     }
@@ -246,20 +237,14 @@ impl SessionState {
         self.estimated_output.load(Ordering::Relaxed)
     }
 
-    #[cfg(any(feature = "device-playback", test))]
     pub(crate) fn mark_progress(&self) {
         self.progress.fetch_add(1, Ordering::Relaxed);
     }
 
-    #[cfg(any(feature = "device-playback", test))]
     pub(crate) fn progress(&self) -> u64 {
         self.progress.load(Ordering::Relaxed)
     }
 
-    #[cfg_attr(
-        not(any(feature = "device-playback", test)),
-        expect(dead_code, reason = "Only device backends report underruns")
-    )]
     pub(crate) fn count_underrun(&self) {
         self.underruns.fetch_add(1, Ordering::Relaxed);
     }
@@ -285,7 +270,6 @@ impl SessionState {
 
     /// The report of a successful terminal outcome, read after the stream
     /// is torn down; `None` while active or after a failure.
-    #[cfg(any(feature = "device-playback", feature = "test-support", test))]
     pub(crate) fn report(&self) -> Option<PlaybackReport> {
         let (end, drained) = match self.outcome() {
             Outcome::Completed => (EndReason::Completed, true),
@@ -342,7 +326,6 @@ impl Session {
         }
     }
 
-    #[cfg(any(feature = "device-playback", feature = "test-support", test))]
     pub(crate) fn state(&self) -> &Arc<SessionState> {
         &self.state
     }

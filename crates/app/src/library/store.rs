@@ -24,7 +24,7 @@ pub const MAX_SCAN_DECODED_BYTES: usize = 128 * 1024 * 1024;
 const MEMBERSHIP: &str = "membership.toml";
 const MAX_MEMBERSHIP_BYTES: usize = 4 * 1024 * 1024;
 /// One storage diagnostic without invented content or raw corrupt snippets.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LibraryDiagnostic {
     /// Root or relative storage identifier.
     pub storage_id: String,

@@ -186,23 +186,6 @@ jobs:
         env:
           CARGO_TARGET_DIR: target/vendor-tests
         run: cargo test --manifest-path third_party/winit/Cargo.toml --locked --lib termination
-      - name: Run a downstream consumer without device playback
-        if: runner.os == 'Linux'
-        env:
-          CARGO_TARGET_DIR: target/portable-consumer
-        run: |
-          cargo check -p auditorylab --no-default-features --features test-support --locked
-          cp Cargo.lock consumers/portable/Cargo.lock
-          cargo run --manifest-path consumers/portable/Cargo.toml
-          if cargo tree --manifest-path consumers/portable/Cargo.toml -e normal,build --target all -i cpal > target/portable-no-cpal.log 2>&1; then
-            echo 'CPAL reaches a consumer without the device-playback feature' >&2
-            exit 1
-          fi
-          cat target/portable-no-cpal.log
-          grep -E '^error: package ID specification .cpal. did not match any packages$' target/portable-no-cpal.log
-          # Negative control: the same query finds CPAL once the feature is on.
-          cargo tree --manifest-path consumers/portable/Cargo.toml --features auditorylab/device-playback \
-            -e normal,build --target all -i cpal > /dev/null
       - run: cargo test -p auditorylab-core --release --locked
       - name: Cache cargo-about
         id: about-cache

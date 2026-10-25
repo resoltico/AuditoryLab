@@ -26,8 +26,10 @@ use auditorylab::session::PlaybackPhase;
 use auditorylab::waveform_view::{ModelView, WaveformCapture};
 use auditorylab::workspace::{
     ComponentView, EditorView, Effect, MetadataView, MotionPreference, ParameterView, PathPurpose,
-    PromptId, Response, View, Workspace,
+    PromptAnswer, PromptId, Response, Runner, View, Workspace,
 };
+#[cfg(test)]
+use auditorylab::workspace::{Job, JobKind};
 use auxiliary::{install_auxiliary, install_monitor};
 use editing::install_editing;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
@@ -116,6 +118,9 @@ struct ComponentEntry {
 /// The adapter between Slint and the workspace.
 pub(crate) struct SlintAdapter {
     workspace: RefCell<Option<Workspace>>,
+    runner: RefCell<Option<Runner>>,
+    #[cfg(test)]
+    jobs: RefCell<Vec<Job>>,
     shell: Box<dyn Shell>,
     main: slint::Weak<MainWindow>,
     about: slint::Weak<AboutWindow>,
@@ -172,6 +177,9 @@ impl SlintAdapter {
         let ui = &windows.main;
         let adapter = Rc::new(Self {
             workspace: RefCell::new(Some(workspace)),
+            runner: RefCell::new(Some(Runner::new())),
+            #[cfg(test)]
+            jobs: RefCell::new(Vec::new()),
             shell,
             main: ui.as_weak(),
             about: windows.about.as_weak(),
@@ -355,10 +363,13 @@ impl SlintAdapter {
     }
 
     /// Answer a prompt; answers to prompts no longer open change nothing.
-    pub(crate) fn respond(self: &Rc<Self>, prompt: PromptId, response: Response) {
+    pub(crate) fn respond(self: &Rc<Self>, prompt: PromptId, response: PromptAnswer) {
         self.dialog_open.set(false);
         if let Some(workspace) = self.workspace.borrow_mut().as_mut() {
-            workspace.respond(prompt, response);
+            workspace.respond(Response::Prompt {
+                prompt,
+                answer: response,
+            });
         }
         self.after_command();
     }
@@ -369,9 +380,20 @@ impl SlintAdapter {
             return;
         }
         self.drain_preferences();
+        let responses = self
+            .runner
+            .borrow_mut()
+            .as_mut()
+            .map(Runner::poll)
+            .unwrap_or_default();
         if let Some(workspace) = self.workspace.borrow_mut().as_mut() {
+            for response in responses {
+                workspace.respond(response);
+            }
             workspace.poll();
         }
+        #[cfg(test)]
+        self.run_file_jobs();
         self.after_command();
     }
 
@@ -390,6 +412,14 @@ impl SlintAdapter {
 
     fn perform(self: &Rc<Self>, effect: Effect) {
         match effect {
+            Effect::Run(job) => {
+                #[cfg(test)]
+                self.jobs.borrow_mut().push(job);
+                #[cfg(not(test))]
+                if let Some(runner) = self.runner.borrow_mut().as_mut() {
+                    runner.start(job);
+                }
+            }
             Effect::AskPurge { prompt, key, title } => {
                 self.dialog_open.set(true);
                 self.shell.ask_purge(self, prompt, key, title);
@@ -426,6 +456,30 @@ impl SlintAdapter {
             .borrow()
             .as_ref()
             .and_then(Workspace::audio_control)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn take_jobs(&self) -> Vec<Job> {
+        std::mem::take(&mut *self.jobs.borrow_mut())
+    }
+    #[cfg(test)]
+    pub(crate) fn deliver(self: &Rc<Self>, response: Response) {
+        if let Some(workspace) = self.workspace.borrow_mut().as_mut() {
+            workspace.respond(response);
+        }
+        self.after_command();
+    }
+    #[cfg(test)]
+    fn run_file_jobs(self: &Rc<Self>) {
+        let jobs = self.take_jobs();
+        for job in jobs {
+            if job.kind() == JobKind::File {
+                let response = job.execute(|prepared| self.deliver(prepared));
+                self.deliver(response);
+            } else {
+                self.jobs.borrow_mut().push(job);
+            }
+        }
     }
 
     /// Inspect the workspace directly, bypassing the bindings under test.
@@ -499,10 +553,26 @@ impl SlintAdapter {
         if let Some(mut preferences) = self.preferences.borrow_mut().take() {
             preferences.shutdown();
         }
-        self.workspace
-            .borrow_mut()
-            .take()
-            .map_or(Ok(()), Workspace::shutdown)
+        match (
+            self.runner.borrow_mut().take(),
+            self.workspace.borrow_mut().take(),
+        ) {
+            (Some(runner), Some(workspace)) => {
+                #[cfg(test)]
+                let (runner, workspace) = {
+                    let mut runner = runner;
+                    let mut workspace = workspace;
+                    let _ = workspace.stop();
+                    let _ = workspace.cancel_export();
+                    for job in self.jobs.borrow_mut().drain(..) {
+                        runner.start(job);
+                    }
+                    (runner, workspace)
+                };
+                runner.shutdown(workspace)
+            }
+            _ => Ok(()),
+        }
     }
 
     #[cfg(test)]

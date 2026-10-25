@@ -8,7 +8,6 @@ pub use auditorylab_core as core;
 pub mod calendar;
 pub mod collection;
 pub mod controls;
-#[cfg(feature = "device-playback")]
 pub mod device;
 pub mod editing;
 pub mod error;

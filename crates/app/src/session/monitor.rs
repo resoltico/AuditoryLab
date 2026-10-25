@@ -80,13 +80,6 @@ struct Published {
     gaps: u64,
 }
 
-#[cfg_attr(
-    not(any(feature = "device-playback", test)),
-    expect(
-        dead_code,
-        reason = "Prepared device streams claim writer endpoints before callbacks start"
-    )
-)]
 struct Endpoints {
     samples_in: Option<rtrb::Producer<Sample>>,
     samples_out: Option<rtrb::Consumer<Sample>>,
@@ -116,7 +109,6 @@ impl History {
     }
 }
 
-#[cfg(any(feature = "device-playback", test))]
 pub(crate) struct MonitorWriter {
     samples: Option<rtrb::Producer<Sample>>,
     state: triple_buffer::Input<Published>,
@@ -124,7 +116,6 @@ pub(crate) struct MonitorWriter {
     next_sample: Option<u64>,
     dropping: bool,
 }
-#[cfg(any(feature = "device-playback", test))]
 impl MonitorWriter {
     pub(crate) fn append(&mut self, start: u64, frames: &[[f64; 2]]) {
         let Some(samples) = &mut self.samples else {
@@ -184,7 +175,6 @@ impl std::fmt::Debug for PlaybackMonitor {
     }
 }
 impl PlaybackMonitor {
-    #[cfg(any(feature = "device-playback", test))]
     pub(crate) fn new(
         descriptor: SessionDescriptor,
         detail: MonitorDetail,
@@ -217,7 +207,6 @@ impl PlaybackMonitor {
         &self.0.descriptor
     }
 
-    #[cfg(any(feature = "device-playback", test))]
     pub(crate) fn writer(&self) -> Option<MonitorWriter> {
         let mut endpoints = self
             .0

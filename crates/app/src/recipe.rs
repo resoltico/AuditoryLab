@@ -285,7 +285,6 @@ impl Rendition {
         Self { snapshot, signal }
     }
 
-    #[cfg(feature = "device-playback")]
     pub(crate) fn shared_signal(&self) -> Arc<Signal> {
         Arc::clone(&self.signal)
     }

@@ -1,7 +1,26 @@
 //! Shared search and correlated query behavior for built-in and external origins.
 use auditorylab::presentation::AudioSummary;
-use auditorylab::query;
+
 use auditorylab::recipe::{Origin, RecipeSnapshot};
+#[expect(
+    clippy::unwrap_used,
+    reason = "Controlled search fixture has no invalid date ranges"
+)]
+fn matches_search(snapshot: &RecipeSnapshot, search: &str) -> bool {
+    let entry = auditorylab::collection::EntrySummary::from_snapshot(
+        auditorylab::library::LibraryKey::BuiltIn("fixture".into()),
+        snapshot,
+        None,
+    );
+    !auditorylab::collection::CatalogQuery {
+        search: search.into(),
+        ..Default::default()
+    }
+    .execute(&[entry])
+    .unwrap()
+    .entries
+    .is_empty()
+}
 #[test]
 fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
     let mut recipe = auditorylab::editing::Draft::new().unwrap().recipe();
@@ -42,14 +61,14 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         "rīga 20",
         "2015",
     ] {
-        assert!(query::search(&snapshot, search), "{search}");
+        assert!(matches_search(&snapshot, search), "{search}");
     }
-    assert!(query::search(
+    assert!(matches_search(
         &snapshot,
         "20abcdef-0000-4000-8000-000000000001"
     ));
     for search in ["2", "201", "two absent", "rīga 19"] {
-        assert!(!query::search(&snapshot, search), "{search}");
+        assert!(!matches_search(&snapshot, search), "{search}");
     }
     let mut steady = snapshot.recipe().clone();
     if let auditorylab::core::Node::Voice(c) = &mut steady.stimulus.components[0].node {
@@ -57,7 +76,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
     }
     let steady = RecipeSnapshot::new(Origin::Stream("steady".into()), steady);
     assert!(
-        !query::search(&steady, "20"),
+        !matches_search(&steady, "20"),
         "200 Hz and 2015 must not match 20"
     );
 }
@@ -89,9 +108,9 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
     assert!((snapshot.nominal()).summary().contains("No rhythmic rate"));
     for caption in ["unknown", "document", "rhythmic"] {
         assert!(
-            !query::search(&snapshot, caption),
+            !matches_search(&snapshot, caption),
             "display-only caption {caption}"
         );
     }
-    assert!(query::search(&snapshot, "steady-tone 200"));
+    assert!(matches_search(&snapshot, "steady-tone 200"));
 }

@@ -462,7 +462,6 @@ pub(crate) const SAVED_SNAPSHOT_STILL_DIRTY: &str =
 /// A worker thread panicked.
 pub(crate) const WORKER_FAILED: &str = "The operation thread failed.";
 /// A worker thread ended without reporting a result.
-pub(crate) const WORKER_ENDED_WITHOUT_RESULT: &str = "The operation thread ended without a result.";
 /// An export ended at the person's request.
 pub(crate) const EXPORT_CANCELLED: &str = "Export cancelled; no file was written.";
 

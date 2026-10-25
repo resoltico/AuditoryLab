@@ -8,7 +8,6 @@ use super::{Outcome, SessionState};
 use auditorylab_core::SampleRate;
 use std::time::Duration;
 
-#[cfg(feature = "device-playback")]
 pub(crate) const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// How long a stream may go without progress, and how long playback may take
 /// beyond the signal's length to start up and drain.

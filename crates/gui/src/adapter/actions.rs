@@ -19,7 +19,8 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(on_collection_filter, |a, scope, sort| {
         a.command(|w| {
             use auditorylab::collection::{Scope, SortBy};
-            if let Some(mut query) = w.catalog_query().cloned() {
+            {
+                let mut query = w.catalog_query().clone();
                 query.scope = match scope {
                     1 => Scope::BuiltIn,
                     2 => Scope::User,
@@ -58,19 +59,20 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                           af,
                           at| {
         a.command(|w| {
-            let Some(mut query) = w.catalog_query().cloned() else {
-                return;
-            };
-            let ranges = [
-                auditorylab::calendar::local_range(&cf, &ct),
-                auditorylab::calendar::local_range(&mf, &mt),
-                auditorylab::calendar::local_range(&af, &at),
-            ];
-            let [Ok(created), Ok(modified), Ok(added)] = ranges else {
-                w.library_filter_error(
-                    auditorylab::vocabulary::Caption::CalendarRangeError.label(),
-                );
-                return;
+            let mut query = w.catalog_query().clone();
+            let ranges = (|| -> Result<_, auditorylab::error::Error> {
+                Ok([
+                    auditorylab::calendar::local_range(&cf, &ct)?,
+                    auditorylab::calendar::local_range(&mf, &mt)?,
+                    auditorylab::calendar::local_range(&af, &at)?,
+                ])
+            })();
+            let [created, modified, added] = match ranges {
+                Ok(ranges) => ranges,
+                Err(error) => {
+                    w.library_filter_error(error);
+                    return;
+                }
             };
             use auditorylab::collection::{Direction, GroupBy};
             use auditorylab::core::{ConditionRole, Population};
@@ -127,26 +129,28 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             )
             .unwrap_or(GroupBy::None);
             if let Err(error) = w.set_catalog_query(query) {
-                w.library_filter_error(&error.to_string());
+                w.library_filter_error(error);
             }
         });
     });
     on!(on_clear_library_filters, |a| a.command(|w| {
-        if let Some(query) = w.catalog_query().cloned() {
+        {
+            let query = w.catalog_query().clone();
             let cleared = query.cleared_filters();
             if let Err(error) = w.set_catalog_query(cleared) {
-                w.library_filter_error(&error.to_string());
+                w.library_filter_error(error);
             }
         }
     }));
     on!(on_refresh_library, |a| a
         .command(Workspace::refresh_library));
     on!(on_reset_library_sort, |a| a.command(|w| {
-        if let Some(mut query) = w.catalog_query().cloned() {
+        {
+            let mut query = w.catalog_query().clone();
             query.sort = auditorylab::collection::SortBy::Automatic;
             query.direction = None;
             if let Err(error) = w.set_catalog_query(query) {
-                w.library_filter_error(&error.to_string());
+                w.library_filter_error(error);
             }
         }
     }));

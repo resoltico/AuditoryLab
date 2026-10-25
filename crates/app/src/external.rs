@@ -46,7 +46,7 @@ impl ObservedFile {
     pub const fn fingerprint(&self) -> Fingerprint {
         self.fingerprint
     }
-    fn matches(&self, other: &Self) -> bool {
+    pub(crate) fn matches(&self, other: &Self) -> bool {
         self.path == other.path
             && self.fingerprint == other.fingerprint
             && self.handle == other.handle

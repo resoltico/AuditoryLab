@@ -48,16 +48,6 @@ TMPDIR="$PWD/target/tmp" cargo mutants --file crates/core/src/synthesis.rs \
 
 CI shards synthesis, live, timing and authored lowering; compiled, facts and waveform have separate selections. The [workflow matrix](.github/workflows/ci.yml) owns the exact scopes. Every shard runs its unmutated baseline and uses one worker build directory. Local runs also default to one worker; increasing `--jobs` multiplies independent compiler directories. Use `--re` to focus a smaller selection. Investigate survivors against an independent oracle. CI mutates each core source file that holds synthesis, compilation, live transitions, facts, timing or waveform reduction; when such code moves to another file, change that file list in [ci.yml](.github/workflows/ci.yml). The CI command excludes equivalent integer-phase mutations by operator and function name, with their reasons beside the command. Exclusions contain no line or column numbers. Keep the Nyquist and pulse-width guards in the selection.
 
-A downstream program that uses the library without the `device-playback` feature must not reach CPAL. CI runs the [portable consumer](consumers/portable/src/main.rs) and checks its dependency tree:
-
-```sh
-cp Cargo.lock consumers/portable/Cargo.lock
-CARGO_TARGET_DIR=target/portable-consumer cargo run --manifest-path consumers/portable/Cargo.toml
-CARGO_TARGET_DIR=target/portable-consumer cargo tree --manifest-path consumers/portable/Cargo.toml -e normal,build --target all -i cpal
-```
-
-The last command must report that no package matches.
-
 ## Dependencies
 
 [Cargo.toml](Cargo.toml) declares ranges and [Cargo.lock](Cargo.lock) pins resolution. Update a named dependency with `cargo update -p NAME`, inspect the delta, run the checks and regenerate archives. Portable `libm` with `force-soft-floats` keeps math independent of platform intrinsics after feature unification.
@@ -92,4 +82,4 @@ cargo test -p auditorylab --release --locked callback_cost -- --ignored --nocapt
 
 Run the cost check once on the intended source after other builds/tests finish. Investigate a failure rather than rerunning it or changing its limit. Ordinary tests independently check callback allocation/free behavior, full crossfades, monitoring overflow and lifecycle authority. Playback continues to report actual backend underruns.
 
-Workspace and GUI action tests use the `workspace::testing` controlled execution fixtures (unit-test configuration or the nondefault `test-support` feature). Drive real commands and prompt responses, then acknowledge worker results and explicitly release exit/panic; do not replace a workspace task after launch to claim command-path coverage. Each GUI test installs its offscreen platform once and activates the visible accessible control, excluding StableButton's hidden sizing labels. The fixture never opens an audio device.
+Workspace tests drive commands, execute captured immutable jobs and deliver typed responses. Runner tests exercise launch failures, panics and join ordering with real threads. GUI action tests capture audio effects without opening devices and execute real file jobs. Each GUI test installs its offscreen platform once and activates the visible accessible control.

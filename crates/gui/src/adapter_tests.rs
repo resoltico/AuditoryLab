@@ -8,7 +8,9 @@ use crate::test_platform::{install, settle};
 use auditorylab::core::ParameterId;
 use auditorylab::editing::{EditingField, MetadataField};
 use auditorylab::presentation::ParameterText;
-use auditorylab::workspace::{Capabilities, PathPurpose, PromptId, Response, View, Workspace};
+use auditorylab::workspace::{
+    Capabilities, Job, JobKind, PathPurpose, PromptAnswer, PromptId, View, Workspace,
+};
 use slint::platform::{Key, WindowEvent};
 use slint::private_unstable_api::re_exports::{
     AccessibleStringProperty, FocusReason, ItemRc, TextInput, WindowInner,
@@ -49,20 +51,55 @@ impl Shell for Recorder {
     }
 }
 
+fn bound_workspace(
+    catalog: Vec<auditorylab::recipe::RecipeSnapshot>,
+    capabilities: Capabilities,
+) -> (
+    Workspace,
+    tempfile::TempDir,
+    auditorylab::library::LibraryStore,
+) {
+    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
+    std::fs::create_dir_all(&base).unwrap();
+    let directory = tempfile::tempdir_in(base).unwrap();
+    let store = auditorylab::library::LibraryStore::new(
+        auditorylab::library::LibraryRoot::explicit(directory.path().join("library")).unwrap(),
+    )
+    .unwrap();
+    store.root().initialize().unwrap();
+    let workspace = Workspace::with_library(catalog, capabilities, store.clone()).unwrap();
+    (workspace, directory, store)
+}
+
 pub(crate) struct Harness {
     pub(crate) windows: Windows,
     pub(crate) adapter: Rc<SlintAdapter>,
     requests: Rc<RefCell<Vec<Request>>>,
+    library: Option<(tempfile::TempDir, auditorylab::library::LibraryStore)>,
 }
 
 impl Harness {
     pub(crate) fn new() -> Self {
-        let workspace = Workspace::new(
+        Self::with_catalog(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
         )
-        .unwrap();
-        Self::with_workspace(workspace)
+    }
+    fn with_catalog(
+        catalog: Vec<auditorylab::recipe::RecipeSnapshot>,
+        capabilities: Capabilities,
+    ) -> Self {
+        let (workspace, directory, store) = bound_workspace(catalog, capabilities);
+        let mut harness = Self::with_workspace(workspace);
+        harness.library = Some((directory, store));
+        harness
+    }
+    fn store(&self) -> &auditorylab::library::LibraryStore {
+        &self
+            .library
+            .as_ref()
+            .expect("default harness owns its real library")
+            .1
     }
 
     fn with_workspace(workspace: Workspace) -> Self {
@@ -87,11 +124,14 @@ impl Harness {
         settle(windows.main.window());
         adapter.main_frame_ready();
         settle(windows.main.window());
-        Self {
+        let harness = Self {
             windows,
             adapter,
             requests,
-        }
+            library: None,
+        };
+        harness.wait_for_files();
+        harness
     }
 
     pub(crate) fn ui(&self) -> &MainWindow {
@@ -303,14 +343,14 @@ fn play_save_export_and_prompts_run_through_the_shared_workflow() {
     assert!(!ui.get_playback_busy());
 
     ui.invoke_save_recipe();
-    let [Request::Path(prompt, PathPurpose::SaveRecipe, _)] = h.take()[..] else {
-        panic!("Save asks for a destination");
-    };
-    let saved = directory.path().join("probe.toml");
-    h.adapter
-        .respond(prompt, Response::Path(Some(saved.clone())));
+    assert!(
+        h.take().is_empty(),
+        "Save publishes to the bound User Library"
+    );
     h.wait_for_files();
-    assert!(saved.is_file());
+    let inventory = h.store().scan(&auditorylab::workflow::Cancel::default());
+    assert_eq!(inventory.entries.len(), 1);
+    assert!(h.store().load(&inventory.entries[0].key).is_ok());
     assert!(
         !ui.get_dirty(),
         "the published snapshot is the saved baseline"
@@ -322,7 +362,7 @@ fn play_save_export_and_prompts_run_through_the_shared_workflow() {
     };
     let exported = directory.path().join("probe.wav");
     h.adapter
-        .respond(prompt, Response::Path(Some(exported.clone())));
+        .respond(prompt, PromptAnswer::Path(Some(exported.clone())));
     assert!(ui.get_exporting() || exported.is_file());
     h.wait_for_files();
     assert_eq!(&std::fs::read(&exported).unwrap()[..4], b"RIFF");
@@ -341,14 +381,14 @@ fn play_save_export_and_prompts_run_through_the_shared_workflow() {
         "an open prompt denies Quit and asks nothing more"
     );
     let before = ui.get_document();
-    h.adapter.respond(prompt, Response::Cancel);
+    h.adapter.respond(prompt, PromptAnswer::Cancel);
     assert_eq!(ui.get_document(), before, "Cancel keeps the document");
     ui.invoke_new_draft();
     let [Request::Unsaved(prompt)] = h.take()[..] else {
         panic!("asked again");
     };
-    h.adapter.respond(prompt, Response::Discard);
-    h.adapter.respond(prompt, Response::Save);
+    h.adapter.respond(prompt, PromptAnswer::Discard);
+    h.adapter.respond(prompt, PromptAnswer::Save);
     h.adapter.tick();
     assert_ne!(ui.get_document(), before, "Discard replaces the document");
     assert_eq!(ui.get_components().row_count(), 0);
@@ -508,7 +548,7 @@ fn callbacks_from_a_replaced_document_are_refused() {
     let [Request::Unsaved(prompt)] = h.take()[..] else {
         panic!("the edited document asks first");
     };
-    h.adapter.respond(prompt, Response::Discard);
+    h.adapter.respond(prompt, PromptAnswer::Discard);
     h.adapter.tick();
     let new_document = ui.get_document();
     assert_ne!(new_document, old_document);
@@ -645,6 +685,17 @@ fn an_imported_recipe_is_scrolled_into_view() {
     let h = Harness::new();
     let ui = h.ui();
     let directory = tempfile::tempdir().unwrap();
+    for index in 0..24 {
+        let mut draft = auditorylab::editing::Draft::new().unwrap();
+        draft.set_title(format!("A earlier opened recipe {index:02}"));
+        let path = directory.path().join(format!("earlier-{index}.toml"));
+        std::fs::write(&path, draft.recipe().to_toml().unwrap()).unwrap();
+        ui.invoke_open_recipe();
+        answer_path(&h, &path);
+        h.wait_for_files();
+    }
+    ui.set_library_scroll_y(0.0);
+    h.settle();
     let path = directory.path().join("imported.toml");
     std::fs::write(
         &path,
@@ -655,7 +706,7 @@ fn an_imported_recipe_is_scrolled_into_view() {
     let [Request::Path(prompt, PathPurpose::OpenRecipe, _)] = h.take()[..] else {
         panic!("Open asks for a file");
     };
-    h.adapter.respond(prompt, Response::Path(Some(path)));
+    h.adapter.respond(prompt, PromptAnswer::Path(Some(path)));
     h.wait_for_files();
     for _ in 0..5 {
         h.settle();
@@ -698,13 +749,14 @@ fn an_imported_recipe_is_scrolled_into_view() {
 fn clicking_a_recipe_row_selects_it() {
     let h = Harness::new();
     let ui = h.ui();
-    let second = h.adapter.inspect(|w| w.catalog()[1].title());
-    let row = labelled(ui, &second);
+    let second = ui.get_catalog().row_data(1).unwrap();
+    let expected_key = second.binding.clone();
+    let row = labelled(ui, &second.text);
     let centre = centre(&row);
     drag(ui, centre, centre);
     h.settle();
     assert_eq!(ui.get_selected(), 1);
-    assert_eq!(h.adapter.inspect(|w| w.selected().unwrap().title()), second);
+    assert_eq!(ui.get_library_key(), expected_key);
 }
 
 #[test]
@@ -967,26 +1019,39 @@ fn tick_until(h: &Harness, condition: impl Fn() -> bool) {
     panic!("controlled GUI task did not settle");
 }
 
-fn controlled_harness() -> (
-    Harness,
-    auditorylab::workspace::testing::Execution,
-    tempfile::TempDir,
-) {
+fn controlled_harness() -> (Harness, tempfile::TempDir) {
     let mut draft = auditorylab::editing::Draft::new().unwrap();
     draft.set_duration_seconds(0.01);
     draft.set_fade_seconds(0.0);
-    let (workspace, execution) = auditorylab::workspace::testing::workspace(
-        vec![draft.snapshot()],
-        Capabilities {
-            device_playback: true,
-        },
-    )
-    .unwrap();
-    let dir = tempfile::tempdir_in(
+    let h = Harness::with_catalog(vec![draft.snapshot()], Capabilities::available());
+    // This is a real temporary input in the one persistent workspace query path.
+    h.ui().invoke_collection_filter(3, 0);
+    h.wait_for_files();
+    let directory = tempfile::tempdir_in(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
     )
     .unwrap();
-    (Harness::with_workspace(workspace), execution, dir)
+    (h, directory)
+}
+fn take_job(h: &Harness, kind: JobKind) -> Job {
+    let mut jobs = h.adapter.take_jobs();
+    assert_eq!(jobs.len(), 1, "one admitted operation was captured");
+    let job = jobs.remove(0);
+    assert_eq!(job.kind(), kind);
+    job
+}
+fn finish_file(h: &Harness, job: Job) {
+    assert_eq!(job.kind(), JobKind::File);
+    let finished = job.execute(|_| panic!("a file job emits no audio preparation"));
+    h.adapter.deliver(finished);
+}
+fn finish_stopped_audio(h: &Harness, job: Job) {
+    assert_eq!(job.kind(), JobKind::Audio);
+    // The queued job has never run. Stop makes its real execution return an
+    // early terminal report before any device discovery or preparation.
+    assert!(h.adapter.command(Workspace::stop).unwrap().is_ok());
+    let finished = job.execute(|_| panic!("early-stopped audio must not prepare a device"));
+    h.adapter.deliver(finished);
 }
 
 fn answer_path(h: &Harness, path: &std::path::Path) {
@@ -999,7 +1064,7 @@ fn answer_path(h: &Harness, path: &std::path::Path) {
         })
         .expect("production callback opened a path panel");
     h.adapter
-        .respond(prompt, Response::Path(Some(path.to_owned())));
+        .respond(prompt, PromptAnswer::Path(Some(path.to_owned())));
 }
 
 #[test]
@@ -1032,27 +1097,29 @@ fn action_button(ui: &MainWindow, label: &str) -> ItemRc {
 
 fn assert_library_play_during_file(save: bool) {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
-    let (h, execution, dir) = controlled_harness();
+    let (h, dir) = controlled_harness();
     let ui = h.ui();
     let path = dir.path().join("sound.toml");
-    if save {
+    let file = if save {
         h.workbench();
         ui.invoke_save_recipe();
+        assert!(h.take().is_empty(), "managed Save opens no external panel");
+        let file = take_job(&h, JobKind::File);
         ui.set_tab_index(0);
         h.settle();
+        file
     } else {
-        std::fs::write(
-            &path,
-            "schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
-        )
-        .unwrap();
+        std::fs::write(&path, "schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n").unwrap();
         ui.invoke_open_recipe();
-    }
-    assert!(!ui.get_can_play(), "a path prompt blocks new playback");
-    action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
-    assert!(!h.adapter.inspect(|w| w.audio_busy()));
-    answer_path(&h, &path);
-    let file = execution.file().unwrap();
+        assert!(
+            !ui.get_can_play(),
+            "a native path prompt blocks new playback"
+        );
+        action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
+        assert!(!h.adapter.inspect(|w| w.audio_busy()));
+        answer_path(&h, &path);
+        take_job(&h, JobKind::File)
+    };
     assert!(h.adapter.inspect(|w| w.file_busy()));
     assert!(ui.get_can_play(), "Save/Import can coexist with audio");
     assert_eq!(
@@ -1062,52 +1129,47 @@ fn assert_library_play_during_file(save: bool) {
     action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
     assert!(
         h.adapter.inspect(|w| w.audio_busy()),
-        "the actual accessible button must dispatch Play"
+        "the actual accessible button dispatches Play"
     );
-    let audio = execution.audio().unwrap();
+    let audio = take_job(&h, JobKind::Audio);
     assert_eq!(
         ui.get_library_play_action(),
         auditorylab::vocabulary::Action::library_play_labels()[1]
     );
-    audio.result().unwrap();
-    audio.exit().unwrap();
-    tick_until(&h, || !h.adapter.inspect(|w| w.audio_busy()));
-    file.result().unwrap();
-    file.exit().unwrap();
-    tick_until(&h, || !h.adapter.inspect(|w| w.file_busy()));
+    finish_stopped_audio(&h, audio);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    finish_file(&h, file);
+    h.wait_for_files();
 }
 
 #[test]
 fn library_button_obeys_export_prompt_pending_and_capability_refusals() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
-    let (h, execution, dir) = controlled_harness();
+    let (h, dir) = controlled_harness();
     let ui = h.ui();
     ui.invoke_export_wav();
     assert!(!ui.get_can_play());
     action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
     answer_path(&h, &dir.path().join("sound.wav"));
-    let export = execution.file().unwrap();
+    let export = take_job(&h, JobKind::File);
     assert!(!ui.get_can_play());
     action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
-    export.result().unwrap();
-    export.exit().unwrap();
+    finish_file(&h, export);
     tick_until(&h, || !h.adapter.inspect(|w| w.file_busy()));
     action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
-    let audio = execution.audio().unwrap();
+    let audio = take_job(&h, JobKind::Audio);
     action_button(ui, "Stop current & play recipe")
         .accessible_action(&AccessibilityAction::Default);
     assert!(h.adapter.inspect(|w| w.action_pending()));
     assert!(!ui.get_can_play());
     action_button(ui, "Stop current & play recipe")
         .accessible_action(&AccessibilityAction::Default);
-    audio.result().unwrap();
-    audio.exit().unwrap();
+    finish_stopped_audio(&h, audio);
     tick_until(&h, || !h.adapter.inspect(|w| w.action_pending()));
-    let replacement = execution.audio().unwrap();
-    replacement.result().unwrap();
-    replacement.exit().unwrap();
+    let replacement = take_job(&h, JobKind::Audio);
+    finish_stopped_audio(&h, replacement);
     tick_until(&h, || !h.adapter.inspect(|w| w.audio_busy()));
 }
 
@@ -1154,14 +1216,15 @@ fn notes_return_stages_newlines_and_save_preserves_exact_multiline_text() {
     h.key(Key::Escape);
     assert_eq!(text_of(&input), "");
     h.key("A\nB\n\n測定 🎧");
-    let dir = tempfile::tempdir_in(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp"),
-    )
-    .unwrap();
     ui.invoke_save_recipe();
-    answer_path(&h, &dir.path().join("notes.toml"));
+    assert!(h.take().is_empty());
     h.wait_for_files();
-    let saved = auditorylab::recipe::load_file(&dir.path().join("notes.toml")).unwrap();
+    let entry = h
+        .store()
+        .scan(&auditorylab::workflow::Cancel::default())
+        .entries
+        .remove(0);
+    let saved = h.store().load(&entry.key).unwrap().snapshot;
     assert_eq!(
         saved.about().unwrap().summary.as_deref(),
         Some(text.as_str())
@@ -1186,11 +1249,10 @@ fn monitor_presentation_waits_for_main_and_failures_are_visible_and_retryable() 
     let fail = Rc::new(std::cell::Cell::new(true));
     crate::test_platform::install_with_auxiliary_failure(fail.clone());
     let windows = Windows::new().unwrap();
-    let workspace = Workspace::new(
+    let (workspace, _library_directory, _store) = bound_workspace(
         auditorylab::recipe::catalog().unwrap(),
-        Capabilities::portable(),
-    )
-    .unwrap();
+        Capabilities::no_device_playback(),
+    );
     let adapter = SlintAdapter::install(
         &windows,
         workspace,
@@ -1281,7 +1343,14 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
     let ui = h.ui();
     ui.invoke_rhythm_filter(1, 1); // Delta and binaural.
     h.adapter.inspect(|w| {
-        assert_eq!(w.filtered().len(), 1);
+        assert_eq!(
+            w.library_view()
+                .keys
+                .iter()
+                .filter(|key| !key.is_empty())
+                .count(),
+            1
+        );
         assert_eq!(
             w.selected().unwrap().origin(),
             &auditorylab::recipe::Origin::BuiltIn("ioannou-2015-binaural-2-hz")
@@ -1317,20 +1386,15 @@ fn catalog_callback_keeps_snapshot_identity_after_filter_reorders_rows() {
     let h = Harness::new();
     let ui = h.ui();
     let stale = ui.get_catalog().row_data(0).unwrap().binding;
+    let original = h.adapter.inspect(|w| w.selected().unwrap().id());
     ui.invoke_rhythm_filter(1, 1);
     let selected = h.adapter.inspect(|w| w.selected().unwrap().id());
     ui.invoke_select(stale.clone());
     assert_eq!(h.adapter.inspect(|w| w.selected().unwrap().id()), selected);
     ui.invoke_rhythm_filter(0, 0);
     ui.invoke_select(stale.clone());
-    assert_eq!(
-        h.adapter.inspect(|w| w.selected().unwrap().id().get()),
-        stale
-            .strip_prefix("snapshot:")
-            .unwrap()
-            .parse::<u64>()
-            .unwrap()
-    );
+    assert_eq!(h.adapter.inspect(|w| w.selected().unwrap().id()), original);
+    assert_eq!(ui.get_library_key(), stale);
 }
 
 #[test]
@@ -1432,9 +1496,10 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
         auditorylab::recipe::Origin::Stream("large owners".into()),
         recipe,
     );
-    let mut workspace = Workspace::new(vec![snapshot.clone()], Capabilities::portable()).unwrap();
-    workspace.copy_selected();
-    let h = Harness::with_workspace(workspace);
+    let h = Harness::with_catalog(vec![snapshot], Capabilities::no_device_playback());
+    h.ui().invoke_collection_filter(3, 0);
+    h.wait_for_files();
+    h.adapter.command(Workspace::copy_selected);
     h.workbench();
     let rows = h.ui().get_components();
     assert_eq!(rows.row_data(0).unwrap().id, u32::MAX.to_string());
@@ -1461,7 +1526,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     store.root().initialize().unwrap();
     let workspace = Workspace::with_library(
         auditorylab::recipe::catalog().unwrap(),
-        Capabilities::portable(),
+        Capabilities::no_device_playback(),
         store.clone(),
     )
     .unwrap();
@@ -1509,7 +1574,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     h.wait_for_files();
     assert!(
         h.adapter
-            .inspect(|w| w.catalog_query().unwrap().search.contains("ioannou"))
+            .inspect(|w| w.catalog_query().search.contains("ioannou"))
     );
     assert_eq!(
         ui.get_catalog().row_count(),
@@ -1561,7 +1626,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     assert_eq!(prompted, key.as_str());
     assert_eq!(title, "Native managed copy");
     assert!(store.load(&key.parse().unwrap()).is_ok());
-    h.adapter.respond(prompt, Response::Confirm);
+    h.adapter.respond(prompt, PromptAnswer::Confirm);
     h.wait_for_files();
     assert!(
         store
@@ -1581,7 +1646,7 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
             store,
         )
         .unwrap(),
@@ -1605,7 +1670,6 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
     );
     let expected = h.adapter.inspect(|w| {
         w.catalog_query()
-            .unwrap()
             .clone()
             .execute(
                 &w.catalog()
@@ -1649,14 +1713,13 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
     );
     assert!(
         h.adapter
-            .inspect(|w| w.catalog_query().unwrap().created.from.is_none())
+            .inspect(|w| w.catalog_query().created.from.is_none())
     );
     assert!(
-        ui.get_status().contains("Invalid calendar range")
-            || ui
-                .get_operation_outcome()
-                .contains("Invalid calendar range")
+        !ui.get_library_alert().is_empty(),
+        "the rejected range is shown in the library's live diagnostic banner"
     );
+    assert!(ui.get_library_alert().to_lowercase().contains("date"));
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
 
@@ -1712,7 +1775,7 @@ fn persistent_native_transport_stays_inside_800_by_600_with_large_text() {
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
             store,
         )
         .unwrap(),
@@ -1761,7 +1824,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
             store.clone(),
         )
         .unwrap(),
@@ -1773,7 +1836,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
         panic!("Open picker missing")
     };
     h.adapter
-        .respond(prompt, Response::Path(Some(file.clone())));
+        .respond(prompt, PromptAnswer::Path(Some(file.clone())));
     h.wait_for_files();
     assert_eq!(ui.get_collection_choice(), 3);
     assert!(
@@ -1881,7 +1944,7 @@ fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_co
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
             store.clone(),
         )
         .unwrap(),
@@ -1925,7 +1988,7 @@ fn native_library_keyboard_has_one_tab_stop_and_keeps_selected_key_through_sort(
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
             store,
         )
         .unwrap(),
@@ -1998,7 +2061,7 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
             store,
         )
         .unwrap(),
@@ -2074,7 +2137,7 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
         drag(ui, refresh, refresh);
         h.wait_for_files();
         assert_eq!(
-            h.adapter.inspect(|w| w.catalog_query().unwrap().sort),
+            h.adapter.inspect(|w| w.catalog_query().sort),
             auditorylab::collection::SortBy::Title
         );
         assert_eq!(ui.get_collection_choice(), scope);
@@ -2100,7 +2163,7 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
             store,
         )
         .unwrap(),
@@ -2156,7 +2219,7 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
             store,
         )
         .unwrap(),
@@ -2276,7 +2339,7 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
             store,
         )
         .unwrap(),
@@ -2305,7 +2368,7 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     action_button(ui, "Reset sort").accessible_action(&AccessibilityAction::Default);
     h.settle();
     h.adapter.inspect(|w| {
-        let q = w.catalog_query().unwrap();
+        let q = w.catalog_query();
         assert_eq!(q.scope, auditorylab::collection::Scope::User);
         assert_eq!(q.sort, auditorylab::collection::SortBy::Automatic);
         assert!(q.direction.is_none());
@@ -2334,7 +2397,7 @@ fn changing_display_vocabulary_preserves_typed_library_search() {
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
             store,
         )
         .unwrap(),
@@ -2383,7 +2446,7 @@ fn filter_controls_map_to_independent_typed_queries() {
     let h = Harness::with_workspace(
         Workspace::with_library(
             auditorylab::recipe::catalog().unwrap(),
-            Capabilities::portable(),
+            Capabilities::no_device_playback(),
             store,
         )
         .unwrap(),
@@ -2415,7 +2478,7 @@ fn filter_controls_map_to_independent_typed_queries() {
                 ..CatalogQuery::default()
             };
             h.adapter
-                .inspect(|w| assert_eq!(w.catalog_query().unwrap(), &expected));
+                .inspect(|w| assert_eq!(w.catalog_query(), &expected));
         }
     }
     ui.invoke_collection_filter(0, 0);
@@ -2446,7 +2509,7 @@ fn filter_controls_map_to_independent_typed_queries() {
                 ..CatalogQuery::default()
             };
             h.adapter
-                .inspect(|w| assert_eq!(w.catalog_query().unwrap(), &expected));
+                .inspect(|w| assert_eq!(w.catalog_query(), &expected));
         }
     }
     ui.invoke_rhythm_filter(0, 0);
@@ -2479,7 +2542,7 @@ fn filter_controls_map_to_independent_typed_queries() {
         ..CatalogQuery::default()
     };
     h.adapter
-        .inspect(|w| assert_eq!(w.catalog_query().unwrap(), &expected));
+        .inspect(|w| assert_eq!(w.catalog_query(), &expected));
     ui.invoke_clear_library_filters();
     h.wait_for_files();
     let cleared = CatalogQuery {
@@ -2489,5 +2552,104 @@ fn filter_controls_map_to_independent_typed_queries() {
         ..CatalogQuery::default()
     };
     h.adapter
-        .inspect(|w| assert_eq!(w.catalog_query().unwrap(), &cleared));
+        .inspect(|w| assert_eq!(w.catalog_query(), &cleared));
+}
+
+#[test]
+fn real_save_capture_and_delayed_completion_preserve_newer_edits_and_close_prompting() {
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    ui.invoke_commit_metadata(
+        ui.get_document(),
+        MetadataKey::Title,
+        "Captured by Save".into(),
+    );
+    ui.invoke_save_recipe();
+    let save = take_job(&h, JobKind::File);
+    assert!(h.take().is_empty());
+    let document = ui.get_document();
+    ui.invoke_commit_metadata(
+        ui.get_document(),
+        MetadataKey::Title,
+        "Newer unsaved edits".into(),
+    );
+    // Execute the real capture while withholding its Finished response. Physical
+    // thread joining is the Runner's app-unit contract, not simulated by this test.
+    let finished = save.execute(|_| panic!("a save emits no preparation"));
+    let saved = h
+        .store()
+        .scan(&auditorylab::workflow::Cancel::default())
+        .entries
+        .remove(0);
+    assert_eq!(saved.title, "Captured by Save");
+    assert!(h.adapter.inspect(|w| w.file_busy()));
+    assert!(ui.get_dirty());
+    ui.invoke_quit();
+    assert!(h.adapter.inspect(|w| w.action_pending()));
+    assert!(
+        h.take().is_empty(),
+        "Close cannot resolve before completion is delivered"
+    );
+    h.adapter.deliver(finished);
+    let [Request::Unsaved(prompt)] = h.take()[..] else {
+        panic!("newer edits still need an explicit close decision");
+    };
+    assert_eq!(ui.get_document(), document);
+    assert_eq!(ui.get_title_field().text, "Newer unsaved edits");
+    assert!(ui.get_dirty());
+    h.adapter.respond(prompt, PromptAnswer::Cancel);
+    assert_eq!(h.take(), [Request::Close(false)]);
+    assert_eq!(ui.get_title_field().text, "Newer unsaved edits");
+}
+
+#[test]
+fn background_refresh_does_not_hide_a_failed_captured_save() {
+    use auditorylab::library::Mutation;
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    ui.invoke_commit_metadata(
+        ui.get_document(),
+        MetadataKey::Title,
+        "Initial saved title".into(),
+    );
+    ui.invoke_save_recipe();
+    h.wait_for_files();
+    let saved = h
+        .store()
+        .scan(&auditorylab::workflow::Cancel::default())
+        .entries
+        .remove(0);
+    ui.invoke_commit_metadata(
+        ui.get_document(),
+        MetadataKey::Title,
+        "Retained draft".into(),
+    );
+    ui.invoke_save_recipe();
+    let save = take_job(&h, JobKind::File);
+    h.store()
+        .apply(
+            Mutation::Rename {
+                key: saved.key.clone(),
+                expect: saved.version_token,
+                title: "Other writer".into(),
+            },
+            &auditorylab::workflow::Cancel::default(),
+        )
+        .unwrap();
+    h.adapter.command(Workspace::refresh_library);
+    finish_file(&h, save);
+    h.wait_for_files();
+    assert!(ui.get_dirty());
+    assert_eq!(ui.get_title_field().text, "Retained draft");
+    assert_eq!(
+        h.store().load(&saved.key).unwrap().snapshot.title(),
+        "Other writer"
+    );
+    let details = h.adapter.inspect(|w| w.action_view().operation_details);
+    assert!(
+        details.to_lowercase().contains("conflict") || details.to_lowercase().contains("changed"),
+        "foreground save failure remains visible after background reads: {details}"
+    );
 }

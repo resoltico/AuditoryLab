@@ -53,7 +53,8 @@ impl SlintAdapter {
             ui.set_band_labels(strings(bands));
             ui.set_method_labels(strings(methods));
             ui.set_calendar_context(auditorylab::calendar::local_context().into());
-            if let Some(query) = w.catalog_query() {
+            {
+                let query = w.catalog_query();
                 use auditorylab::collection::{Scope, SortBy};
                 ui.set_collection_choice(match query.scope {
                     Scope::All => 0,

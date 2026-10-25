@@ -16,7 +16,7 @@ use crate::presentation::AudioErrorText;
 use crate::recipe::{RecipeSnapshot, SnapshotId};
 use crate::session::MonitorReader;
 use crate::session::SessionId;
-use crate::waveform_view::{ModelSource, ModelView, WaveformCapture, WaveformScale};
+use crate::waveform_view::{CaptureError, ModelSource, ModelView, WaveformCapture, WaveformScale};
 use auditorylab_core::SampleRate;
 use std::sync::Arc;
 
@@ -72,6 +72,31 @@ pub struct OutputView {
     pub held: bool,
 }
 
+enum PreviewIssue {
+    Snapshot(crate::error::Error),
+    Acoustic {
+        title: String,
+        rate: SampleRate,
+        error: Option<crate::core::StimulusError>,
+    },
+}
+impl PreviewIssue {
+    fn description(&self) -> String {
+        match self {
+            Self::Snapshot(error) => error.to_string(),
+            Self::Acoustic {
+                title,
+                rate,
+                error: Some(error),
+            } => error.at_rate(title, *rate),
+            Self::Acoustic {
+                title,
+                rate,
+                error: None,
+            } => format!("Cannot generate a preview of {title} at {} Hz.", rate.hz()),
+        }
+    }
+}
 #[derive(Default)]
 pub(crate) struct OutputState {
     motion: MotionPreference,
@@ -81,8 +106,8 @@ pub(crate) struct OutputState {
     reader: Option<MonitorReader>,
     failed_title: Option<String>,
     monitored: Option<(CaptureKey, Arc<WaveformCapture>)>,
-    capture_error: Option<String>,
-    preview: Option<(PreviewKey, Result<Arc<WaveformCapture>, String>)>,
+    capture_error: Option<CaptureError>,
+    preview: Option<(PreviewKey, Result<Arc<WaveformCapture>, PreviewIssue>)>,
     scaled_preview: Option<(PreviewKey, WaveformScale, Arc<WaveformCapture>)>,
     held: Option<Arc<WaveformCapture>>,
     model: Option<(ModelKey, Option<Arc<ModelView>>)>,
@@ -265,10 +290,10 @@ impl OutputState {
             };
         }
         let unavailable = if self.reader.is_some() {
-            self.capture_error.clone()
+            self.capture_error.map(|error| error.description())
         } else {
             match &self.preview {
-                Some((_, Err(reason))) => Some(reason.clone()),
+                Some((_, Err(reason))) => Some(reason.description()),
                 _ => None,
             }
         };
@@ -308,7 +333,7 @@ impl OutputState {
                     }
                     Ok(None) => {}
                     Err(error) => {
-                        self.capture_error = Some((error).description());
+                        self.capture_error = Some(error);
                     }
                 }
             }
@@ -368,7 +393,7 @@ impl OutputState {
                                 WaveformScale::Fixed,
                             ))
                         })
-                        .map_err(|e| e.to_string())
+                        .map_err(PreviewIssue::Snapshot)
                 }
                 View::Workbench => {
                     let analysis = editor.committed_analysis(rate);
@@ -379,9 +404,11 @@ impl OutputState {
                             span_ms,
                             WaveformScale::Fixed,
                         ))),
-                        None => Err(analysis.finite_error().map_or_else(String::new, |e| {
-                            (e).at_rate(editor.draft().title(), rate)
-                        })),
+                        None => Err(PreviewIssue::Acoustic {
+                            title: editor.draft().title().into(),
+                            rate,
+                            error: analysis.finite_error().cloned(),
+                        }),
                     }
                 }
             };

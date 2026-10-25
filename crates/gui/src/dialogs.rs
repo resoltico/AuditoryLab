@@ -1,7 +1,7 @@
 //! The production shell: parent-bound asynchronous native dialogs and file
 //! panels, and the platform's answer to a close request.
 use crate::adapter::{Shell, SlintAdapter};
-use auditorylab::workspace::{PathPurpose, PromptId, Response};
+use auditorylab::workspace::{PathPurpose, PromptAnswer, PromptId};
 use std::{future::Future, rc::Rc};
 
 /// Native dialogs and application termination.
@@ -13,21 +13,21 @@ pub(crate) struct NativeShell;
 fn answer(
     adapter: &Rc<SlintAdapter>,
     prompt: PromptId,
-    dialog: impl Future<Output = Response> + 'static,
+    dialog: impl Future<Output = PromptAnswer> + 'static,
 ) {
     let target = Rc::clone(adapter);
     if let Err(error) = slint::spawn_local(async move {
         let response = dialog.await;
         target.respond(prompt, response);
     }) {
-        adapter.respond(prompt, Response::Failed(error.to_string()));
+        adapter.respond(prompt, PromptAnswer::Failed(error.to_string()));
     }
 }
 
 impl Shell for NativeShell {
     fn ask_purge(&self, adapter: &Rc<SlintAdapter>, prompt: PromptId, key: String, title: String) {
         let Some(ui) = adapter.main_window() else {
-            adapter.respond(prompt, Response::Cancel);
+            adapter.respond(prompt, PromptAnswer::Cancel);
             return;
         };
         answer(adapter, prompt, async move {
@@ -47,20 +47,20 @@ impl Shell for NativeShell {
                 .show()
                 .await;
             match choice {
-                rfd::MessageDialogResult::Ok => Response::Confirm,
+                rfd::MessageDialogResult::Ok => PromptAnswer::Confirm,
                 rfd::MessageDialogResult::Custom(label)
                     if label == auditorylab::vocabulary::Action::PermanentlyDelete.label() =>
                 {
-                    Response::Confirm
+                    PromptAnswer::Confirm
                 }
-                _ => Response::Cancel,
+                _ => PromptAnswer::Cancel,
             }
         });
     }
 
     fn ask_unsaved(&self, adapter: &Rc<SlintAdapter>, prompt: PromptId) {
         let Some(ui) = adapter.main_window() else {
-            adapter.respond(prompt, Response::Cancel);
+            adapter.respond(prompt, PromptAnswer::Cancel);
             return;
         };
         let description =
@@ -79,19 +79,19 @@ impl Shell for NativeShell {
                 .show()
                 .await;
             match choice {
-                rfd::MessageDialogResult::Yes => Response::Save,
-                rfd::MessageDialogResult::No => Response::Discard,
+                rfd::MessageDialogResult::Yes => PromptAnswer::Save,
+                rfd::MessageDialogResult::No => PromptAnswer::Discard,
                 rfd::MessageDialogResult::Custom(label)
                     if label == auditorylab::vocabulary::Action::Save.label() =>
                 {
-                    Response::Save
+                    PromptAnswer::Save
                 }
                 rfd::MessageDialogResult::Custom(label)
                     if label == auditorylab::vocabulary::Action::Discard.label() =>
                 {
-                    Response::Discard
+                    PromptAnswer::Discard
                 }
-                _ => Response::Cancel,
+                _ => PromptAnswer::Cancel,
             }
         });
     }
@@ -104,16 +104,16 @@ impl Shell for NativeShell {
         suggested_name: Option<String>,
     ) {
         let Some(ui) = adapter.main_window() else {
-            adapter.respond(prompt, Response::Path(None));
+            adapter.respond(prompt, PromptAnswer::Path(None));
             return;
         };
         let extension = match purpose {
-            PathPurpose::OpenRecipe | PathPurpose::SaveRecipe | PathPurpose::ExportRecipe => "toml",
+            PathPurpose::OpenRecipe | PathPurpose::ExportRecipe => "toml",
             PathPurpose::ExportWav => "wav",
         };
         let destination = match purpose {
             PathPurpose::OpenRecipe => None,
-            PathPurpose::SaveRecipe | PathPurpose::ExportRecipe | PathPurpose::ExportWav => {
+            PathPurpose::ExportRecipe | PathPurpose::ExportWav => {
                 Some(suggested_name.unwrap_or_else(|| {
                     auditorylab::vocabulary::Caption::suggested_filename(extension)
                 }))
@@ -123,8 +123,8 @@ impl Shell for NativeShell {
         let control = adapter.audio_control();
         answer(adapter, prompt, async move {
             match file_path(&ui, destination.as_deref(), extension, control).await {
-                Ok(path) => Response::Path(path),
-                Err(error) => Response::Failed(error),
+                Ok(path) => PromptAnswer::Path(path),
+                Err(error) => PromptAnswer::Failed(error),
             }
         });
     }

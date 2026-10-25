@@ -74,8 +74,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     selector.select()?;
     let windows = Windows::new()?;
-    let workspace =
-        Workspace::configured_library(auditorylab::recipe::catalog()?, Capabilities::available())?;
+    let workspace = Workspace::with_binding(
+        auditorylab::recipe::catalog()?,
+        Capabilities::available(),
+        auditorylab::workspace::LibraryBinding::configured()?,
+    )?;
     let adapter = SlintAdapter::install(
         &windows,
         workspace,

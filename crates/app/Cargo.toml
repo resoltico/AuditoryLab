@@ -7,13 +7,6 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-[features]
-default = []
-# Controlled execution fixtures for cross-crate production-adapter tests.
-test-support = []
-# Default-device playback through CPAL. Portable consumers leave it off.
-device-playback = ["dep:cpal"]
-
 [dependencies]
 toml.workspace = true
 same-file.workspace = true
@@ -28,7 +21,7 @@ rtrb.workspace = true
 triple_buffer.workspace = true
 getrandom.workspace = true
 unicode-normalization.workspace = true
-cpal = { workspace = true, optional = true }
+cpal.workspace = true
 auditorylab-core.workspace = true
 tempfile.workspace = true
 [target.'cfg(unix)'.dependencies]
@@ -47,7 +40,6 @@ waveadapter.workspace = true
 
 [[test]]
 name = "default_output"
-required-features = ["device-playback"]
 
 [lints]
 workspace = true

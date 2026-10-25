@@ -74,13 +74,7 @@ impl Error {
             leftover: None,
         }
     }
-    #[cfg_attr(
-        not(feature = "device-playback"),
-        expect(
-            dead_code,
-            reason = "Device errors are the only boxed causes built without a typed source"
-        )
-    )]
+
     pub(crate) fn boxed(
         kind: ErrorKind,
         message: impl Into<String>,
