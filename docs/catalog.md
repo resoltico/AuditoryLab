@@ -144,4 +144,4 @@ The running application neither downloads these sources nor checks custom metada
 
 Click and rectangular-gate recipes realize each stated width as exactly `round(width_seconds × sample_rate)` frames. Their onsets are the first frames at or after the period onsets. The catalog’s 1 ms pulses therefore have a constant frame width at each rendering rate.
 
-Catalog source conditions live in `crates/core/catalog/`; shared citation/DOI records live in `crates/core/studies/`. The core build generates standalone schema-3 recipe bytes. `auditorylab recipe ID` returns those exact bytes. Numerical expectations remain independently authored in the catalog integration test. Unicode and TOML escaping are supported in descriptive text.
+Catalog source conditions live in `crates/core/catalog/`; shared citation/DOI records live in `crates/core/studies/`. The core build generates standalone schema-3 recipe bytes. `auditorylab recipe builtin:ID` returns those exact bytes. Numerical expectations remain independently authored in the catalog test. Unicode and TOML escaping are supported in descriptive text.

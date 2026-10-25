@@ -6,30 +6,25 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Breaking
 
-- CLI selectors are explicit `builtin:ID` / `user:UUID`; plain-ID aliases are not supported. The managed-record and JSON-output formats each start at 1, independently of the existing Unreleased Recipe schema 3.
-- The one Unreleased Recipe schema 3 now requires a canonical document UUID and stable component IDs, supports signed-offset pairs, optional declared UTC history and full bibliography/scoped evidence/flat lineage. Earlier shapes and versions are rejected without migration. The Rust authored model is distinct from primitive DSP; `About`/`Research` are derived presentation views. `Draft` creation/copy is fallible when secure UUID allocation fails.
-- Human-facing sound components use Component consistently. Catalog source conditions reference shared citation/DOI records; built-in output is generated standalone recipe text.
+- One authored core model uses `Sound`, identified `Component`, `Node` and primitive `Voice`; the application realization is `Rendition`. Application APIs live in named modules under `crates/app`, with core exposed as `auditorylab::core`.
+- Portable recipes use schema 3 with UUID/history, stable component IDs, signed-offset pairs and scoped bibliography/evidence/lineage. Library layout 1 stores exact portable TOML with timestamp-only membership; CLI JSON output has version 1.
+- CLI selectors use `builtin:ID` and `user:UUID`; temporary sources use `--file` or `--stdin`. Managed mutation tokens are content SHA-256. CLI `--expect` is optional, while the GUI checks its observed token.
+- Device code is compiled with the application. Workspace construction binds a real library or a typed unavailable-library state; typed jobs/responses and the application Runner replace thread-owning workspace execution.
 
 ### Added
 
-- Persistent local User Library shared by native Slint and CLI, separate from immutable Built-ins, temporary Open files and Trash. Correlated evidence/date filters, deterministic sorts/groups, JSON and complete-inventory IDs output use one query model.
-- Expected revision/digest writes, bounded streaming discovery, cooperative locks, verified atomic publication, explicit uncertainty receipts/Recheck, scoped copies and managed add/edit/rename/Trash/Restore/purge. External-file Save checks opened identity and exact observed bytes; managed operations preserve original input files.
-- Shared nominal rhythm classification with five reference bands, multiple memberships, explicit outside/no-rhythm/review states and correlated band/method filters in CLI and Slint. Committed-draft and saved-candidate classifications are separate; library rows use cached nominal analysis. Search normalizes Unicode, requires all terms and matches bare numeric terms as whole values.
-- One-minute Ioannou 2015 binaural conditions at 2, 6, 20 and 40 Hz, retaining the existing 10 Hz and steady comparison conditions, with source parameters and adaptation limits documented.
+- A shared User Library with active, Built-in, User, Open files and Trash scopes; explicit copies, rename, Trash/Restore/purge; correlated evidence/date/rhythm filters; deterministic sorts/groups and typed JSON reports.
+- One Method vocabulary for requested/generated structure; typed-fact Unicode and whole-number search independent of display wording; separately cached draft and saved classifications.
+- Application-owned RowKeys reject late callbacks after remove/Undo and document replacement while preserving surviving field focus and caret.
+- Lock-free callback monitor publication with coherent state, bounded sample history and counted overflow gaps. The release callback cost check reports median, p99 and maximum software cost; its median limit is half the buffer period.
+- One-minute Ioannou 2015 binaural conditions at 2, 6, 20 and 40 Hz, with source parameters and adaptation limits documented.
 
 ### Changed
 
-- Compact Library views keep filter/recovery, refresh and clear actions reachable without results, with complete committed-filter summaries and Back scroll restoration. Rows show duration and sort dates; local-time details retain selectable exact UTC dates and honest Unknown history.
-- Live voices reuse a sinusoidal modulation evaluation within a frame only when its exact phase agrees. Each voice retains its own depth, gain and phase clock; sample bits and supported rates are preserved.
-- Inactive sinusoidal modulation retains rate validation but no longer creates a nonexistent upper-sideband restriction. Two-tone interpretation recognizes zero-depth modulation and unequal same-route levels; slowest-rate reporting includes positive monaural differences.
-
-- Search includes current own notes and attributed retained source context after reopen/reimport. Library action labels and availability come from shared application policy, including playback during Save/Import. Immutable snapshots cache two rate-specific signal successes/errors across details/readiness/export; command-driven controlled file/audio launches exercise result/exit/failure ordering through production bindings.
-
-- Save, Export and Play share side-effect-free preparation with readiness; failed preparation preserves staged input. Path prompts retain invocation-time content, and later edits remain dirty after a captured Save.
-- Removed/replaced GUI bindings retire immediately; Undo receives a fresh token. Library views reuse explicit source/query/selection/rate dependencies. Production callbacks are split by responsibility while preserving row identity and native behavior.
-- Worker launch failures become visible outcomes. Export tasks carry their sound by construction. The portable consumer exports and checks its edited draft.
-- `cargo xtask verify-vendor` authenticates upstream archives, applies exact reviewable patches and verifies vendor trees and product/target Cargo sources. Parley masks no longer depend on deprecated ICU numeric values.
-- Callback qualification sustains full component replacements, warms up and reports 3,000 measurements per configuration, deadlines and explicit optional headroom criteria. Dedicated manual CI records controlled measurements separately from functional CI.
+- Shared publication verifies ambiguous I/O outcomes. Confirmed durability/cleanup warnings remain successful saves; newer edits stay dirty. Interrupted library moves preserve content and Trash authority without receipts or automatic stage promotion.
+- CLI and Slint render application vocabulary and descriptions. GUI controls use string row lifetimes; the coordinator retains typed state, one query path and one file/audio slot, with final completion after worker join.
+- Toolkit patches retain accessibility, focus, multiline editing, modeless windows and macOS Quit/About routing. Font shaping and X11 DPI follow upstream policy; a reduced scale-only reader preserves GNOME Wayland text scaling.
+- Compact Library filtering, local dates with selectable UTC details, persistent Stop controls, waveform captures and finite-invalid editing remain available. Staged/nonfinite input is preserved for correction; playback validates at the device's actual rate.
 
 ## [0.5.0] - 2026-10-23
 
