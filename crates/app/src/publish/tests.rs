@@ -567,3 +567,89 @@ fn unreadable_postpublication_verification_names_the_path_without_claiming_no_ch
     assert!(!error.to_string().contains("previous content remains"));
     assert_eq!(fs::read(path).unwrap(), b"candidate");
 }
+
+#[test]
+fn precommit_hashing_checks_cancellation_between_blocks() {
+    use std::{cell::Cell, rc::Rc};
+    for phase in ["previous", "stage", "conditional"] {
+        let (temp, dir, path) = fixture();
+        let original = vec![b'o'; 128 * 1024];
+        let candidate = vec![b'n'; 128 * 1024];
+        if phase != "stage" {
+            fs::write(&path, &original).unwrap();
+        }
+        let identity = if phase == "conditional" {
+            Some(same_file::Handle::from_path(&path).unwrap())
+        } else {
+            None
+        };
+        let cancel = Cancel::default();
+        let request = cancel.clone();
+        let blocks = Rc::new(Cell::new(0));
+        let counted = blocks.clone();
+        let stop_after = if phase == "conditional" { 5 } else { 1 };
+        HASH_BLOCK.with(|slot| {
+            *slot.borrow_mut() = Some(Box::new(move || {
+                let count = counted.get() + 1;
+                counted.set(count);
+                if count == stop_after {
+                    request.request();
+                }
+            }))
+        });
+        let written = Cell::new(false);
+        let policy = match phase {
+            "previous" => Policy::Replace,
+            "stage" => Policy::CreateNew,
+            _ => Policy::ReplaceIfUnchanged {
+                fingerprint: Fingerprint::of(&original),
+                identity: identity.as_ref().unwrap(),
+            },
+        };
+        let result = publish_in(&dir, Path::new("entry"), &path, policy, &cancel, |file| {
+            written.set(true);
+            file.write_all(&candidate)
+                .map_err(|error| io(&path, "cannot write candidate", error))
+        });
+        HASH_BLOCK.with(|slot| *slot.borrow_mut() = None);
+        assert_eq!(result.unwrap_err().kind(), ErrorKind::Cancelled, "{phase}");
+        assert_eq!(
+            blocks.get(),
+            stop_after,
+            "{phase} must stop before reading another block"
+        );
+        assert_eq!(written.get(), phase != "previous");
+        if phase == "stage" {
+            assert!(!path.exists());
+            assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 0);
+        } else {
+            assert_eq!(fs::read(&path).unwrap(), original);
+            assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+        }
+    }
+}
+#[test]
+fn cancellation_after_publication_does_not_interrupt_truth_verification() {
+    let (_temp, dir, path) = fixture();
+    fs::write(&path, b"previous").unwrap();
+    let cancel = Cancel::default();
+    let request = cancel.clone();
+    AFTER_PUBLISH.with(|slot| *slot.borrow_mut() = Some(Box::new(move || request.request())));
+    inject(&[FaultPoint::AfterPublish]);
+    let candidate = vec![b'n'; 128 * 1024];
+    let result = publish_in(
+        &dir,
+        Path::new("entry"),
+        &path,
+        Policy::Replace,
+        &cancel,
+        |file| {
+            file.write_all(&candidate)
+                .map_err(|error| io(&path, "cannot write candidate", error))
+        },
+    )
+    .unwrap();
+    assert!(cancel.is_requested());
+    assert!(!result.warnings.is_empty());
+    assert_eq!(fs::read(path).unwrap(), candidate);
+}

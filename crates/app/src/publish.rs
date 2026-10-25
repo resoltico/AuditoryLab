@@ -85,28 +85,45 @@ pub(crate) fn read_bounded_counted(
     Ok(bytes)
 }
 
-fn hash(file: &mut File) -> Result<Fingerprint, std::io::Error> {
-    file.seek(SeekFrom::Start(0))?;
+/// Pre-commit reads honor cancellation; post-commit verification passes None to preserve publication truth.
+fn hash(file: &mut File, path: &Path, cancel: Option<&Cancel>) -> Result<Fingerprint, Error> {
+    if cancel.is_some_and(Cancel::is_requested) {
+        return Err(cancelled(path));
+    }
+    file.seek(SeekFrom::Start(0))
+        .map_err(|e| io(path, "cannot seek file for hashing", e))?;
     let mut digest = Sha256::new();
     let mut block = [0; 64 * 1024];
     loop {
-        let n = file.read(&mut block)?;
-        if n == 0 {
+        if cancel.is_some_and(Cancel::is_requested) {
+            return Err(cancelled(path));
+        }
+        let count = match file.read(&mut block) {
+            Ok(count) => count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(io(path, "cannot read file for hashing", error)),
+        };
+        if count == 0 {
             break;
         }
-        digest.update(&block[..n]);
+        digest.update(&block[..count]);
+        #[cfg(test)]
+        HASH_BLOCK.with(|slot| {
+            if let Some(hook) = slot.borrow_mut().as_mut() {
+                hook();
+            }
+        });
     }
     Ok(Fingerprint::from_digest(digest.finalize().into()))
 }
-fn observed(dir: &Dir, name: &Path) -> Result<Option<Fingerprint>, Error> {
+fn observed(dir: &Dir, name: &Path, cancel: Option<&Cancel>) -> Result<Option<Fingerprint>, Error> {
     match dir.symlink_metadata(name) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(io(name, "cannot inspect destination", e)),
-        Ok(_) => hash(&mut open_regular(dir, name)?)
-            .map(Some)
-            .map_err(|e| io(name, "cannot hash destination", e)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(io(name, "cannot inspect destination", error)),
+        Ok(_) => hash(&mut open_regular(dir, name)?, name, cancel).map(Some),
     }
 }
+
 fn io(path: &Path, context: &str, error: std::io::Error) -> Error {
     Error::caused(
         ErrorKind::Write,
@@ -159,7 +176,7 @@ pub(crate) fn publish_in<T>(
     let previous = if matches!(policy, Policy::CreateNew) {
         None
     } else {
-        observed(dir, name)?
+        observed(dir, name, Some(cancel))?
     };
     let stage = PathBuf::from(format!(
         ".auditorylab-{}.partial",
@@ -188,15 +205,14 @@ pub(crate) fn publish_in<T>(
             .and_then(|()| fault(FaultPoint::FileSync))
             .and_then(|()| file.sync_all())
             .map_err(|e| io(path, "cannot synchronize stage", e))?;
-        let fingerprint = hash(&mut file).map_err(|e| io(path, "cannot verify stage bytes", e))?;
+        let fingerprint = hash(&mut file, path, Some(cancel))?;
         if let Policy::ReplaceIfUnchanged {
             fingerprint: expected,
             identity,
         } = policy
         {
             let mut latest = open_regular(dir, name)?;
-            let found =
-                hash(&mut latest).map_err(|e| io(path, "cannot verify current bytes", e))?;
+            let found = hash(&mut latest, path, Some(cancel))?;
             let handle = same_file::Handle::from_file(latest)
                 .map_err(|e| io(path, "cannot verify current identity", e))?;
             if found != expected || handle != *identity {
@@ -242,7 +258,7 @@ pub(crate) fn publish_in<T>(
         }
         let found = fault(FaultPoint::Verify)
             .map_err(|e| io(path, "destination verification unavailable", e))
-            .and_then(|()| observed(dir, name));
+            .and_then(|()| observed(dir, name, None));
         match found {
             Ok(Some(fingerprint)) if fingerprint == candidate => warnings.push(format!(
                 "Saved; publication was verified after an I/O error: {error}"
@@ -275,7 +291,7 @@ pub(crate) fn publish_in<T>(
     }
     drop(file);
     if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
-        match observed(dir, name) {
+        match observed(dir, name, None) {
             Ok(Some(found)) if found == candidate => {
                 warnings.push(format!("Saved; directory durability warning: {error}"))
             }
@@ -358,6 +374,8 @@ enum FaultPoint {
     BeforeRemove,
     AfterRemove,
 }
+#[cfg(test)]
+thread_local! {static HASH_BLOCK:std::cell::RefCell<Option<Box<dyn FnMut()>>>=const {std::cell::RefCell::new(None)};}
 #[cfg(test)]
 thread_local! {static AFTER_PUBLISH: std::cell::RefCell<Option<Box<dyn FnOnce()>>>=const {std::cell::RefCell::new(None)};static INJECT: std::cell::RefCell<Vec<FaultPoint>>=const {std::cell::RefCell::new(Vec::new())};}
 fn fault(point: FaultPoint) -> std::io::Result<()> {
@@ -444,8 +462,10 @@ pub(crate) fn relocate(
     source_file
         .sync_all()
         .map_err(|e| io(source, "cannot sync relocation source", e))?;
-    let expected =
-        hash(&mut source_file).map_err(|e| io(source, "cannot hash relocation source", e))?;
+    let expected = hash(&mut source_file, source, Some(cancel))?;
+    if cancel.is_requested() {
+        return Err(cancelled(destination));
+    }
     pause(FaultPoint::BeforeLink);
     fault(FaultPoint::BeforeLink)
         .and_then(|()| from.hard_link(name, to, name))
@@ -481,7 +501,7 @@ pub(crate) fn relocate(
     }
     for dir in [from, to] {
         if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
-            if observed(to, name)? != Some(expected) {
+            if observed(to, name, None)? != Some(expected) {
                 return Err(io(
                     destination,
                     "relocation durability failed and destination changed",
