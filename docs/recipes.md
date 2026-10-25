@@ -4,6 +4,8 @@ A recipe is UTF-8 TOML describing a stereo sound, in hertz, seconds and dBFS. It
 
 The desktop [Workbench](desktop.md#workbench) writes the same strict schema-3 document as the CLI reader. Identity, current notes, bibliography, evidence scope and flat ancestry are portable. Exporting a saved recipe preserves its UUID; **Edit a copy** creates a fresh identity and retains attribution without inherited validation. Inspect custom files with `auditorylab inspect --file PATH` before playback or export.
 
+Recipe schema **3**, defined by [`Recipe::SCHEMA_VERSION`](../crates/core/src/recipe.rs), describes the portable UTF-8 TOML document. Unsupported schema versions and unknown fields are rejected.
+
 ## Examples
 
 These UUIDs are illustrative fixtures. Use **New** or **Edit a copy** to allocate a fresh random identity for a new sound. Save UTF-8 text as `custom.toml`, then inspect it without opening an audio device.
@@ -78,7 +80,7 @@ An empty component array means silence; the document identity and finite envelop
 
 ## Fields and identity
 
-`schema_version = 3`, `duration_seconds`, `fade_seconds` and `[document] id` are required. Schema 3 is extended in place while Unreleased; only this shape is read. Earlier shapes/versions are rejected, without migration, fallback parsing or silent identity insertion. Unknown/duplicate keys, mistyped fields, nonfinite numbers and duplicate/nonpositive component IDs fail. Whole numeric literals are accepted as reals. A finite sound may still be invalid at a selected sample rate and can be saved for repair.
+`schema_version = 3`, `duration_seconds`, `fade_seconds` and `[document] id` are required. The reader accepts only this document shape. Earlier shapes/versions are rejected, without migration, fallback parsing or silent identity insertion. Unknown/duplicate keys, mistyped fields, nonfinite numbers and duplicate/nonpositive component IDs fail. Whole numeric literals are accepted as reals. A finite sound may still be invalid at a selected sample rate and can be saved for repair.
 
 | Field | Meaning |
 |---|---|

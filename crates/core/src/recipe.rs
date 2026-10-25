@@ -13,8 +13,8 @@ use core::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 /// One portable authored document, independent of local ownership and membership.
-/// Only unreleased schema 3 is supported. The writer and reader share the strict
-/// bounded shape; finite acoustic errors remain editable and serializable.
+/// Schema 3 uses a strict bounded document shape; finite acoustic errors remain
+/// editable and serializable.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Recipe {
     /// Stable identity and optional declared history, never filesystem dates.
@@ -127,7 +127,7 @@ struct Document {
     lineage: Vec<Lineage>,
 }
 impl Recipe {
-    /// The only supported recipe schema; extended in place while Unreleased.
+    /// Version of the portable UTF-8 TOML recipe format.
     pub const SCHEMA_VERSION: u32 = 3;
     /// Maximum portable UTF-8 bytes, including metadata.
     pub const MAX_BYTES: usize = 65_536;
