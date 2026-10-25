@@ -872,7 +872,7 @@ fn empty_and_malformed_buffers_establish_nothing() {
 }
 
 #[test]
-fn a_held_monitor_cannot_postpone_generation_end_or_admission_closure() {
+fn a_stalled_monitor_reader_cannot_postpone_generation_end_or_admission_closure() {
     let state = SessionState::new();
     let generator = LiveGenerator::with_state(Target::silence(rate(8_000)), Arc::clone(&state));
     let control = generator.control();
@@ -895,20 +895,22 @@ fn a_held_monitor_cannot_postpone_generation_end_or_admission_closure() {
         Arc::clone(&state),
         Some(Arc::clone(generator.mailbox())),
     );
-    let mut reader = monitor.reader();
+    let mut reader = monitor.reader().unwrap();
     let mut c = Transport::new(Source::Live(Box::new(generator)), 2, Arc::clone(&state))
         .with_monitor(Some(monitor.clone()));
     fill(&mut c, 512, time(0, 0));
     reader.poll(40);
     let stale = reader.status().observation;
-    let guard = monitor.hold_history();
+    for n in 1..4 {
+        fill(&mut c, 512, time(n * 64, n * 64));
+    }
     state.request_stop();
     assert_eq!(
         control.update(&Target::silence(rate(8_000))),
         Err(crate::session::LiveUpdateError::SessionClosed),
         "Stop closes admission at once"
     );
-    for n in 1..8 {
+    for n in 4..12 {
         fill(&mut c, 512, time(n * 64, n * 64));
     }
     assert!(
@@ -917,19 +919,26 @@ fn a_held_monitor_cannot_postpone_generation_end_or_admission_closure() {
     );
     assert!(
         !state.outcome().is_active(),
-        "drain completes with the monitor held"
+        "drain completes with the monitor reader stalled"
     );
-    drop(guard);
     reader.poll(40);
     assert_eq!(
         reader.status().phase,
         crate::session::PlaybackPhase::Stopped
     );
-    assert_eq!(
+    assert_ne!(
         reader.status().observation,
         stale,
-        "the missed capture stays stale"
+        "generated state remains current while the sample consumer stalls"
     );
-    assert!(reader.status().missed_publications > 0);
+    assert!(reader.status().gaps > 0);
+    assert!(
+        crate::waveform_view::WaveformCapture::monitored(
+            &reader,
+            crate::waveform_view::WaveformScale::Fit
+        )
+        .unwrap()
+        .is_none()
+    );
     assert!(reader.status().generated_frames > 512);
 }

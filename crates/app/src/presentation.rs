@@ -842,7 +842,6 @@ impl crate::session::MonitorReader {
                 crate::session::ObservationFreshness::Waiting => "waiting for generated audio",
                 crate::session::ObservationFreshness::Current => "current",
                 crate::session::ObservationFreshness::Stale => "stale",
-                crate::session::ObservationFreshness::Unavailable => "monitoring unavailable",
             },
             (status.observation.as_ref()).summary()
         )

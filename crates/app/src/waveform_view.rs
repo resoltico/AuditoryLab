@@ -109,7 +109,7 @@ impl WaveformCapture {
         reader: &MonitorReader,
         scale: WaveformScale,
     ) -> Result<Option<Self>, CaptureError> {
-        if reader.samples().is_empty() {
+        if !reader.has_current_window() {
             return Ok(None);
         }
         let status = reader.status();
@@ -447,10 +447,11 @@ pub fn output_monitor_state(
         };
     }
     match reader.freshness() {
-        crate::session::ObservationFreshness::Unavailable => OutputMonitorState::Unavailable,
         crate::session::ObservationFreshness::Waiting => OutputMonitorState::Waiting,
         crate::session::ObservationFreshness::Stale => OutputMonitorState::Stale,
-        crate::session::ObservationFreshness::Current if capture.is_some() => {
+        crate::session::ObservationFreshness::Current
+            if capture.is_some() && reader.has_current_window() =>
+        {
             OutputMonitorState::Live
         }
         crate::session::ObservationFreshness::Current => OutputMonitorState::Waiting,
@@ -459,8 +460,6 @@ pub fn output_monitor_state(
 /// A monitor-data or display warning, independent of backend-reported output underruns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MonitorWarning {
-    /// Monitoring cannot provide observations.
-    Unavailable,
     /// Retained observations are no longer current.
     Stale,
     /// Current samples do not yet cover the requested contiguous window.
@@ -472,7 +471,6 @@ impl MonitorWarning {
     /// Visible and accessible text for this current condition.
     pub const fn message(self) -> &'static str {
         match self {
-            Self::Unavailable => "Monitoring unavailable; audio transport is independent.",
             Self::Stale => "Monitoring is stale; retained samples are not current output.",
             Self::IncompleteCoverage => {
                 "Incomplete current waveform coverage; waiting for a contiguous window."
@@ -485,15 +483,12 @@ impl MonitorWarning {
     /// Stale and unavailable monitoring are announced automatically.
     /// Coverage and display-scale advice remain readable without repeated automatic speech.
     pub const fn announces_changes(self) -> bool {
-        !matches!(self, Self::IncompleteCoverage | Self::FixedRangeExceeded)
+        matches!(self, Self::Stale)
     }
 }
 /// Current impairment only. Cumulative skipped monitor publications remain in diagnostics.
 pub fn monitor_warning(reader: &MonitorReader, window_ms: u32) -> Option<MonitorWarning> {
     let status = reader.status();
-    if status.disabled {
-        return Some(MonitorWarning::Unavailable);
-    }
     if matches!(
         status.phase,
         crate::session::PlaybackPhase::Running
@@ -506,7 +501,9 @@ pub fn monitor_warning(reader: &MonitorReader, window_ms: u32) -> Option<Monitor
         let wanted = (u64::from(reader.descriptor().output.sample_rate.hz())
             * u64::from(window_ms.clamp(1, 100)))
         .div_ceil(1000);
-        if status.window_end.saturating_sub(status.window_start) < wanted {
+        if !reader.has_current_window()
+            || status.window_end.saturating_sub(status.window_start) < wanted
+        {
             return Some(MonitorWarning::IncompleteCoverage);
         }
     }

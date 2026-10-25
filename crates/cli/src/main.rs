@@ -200,7 +200,10 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> 
     let report = if io::stderr().is_terminal() {
         let mut reader = playback
             .monitor(lab::session::MonitorDetail::Quantities)
-            .reader();
+            .reader()
+            .ok_or_else(|| {
+                std::io::Error::other(auditorylab::vocabulary::Caption::MonitorAlreadyInUse.label())
+            })?;
         let done = std::sync::atomic::AtomicBool::new(false);
         std::thread::scope(
             |scope| -> Result<lab::session::PlaybackReport, Box<dyn std::error::Error>> {

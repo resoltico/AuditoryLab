@@ -10,7 +10,7 @@
 //! G while S keeps advancing through silence. The backend states, for each
 //! buffer, when the callback runs and when its first frame plays. Time is
 //! measured from the stream's own origin.
-use super::monitor::PlaybackMonitor;
+use super::monitor::{MonitorWriter, PlaybackMonitor};
 use super::source::Source;
 use super::{Outcome, SessionState};
 use std::sync::Arc;
@@ -44,7 +44,7 @@ pub(crate) fn frame_duration(frames: u64, rate_hz: u32, rounding: Rounding) -> D
 /// One stream's buffer filling, progress estimate and drain decision.
 pub(crate) struct Transport {
     source: Source,
-    monitor: Option<PlaybackMonitor>,
+    monitor: Option<MonitorWriter>,
     state: Arc<SessionState>,
     scratch: Vec<[f64; 2]>,
     device_channels: usize,
@@ -79,7 +79,7 @@ impl Transport {
     }
 
     pub(crate) fn with_monitor(mut self, monitor: Option<PlaybackMonitor>) -> Self {
-        self.monitor = monitor;
+        self.monitor = monitor.and_then(|monitor| monitor.writer());
         self
     }
 
@@ -191,7 +191,7 @@ impl Transport {
 
     /// Render the next source frames and place them on the device's channels.
     fn render<T: Copy>(&mut self, output: &mut [T], convert: &impl Fn(f64) -> T) -> u64 {
-        let mut publication = self.monitor.as_ref().and_then(PlaybackMonitor::try_publish);
+        let publication = &mut self.monitor;
         let mut active = 0;
         for chunk in output.chunks_mut(SCRATCH_FRAMES * self.device_channels) {
             let frames = chunk.len() / self.device_channels;
@@ -213,11 +213,6 @@ impl Transport {
             publication.finish(self.source.generated(), self.source.observation());
         }
         active
-    }
-
-    #[cfg(test)]
-    pub(crate) fn diagnostic_observation(&self) -> Option<auditorylab_core::Observation> {
-        self.source.observation()
     }
 
     #[cfg(test)]

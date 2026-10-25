@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-#[path = "callback_diagnostics.rs"]
-mod diagnostics;
 use crate::core::{Carrier, Ears, Sound, Voice};
 use crate::recipe::Origin;
 use crate::session::live::LiveGenerator;
@@ -87,7 +85,7 @@ fn real_callback_samples_match_history_with_finite_stop_and_contention() {
         SessionState::new(),
         None,
     );
-    let mut reader = monitor.reader();
+    let mut reader = monitor.reader().unwrap();
     let mut a = Transport::new(finite(signal(8000)), 2, monitor.session())
         .with_monitor(Some(monitor.clone()));
     let other = SessionState::new();
@@ -117,22 +115,19 @@ fn real_callback_samples_match_history_with_finite_stop_and_contention() {
     let captured_id = frozen.session().unwrap().id;
     assert_eq!(frozen.span(), (0, 512));
     assert_eq!(frozen.observation().unwrap().frame, 511);
-    let guard = monitor.0.history.lock().unwrap();
     a.fill(&mut x, time(64_000_000), &|v| v);
     b.fill(&mut y, time(64_000_000), &|v| v);
     assert_eq!(x, y);
-    assert!(!reader.poll(100));
+    assert!(reader.poll(100));
     assert_eq!(reader.status().generated_frames, 1024);
-    drop(guard);
     a.fill(&mut x, time(128_000_000), &|v| v);
     b.fill(&mut y, time(128_000_000), &|v| v);
     assert_eq!(x, y);
     reader.poll(100);
-    assert_eq!(reader.status().gaps, 1);
-    assert_eq!(reader.status().missed_publications, 1);
+    assert_eq!(reader.status().gaps, 0);
     assert_eq!(reader.status().underruns, 0);
-    assert_eq!(reader.status().window_start, 1024);
-    assert_eq!(reader.samples().len(), 512);
+    assert_eq!(reader.status().window_start, 736);
+    assert_eq!(reader.samples().len(), 800);
     monitor.0.session.request_stop();
     other.request_stop();
     a.fill(&mut x, time(192_000_000), &|v| v);
@@ -169,59 +164,54 @@ fn ring_limits_wrap_large_writes_and_age_are_bounded() {
             None,
         );
         let cap = capacity(SampleRate::new(hz).unwrap());
-        assert_eq!(m.0.history.lock().unwrap().samples.len(), cap);
+        let mut p = m.writer().unwrap();
         let data = vec![[0.5, -0.25]; cap + 17];
         {
-            let mut p = m.try_publish().unwrap();
             p.append(0, &data);
             p.finish(data.len() as u64, None);
         }
-        let mut r = m.reader();
+        let mut r = m.reader().unwrap();
         assert!(r.poll(100));
         assert_eq!(r.samples().len(), cap);
-        assert_eq!(r.status().window_start, 17);
+        assert_eq!(r.status().window_start, 0);
+        assert_eq!(r.status().gaps, 1);
         let received = r.received;
         r.poll(100);
         assert_eq!(r.received, received);
+        p.append(data.len() as u64, &[[0.25, -0.125]]);
+        p.finish(data.len() as u64 + 1, None);
+        r.poll(100);
+        assert_eq!(r.status().gaps, 1);
         {
-            let mut p = m.try_publish().unwrap();
             p.append(data.len() as u64 + 100, &[[0.0; 2]]);
             p.finish(data.len() as u64 + 101, None);
         }
         r.poll(100);
         assert_eq!(r.samples(), [[0.0; 2]]);
-        assert_eq!(r.status().gaps, 1);
+        assert_eq!(r.status().gaps, 2);
     }
 }
 #[test]
-fn poisoned_monitor_never_fails_audio_and_terminal_survives_missing_snapshot() {
-    let m = PlaybackMonitor::new(
+fn endpoints_are_claimed_once_before_callback_use() {
+    let monitor = PlaybackMonitor::new(
         descriptor(8000),
         MonitorDetail::Waveform,
         SessionState::new(),
         None,
     );
-    let c = m.clone();
-    assert!(
-        std::thread::spawn(move || {
-            let _guard = c.0.history.lock().unwrap();
-            panic!("injected monitor poisoning")
-        })
-        .join()
-        .is_err()
-    );
-    let mut callback =
-        Transport::new(finite(signal(8000)), 2, m.session()).with_monitor(Some(m.clone()));
-    let mut out = [0.0; 1024];
-    callback.fill(&mut out, time(0), &|v| v);
-    assert!(out.iter().any(|v| *v != 0.0));
-    let mut reader = m.reader();
-    assert!(!reader.poll(40));
-    assert!(reader.status().disabled);
-    m.0.session.finish(Outcome::Backend);
-    reader.poll(40);
+    let mut writer = monitor.writer().unwrap();
+    assert!(monitor.writer().is_none());
+    let mut reader = monitor.reader().unwrap();
+    assert!(monitor.reader().is_none());
+    writer.append(0, &[[0.5, -0.25]]);
+    writer.finish(1, None);
+    assert!(reader.poll(100));
+    assert_eq!(reader.samples(), [[0.5, -0.25]]);
+    monitor.session().finish(Outcome::Backend);
+    reader.poll(100);
     assert_eq!(reader.status().phase, PlaybackPhase::Failed);
 }
+
 #[test]
 fn callbacks_and_preallocated_reads_allocate_nothing() {
     let m = PlaybackMonitor::new(
@@ -230,7 +220,7 @@ fn callbacks_and_preallocated_reads_allocate_nothing() {
         SessionState::new(),
         None,
     );
-    let mut reader = m.reader();
+    let mut reader = m.reader().unwrap();
     let mut callback = Transport::new(finite(signal(8000)), 2, m.session()).with_monitor(Some(m));
     let mut out = [0.0; 4096];
     let measured = allocation_counter::measure(|| {
@@ -245,8 +235,7 @@ fn callbacks_and_preallocated_reads_allocate_nothing() {
         SessionState::new(),
         None,
     );
-    assert!(m.0.history.lock().unwrap().samples.is_empty());
-    assert!(m.reader().samples.is_empty());
+    assert!(m.reader().unwrap().samples.is_empty());
 }
 #[test]
 fn digital_meters_and_extrema_use_the_entire_window() {
@@ -299,7 +288,7 @@ fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
         Arc::clone(&monitored),
         Some(Arc::clone(a.mailbox())),
     );
-    let mut reader = monitor.reader();
+    let mut reader = monitor.reader().unwrap();
     let mut a =
         Transport::new(Source::Live(Box::new(a)), 2, monitored).with_monitor(Some(monitor.clone()));
     let mut b = Transport::new(Source::Live(Box::new(b)), 2, other.clone());
@@ -315,11 +304,9 @@ fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
             monitor.0.session.request_stop();
             other.request_stop();
         }
-        let guard = (block == 6).then(|| monitor.0.history.lock().unwrap());
         a.fill(&mut x, time(block * 1024 * 1_000_000_000 / 48000), &|v| v);
         b.fill(&mut y, time(block * 1024 * 1_000_000_000 / 48000), &|v| v);
         assert_eq!(x.map(f64::to_bits), y.map(f64::to_bits));
-        drop(guard);
         reader.poll(100);
         if block == 4 {
             let obs = reader.status().observation.unwrap();
@@ -330,7 +317,7 @@ fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
         }
     }
     assert_eq!(reader.status().phase, PlaybackPhase::Stopped);
-    assert_eq!(reader.status().missed_publications, 1);
+    assert_eq!(reader.status().gaps, 0);
     assert_eq!(reader.status().underruns, 0);
 }
 #[test]
@@ -341,13 +328,13 @@ fn a_real_stalled_reader_never_blocks_callback_completion() {
         SessionState::new(),
         None,
     );
+    let reader = monitor.reader().unwrap();
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
     let (release_tx, release_rx) = std::sync::mpsc::channel();
-    let other = monitor.clone();
     let holder = std::thread::spawn(move || {
-        let _guard = other.0.history.lock().unwrap();
         ready_tx.send(()).unwrap();
-        let _ = release_rx.recv_timeout(Duration::from_secs(3));
+        release_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        reader
     });
     ready_rx.recv().unwrap();
     let mut callback = Transport::new(finite(signal(8000)), 2, monitor.session())
@@ -356,17 +343,42 @@ fn a_real_stalled_reader_never_blocks_callback_completion() {
     for n in 0..10 {
         callback.fill(&mut output, time(n * 64_000_000), &|v| v);
     }
-    assert_eq!(monitor.0.missed.load(Ordering::Relaxed), 10);
-    let _ = release_tx.send(());
-    holder.join().unwrap();
-    let mut reader = monitor.reader();
-    reader.poll(40);
+    release_tx.send(()).unwrap();
+    let mut reader = holder.join().unwrap();
+    assert!(reader.poll(100));
     assert_eq!(reader.status().generated_frames, 5120);
+    assert_eq!(
+        reader.status().observation.unwrap().frame,
+        5119,
+        "state publication retains the latest observation during a sample-ring stall"
+    );
     assert_eq!(reader.status().phase, PlaybackPhase::Running);
-    callback.fill(&mut output, time(640_000_000), &|v| v);
-    reader.poll(40);
+    assert_eq!(reader.status().gaps, 1);
+    assert_eq!(
+        reader.status().window_end,
+        800,
+        "full sample ring drops new frames rather than overwriting unread samples"
+    );
+    assert!(!reader.has_current_window());
+    assert!(
+        crate::waveform_view::WaveformCapture::monitored(
+            &reader,
+            crate::waveform_view::WaveformScale::Fit
+        )
+        .unwrap()
+        .is_none()
+    );
+    for n in 10..12 {
+        callback.fill(&mut output, time(n * 64_000_000), &|v| v);
+        reader.poll(100);
+    }
+    assert!(reader.has_current_window());
+    assert_eq!(reader.samples().len(), 800);
+    assert_eq!(reader.status().window_start, 5344);
+    assert_eq!(reader.status().window_end, 6144);
     assert_eq!(reader.status().gaps, 1);
 }
+
 #[test]
 fn unchanged_receipts_do_not_hide_stale_observations() {
     let monitor = PlaybackMonitor::new(
@@ -375,10 +387,10 @@ fn unchanged_receipts_do_not_hide_stale_observations() {
         SessionState::new(),
         None,
     );
-    let mut reader = monitor.reader();
+    let mut reader = monitor.reader().unwrap();
     assert_eq!(reader.freshness(), ObservationFreshness::Waiting);
     {
-        let mut p = monitor.try_publish().unwrap();
+        let mut p = monitor.writer().unwrap();
         p.finish(1, None);
     }
     reader.poll(0);
@@ -388,20 +400,26 @@ fn unchanged_receipts_do_not_hide_stale_observations() {
     assert_eq!(reader.freshness(), ObservationFreshness::Stale);
 }
 #[test]
-#[ignore = "synthetic callback timing qualification; no audio device"]
-fn callback_monitor_costs() {
-    let limit = std::env::var("AUDITORYLAB_PERF_MAX_BUDGET_PERCENT")
-        .ok()
-        .map(|v| v.parse::<u128>().unwrap());
-    assert!(limit.is_none_or(|percent| (1..=100).contains(&percent)));
-    let mut failures = Vec::new();
-    println!(
-        "qualification: os={} arch={} profile=release warmup=100 repeats=3 samples_per_repeat=1000 headroom_percent={:?}",
-        std::env::consts::OS,
-        std::env::consts::ARCH,
-        limit.map(|p| 100 - p)
+#[ignore = "release-only callback median cost gate; no device is opened"]
+#[expect(
+    clippy::assertions_on_constants,
+    reason = "The ignored cost gate rejects a debug-profile invocation instead of recording misleading regression measurements"
+)]
+fn callback_cost() {
+    assert!(
+        !cfg!(debug_assertions),
+        "run callback_cost in the release profile"
     );
-    for hz in [48000, 768000] {
+    const WARMUP: u64 = 100;
+    const MEASURED: usize = 3000;
+    let mut failures = Vec::new();
+    let mut configurations = 0;
+    println!(
+        "callback_cost os={} arch={} warmup={WARMUP} measured={MEASURED} median_limit_percent=50",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+    for hz in [48_000, 768_000] {
         for frames in [64_usize, 256, 1024, 4096] {
             for detail in [
                 None,
@@ -417,7 +435,7 @@ fn callback_monitor_costs() {
                             frequency_hz: 200.0 + f64::from(n) * 20.0,
                         },
                         modulation: Some(crate::core::Modulation::Sinusoidal {
-                            rate_hz: 39.0625,
+                            rate_hz: 23.0 + f64::from(n) * 0.75,
                             depth: 1.0,
                         }),
                     })
@@ -427,9 +445,10 @@ fn callback_monitor_costs() {
                     rate,
                     &components
                         .iter()
-                        .map(|c| Voice {
+                        .enumerate()
+                        .map(|(n, c)| Voice {
                             carrier: Carrier::Click {
-                                rate_hz: 40.0,
+                                rate_hz: 40.0 + f64::from(u32::try_from(n).unwrap()),
                                 width_seconds: 0.001,
                             },
                             ..*c
@@ -449,24 +468,17 @@ fn callback_monitor_costs() {
                         Some(Arc::clone(generator.mailbox())),
                     )
                 });
-                let mut reader = monitor.as_ref().map(PlaybackMonitor::reader);
+                let mut reader = monitor.as_ref().and_then(PlaybackMonitor::reader);
                 let mut callback =
                     Transport::new(Source::Live(Box::new(generator)), 2, Arc::clone(&shared))
-                        .with_monitor(monitor.clone());
+                        .with_monitor(monitor);
                 let mut output = vec![0.0; frames * 2];
-                let mut timings = Vec::with_capacity(3000);
+                let mut timings = Vec::with_capacity(MEASURED);
                 let mut next_poll = 0;
-                for n in 0..3100_u64 {
-                    // Request a full carrier replacement for all 16 components at
-                    // every callback boundary: crossfades use up to 32 slots.
+                for n in 0..WARMUP + u64::try_from(MEASURED).unwrap() {
                     control
                         .update(if n % 2 == 0 { &pulses } else { &tones })
                         .unwrap();
-                    let guard = if n % 25 == 0 {
-                        monitor.as_ref().map(|m| m.0.history.lock().unwrap())
-                    } else {
-                        None
-                    };
                     let start = Instant::now();
                     callback.fill(
                         &mut output,
@@ -474,10 +486,9 @@ fn callback_monitor_costs() {
                         &|v| v,
                     );
                     let elapsed = start.elapsed().as_nanos();
-                    if n >= 100 {
+                    if n >= WARMUP {
                         timings.push(elapsed);
                     }
-                    drop(guard);
                     if n * frames as u64 >= next_poll {
                         if let Some(reader) = reader.as_mut() {
                             reader.poll(100);
@@ -485,40 +496,36 @@ fn callback_monitor_costs() {
                         next_poll = n * frames as u64 + u64::from(hz) / 20;
                     }
                 }
+                assert_eq!(timings.len(), MEASURED);
                 timings.sort_unstable();
-                let budget = u128::from(frames as u64 * 1_000_000_000 / u64::from(hz));
-                let deadline_misses = timings.iter().filter(|&&ns| ns > budget).count();
-                let maximum = timings[2999];
-                if let Some(percent) = limit
-                    && maximum * 100 > budget * percent
-                {
-                    failures.push(format!("{hz} Hz / {frames} frames / {detail:?}: {maximum} ns exceeds {percent}% of {budget} ns"));
+                // Keep the even-sized median exact, including a half-nanosecond.
+                let median_twice = timings[(MEASURED - 1) / 2] + timings[MEASURED / 2];
+                let median = median_twice / 2;
+                let median_fraction = if median_twice.is_multiple_of(2) {
+                    ""
+                } else {
+                    ".5"
+                };
+                let p99 = timings[(MEASURED * 99).div_ceil(100) - 1];
+                let maximum = timings[MEASURED - 1];
+                let period_numerator = u128::from(frames as u64) * 1_000_000_000;
+                let period = period_numerator / u128::from(hz);
+                if median_twice * u128::from(hz) > period_numerator {
+                    failures.push(format!("{hz} Hz / {frames} frames / {detail:?}: median {median}{median_fraction} ns exceeds 50% of the buffer period"));
                 }
                 println!(
-                    "deadline_misses={deadline_misses} max_budget_percent={}",
-                    maximum * 100 / budget
-                );
-                println!(
-                    "rate={hz} frames={frames} monitor={detail:?} median_ns={} p95_ns={} max_ns={} budget_ns={} retained_bytes={} consumer_bytes={} misses={} backend_underruns={}",
-                    timings[1500],
-                    timings[2850],
-                    timings[2999],
-                    frames as u64 * 1_000_000_000 / u64::from(hz),
-                    monitor
-                        .as_ref()
-                        .map_or(0, |m| m.0.history.lock().unwrap().samples.len() * 16),
-                    reader.as_ref().map_or(0, |r| r.samples.len() * 16),
-                    monitor
-                        .as_ref()
-                        .map_or(0, |m| m.0.missed.load(Ordering::Relaxed)),
+                    "rate_hz={hz} frames={frames} monitor={detail:?} median_ns={median}{median_fraction} p99_ns={p99} max_ns={maximum} buffer_period_ns={period} gaps={} backend_underruns={}",
+                    reader.as_ref().map_or(0, |r| r.status().gaps),
                     shared.underruns()
                 );
+                configurations += 1;
             }
         }
     }
+    assert_eq!(configurations, 24);
     assert!(
         failures.is_empty(),
-        "controlled performance qualification failed:\n{}",
+        "callback median cost gate failed:\n{}",
         failures.join("\n")
     );
 }
@@ -535,14 +542,14 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
         SessionState::new(),
         None,
     );
-    let mut reader = monitor.reader();
+    let mut reader = monitor.reader().unwrap();
+    let mut writer = monitor.writer().unwrap();
     reader.poll(40);
     assert_eq!(
         output_monitor_state(Some(&reader), None, false, true),
         State::Waiting
     );
     {
-        let mut writer = monitor.try_publish().unwrap();
         writer.append(0, &[[0.0; 2]; 512]);
         writer.finish(512, None);
     }
@@ -559,7 +566,6 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
     );
     // A missed span is history; enough subsequent contiguous data repairs current coverage.
     {
-        let mut writer = monitor.try_publish().unwrap();
         writer.append(1024, &[[0.0; 2]; 2400]);
         writer.finish(3424, None);
     }
@@ -592,7 +598,7 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
         SessionState::new(),
         None,
     );
-    let mut other = another.reader();
+    let mut other = another.reader().unwrap();
     other.poll(40);
     assert_ne!(other.descriptor().id, held.session().unwrap().id);
     assert_eq!(
@@ -601,7 +607,6 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
     );
     assert_eq!(held.caption(true, false), prior);
     {
-        let mut writer = monitor.try_publish().unwrap();
         writer.append(3424, &[[0.0; 2]; 512]);
         writer.finish(3936, None);
     }
@@ -615,12 +620,6 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
         output_monitor_state(Some(&reader), Some(&held), false, false),
         State::LastCapture
     );
-    monitor.0.disabled.store(true, Ordering::Relaxed);
-    reader.poll(40);
-    assert_eq!(
-        monitor_warning(&reader, 40),
-        Some(crate::waveform_view::MonitorWarning::Unavailable)
-    );
     assert_eq!(
         output_monitor_state(None, Some(&held), false, false),
         State::Preview
@@ -630,19 +629,6 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
         State::Unavailable
     );
     assert_eq!(output_monitor_state(None, None, true, true), State::Waiting);
-    let unavailable = PlaybackMonitor::new(
-        descriptor(48000),
-        MonitorDetail::Waveform,
-        SessionState::new(),
-        None,
-    );
-    let mut absent = unavailable.reader();
-    unavailable.0.disabled.store(true, Ordering::Relaxed);
-    absent.poll(40);
-    assert_eq!(
-        output_monitor_state(Some(&absent), None, false, true),
-        State::Unavailable
-    );
     let underrun = PlaybackMonitor::new(
         descriptor(48000),
         MonitorDetail::Waveform,
@@ -650,7 +636,7 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
         None,
     );
     underrun.0.session.count_underrun();
-    let mut reader = underrun.reader();
+    let mut reader = underrun.reader().unwrap();
     reader.poll(40);
     assert_eq!(monitor_warning(&reader, 40), None);
     assert!(
@@ -661,10 +647,10 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
 #[test]
 fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
     use crate::waveform_view::{MonitorWarning, monitor_warning, output_underrun_warning};
-    let rate = SampleRate::new(48000).unwrap();
+    let rate = SampleRate::DEFAULT;
     let state = SessionState::new();
     let generator = LiveGenerator::with_state(Target::silence(rate), Arc::clone(&state));
-    let mut desc = descriptor(48000);
+    let mut desc = descriptor(rate.hz());
     desc.frames = None;
     let monitor = PlaybackMonitor::new(
         desc,
@@ -674,7 +660,7 @@ fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
     );
     let mut callback = Transport::new(Source::Live(Box::new(generator)), 2, monitor.session())
         .with_monitor(Some(monitor.clone()));
-    let mut reader = monitor.reader();
+    let mut reader = monitor.reader().unwrap();
     let mut output = [0.0; 1024];
     let mut block = 0;
     let fill = |callback: &mut Transport, block: &mut u64, output: &mut [f64]| {
@@ -683,29 +669,21 @@ fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
     };
     for _ in 0..4 {
         fill(&mut callback, &mut block, &mut output);
+        reader.poll(40);
     }
-    reader.poll(40);
     assert_eq!(monitor_warning(&reader, 40), None);
-    assert!(output_underrun_warning(reader.status().underruns).is_empty());
     for episode in 1..=10 {
-        let guard = monitor.0.history.lock().unwrap();
-        fill(&mut callback, &mut block, &mut output);
-        drop(guard);
+        for _ in 0..12 {
+            fill(&mut callback, &mut block, &mut output);
+        }
         if episode == 5 {
             monitor.session().count_underrun();
         }
-        fill(&mut callback, &mut block, &mut output);
         reader.poll(40);
         let warning = monitor_warning(&reader, 40).unwrap();
         assert_eq!(warning, MonitorWarning::IncompleteCoverage);
-        assert_eq!(
-            warning.message(),
-            "Incomplete current waveform coverage; waiting for a contiguous window."
-        );
         assert!(!warning.announces_changes());
         assert_eq!(reader.status().gaps, episode);
-        assert_eq!(reader.status().missed_publications, episode);
-        // A reported output problem stays independently readable throughout partial coverage.
         if episode >= 5 {
             assert_eq!(
                 output_underrun_warning(reader.status().underruns),
@@ -715,43 +693,17 @@ fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
         for _ in 0..20 {
             reader.poll(40);
             assert_eq!(monitor_warning(&reader, 40), Some(warning));
-            assert_eq!(reader.status().gaps, episode);
         }
-        for _ in 0..3 {
+        for _ in 0..4 {
             fill(&mut callback, &mut block, &mut output);
+            reader.poll(40);
         }
-        reader.poll(40);
         assert_eq!(monitor_warning(&reader, 40), None);
-        assert_eq!(
-            reader.status().gaps,
-            episode,
-            "recovery does not erase history"
-        );
-        if episode >= 5 {
-            assert_eq!(
-                output_underrun_warning(reader.status().underruns),
-                "Backend-reported output underruns: 1 · see details."
-            );
-        }
+        assert_eq!(reader.status().gaps, episode);
     }
     reader.received = Some(Instant::now() - Duration::from_secs(1));
     assert_eq!(monitor_warning(&reader, 40), Some(MonitorWarning::Stale));
     assert!(monitor_warning(&reader, 40).unwrap().announces_changes());
-    assert_eq!(
-        monitor_warning(&reader, 40).unwrap().message(),
-        "Monitoring is stale; retained samples are not current output."
-    );
-    monitor.0.disabled.store(true, Ordering::Relaxed);
-    reader.poll(40);
-    assert_eq!(
-        monitor_warning(&reader, 40),
-        Some(MonitorWarning::Unavailable)
-    );
-    assert!(monitor_warning(&reader, 40).unwrap().announces_changes());
-    assert_eq!(
-        monitor_warning(&reader, 40).unwrap().message(),
-        "Monitoring unavailable; audio transport is independent."
-    );
 }
 
 #[test]
@@ -785,14 +737,14 @@ fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
             SessionState::new(),
             None,
         );
-        let mut reader = monitor.reader();
+        let mut reader = monitor.reader().unwrap();
+        let mut writer = monitor.writer().unwrap();
         let mut samples = [[0.0; 2]; 512];
         let mut before = Vec::new();
         let mut old_sequence = 0;
         for start in [0, 512] {
             signal.render(start, &mut samples);
             {
-                let mut writer = monitor.try_publish().unwrap();
                 writer.append(start, &samples);
                 writer.finish(start + 512, signal.observation(start + 511));
             }
@@ -824,4 +776,179 @@ fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
             );
         }
     }
+}
+
+#[test]
+fn maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots() {
+    let rate = SampleRate::new(768_000).unwrap();
+    let voices: Vec<_> = (0..16)
+        .map(|n| Voice {
+            ears: Ears::Both,
+            peak_dbfs: -30.0,
+            carrier: Carrier::Tone {
+                frequency_hz: 200.0 + f64::from(n) * 20.0,
+            },
+            modulation: Some(crate::core::Modulation::Sinusoidal {
+                rate_hz: 23.0 + f64::from(n) * 0.75,
+                depth: 1.0,
+            }),
+        })
+        .collect();
+    let tones = numbered(rate, &voices);
+    let clicks = numbered(
+        rate,
+        &voices
+            .iter()
+            .map(|voice| Voice {
+                carrier: Carrier::Click {
+                    rate_hz: 40.0,
+                    width_seconds: 0.001,
+                },
+                ..*voice
+            })
+            .collect::<Vec<_>>(),
+    );
+    let state = SessionState::new();
+    let generator = LiveGenerator::with_state(tones, Arc::clone(&state));
+    let control = generator.control();
+    let mut desc = descriptor(rate.hz());
+    desc.frames = None;
+    let monitor = PlaybackMonitor::new(
+        desc,
+        MonitorDetail::Waveform,
+        state,
+        Some(Arc::clone(generator.mailbox())),
+    );
+    let mut reader = monitor.reader().unwrap();
+    let mut callback = Transport::new(Source::Live(Box::new(generator)), 2, monitor.session())
+        .with_monitor(Some(monitor));
+    let mut out = vec![0.0; 4096 * 2];
+    // Finish the initial 30 ms fade before replacing all carrier kinds.
+    for block in 0..6 {
+        callback.fill(
+            &mut out,
+            time(block * 4096 * 1_000_000_000 / 768000),
+            &|v| v,
+        );
+        reader.poll(100);
+    }
+    control.update(&clicks).unwrap();
+    let measured = allocation_counter::measure(|| {
+        callback.fill(&mut out, time(6 * 4096 * 1_000_000_000 / 768000), &|v| v);
+        reader.poll(100);
+    });
+    assert_eq!(measured.count_total, 0);
+    assert_eq!(
+        measured.count_current, 0,
+        "callback and preallocated reader must not free allocations"
+    );
+    assert_eq!(
+        reader
+            .status()
+            .observation
+            .unwrap()
+            .voices
+            .iter()
+            .flatten()
+            .count(),
+        32
+    );
+    assert!(reader.status().observation.unwrap().transitioning);
+    assert_eq!(reader.status().window_end, 7 * 4096);
+    assert!(reader.has_current_window());
+    assert!(
+        reader
+            .samples()
+            .iter()
+            .flatten()
+            .any(|sample| *sample != 0.0)
+    );
+    // Overflow is also allocation/free-free when the consumer stops draining.
+    let measured = allocation_counter::measure(|| {
+        for block in 7..30 {
+            callback.fill(
+                &mut out,
+                time(block * 4096 * 1_000_000_000 / 768000),
+                &|v| v,
+            );
+        }
+    });
+    assert_eq!(measured.count_total, 0);
+    assert_eq!(measured.count_current, 0);
+    reader.poll(100);
+    assert!(reader.status().gaps > 0);
+    assert_eq!(reader.status().observation.unwrap().frame, 30 * 4096 - 1);
+    assert!(!reader.has_current_window());
+}
+
+#[test]
+fn sample_prefix_waits_for_its_coherent_state_publication() {
+    let monitor = PlaybackMonitor::new(
+        descriptor(8000),
+        MonitorDetail::Waveform,
+        SessionState::new(),
+        None,
+    );
+    let mut writer = monitor.writer().unwrap();
+    let mut reader = monitor.reader().unwrap();
+    writer.append(0, &[[0.25, -0.125]; 512]);
+    reader.poll(100);
+    assert!(!reader.has_current_window());
+    assert_eq!(reader.freshness(), ObservationFreshness::Waiting);
+    assert!(
+        crate::waveform_view::WaveformCapture::monitored(
+            &reader,
+            crate::waveform_view::WaveformScale::Fit
+        )
+        .unwrap()
+        .is_none()
+    );
+    writer.finish(512, None);
+    reader.poll(100);
+    assert!(reader.has_current_window());
+    assert_eq!(reader.freshness(), ObservationFreshness::Current);
+    assert!(
+        crate::waveform_view::WaveformCapture::monitored(
+            &reader,
+            crate::waveform_view::WaveformScale::Fit
+        )
+        .unwrap()
+        .is_some()
+    );
+}
+
+#[test]
+fn concurrent_next_buffer_samples_do_not_invalidate_the_published_window() {
+    let monitor = PlaybackMonitor::new(
+        descriptor(8000),
+        MonitorDetail::Waveform,
+        SessionState::new(),
+        None,
+    );
+    let mut writer = monitor.writer().unwrap();
+    let mut reader = monitor.reader().unwrap();
+    writer.append(0, &[[0.25, -0.125]; 512]);
+    writer.finish(512, None);
+    reader.poll(100);
+    assert!(reader.has_current_window());
+    // Model a producer paused after writing its next sample chunk but before
+    // publishing that buffer's generated state. The prior watermark stays usable.
+    writer.append(512, &[[0.5, -0.25]; 256]);
+    reader.poll(100);
+    assert!(reader.has_current_window());
+    assert_eq!(reader.status().window_end, 512);
+    assert_eq!(reader.samples(), &[[0.25, -0.125]; 512]);
+    writer.finish(768, None);
+    reader.poll(100);
+    assert!(reader.has_current_window());
+    assert_eq!(reader.status().window_end, 768);
+    assert_eq!(&reader.samples()[512..], &[[0.5, -0.25]; 256]);
+}
+
+#[test]
+fn allocation_counter_detects_freeing_prepared_storage() {
+    let prepared = std::hint::black_box(vec![0_u8; 4096]);
+    let measured = allocation_counter::measure(|| drop(prepared));
+    assert_eq!(measured.count_total, 0);
+    assert_eq!(measured.count_current, -1);
 }

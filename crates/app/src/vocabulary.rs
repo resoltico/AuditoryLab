@@ -198,6 +198,7 @@ vocabulary! {
         PasteRecipe => ("caption-paste-recipe", "Paste a UTF-8 TOML recipe, then end input with Ctrl-D (Unix) or Ctrl-Z followed by Enter (Windows)."),
         StandardInput => ("caption-standard-input", "standard input"),
         ConfiguredRoot => ("caption-configured-root", "configured root"),
+        MonitorAlreadyInUse => ("caption-monitor-already-in-use", "Output monitoring is already in use."),
         WavAudio => ("caption-wav-audio", "WAV audio"),
         TomlSound => ("caption-toml-sound", "TOML sound"),
         AudioSnapshot => ("caption-audio-snapshot", "Audio details · snapshot"),

@@ -767,10 +767,8 @@ fn assert_monitor_warning_accessibility(ui: &MainWindow) {
         assert!(find(partial.message()).is_none());
         assert!(find(backend_text).is_some_and(|item| item == backend));
     }
-    for critical in [
-        auditorylab::waveform_view::MonitorWarning::Stale,
-        auditorylab::waveform_view::MonitorWarning::Unavailable,
-    ] {
+    {
+        let critical = auditorylab::waveform_view::MonitorWarning::Stale;
         sync_monitor_warnings(ui, Some(critical), None, 1, false);
         window.set_data(ui.get_monitor_data());
         reveal_warnings(window.window());

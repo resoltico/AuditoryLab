@@ -552,14 +552,15 @@ dependencies = [
  "directories",
  "getrandom 0.4.3",
  "libc",
- "nix",
  "proptest",
+ "rtrb",
  "same-file",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "toml",
+ "triple_buffer",
  "unicode-normalization",
  "waveadapter",
  "winapi-util",
@@ -4246,6 +4247,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtrb"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9278fb35b3e730abe136e9b395b5b81b96d06b9f5478a50f0c8430a2237b22de"
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5123,6 +5130,15 @@ dependencies = [
  "memchr",
  "nom 8.0.0",
  "petgraph",
+]
+
+[[package]]
+name = "triple_buffer"
+version = "9.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e875ab7068a75b74f419da453927e05527c36f0001b3c7aad3ce443640683487"
+dependencies = [
+ "crossbeam-utils",
 ]
 
 [[package]]

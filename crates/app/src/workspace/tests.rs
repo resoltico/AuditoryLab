@@ -116,7 +116,7 @@ fn scripted(fakes: &Fakes) -> Box<AudioSpawner> {
                         );
                         let control = matches!(kind, AudioKind::Live(_)).then(|| live.control());
                         let _ = tx.send(AudioEvent::Prepared {
-                            reader: monitor.reader(),
+                            reader: monitor.reader().unwrap(),
                             rate,
                             live: control,
                         });

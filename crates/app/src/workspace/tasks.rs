@@ -322,7 +322,13 @@ pub(crate) fn audio_worker(
         let result = match (kind, draft) {
             (AudioKind::Live(_), Some(draft)) => match device::prepare_live(session, &draft) {
                 Ok(Preparation::Ready(mut prepared)) => {
-                    let reader = prepared.monitor(MonitorDetail::Waveform).reader();
+                    let Some(reader) = prepared.monitor(MonitorDetail::Waveform).reader() else {
+                        let _ = tx.send(AudioEvent::Finished(Err(Error::new(
+                            crate::error::ErrorKind::Device,
+                            crate::vocabulary::Caption::MonitorAlreadyInUse.label(),
+                        ))));
+                        return;
+                    };
                     let _ = tx.send(AudioEvent::Prepared {
                         reader,
                         rate: prepared.sample_rate(),
@@ -336,7 +342,14 @@ pub(crate) fn audio_worker(
             (AudioKind::Finite(snapshot), _) => {
                 match device::prepare_playback(session, &snapshot) {
                     Ok(Preparation::Ready(mut prepared)) => {
-                        let reader = prepared.monitor(MonitorDetail::Waveform).reader();
+                        let Some(reader) = prepared.monitor(MonitorDetail::Waveform).reader()
+                        else {
+                            let _ = tx.send(AudioEvent::Finished(Err(Error::new(
+                                crate::error::ErrorKind::Device,
+                                crate::vocabulary::Caption::MonitorAlreadyInUse.label(),
+                            ))));
+                            return;
+                        };
                         let _ = tx.send(AudioEvent::Prepared {
                             reader,
                             rate: prepared.output().sample_rate,
