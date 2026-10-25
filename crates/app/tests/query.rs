@@ -60,3 +60,40 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         "200 Hz and 2015 must not match 20"
     );
 }
+
+#[test]
+fn search_excludes_generated_labels_and_unknown_date_captions() {
+    use auditorylab::core::{Carrier, Component, ComponentId, Description, Ears, Node, Voice};
+    let mut recipe = auditorylab::editing::Draft::new().unwrap().recipe();
+    recipe.document.created_at = None;
+    recipe.document.modified_at = None;
+    recipe.description = Some(Description {
+        title: "Reference".into(),
+        notes: None,
+    });
+    recipe.stimulus.components = vec![Component {
+        id: ComponentId::new(1),
+        node: Node::Voice(Voice {
+            ears: Ears::Both,
+            peak_dbfs: -30.0,
+            carrier: Carrier::Tone {
+                frequency_hz: 200.0,
+            },
+            modulation: None,
+        }),
+    }];
+    let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe);
+    // These captions are deliberately present in display output, not authored facts.
+    assert!(auditorylab::presentation::describe(&snapshot).contains("Unknown"));
+    assert!(
+        auditorylab::presentation::nominal_description(snapshot.nominal())
+            .contains("No rhythmic rate")
+    );
+    for caption in ["unknown", "document", "rhythmic"] {
+        assert!(
+            !query::search(&snapshot, caption),
+            "display-only caption {caption}"
+        );
+    }
+    assert!(query::search(&snapshot, "steady-tone 200"));
+}
