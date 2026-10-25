@@ -164,6 +164,7 @@ vocabulary! {
         Unknown => ("status-unknown", "Unknown"),
         None => ("status-none", "None"),
         InventoryIncomplete => ("status-inventory-incomplete", "Incomplete inventory: valid results above do not establish an empty/complete library."),
+        OperationIncomplete => ("status-operation-incomplete", "Operation not completed"),
         OperationConfirmed => ("status-operation-confirmed", "Operation confirmed"),
         StopInFilePanelRequested => ("status-stop-in-file-panel-requested", "Stop requested · file dialog stays open"),
         FilePanelAudioStopped => ("status-file-panel-audio-stopped", "Audio already stopped · file dialog stays open"),
@@ -414,9 +415,7 @@ impl CommandProblem {
             Self::TrashedPlayback => {
                 "trashed recipes can be inspected/exported; restore before playback"
             }
-            Self::PurgeConfirmation => {
-                "permanent deletion requires --yes"
-            }
+            Self::PurgeConfirmation => "permanent deletion requires --yes",
             Self::RelativeLibraryRoot => "--library-dir must be absolute; no fallback is used",
             Self::CatalogOrigin => "catalog returned a non-builtin origin",
             Self::DesktopArguments => "Use auditorylab-gui without arguments or with --version.",

@@ -451,3 +451,44 @@ fn corrupt_plain_files_and_owned_stages_are_reported_without_read_side_repairs()
         assert!(stage.exists());
     }
 }
+
+#[test]
+fn unknown_membership_dates_remain_visible_in_human_descriptions() {
+    let (_temp, path, store) = fixture();
+    store.root().initialize().unwrap();
+    let record = store
+        .apply(
+            Mutation::Add(Arc::new(recipe("Missing local dates"))),
+            &Cancel::default(),
+        )
+        .unwrap()
+        .record
+        .unwrap();
+    let trashed = store
+        .apply(
+            Mutation::Trash {
+                key: record.key,
+                expect: None,
+            },
+            &Cancel::default(),
+        )
+        .unwrap()
+        .record
+        .unwrap();
+    fs::remove_file(path.join("membership.toml")).unwrap();
+    let summary = store.load(&trashed.key).unwrap().summary();
+    assert!(summary.trashed);
+    let text = summary.membership_description();
+    assert!(text.contains("Added here: Unknown"));
+    assert!(text.contains("Trash: Unknown"));
+    assert!(text.contains(&summary.version_token.unwrap().to_string()));
+}
+
+#[test]
+fn failed_report_completion_never_claims_a_failed_operation_was_confirmed() {
+    let error = std::io::Error::other("rejected operation");
+    let report = auditorylab::reports::Report::error("library_init", &error, 2);
+    let text = report.completion_failure(std::io::Error::other("closed output"));
+    assert!(text.contains("Operation not completed"));
+    assert!(!text.contains("Operation confirmed"));
+}

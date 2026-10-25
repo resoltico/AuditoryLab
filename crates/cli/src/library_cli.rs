@@ -689,7 +689,11 @@ fn apply_and_report_mutation(
     };
     bytes.push(b'\n');
     if let Err(error) = stdout.write_all(&bytes).and_then(|()| stdout.flush()) {
-        let _ = writeln!(stderr, "{}", outcome.completion_failure(error).display_text());
+        let _ = writeln!(
+            stderr,
+            "{}",
+            outcome.completion_failure(error).display_text()
+        );
         let _ = stderr.flush();
     }
     Ok(0)

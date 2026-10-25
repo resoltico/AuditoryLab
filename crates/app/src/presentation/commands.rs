@@ -60,7 +60,11 @@ impl EntrySummary {
         format!(
             "Added here: {}\nTrash: {}\nVersion token: {}\n",
             date(self.added_at),
-            if self.trashed { date(self.trashed_at) } else { Status::None.label().into() },
+            if self.trashed {
+                date(self.trashed_at)
+            } else {
+                Status::None.label().into()
+            },
             self.version_token
                 .as_ref()
                 .map_or_else(|| Status::None.label().into(), ToString::to_string)
@@ -73,7 +77,7 @@ impl RootInfo {
     pub fn description(&self) -> String {
         format!(
             "{}\nExists: {} · Initialized: {} · Source: {}\n",
-            self.path.display(),
+            self.path.display().to_string().display_scalar(),
             self.exists,
             self.initialized,
             self.source
@@ -85,9 +89,9 @@ impl LibraryRoot {
     #[must_use]
     pub fn inspection_failure(&self, exists: Option<bool>, error: &crate::error::Error) -> String {
         format!(
-            "{}\nExists: {:?} · Initialized: unverified · Source: {}\n{}\n",
-            self.path().display(),
-            exists,
+            "{}\nExists: {} · Initialized: unverified · Source: {}\n{}\n",
+            self.path().display().to_string().display_scalar(),
+            exists.map_or_else(|| Status::Unknown.label().into(), |value| value.to_string()),
             self.source(),
             error
         )

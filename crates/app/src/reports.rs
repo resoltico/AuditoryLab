@@ -206,7 +206,13 @@ impl Report {
     /// A completed operation remains confirmed if rendering or writing its report fails.
     #[must_use]
     pub fn completion_failure(&self, error: impl std::fmt::Display) -> String {
-        format!("Operation confirmed; completion output failed: {error}")
+        let truth = if self.complete {
+            crate::vocabulary::Status::OperationConfirmed
+        } else {
+            crate::vocabulary::Status::OperationIncomplete
+        }
+        .label();
+        format!("{truth}; completion output failed: {error}")
     }
     fn new(operation: &str, complete: bool) -> Self {
         Self {
