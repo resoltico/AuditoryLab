@@ -317,7 +317,7 @@ fn incomplete_json_keeps_healthy_rows_but_ids_emit_no_stdout_and_busy_is_distinc
             .status
             .success()
     );
-    let bad = root.join("records/00000000-0000-4000-8000-000000000099.json");
+    let bad = root.join("recipes/00000000-0000-4000-8000-000000000099.toml");
     fs::write(&bad, b"corrupt bytes retained").unwrap();
     let partial = cli(&root, &["list", "--collection", "user", "--format", "json"]);
     assert_eq!(partial.status.code(), Some(5));
@@ -580,5 +580,94 @@ fn two_ordinary_cli_processes_cannot_overwrite_each_others_expected_version() {
     assert_eq!(
         fs::read(&file).unwrap(),
         original.to_toml().unwrap().as_bytes()
+    );
+}
+
+#[test]
+fn optional_expect_plain_recipe_bytes_and_unknown_trash_dates_use_the_new_layout() {
+    let temp = dir();
+    let root = temp.path().join("library");
+    let input_path = temp.path().join("input.toml");
+    let recipe = input(&input_path, "Direct recipe bytes");
+    let key = format!("user:{}", recipe.document.id);
+    assert!(cli(&root, &["library", "init"]).status.success());
+    assert!(root.join("library.toml").is_file());
+    assert!(root.join("membership.toml").is_file());
+    assert!(root.join(".stage").is_dir());
+    let added = cli(
+        &root,
+        &[
+            "library",
+            "add",
+            "--file",
+            input_path.to_str().unwrap(),
+            "--format",
+            "json",
+        ],
+    );
+    assert!(added.status.success());
+    let token = json(&added)["version_token"].as_str().unwrap().to_owned();
+    assert_eq!(token.len(), 64);
+    assert!(
+        token
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    );
+    let file = root
+        .join("recipes")
+        .join(format!("{}.toml", recipe.document.id));
+    let mut manual = fs::read(&file).unwrap();
+    manual.extend_from_slice(b"\n# direct file comment\n");
+    fs::write(&file, &manual).unwrap();
+    let exported = cli(&root, &["recipe", &key]);
+    assert!(exported.status.success());
+    assert_eq!(exported.stdout, manual);
+    let renamed = cli(
+        &root,
+        &[
+            "library",
+            "rename",
+            &key,
+            "--title",
+            "Optional token rename",
+            "--format",
+            "json",
+        ],
+    );
+    assert!(renamed.status.success(), "{renamed:?}");
+    let stale = cli(
+        &root,
+        &[
+            "library",
+            "rename",
+            &key,
+            "--title",
+            "Stale must conflict",
+            "--expect",
+            &token,
+        ],
+    );
+    assert_eq!(stale.status.code(), Some(3));
+    assert!(cli(&root, &["library", "trash", &key]).status.success());
+    fs::remove_file(root.join("membership.toml")).unwrap();
+    let trash = cli(&root, &["library", "list-trash", "--format", "json"]);
+    assert!(trash.status.success());
+    let trash = json(&trash);
+    assert_eq!(trash["entries"][0]["trashed"], true);
+    assert_eq!(trash["entries"][0]["trashed_at"], serde_json::Value::Null);
+    assert!(cli(&root, &["library", "restore", &key]).status.success());
+    assert!(file.is_file());
+    assert!(cli(&root, &["library", "trash", &key]).status.success());
+    assert!(
+        cli(&root, &["library", "purge", &key, "--yes"])
+            .status
+            .success()
+    );
+    assert!(!file.exists());
+    assert!(
+        !root
+            .join("trash")
+            .join(format!("{}.toml", recipe.document.id))
+            .exists()
     );
 }

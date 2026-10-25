@@ -1,7 +1,7 @@
 //! Actual independent processes: lock lifetime, lost updates and killed native writers.
 use auditorylab::editing::Draft;
 use auditorylab::error::ErrorKind;
-use auditorylab::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation, StoreFault};
+use auditorylab::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation};
 use auditorylab::workflow::Cancel;
 use std::{
     fs,
@@ -34,7 +34,6 @@ fn fixture() -> (
             &Cancel::default(),
         )
         .unwrap()
-        .receipt
         .record
         .unwrap();
     (temp, root, store, record)
@@ -92,12 +91,6 @@ fn controlled_child() {
     let mode = std::env::var("AUDITORYLAB_STORE_TEST_MODE").unwrap();
     let ready = PathBuf::from(std::env::var_os("AUDITORYLAB_STORE_TEST_READY_FILE").unwrap());
     let go = PathBuf::from(std::env::var_os("AUDITORYLAB_STORE_TEST_GO_FILE").unwrap());
-    if mode == "initialize" {
-        let _ = LibraryRoot::explicit(root)
-            .unwrap()
-            .initialize_paused(&ready);
-        return;
-    }
     if mode == "exclusive" || mode == "shared" {
         let lock = fs::OpenOptions::new()
             .read(true)
@@ -118,24 +111,15 @@ fn controlled_child() {
         drop(lock);
         return;
     }
-    let mut store = LibraryStore::new(LibraryRoot::explicit(root).unwrap()).unwrap();
+    let store = LibraryStore::new(LibraryRoot::explicit(root).unwrap()).unwrap();
     let key: LibraryKey = std::env::var("AUDITORYLAB_STORE_TEST_KEY")
         .unwrap()
         .parse()
         .unwrap();
-    let expect = std::env::var("AUDITORYLAB_STORE_TEST_EXPECT")
+    let expect: auditorylab::library::VersionToken = std::env::var("AUDITORYLAB_STORE_TEST_EXPECT")
         .unwrap()
         .parse()
         .unwrap();
-    let fault = match mode.as_str() {
-        "before" => Some(StoreFault::PauseBeforePublication),
-        "after" => Some(StoreFault::PauseAfterPublication),
-        "purge" => Some(StoreFault::PauseAfterPurge),
-        _ => None,
-    };
-    if let Some(fault) = fault {
-        store = store.with_fault(Some(fault));
-    }
     if mode == "race-a" || mode == "race-b" {
         fs::write(&ready, b"ready").unwrap();
         let deadline = Instant::now() + Duration::from_secs(15);
@@ -144,27 +128,16 @@ fn controlled_child() {
             std::thread::sleep(Duration::from_millis(1));
         }
     }
-    let mutation = if mode == "purge" {
-        Mutation::Purge {
-            key,
-            expect,
-            confirmed: true,
-        }
-    } else {
-        Mutation::Rename {
-            key,
-            expect,
-            title: if mode.starts_with("race") {
-                mode
-            } else {
-                "Crash candidate".into()
-            },
-        }
+    assert!(matches!(mode.as_str(), "race-a" | "race-b"));
+    let mutation = Mutation::Rename {
+        key,
+        expect: Some(expect),
+        title: mode,
     };
     let outcome = store.apply(mutation, &Cancel::default());
     let report = match outcome {
         Ok(result) => {
-            serde_json::json!({"code":if result.confirmed(){0}else{1},"status":format!("{:?}",result.status)})
+            serde_json::json!({"code":0,"status":format!("{:?}",result.status)})
         }
         Err(error) => {
             serde_json::json!({"code":match error.kind(){ErrorKind::Conflict=>3,ErrorKind::Busy=>4,_=>1},"error":error.to_string()})
@@ -190,7 +163,7 @@ fn shared_and_exclusive_locks_exclude_real_other_processes_and_die_with_handles(
             .apply(
                 Mutation::Rename {
                     key: record.key.clone(),
-                    expect: record.version_token.clone(),
+                    expect: Some(record.version_token),
                     title: "must be busy".into(),
                 },
                 &Cancel::default(),
@@ -214,13 +187,14 @@ fn shared_and_exclusive_locks_exclude_real_other_processes_and_die_with_handles(
                 .apply(
                     Mutation::Rename {
                         key: record.key,
-                        expect: record.version_token,
+                        expect: Some(record.version_token),
                         title: "after process closure".into()
                     },
                     &Cancel::default()
                 )
                 .unwrap()
-                .confirmed()
+                .record
+                .is_some()
         );
     }
 }
@@ -259,7 +233,7 @@ fn two_real_editors_cannot_overwrite_the_same_observed_version() {
             .apply(
                 Mutation::Update {
                     key: record.key.clone(),
-                    expect: record.version_token,
+                    expect: Some(record.version_token),
                     recipe: Arc::new(record.snapshot.recipe().clone())
                 },
                 &Cancel::default()
@@ -274,108 +248,4 @@ fn two_real_editors_cannot_overwrite_the_same_observed_version() {
         current.snapshot.title().as_str(),
         "race-a" | "race-b"
     ));
-}
-#[test]
-fn killed_writers_leave_old_or_complete_new_records_and_never_promote_orphan_stages() {
-    for mode in ["before", "after"] {
-        let (temp, root, store, record) = fixture();
-        let signal = temp.path().join("ready");
-        let mut process = child(
-            &root,
-            mode,
-            &signal,
-            &temp.path().join("go"),
-            &record,
-            &temp.path().join("result"),
-        );
-        ready(&mut process, &signal);
-        process.kill().unwrap();
-        process.wait().unwrap();
-        let restarted = LibraryStore::new(store.root().clone()).unwrap();
-        let observed = restarted.load(&record.key).unwrap();
-        assert_eq!(
-            observed.snapshot.title() == "Crash candidate",
-            mode == "after"
-        );
-        let scan = restarted.scan(&Cancel::default());
-        assert!(scan.complete);
-        assert_eq!(scan.entries.len(), 1);
-        if mode == "before" {
-            assert_eq!(scan.stages.len(), 1);
-            assert_eq!(observed.version_token, record.version_token);
-            assert_eq!(observed.snapshot.title(), "Initial");
-        }
-    }
-}
-#[test]
-fn killed_purge_has_no_attributable_receipt_on_restart_and_never_recreates_target() {
-    let (temp, root, store, record) = fixture();
-    let trash = store
-        .apply(
-            Mutation::Trash {
-                key: record.key,
-                expect: record.version_token,
-            },
-            &Cancel::default(),
-        )
-        .unwrap()
-        .receipt
-        .record
-        .unwrap();
-    let signal = temp.path().join("ready");
-    let mut process = child(
-        &root,
-        "purge",
-        &signal,
-        &temp.path().join("go"),
-        &trash,
-        &temp.path().join("result"),
-    );
-    ready(&mut process, &signal);
-    process.kill().unwrap();
-    process.wait().unwrap();
-    let restarted = LibraryStore::new(store.root().clone()).unwrap();
-    assert_eq!(
-        restarted
-            .apply(
-                Mutation::Purge {
-                    key: trash.key,
-                    expect: trash.version_token,
-                    confirmed: true
-                },
-                &Cancel::default()
-            )
-            .unwrap_err()
-            .kind(),
-        ErrorKind::Conflict
-    );
-    assert!(restarted.scan(&Cancel::default()).entries.is_empty());
-}
-
-#[test]
-fn killed_initialization_publishes_marker_last_and_retry_retains_owned_orphan() {
-    let (temp, _root, _store, record) = fixture();
-    let root = temp.path().join("interrupted-init");
-    let signal = temp.path().join("init-ready");
-    let mut process = child(
-        &root,
-        "initialize",
-        &signal,
-        &temp.path().join("unused-go"),
-        &record,
-        &temp.path().join("unused-result"),
-    );
-    ready(&mut process, &signal);
-    assert!(root.join("records").is_dir());
-    assert!(!root.join("library.json").exists());
-    process.kill().unwrap();
-    process.wait().unwrap();
-    let root = LibraryRoot::explicit(root).unwrap();
-    assert!(root.initialize().unwrap().created);
-    let store = LibraryStore::new(root).unwrap();
-    let inventory = store.scan(&Cancel::default());
-    assert!(inventory.complete);
-    assert_eq!(inventory.stages.len(), 1);
-    assert!(inventory.stages[0].starts_with("root/.library."));
-    assert!(inventory.entries.is_empty());
 }

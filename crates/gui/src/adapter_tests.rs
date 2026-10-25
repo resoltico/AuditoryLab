@@ -1830,7 +1830,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     ui.invoke_save_recipe();
     h.wait_for_files();
     assert!(ui.get_dirty());
-    assert!(ui.get_status().contains("Conflict"));
+    assert!(ui.get_status().contains("changed identity or bytes"));
     assert_eq!(
         auditorylab::recipe::load_file(&file).unwrap().title(),
         "Other application"
@@ -1872,7 +1872,6 @@ fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_co
             &auditorylab::workflow::Cancel::default(),
         )
         .unwrap()
-        .receipt
         .record
         .unwrap();
     let h = Harness::with_workspace(
@@ -2063,7 +2062,7 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
                 .accessible_action(&AccessibilityAction::Default);
         }
         h.settle();
-        assert!(reveal_library_control(&h, "Recheck publication").is_visible());
+        assert!(reveal_library_control(&h, "Initialize configured library").is_visible());
         reveal_library_control(&h, "Back to recipes")
             .accessible_action(&AccessibilityAction::Default);
         h.settle();
@@ -2139,7 +2138,6 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
     labelled(ui, "Library storage and recovery").accessible_action(&AccessibilityAction::Default);
     h.settle();
     assert!(reveal_library_control(&h, "Initialize configured library").is_visible());
-    assert!(reveal_library_control(&h, "Recheck publication").is_visible());
 }
 
 #[test]

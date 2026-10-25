@@ -16,7 +16,7 @@ auditorylab recipe builtin:chan-2022-clicks-40-hz --output clicks.toml
 
 `list` defaults to active Built-in + User entries. `--collection builtin` bypasses User discovery; `--collection user` includes only active managed entries. Repeat `--file PATH` with All to include explicitly supplied temporary inputs for that invocation. Trash is queried separately through `library list-trash`. Browsing never opens an audio device, initializes a library or rewrites dates.
 
-`recipe SOURCE [--output PATH]` exports captured saved portable TOML. Built-in output preserves shipped source bytes and User output extracts its stored `recipe_toml`; local envelope fields never leak into it. Export retains identity/history and does not fork a copy. Output files are never overwritten by CLI recipe/WAV export.
+`recipe SOURCE [--output PATH]` exports captured saved portable TOML. Built-in output preserves shipped source bytes and User output preserves the exact bytes of its plain recipe file. Export retains identity/history and does not fork a copy. Output files are never overwritten by CLI recipe/WAV export.
 
 ## Root and lifecycle
 
@@ -31,7 +31,7 @@ auditorylab list --collection user --format json
 
 `add` preserves portable identity and known/unknown history; `--as-copy` explicitly forks a new identity, scoped ancestry and publication history. A reserved built-in UUID requires a copy. Same-ID identical content/history is unchanged; differing content/history conflicts. The original input file remains untouched.
 
-Use the selector and exact `version_token` returned by list/describe JSON for existing mutations:
+Use a selector for existing mutations. Optional `--expect TOKEN` checks the exact observed recipe bytes; scripts can obtain that token from list/describe JSON:
 
 ```text
 auditorylab library update user:UUID --file edited.toml --expect TOKEN --format json
@@ -42,9 +42,11 @@ auditorylab library restore user:UUID --expect TOKEN
 auditorylab library purge user:UUID --expect TOKEN --yes
 ```
 
-`UUID` and `TOKEN` above are placeholders for observed values. Obtain a fresh token after each mutation, including Restore. Existing writes check both revision and exact-byte digest, even for a no-op. Missing/stale targets conflict rather than being recreated. Built-ins cannot be updated, renamed, trashed or purged. Purge requires a currently trashed User entry and never cascades to ancestors, copies or external files. Trash/Restore preserve recipe history and Added here.
+`UUID` and `TOKEN` above are placeholders for observed values. Obtain a fresh token after each mutation, including Restore. An expected token is the lowercase SHA-256 of the exact portable file bytes and is checked even for a no-op. Tokens do not encode timestamps or directory membership. Missing/stale targets conflict rather than being recreated. Built-ins cannot be updated, renamed, trashed or purged. Purge requires a currently trashed User entry and never cascades to ancestors, copies or external files. Trash/Restore preserve recipe history and Added here.
 
-`library check [--format json]` diagnoses records and recovery stages without modifying, promoting or deleting them. Default text output for an unconfirmed mutation includes the library root, operation revision, selector, candidate/previous version tokens and owned-stage identity. If completion output fails, stderr receives these recovery fields too. Confirmed normal text remains concise. Comparison tokens are unwrapped for copying. Keep this receipt after `publication_unconfirmed`: inspect `describe user:UUID --format json` and compare its token with the receipt's candidate/previous token before deciding another operation. A missing target establishes absence, not attributable purge success. The desktop retains exact receipts and provides Recheck. A fresh CLI invocation is not an automatic retry protocol.
+`library check [--format json]` reports malformed files, unknown artifacts, orphan membership timestamps and owned stages without changing them. Each write holds the exclusive library lock through reading, optional token checks, publication and verification. When an I/O result is ambiguous, the application rereads the destination: candidate bytes mean saved with a warning; previous bytes mean not applied; other or unreadable content is an error naming the path. A confirmed purge is absence after unlink under that same lock. Completion-output failure cannot undo storage changes and is reported separately.
+
+The root contains `library.toml` with `layout = 1`, `recipes/<uuid>.toml`, `trash/<uuid>.toml`, timestamp-only `membership.toml`, `.library.lock` and a private `.stage/` directory. Directory location decides active/Trash state; missing membership dates are Unknown. The recipe is published before its membership timestamps, so a crash can lose a timestamp without making the recipe unreadable. A locked write drops orphan timestamp rows and cleans only recognized owned stages. Unknown files are retained. Interrupted no-clobber moves can leave two names for one file: Trash remains authoritative for those same-inode links, and a locked write removes the redundant active link. Different files with the same UUID require explicit reconciliation and are never deleted automatically.
 
 ## Shared queries
 
@@ -75,19 +77,19 @@ Automatic ordering is rate ascending for All/Built-in, modified descending for U
 
 JSON uses output envelope version 1, numeric quantities, explicit null unknowns, normalized UTC instants, the effective query, unique entries, group-key references and diagnostics. Read-only partial inventories retain healthy rows with `complete:false`. IDs output accepts only reusable persistent selectors, rejects grouping/temporary inputs, and emits **no stdout IDs** when discovery is incomplete.
 
-Human prose follows terminal width (78 columns when redirected); controls and bidi overrides are escaped. Raw recipe bytes remain unchanged. JSON escapes unsafe display controls without changing decoded data. Read-only broken pipes are quiet success; mutation reporting failure cannot undo publication and reports a retained receipt/warning on stderr.
+Human prose follows terminal width (78 columns when redirected); controls and bidi overrides are escaped. Raw recipe bytes remain unchanged. JSON escapes unsafe display controls without changing decoded data. Read-only broken pipes are quiet success; mutation reporting failure cannot undo publication and reports confirmed publication and an output warning on stderr.
 
 | Code | Meaning |
 |---|---|
 | 0 | Completed, unchanged or empty complete result; confirmed publication warnings remain success. |
-| 1 | I/O/device/pre-publication failure, or an explicitly unconfirmed publication with receipt. |
+| 1 | I/O or device failure; file diagnostics name the affected path. |
 | 2 | Usage, unknown selector, unsupported recipe/validation or Built-in mutation refusal. |
 | 3 | Conflict, history mismatch or reserved identity. |
 | 4 | Busy or unavailable required locking assurance. |
 | 5 | Incomplete inventory or unreadable requested managed record. |
 | 130 | Cooperative cancellation before completion. |
 
-A failed save preserves old bytes; a confirmed durability/cleanup warning remains saved. Unconfirmed publication is neither proof of saving nor proof of no change. There is no force-overwrite bypass or automatic stage recovery.
+Before-publication failures preserve old bytes. Confirmed durability or cleanup warnings remain saved. An error after an ambiguous result identifies the path for inspection and does not claim unchanged storage. There is no force-overwrite bypass or automatic stage promotion.
 
 ## Playback and WAV export
 
@@ -109,7 +111,7 @@ The application defines the serializable reports in [`reports`](../crates/app/sr
 | Library path | `root` contains the configured path, source, existence, format and initialization state; unknown existence is null |
 | Library initialization | `root` contains the initialization result; `status` states whether it published or was unchanged |
 | Library check | `stages` names retained stages; entry and diagnostic arrays describe the bounded inventory |
-| Mutations | `status`, `selector`, `version_token`, `candidate`, and `receipt` preserve publication truth and comparison tokens |
+| Mutations | `status`, `selector`, `version_token`, entries and diagnostics report confirmed publication truth |
 | Errors | `status` classifies the exit outcome and `diagnostics` explains it |
 
-An entry includes its key, collection, title, document identity, duration, declared and membership dates, version token, nominal classification, evidence and validation state. Nominal descriptors carry owner and optional related owner, method, rate, band and derivation. Groups reference keys in the unique entry list. Diagnostics are storage-context objects or operation messages; unknown dates and absent comparison values are JSON null.
+An entry includes its key, collection, title, document identity, duration, declared and membership dates, version token, directory-owned `trashed` state, nominal classification, evidence and validation state. Nominal descriptors carry owner and optional related owner, method, rate, band and derivation. Groups reference keys in the unique entry list. Diagnostics are storage-context objects or operation messages; unknown dates and absent comparison values are JSON null.

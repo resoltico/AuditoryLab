@@ -93,6 +93,7 @@ fn an_independent_decoder_reads_the_format_length_and_nearest_f32_samples() {
         assert_eq!(
             export(tone_session(frames, sample_rate), &path, &never()).unwrap(),
             Exported {
+                warnings: Vec::new(),
                 frames: u64::from(frames),
                 sample_rate,
                 container: Container::Riff

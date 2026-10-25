@@ -152,7 +152,7 @@ pub(super) struct ListArgs {
     #[arg(long = "file", value_name = "PATH")]
     files: Vec<PathBuf>,
     #[command(flatten)]
-    query: QueryArgs,
+    query: Box<QueryArgs>,
 }
 impl ListArgs {
     pub(super) fn json(&self) -> bool {
@@ -180,13 +180,13 @@ pub(super) enum LibraryCommand {
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
-    /// Update one User record with the exact fresh version token from describe/list JSON.
+    /// Update an existing User recipe, optionally checking its observed byte token.
     Update {
         selector: LibraryKey,
         #[arg(long, value_name = "PATH")]
         file: PathBuf,
         #[arg(long)]
-        expect: VersionToken,
+        expect: Option<VersionToken>,
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
@@ -196,7 +196,7 @@ pub(super) enum LibraryCommand {
         #[arg(long)]
         title: String,
         #[arg(long)]
-        expect: VersionToken,
+        expect: Option<VersionToken>,
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
@@ -204,7 +204,7 @@ pub(super) enum LibraryCommand {
     Trash {
         selector: LibraryKey,
         #[arg(long)]
-        expect: VersionToken,
+        expect: Option<VersionToken>,
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
@@ -212,7 +212,7 @@ pub(super) enum LibraryCommand {
     Restore {
         selector: LibraryKey,
         #[arg(long)]
-        expect: VersionToken,
+        expect: Option<VersionToken>,
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
@@ -220,14 +220,14 @@ pub(super) enum LibraryCommand {
     Purge {
         selector: LibraryKey,
         #[arg(long)]
-        expect: VersionToken,
+        expect: Option<VersionToken>,
         #[arg(long)]
         yes: bool,
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
     /// Query only trashed managed records; no automatic purge.
-    ListTrash(QueryArgs),
+    ListTrash(Box<QueryArgs>),
     /// Diagnose records/stages without modifying or repairing them.
     Check {
         #[arg(long, value_enum, default_value = "text")]
@@ -682,23 +682,17 @@ fn apply_and_report_mutation(
     stderr: &mut impl Write,
 ) -> Result<u8> {
     let outcome = store.apply(mutation, cancel)?;
-    let code = if outcome.confirmed() { 0 } else { 1 };
     let mut bytes = if format == ReadFormat::Json {
         json_bytes(&Report::mutation(operation, &outcome))?
     } else {
-        outcome.description(store.root().path()).into_bytes()
+        outcome.description().display_text().into_bytes()
     };
     bytes.push(b'\n');
     if let Err(error) = stdout.write_all(&bytes).and_then(|()| stdout.flush()) {
-        // Publication truth is established before this notification can fail.
-        let _ = writeln!(
-            stderr,
-            "{}",
-            outcome.reporting_failure(store.root().path(), &error)
-        );
+        let _ = writeln!(stderr, "{}", outcome.completion_failure(error).display_text());
         let _ = stderr.flush();
     }
-    Ok(code)
+    Ok(0)
 }
 fn json_bytes(value: &Report) -> Result<Vec<u8>> {
     let text = serde_json::to_string(value)?;
@@ -721,299 +715,25 @@ pub(super) fn print_json(value: &Report) -> Result<()> {
     Ok(())
 }
 fn print_mutation_json(value: &Report) -> Result<()> {
-    let mut bytes = json_bytes(value)?;
+    let mut bytes = match json_bytes(value) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("{}", value.completion_failure(error).display_text());
+            return Ok(());
+        }
+    };
     bytes.push(b'\n');
     if let Err(error) = io::stdout()
         .lock()
         .write_all(&bytes)
         .and_then(|()| io::stdout().lock().flush())
     {
-        eprintln!("{}", value.reporting_failure(&error));
+        eprintln!("{}", value.completion_failure(error).display_text());
     }
     Ok(())
 }
 pub(super) fn error_json(operation: &str, error: &dyn std::error::Error, code: u8) -> Result<()> {
     print_json(&Report::error(operation, error, code))
-}
-
-#[cfg(test)]
-mod recovery_tests {
-    use super::*;
-    use clap::Parser;
-    use lab::library::StoreFault;
-
-    struct InterruptedOutput;
-    impl Write for InterruptedOutput {
-        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
-            Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "closed completion pipe",
-            ))
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-    #[test]
-    fn default_text_uncertainty_receipts_compare_real_committed_and_uncommitted_destinations() {
-        for committed in [false, true] {
-            for broken_output in [false, true] {
-                let temp = tempfile::tempdir().unwrap();
-                let store =
-                    LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap())
-                        .unwrap();
-                store.root().initialize().unwrap();
-                let original = store
-                    .apply(
-                        Mutation::Create(Arc::new(lab::editing::Draft::new().unwrap().recipe())),
-                        &Cancel::default(),
-                    )
-                    .unwrap()
-                    .receipt
-                    .record
-                    .unwrap();
-                let key = original.key.to_string();
-                let previous = original.version_token.to_string();
-                // Parse the ordinary command without --format. The same apply/
-                // report function is called by the production dispatch above.
-                let parsed = super::super::Cli::try_parse_from([
-                    "auditorylab",
-                    "library",
-                    "rename",
-                    &key,
-                    "--title",
-                    "Recovery candidate",
-                    "--expect",
-                    &previous,
-                ])
-                .unwrap();
-                let Some(super::super::Command::Library {
-                    command:
-                        LibraryCommand::Rename {
-                            selector,
-                            expect,
-                            title,
-                            format,
-                        },
-                }) = parsed.command
-                else {
-                    panic!("rename command not parsed")
-                };
-                assert_eq!(format, ReadFormat::Text);
-                let mutation = Mutation::Rename {
-                    key: selector,
-                    expect,
-                    title,
-                };
-                let fault = if committed {
-                    StoreFault::PublicationCommittedUnreadable
-                } else {
-                    StoreFault::PublicationUncommittedUnreadable
-                };
-                let failing = store.clone().with_fault(Some(fault));
-                let mut stdout = Vec::new();
-                let mut stderr = Vec::new();
-                let code = if broken_output {
-                    apply_and_report_mutation(
-                        &failing,
-                        mutation,
-                        "library_rename",
-                        format,
-                        &Cancel::default(),
-                        &mut InterruptedOutput,
-                        &mut stderr,
-                    )
-                } else {
-                    apply_and_report_mutation(
-                        &failing,
-                        mutation,
-                        "library_rename",
-                        format,
-                        &Cancel::default(),
-                        &mut stdout,
-                        &mut stderr,
-                    )
-                }
-                .unwrap();
-                assert_eq!(code, 1);
-                let report = String::from_utf8(if broken_output {
-                    stderr
-                } else {
-                    assert!(stderr.is_empty());
-                    stdout
-                })
-                .unwrap();
-                assert!(report.contains("Publication not confirmed"));
-                assert!(!report.contains("PublicationUnconfirmed"));
-                assert!(report.contains("Do not blindly retry"));
-                assert!(report.contains("Absence alone does not attribute a purge"));
-                assert!(
-                    report.contains(&format!("Library root: {}", store.root().path().display()))
-                );
-                assert!(report.contains("Owned stage: "));
-                let field = |label: &str| {
-                    report
-                        .lines()
-                        .find_map(|line| line.strip_prefix(label))
-                        .unwrap()
-                        .to_owned()
-                };
-                let candidate = field("Candidate version token: ");
-                let printed_previous = field("Previous version token: ");
-                assert_eq!(printed_previous, previous);
-                let _: VersionToken = candidate.parse().unwrap();
-                let _: lab::library::RecordRevision =
-                    field("Operation revision: ").parse().unwrap();
-                assert_ne!(candidate, previous);
-                let revision = field("Operation revision: ");
-                let stage = field("Owned stage: ");
-                assert_eq!(
-                    stage,
-                    format!(
-                        ".{}.{revision}.partial",
-                        original.snapshot.recipe().document.id
-                    )
-                );
-                assert_eq!(
-                    store.root().path().join("records").join(&stage).exists(),
-                    !committed
-                );
-                let observed = store.load(&original.key).unwrap();
-                assert_eq!(
-                    observed.version_token.to_string(),
-                    if committed {
-                        candidate
-                    } else {
-                        printed_previous
-                    }
-                );
-                assert_eq!(observed.snapshot.title() == "Recovery candidate", committed);
-                if broken_output {
-                    assert!(report.contains("Completion output failed"));
-                    assert_eq!(report.matches("Recovery receipt").count(), 1);
-                }
-            }
-        }
-    }
-    #[test]
-    fn ordinary_confirmed_text_stays_concise_but_failed_reporting_retains_comparison_values() {
-        let temp = tempfile::tempdir().unwrap();
-        let store =
-            LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
-        store.root().initialize().unwrap();
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        assert_eq!(
-            apply_and_report_mutation(
-                &store,
-                Mutation::Create(Arc::new(lab::editing::Draft::new().unwrap().recipe())),
-                "library_add",
-                ReadFormat::Text,
-                &Cancel::default(),
-                &mut out,
-                &mut err
-            )
-            .unwrap(),
-            0
-        );
-        assert!(err.is_empty());
-        let text = String::from_utf8(out).unwrap();
-        assert!(text.starts_with("Saved: user:"));
-        assert_eq!(text.lines().count(), 1);
-        let recipe = Arc::new(lab::editing::Draft::new().unwrap().recipe());
-        let key = LibraryKey::User(recipe.document.id);
-        let mut err = Vec::new();
-        assert_eq!(
-            apply_and_report_mutation(
-                &store,
-                Mutation::Create(recipe),
-                "library_add",
-                ReadFormat::Text,
-                &Cancel::default(),
-                &mut InterruptedOutput,
-                &mut err
-            )
-            .unwrap(),
-            0
-        );
-        let text = String::from_utf8(err).unwrap();
-        let observed = store.load(&key).unwrap();
-        assert!(text.contains(&format!(
-            "Candidate version token: {}",
-            observed.version_token
-        )));
-        assert!(text.contains("Previous version token: None (no previous record)"));
-        assert!(text.contains("Completion output failed"));
-    }
-    #[test]
-    fn uncertain_text_purge_retains_previous_token_without_attributing_absence() {
-        for committed in [false, true] {
-            let temp = tempfile::tempdir().unwrap();
-            let store =
-                LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap())
-                    .unwrap();
-            store.root().initialize().unwrap();
-            let original = store
-                .apply(
-                    Mutation::Create(Arc::new(lab::editing::Draft::new().unwrap().recipe())),
-                    &Cancel::default(),
-                )
-                .unwrap()
-                .receipt
-                .record
-                .unwrap();
-            let trashed = store
-                .apply(
-                    Mutation::Trash {
-                        key: original.key.clone(),
-                        expect: original.version_token,
-                    },
-                    &Cancel::default(),
-                )
-                .unwrap()
-                .receipt
-                .record
-                .unwrap();
-            let previous = trashed.version_token.to_string();
-            let failing = store.clone().with_fault(Some(if committed {
-                StoreFault::PurgeCommittedUnreadable
-            } else {
-                StoreFault::PurgeUncommittedUnreadable
-            }));
-            let mut out = Vec::new();
-            let mut err = Vec::new();
-            assert_eq!(
-                apply_and_report_mutation(
-                    &failing,
-                    Mutation::Purge {
-                        key: trashed.key.clone(),
-                        expect: trashed.version_token,
-                        confirmed: true
-                    },
-                    "library_purge",
-                    ReadFormat::Text,
-                    &Cancel::default(),
-                    &mut out,
-                    &mut err
-                )
-                .unwrap(),
-                1
-            );
-            let text = String::from_utf8(out).unwrap();
-            assert!(text.contains(&format!("Previous version token: {previous}")));
-            assert!(text.contains("Candidate version token: None (purge has no candidate record)"));
-            assert!(text.contains("Absence alone does not attribute a purge"));
-            assert!(err.is_empty());
-            if committed {
-                assert!(store.load(&trashed.key).is_err());
-            } else {
-                assert_eq!(
-                    store.load(&trashed.key).unwrap().version_token.to_string(),
-                    previous
-                );
-            }
-        }
-    }
 }
 
 #[cfg(test)]

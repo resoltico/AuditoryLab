@@ -15,6 +15,7 @@ test-support = []
 device-playback = ["dep:cpal"]
 
 [dependencies]
+toml.workspace = true
 same-file.workspace = true
 chrono = { workspace = true, features = ["clock"] }
 cap-std.workspace = true
@@ -43,14 +44,6 @@ toml.workspace = true
 allocation-counter.workspace = true
 proptest.workspace = true
 waveadapter.workspace = true
-
-[[test]]
-name = "library_process"
-required-features = ["test-support"]
-
-[[test]]
-name = "library_faults"
-required-features = ["test-support"]
 
 [[test]]
 name = "default_output"

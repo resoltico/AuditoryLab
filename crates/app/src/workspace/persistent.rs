@@ -3,8 +3,8 @@
 use super::*;
 use crate::collection::{CatalogQuery, EntrySummary, Scope};
 use crate::library::{
-    Inventory, LibraryKey, LibraryStore, LoadedRecord, Mutation, MutationKind, OperationReceipt,
-    RecheckOutcome, VersionToken, WriteOutcome,
+    Inventory, LibraryKey, LibraryStore, LoadedRecord, Mutation, MutationKind, VersionToken,
+    WriteOutcome,
 };
 use crate::presentation::{AudioSummary, DisplayText};
 use crate::vocabulary::{NumberStyle, Term};
@@ -21,12 +21,6 @@ pub(super) struct Persistent {
     pub(super) location: Option<(LibraryKey, VersionToken)>,
     pub(super) detached: Option<LibraryKey>,
     pub(super) external: Option<crate::external::ObservedFile>,
-    external_uncertain: Option<(DocumentId, crate::external::ExternalReceipt)>,
-    external_receipts: Vec<crate::external::ExternalReceipt>,
-    lost_write: Option<Job>,
-    retained_jobs: Vec<Job>,
-    uncertain: Option<(Option<DocumentId>, OperationReceipt)>,
-    retained_receipts: Vec<OperationReceipt>,
     refresh: bool,
     load_attempted: Option<LibraryKey>,
     diagnostics: String,
@@ -51,12 +45,6 @@ impl Persistent {
             location: None,
             detached: None,
             external: None,
-            external_uncertain: None,
-            external_receipts: Vec::new(),
-            lost_write: None,
-            retained_jobs: Vec::new(),
-            uncertain: None,
-            retained_receipts: Vec::new(),
             refresh: true,
             load_attempted: None,
             diagnostics: String::new(),
@@ -86,23 +74,12 @@ impl Persistent {
             .push(EntrySummary::from_snapshot(key, snapshot, None));
         Ok(())
     }
-    pub(super) fn retain_recovery(&mut self) {
-        if let Some((_, receipt)) = self.uncertain.take() {
-            self.retained_receipts.push(receipt);
-        }
-        if let Some((_, receipt)) = self.external_uncertain.take() {
-            self.external_receipts.push(receipt);
-        }
-        if let Some(job) = self.lost_write.take() {
-            self.retained_jobs.push(job);
-        }
-        self.revision += 1;
-    }
+
     pub(super) fn saved_token(&self, key: &LibraryKey) -> Option<VersionToken> {
         self.location
             .as_ref()
             .filter(|(k, _)| k == key)
-            .map(|(_, token)| token.clone())
+            .map(|(_, token)| *token)
     }
     fn requires_read(&self, key: &LibraryKey) -> bool {
         matches!(key, LibraryKey::User(_))
@@ -190,7 +167,7 @@ impl Persistent {
                 e.title.display_scalar(),
                 match e.key {
                     LibraryKey::BuiltIn(_) => "Built-in · Read only",
-                    LibraryKey::User(_) if e.trashed_at.is_some() => "Trash",
+                    LibraryKey::User(_) if e.trashed => "Trash",
                     LibraryKey::User(_) => "User",
                     LibraryKey::External(_) => "Open file",
                 },
@@ -278,28 +255,19 @@ enum Operation {
         expected: crate::external::ObservedFile,
         recipe: Arc<Recipe>,
     },
-    ExternalRecheck {
-        document: DocumentId,
-        receipt: crate::external::ExternalReceipt,
-    },
+
     Initialize,
     Load(LibraryKey),
     Write {
         document: Option<DocumentId>,
         mutation: Mutation,
     },
-    Recheck {
-        document: Option<DocumentId>,
-        receipt: Box<OperationReceipt>,
-    },
 }
 pub(super) enum ResultValue {
     Inventory(Inventory),
     ExternalWritten(Box<crate::external::ExternalOutcome>),
-    ExternalRechecked(Box<crate::external::ExternalRecheck>),
     Loaded(Box<LoadedRecord>),
     Written(Box<WriteOutcome>),
-    Rechecked(Box<RecheckOutcome>),
 }
 impl Job {
     pub(super) fn may_publish(&self) -> bool {
@@ -310,38 +278,24 @@ impl Job {
                 | Operation::DiscardTrash { .. }
         )
     }
-    fn user_key(&self) -> Option<LibraryKey> {
-        match &self.operation {
-            Operation::DiscardTrash { key, .. } => Some(key.clone()),
-            Operation::Write { mutation, .. } => Some(match mutation {
-                Mutation::Create(recipe) | Mutation::Add(recipe) => {
-                    LibraryKey::User(recipe.document.id)
-                }
-                Mutation::Update { key, .. }
-                | Mutation::Rename { key, .. }
-                | Mutation::Trash { key, .. }
-                | Mutation::Restore { key, .. }
-                | Mutation::Purge { key, .. } => key.clone(),
-            }),
-            _ => None,
-        }
-    }
+
     pub(super) fn execute(self) -> Result<ResultValue, Error> {
         match self.operation {
             Operation::DiscardTrash { key, expect, .. } => self
                 .store
-                .apply(Mutation::Trash { key, expect }, &Cancel::default())
+                .apply(
+                    Mutation::Trash {
+                        key,
+                        expect: Some(expect),
+                    },
+                    &Cancel::default(),
+                )
                 .map(|r| ResultValue::Written(Box::new(r))),
             Operation::ExternalSave {
                 expected, recipe, ..
-            } => crate::external::ExternalWriter::default()
+            } => crate::external::ExternalWriter
                 .save(&expected, recipe, &Cancel::default())
                 .map(|r| ResultValue::ExternalWritten(Box::new(r))),
-            Operation::ExternalRecheck { receipt, .. } => {
-                crate::external::ExternalWriter::default()
-                    .recheck(&receipt)
-                    .map(|r| ResultValue::ExternalRechecked(Box::new(r)))
-            }
             Operation::Scan => Ok(ResultValue::Inventory(self.store.scan(&Cancel::default()))),
             Operation::Initialize => {
                 let initialized = self.store.root().initialize()?;
@@ -350,7 +304,7 @@ impl Job {
                     .diagnostics
                     .extend(initialized.warnings.into_iter().map(|message| {
                         crate::library::LibraryDiagnostic {
-                            storage_id: "library.json".into(),
+                            storage_id: "library.toml".into(),
                             code: "initialization_warning".into(),
                             message,
                         }
@@ -365,26 +319,14 @@ impl Job {
                 .store
                 .apply(mutation, &Cancel::default())
                 .map(|r| ResultValue::Written(Box::new(r))),
-            Operation::Recheck { receipt, .. } => self
-                .store
-                .recheck(&receipt)
-                .map(|r| ResultValue::Rechecked(Box::new(r))),
         }
     }
 }
 impl Workspace {
-    pub(super) fn has_unconfirmed_publication(&self) -> bool {
-        self.persistent.as_ref().is_some_and(|p| {
-            p.uncertain.is_some() || p.external_uncertain.is_some() || p.lost_write.is_some()
-        })
+    pub(super) fn missing_file_result(&self, _job: &Job) -> String {
+        "File worker exited without a result. Draft retained; refresh and inspect the affected path before retrying. A missing completion does not establish that storage was unchanged.".into()
     }
-    pub(super) fn retain_missing_file_result(&mut self, job: &Job) -> String {
-        if let Some(p) = &mut self.persistent {
-            p.lost_write = Some(job.clone());
-            p.revision += 1;
-        }
-        "Publication outcome unavailable: worker exited without a receipt. Captured request and draft retained; writes blocked. Recheck storage, explicitly reload the saved version, or save an independent copy. No unchanged-destination claim is implied.".into()
-    }
+
     /// Resolve the production root without falling back to external saves when
     /// configuration fails. Built-ins remain visible with an actionable banner.
     ///
@@ -406,7 +348,7 @@ impl Workspace {
             }
         }
     }
-    /// Incomplete or uncertain state stays visible outside the storage disclosure.
+    /// Incomplete storage state remains visible outside the storage disclosure.
     #[must_use]
     pub fn library_alert(&self) -> String {
         if let Some(error) = &self.persistent_config_error {
@@ -415,8 +357,6 @@ impl Workspace {
             );
         }
         self.persistent.as_ref().map_or(String::new(),|p| {
-            if let Some(job)=&p.lost_write {return format!("Publication outcome unavailable · worker returned no receipt. Captured request retained {}. Recheck storage, explicitly reload or save an independent copy.",job.user_key().map_or(String::new(),|key|key.to_string()));}
-            if p.uncertain.is_some() || p.external_uncertain.is_some() { return "Publication unconfirmed · draft and receipt retained. Recheck before retrying, or save an independent copy.".into(); }
             if !p.complete { return "Library inventory incomplete · previous unseen rows are last observed snapshots. Refresh before acting; no empty-library claim is implied.".into(); }
             String::new()
         })
@@ -722,7 +662,7 @@ impl Workspace {
                     .filter(|r| Some(&r.key) == p.selection.as_ref())
             })
             .cloned();
-        if let Some(record) = record.filter(|r| r.trashed_at.is_none()) {
+        if let Some(record) = record.filter(|r| !r.trashed) {
             self.request(DocumentAction::EditManaged(record));
         } else {
             self.copy_selected();
@@ -745,9 +685,7 @@ impl Workspace {
             .as_ref()
             .and_then(|p| p.loaded.as_ref().filter(|r| !p.requires_read(&r.key)))
             .filter(|r| {
-                r.key.to_string() == key
-                    && r.version_token.to_string() == token
-                    && r.trashed_at.is_none()
+                r.key.to_string() == key && r.version_token.to_string() == token && !r.trashed
             })
             .cloned();
         if let Some(record) = record {
@@ -759,7 +697,6 @@ impl Workspace {
         }
     }
     /// Save the current complete draft under a fresh independent User identity.
-    /// A retained uncertain receipt remains available as recovery evidence.
     ///
     /// # Errors
     /// Refuses incomplete drafts or occupied slots without replacing the document.
@@ -780,16 +717,7 @@ impl Workspace {
         );
         let draft =
             Draft::from_snapshot(&snapshot).map_err(|e| Refusal::Document(e.to_string()))?;
-        if let Some(p) = &mut self.persistent
-            && let Some((_, receipt)) = p.uncertain.take()
-        {
-            p.retained_receipts.push(receipt);
-        }
-        if let Some(p) = &mut self.persistent
-            && let Some((_, receipt)) = p.external_uncertain.take()
-        {
-            p.external_receipts.push(receipt);
-        }
+
         self.replace_document(draft);
         self.save()
     }
@@ -903,9 +831,7 @@ impl Workspace {
                 .as_ref()
                 .and_then(|p| {
                     p.entries.iter().find(|e| {
-                        e.key == key
-                            && e.version_token.as_ref() == Some(&expect)
-                            && e.trashed_at.is_some()
+                        e.key == key && e.version_token.as_ref() == Some(&expect) && e.trashed
                     })
                 })
                 .ok_or(Refusal::Document(
@@ -926,14 +852,20 @@ impl Workspace {
         let mutation = match action {
             "rename" => Mutation::Rename {
                 key,
-                expect,
+                expect: Some(expect),
                 title: title.into(),
             },
-            "trash" => Mutation::Trash { key, expect },
-            "restore" => Mutation::Restore { key, expect },
+            "trash" => Mutation::Trash {
+                key,
+                expect: Some(expect),
+            },
+            "restore" => Mutation::Restore {
+                key,
+                expect: Some(expect),
+            },
             "purge" => Mutation::Purge {
                 key,
-                expect,
+                expect: Some(expect),
                 confirmed,
             },
             _ => return Err(Refusal::Document("Unknown library action.".into())),
@@ -970,39 +902,6 @@ impl Workspace {
         p.refilter();
         self.changed();
     }
-    /// Recheck the retained exact candidate after an uncertain publication.
-    pub fn recheck_library(&mut self) -> Result<(), Refusal> {
-        if let Some(job) = self.persistent.as_ref().and_then(|p| p.lost_write.clone()) {
-            if let Some(key) = job.user_key() {
-                self.managed_job(Operation::Load(key))?;
-                return Ok(());
-            }
-            self.file_status="Worker receipt unavailable. Reopen the displayed external path and explicitly Edit external file to adopt its observed version, or Save independent copy. Captured request retained; no publication is attributed.".into();
-            self.changed();
-            return Ok(());
-        }
-
-        if let Some((document, receipt)) = self
-            .persistent
-            .as_ref()
-            .and_then(|p| p.external_uncertain.clone())
-        {
-            self.managed_job(Operation::ExternalRecheck { document, receipt })?;
-            return Ok(());
-        }
-        let (document, receipt) = self
-            .persistent
-            .as_ref()
-            .and_then(|p| p.uncertain.clone())
-            .ok_or(Refusal::Document(
-                "No uncertain publication to recheck.".into(),
-            ))?;
-        self.managed_job(Operation::Recheck {
-            document,
-            receipt: Box::new(receipt),
-        })?;
-        Ok(())
-    }
     /// Reveal the last confirmed saved key explicitly, clearing filters only on
     /// this command; saving itself preserves the current query.
     pub fn show_saved(&mut self) -> bool {
@@ -1018,7 +917,7 @@ impl Workspace {
             return false;
         };
         p.query = CatalogQuery {
-            scope: if entry.trashed_at.is_some() {
+            scope: if entry.trashed {
                 Scope::Trash
             } else {
                 Scope::User
@@ -1046,22 +945,13 @@ impl Workspace {
                     .as_ref()
                     .filter(|r| Some(&r.key) == p.selection.as_ref())
             })
-            .is_some_and(|r| r.trashed_at.is_some())
+            .is_some_and(|r| r.trashed)
     }
-    /// Human-readable root, incomplete-inventory and uncertain-save status.
+    /// Root location and current inventory diagnostics.
     #[must_use]
     pub fn library_status(&self) -> String {
-        self.persistent.as_ref().map_or(String::new(), |p| {
-            format!(
-                "{}\n{}{}",
-                p.store.root().path().display(),
-                p.diagnostics,
-                if p.uncertain.is_some() || p.external_uncertain.is_some() {
-                    "\nPublication unconfirmed · Recheck before retrying; draft retained."
-                } else {
-                    ""
-                }
-            )
+        self.persistent.as_ref().map_or_else(String::new, |p| {
+            format!("{}\n{}", p.store.root().path().display(), p.diagnostics)
         })
     }
     /// Portable history and local membership are displayed with distinct labels.
@@ -1149,7 +1039,7 @@ impl Workspace {
                             .as_ref()
                             .map_or(String::new(), ToString::to_string)
                     },
-                    e.trashed_at.is_some(),
+                    e.trashed,
                 )
             })
     }
@@ -1161,19 +1051,7 @@ impl Workspace {
         let p = self.persistent.as_ref().ok_or(Refusal::Document(
             "Persistent library is not configured.".into(),
         ))?;
-        if (p.uncertain.is_some() || p.external_uncertain.is_some() || p.lost_write.is_some())
-            && !matches!(
-                operation,
-                Operation::Scan
-                    | Operation::Load(_)
-                    | Operation::Recheck { .. }
-                    | Operation::ExternalRecheck { .. }
-            )
-        {
-            return Err(Refusal::Document(
-                "Publication unconfirmed. Recheck before another mutation.".into(),
-            ));
-        }
+
         let store = p.store.clone();
         let id = self.start_file(FileKind::Managed(Job { store, operation }));
         self.changed();
@@ -1208,7 +1086,7 @@ impl Workspace {
             || Mutation::Create(recipe.clone()),
             |(key, expect)| Mutation::Update {
                 key: key.clone(),
-                expect: expect.clone(),
+                expect: Some(*expect),
                 recipe: recipe.clone(),
             },
         );
@@ -1246,9 +1124,13 @@ impl Workspace {
         if !p.requires_read(&key)
             && p.loaded.as_ref().is_some_and(|r| {
                 r.key == key
-                    && p.entries
-                        .iter()
-                        .any(|e| e.key == key && e.version_token.as_ref() == Some(&r.version_token))
+                    && p.entries.iter().any(|e| {
+                        e.key == key
+                            && e.version_token.as_ref() == Some(&r.version_token)
+                            && e.trashed == r.trashed
+                            && e.added_at == r.added_at
+                            && e.trashed_at == r.trashed_at
+                    })
             })
         {
             return;
@@ -1289,9 +1171,8 @@ impl Workspace {
         result: Result<ResultValue, Error>,
     ) -> (String, Option<bool>) {
         let document = match job.operation {
-            Operation::Write { document, .. } | Operation::Recheck { document, .. } => document,
-            Operation::ExternalSave { document, .. }
-            | Operation::ExternalRecheck { document, .. } => Some(document),
+            Operation::Write { document, .. } => document,
+            Operation::ExternalSave { document, .. } => Some(document),
             _ => None,
         };
         let result = match result {
@@ -1301,7 +1182,7 @@ impl Workspace {
                     format!(
                         "{}: {error}\nDraft retained. Refresh and reload the saved version, keep the draft, or save an independent copy.",
                         if job.may_publish() {
-                            "Not saved"
+                            "Operation failed; inspect the reported path"
                         } else {
                             "Library read failed"
                         }
@@ -1311,53 +1192,121 @@ impl Workspace {
             }
         };
         match result {
-            ResultValue::ExternalWritten(outcome) => self.accept_external_outcome(document, *outcome),
-            ResultValue::ExternalRechecked(outcome) => match *outcome {
-                crate::external::ExternalRecheck::Published(outcome) => self.accept_external_outcome(document,*outcome),
-                crate::external::ExternalRecheck::Original => { if let Some(p) = &mut self.persistent && let Some((_,receipt)) = p.external_uncertain.take() { p.external_receipts.push(receipt); } ("Original external file observed. Candidate is not saved; explicit retry is available.".into(), Some(false)) },
-                crate::external::ExternalRecheck::Absent => ("External target absent. Draft and receipt retained; absence does not authorize recreation.".into(),Some(false)),
-                crate::external::ExternalRecheck::Changed => ("External target changed. Draft and receipt retained; reload or save an independent copy.".into(),Some(false)),
-            },
-            ResultValue::Inventory(inventory) => {
-                let Some(p) = self.persistent.as_mut() else { return ("Library operation completed without an attached workspace; inspect saved storage before another write.".into(),Some(false)); };
-                p.complete=inventory.complete;
-                p.root_unavailable=inventory.diagnostics.iter().any(|d|d.code=="root");
-                p.unreadable=inventory.diagnostics.iter().filter_map(|d|d.storage_id.strip_suffix(".json").and_then(|s|s.parse().ok()).map(LibraryKey::User)).collect();
-                p.record_diagnostics=inventory.diagnostics.iter().filter(|d|d.storage_id.ends_with(".json")).map(|d|format!("Needs review · {}\n{}",d.storage_id,d.message)).collect();
+            ResultValue::ExternalWritten(outcome) => {
+                self.accept_external_outcome(document, *outcome)
+            }
 
-                let observed=inventory.entries.iter().map(|e|e.key.clone()).collect::<std::collections::BTreeSet<_>>();
-                p.stale=if inventory.complete {std::collections::BTreeSet::new()} else {p.entries.iter().filter(|e|matches!(e.key,LibraryKey::User(_)) && !observed.contains(&e.key)).map(|e|e.key.clone()).collect()};
+            ResultValue::Inventory(inventory) => {
+                let Some(p) = self.persistent.as_mut() else {
+                    return ("Library operation completed without an attached workspace; inspect saved storage before another write.".into(),Some(false));
+                };
+                p.complete = inventory.complete;
+                p.root_unavailable = inventory.diagnostics.iter().any(|d| d.code == "root");
+                p.unreadable = inventory
+                    .diagnostics
+                    .iter()
+                    .filter_map(|d| {
+                        d.storage_id
+                            .strip_suffix(".toml")
+                            .and_then(|s| s.parse().ok())
+                            .map(LibraryKey::User)
+                    })
+                    .collect();
+                p.record_diagnostics = inventory
+                    .diagnostics
+                    .iter()
+                    .filter(|d| d.storage_id.ends_with(".toml"))
+                    .map(|d| format!("Needs review · {}\n{}", d.storage_id, d.message))
+                    .collect();
+
+                let observed = inventory
+                    .entries
+                    .iter()
+                    .map(|e| e.key.clone())
+                    .collect::<std::collections::BTreeSet<_>>();
+                p.stale = if inventory.complete {
+                    std::collections::BTreeSet::new()
+                } else {
+                    p.entries
+                        .iter()
+                        .filter(|e| {
+                            matches!(e.key, LibraryKey::User(_)) && !observed.contains(&e.key)
+                        })
+                        .map(|e| e.key.clone())
+                        .collect()
+                };
                 let count = inventory.entries.len();
                 if inventory.complete {
-                    p.entries.retain(|e|!matches!(e.key,LibraryKey::User(_)));
+                    p.entries.retain(|e| !matches!(e.key, LibraryKey::User(_)));
                     p.entries.extend(inventory.entries);
                 } else {
-                    let mut entries=std::mem::take(&mut p.entries).into_iter().map(|e|(e.key.clone(),e)).collect::<std::collections::BTreeMap<_,_>>();
-                    for entry in inventory.entries {entries.insert(entry.key.clone(),entry);}
-                    p.entries=entries.into_values().collect();
+                    let mut entries = std::mem::take(&mut p.entries)
+                        .into_iter()
+                        .map(|e| (e.key.clone(), e))
+                        .collect::<std::collections::BTreeMap<_, _>>();
+                    for entry in inventory.entries {
+                        entries.insert(entry.key.clone(), entry);
+                    }
+                    p.entries = entries.into_values().collect();
                 }
 
-                p.diagnostics = format!("{} · {count} readable User entries{}{}", if inventory.complete { "Inventory complete" } else { "Inventory incomplete · unseen previous rows retained; refresh before acting" }, if inventory.not_initialized { " · Not initialized" } else { "" }, inventory.diagnostics.iter().map(|d| format!("\n{}: {}", d.code, d.message)).collect::<String>());
-                if !inventory.stages.is_empty() { p.diagnostics.push_str(&format!("\n{} staging artifacts retained for recovery.", inventory.stages.len())); }
-                p.load_attempted = None; p.refilter();
+                p.diagnostics = format!(
+                    "{} · {count} readable User entries{}{}",
+                    if inventory.complete {
+                        "Inventory complete"
+                    } else {
+                        "Inventory incomplete · unseen previous rows retained; refresh before acting"
+                    },
+                    if inventory.not_initialized {
+                        " · Not initialized"
+                    } else {
+                        ""
+                    },
+                    inventory
+                        .diagnostics
+                        .iter()
+                        .map(|d| format!("\n{}: {}", d.code, d.message))
+                        .collect::<String>()
+                );
+                if !inventory.stages.is_empty() {
+                    p.diagnostics.push_str(&format!(
+                        "\n{} staging artifacts retained for recovery.",
+                        inventory.stages.len()
+                    ));
+                }
+                p.load_attempted = None;
+                p.refilter();
                 (p.diagnostics.clone(), None)
             }
-            ResultValue::Loaded(record) => { let Some(p) = self.persistent.as_mut() else { return ("Library operation completed without an attached workspace; inspect saved storage before another write.".into(),Some(false)); }; p.accept_record(*record); ("Saved version loaded; open draft and playing snapshot retained.".into(), None) }
+            ResultValue::Loaded(record) => {
+                let Some(p) = self.persistent.as_mut() else {
+                    return ("Library operation completed without an attached workspace; inspect saved storage before another write.".into(),Some(false));
+                };
+                p.accept_record(*record);
+                (
+                    "Saved version loaded; open draft and playing snapshot retained.".into(),
+                    None,
+                )
+            }
             ResultValue::Written(outcome) => {
-                let confirmed=outcome.confirmed();
-                let result=self.accept_managed_outcome(document,*outcome);
-                if confirmed && let Operation::DiscardTrash { document,draft,input,.. } = job.operation
-                    && self.editor.document()==document && self.editor.draft_revision()==draft && self.editor.input_revision()==input {
-                    match Draft::new() { Ok(draft)=>self.replace_document(draft),Err(error)=>self.file_status=error.to_string() }
+                let result = self.accept_managed_outcome(document, *outcome);
+                if let Operation::DiscardTrash {
+                    document,
+                    draft,
+                    input,
+                    ..
+                } = job.operation
+                    && self.editor.document() == document
+                    && self.editor.draft_revision() == draft
+                    && self.editor.input_revision() == input
+                {
+                    match Draft::new() {
+                        Ok(draft) => self.replace_document(draft),
+                        Err(error) => self.file_status = error.to_string(),
+                    }
                 }
                 result
-            },
-            ResultValue::Rechecked(result) => match *result {
-                RecheckOutcome::Published(outcome) => self.accept_managed_outcome(document, *outcome),
-                RecheckOutcome::Original(record) => { let Some(p) = self.persistent.as_mut() else { return ("Library operation completed without an attached workspace; inspect saved storage before another write.".into(),Some(false)); }; p.uncertain = None; p.accept_record(record); ("Original version observed. The candidate is not saved; an explicit Save may retry with the original token.".into(), Some(false)) },
-                RecheckOutcome::Changed(record) => { let Some(p) = self.persistent.as_mut() else { return ("Library operation completed without an attached workspace; inspect saved storage before another write.".into(),Some(false)); }; p.accept_record(record); ("A different saved version exists. Draft and uncertain receipt retained; reload or save a copy after reconciliation.".into(), Some(false)) },
-                RecheckOutcome::Absent => ("Target absent; this does not establish who removed it. Draft and receipt retained; no automatic recreation or retry.".into(), Some(false)),
-            },
+            }
         }
     }
     fn accept_external_outcome(
@@ -1367,28 +1316,22 @@ impl Workspace {
     ) -> (String, Option<bool>) {
         let Some(document) = document else {
             return (
-                "External save result has no owning document; receipt could not be applied.".into(),
+                "External save result has no owning document; saved baseline was not changed."
+                    .into(),
                 Some(false),
             );
         };
         let Some(p) = self.persistent.as_mut() else {
             return ("Library operation completed without an attached workspace; inspect saved storage before another write.".into(),Some(false));
         };
-        if !outcome.confirmed() {
-            p.external_uncertain = Some((document, outcome.receipt));
-            p.revision += 1;
-            return ("External publication unconfirmed. Draft and receipt retained; Recheck before retrying.".into(),Some(false));
-        }
-        let Some(snapshot) = outcome.snapshot() else {
-            return ("External result is unconfirmed.".into(), Some(false));
-        };
-        p.external_uncertain = None;
-        self.editor.record_saved(document, &outcome.receipt.recipe);
+
+        let snapshot = outcome.snapshot();
+        self.editor.record_saved(document, &outcome.recipe);
         if self.editor.document() == document {
             p.external = snapshot.external_file().cloned();
         }
         // Replace only the selected external observation's index, keeping its key.
-        let path = outcome.receipt.previous.path();
+        let path = outcome.previous.path();
         if let Some(index) = self
             .catalog
             .iter()
@@ -1403,7 +1346,6 @@ impl Workspace {
             }
             self.catalog[index] = snapshot;
         }
-        p.external_receipts.push(outcome.receipt);
         p.refilter();
         (
             format!(
@@ -1471,20 +1413,9 @@ impl Workspace {
         let Some(p) = self.persistent.as_mut() else {
             return ("Library operation completed without an attached workspace; inspect saved storage before another write.".into(),Some(false));
         };
-        let key = outcome.receipt.key.clone();
-        if !outcome.confirmed() {
-            p.uncertain = Some((document, outcome.receipt));
-            p.revision += 1;
-            return (
-                format!(
-                    "Publication unconfirmed · draft retained. Recheck before retrying.\n{}",
-                    outcome.diagnostics.join("\n")
-                ),
-                Some(false),
-            );
-        }
-        p.uncertain = None;
-        if let Some(record) = outcome.receipt.record {
+        let key = outcome.key.clone();
+
+        if let Some(record) = outcome.record {
             if document.is_some()
                 && let Err(error) = record.snapshot.at(self.export_rate)
             {
@@ -1493,13 +1424,13 @@ impl Workspace {
             if let Some(document) = document {
                 self.editor.record_saved(document, record.snapshot.recipe());
                 if self.editor.document() == document {
-                    p.location = Some((key.clone(), record.version_token.clone()));
+                    p.location = Some((key.clone(), record.version_token));
                     p.detached = None;
                 }
             } else if p.location.as_ref().is_some_and(|(k, _)| k == &key) {
                 // Membership changes do not alter portable history or the live draft.
                 // A dirty rename keeps its old expected token so Save exposes conflict.
-                if matches!(outcome.receipt.kind, MutationKind::Trash) {
+                if matches!(outcome.kind, MutationKind::Trash) {
                     p.detached = Some(key.clone());
                     p.location = None;
                 } else if !self.editor.dirty() {
@@ -1508,7 +1439,7 @@ impl Workspace {
                             self.editor = editor;
                             self.editor
                                 .record_saved(self.editor.document(), record.snapshot.recipe());
-                            p.location = Some((key.clone(), record.version_token.clone()));
+                            p.location = Some((key.clone(), record.version_token));
                         }
                         Err(error) => outcome.diagnostics.push(format!(
                             "Saved, but the editor could not refresh: {error}. Open draft retained."
@@ -1548,7 +1479,7 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library::{LibraryRoot, StoreFault};
+    use crate::library::LibraryRoot;
     use std::time::{Duration, Instant};
     fn fixture() -> (tempfile::TempDir, LibraryStore, Workspace) {
         let temp = tempfile::tempdir().unwrap();
@@ -1753,7 +1684,7 @@ mod tests {
         idle(&mut w);
         other.save().unwrap();
         idle(&mut other);
-        assert!(other.file_status.contains("Conflict"));
+        assert!(other.file_status.contains("saved recipe changed"));
         assert_eq!(other.editor.draft().title(), "Untitled sound");
         other.refresh_library();
         idle(&mut other);
@@ -1843,8 +1774,8 @@ mod tests {
             store
                 .root()
                 .path()
-                .join("records")
-                .join(format!("{}.json", record.snapshot.recipe().document.id)),
+                .join("recipes")
+                .join(format!("{}.toml", record.snapshot.recipe().document.id)),
             b"broken",
         )
         .unwrap();
@@ -1868,29 +1799,7 @@ mod tests {
         assert!(w.library_status().contains("incomplete"));
         assert_eq!(w.editor.draft().title(), "Untitled sound");
     }
-    #[test]
-    fn uncertain_save_blocks_retry_and_recheck_confirms_exact_candidate() {
-        let (_temp, store, mut w) = fixture();
-        w.persistent.as_mut().unwrap().store =
-            store.with_fault(Some(StoreFault::PublicationCommittedUnreadable));
-        w.save().unwrap();
-        idle(&mut w);
-        assert!(w.persistent.as_ref().unwrap().uncertain.is_some());
-        assert!(w.save().is_err());
-        w.persistent.as_mut().unwrap().store = w
-            .persistent
-            .as_ref()
-            .unwrap()
-            .store
-            .clone()
-            .with_fault(None);
-        w.recheck_library().unwrap();
-        idle(&mut w);
-        assert!(w.persistent.as_ref().unwrap().uncertain.is_none());
-        assert!(!w.editor.dirty());
-        user(&mut w);
-        assert_eq!(w.library_view().rows.len(), 1);
-    }
+
     #[test]
     fn save_before_trash_uses_confirmed_new_token_and_preserves_published_edit() {
         let (_temp, store, mut w) = fixture();
@@ -1969,14 +1878,7 @@ mod tests {
         idle(&mut w);
         let inventory = store.scan(&Cancel::default());
         assert_eq!(inventory.entries.len(), 2);
-        assert_eq!(
-            inventory
-                .entries
-                .iter()
-                .filter(|e| e.trashed_at.is_none())
-                .count(),
-            1
-        );
+        assert_eq!(inventory.entries.iter().filter(|e| !e.trashed).count(), 1);
     }
     #[test]
     fn managed_playback_worker_refuses_changed_or_trashed_observation() {
@@ -1991,11 +1893,12 @@ mod tests {
             .apply(
                 Mutation::Trash {
                     key: record.key,
-                    expect: record.version_token,
+                    expect: Some(record.version_token),
                 },
                 &Cancel::default(),
             )
             .unwrap();
+        std::fs::remove_file(store.root().path().join("membership.toml")).unwrap();
         assert_eq!(
             tasks::revalidate_managed(&captured, &store)
                 .unwrap_err()
@@ -2005,22 +1908,7 @@ mod tests {
         assert!(!w.audio_busy());
         assert_eq!(captured.title(), "Untitled sound");
     }
-    #[test]
-    fn missing_worker_receipt_blocks_retry_until_explicit_reconciliation() {
-        let (_temp, store, mut w) = fixture();
-        w.file_spawner = Some(Box::new(|_| tasks::Worker::spawn(|_| {})));
-        w.save().unwrap();
-        idle(&mut w);
-        assert!(w.persistent.as_ref().unwrap().lost_write.is_some());
-        assert!(w.save().is_err());
-        assert!(store.scan(&Cancel::default()).entries.is_empty());
-        w.file_spawner = None;
-        w.save_independent_copy().unwrap();
-        idle(&mut w);
-        assert!(!w.editor.dirty());
-        assert!(w.persistent.as_ref().unwrap().lost_write.is_none());
-        assert_eq!(w.persistent.as_ref().unwrap().retained_jobs.len(), 1);
-    }
+
     #[test]
     fn retained_user_source_is_captured_temporary_content_not_a_fresh_user_selection() {
         let (_temp, store, mut w) = fixture();
@@ -2037,7 +1925,7 @@ mod tests {
             .apply(
                 Mutation::Rename {
                     key,
-                    expect: record.version_token,
+                    expect: Some(record.version_token),
                     title: "Changed current User".into(),
                 },
                 &Cancel::default(),
@@ -2050,5 +1938,80 @@ mod tests {
         assert!(!w.persistent.as_ref().unwrap().selected_user());
         assert!(!w.file_busy());
         assert!(!w.audio_busy());
+    }
+
+    #[test]
+    fn missing_worker_result_keeps_draft_and_retry_observes_real_storage() {
+        for applied in [false, true] {
+            let (_temp, store, mut workspace) = fixture();
+            title(&mut workspace, "Unsaved draft must survive");
+            workspace.file_spawner = Some(Box::new(move |kind| {
+                tasks::Worker::spawn(move |_| {
+                    if applied {
+                        let _ = kind.execute();
+                    }
+                })
+            }));
+            workspace.save().unwrap();
+            idle(&mut workspace);
+            assert!(workspace.editor.dirty());
+            assert!(workspace.file_status.contains("without a result"));
+            assert_eq!(
+                store.scan(&Cancel::default()).entries.len(),
+                usize::from(applied)
+            );
+            workspace.file_spawner = None;
+            workspace.save().unwrap();
+            idle(&mut workspace);
+            if applied {
+                assert!(workspace.editor.dirty());
+                assert!(workspace.file_status.contains("identity already exists"));
+                workspace.save_independent_copy().unwrap();
+                idle(&mut workspace);
+                assert_eq!(store.scan(&Cancel::default()).entries.len(), 2);
+            } else {
+                assert_eq!(store.scan(&Cancel::default()).entries.len(), 1);
+            }
+            assert!(!workspace.editor.dirty());
+        }
+    }
+
+    #[test]
+    fn refresh_reloads_membership_state_even_when_recipe_sha_is_unchanged() {
+        let (_temp, store, mut workspace) = fixture();
+        workspace.save().unwrap();
+        idle(&mut workspace);
+        user(&mut workspace);
+        let (binding, token, _) = workspace.library_binding();
+        let key: LibraryKey = binding.parse().unwrap();
+        store
+            .apply(
+                Mutation::Trash {
+                    key: key.clone(),
+                    expect: Some(token.parse().unwrap()),
+                },
+                &Cancel::default(),
+            )
+            .unwrap();
+        std::fs::remove_file(store.root().path().join("membership.toml")).unwrap();
+        workspace
+            .set_catalog_query(CatalogQuery {
+                scope: Scope::Trash,
+                ..CatalogQuery::default()
+            })
+            .unwrap();
+        workspace.refresh_library();
+        idle(&mut workspace);
+        assert!(workspace.selected_trashed());
+        let loaded = workspace
+            .persistent
+            .as_ref()
+            .unwrap()
+            .loaded
+            .as_ref()
+            .unwrap();
+        assert!(loaded.trashed);
+        assert_eq!(loaded.trashed_at, None);
+        assert_eq!(loaded.version_token.to_string(), token);
     }
 }

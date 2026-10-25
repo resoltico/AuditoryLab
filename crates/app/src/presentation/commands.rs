@@ -2,7 +2,7 @@
 use super::{AudioSummary, DisplayText};
 use crate::collection::{EntrySummary, Scope};
 use crate::core::Timestamp;
-use crate::library::{Initialization, Inventory, LibraryRoot, RootInfo, WriteOutcome};
+use crate::library::{Initialization, Inventory, LibraryRoot, RootInfo};
 use crate::recipe::Rendition;
 use crate::vocabulary::{Caption, Collection, NumberStyle, Status};
 use crate::wav::Exported;
@@ -54,13 +54,13 @@ impl EntrySummary {
     /// Membership details shown next to the selected portable description.
     #[must_use]
     pub fn membership_description(&self) -> String {
-        if self.added_at.is_none() {
+        if !matches!(self.key, crate::library::LibraryKey::User(_)) {
             return String::new();
         }
         format!(
             "Added here: {}\nTrash: {}\nVersion token: {}\n",
             date(self.added_at),
-            date(self.trashed_at),
+            if self.trashed { date(self.trashed_at) } else { Status::None.label().into() },
             self.version_token
                 .as_ref()
                 .map_or_else(|| Status::None.label().into(), ToString::to_string)
@@ -140,75 +140,6 @@ impl Exported {
         )
     }
 }
-impl WriteOutcome {
-    /// The authoritative publication outcome and any associated recovery information.
-    #[must_use]
-    pub fn description(&self, root: &Path) -> String {
-        let mut text = format!("{}: {}", self.status.label(), self.receipt.key);
-        for diagnostic in &self.diagnostics {
-            text.push('\n');
-            text.push_str(&diagnostic.display_text());
-        }
-        if !self.confirmed() {
-            text.push('\n');
-            text.push_str(&self.recovery_description(root));
-        }
-        text
-    }
-    /// Comparison values needed when the current publication protocol cannot confirm an outcome.
-    #[must_use]
-    pub fn recovery_description(&self, root: &Path) -> String {
-        let receipt = &self.receipt;
-        let previous = receipt
-            .previous
-            .as_ref()
-            .map_or_else(|| "None (no previous record)".into(), ToString::to_string);
-        let candidate = receipt.candidate_token.as_ref().map_or_else(
-            || "None (purge has no candidate record)".into(),
-            ToString::to_string,
-        );
-        let stage = receipt.owned_stage.as_ref().map_or_else(
-            || Status::None.label().into(),
-            |stage| stage.display_scalar(),
-        );
-        let root = root.display().to_string().display_scalar();
-        format!(
-            "Recovery receipt\nLibrary root: {root}\nOperation revision: {}\nSelector: {}\nPrevious version token: {previous}\nCandidate version token: {candidate}\nOwned stage: {stage}\nRecheck in this same library root with: auditorylab describe {} --format json\nCompare the observed version_token with this candidate/previous token before deciding another operation. Do not blindly retry. Absence alone does not attribute a purge.",
-            receipt.operation_revision, receipt.key, receipt.key
-        )
-    }
-    /// Completion output failure cannot change the already established publication truth.
-    #[must_use]
-    pub fn reporting_failure(&self, root: &Path, error: &std::io::Error) -> String {
-        let mut report = self.description(root);
-        if self.confirmed() {
-            report.push('\n');
-            report.push_str(&self.recovery_description(root));
-        }
-        let truth = if self.confirmed() {
-            Status::OperationConfirmed
-        } else {
-            Status::PublicationUnconfirmed
-        }
-        .label();
-        format!("{truth}\n{report}\nCompletion output failed: {error}")
-    }
-}
-impl crate::reports::Report {
-    /// A structured completion's notification failure preserves the report and receipt.
-    #[must_use]
-    pub fn reporting_failure(&self, error: &std::io::Error) -> String {
-        let truth = if self.complete {
-            Status::OperationConfirmed
-        } else {
-            Status::PublicationUnconfirmed
-        }
-        .label();
-        let receipt = serde_json::to_string(&self.receipt)
-            .unwrap_or_else(|error| format!("receipt rendering failed: {error}"));
-        format!("{truth}; completion output failed: {error}; receipt {receipt}")
-    }
-}
 impl Caption {
     /// Confirm completed export of the exact captured recipe text.
     #[must_use]
@@ -260,19 +191,6 @@ impl DesktopDiagnostics<'_> {
             self.typography,
             self.model
         )
-    }
-}
-
-impl crate::library::MutationStatus {
-    /// User-facing publication status without exposing an internal enum name.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Published => Status::Saved.label(),
-            Self::PublishedWithWarning => Status::SavedWithWarning.label(),
-            Self::Unchanged => Status::Unchanged.label(),
-            Self::PublicationUnconfirmed => Status::PublicationNotConfirmed.label(),
-        }
     }
 }
 

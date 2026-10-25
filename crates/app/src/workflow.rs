@@ -12,6 +12,12 @@ use std::{
     },
 };
 
+/// Confirmed recipe-file publication and any durability or cleanup warnings.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SaveOutcome {
+    /// Warnings do not undo successful publication or prevent advancing a saved baseline.
+    pub warnings: Vec<String>,
+}
 /// Whether publication may replace an existing destination.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Replace {
@@ -80,6 +86,11 @@ pub fn export(
             ),
         })
     })
+    .map(|published| {
+        let mut exported = published.value;
+        exported.warnings.extend(published.warnings);
+        exported
+    })
 }
 
 /// Save a built-in recipe's exact text, comments included.
@@ -87,13 +98,16 @@ pub fn export(
 /// # Errors
 /// Returns [`ErrorKind::UnknownRecipe`], [`ErrorKind::DestinationExists`]
 /// under [`Replace::Never`], or [`ErrorKind::Write`].
-pub fn save_builtin(id: &str, path: &Path, replace: Replace) -> Result<(), Error> {
+pub fn save_builtin(id: &str, path: &Path, replace: Replace) -> Result<SaveOutcome, Error> {
     use std::io::Write;
     let text = builtin_source(id)?;
     publish::publish(path, replace, &Cancel::default(), |file| {
         file.write_all(text.as_bytes()).map_err(|e| {
             Error::caused(ErrorKind::Write, format!("cannot save to {path:?}: {e}"), e)
         })
+    })
+    .map(|published| SaveOutcome {
+        warnings: published.warnings,
     })
 }
 
@@ -102,7 +116,7 @@ pub fn save_builtin(id: &str, path: &Path, replace: Replace) -> Result<(), Error
 /// # Errors
 /// Rejects unsupported/invalid content before staging and preserves explicit
 /// no-clobber/replacement publication semantics.
-pub fn save_recipe_text(text: &str, path: &Path, replace: Replace) -> Result<(), Error> {
+pub fn save_recipe_text(text: &str, path: &Path, replace: Replace) -> Result<SaveOutcome, Error> {
     use std::io::Write;
     Recipe::parse(text).map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?;
     publish::publish(path, replace, &Cancel::default(), |file| {
@@ -113,5 +127,8 @@ pub fn save_recipe_text(text: &str, path: &Path, replace: Replace) -> Result<(),
                 e,
             )
         })
+    })
+    .map(|published| SaveOutcome {
+        warnings: published.warnings,
     })
 }

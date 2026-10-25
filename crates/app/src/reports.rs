@@ -7,8 +7,8 @@ use crate::{
     core::{ComponentFacts, DocumentUuid, Lane, SampleRate, Timestamp, nominal},
     error::Error,
     library::{
-        Initialization, Inventory, LibraryDiagnostic, LibraryKey, LibraryRoot, MutationKind,
-        MutationStatus, RecordRevision, RootInfo, RootSource, VersionToken, WriteOutcome,
+        Initialization, Inventory, LibraryDiagnostic, LibraryKey, LibraryRoot, MutationStatus,
+        RootInfo, RootSource, VersionToken, WriteOutcome,
     },
     recipe::RecipeSnapshot,
 };
@@ -107,7 +107,7 @@ pub enum Validation {
 report_struct!(EntryReport {
     key: LibraryKey, collection: Collection, title: String, document_id: DocumentUuid,
     duration_seconds: f64, created_at: Option<Timestamp>, modified_at: Option<Timestamp>,
-    added_at: Option<Timestamp>, trashed_at: Option<Timestamp>, version_token: Option<VersionToken>,
+    added_at: Option<Timestamp>, trashed_at: Option<Timestamp>, trashed: bool, version_token: Option<VersionToken>,
     nominal: NominalReport, evidence: Vec<EvidenceFacet>, validation: Validation,
     #[serde(skip_serializing_if = "Option::is_none")] history_warnings: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")] recipe_toml: Option<String>,
@@ -124,7 +124,8 @@ impl From<&EntrySummary> for EntryReport {
             modified_at: e.modified_at,
             added_at: e.added_at,
             trashed_at: e.trashed_at,
-            version_token: e.version_token.clone(),
+            trashed: e.trashed,
+            version_token: e.version_token,
             nominal: (&e.nominal).into(),
             evidence: e.evidence.clone(),
             validation: Validation::NotChecked,
@@ -150,7 +151,7 @@ pub enum Diagnostic {
     Message(String),
 }
 report_struct!(UnavailableRoot {
-    path: PathBuf, source: RootSource, exists: Option<bool>, library_format: Option<u32>, initialized: bool,
+    path: PathBuf, source: RootSource, exists: Option<bool>, layout: Option<u32>, initialized: bool,
 });
 /// Root information from inspection, initialization, or an inspection failure.
 #[derive(Debug, Clone, Serialize)]
@@ -177,8 +178,8 @@ pub enum FailureStatus {
     Cancelled,
     /// Invalid input or arguments.
     Rejected,
-    /// An operation failed before publication.
-    FailedBeforePublication,
+    /// A file operation failed; inspect the path named by its diagnostic.
+    Failed,
 }
 /// Publication or failure state, independent of terminal output success.
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -189,10 +190,6 @@ pub enum ReportStatus {
     /// Failure classification.
     Failure(FailureStatus),
 }
-report_struct!(ReceiptReport {
-    operation_revision: RecordRevision, previous_version_token: Option<VersionToken>,
-    candidate_version_token: Option<VersionToken>, owned_stage: Option<String>,
-});
 report_struct!(Report {
     output_schema_version: u32, operation: String, complete: bool, convention: &'static str,
     query: Option<CatalogQuery>, unique_count: usize, entries: Vec<EntryReport>, groups: Vec<ResultGroup>,
@@ -204,10 +201,13 @@ report_struct!(Report {
     #[serde(skip_serializing_if = "Option::is_none")] status: Option<ReportStatus>,
     #[serde(skip_serializing_if = "Option::is_none")] selector: Option<LibraryKey>,
     #[serde(skip_serializing_if = "Option::is_none")] version_token: Option<Option<VersionToken>>,
-    #[serde(skip_serializing_if = "Option::is_none")] candidate: Option<Option<EntryReport>>,
-    #[serde(skip_serializing_if = "Option::is_none")] receipt: Option<ReceiptReport>,
 });
 impl Report {
+    /// A completed operation remains confirmed if rendering or writing its report fails.
+    #[must_use]
+    pub fn completion_failure(&self, error: impl std::fmt::Display) -> String {
+        format!("Operation confirmed; completion output failed: {error}")
+    }
     fn new(operation: &str, complete: bool) -> Self {
         Self {
             output_schema_version: OUTPUT_SCHEMA_VERSION,
@@ -226,8 +226,6 @@ impl Report {
             status: None,
             selector: None,
             version_token: None,
-            candidate: None,
-            receipt: None,
         }
     }
     fn with_entries(mut self, entries: Vec<EntryReport>) -> Self {
@@ -331,7 +329,7 @@ impl Report {
             path: root.path().into(),
             source: root.source(),
             exists,
-            library_format: None,
+            layout: None,
             initialized: false,
         }));
         report.diagnostics.push(Diagnostic::Root {
@@ -375,33 +373,22 @@ impl Report {
     /// The library's authoritative publication outcome.
     #[must_use]
     pub fn mutation(operation: &str, outcome: &WriteOutcome) -> Self {
-        let receipt = &outcome.receipt;
-        let entry = receipt
+        let entries = outcome
             .record
             .as_ref()
-            .map(|record| EntryReport::from(&record.summary()));
-        let entries = if outcome.confirmed() && receipt.kind != MutationKind::Purge {
-            entry.clone().into_iter().collect()
-        } else {
-            Vec::new()
-        };
-        let mut report = Self::new(operation, outcome.confirmed()).with_entries(entries);
+            .map(|record| EntryReport::from(&record.summary()))
+            .into_iter()
+            .collect();
+        let mut report = Self::new(operation, true).with_entries(entries);
         report.status = Some(ReportStatus::Mutation(outcome.status));
-        report.selector = Some(receipt.key.clone());
-        report.version_token = Some(receipt.candidate_token.clone());
-        report.candidate = Some(if outcome.confirmed() { None } else { entry });
+        report.selector = Some(outcome.key.clone());
+        report.version_token = Some(outcome.record.as_ref().map(|record| record.version_token));
         report.diagnostics = outcome
             .diagnostics
             .iter()
             .cloned()
             .map(Diagnostic::Message)
             .collect();
-        report.receipt = Some(ReceiptReport {
-            operation_revision: receipt.operation_revision,
-            previous_version_token: receipt.previous.clone(),
-            candidate_version_token: receipt.candidate_token.clone(),
-            owned_stage: receipt.owned_stage.clone(),
-        });
         report
     }
     /// A failure classified by its public exit outcome.
@@ -414,7 +401,7 @@ impl Report {
             5 => FailureStatus::IncompleteInventory,
             130 => FailureStatus::Cancelled,
             2 => FailureStatus::Rejected,
-            _ => FailureStatus::FailedBeforePublication,
+            _ => FailureStatus::Failed,
         }));
         report
             .diagnostics

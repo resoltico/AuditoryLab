@@ -1,19 +1,21 @@
 //! Root resolution, private initialization and stable cooperative filesystem locks.
-use super::{RecordRevision, record};
 use crate::error::{Error, ErrorKind};
+use crate::publish::{self, Policy};
+use crate::workflow::Cancel;
 use cap_fs_ext::{DirExt, FollowSymlinks, OpenOptionsFollowExt};
 use cap_std::fs::{Dir, OpenOptions};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     fs::File,
-    io::{Read, Write},
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
 
 const LOCK: &str = ".library.lock";
-const MARKER: &str = "library.json";
+const MARKER: &str = "library.toml";
+/// Version of the plain-file library directory layout.
+pub const LIBRARY_LAYOUT: u32 = 1;
 /// Which configuration selected this root, in precedence order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -84,65 +86,45 @@ impl LibraryRoot {
     pub(super) fn missing_is_empty(&self) -> bool {
         self.source == RootSource::Default
     }
-    /// Inspect existence/marker without creating a lock or initializing a root.
+    /// Inspect the marker and required directories without creating a root.
     ///
     /// # Errors
-    /// Reports busy, unsafe/incomplete layout or unreadable/unsupported marker.
+    /// Reports busy locks, unsupported markers and unsafe/incomplete directories.
     pub fn inspect(&self) -> Result<RootInfo, Error> {
-        match self.lock(false, false)? {
-            None => Ok(RootInfo {
+        let Some(lease) = self.lock(false, false)? else {
+            return Ok(RootInfo {
                 path: self.path.clone(),
                 source: self.source,
                 exists: false,
-                library_format: None,
+                layout: None,
                 initialized: false,
-            }),
-            Some(lease) => {
-                validate_marker(&lease.dir)?;
-                lease.records()?;
-                Ok(RootInfo {
-                    path: lease.canonical.clone(),
-                    source: self.source,
-                    exists: true,
-                    library_format: Some(record::RECORD_FORMAT),
-                    initialized: true,
-                })
-            }
+            });
+        };
+        validate_marker(&lease.dir)?;
+        for name in ["recipes", "trash", ".stage"] {
+            lease.directory(name)?;
         }
-    }
-    /// Initialize an empty/owned interrupted layout, under the persistent root lock.
-    ///
-    /// # Errors
-    /// Refuses unknown existing contents, unsupported markers, nonempty unmarked
-    /// records, symlinks, locking failure and pre-publication I/O errors.
-    pub fn initialize(&self) -> Result<Initialization, Error> {
-        self.initialize_inner(|| {})
-    }
-    /// Pause after the real marker stage is synchronized, before publication.
-    /// Native parent tests terminate this process and inspect/retry the owned layout.
-    ///
-    /// # Errors
-    /// Reports real initialization errors before reaching the controlled pause.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn initialize_paused(&self, ready: &Path) -> Result<Initialization, Error> {
-        self.initialize_inner(|| {
-            std::fs::write(ready, b"ready")
-                .unwrap_or_else(|error| panic!("cannot signal initialization fixture: {error}"));
-            loop {
-                std::thread::park();
-            }
+        Ok(RootInfo {
+            path: lease.canonical.clone(),
+            source: self.source,
+            exists: true,
+            layout: Some(LIBRARY_LAYOUT),
+            initialized: true,
         })
     }
-    fn initialize_inner(&self, before_marker: impl FnOnce()) -> Result<Initialization, Error> {
-        let lease = self.lock(true, true)?.ok_or_else(|| {
-            Error::new(
-                ErrorKind::Write,
-                "library initialization did not create a root",
-            )
-        })?;
+    /// Initialize an empty or interrupted owned layout; publish its marker last.
+    ///
+    /// # Errors
+    /// Refuses unknown existing content, symlinks, unsupported layouts and lock failures.
+    pub fn initialize(&self) -> Result<Initialization, Error> {
+        let lease = self
+            .lock(true, true)?
+            .ok_or_else(|| Error::new(ErrorKind::Write, "initialization did not create a root"))?;
         if lease.dir.symlink_metadata(MARKER).is_ok() {
             validate_marker(&lease.dir)?;
-            lease.records()?;
+            for name in ["recipes", "trash", ".stage"] {
+                lease.directory(name)?;
+            }
             return Ok(Initialization {
                 created: false,
                 path: lease.canonical.clone(),
@@ -150,72 +132,57 @@ impl LibraryRoot {
             });
         }
         validate_unmarked(&lease.dir)?;
-        match lease.dir.symlink_metadata("records") {
-            Ok(metadata) => {
-                if !metadata.is_dir() || metadata.file_type().is_symlink() {
-                    return Err(Error::new(
-                        ErrorKind::IncompleteInventory,
-                        "records must be a real directory",
-                    ));
+        for name in ["recipes", "trash", ".stage"] {
+            match lease.dir.symlink_metadata(name) {
+                Ok(_) => {
+                    lease.directory(name)?;
                 }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let mut builder = cap_std::fs::DirBuilder::new();
-                #[cfg(unix)]
-                {
-                    use cap_std::fs::DirBuilderExt;
-                    builder.mode(0o700);
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    let mut builder = cap_std::fs::DirBuilder::new();
+                    #[cfg(unix)]
+                    {
+                        use cap_std::fs::DirBuilderExt;
+                        builder.mode(0o700);
+                    }
+                    lease
+                        .dir
+                        .create_dir_with(name, &builder)
+                        .map_err(|e| io("cannot create private library directory", e))?;
                 }
-                lease
-                    .dir
-                    .create_dir_with("records", &builder)
-                    .map_err(|e| io("cannot create records directory", e))?;
+                Err(e) => return Err(io("cannot inspect library directory", e)),
             }
-            Err(e) => return Err(io("cannot inspect records directory", e)),
         }
-        let stage = format!(".library.{}.partial", RecordRevision::fresh()?);
-        let mut file = create_stage(&lease.dir, &stage)?;
-        let bytes = serde_json::to_vec(&Marker {
-            library_format: record::RECORD_FORMAT,
-        })
-        .map_err(|e| Error::caused(ErrorKind::Write, "cannot encode library marker", e))?;
-        if let Err(e) = file
-            .write_all(&bytes)
-            .and_then(|()| file.flush())
-            .and_then(|()| file.sync_all())
-        {
-            let cleanup = lease.dir.remove_file(&stage);
-            return Err(stage_failure(
-                "cannot prepare library marker",
-                e,
-                &stage,
-                cleanup,
-            ));
-        }
-        before_marker();
-        let published = lease.dir.hard_link(&stage, &lease.dir, MARKER);
-        if let Err(e) = published
-            && validate_marker(&lease.dir).is_err()
-        {
-            let cleanup = lease.dir.remove_file(&stage);
-            return Err(stage_failure(
-                "library marker publication was not confirmed; inspect the root before retry",
-                e,
-                &stage,
-                cleanup,
-            ));
-        }
+        let bytes = format!("layout = {LIBRARY_LAYOUT}\n");
         let mut warnings = Vec::new();
-        if let Err(e) = lease.dir.remove_file(&stage) {
-            warnings.push(format!(
-                "Initialized; marker stage {stage} could not be removed: {e}"
-            ));
+        if lease.dir.symlink_metadata("membership.toml").is_err() {
+            let initialized = publish::publish_in(
+                &lease.dir,
+                Path::new("membership.toml"),
+                &lease.canonical.join("membership.toml"),
+                Policy::CreateNew,
+                &Cancel::default(),
+                |file| {
+                    use std::io::Write;
+                    file.write_all(b"[entries]\n")
+                        .map_err(|e| io("cannot initialize membership timestamps", e))
+                },
+            )?;
+            warnings.extend(initialized.warnings);
         }
-        if let Err(e) = lease.sync() {
-            warnings.push(format!(
-                "Initialized; root directory durability warning: {e}"
-            ));
-        }
+        cleanup_stages(&lease.dir, &lease.canonical, &mut warnings)?;
+        let result = publish::publish_in(
+            &lease.dir,
+            Path::new(MARKER),
+            &lease.canonical.join(MARKER),
+            Policy::CreateNew,
+            &Cancel::default(),
+            |file| {
+                use std::io::Write;
+                file.write_all(bytes.as_bytes())
+                    .map_err(|e| io("cannot write library marker", e))
+            },
+        )?;
+        warnings.extend(result.warnings);
         Ok(Initialization {
             created: true,
             path: lease.canonical.clone(),
@@ -247,7 +214,7 @@ impl LibraryRoot {
             .map_err(|e| io("cannot open configured library root", e))?;
         if initialize && dir.symlink_metadata(LOCK).is_err() {
             validate_unmarked(&dir)?;
-            match create_stage(&dir, LOCK) {
+            match create_lock(&dir, LOCK) {
                 Ok(_) => {}
                 Err(e) if dir.symlink_metadata(LOCK).is_ok() => {
                     drop(e);
@@ -302,8 +269,8 @@ pub struct RootInfo {
     /// Root exists; false does not trigger initialization.
     pub exists: bool,
     /// Supported observed marker format, otherwise absent.
-    pub library_format: Option<u32>,
-    /// Marker/lock/records layout was verified.
+    pub layout: Option<u32>,
+    /// Marker/lock/plain-file layout was verified.
     pub initialized: bool,
 }
 /// Explicit initialization result, distinct from creating any recipe.
@@ -316,26 +283,33 @@ pub struct Initialization {
     /// Post-publication durability/cleanup warnings.
     pub warnings: Vec<String>,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Marker {
-    library_format: u32,
+    layout: u32,
 }
 pub(super) fn validate_marker(dir: &Dir) -> Result<(), Error> {
     let bytes = read_bounded(dir, MARKER, 1024)?;
-    let marker: Marker = serde_json::from_slice(&bytes).map_err(|_| {
-        Error::new(
+    let marker: Marker = toml::from_str(std::str::from_utf8(&bytes).map_err(|e| {
+        Error::caused(
             ErrorKind::IncompleteInventory,
-            "missing/invalid library format marker; existing records were left intact",
+            "layout marker is not UTF-8",
+            e,
+        )
+    })?)
+    .map_err(|e| {
+        Error::caused(
+            ErrorKind::IncompleteInventory,
+            "invalid library.toml layout marker",
+            e,
         )
     })?;
-    if marker.library_format != record::RECORD_FORMAT {
+    if marker.layout != LIBRARY_LAYOUT {
         return Err(Error::new(
             ErrorKind::IncompleteInventory,
             format!(
-                "unsupported library format {}; this build reads {}",
-                marker.library_format,
-                record::RECORD_FORMAT
+                "unsupported library layout {}; this build reads {LIBRARY_LAYOUT}",
+                marker.layout
             ),
         ));
     }
@@ -346,48 +320,45 @@ fn validate_unmarked(dir: &Dir) -> Result<(), Error> {
         .entries()
         .map_err(|e| io("cannot enumerate uninitialized root", e))?
     {
-        let entry = entry.map_err(|e| io("cannot inspect uninitialized root entry", e))?;
+        let entry = entry.map_err(|e| io("cannot inspect root entry", e))?;
         let name = entry.file_name();
         if name == LOCK {
-            continue;
-        }
-        if name == "records" {
-            let records = dir
-                .open_dir_nofollow("records")
-                .map_err(|e| io("unsafe records directory", e))?;
-            if records
-                .entries()
-                .map_err(|e| io("cannot inspect unmarked records", e))?
-                .next()
-                .transpose()
-                .map_err(|e| io("cannot inspect unmarked record", e))?
-                .is_some()
-            {
-                return Err(Error::new(
-                    ErrorKind::IncompleteInventory,
-                    "records exist without a supported marker; do not initialize or convert them automatically",
-                ));
-            }
             continue;
         }
         if name == MARKER {
             validate_marker(dir)?;
             continue;
         }
-        if name
-            .to_str()
-            .is_some_and(|s| s.starts_with(".library.") && s.ends_with(".partial"))
-        {
+        if name == "membership.toml" {
             let bytes = read_bounded(dir, &name, 1024)?;
-            let marker: Marker = serde_json::from_slice(&bytes).map_err(|_| {
-                Error::new(
-                    ErrorKind::IncompleteInventory,
-                    "unknown contents in an uninitialized root",
-                )
-            })?;
-            if marker.library_format == record::RECORD_FORMAT {
+            if bytes == b"[entries]\n" {
                 continue;
             }
+            return Err(Error::new(
+                ErrorKind::IncompleteInventory,
+                "nonempty membership exists without a layout marker; initialization left it intact",
+            ));
+        }
+        if matches!(name.to_str(), Some("recipes" | "trash" | ".stage")) {
+            let child = dir
+                .open_dir_nofollow(&name)
+                .map_err(|e| io("library directory is unsafe", e))?;
+            for entry in child
+                .entries()
+                .map_err(|e| io("cannot enumerate unmarked directory", e))?
+            {
+                let entry = entry.map_err(|e| io("cannot inspect unmarked entry", e))?;
+                if !owned_stage(&entry.file_name()) {
+                    return Err(Error::new(
+                        ErrorKind::IncompleteInventory,
+                        "recipes exist without a supported marker; initialization left them unchanged",
+                    ));
+                }
+            }
+            continue;
+        }
+        if owned_stage(&name) {
+            continue;
         }
         return Err(Error::new(
             ErrorKind::IncompleteInventory,
@@ -406,7 +377,7 @@ fn read_options() -> OpenOptions {
     }
     options
 }
-pub(super) fn create_stage(dir: &Dir, name: &str) -> Result<cap_std::fs::File, Error> {
+fn create_lock(dir: &Dir, name: &str) -> Result<cap_std::fs::File, Error> {
     let mut options = read_options();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -415,45 +386,47 @@ pub(super) fn create_stage(dir: &Dir, name: &str) -> Result<cap_std::fs::File, E
         options.mode(0o600);
     }
     dir.open_with(name, &options)
-        .map_err(|e| io("cannot create an owned exclusive stage", e))
+        .map_err(|e| io("cannot exclusively create library lock", e))
 }
 pub(super) fn read_bounded(
     dir: &Dir,
     name: impl AsRef<Path>,
     limit: usize,
 ) -> Result<Vec<u8>, Error> {
-    let file = dir.open_with(name, &read_options()).map_err(|e| {
-        io(
-            "cannot open regular managed file without following symlinks",
-            e,
-        )
-    })?;
-    let metadata = file
-        .metadata()
-        .map_err(|e| io("cannot inspect opened managed file", e))?;
-    if !metadata.is_file() || metadata.file_type().is_symlink() {
-        return Err(Error::new(
-            ErrorKind::IncompleteInventory,
-            "managed entry must be a regular non-symlink file",
-        ));
+    publish::read_bounded(dir, name.as_ref(), limit)
+}
+pub(super) fn owned_stage(name: &std::ffi::OsStr) -> bool {
+    name.to_str()
+        .and_then(|n| n.strip_prefix(".auditorylab-"))
+        .and_then(|n| n.strip_suffix(".partial"))
+        .is_some_and(|n| n.parse::<crate::core::DocumentUuid>().is_ok())
+}
+pub(super) fn cleanup_stages(
+    dir: &Dir,
+    path: &Path,
+    warnings: &mut Vec<String>,
+) -> Result<(), Error> {
+    for entry in dir
+        .entries()
+        .map_err(|e| io("cannot enumerate owned stages", e))?
+    {
+        let entry = entry.map_err(|e| io("cannot inspect owned stage", e))?;
+        let name = entry.file_name();
+        if owned_stage(&name)
+            && entry
+                .file_type()
+                .map_err(|e| io("cannot inspect stage type", e))?
+                .is_file()
+        {
+            dir.remove_file(&name)
+                .map_err(|e| io("cannot clean abandoned owned stage", e))?;
+            warnings.push(format!(
+                "Removed abandoned stage {}",
+                path.join(name).display()
+            ));
+        }
     }
-    if metadata.len() > u64::try_from(limit).unwrap_or(u64::MAX) {
-        return Err(Error::new(
-            ErrorKind::IncompleteInventory,
-            "managed file exceeds its byte limit",
-        ));
-    }
-    let mut bytes = Vec::new();
-    file.take(u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(|e| io("cannot read managed file", e))?;
-    if bytes.len() > limit {
-        return Err(Error::new(
-            ErrorKind::IncompleteInventory,
-            "managed file grew beyond its bounded read limit",
-        ));
-    }
-    Ok(bytes)
+    Ok(())
 }
 pub(super) struct Lease {
     pub(super) dir: Dir,
@@ -462,13 +435,10 @@ pub(super) struct Lease {
     admission: Admission,
 }
 impl Lease {
-    pub(super) fn records(&self) -> Result<Dir, Error> {
+    pub(super) fn directory(&self, name: &str) -> Result<Dir, Error> {
         self.dir
-            .open_dir_nofollow("records")
-            .map_err(|e| io("records directory is missing, unreadable or a symlink", e))
-    }
-    pub(super) fn sync(&self) -> std::io::Result<()> {
-        self.dir.try_clone()?.into_std_file().sync_all()
+            .open_dir_nofollow(name)
+            .map_err(|e| io("library directory is missing, unreadable or a symlink", e))
     }
 }
 impl Drop for Lease {
@@ -515,16 +485,4 @@ impl Drop for Admission {
 }
 pub(super) fn io(context: &str, error: std::io::Error) -> Error {
     Error::caused(ErrorKind::Unreadable, format!("{context}: {error}"), error)
-}
-fn stage_failure(
-    context: &str,
-    error: std::io::Error,
-    stage: &str,
-    cleanup: std::io::Result<()>,
-) -> Error {
-    let mut message = format!("{context}: {error}");
-    if let Err(e) = cleanup {
-        message.push_str(&format!("; owned stage {stage} retained: {e}"));
-    }
-    Error::caused(ErrorKind::Write, message, error)
 }

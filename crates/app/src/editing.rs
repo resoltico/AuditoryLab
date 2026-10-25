@@ -443,13 +443,16 @@ pub fn save_content(
     recipe: &Recipe,
     path: &std::path::Path,
     replace: crate::workflow::Replace,
-) -> Result<(), Error> {
+) -> Result<crate::workflow::SaveOutcome, Error> {
     use std::io::Write;
     let text = serialize(recipe)?;
     crate::publish::publish(path, replace, &crate::workflow::Cancel::default(), |file| {
         file.write_all(text.as_bytes()).map_err(|e| {
             Error::caused(ErrorKind::Write, format!("cannot save to {path:?}: {e}"), e)
         })
+    })
+    .map(|published| crate::workflow::SaveOutcome {
+        warnings: published.warnings,
     })
 }
 

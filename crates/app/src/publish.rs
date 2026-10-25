@@ -1,325 +1,531 @@
-//! Atomic publication of completed files.
-//!
-//! The sequence is: check cancellation; for `Replace::Never`, reject an
-//! existing destination before creating anything; stage in the destination
-//! directory; write; sync; check cancellation once more; publish the completed file.
-//! Confirmed replacement is atomic; no-overwrite persistence is not guaranteed
-//! atomic on every platform and may retain the staging link.
-//! Successful persistence is the publication's linearization point: a
-//! cancellation requested afterwards cannot unpublish it. Failure cleanup
-//! removes only the operation's own stage. Syncing the stage is not a claim
-//! of durability through a system crash or power loss.
+//! Exclusive adjacent staging, atomic publication and verification of ambiguous I/O results.
 use crate::error::{Error, ErrorKind};
+use crate::library::Fingerprint;
 use crate::workflow::{Cancel, Replace};
-use std::{fs::File, path::Path};
-use tempfile::NamedTempFile;
-fn cleanup(stage: NamedTempFile, failure: Error) -> Error {
-    let path = stage.path().to_owned();
-    match stage.close() {
-        Ok(()) => failure,
-        Err(e) => failure.with_leftover(path, e),
+use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt};
+use cap_std::fs::{Dir, OpenOptions};
+use sha2::{Digest, Sha256};
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom, Write},
+    path::{Path, PathBuf},
+};
+
+#[derive(Clone, Copy)]
+pub(crate) enum Policy<'a> {
+    CreateNew,
+    Replace,
+    ReplaceIfUnchanged {
+        fingerprint: Fingerprint,
+        identity: &'a same_file::Handle,
+    },
+}
+#[derive(Debug)]
+pub(crate) struct Published<T> {
+    pub(crate) value: T,
+    pub(crate) warnings: Vec<String>,
+}
+/// Open without following the last symlink or waiting for a FIFO.
+pub(crate) fn open_regular(dir: &Dir, name: &Path) -> Result<File, Error> {
+    let mut options = OpenOptions::new();
+    options.read(true).follow(FollowSymlinks::No);
+    #[cfg(unix)]
+    {
+        use cap_std::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let file = dir
+        .open_with(name, &options)
+        .map_err(|e| io(name, "cannot open file safely", e))?;
+    if !file
+        .metadata()
+        .map_err(|e| io(name, "cannot inspect opened file", e))?
+        .is_file()
+    {
+        return Err(Error::new(
+            ErrorKind::Unreadable,
+            format!("{name:?}: expected a regular file"),
+        ));
+    }
+    Ok(file.into_std())
+}
+pub(crate) fn read_bounded(dir: &Dir, name: &Path, limit: usize) -> Result<Vec<u8>, Error> {
+    read_bounded_counted(dir, name, limit, &mut 0)
+}
+pub(crate) fn read_bounded_counted(
+    dir: &Dir,
+    name: &Path,
+    limit: usize,
+    consumed: &mut usize,
+) -> Result<Vec<u8>, Error> {
+    let file = open_regular(dir, name)?;
+    if file
+        .metadata()
+        .map_err(|e| io(name, "cannot inspect byte size", e))?
+        .len()
+        > u64::try_from(limit).unwrap_or(u64::MAX)
+    {
+        return Err(Error::new(
+            ErrorKind::IncompleteInventory,
+            format!("{name:?}: file exceeds the bounded read limit"),
+        ));
+    }
+    let mut bytes = Vec::new();
+    let result = file
+        .take(u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1))
+        .read_to_end(&mut bytes);
+    *consumed = consumed.saturating_add(bytes.len());
+    result.map_err(|e| io(name, "cannot read file", e))?;
+    if bytes.len() > limit {
+        return Err(Error::new(
+            ErrorKind::IncompleteInventory,
+            format!("{name:?}: file grew beyond the bounded read limit"),
+        ));
+    }
+    Ok(bytes)
+}
+
+fn hash(file: &mut File) -> Result<Fingerprint, std::io::Error> {
+    file.seek(SeekFrom::Start(0))?;
+    let mut digest = Sha256::new();
+    let mut block = [0; 64 * 1024];
+    loop {
+        let n = file.read(&mut block)?;
+        if n == 0 {
+            break;
+        }
+        digest.update(&block[..n]);
+    }
+    Ok(Fingerprint::from_digest(digest.finalize().into()))
+}
+fn observed(dir: &Dir, name: &Path) -> Result<Option<Fingerprint>, Error> {
+    match dir.symlink_metadata(name) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(io(name, "cannot inspect destination", e)),
+        Ok(_) => hash(&mut open_regular(dir, name)?)
+            .map(Some)
+            .map_err(|e| io(name, "cannot hash destination", e)),
     }
 }
-/// Reject any existing entry, including directories and dangling symbolic
-/// links, before staging or writing. This avoids needless work; the final
-/// no-clobber persistence still decides a race with another creator.
-fn preflight(path: &Path) -> Result<(), Error> {
-    match std::fs::symlink_metadata(path) {
-        Ok(_) => Err(exists(path)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(Error::caused(
-            ErrorKind::Write,
-            format!("cannot check whether {path:?} exists: {e}"),
-            e,
-        )),
-    }
-}
-fn exists(path: &Path) -> Error {
-    Error::new(
-        ErrorKind::DestinationExists,
-        format!("cannot publish to {path:?}: the file already exists and was left untouched"),
+fn io(path: &Path, context: &str, error: std::io::Error) -> Error {
+    Error::caused(
+        ErrorKind::Write,
+        format!("{path:?}: {context}: {error}"),
+        error,
     )
+}
+fn cancelled(path: &Path) -> Error {
+    Error::new(
+        ErrorKind::Cancelled,
+        format!("publication to {path:?} cancelled before commit"),
+    )
+}
+fn cleanup(dir: &Dir, stage: &Path, path: &Path, error: Error) -> Error {
+    match fault(FaultPoint::Cleanup).and_then(|()| dir.remove_file(stage)) {
+        Ok(()) => error,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => error,
+        Err(e) => error.with_leftover(path.parent().unwrap_or(Path::new(".")).join(stage), e),
+    }
+}
+pub(crate) fn sync_directory(dir: &Dir) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        dir.try_clone()?.into_std_file().sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+        Ok(())
+    }
+}
+/// Publish within an already-open parent, retaining its capability across pathname changes.
+pub(crate) fn publish_in<T>(
+    dir: &Dir,
+    name: &Path,
+    path: &Path,
+    policy: Policy<'_>,
+    cancel: &Cancel,
+    write: impl FnOnce(&mut File) -> Result<T, Error>,
+) -> Result<Published<T>, Error> {
+    if cancel.is_requested() {
+        return Err(cancelled(path));
+    }
+    if matches!(policy, Policy::CreateNew) && dir.symlink_metadata(name).is_ok() {
+        return Err(Error::new(
+            ErrorKind::DestinationExists,
+            format!("{path:?}: destination already exists and was left untouched"),
+        ));
+    }
+    let previous = if matches!(policy, Policy::CreateNew) {
+        None
+    } else {
+        observed(dir, name)?
+    };
+    let stage = PathBuf::from(format!(
+        ".auditorylab-{}.partial",
+        crate::identity::random_uuid()?
+    ));
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .follow(FollowSymlinks::No);
+    #[cfg(unix)]
+    {
+        use cap_std::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    fault(FaultPoint::StageCreate).map_err(|e| io(path, "cannot create stage", e))?;
+    let mut file = dir
+        .open_with(&stage, &options)
+        .map_err(|e| io(path, "cannot create exclusive stage", e))?
+        .into_std();
+    let prepared = (|| {
+        fault(FaultPoint::Write).map_err(|e| io(path, "cannot write stage", e))?;
+        let value = write(&mut file)?;
+        file.flush()
+            .and_then(|()| fault(FaultPoint::FileSync))
+            .and_then(|()| file.sync_all())
+            .map_err(|e| io(path, "cannot synchronize stage", e))?;
+        let fingerprint = hash(&mut file).map_err(|e| io(path, "cannot verify stage bytes", e))?;
+        if let Policy::ReplaceIfUnchanged {
+            fingerprint: expected,
+            identity,
+        } = policy
+        {
+            let mut latest = open_regular(dir, name)?;
+            let found =
+                hash(&mut latest).map_err(|e| io(path, "cannot verify current bytes", e))?;
+            let handle = same_file::Handle::from_file(latest)
+                .map_err(|e| io(path, "cannot verify current identity", e))?;
+            if found != expected || handle != *identity {
+                return Err(Error::new(
+                    ErrorKind::Conflict,
+                    format!("{path:?}: file changed identity or bytes since it was opened"),
+                ));
+            }
+        }
+        if cancel.is_requested() {
+            return Err(cancelled(path));
+        }
+        Ok((value, fingerprint))
+    })();
+    let (value, candidate) = match prepared {
+        Ok(v) => v,
+        Err(e) => return Err(cleanup(dir, &stage, path, e)),
+    };
+    pause(FaultPoint::BeforePublish);
+    let publication = fault(FaultPoint::BeforePublish)
+        .and_then(|()| match policy {
+            Policy::CreateNew => dir.hard_link(&stage, dir, name),
+            Policy::Replace | Policy::ReplaceIfUnchanged { .. } => dir.rename(&stage, dir, name),
+        })
+        .and_then(|()| fault(FaultPoint::AfterPublish));
+    pause(FaultPoint::AfterPublish);
+    let mut warnings = Vec::new();
+    if let Err(error) = publication {
+        if matches!(policy, Policy::CreateNew) && error.kind() == std::io::ErrorKind::AlreadyExists
+        {
+            return Err(cleanup(
+                dir,
+                &stage,
+                path,
+                Error::caused(
+                    ErrorKind::DestinationExists,
+                    format!(
+                        "{path:?}: destination was created by another writer and was left untouched"
+                    ),
+                    error,
+                ),
+            ));
+        }
+        let found = fault(FaultPoint::Verify)
+            .map_err(|e| io(path, "destination verification unavailable", e))
+            .and_then(|()| observed(dir, name));
+        match found {
+            Ok(Some(fingerprint)) if fingerprint == candidate => warnings.push(format!(
+                "Saved; publication was verified after an I/O error: {error}"
+            )),
+            Ok(found) if found == previous => {
+                return Err(cleanup(
+                    dir,
+                    &stage,
+                    path,
+                    io(
+                        path,
+                        "publication was not applied; previous content remains",
+                        error,
+                    ),
+                ));
+            }
+            _ => {
+                return Err(cleanup(
+                    dir,
+                    &stage,
+                    path,
+                    io(
+                        path,
+                        "publication failed and destination differs from both previous and candidate bytes; inspect this path before retrying",
+                        error,
+                    ),
+                ));
+            }
+        }
+    }
+    drop(file);
+    if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
+        match observed(dir, name) {
+            Ok(Some(found)) if found == candidate => {
+                warnings.push(format!("Saved; directory durability warning: {error}"))
+            }
+            Ok(found) if found == previous => {
+                return Err(cleanup(
+                    dir,
+                    &stage,
+                    path,
+                    io(
+                        path,
+                        "directory sync failed and previous bytes remain",
+                        error,
+                    ),
+                ));
+            }
+            _ => {
+                return Err(cleanup(
+                    dir,
+                    &stage,
+                    path,
+                    io(
+                        path,
+                        "directory sync failed and candidate bytes could not be verified; inspect this path",
+                        error,
+                    ),
+                ));
+            }
+        }
+    }
+    if matches!(policy, Policy::CreateNew)
+        && let Err(error) = fault(FaultPoint::Cleanup).and_then(|()| dir.remove_file(&stage))
+    {
+        warnings.push(format!(
+            "Saved; owned stage {} remains: {error}",
+            stage.display()
+        ));
+    }
+    Ok(Published { value, warnings })
 }
 pub(crate) fn publish<T>(
     path: &Path,
     replace: Replace,
     cancel: &Cancel,
     write: impl FnOnce(&mut File) -> Result<T, Error>,
-) -> Result<T, Error> {
-    let cancelled = || {
-        Error::new(
-            ErrorKind::Cancelled,
-            format!("publication to {path:?} cancelled"),
-        )
-    };
-    if cancel.is_requested() {
-        return Err(cancelled());
-    }
-    if replace == Replace::Never {
-        preflight(path)?;
-    }
+) -> Result<Published<T>, Error> {
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
-    let name = path.file_name().unwrap_or_default().to_string_lossy();
-    let mut end = name.len().min(64);
-    while !name.is_char_boundary(end) {
-        end -= 1;
-    }
-    let prefix = format!(".{}.", &name[..end]);
-    let mut builder = tempfile::Builder::new();
-    builder.prefix(&prefix).suffix(".partial");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        builder.permissions(std::fs::Permissions::from_mode(0o666));
-    }
-    let mut stage = builder.tempfile_in(parent).map_err(|e| {
-        Error::caused(
-            ErrorKind::Write,
-            format!("cannot create a partial file for {path:?}: {e}"),
-            e,
-        )
-    })?;
-    let result = write(stage.as_file_mut()).and_then(|value| {
-        stage.as_file().sync_all().map_err(|e| {
-            Error::caused(ErrorKind::Write, format!("cannot sync {path:?}: {e}"), e)
-        })?;
-        if cancel.is_requested() {
-            Err(cancelled())
-        } else {
-            Ok(value)
-        }
-    });
-    let value = match result {
-        Ok(value) => value,
-        Err(e) => return Err(cleanup(stage, e)),
-    };
-    let committed = match replace {
-        Replace::Never => stage.persist_noclobber(path),
-        Replace::Allowed => stage.persist(path),
-    };
-    match committed {
-        Ok(_) => Ok(value),
-        Err(failure) => {
-            let e = failure.error;
-            let error = if e.kind() == std::io::ErrorKind::AlreadyExists {
-                let message = exists(path).to_string();
-                Error::caused(ErrorKind::DestinationExists, message, e)
-            } else {
-                Error::caused(
-                    ErrorKind::Write,
-                    format!("cannot publish to {path:?}: {e}"),
-                    e,
-                )
-            };
-            Err(cleanup(failure.file, error))
-        }
-    }
+    let name = path
+        .file_name()
+        .ok_or_else(|| Error::new(ErrorKind::Write, "destination needs a filename"))?;
+    let dir = Dir::open_ambient_dir(parent, cap_std::ambient_authority())
+        .map_err(|e| io(path, "cannot open destination directory", e))?;
+    let result = publish_in(
+        &dir,
+        Path::new(name),
+        path,
+        match replace {
+            Replace::Never => Policy::CreateNew,
+            Replace::Allowed => Policy::Replace,
+        },
+        cancel,
+        write,
+    )?;
+    Ok(result)
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FaultPoint {
+    StageCreate,
+    Write,
+    FileSync,
+    BeforePublish,
+    AfterPublish,
+    DirectorySync,
+    Cleanup,
+    Verify,
+    BeforeLink,
+    AfterLink,
+    BeforeRemove,
+    AfterRemove,
 }
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::{fs, io::Write};
-    fn dir() -> tempfile::TempDir {
-        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
-        fs::create_dir_all(&base).unwrap();
-        tempfile::tempdir_in(base).unwrap()
-    }
-    #[test]
-    fn publication_replaces_only_when_allowed_and_cleans_failed_writes() {
-        let dir = dir();
-        let path = dir.path().join("file");
-        fs::write(&path, b"old").unwrap();
-        let write = |f: &mut File| {
-            f.write_all(b"complete")
-                .map_err(|e| Error::caused(ErrorKind::Write, "write failed", e))
-        };
-        assert_eq!(
-            publish(&path, Replace::Never, &Cancel::default(), write)
-                .unwrap_err()
-                .kind(),
-            ErrorKind::DestinationExists
-        );
-        assert_eq!(fs::read(&path).unwrap(), b"old");
-        publish(&path, Replace::Allowed, &Cancel::default(), write).unwrap();
-        assert_eq!(fs::read(&path).unwrap(), b"complete");
-        for cancelled in [false, true] {
-            let cancel = Cancel::default();
-            let e = publish(&path, Replace::Allowed, &cancel, |_| {
-                if cancelled {
-                    cancel.request();
-                    Ok(())
-                } else {
-                    Err(Error::new(ErrorKind::Write, "injected failure"))
+thread_local! {static AFTER_PUBLISH: std::cell::RefCell<Option<Box<dyn FnOnce()>>>=const {std::cell::RefCell::new(None)};static INJECT: std::cell::RefCell<Vec<FaultPoint>>=const {std::cell::RefCell::new(Vec::new())};}
+fn fault(point: FaultPoint) -> std::io::Result<()> {
+    #[cfg(test)]
+    {
+        if point == FaultPoint::AfterPublish {
+            AFTER_PUBLISH.with(|slot| {
+                if let Some(hook) = slot.borrow_mut().take() {
+                    hook();
                 }
-            })
-            .unwrap_err();
-            assert_eq!(
-                e.kind(),
-                if cancelled {
-                    ErrorKind::Cancelled
-                } else {
-                    ErrorKind::Write
-                }
-            );
-            assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
-            assert_eq!(fs::read(&path).unwrap(), b"complete");
+            });
+        }
+        if INJECT.with(|slot| {
+            let mut faults = slot.borrow_mut();
+            if let Some(i) = faults.iter().position(|p| *p == point) {
+                faults.remove(i);
+                true
+            } else {
+                false
+            }
+        }) {
+            return Err(std::io::Error::other(format!("injected {point:?} failure")));
         }
     }
-    #[cfg(unix)]
-    #[test]
-    fn cleanup_failure_names_the_leftover_and_preserves_primary_error() {
-        let dir = dir();
-        let path = dir.path().join("file");
-        let e = publish(
-            &path,
-            Replace::Never,
-            &Cancel::default(),
-            |_| -> Result<(), Error> {
-                let stage = fs::read_dir(dir.path())
-                    .unwrap()
-                    .next()
-                    .unwrap()
-                    .unwrap()
-                    .path();
-                fs::remove_file(&stage).unwrap();
-                fs::create_dir(&stage).unwrap();
-                Err(Error::new(ErrorKind::Write, "injected failure"))
-            },
-        )
-        .unwrap_err();
-        assert!(e.leftover().unwrap().is_dir());
-        assert!(e.to_string().contains("injected failure"));
-        assert!(!path.exists());
-    }
-    #[test]
-    fn long_unicode_stage_names_are_bounded_and_pre_cancel_creates_nothing() {
-        let dir = dir();
-        let path = dir.path().join("é".repeat(100));
-        let cancel = Cancel::default();
-        cancel.request();
-        assert!(publish(&path, Replace::Never, &cancel, |_| Ok(())).is_err());
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
-        publish(&path, Replace::Never, &Cancel::default(), |_| {
-            let name = fs::read_dir(dir.path())
-                .unwrap()
-                .next()
-                .unwrap()
-                .unwrap()
-                .file_name();
-            assert!(name.len() < 100);
-            Ok(())
+    let _ = point;
+    Ok(())
+}
+fn pause(point: FaultPoint) {
+    #[cfg(test)]
+    if std::env::var("AUDITORYLAB_PUBLISH_PAUSE").ok().as_deref()
+        == Some(match point {
+            FaultPoint::BeforePublish => "before",
+            FaultPoint::AfterPublish => "after",
+            FaultPoint::BeforeLink => "before-link",
+            FaultPoint::AfterLink => "after-link",
+            FaultPoint::AfterRemove => "after-remove",
+            _ => "",
         })
-        .unwrap();
-    }
-
-    #[test]
-    fn every_existing_entry_is_rejected_before_staging_or_writing() {
-        let dir = dir();
-        let file = dir.path().join("file");
-        fs::write(&file, b"old").unwrap();
-        let directory = dir.path().join("directory");
-        fs::create_dir(&directory).unwrap();
-        let existing = vec![file.clone(), directory];
-        #[cfg(unix)]
-        let existing = {
-            let mut existing = existing;
-            let link = dir.path().join("link");
-            std::os::unix::fs::symlink(&file, &link).unwrap();
-            let dangling = dir.path().join("dangling");
-            std::os::unix::fs::symlink(dir.path().join("absent"), &dangling).unwrap();
-            existing.extend([link, dangling]);
-            existing
-        };
-        let entries = fs::read_dir(dir.path()).unwrap().count();
-        for path in existing {
-            let written = std::cell::Cell::new(false);
-            let error = publish(&path, Replace::Never, &Cancel::default(), |_| {
-                written.set(true);
-                Ok(())
-            })
-            .unwrap_err();
-            assert_eq!(error.kind(), ErrorKind::DestinationExists, "{path:?}");
-            assert!(!written.get(), "the writer must not run for {path:?}");
-            assert_eq!(
-                fs::read_dir(dir.path()).unwrap().count(),
-                entries,
-                "no stage"
-            );
-        }
-        assert_eq!(fs::read(&file).unwrap(), b"old");
-        // A missing destination proceeds.
-        publish(
-            &dir.path().join("new"),
-            Replace::Never,
-            &Cancel::default(),
-            |f| {
-                f.write_all(b"new")
-                    .map_err(|e| Error::caused(ErrorKind::Write, "write", e))
-            },
-        )
-        .unwrap();
-        // Another inspection failure stays actionable rather than meaning absence.
-        #[cfg(unix)]
-        {
-            let error = publish(
-                &file.join("below-a-file"),
-                Replace::Never,
-                &Cancel::default(),
-                |_| Ok(()),
-            )
-            .unwrap_err();
-            assert_eq!(error.kind(), ErrorKind::Write);
-            assert!(error.to_string().contains("cannot check"), "{error}");
+        && let Some(path) = std::env::var_os("AUDITORYLAB_PUBLISH_READY")
+    {
+        std::fs::write(path, b"ready")
+            .unwrap_or_else(|e| panic!("cannot signal publication fixture: {e}"));
+        loop {
+            std::thread::park();
         }
     }
+    let _ = point;
+}
+#[cfg(test)]
+mod tests;
 
-    #[test]
-    fn a_destination_created_after_preflight_is_preserved_by_atomic_persistence() {
-        let dir = dir();
-        let path = dir.path().join("raced");
-        let error = publish(&path, Replace::Never, &Cancel::default(), |f| {
-            // The competitor appears after preflight and before persistence.
-            fs::write(&path, b"competitor").unwrap();
-            f.write_all(b"ours")
-                .map_err(|e| Error::caused(ErrorKind::Write, "write", e))
-        })
-        .unwrap_err();
-        assert_eq!(error.kind(), ErrorKind::DestinationExists);
-        assert_eq!(fs::read(&path).unwrap(), b"competitor");
-        assert_eq!(
-            fs::read_dir(dir.path()).unwrap().count(),
-            1,
-            "stage removed"
-        );
+pub(crate) fn same_file(
+    first: &Dir,
+    first_name: &Path,
+    second: &Dir,
+    second_name: &Path,
+) -> Result<bool, Error> {
+    let a = same_file::Handle::from_file(open_regular(first, first_name)?)
+        .map_err(|e| io(first_name, "cannot retain file identity", e))?;
+    let b = same_file::Handle::from_file(open_regular(second, second_name)?)
+        .map_err(|e| io(second_name, "cannot retain file identity", e))?;
+    Ok(a == b)
+}
+pub(crate) fn relocate(
+    from: &Dir,
+    to: &Dir,
+    name: &Path,
+    source: &Path,
+    destination: &Path,
+    cancel: &Cancel,
+) -> Result<Vec<String>, Error> {
+    if cancel.is_requested() {
+        return Err(cancelled(destination));
     }
-
-    #[test]
-    fn cancellation_after_persistence_cannot_unpublish() {
-        let dir = dir();
-        let path = dir.path().join("published");
-        let cancel = Cancel::default();
-        let result = publish(&path, Replace::Never, &cancel, |f| {
-            f.write_all(b"done")
-                .map_err(|e| Error::caused(ErrorKind::Write, "write", e))
-        });
-        // Cancellation racing or following successful persistence.
-        cancel.request();
-        assert!(result.is_ok());
-        assert_eq!(fs::read(&path).unwrap(), b"done");
-        // Cancellation observed at the final check cleans only the stage.
-        let late = Cancel::default();
-        let other = dir.path().join("late");
-        let error = publish(&other, Replace::Never, &late, |f| {
-            late.request();
-            f.write_all(b"late")
-                .map_err(|e| Error::caused(ErrorKind::Write, "write", e))
-        })
-        .unwrap_err();
-        assert_eq!(error.kind(), ErrorKind::Cancelled);
-        assert!(!other.exists());
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    if to.symlink_metadata(name).is_ok() {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            format!(
+                "{destination:?}: relocation destination already exists and was left untouched"
+            ),
+        ));
     }
+    let mut source_file = open_regular(from, name)?;
+    source_file
+        .sync_all()
+        .map_err(|e| io(source, "cannot sync relocation source", e))?;
+    let expected =
+        hash(&mut source_file).map_err(|e| io(source, "cannot hash relocation source", e))?;
+    pause(FaultPoint::BeforeLink);
+    fault(FaultPoint::BeforeLink)
+        .and_then(|()| from.hard_link(name, to, name))
+        .map_err(|e| io(destination, "cannot create no-clobber relocation link", e))?;
+    pause(FaultPoint::AfterLink);
+    let removal = fault(FaultPoint::AfterLink)
+        .and_then(|()| fault(FaultPoint::BeforeRemove))
+        .and_then(|()| from.remove_file(name))
+        .and_then(|()| fault(FaultPoint::AfterRemove));
+    pause(FaultPoint::AfterRemove);
+    let mut warnings = Vec::new();
+    if let Err(error) = removal {
+        match from.symlink_metadata(name) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(format!(
+                "Moved; source removal verified after I/O error: {error}"
+            )),
+            _ if destination.parent().and_then(Path::file_name)
+                == Some(std::ffi::OsStr::new("trash"))
+                && same_file(from, name, to, name)? =>
+            {
+                warnings.push(format!(
+                    "Moved to Trash; redundant active link remains at {source:?}: {error}"
+                ))
+            }
+            _ => {
+                return Err(io(
+                    destination,
+                    "relocation did not remove its source; Trash remains authoritative for same-file links",
+                    error,
+                ));
+            }
+        }
+    }
+    for dir in [from, to] {
+        if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
+            if observed(to, name)? != Some(expected) {
+                return Err(io(
+                    destination,
+                    "relocation durability failed and destination changed",
+                    error,
+                ));
+            }
+            warnings.push(format!("Moved; directory durability warning: {error}"));
+        }
+    }
+    Ok(warnings)
+}
+pub(crate) fn remove(dir: &Dir, name: &Path, path: &Path) -> Result<Vec<String>, Error> {
+    let result = fault(FaultPoint::BeforeRemove)
+        .and_then(|()| dir.remove_file(name))
+        .and_then(|()| fault(FaultPoint::AfterRemove));
+    pause(FaultPoint::AfterRemove);
+    let mut warnings = Vec::new();
+    if let Err(error) = result {
+        match dir.symlink_metadata(name) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(format!(
+                "Deleted; absence verified under the exclusive lock after I/O error: {error}"
+            )),
+            _ => {
+                return Err(io(
+                    path,
+                    "deletion was not applied; the destination remains",
+                    error,
+                ));
+            }
+        }
+    }
+    if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
+        match dir.symlink_metadata(name) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                warnings.push(format!("Deleted; directory durability warning: {error}"))
+            }
+            _ => {
+                return Err(io(
+                    path,
+                    "deletion durability failed and the destination is present or unreadable",
+                    error,
+                ));
+            }
+        }
+    }
+    Ok(warnings)
 }

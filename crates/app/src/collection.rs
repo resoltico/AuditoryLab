@@ -53,6 +53,8 @@ pub struct EntrySummary {
     pub added_at: Option<Timestamp>,
     /// Local Trash state, absent for active entries.
     pub trashed_at: Option<Timestamp>,
+    /// Authoritative directory state, independent of optional membership dates.
+    pub trashed: bool,
     /// Expected token for existing managed mutations.
     pub version_token: Option<VersionToken>,
     /// Cached pure nominal classification, with no device/export rate dependency.
@@ -103,6 +105,7 @@ impl EntrySummary {
             modified_at: recipe.document.modified_at,
             added_at,
             trashed_at,
+            trashed: trashed_at.is_some(),
             version_token,
             nominal: snapshot.nominal().clone(),
             evidence,
@@ -410,13 +413,12 @@ impl CatalogQuery {
         let collection = entry.collection();
         let scope = match self.scope {
             Scope::All => {
-                entry.trashed_at.is_none()
-                    && (collection != Collection::External || self.include_external)
+                !entry.trashed && (collection != Collection::External || self.include_external)
             }
             Scope::BuiltIn => collection == Collection::BuiltIn,
-            Scope::User => collection == Collection::User && entry.trashed_at.is_none(),
+            Scope::User => collection == Collection::User && !entry.trashed,
             Scope::OpenFiles => collection == Collection::External,
-            Scope::Trash => collection == Collection::User && entry.trashed_at.is_some(),
+            Scope::Trash => collection == Collection::User && entry.trashed,
         };
         scope
             && entry.matches_search(&self.search)

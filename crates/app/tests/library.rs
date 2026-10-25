@@ -37,14 +37,12 @@ fn readonly_discovery_and_builtin_refusals_never_initialize_a_root() {
     let scan = store.scan(&Cancel::default());
     assert!(!scan.complete && scan.not_initialized);
     assert!(!path.exists());
-    let token: VersionToken = format!("00000000-0000-4000-8000-000000000001:{}", "0".repeat(64))
-        .parse()
-        .unwrap();
+    let token: VersionToken = "0".repeat(64).parse().unwrap();
     let error = store
         .apply(
             Mutation::Rename {
                 key: LibraryKey::BuiltIn("ioannou-2015-binaural-2-hz".into()),
-                expect: token,
+                expect: Some(token),
                 title: "cannot change shipped".into(),
             },
             &Cancel::default(),
@@ -93,8 +91,8 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
     assert_eq!(loaded.snapshot.recipe().document.created_at, None);
     assert_eq!(loaded.snapshot.recipe().document.modified_at, None);
     let added = loaded.added_at;
-    let initial = loaded.version_token.clone();
-    let record_path = path.join("records").join(format!("{id}.json"));
+    let initial = loaded.version_token;
+    let record_path = path.join("recipes").join(format!("{id}.toml"));
     let original_bytes = fs::read(&record_path).unwrap();
     assert_eq!(
         store
@@ -120,13 +118,16 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         .apply(
             Mutation::Rename {
                 key: key.clone(),
-                expect: initial.clone(),
+                expect: Some(initial),
                 title: "Renamed".into(),
             },
             &Cancel::default(),
         )
         .unwrap();
-    assert!(renamed.confirmed());
+    assert!(matches!(
+        renamed.status,
+        MutationStatus::Published | MutationStatus::PublishedWithWarning
+    ));
     let changed = store.load(&key).unwrap();
     assert_eq!(changed.snapshot.recipe().document.id, id);
     assert_eq!(changed.snapshot.recipe().document.created_at, None);
@@ -138,7 +139,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         .apply(
             Mutation::Update {
                 key: key.clone(),
-                expect: initial,
+                expect: Some(initial),
                 recipe: Arc::new(original),
             },
             &Cancel::default(),
@@ -153,7 +154,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
             .apply(
                 Mutation::Update {
                     key: key.clone(),
-                    expect: changed.version_token.clone(),
+                    expect: Some(changed.version_token),
                     recipe: Arc::new(wrong_history)
                 },
                 &Cancel::default()
@@ -167,12 +168,12 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         .apply(
             Mutation::Trash {
                 key: key.clone(),
-                expect: changed.version_token,
+                expect: Some(changed.version_token),
             },
             &Cancel::default(),
         )
         .unwrap();
-    let trash = trashed.receipt.record.unwrap();
+    let trash = trashed.record.unwrap();
     assert!(trash.trashed_at.is_some());
     assert_eq!(trash.snapshot.recipe().document, history);
     assert_eq!(trash.added_at, added);
@@ -190,12 +191,11 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         .apply(
             Mutation::Restore {
                 key: key.clone(),
-                expect: trash.version_token,
+                expect: Some(trash.version_token),
             },
             &Cancel::default(),
         )
         .unwrap()
-        .receipt
         .record
         .unwrap();
     assert_eq!(restored.trashed_at, None);
@@ -206,7 +206,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
             .apply(
                 Mutation::Purge {
                     key: key.clone(),
-                    expect: restored.version_token.clone(),
+                    expect: Some(restored.version_token),
                     confirmed: true
                 },
                 &Cancel::default()
@@ -217,12 +217,11 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         .apply(
             Mutation::Trash {
                 key: key.clone(),
-                expect: restored.version_token,
+                expect: Some(restored.version_token),
             },
             &Cancel::default(),
         )
         .unwrap()
-        .receipt
         .record
         .unwrap();
     assert!(
@@ -230,32 +229,35 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
             .apply(
                 Mutation::Purge {
                     key: key.clone(),
-                    expect: trash.version_token.clone(),
+                    expect: Some(trash.version_token),
                     confirmed: false
                 },
                 &Cancel::default()
             )
             .is_err()
     );
-    assert!(record_path.exists());
+    assert!(path.join("trash").join(format!("{id}.toml")).exists());
     let purged = store
         .apply(
             Mutation::Purge {
                 key: key.clone(),
-                expect: trash.version_token.clone(),
+                expect: Some(trash.version_token),
                 confirmed: true,
             },
             &Cancel::default(),
         )
         .unwrap();
-    assert!(purged.confirmed());
+    assert!(matches!(
+        purged.status,
+        MutationStatus::Published | MutationStatus::PublishedWithWarning
+    ));
     assert!(!record_path.exists());
     assert_eq!(
         store
             .apply(
                 Mutation::Restore {
                     key,
-                    expect: trash.version_token
+                    expect: Some(trash.version_token)
                 },
                 &Cancel::default()
             )
@@ -282,60 +284,53 @@ fn new_creation_dates_are_assigned_only_to_the_confirmed_snapshot_and_noops_keep
             &Cancel::default(),
         )
         .unwrap();
-    let record = result.receipt.record.unwrap();
+    let record = result.record.unwrap();
     let identity = &record.snapshot.recipe().document;
     assert_eq!(identity.id, id);
-    assert_eq!(identity.created_at, Some(record.added_at));
+    assert_eq!(identity.created_at, record.added_at);
     assert_eq!(identity.modified_at, identity.created_at);
     assert_eq!(
         provisional.document.created_at, None,
         "captured input is immutable"
     );
-    let file = path.join("records").join(format!("{id}.json"));
+    let file = path.join("recipes").join(format!("{id}.toml"));
     let bytes = fs::read(&file).unwrap();
     let same = store
         .apply(
             Mutation::Update {
                 key: record.key.clone(),
-                expect: record.version_token.clone(),
+                expect: Some(record.version_token),
                 recipe: Arc::new(record.snapshot.recipe().clone()),
             },
             &Cancel::default(),
         )
         .unwrap();
     assert_eq!(same.status, MutationStatus::Unchanged);
-    assert_eq!(
-        same.receipt.record.unwrap().version_token,
-        record.version_token
-    );
+    assert_eq!(same.record.unwrap().version_token, record.version_token);
     assert_eq!(fs::read(file).unwrap(), bytes);
 }
 #[test]
-fn digest_detects_changed_bytes_even_when_the_declared_revision_is_unchanged() {
+fn exact_byte_digest_detects_manual_whitespace_edits() {
     let (_temp, path, store) = fixture();
     store.root().initialize().unwrap();
     let result = store
         .apply(Mutation::Add(Arc::new(recipe("bytes"))), &Cancel::default())
         .unwrap();
-    let record = result.receipt.record.unwrap();
+    let record = result.record.unwrap();
     let path = path
-        .join("records")
-        .join(format!("{}.json", record.snapshot.recipe().document.id));
+        .join("recipes")
+        .join(format!("{}.toml", record.snapshot.recipe().document.id));
     let mut bytes = fs::read(&path).unwrap();
     bytes.push(b' ');
     fs::write(&path, &bytes).unwrap();
     let fresh = store.load(&record.key).unwrap();
-    assert_eq!(
-        fresh.version_token.revision(),
-        record.version_token.revision()
-    );
     assert_ne!(fresh.version_token, record.version_token);
     assert_eq!(
         store
             .apply(
                 Mutation::Update {
                     key: record.key,
-                    expect: record.version_token,
+                    expect: Some(record.version_token),
                     recipe: Arc::new(record.snapshot.recipe().clone())
                 },
                 &Cancel::default()
@@ -346,61 +341,7 @@ fn digest_detects_changed_bytes_even_when_the_declared_revision_is_unchanged() {
     );
     assert_eq!(fs::read(path).unwrap(), bytes);
 }
-#[test]
-fn strict_envelopes_corrupt_rows_and_owned_stages_are_reported_without_repair() {
-    let (_temp, path, store) = fixture();
-    store.root().initialize().unwrap();
-    let result = store
-        .apply(
-            Mutation::Add(Arc::new(recipe("healthy"))),
-            &Cancel::default(),
-        )
-        .unwrap();
-    let record = result.receipt.record.unwrap();
-    let id = record.snapshot.recipe().document.id;
-    let file = path.join("records").join(format!("{id}.json"));
-    let bytes = fs::read(&file).unwrap();
-    let stage = path.join("records").join(format!(
-        ".{id}.00000000-0000-4000-8000-000000000099.partial"
-    ));
-    fs::write(&stage, b"orphan candidate").unwrap();
-    let scan = store.scan(&Cancel::default());
-    assert!(scan.complete);
-    assert_eq!(scan.entries.len(), 1);
-    assert_eq!(scan.stages.len(), 1);
-    assert!(stage.exists());
-    let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    for corrupted in [
-        {
-            let mut v = value.clone();
-            v.as_object_mut().unwrap().remove("trashed_at");
-            serde_json::to_vec(&v).unwrap()
-        },
-        {
-            let mut v = value.clone();
-            v["record_format"] = serde_json::json!(2);
-            serde_json::to_vec(&v).unwrap()
-        },
-        {
-            let mut v = value.clone();
-            v["origin"] = serde_json::json!("builtin");
-            serde_json::to_vec(&v).unwrap()
-        },
-        bytes
-            .iter()
-            .copied()
-            .chain(b", malformed".iter().copied())
-            .collect(),
-    ] {
-        fs::write(&file, &corrupted).unwrap();
-        assert!(store.load(&record.key).is_err());
-        let scan = store.scan(&Cancel::default());
-        assert!(!scan.complete);
-        assert!(scan.entries.is_empty());
-        assert!(!scan.diagnostics.is_empty());
-        assert_eq!(fs::read(&file).unwrap(), corrupted);
-    }
-}
+
 #[cfg(unix)]
 #[test]
 fn managed_descendant_symlinks_and_nonregular_entries_never_read_external_content() {
@@ -409,7 +350,7 @@ fn managed_descendant_symlinks_and_nonregular_entries_never_read_external_conten
     store.root().initialize().unwrap();
     let external = temp.path().join("outside");
     fs::write(&external, b"secret outside bytes").unwrap();
-    let bad = path.join("records/00000000-0000-4000-8000-000000000001.json");
+    let bad = path.join("recipes/00000000-0000-4000-8000-000000000001.toml");
     symlink(&external, &bad).unwrap();
     let scan = store.scan(&Cancel::default());
     assert!(!scan.complete);
@@ -417,8 +358,8 @@ fn managed_descendant_symlinks_and_nonregular_entries_never_read_external_conten
     assert!(!scan.diagnostics[0].message.contains("secret outside bytes"));
     assert_eq!(fs::read(&external).unwrap(), b"secret outside bytes");
     fs::remove_file(bad).unwrap();
-    fs::remove_dir(path.join("records")).unwrap();
-    symlink(temp.path(), path.join("records")).unwrap();
+    fs::remove_dir(path.join("recipes")).unwrap();
+    symlink(temp.path(), path.join("recipes")).unwrap();
     assert!(
         store
             .load(&LibraryKey::User(
@@ -453,15 +394,60 @@ fn initialization_refuses_unknown_data_and_records_without_a_marker() {
     fs::create_dir_all(&path).unwrap();
     fs::write(path.join("unrelated.txt"), b"keep").unwrap();
     assert!(store.root().initialize().is_err());
-    assert!(!path.join("library.json").exists());
+    assert!(!path.join("library.toml").exists());
     assert_eq!(fs::read(path.join("unrelated.txt")).unwrap(), b"keep");
     fs::remove_file(path.join("unrelated.txt")).unwrap();
-    fs::create_dir(path.join("records")).unwrap();
-    fs::write(path.join("records/arbitrary.json"), b"keep record").unwrap();
+    fs::create_dir(path.join("recipes")).unwrap();
+    fs::write(path.join("recipes/arbitrary.toml"), b"keep record").unwrap();
     assert!(store.root().initialize().is_err());
     assert_eq!(
-        fs::read(path.join("records/arbitrary.json")).unwrap(),
+        fs::read(path.join("recipes/arbitrary.toml")).unwrap(),
         b"keep record"
     );
-    assert!(!path.join("library.json").exists());
+    assert!(!path.join("library.toml").exists());
+}
+
+#[test]
+fn corrupt_plain_files_and_owned_stages_are_reported_without_read_side_repairs() {
+    let (_temp, path, store) = fixture();
+    store.root().initialize().unwrap();
+    let record = store
+        .apply(
+            Mutation::Add(Arc::new(recipe("healthy"))),
+            &Cancel::default(),
+        )
+        .unwrap()
+        .record
+        .unwrap();
+    let id = record.snapshot.recipe().document.id;
+    let file = path.join("recipes").join(format!("{id}.toml"));
+    let bytes = fs::read(&file).unwrap();
+    let stage = path.join("recipes/.auditorylab-00000000-0000-4000-8000-000000000099.partial");
+    fs::write(&stage, b"abandoned candidate").unwrap();
+    let scan = store.scan(&Cancel::default());
+    assert!(scan.complete);
+    assert_eq!(scan.entries.len(), 1);
+    assert_eq!(scan.stages.len(), 1);
+    assert!(stage.exists());
+    for corrupted in [
+        b"invalid TOML".to_vec(),
+        bytes
+            .iter()
+            .copied()
+            .chain(b"\nunsupported = true".iter().copied())
+            .collect(),
+        String::from_utf8(bytes.clone())
+            .unwrap()
+            .replace(&id.to_string(), "00000000-0000-4000-8000-000000000099")
+            .into_bytes(),
+    ] {
+        fs::write(&file, &corrupted).unwrap();
+        assert!(store.load(&record.key).is_err());
+        let scan = store.scan(&Cancel::default());
+        assert!(!scan.complete);
+        assert!(scan.entries.is_empty());
+        assert!(!scan.diagnostics.is_empty());
+        assert_eq!(fs::read(&file).unwrap(), corrupted);
+        assert!(stage.exists());
+    }
 }

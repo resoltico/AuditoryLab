@@ -377,13 +377,18 @@ pub(super) fn saved_text(
 }
 
 pub(super) fn exported_text(path: &Path, exported: &Exported) -> String {
-    format!(
+    let mut text = format!(
         "Exported {} frames at {} Hz to {} ({}).",
         exported.frames,
         exported.sample_rate.hz(),
         shown(path),
         exported.container
-    )
+    );
+    for warning in &exported.warnings {
+        text.push('\n');
+        text.push_str(warning);
+    }
+    text
 }
 
 /// How a session ended, for the status line. With `shown`, the transport

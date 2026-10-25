@@ -74,9 +74,7 @@ impl Workspace {
                 "Detached draft from {key}. Edit the restored saved entry or Save independent copy."
             )));
         }
-        if self.has_unconfirmed_publication() {
-            return Err(Refusal::Document("Publication unconfirmed. Recheck before retrying, reload an observed version, or save an independent copy.".into()));
-        }
+
         self.prepare_recipe()
     }
     pub(super) fn prepare_recipe(&mut self) -> Result<Arc<Recipe>, Refusal> {

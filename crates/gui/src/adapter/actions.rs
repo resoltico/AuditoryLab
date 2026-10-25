@@ -158,8 +158,6 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         .command(Workspace::save_independent_copy));
     on!(on_add_to_library, |a, key| a
         .command(|w| w.add_library_binding(&key)));
-    on!(on_recheck_library, |a| a
-        .command(Workspace::recheck_library));
     on!(on_show_saved, |a| {
         if a.command(Workspace::show_saved) == Some(true)
             && let Some(ui) = a.main.upgrade()

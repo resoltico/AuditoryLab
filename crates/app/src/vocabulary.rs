@@ -86,7 +86,6 @@ vocabulary! {
         ResetSort => ("action-reset-sort", "Reset sort"),
         ApplyFilters => ("action-apply-filters", "Apply filters"),
         InitializeConfiguredLibrary => ("action-initialize-configured-library", "Initialize configured library"),
-        RecheckPublication => ("action-recheck-publication", "Recheck publication"),
         PreviewWaveform => ("action-preview-waveform", "Preview waveform"),
         EditACopy => ("action-edit-acopy", "Edit a copy"),
         EditSavedUserRecipe => ("action-edit-saved-user-recipe", "Edit saved User recipe"),
@@ -162,12 +161,10 @@ vocabulary! {
         Saved => ("status-saved", "Saved"),
         SavedWithWarning => ("status-saved-with-warning", "Saved with warnings"),
         Unchanged => ("status-unchanged", "Unchanged"),
-        PublicationNotConfirmed => ("status-publication-not-confirmed", "Publication not confirmed"),
         Unknown => ("status-unknown", "Unknown"),
         None => ("status-none", "None"),
         InventoryIncomplete => ("status-inventory-incomplete", "Incomplete inventory: valid results above do not establish an empty/complete library."),
         OperationConfirmed => ("status-operation-confirmed", "Operation confirmed"),
-        PublicationUnconfirmed => ("status-publication-unconfirmed", "Publication remains unconfirmed; Recheck before retry"),
         StopInFilePanelRequested => ("status-stop-in-file-panel-requested", "Stop requested · file dialog stays open"),
         FilePanelAudioStopped => ("status-file-panel-audio-stopped", "Audio already stopped · file dialog stays open"),
         WaitingForGeneratedAudio => ("status-waiting-for-generated-audio", "Waiting for generated audio"),
@@ -418,7 +415,7 @@ impl CommandProblem {
                 "trashed recipes can be inspected/exported; restore before playback"
             }
             Self::PurgeConfirmation => {
-                "permanent deletion requires --yes and a fresh --expect token"
+                "permanent deletion requires --yes"
             }
             Self::RelativeLibraryRoot => "--library-dir must be absolute; no fallback is used",
             Self::CatalogOrigin => "catalog returned a non-builtin origin",

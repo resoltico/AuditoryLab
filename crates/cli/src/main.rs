@@ -270,7 +270,10 @@ fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
                 }
             };
             if let Some(path) = path {
-                lab::workflow::save_recipe_text(&text, &path, Replace::Never)?;
+                let saved = lab::workflow::save_recipe_text(&text, &path, Replace::Never)?;
+                for warning in saved.warnings {
+                    eprintln!("{}", prose(&warning));
+                }
                 completed(&Caption::recipe_exported(&path));
             } else {
                 output(text.as_bytes())?;
@@ -309,11 +312,14 @@ fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
                 &cancel,
                 &Progress::default(),
             )?;
+            for warning in &result.warnings {
+                eprintln!("{}", prose(warning));
+            }
             completed(&result.description(&path));
         }
         Some(Command::Play(source)) => {
             let resolved = library_cli::resolve(source, cli.library_dir.as_deref())?;
-            if resolved.summary.trashed_at.is_some() {
+            if resolved.summary.trashed {
                 return Err(usage(CommandProblem::TrashedPlayback.message()));
             }
             return play(&resolved.snapshot);

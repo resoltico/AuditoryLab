@@ -205,8 +205,8 @@ pub(crate) enum FileKind {
 pub(crate) enum FileOutcome {
     Imported(Result<RecipeSnapshot, Error>),
     Managed(Result<super::persistent::ResultValue, Error>),
-    Saved(Result<(), Error>),
-    RecipeExported(Result<(), Error>),
+    Saved(Result<crate::workflow::SaveOutcome, Error>),
+    RecipeExported(Result<crate::workflow::SaveOutcome, Error>),
     Exported(Result<Exported, Error>),
 }
 
@@ -291,7 +291,7 @@ pub(super) fn revalidate_managed(
         ));
     };
     let record = store.load(&crate::library::LibraryKey::User(*id))?;
-    if record.trashed_at.is_some() || &record.version_token != version {
+    if record.trashed || &record.version_token != version {
         return Err(Error::new(
             ErrorKind::Conflict,
             "Saved selection changed or moved to Trash. Refresh before starting playback; no audio was started.",

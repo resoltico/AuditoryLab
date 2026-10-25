@@ -1,0 +1,569 @@
+use super::*;
+use std::{
+    fs,
+    process::{Child, Command, Stdio},
+    sync::Arc,
+    time::{Duration, Instant},
+};
+fn fixture() -> (tempfile::TempDir, Dir, PathBuf) {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
+    fs::create_dir_all(&base).unwrap();
+    let temp = tempfile::tempdir_in(base).unwrap();
+    let path = temp.path().join("entry");
+    let dir = Dir::open_ambient_dir(temp.path(), cap_std::ambient_authority()).unwrap();
+    (temp, dir, path)
+}
+fn put(dir: &Dir, path: &Path, policy: Policy<'_>, bytes: &[u8]) -> Result<Published<()>, Error> {
+    publish_in(
+        dir,
+        Path::new("entry"),
+        path,
+        policy,
+        &Cancel::default(),
+        |file| {
+            file.write_all(bytes)
+                .map_err(|e| io(path, "write fixture", e))
+        },
+    )
+}
+fn inject(points: &[FaultPoint]) {
+    INJECT.with(|slot| *slot.borrow_mut() = points.to_vec());
+}
+#[test]
+fn policies_have_accepted_and_rejected_neighbors() {
+    let (_temp, dir, path) = fixture();
+    put(&dir, &path, Policy::CreateNew, b"first").unwrap();
+    assert_eq!(
+        put(&dir, &path, Policy::CreateNew, b"bad")
+            .unwrap_err()
+            .kind(),
+        ErrorKind::DestinationExists
+    );
+    assert_eq!(fs::read(&path).unwrap(), b"first");
+    put(&dir, &path, Policy::Replace, b"second").unwrap();
+    let observed = same_file::Handle::from_path(&path).unwrap();
+    let hash = Fingerprint::of(b"second");
+    assert_eq!(
+        put(
+            &dir,
+            &path,
+            Policy::ReplaceIfUnchanged {
+                fingerprint: Fingerprint::of(b"wrong"),
+                identity: &observed
+            },
+            b"bad"
+        )
+        .unwrap_err()
+        .kind(),
+        ErrorKind::Conflict
+    );
+    put(
+        &dir,
+        &path,
+        Policy::ReplaceIfUnchanged {
+            fingerprint: hash,
+            identity: &observed,
+        },
+        b"third",
+    )
+    .unwrap();
+    assert_eq!(fs::read(&path).unwrap(), b"third");
+    let current = same_file::Handle::from_path(&path).unwrap();
+    let other = path.with_extension("replacement");
+    fs::write(&other, b"third").unwrap();
+    fs::rename(other, &path).unwrap();
+    assert_eq!(
+        put(
+            &dir,
+            &path,
+            Policy::ReplaceIfUnchanged {
+                fingerprint: Fingerprint::of(b"third"),
+                identity: &current
+            },
+            b"bad"
+        )
+        .unwrap_err()
+        .kind(),
+        ErrorKind::Conflict
+    );
+    assert_eq!(fs::read(&path).unwrap(), b"third");
+    fs::remove_file(&path).unwrap();
+    put(&dir, &path, Policy::Replace, b"new").unwrap();
+    assert_eq!(fs::read(path).unwrap(), b"new");
+}
+#[test]
+fn precommit_failures_preserve_previous_bytes_and_cleanup_only_our_stage() {
+    for point in [
+        FaultPoint::StageCreate,
+        FaultPoint::Write,
+        FaultPoint::FileSync,
+        FaultPoint::BeforePublish,
+    ] {
+        let (temp, dir, path) = fixture();
+        fs::write(&path, b"original").unwrap();
+        let foreign = temp.path().join("foreign.partial");
+        fs::write(&foreign, b"keep").unwrap();
+        inject(&[point]);
+        assert!(put(&dir, &path, Policy::Replace, b"candidate").is_err());
+        assert_eq!(fs::read(path).unwrap(), b"original");
+        assert_eq!(fs::read(foreign).unwrap(), b"keep");
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+    }
+    let (temp, dir, path) = fixture();
+    fs::write(&path, b"old").unwrap();
+    let result: Result<Published<()>, Error> = publish_in(
+        &dir,
+        Path::new("entry"),
+        &path,
+        Policy::Replace,
+        &Cancel::default(),
+        |file| {
+            file.write_all(b"partial").unwrap();
+            Err(Error::new(
+                ErrorKind::Write,
+                "writer failed after partial output",
+            ))
+        },
+    );
+    assert!(result.is_err());
+    assert_eq!(fs::read(path).unwrap(), b"old");
+    assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+}
+#[test]
+fn postcommit_failures_verify_candidate_previous_and_foreign_content() {
+    for point in [FaultPoint::AfterPublish, FaultPoint::DirectorySync] {
+        let (_temp, dir, path) = fixture();
+        fs::write(&path, b"previous").unwrap();
+        inject(&[point]);
+        let result = put(&dir, &path, Policy::Replace, b"candidate").unwrap();
+        assert!(!result.warnings.is_empty());
+        assert_eq!(fs::read(path).unwrap(), b"candidate");
+    }
+    let (_temp, dir, path) = fixture();
+    fs::write(&path, b"previous").unwrap();
+    inject(&[FaultPoint::BeforePublish]);
+    let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
+    assert!(error.to_string().contains("previous content remains"));
+    assert_eq!(fs::read(&path).unwrap(), b"previous");
+    let changed = path.clone();
+    AFTER_PUBLISH.with(|slot| {
+        *slot.borrow_mut() = Some(Box::new(move || fs::write(changed, b"foreign").unwrap()))
+    });
+    inject(&[FaultPoint::AfterPublish]);
+    let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
+    assert!(error.to_string().contains(path.to_str().unwrap()));
+    assert!(error.to_string().contains("differs from both"));
+    assert_eq!(fs::read(path).unwrap(), b"foreign");
+}
+#[test]
+fn no_clobber_race_and_cleanup_failure_preserve_publication_truth() {
+    let (_temp, dir, path) = fixture();
+    let error = publish_in(
+        &dir,
+        Path::new("entry"),
+        &path,
+        Policy::CreateNew,
+        &Cancel::default(),
+        |file| {
+            file.write_all(b"ours").unwrap();
+            fs::write(&path, b"foreign").unwrap();
+            Ok(())
+        },
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::DestinationExists);
+    assert_eq!(fs::read(path).unwrap(), b"foreign");
+    let (temp, dir, path) = fixture();
+    inject(&[FaultPoint::Cleanup]);
+    let result = put(&dir, &path, Policy::CreateNew, b"saved").unwrap();
+    assert!(!result.warnings.is_empty());
+    assert_eq!(fs::read(path).unwrap(), b"saved");
+    assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+}
+#[cfg(unix)]
+#[test]
+fn symlinks_and_fifos_are_rejected_without_following_or_blocking() {
+    use std::os::unix::fs::symlink;
+    let (temp, dir, path) = fixture();
+    let outside = temp.path().join("outside");
+    fs::write(&outside, b"secret").unwrap();
+    symlink(&outside, &path).unwrap();
+    assert!(open_regular(&dir, Path::new("entry")).is_err());
+    assert_eq!(fs::read(outside).unwrap(), b"secret");
+    fs::remove_file(&path).unwrap();
+    assert!(
+        Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let start = Instant::now();
+    assert!(open_regular(&dir, Path::new("entry")).is_err());
+    assert!(start.elapsed() < Duration::from_secs(1));
+}
+#[test]
+fn purge_failures_distinguish_existing_destination_and_confirmed_absence() {
+    let (_temp, dir, path) = fixture();
+    fs::write(&path, b"old").unwrap();
+    inject(&[FaultPoint::BeforeRemove]);
+    assert!(remove(&dir, Path::new("entry"), &path).is_err());
+    assert!(path.exists());
+    inject(&[FaultPoint::AfterRemove]);
+    assert!(!remove(&dir, Path::new("entry"), &path).unwrap().is_empty());
+    assert!(!path.exists());
+}
+#[test]
+#[ignore = "subprocess entry point; exercised by ordinary killed-publication tests"]
+fn process_child() {
+    use crate::{
+        editing::Draft,
+        library::{LibraryKey, LibraryRoot, LibraryStore, Mutation},
+    };
+    let root = PathBuf::from(std::env::var_os("AUDITORYLAB_PUBLISH_ROOT").unwrap());
+    let mode = std::env::var("AUDITORYLAB_PUBLISH_MODE").unwrap();
+    let library = LibraryRoot::explicit(root).unwrap();
+    if mode == "initialize" {
+        library.initialize().unwrap();
+        return;
+    }
+    let store = LibraryStore::new(library).unwrap();
+    let id = std::env::var("AUDITORYLAB_PUBLISH_ID")
+        .unwrap()
+        .parse()
+        .unwrap();
+    if mode == "create" {
+        let mut recipe = Draft::new().unwrap().recipe();
+        recipe.document.id = id;
+        store
+            .apply(Mutation::Create(Arc::new(recipe)), &Cancel::default())
+            .unwrap();
+        return;
+    }
+    let record = store.load(&LibraryKey::User(id)).unwrap();
+    let mutation = match mode.as_str() {
+        "trash" => Mutation::Trash {
+            key: record.key,
+            expect: Some(record.version_token),
+        },
+        "restore" => Mutation::Restore {
+            key: record.key,
+            expect: Some(record.version_token),
+        },
+        "purge" => Mutation::Purge {
+            key: record.key,
+            expect: Some(record.version_token),
+            confirmed: true,
+        },
+        _ => {
+            let mut recipe = record.snapshot.recipe().clone();
+            recipe.description.as_mut().unwrap().title = "Complete candidate".into();
+            Mutation::Update {
+                key: record.key,
+                expect: Some(record.version_token),
+                recipe: Arc::new(recipe),
+            }
+        }
+    };
+    store.apply(mutation, &Cancel::default()).unwrap();
+}
+fn child(root: &Path, id: &str, mode: &str, phase: &str, ready: &Path) -> Child {
+    Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "publish::tests::process_child",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env("AUDITORYLAB_PUBLISH_ROOT", root)
+        .env("AUDITORYLAB_PUBLISH_ID", id)
+        .env("AUDITORYLAB_PUBLISH_MODE", mode)
+        .env("AUDITORYLAB_PUBLISH_PAUSE", phase)
+        .env("AUDITORYLAB_PUBLISH_READY", ready)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap()
+}
+fn kill_at_pause(child: &mut Child, ready: &Path) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !ready.exists() {
+        if let Some(status) = child.try_wait().unwrap() {
+            let output = child
+                .stderr
+                .take()
+                .map(|mut stream| {
+                    let mut text = String::new();
+                    stream.read_to_string(&mut text).unwrap();
+                    text
+                })
+                .unwrap_or_default();
+            panic!("child exited before pause {status}: {output}");
+        }
+        if Instant::now() > deadline {
+            child.kill().unwrap();
+            panic!("child did not reach bounded pause");
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+}
+fn store_fixture() -> (
+    tempfile::TempDir,
+    crate::library::LibraryStore,
+    crate::library::LoadedRecord,
+) {
+    let (temp, _dir, _path) = fixture();
+    let store = crate::library::LibraryStore::new(
+        crate::library::LibraryRoot::explicit(temp.path().join("library")).unwrap(),
+    )
+    .unwrap();
+    store.root().initialize().unwrap();
+    let record = store
+        .apply(
+            crate::library::Mutation::Create(Arc::new(
+                crate::editing::Draft::new().unwrap().recipe(),
+            )),
+            &Cancel::default(),
+        )
+        .unwrap()
+        .record
+        .unwrap();
+    (temp, store, record)
+}
+#[test]
+fn killed_recipe_writers_leave_old_or_complete_bytes_and_no_stage_is_promoted() {
+    use crate::library::Mutation;
+    for phase in ["before", "after"] {
+        let (temp, store, record) = store_fixture();
+        let ready = temp.path().join("ready");
+        let mut process = child(
+            store.root().path(),
+            &record.snapshot.recipe().document.id.to_string(),
+            "update",
+            phase,
+            &ready,
+        );
+        kill_at_pause(&mut process, &ready);
+        let observed = store.load(&record.key).unwrap();
+        assert_eq!(
+            observed.snapshot.title() == "Complete candidate",
+            phase == "after"
+        );
+        let before = observed.recipe_toml.clone();
+        assert!(!store.scan(&Cancel::default()).stages.is_empty() || phase == "after");
+        store
+            .apply(
+                Mutation::Rename {
+                    key: record.key.clone(),
+                    expect: Some(observed.version_token),
+                    title: observed.snapshot.title(),
+                },
+                &Cancel::default(),
+            )
+            .unwrap();
+        assert!(store.scan(&Cancel::default()).stages.is_empty());
+        assert_eq!(store.load(&record.key).unwrap().recipe_toml, before);
+    }
+}
+#[test]
+fn killed_creation_between_recipe_and_membership_keeps_readable_content_with_unknown_added_time() {
+    use crate::library::{LibraryKey, Mutation};
+    let (temp, store, _record) = store_fixture();
+    let id = "00000000-0000-4000-8000-000000000099";
+    let ready = temp.path().join("ready");
+    let mut process = child(store.root().path(), id, "create", "after", &ready);
+    kill_at_pause(&mut process, &ready);
+    let key = LibraryKey::User(id.parse().unwrap());
+    let record = store.load(&key).unwrap();
+    assert_eq!(record.added_at, None);
+    assert!(!record.trashed);
+    store
+        .apply(
+            Mutation::Rename {
+                key: key.clone(),
+                expect: None,
+                title: "Retained unknown addition".into(),
+            },
+            &Cancel::default(),
+        )
+        .unwrap();
+    assert_eq!(store.load(&key).unwrap().added_at, None);
+}
+#[test]
+fn killed_moves_preserve_content_and_recognize_only_same_inode_duplicates() {
+    use crate::library::Mutation;
+    for mode in ["trash", "restore"] {
+        for phase in ["before-link", "after-link", "after-remove"] {
+            let (temp, store, mut record) = store_fixture();
+            if mode == "restore" {
+                record = store
+                    .apply(
+                        Mutation::Trash {
+                            key: record.key,
+                            expect: Some(record.version_token),
+                        },
+                        &Cancel::default(),
+                    )
+                    .unwrap()
+                    .record
+                    .unwrap();
+            }
+            let bytes = record.recipe_toml.clone();
+            let ready = temp.path().join("ready");
+            let mut process = child(
+                store.root().path(),
+                &record.snapshot.recipe().document.id.to_string(),
+                mode,
+                phase,
+                &ready,
+            );
+            kill_at_pause(&mut process, &ready);
+            let current = store.load(&record.key).unwrap();
+            assert_eq!(current.recipe_toml, bytes);
+            let expected = match phase {
+                "before-link" => mode == "restore",
+                "after-link" => true,
+                _ => mode == "trash",
+            };
+            assert_eq!(current.trashed, expected, "{mode} {phase}");
+            store
+                .apply(
+                    Mutation::Trash {
+                        key: record.key.clone(),
+                        expect: Some(current.version_token),
+                    },
+                    &Cancel::default(),
+                )
+                .unwrap();
+            let name = format!("{}.toml", record.snapshot.recipe().document.id);
+            assert!(!store.root().path().join("recipes").join(&name).exists());
+            assert!(store.root().path().join("trash").join(name).exists());
+        }
+    }
+    let (_temp, store, record) = store_fixture();
+    let name = format!("{}.toml", record.snapshot.recipe().document.id);
+    fs::write(
+        store.root().path().join("trash").join(&name),
+        record.recipe_toml.as_bytes(),
+    )
+    .unwrap();
+    assert!(store.load(&record.key).is_err());
+    assert!(!store.scan(&Cancel::default()).complete);
+    assert!(
+        store
+            .apply(
+                Mutation::Trash {
+                    key: record.key,
+                    expect: None
+                },
+                &Cancel::default()
+            )
+            .is_err()
+    );
+    assert!(store.root().path().join("recipes").join(&name).exists());
+    assert!(store.root().path().join("trash").join(name).exists());
+}
+#[test]
+fn killed_initialization_marker_is_last_and_retry_cleans_owned_stages() {
+    use crate::library::LibraryRoot;
+    let (temp, _dir, _path) = fixture();
+    let root = temp.path().join("library");
+    let ready = temp.path().join("ready");
+    let mut process = child(&root, "unused", "initialize", "before", &ready);
+    kill_at_pause(&mut process, &ready);
+    assert!(!root.join("library.toml").exists());
+    assert!(root.join("recipes").is_dir());
+    LibraryRoot::explicit(root.clone())
+        .unwrap()
+        .initialize()
+        .unwrap();
+    assert!(root.join("library.toml").is_file());
+    assert!(!fs::read_dir(root).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".partial")
+    }));
+}
+
+#[test]
+fn killed_purge_never_recreates_the_removed_identity() {
+    use crate::library::Mutation;
+    let (temp, store, record) = store_fixture();
+    let record = store
+        .apply(
+            Mutation::Trash {
+                key: record.key,
+                expect: Some(record.version_token),
+            },
+            &Cancel::default(),
+        )
+        .unwrap()
+        .record
+        .unwrap();
+    let ready = temp.path().join("ready");
+    let mut process = child(
+        store.root().path(),
+        &record.snapshot.recipe().document.id.to_string(),
+        "purge",
+        "after-remove",
+        &ready,
+    );
+    kill_at_pause(&mut process, &ready);
+    assert!(store.load(&record.key).is_err());
+    assert!(store.scan(&Cancel::default()).entries.is_empty());
+    assert_eq!(
+        store
+            .apply(
+                Mutation::Restore {
+                    key: record.key,
+                    expect: None
+                },
+                &Cancel::default()
+            )
+            .unwrap_err()
+            .kind(),
+        ErrorKind::Conflict
+    );
+}
+
+#[test]
+fn failed_membership_write_is_saved_with_unknown_new_dates() {
+    use crate::library::{LibraryRoot, LibraryStore, Mutation, MutationStatus};
+    let (temp, _dir, _path) = fixture();
+    let store =
+        LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
+    store.root().initialize().unwrap();
+    AFTER_PUBLISH.with(|slot| *slot.borrow_mut() = Some(Box::new(|| inject(&[FaultPoint::Write]))));
+    let result = store
+        .apply(
+            Mutation::Create(Arc::new(crate::editing::Draft::new().unwrap().recipe())),
+            &Cancel::default(),
+        )
+        .unwrap();
+    assert_eq!(result.status, MutationStatus::PublishedWithWarning);
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("membership timestamps"))
+    );
+    let record = result.record.unwrap();
+    assert_eq!(record.added_at, None);
+    assert_eq!(store.load(&record.key).unwrap().added_at, None);
+    assert!(record.snapshot.recipe().document.created_at.is_some());
+}
+
+#[test]
+fn unreadable_postpublication_verification_names_the_path_without_claiming_no_change() {
+    let (_temp, dir, path) = fixture();
+    fs::write(&path, b"previous").unwrap();
+    inject(&[FaultPoint::AfterPublish, FaultPoint::Verify]);
+    let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
+    assert!(error.to_string().contains(path.to_str().unwrap()));
+    assert!(!error.to_string().contains("previous content remains"));
+    assert_eq!(fs::read(path).unwrap(), b"candidate");
+}

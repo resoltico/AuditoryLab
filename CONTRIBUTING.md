@@ -15,7 +15,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked
 cargo test --workspace --locked
 cargo build -p auditorylab-cli --locked
-cargo test -p auditorylab --features test-support --test library_faults --test library_process --locked
+cargo test -p auditorylab --test library_process --locked
 cargo test -p auditorylab-core --release --locked
 cargo doc --workspace --no-deps --locked
 cargo deny check

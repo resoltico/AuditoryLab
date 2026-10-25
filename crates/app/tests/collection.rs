@@ -231,6 +231,7 @@ fn automatic_defaults_follow_scope_but_explicit_sort_is_retained() {
     let mut external = entry(4, "temporary", Vec::new(), None);
     external.key = LibraryKey::External(auditorylab::library::ExternalId::allocate().unwrap());
     let mut trashed = entry(5, "trash", Vec::new(), None);
+    trashed.trashed = true;
     trashed.trashed_at = Some("2026-10-24T06:00:00Z".parse().unwrap());
     let active = entry(6, "active", Vec::new(), None);
     let input = [external, trashed, active];

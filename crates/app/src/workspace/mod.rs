@@ -957,7 +957,7 @@ impl Workspace {
         // Commit staged text when it can be; anything left staged is unsaved.
         let _ = self.editor.commit();
         self.submit_live();
-        if self.editor.dirty() || self.has_unconfirmed_publication() {
+        if self.editor.dirty() {
             let id = self.prompt(PromptState::Unsaved(action));
             self.effects.push(Effect::AskUnsaved(id));
         } else {
@@ -1235,7 +1235,6 @@ impl Workspace {
             Ok(editor) => {
                 self.editor = editor;
                 if let Some(p) = &mut self.persistent {
-                    p.retain_recovery();
                     p.location = None;
                     p.detached = None;
                     p.external = None;
@@ -1673,7 +1672,7 @@ impl Workspace {
                     && let FileKind::Managed(job) = &task.kind
                     && job.may_publish()
                 {
-                    self.retain_missing_file_result(job)
+                    self.missing_file_result(job)
                 } else {
                     presentation::WORKER_ENDED_WITHOUT_RESULT.into()
                 };
@@ -1704,16 +1703,29 @@ impl Workspace {
                             content,
                             path,
                         },
-                        FileOutcome::Saved(Ok(())),
+                        FileOutcome::Saved(Ok(outcome)),
                     ) => {
                         let same = self.editor.record_saved(*document, content);
                         saved = Some(true);
-                        views::saved_text(path, content, same, self.export_rate)
+                        let mut text = views::saved_text(path, content, same, self.export_rate);
+                        for warning in outcome.warnings {
+                            text.push('\n');
+                            text.push_str(&warning);
+                        }
+                        text
                     }
-                    (FileKind::ExportRecipe { path, .. }, FileOutcome::RecipeExported(Ok(()))) => {
+                    (
+                        FileKind::ExportRecipe { path, .. },
+                        FileOutcome::RecipeExported(Ok(outcome)),
+                    ) => {
                         format!(
-                            "Exported captured portable recipe to {}. Recipe identity/history and local membership are unchanged.",
-                            path.display()
+                            "Exported captured portable recipe to {}.{}",
+                            path.display(),
+                            outcome
+                                .warnings
+                                .iter()
+                                .map(|warning| format!("\n{warning}"))
+                                .collect::<String>()
                         )
                     }
                     (FileKind::Export { path, .. }, FileOutcome::Exported(Ok(exported))) => {

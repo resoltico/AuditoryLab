@@ -228,7 +228,6 @@ export component MainWindow inherits Window {
     in property <string> library-dates;
     in property <string> library-dates-utc;
     callback add-to-library(string);
-    callback recheck-library();
     callback show-saved();
     callback library-action(string, string, string, string);
     callback search(string);
@@ -602,7 +601,6 @@ export component MainWindow inherits Window {
                         if root.storage-open: VerticalBox { vertical-stretch:0;
                             Text {text:root.library-status;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
                             Button {text:Terms.action-initialize-configured-library;clicked=>{root.initialize-library();}}
-                            Button {text:Terms.action-recheck-publication;clicked=>{root.recheck-library();}}
                         }
                             if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
                             if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}

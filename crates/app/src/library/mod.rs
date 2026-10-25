@@ -1,19 +1,15 @@
-//! Local persistent User Library: bounded records, cooperative locking and receipts.
+//! Local persistent User Library: plain recipe files and cooperative locking.
 //!
 //! Portable recipe ownership, declared history and nominal classification remain
 //! separate from local membership. No library operation belongs on an audio callback.
-#[cfg(any(test, feature = "test-support"))]
-mod faults;
-#[cfg(any(test, feature = "test-support"))]
-pub use faults::StoreFault;
 mod record;
 mod root;
-mod store;
+pub(crate) mod store;
 use crate::core::DocumentUuid;
 use crate::error::{Error, ErrorKind};
-pub use record::{Fingerprint, MAX_RECORD_BYTES, RECORD_FORMAT, VersionToken};
-pub use root::{Initialization, LibraryRoot, RootInfo, RootSource};
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
+pub use record::{Fingerprint, VersionToken};
+pub use root::{Initialization, LIBRARY_LAYOUT, LibraryRoot, RootInfo, RootSource};
+use serde::{Serialize, Serializer};
 use std::{
     fmt,
     str::FromStr,
@@ -21,8 +17,8 @@ use std::{
 };
 pub use store::{
     Inventory, LibraryDiagnostic, LibraryStore, LoadedRecord, MAX_SCAN_DECODED_BYTES,
-    MAX_SCAN_RAW_BYTES, MAX_SCAN_RECORDS, Mutation, MutationKind, MutationStatus, OperationReceipt,
-    RecheckOutcome, WriteOutcome, history_warnings,
+    MAX_SCAN_RAW_BYTES, MAX_SCAN_RECORDS, Mutation, MutationKind, MutationStatus, WriteOutcome,
+    history_warnings,
 };
 
 /// Identity of a temporary entry in one application process, never a CLI selector.
@@ -105,36 +101,5 @@ impl FromStr for LibraryKey {
 impl Serialize for LibraryKey {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.collect_str(self)
-    }
-}
-/// Opaque random per-operation record revision, separate from document identity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RecordRevision(DocumentUuid);
-impl RecordRevision {
-    pub(super) fn fresh() -> Result<Self, Error> {
-        crate::identity::random_uuid().map(Self)
-    }
-}
-impl fmt::Display for RecordRevision {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-impl FromStr for RecordRevision {
-    type Err = Error;
-    fn from_str(text: &str) -> Result<Self, Error> {
-        text.parse()
-            .map(Self)
-            .map_err(|e| Error::new(ErrorKind::InvalidArgument, e))
-    }
-}
-impl Serialize for RecordRevision {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.collect_str(self)
-    }
-}
-impl<'de> Deserialize<'de> for RecordRevision {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        String::deserialize(d)?.parse().map_err(D::Error::custom)
     }
 }
