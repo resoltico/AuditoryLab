@@ -2770,9 +2770,9 @@ fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
             assert!(w.library_alert().is_empty());
             let query = w.catalog_query();
             let range = match field {
-                0 => query.created,
-                1 => query.modified,
-                _ => query.added,
+                0 => &query.created,
+                1 => &query.modified,
+                _ => &query.added,
             };
             assert!(range.from.unwrap() < range.before.unwrap());
         });
