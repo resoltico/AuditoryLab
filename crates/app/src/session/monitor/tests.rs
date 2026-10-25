@@ -78,7 +78,7 @@ fn rms_of_one_impulse_in_four_is_half_the_peak_at_tiny_and_large_levels() {
     }
 }
 #[test]
-fn real_callback_samples_match_history_with_finite_stop_and_contention() {
+fn real_callback_samples_match_history_and_finite_stop() {
     let monitor = PlaybackMonitor::new(
         descriptor(8000),
         MonitorDetail::Waveform,

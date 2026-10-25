@@ -327,7 +327,7 @@ impl MonitorReader {
     pub fn descriptor(&self) -> &SessionDescriptor {
         self.monitor.descriptor()
     }
-    /// Drain available samples into consumer-owned history and read the latest state.
+    /// Read a coherent state watermark and drain its available sample prefix into owned history.
     /// Session counters, phase and underruns are refreshed even without a new observation.
     /// Returns whether samples or a changed generated state were received.
     pub fn poll(&mut self, window_ms: u32) -> bool {
