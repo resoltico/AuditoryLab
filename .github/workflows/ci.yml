@@ -309,6 +309,13 @@ jobs:
                    --exclude-re 'synthesis\.rs:27:22: replace < with <= in step$'
                    --exclude-re 'synthesis\.rs:64:15: replace < with <= in times_at_most$')
           fi
+          if [[ "$MUTATION_SOURCE" == live ]]; then
+            # Bypassing this exact-phase memo only recomputes the same pure
+            # sine; samples/clocks are unchanged. It is not timing-equivalent:
+            # controlled callback qualification remains independent and failed.
+            # Wrong-phase reuse (true/inverted guard) remains mutated and tested.
+            args+=(--exclude-re 'live\.rs:132:45: replace match guard phase == self\.modulation_phase with false in Slot::sample$')
+          fi
           cargo mutants "${args[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

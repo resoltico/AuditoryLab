@@ -80,6 +80,7 @@ The `auditorylab` library builds without an audio device stack by default; its `
 - [Catalog sources](docs/catalog.md): study methods, parameters and adaptations.
 - [Architecture](docs/architecture.md): crates, synthesis, playback, the shared workspace and the desktop adapter.
 - [Contributing](CONTRIBUTING.md): checks and dependencies.
+- [Persistent-library verification](docs/persistent-library-verification.md): local evidence, retained timing failures and unqualified conditions.
 - [Packaging and releases](docs/releasing.md): distribution contents, build identity, qualification and publication.
 - [Changelog](CHANGELOG.md) and [security](SECURITY.md).
 
