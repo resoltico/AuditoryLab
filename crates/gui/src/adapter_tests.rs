@@ -831,9 +831,23 @@ fn component_options_are_sized_to_their_content() {
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 0);
     h.settle();
-    let options = centre(&labelled(ui, "Routing, modulation and component options"));
-    drag(ui, options, options);
+    let options = labelled(ui, "Routing, modulation and component options");
+    // The disclosure follows the editor fields in a scrolling document; font
+    // metrics determine whether it starts inside the viewport.
+    WindowInner::from_pub(ui.window()).set_focus_item(&options, true, FocusReason::Programmatic);
     h.settle();
+    let position = centre(&options);
+    let size = ui.window().size().to_logical(ui.window().scale_factor());
+    assert!(position.x >= 0.0 && position.x < size.width);
+    assert!(position.y >= 0.0 && position.y < size.height);
+    drag(ui, position, position);
+    h.settle();
+    assert!(
+        options
+            .accessible_string_property(AccessibleStringProperty::Label)
+            .unwrap()
+            .ends_with(" · expanded")
+    );
     let name = ui.get_components().row_data(0).unwrap().name;
     let width = ui
         .window()
@@ -1176,10 +1190,21 @@ fn library_button_obeys_export_prompt_pending_and_capability_refusals() {
 #[test]
 fn library_button_obeys_unavailable_playback_capability() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
-    let portable = Harness::new();
-    assert!(!portable.ui().get_can_play());
-    action_button(portable.ui(), "Listen").accessible_action(&AccessibilityAction::Default);
-    assert!(!portable.adapter.inspect(|w| w.audio_busy()));
+    let h = Harness::with_catalog(
+        vec![auditorylab::editing::Draft::new().unwrap().snapshot()],
+        Capabilities::no_device_playback(),
+    );
+    h.ui().invoke_collection_filter(3, 0);
+    h.wait_for_files();
+    h.settle();
+    assert!(h.ui().get_has_results());
+    assert!(!h.ui().get_can_play());
+    assert_eq!(
+        h.ui().get_play_reason(),
+        "Device playback is disabled for this workspace."
+    );
+    action_button(h.ui(), "Listen").accessible_action(&AccessibilityAction::Default);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
 
 #[test]
