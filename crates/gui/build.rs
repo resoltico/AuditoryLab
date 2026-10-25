@@ -9,7 +9,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
     }
     vocabulary.push_str("}\n");
-    std::fs::write(generated.join("vocabulary.slint"), vocabulary)?;
+    let vocabulary_path = generated.join("vocabulary.slint");
+    if std::fs::read(&vocabulary_path).ok().as_deref() != Some(vocabulary.as_bytes()) {
+        std::fs::write(&vocabulary_path, vocabulary)?;
+    }
     slint_build::compile_with_config(
         "ui/main.slint",
         slint_build::CompilerConfiguration::new()
