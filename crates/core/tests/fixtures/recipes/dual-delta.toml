@@ -24,4 +24,3 @@ left_hz = 200.0
 offset_hz = 3.0
 left_peak_dbfs = -20.0
 right_peak_dbfs = -20.0
-

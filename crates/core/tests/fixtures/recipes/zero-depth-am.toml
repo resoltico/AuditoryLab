@@ -19,4 +19,3 @@ peak_dbfs = -20.0
 kind = "sinusoidal"
 rate_hz = 10.0
 depth = 0.0
-

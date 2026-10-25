@@ -12,7 +12,7 @@ The audited compact empty-filter/recovery routes, committed-filter summary, dura
 
 ## Timing remains failed
 
-The unchanged criterion is maximum*100≤floor(buffer_ns)*75 for every measured callback, with 16 voices, up to 32 transition slots, 100 warmup calls and 3,000 measured calls per configuration. Rates and supported voices were not reduced. Raw results are retained in [the callback evidence directory](verification/callbacks-2026-10-25/), with SHA256SUMS identifying their bytes rather than proving correctness.
+The unchanged criterion is maximum*100≤floor(buffer_ns)*75 for every measured callback, with 16 voices, up to 32 transition slots, 100 warmup calls and 3,000 measured calls per configuration. Rates and supported voices were not reduced. Raw results are retained in [the callback evidence directory](verification/callbacks-2026-10-25/), with SHA256SUMS identifying the gzip bytes and UNCOMPRESSED-SHA256SUMS identifying the unchanged original output, rather than proving correctness.
 
 The original 768 kHz waveform failures were 1,882,291 ns at 256 frames (budget 333,333 ns) and 6,355,000 ns at 4096 frames (budget 5,333,333 ns). Exact-phase modulation sine reuse preserves per-voice clocks, sample arithmetic and mixing order and reduces typical work. It does not guarantee wall-clock tails.
 
