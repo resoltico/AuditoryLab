@@ -48,7 +48,7 @@ jobs:
         if: github.event_name != 'schedule'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libpango-1.0-0 libgtk-3-0
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libglib2.0-bin libxkbcommon-x11-0
       - if: github.event_name != 'schedule'
         run: cargo fmt --all -- --check
       - name: Validate GitHub workflows
@@ -164,7 +164,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libpango-1.0-0 libgtk-3-0
+          sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libglib2.0-bin libxkbcommon-x11-0
       - run: rustup toolchain install
       - name: Select icon-capable Xcode
         if: runner.os == 'macOS'

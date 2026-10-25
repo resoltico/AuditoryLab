@@ -146,7 +146,7 @@ fn query() -> Preference {
 )]
 fn gnome_reduced() -> Option<bool> {
     use std::ffi::{c_char, c_void};
-    // Keep native registration code mapped for process lifetime, matching the font adapter.
+    // Native GObject registrations may outlive this read; keep their libraries mapped.
     static GIO: std::sync::OnceLock<Option<libloading::Library>> = std::sync::OnceLock::new();
     static OBJECT: std::sync::OnceLock<Option<libloading::Library>> = std::sync::OnceLock::new();
     // SAFETY: fixed system libraries and exact public GIO signatures; all returned pointers checked.

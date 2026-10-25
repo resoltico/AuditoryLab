@@ -586,6 +586,12 @@ impl SlintAdapter {
         let Some(preferences) = preferences.as_mut() else {
             return;
         };
+        #[cfg(target_os = "linux")]
+        if let Some(main) = self.main.upgrade() {
+            preferences
+                .typography
+                .bind_window(main.window(), &preferences.font);
+        }
         if let Some(font) = preferences.typography.latest()
             && preferences.font != font
         {

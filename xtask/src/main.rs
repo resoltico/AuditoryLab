@@ -1,12 +1,5 @@
 //! Build, license and package Auditory Lab downloads.
-// Exercise the exact native policy source without pulling Winit's example/dev graph.
 mod archive;
-#[cfg(test)]
-#[path = "../../third_party/parley/src/bidi_mask.rs"]
-mod bidi_mask;
-#[cfg(test)]
-#[path = "../../third_party/winit/src/platform_impl/linux/x11/xsettings/gtk_scaling.rs"]
-mod gtk_scaling;
 mod macos;
 mod notices;
 mod package;
@@ -114,7 +107,7 @@ fn rust_standard_library_copyright() -> Result<Vec<u8>> {
     Ok(bytes)
 }
 fn readme(version: &str, gui: bool, target: &str) -> String {
-    include_str!("../templates/archive-readme.txt").replace("{version}",version).replace("{product}",if gui {"Desktop"} else {"CLI"}).replace("{start}",if gui {"Open Auditory Lab.app on macOS, auditorylab-gui.exe on Windows, or auditorylab-gui on Linux. Select a sound, read its summary, then use Listen or Export WAV…."} else {"Run auditorylab --help, then auditorylab list. Use auditorylab describe builtin:ID to read about a sound, and auditorylab recipe builtin:ID --output recipe.toml to edit one."}).replace("{platform_needs}",if target.contains("apple") {"macOS 15 or later. If first launch is blocked, use System Settings > Privacy & Security > Open Anyway after trying to open the app. Apple instructions: https://support.apple.com/en-us/102445"} else if target.contains("windows") {if gui { "Windows 10 or later on x86_64; Windows 11 on ARM64. Desktop drawing needs an OpenGL 2.0 or newer graphics driver." } else { "Windows 10 or later on x86_64; Windows 11 on ARM64." }} else {if gui { "Linux with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, Pango/GTK 3/GIO for desktop font preferences, OpenGL and an xdg-desktop-portal for file dialogs." } else { "Linux with glibc 2.35 or later and ALSA." }})
+    include_str!("../templates/archive-readme.txt").replace("{version}",version).replace("{product}",if gui {"Desktop"} else {"CLI"}).replace("{start}",if gui {"Open Auditory Lab.app on macOS, auditorylab-gui.exe on Windows, or auditorylab-gui on Linux. Select a sound, read its summary, then use Listen or Export WAV…."} else {"Run auditorylab --help, then auditorylab list. Use auditorylab describe builtin:ID to read about a sound, and auditorylab recipe builtin:ID --output recipe.toml to edit one."}).replace("{platform_needs}",if target.contains("apple") {"macOS 15 or later. If first launch is blocked, use System Settings > Privacy & Security > Open Anyway after trying to open the app. Apple instructions: https://support.apple.com/en-us/102445"} else if target.contains("windows") {if gui { "Windows 10 or later on x86_64; Windows 11 on ARM64. Desktop drawing needs an OpenGL 2.0 or newer graphics driver." } else { "Windows 10 or later on x86_64; Windows 11 on ARM64." }} else {if gui { "Linux with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, GLib gsettings for GNOME Wayland text scaling, OpenGL and an xdg-desktop-portal for file dialogs." } else { "Linux with glibc 2.35 or later and ALSA." }})
 }
 fn section<'a>(changelog: &'a str, version: &str) -> Result<(&'a str, &'a str)> {
     let marker = format!("## [{version}]");

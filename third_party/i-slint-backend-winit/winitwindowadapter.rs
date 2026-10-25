@@ -840,8 +840,7 @@ impl WinitWindowAdapter {
     /// Draw the items of the specified `component` in the given window.
     pub fn draw(&self) -> Result<(), PlatformError> {
         if matches!(self.shown.get(), WindowVisibility::Hidden) {
-            // Native windows can receive their initial redraw before first show.
-            return Ok(());
+            return Ok(()); // caller bug, doesn't make sense to call draw() when not shown
         }
 
         self.pending_redraw.set(false);

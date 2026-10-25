@@ -436,6 +436,7 @@ impl BackendBuilder {
             self.allow_fallback,
         )?);
 
+        #[cfg(any(muda, target_os = "macos"))]
         if let Some(handler) = self.custom_application_handler.as_ref() {
             #[cfg(muda)]
             if let Some(title) = handler.application_about_title() {

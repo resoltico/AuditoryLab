@@ -328,22 +328,7 @@
              }
 --- a/textlayout/sharedparley.rs
 +++ b/textlayout/sharedparley.rs
-@@ -28,6 +28,14 @@
- use std::cell::RefCell;
- use std::collections::HashSet;
- use std::sync::Arc;
-+
-+// macOS window logical coordinates are AppKit points. Keep the platform's
-+// optical-size unit independent of the device backing scale. Other platforms
-+// retain their existing variation policy.
-+fn macos_optical_size(size: f32) -> Option<(skrifa::Tag, f32)> {
-+    cfg!(target_os = "macos").then_some((skrifa::Tag::new(b"opsz"), size))
-+}
-+
- 
- #[derive(derive_more::Deref, derive_more::DerefMut)]
- pub struct FontContext {
-@@ -477,7 +485,24 @@
+@@ -477,7 +477,24 @@
              text_overflow: TextOverflow::Clip,
          },
          window_adapter.window(),
@@ -369,91 +354,6 @@
      )
  }
  
-@@ -569,7 +594,7 @@
- 
-     let pixel_size = font_request.pixel_size.unwrap_or(DEFAULT_FONT_SIZE);
- 
--    let location = face.axes().location(font.synthesis.variation_settings());
-+    let location = face.axes().location(font.synthesis.variation_settings().iter().copied().chain(macos_optical_size(font_request.pixel_size.unwrap_or(DEFAULT_FONT_SIZE).get())));
- 
-     let glyph_metrics = skrifa::metrics::GlyphMetrics::new(
-         &face,
-@@ -578,6 +603,19 @@
-     );
- 
-     let advance_width = LogicalLength::new(glyph_metrics.advance_width(glyph_index.into())?);
-+    // Native tracking is part of shaping, not the raw hmtx advance. Use the
-+    // same path for the ellipsis-width fallback as for the displayed text.
-+    #[cfg(target_os = "macos")]
-+    let advance_width = {
-+        let builder = shaping::content_widths_builder(font_request.clone(), ScaleFactor::new(1.0));
-+        let paragraphs = create_text_paragraphs(
-+            &builder, font_ctx,
-+            PlainOrStyledText::Plain(alloc::format!("{ch}").into()), Color::default(),
-+        );
-+        paragraphs.first().map_or(advance_width, |paragraph|
-+            LogicalLength::new(paragraph.layout.calculate_content_widths().max))
-+    };
-+
- 
-     let font_metrics = skrifa::metrics::Metrics::new(
-         &face,
-@@ -614,7 +652,7 @@
-     };
- 
-     let face = skrifa::FontRef::from_index(font.blob.data(), font.index).unwrap();
--    let location = face.axes().location(font.synthesis.variation_settings());
-+    let location = face.axes().location(font.synthesis.variation_settings().iter().copied().chain(macos_optical_size(font_request.pixel_size.unwrap_or(DEFAULT_FONT_SIZE).get())));
-     let metrics = face.metrics(skrifa::instance::Size::unscaled(), &location);
- 
-     let units_per_em = metrics.units_per_em as f32;
---- a/textlayout/sharedparley/shaping.rs
-+++ b/textlayout/sharedparley/shaping.rs
-@@ -16,6 +16,15 @@
- /// glyphs sit a little smaller than body text, inside a translucent capsule
- /// that visually marks them as code.
- const INLINE_CODE_FONT_SCALE: f32 = 0.85;
-+
-+fn optical_size(size: f32) -> parley::style::FontVariations<'static> {
-+    parley::style::FontVariations::List(alloc::borrow::Cow::Owned(
-+        macos_optical_size(size).into_iter().map(|(tag, value)|
-+            parley::style::FontVariation::new(parley::setting::Tag::new(&tag.to_be_bytes()), value)
-+        ).collect(),
-+    ))
-+}
-+
- 
- std::thread_local! {
-     static LAYOUT_CONTEXT: RefCell<parley::LayoutContext<Brush>> = Default::default();
-@@ -123,6 +132,8 @@
-             }));
-         }
-         builder.push_default(parley::StyleProperty::FontSize(self.pixel_size.get()));
-+        // Optical size is in logical points, independent of device pixel density.
-+        builder.push_default(parley::StyleProperty::FontVariations(optical_size(self.pixel_size.get())));
-         builder.push_default(parley::StyleProperty::WordBreak(match self.text_wrap {
-             TextWrap::NoWrap => parley::style::WordBreak::KeepAll,
-             TextWrap::WordWrap => parley::style::WordBreak::Normal,
-@@ -198,6 +209,10 @@
-                             )),
-                             span.range.clone(),
-                         );
-+                        builder.push(
-+                            parley::StyleProperty::FontVariations(optical_size(self.pixel_size.get() * INLINE_CODE_FONT_SCALE)),
-+                            span.range.clone(),
-+                        );
-                         // Inline `code` reads as slightly smaller text on top of a
-                         // translucent capsule (drawn separately in `TextParagraph::draw`),
-                         // matching the convention used by common markdown renderers.
-@@ -247,7 +262,7 @@
- ) -> Option<f32> {
-     let font = font_request.query_fontique(&mut font_ctx.collection, &mut font_ctx.source_cache)?;
-     let face = skrifa::FontRef::from_index(font.blob.data(), font.index).ok()?;
--    let location = face.axes().location(font.synthesis.variation_settings());
-+    let location = face.axes().location(font.synthesis.variation_settings().iter().copied().chain(macos_optical_size(font_request.pixel_size.unwrap_or(DEFAULT_FONT_SIZE).get())));
-     let metrics = face.metrics(skrifa::instance::Size::unscaled(), &location);
-     let units_per_em = metrics.units_per_em as f32;
-     (units_per_em > 0.0)
 --- a/window.rs
 +++ b/window.rs
 @@ -839,11 +839,12 @@

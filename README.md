@@ -68,7 +68,7 @@ cargo install --locked --path crates/cli
 cargo run --release --locked -p auditorylab-gui
 ```
 
-Cargo installs the CLI into its bin directory, which must be on PATH. Linux desktop use needs X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, OpenGL and an xdg-desktop-portal for file dialogs. Native UI fonts follow macOS/Windows defaults and configured Linux desktop family/size. Linux uses Pango and GTK/GIO for desktop font preferences. The desktop renderer uses OpenGL; sound synthesis runs on the CPU. Build commands also work with `--manifest-path` from another directory.
+Cargo installs the CLI into its bin directory, which must be on PATH. Linux desktop use needs X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, OpenGL and an xdg-desktop-portal for file dialogs. Native UI fonts use platform defaults and toolkit DPI scaling. GNOME Wayland text scaling uses GLib’s `gsettings` utility. The desktop renderer uses OpenGL; sound synthesis runs on the CPU. Build commands also work with `--manifest-path` from another directory.
 
 The `auditorylab` library builds without an audio device stack by default; its `device-playback` feature adds default-device playback, which the CLI and desktop enable.
 

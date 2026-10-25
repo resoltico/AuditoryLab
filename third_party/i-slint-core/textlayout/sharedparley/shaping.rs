@@ -17,15 +17,6 @@ use super::*;
 /// that visually marks them as code.
 const INLINE_CODE_FONT_SCALE: f32 = 0.85;
 
-fn optical_size(size: f32) -> parley::style::FontVariations<'static> {
-    parley::style::FontVariations::List(alloc::borrow::Cow::Owned(
-        macos_optical_size(size).into_iter().map(|(tag, value)|
-            parley::style::FontVariation::new(parley::setting::Tag::new(&tag.to_be_bytes()), value)
-        ).collect(),
-    ))
-}
-
-
 std::thread_local! {
     static LAYOUT_CONTEXT: RefCell<parley::LayoutContext<Brush>> = Default::default();
 }
@@ -132,8 +123,6 @@ impl LayoutWithoutLineBreaksBuilder {
             }));
         }
         builder.push_default(parley::StyleProperty::FontSize(self.pixel_size.get()));
-        // Optical size is in logical points, independent of device pixel density.
-        builder.push_default(parley::StyleProperty::FontVariations(optical_size(self.pixel_size.get())));
         builder.push_default(parley::StyleProperty::WordBreak(match self.text_wrap {
             TextWrap::NoWrap => parley::style::WordBreak::KeepAll,
             TextWrap::WordWrap => parley::style::WordBreak::Normal,
@@ -209,10 +198,6 @@ impl LayoutWithoutLineBreaksBuilder {
                             )),
                             span.range.clone(),
                         );
-                        builder.push(
-                            parley::StyleProperty::FontVariations(optical_size(self.pixel_size.get() * INLINE_CODE_FONT_SCALE)),
-                            span.range.clone(),
-                        );
                         // Inline `code` reads as slightly smaller text on top of a
                         // translucent capsule (drawn separately in `TextParagraph::draw`),
                         // matching the convention used by common markdown renderers.
@@ -262,7 +247,7 @@ pub(super) fn line_height_ratio(
 ) -> Option<f32> {
     let font = font_request.query_fontique(&mut font_ctx.collection, &mut font_ctx.source_cache)?;
     let face = skrifa::FontRef::from_index(font.blob.data(), font.index).ok()?;
-    let location = face.axes().location(font.synthesis.variation_settings().iter().copied().chain(macos_optical_size(font_request.pixel_size.unwrap_or(DEFAULT_FONT_SIZE).get())));
+    let location = face.axes().location(font.synthesis.variation_settings());
     let metrics = face.metrics(skrifa::instance::Size::unscaled(), &location);
     let units_per_em = metrics.units_per_em as f32;
     (units_per_em > 0.0)

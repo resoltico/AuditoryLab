@@ -37,11 +37,11 @@ pub fn calc_dpi_factor(
 }
 
 impl XConnection {
-    // Retrieve configured window DPI, with Xft.dpi as fallback.
-    pub fn get_window_dpi(&self) -> Option<f64> {
+    // Retrieve DPI from Xft.dpi property
+    pub fn get_xft_dpi(&self) -> Option<f64> {
         // Try to get it from XSETTINGS first.
         if let Some(xsettings_screen) = self.xsettings_screen() {
-            match self.xsettings_window_dpi(xsettings_screen) {
+            match self.xsettings_dpi(xsettings_screen) {
                 Ok(Some(dpi)) => return Some(dpi),
                 Ok(None) => {},
                 Err(err) => {
@@ -142,7 +142,7 @@ impl XConnection {
                 dpi_override
             },
             EnvVarDPI::NotSet => {
-                if let Some(dpi) = self.get_window_dpi() {
+                if let Some(dpi) = self.get_xft_dpi() {
                     dpi / 96.
                 } else {
                     calc_dpi_factor(

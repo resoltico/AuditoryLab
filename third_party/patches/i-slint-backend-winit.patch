@@ -5985,11 +5985,12 @@
  }
  
  /// Use the BackendBuilder to configure the properties of the Winit Backend before creating it.
-@@ -403,6 +435,25 @@
+@@ -403,6 +435,26 @@
              self.requested_graphics_api.clone(),
              self.allow_fallback,
          )?);
 +
++        #[cfg(any(muda, target_os = "macos"))]
 +        if let Some(handler) = self.custom_application_handler.as_ref() {
 +            #[cfg(muda)]
 +            if let Some(title) = handler.application_about_title() {
@@ -6067,17 +6068,7 @@
                  &muda::PredefinedMenuItem::separator(),
 --- a/winitwindowadapter.rs
 +++ b/winitwindowadapter.rs
-@@ -840,7 +840,8 @@
-     /// Draw the items of the specified `component` in the given window.
-     pub fn draw(&self) -> Result<(), PlatformError> {
-         if matches!(self.shown.get(), WindowVisibility::Hidden) {
--            return Ok(()); // caller bug, doesn't make sense to call draw() when not shown
-+            // Native windows can receive their initial redraw before first show.
-+            return Ok(());
-         }
- 
-         self.pending_redraw.set(false);
-@@ -1230,7 +1231,9 @@
+@@ -1230,7 +1230,9 @@
                      && self.menubar().is_none()
                  {
                      *muda_adapter.borrow_mut() =
@@ -6088,7 +6079,7 @@
                  }
  
                  if let Some(muda_adapter) = muda_adapter.borrow().as_ref() {
-@@ -1318,6 +1321,18 @@
+@@ -1318,6 +1320,18 @@
                  let have_focus =
                      if cfg!(target_os = "macos") { winit_window.has_focus() } else { have_focus };
                  self.activation_changed(have_focus)?;
@@ -6107,7 +6098,7 @@
              }
  
              WinitWindowEvent::KeyboardInput { event, is_synthetic, .. } => {
-@@ -1709,11 +1724,13 @@
+@@ -1709,11 +1723,13 @@
                  self.draw()?;
              };
  

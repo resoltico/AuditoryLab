@@ -86,7 +86,7 @@ Linux needs X11 or Wayland, fontconfig, xkbcommon, fonts, OpenGL and an xdg-desk
 
 For a Linux desktop download, keep the extracted folder and its legal materials together, add that folder to PATH, install `auditorylab-gui.desktop` under `~/.local/share/applications/`, and merge the packaged `hicolor/` contents into `~/.local/share/icons/hicolor/`. Keep the `org.resoltico.auditorylab` icon names unchanged. Run the executable directly from its original folder if installing no launcher.
 
-Typography uses San Francisco on macOS, Windows message font/text scale (Segoe UI by default), and the configured Linux desktop family/size. GNOME uses its settings portal or native GSettings; KDE uses its QFont portal preference; other GTK desktops use XSettings. Pango/GTK/GIO support Linux parsing/fallbacks. Missing preference sources/families are diagnosed. Updates coalesce off audio/UI processing and reflow app-owned windows without submitting audio targets. Menu/context-menu routing retains ordinary backend handling.
+Typography uses the platform SystemUi family, AppKit’s system size on macOS, Windows message metrics at 96 DPI, and toolkit DPI scaling on Linux. GNOME Wayland text scaling uses GLib’s `gsettings` utility on one bounded worker. X11 uses the toolkit’s Xft DPI path without a second text multiplier. Menu/context-menu routing retains ordinary backend handling.
 
 The UI renders with Slint/OpenGL; synthesis runs on the CPU. Keep device volume low before playback and use headphones for separate-ear sounds.
 

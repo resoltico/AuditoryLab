@@ -14,16 +14,14 @@ use super::XConnection;
 
 type Result<T> = core::result::Result<T, ParserError>;
 
-mod gtk_scaling;
-
 const DPI_NAME: &[u8] = b"Xft/DPI";
 const DPI_MULTIPLIER: f64 = 1024.0;
 const LITTLE_ENDIAN: u8 = b'l';
 const BIG_ENDIAN: u8 = b'B';
 
 impl XConnection {
-    /// Get configured window DPI from XSettings.
-    pub(crate) fn xsettings_window_dpi(
+    /// Get the DPI from XSettings.
+    pub(crate) fn xsettings_dpi(
         &self,
         xsettings_screen: xproto::Atom,
     ) -> core::result::Result<Option<f64>, super::X11Error> {
@@ -36,24 +34,7 @@ impl XConnection {
         let data: Vec<u8> =
             self.get_property(owner.owner, atoms[_XSETTINGS_SETTINGS], atoms[_XSETTINGS_SETTINGS])?;
 
-        // GTK separates its resolved window scale from text DPI. Xft/DPI
-        // includes both; consuming it as window DPI applies text scaling twice
-        // in clients which also honor GTK font preferences.
-        let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-        if gtk_scaling::applies(&desktop) {
-            let setting = read_settings(&data)?
-                .find(|res| res.as_ref().map_or(true, |s| s.name == b"Gdk/WindowScalingFactor"))
-                .transpose()?;
-            let integer = setting.and_then(|setting| match setting.data {
-                SettingData::Integer(scale) => Some(scale),
-                _ => None,
-            });
-            if let Some(scale) = gtk_scaling::window_scale(integer) {
-                return Ok(Some(scale * 96.0));
-            }
-        }
-
-        // Preserve Xft behavior when no resolved GTK window scale is available.
+        // Parse the property.
         let dpi_setting = read_settings(&data)?
             .find(|res| res.as_ref().map_or(true, |s| s.name == DPI_NAME))
             .transpose()?;

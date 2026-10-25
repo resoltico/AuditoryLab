@@ -72,7 +72,7 @@ Open an isolated built window. Check fixed toolbar/transport versus scrolling do
 
 The [release guide](docs/releasing.md) covers packaging prerequisites, archive contents, source/build identity, qualification and publication. The root [LICENSE](LICENSE) governs software and owner artwork; the [artwork guide](artwork/README.md) identifies editable sources and platform consumers.
 
-Generated-output verification includes `cargo test -p auditorylab callback_monitor_costs --release -- --ignored --nocapture` for synthetic callback timing at 48/768 kHz. It opens no device. Run file-scoped mutation checks for numerical/transition changes with timeout 60, output and TMPDIR under target/. Native UI qualification covers SF/Segoe and real GNOME/KDE font changes; cross-compilation alone does not qualify rendering or desktop preferences. Linux runtime font adapters use Pango/GTK/GIO; install `libpango-1.0-0 libgtk-3-0` for those preference sources. Hardware/GUI tests use component-free silent recipes.
+Generated-output verification includes `cargo test -p auditorylab callback_monitor_costs --release -- --ignored --nocapture` for synthetic callback timing at 48/768 kHz. It opens no device. Run file-scoped mutation checks for numerical/transition changes with timeout 60, output and TMPDIR under target/. Native UI checks cover platform fonts, X11 Xft DPI and GNOME Wayland text scaling. Cross-compilation alone does not test rendering or desktop preferences. Install GLib’s `gsettings` utility for GNOME Wayland text scaling. Hardware/GUI tests use component-free silent recipes.
 
 ## Build storage and cleanup
 

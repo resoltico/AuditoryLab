@@ -17,8 +17,5 @@ sha2 = "0.10.9"
 
 tempfile.workspace = true
 
-[dev-dependencies]
-icu_properties = "2.3"
-
 [lints]
 workspace = true

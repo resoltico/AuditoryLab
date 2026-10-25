@@ -29,14 +29,6 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-// macOS window logical coordinates are AppKit points. Keep the platform's
-// optical-size unit independent of the device backing scale. Other platforms
-// retain their existing variation policy.
-fn macos_optical_size(size: f32) -> Option<(skrifa::Tag, f32)> {
-    cfg!(target_os = "macos").then_some((skrifa::Tag::new(b"opsz"), size))
-}
-
-
 #[derive(derive_more::Deref, derive_more::DerefMut)]
 pub struct FontContext {
     #[deref]
@@ -594,7 +586,7 @@ pub fn char_size(
 
     let pixel_size = font_request.pixel_size.unwrap_or(DEFAULT_FONT_SIZE);
 
-    let location = face.axes().location(font.synthesis.variation_settings().iter().copied().chain(macos_optical_size(font_request.pixel_size.unwrap_or(DEFAULT_FONT_SIZE).get())));
+    let location = face.axes().location(font.synthesis.variation_settings());
 
     let glyph_metrics = skrifa::metrics::GlyphMetrics::new(
         &face,
@@ -603,19 +595,6 @@ pub fn char_size(
     );
 
     let advance_width = LogicalLength::new(glyph_metrics.advance_width(glyph_index.into())?);
-    // Native tracking is part of shaping, not the raw hmtx advance. Use the
-    // same path for the ellipsis-width fallback as for the displayed text.
-    #[cfg(target_os = "macos")]
-    let advance_width = {
-        let builder = shaping::content_widths_builder(font_request.clone(), ScaleFactor::new(1.0));
-        let paragraphs = create_text_paragraphs(
-            &builder, font_ctx,
-            PlainOrStyledText::Plain(alloc::format!("{ch}").into()), Color::default(),
-        );
-        paragraphs.first().map_or(advance_width, |paragraph|
-            LogicalLength::new(paragraph.layout.calculate_content_widths().max))
-    };
-
 
     let font_metrics = skrifa::metrics::Metrics::new(
         &face,
@@ -652,7 +631,7 @@ pub fn font_metrics(
     };
 
     let face = skrifa::FontRef::from_index(font.blob.data(), font.index).unwrap();
-    let location = face.axes().location(font.synthesis.variation_settings().iter().copied().chain(macos_optical_size(font_request.pixel_size.unwrap_or(DEFAULT_FONT_SIZE).get())));
+    let location = face.axes().location(font.synthesis.variation_settings());
     let metrics = face.metrics(skrifa::instance::Size::unscaled(), &location);
 
     let units_per_em = metrics.units_per_em as f32;

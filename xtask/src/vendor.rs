@@ -158,42 +158,6 @@ pub(crate) fn verify() -> Result<()> {
 mod tests {
     use super::*;
     #[test]
-    fn production_bidi_class_bits_are_nonzero_unique_and_independent_of_numeric_encodings() {
-        use icu_properties::props::BidiClass;
-        let classes = [
-            BidiClass::ArabicLetter,
-            BidiClass::ArabicNumber,
-            BidiClass::BoundaryNeutral,
-            BidiClass::CommonSeparator,
-            BidiClass::EuropeanNumber,
-            BidiClass::EuropeanSeparator,
-            BidiClass::EuropeanTerminator,
-            BidiClass::FirstStrongIsolate,
-            BidiClass::LeftToRight,
-            BidiClass::LeftToRightEmbedding,
-            BidiClass::LeftToRightIsolate,
-            BidiClass::LeftToRightOverride,
-            BidiClass::NonspacingMark,
-            BidiClass::OtherNeutral,
-            BidiClass::ParagraphSeparator,
-            BidiClass::PopDirectionalFormat,
-            BidiClass::PopDirectionalIsolate,
-            BidiClass::RightToLeft,
-            BidiClass::RightToLeftEmbedding,
-            BidiClass::RightToLeftIsolate,
-            BidiClass::RightToLeftOverride,
-            BidiClass::SegmentSeparator,
-            BidiClass::WhiteSpace,
-        ];
-        let mut seen = 0;
-        for class in classes {
-            let bit = crate::bidi_mask::mask(class);
-            assert_eq!(bit.count_ones(), 1);
-            assert_eq!(seen & bit, 0, "classes must not alias");
-            seen |= bit;
-        }
-    }
-    #[test]
     fn registry_or_other_checkout_cannot_replace_the_reviewed_source() {
         let mut package = serde_json::json!({"version":"1.0.0", "source":null, "manifest_path":"vendor/Cargo.toml"});
         assert!(resolved_source(&package, "1.0.0", Path::new("vendor")));

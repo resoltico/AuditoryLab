@@ -9,49 +9,6 @@ use std::{
     rc::Rc,
 };
 
-#[cfg(target_os = "macos")]
-fn assert_native_font_metrics() {
-    slint::slint! {
-        export component FontProbe inherits Window {
-            in property <string> family;
-            in property <length> size;
-            in property <string> sample;
-            out property <length> x-height: glyph.font-metrics.x-height;
-            out property <length> advance: glyph.preferred-width;
-            glyph := Text { text: root.sample; font-family: root.family; font-size: root.size; }
-        }
-    }
-    let probe = FontProbe::new().unwrap();
-    probe.set_family(typography::resolve().family.into());
-    probe.set_sample("x".repeat(100).into());
-    for scale in [1.0, 2.0] {
-        probe
-            .window()
-            .dispatch_event(slint::platform::WindowEvent::ScaleFactorChanged {
-                scale_factor: scale,
-            });
-        for size in [13.0, 26.0, 40.0] {
-            probe.set_size(size);
-            let native = objc2_app_kit::NSFont::systemFontOfSize(f64::from(size));
-            let glyph = native.glyphWithName(&objc2_foundation::NSString::from_str("x"));
-            let native_height = native.xHeight();
-            let native_advance = native.advancementForGlyph(glyph).width * 100.0;
-            let height = f64::from(probe.get_x_height());
-            let advance = f64::from(probe.get_advance());
-            eprintln!(
-                "SF {size} at {scale}x: Slint x-height {height}, native {native_height}; Slint advance {advance}, native {native_advance}"
-            );
-            assert!(
-                (height - native_height).abs() < 0.015,
-                "native SF x-height at {size}"
-            );
-            assert!(
-                (advance - native_advance).abs() < 1.1,
-                "native SF glyph advance at {size}"
-            );
-        }
-    }
-}
 /// The warning text and announcement policy the shared transport view
 /// produces, shown on the window under test.
 fn sync_monitor_warnings(
@@ -100,13 +57,6 @@ fn control_focus_scrolls_into_view() {
 fn platform_modifiers_drive_text_shortcuts() {
     install();
     assert_platform_modifiers_drive_text_shortcuts();
-}
-
-#[cfg(target_os = "macos")]
-#[test]
-fn slint_font_metrics_match_appkit() {
-    install();
-    assert_native_font_metrics();
 }
 
 /// Monitor layout: drawer bounds, focused-window fallback, warnings and

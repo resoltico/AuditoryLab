@@ -26,7 +26,9 @@ pub(super) fn resolve() -> Typography {
         let size = objc2_app_kit::NSFont::systemFontSize() as f32;
         (size, "AppKit system UI / fontique SystemUi".to_owned())
     };
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    let (size, origin) = (13.0, "Toolkit DPI / fontique SystemUi".to_owned());
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     let (size, origin) = (
         13.0,
         "SystemUi fallback while reading desktop preference".to_owned(),
@@ -59,32 +61,60 @@ pub(super) struct TypographyService {
     pending: std::sync::Arc<std::sync::Mutex<Option<Typography>>>,
     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
     worker: Option<std::thread::JoinHandle<()>>,
+    #[cfg(target_os = "linux")]
+    backend_ready: bool,
 }
 impl TypographyService {
     pub(super) fn start() -> Self {
         let pending = std::sync::Arc::new(std::sync::Mutex::new(None));
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        #[cfg(target_os = "windows")]
         let sender = TypographySink {
             pending: pending.clone(),
             stop: stop.clone(),
         };
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        #[cfg(target_os = "windows")]
         let worker = {
             let stop = stop.clone();
             Some(std::thread::spawn(move || {
-                #[cfg(target_os = "linux")]
-                linux::listen(sender, stop);
                 #[cfg(target_os = "windows")]
                 windows_listener(sender, stop);
             }))
         };
-        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        #[cfg(not(target_os = "windows"))]
         let worker = None;
         Self {
             pending,
             stop,
             worker,
+            #[cfg(target_os = "linux")]
+            backend_ready: false,
+        }
+    }
+    #[cfg(target_os = "linux")]
+    pub(super) fn bind_window(&mut self, window: &slint::Window, base: &Typography) {
+        use slint::winit_030::{WinitWindowAccessor, winit::platform::wayland::WindowExtWayland};
+        if self.backend_ready {
+            return;
+        }
+        let Some(wayland) = window.with_winit_window(|window| window.xdg_toplevel().is_some())
+        else {
+            return;
+        };
+        self.backend_ready = true;
+        let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+        let gnome = desktop.split(':').any(|s| s.eq_ignore_ascii_case("GNOME"));
+        let kde = desktop.split(':').any(|s| s.eq_ignore_ascii_case("KDE"));
+        if wayland && gnome && !kde {
+            let sender = TypographySink {
+                pending: self.pending.clone(),
+                stop: self.stop.clone(),
+            };
+            let stop = self.stop.clone();
+            let base = base.clone();
+            self.worker = Some(std::thread::spawn(move || {
+                linux::listen(sender, stop, base)
+            }));
         }
     }
     pub(super) fn latest(&self) -> Option<Typography> {
@@ -179,6 +209,8 @@ mod tests {
             pending: pending.clone(),
             stop: stop.clone(),
             worker: None,
+            #[cfg(target_os = "linux")]
+            backend_ready: false,
         };
         let sink = TypographySink { pending, stop };
         sink.send(Typography {
