@@ -742,18 +742,31 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
 }
 
 #[test]
-fn history_conflicts_and_uncertain_write_failures_keep_distinct_recovery_notices() {
+fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct() {
     let (_directory, store, mut workspace) = fixture();
     workspace.save().unwrap();
     idle_files(&mut workspace);
     let key = store.scan(&Cancel::default()).entries[0].key.clone();
-    for (kind, inspect) in [
-        (ErrorKind::HistoryConflict, false),
-        (ErrorKind::Write, true),
+    for (kind, publishing, inspect, replacement) in [
+        (ErrorKind::HistoryConflict, true, false, true),
+        (ErrorKind::Conflict, false, false, false),
+        (ErrorKind::HistoryConflict, false, false, false),
+        (ErrorKind::Write, true, true, false),
+        (ErrorKind::Unreadable, true, true, false),
+        (ErrorKind::IncompleteInventory, true, true, false),
+        (ErrorKind::Write, false, false, false),
+        (ErrorKind::Busy, true, false, false),
+        (ErrorKind::LockUnavailable, true, false, false),
+        (ErrorKind::Cancelled, true, false, false),
+        (ErrorKind::ReadOnlyBuiltIn, true, false, false),
+        (ErrorKind::InvalidRecipe, true, false, false),
+        (ErrorKind::InvalidSound, true, false, false),
+        (ErrorKind::InvalidArgument, true, false, false),
+        (ErrorKind::Identity, true, false, false),
     ] {
         let status = FileStatus::Library(super::super::status::LibraryStatus::Failed {
             error: Error::new(kind, "captured failure"),
-            publishing: true,
+            publishing,
             context: super::super::status::LibraryContext {
                 path: store.root().path().into(),
                 selector: Some(key.clone()),
@@ -767,10 +780,16 @@ fn history_conflicts_and_uncertain_write_failures_keep_distinct_recovery_notices
         );
         assert_eq!(
             notice.contains("did not publish a replacement"),
-            !inspect,
+            replacement,
             "{notice}"
         );
-        assert!(notice.contains(&key.to_string()), "{notice}");
+        assert!(
+            notice.lines().next().unwrap().contains(&key.to_string()),
+            "{notice}"
+        );
+        if !publishing && matches!(kind, ErrorKind::Conflict | ErrorKind::HistoryConflict) {
+            assert!(notice.starts_with("Library read conflict"), "{notice}");
+        }
         assert!(
             notice.contains(&store.root().path().display().to_string()),
             "{notice}"

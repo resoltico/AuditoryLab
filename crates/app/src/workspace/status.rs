@@ -213,21 +213,34 @@ impl LibraryStatus {
             } => {
                 let recovery = "Draft retained. Refresh and reload the saved version, keep the draft, or save an independent copy.";
                 let heading = match error.kind() {
-                    ErrorKind::Conflict => {
+                    ErrorKind::Conflict if *publishing => {
                         "Saved version or identity conflicts with the captured operation"
                     }
-                    ErrorKind::HistoryConflict => {
+                    ErrorKind::HistoryConflict if *publishing => {
                         "Saved identity or creation history conflicts with the captured operation"
                     }
-                    _ if *publishing => {
+                    ErrorKind::Conflict | ErrorKind::HistoryConflict => "Library read conflict",
+                    ErrorKind::Write | ErrorKind::Unreadable | ErrorKind::IncompleteInventory
+                        if *publishing =>
+                    {
                         "Library operation failed; inspect this location before retrying"
                     }
+                    ErrorKind::Busy => "Library is busy; retry after the current operation",
+                    ErrorKind::LockUnavailable => "Library locking is unavailable",
+                    ErrorKind::Cancelled => "Library operation cancelled",
+                    ErrorKind::ReadOnlyBuiltIn => "Built-in recipes are read-only",
+                    _ if *publishing => "Library operation refused",
                     _ => "Library read failed",
                 };
-                let publication = if matches!(
-                    error.kind(),
-                    ErrorKind::Conflict | ErrorKind::HistoryConflict
-                ) {
+                let heading = context
+                    .selector
+                    .as_ref()
+                    .map_or_else(|| heading.to_owned(), |key| format!("{heading} · {key}"));
+                let publication = if *publishing
+                    && matches!(
+                        error.kind(),
+                        ErrorKind::Conflict | ErrorKind::HistoryConflict
+                    ) {
                     "\nThe conflicting operation did not publish a replacement."
                 } else {
                     ""
