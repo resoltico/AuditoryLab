@@ -542,6 +542,17 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
     workspace.save().unwrap();
     idle_files(&mut workspace);
     let a = store.scan(&Cancel::default()).entries[0].key.clone();
+    workspace
+        .set_catalog_query(crate::collection::CatalogQuery {
+            scope: crate::collection::Scope::User,
+            ..Default::default()
+        })
+        .unwrap();
+    idle_files(&mut workspace);
+    assert_eq!(
+        crate::library::LibraryKey::User(workspace.selected().unwrap().recipe().document.id),
+        a
+    );
     let first = store.load(&a).unwrap();
     store
         .apply(
@@ -553,16 +564,29 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
             &Cancel::default(),
         )
         .unwrap();
-    workspace
-        .set_catalog_query(crate::collection::CatalogQuery {
-            scope: crate::collection::Scope::User,
-            ..Default::default()
-        })
-        .unwrap();
     workspace.refresh_library();
     let scan = take_job(&mut workspace, JobKind::File);
-    workspace.respond(scan.execute(|_| {}));
+    let inventory = scan.execute(|_| {});
+    assert!(matches!(
+        &inventory,
+        Response::Finished {
+            outcome: JobOutcome::File(FileOutcome::Managed(Ok(
+                crate::workspace::LibraryOutcome::Inventory(_)
+            ))),
+            ..
+        }
+    ));
+    workspace.respond(inventory);
     let load = take_job(&mut workspace, JobKind::File);
+    let Work::File(FileKind::Managed(request)) = &*load.work else {
+        panic!("refresh must capture a managed load");
+    };
+    assert_eq!(request.context().selector.as_ref(), Some(&a));
+    assert!(
+        request.accepts(&crate::workspace::LibraryOutcome::Loaded(Box::new(
+            store.load(&a).unwrap()
+        )))
+    );
     let other = store
         .apply(
             Mutation::Create(Arc::new(Draft::new().unwrap().recipe())),
