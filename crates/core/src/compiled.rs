@@ -71,6 +71,14 @@ impl CompiledMix {
 /// Two targets are equal when they define the same audio and the same
 /// requested quantities: identities and order, compiled generators, routing,
 /// amplitudes, requested facts and sample rate.
+///
+/// Compile authored components through [`Sound::target`]; lowered generator
+/// lanes are an internal compilation detail.
+///
+/// ```compile_fail
+/// use auditorylab_core::{SampleRate, Target};
+/// let _ = Target::new(SampleRate::DEFAULT, &[]);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Target {
     mix: CompiledMix,
@@ -85,12 +93,9 @@ impl Target {
         }
     }
 
-    /// Validate components at `rate` with the same rules as
-    /// [`Sound::signal`], without a duration or fade.
-    ///
-    /// # Errors
-    /// Returns what [`Sound::check`] finds first.
-    pub fn new(
+    /// Compile already-lowered lanes for compiler and live-engine unit tests.
+    #[cfg(test)]
+    pub(crate) fn new(
         rate: SampleRate,
         components: &[(ComponentId, Voice)],
     ) -> Result<Self, StimulusError> {

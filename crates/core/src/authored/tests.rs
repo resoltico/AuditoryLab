@@ -357,6 +357,19 @@ fn every_raw_budget_and_owner_lane_boundary_is_checked_at_the_authored_boundary(
         },
     ] {
         assert_eq!(authored::lower(&[invalid]), Err(LoweringError::Identity));
+        let sound = Sound {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components: vec![invalid],
+        };
+        assert_eq!(
+            sound.target(SampleRate::DEFAULT),
+            Err(crate::StimulusError::Authored(LoweringError::Identity))
+        );
+        assert_eq!(
+            sound.check(SampleRate::DEFAULT).into_result(),
+            Err(crate::StimulusError::Authored(LoweringError::Identity))
+        );
     }
     for (first_hz, offset_hz) in [
         (f64::INFINITY, 1.0),
@@ -506,5 +519,55 @@ fn lowering_failures_explain_the_rejected_owner_budget_or_pair() {
         assert!(message.contains("200"));
         assert!(message.contains("-6"));
         assert!(message.contains(explanation), "{message}");
+    }
+}
+
+#[test]
+fn authored_primitive_callback_workloads_compile_to_identical_targets() {
+    for hz in [48_000, 768_000] {
+        let rate = SampleRate::new(hz).unwrap();
+        for clicks in [false, true] {
+            let voices: Vec<_> = (0_u32..16)
+                .map(|n| {
+                    let carrier = if clicks {
+                        Carrier::Click {
+                            rate_hz: 40.0 + f64::from(n),
+                            width_seconds: 0.001,
+                        }
+                    } else {
+                        Carrier::Tone {
+                            frequency_hz: 200.0 + f64::from(n) * 20.0,
+                        }
+                    };
+                    (
+                        ComponentId::new(n + 1),
+                        Voice {
+                            ears: Ears::Both,
+                            peak_dbfs: -30.0,
+                            carrier,
+                            modulation: Some(crate::Modulation::Sinusoidal {
+                                rate_hz: 23.0 + f64::from(n) * 0.75,
+                                depth: 1.0,
+                            }),
+                        },
+                    )
+                })
+                .collect();
+            let authored = Sound {
+                duration_seconds: 1.0,
+                fade_seconds: 0.0,
+                components: voices
+                    .iter()
+                    .map(|(id, voice)| Component {
+                        id: *id,
+                        node: Node::Voice(*voice),
+                    })
+                    .collect(),
+            };
+            assert_eq!(
+                authored.target(rate).unwrap(),
+                Target::new(rate, &voices).unwrap()
+            );
+        }
     }
 }
