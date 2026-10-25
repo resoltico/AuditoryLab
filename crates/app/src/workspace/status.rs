@@ -7,7 +7,7 @@ use super::{
     tasks::{FileKind, WorkerFailure},
 };
 use crate::{
-    error::Error,
+    error::{Error, ErrorKind},
     library::{LibraryDiagnostic, LibraryKey, MutationStatus},
     recipe::RecipeSnapshot,
     session::{LiveUpdateError, PlaybackReport},
@@ -134,6 +134,20 @@ impl SaveFeedback {
         }
     }
 }
+/// Location and identity captured by the immutable library request.
+#[derive(Debug, Clone)]
+pub(super) struct LibraryContext {
+    pub path: PathBuf,
+    pub selector: Option<LibraryKey>,
+}
+impl LibraryContext {
+    pub(super) fn description(&self) -> String {
+        self.selector.as_ref().map_or_else(
+            || format!("Location: {}", self.path.display()),
+            |key| format!("Selector: {key}\nLocation: {}", self.path.display()),
+        )
+    }
+}
 #[derive(Debug)]
 pub(super) enum LibraryStatus {
     Inventory(Arc<InventoryStatus>),
@@ -152,6 +166,7 @@ pub(super) enum LibraryStatus {
     Failed {
         error: Error,
         publishing: bool,
+        context: LibraryContext,
     },
     InvalidOwner,
 }
@@ -191,14 +206,37 @@ impl LibraryStatus {
                 status.label(),
                 diagnostics.join("\n")
             ),
-            Self::Failed { error, publishing } => format!(
-                "{}: {error}\nDraft retained. Refresh and reload the saved version, keep the draft, or save an independent copy.",
-                if *publishing {
-                    "Operation failed; inspect the reported path"
+            Self::Failed {
+                error,
+                publishing,
+                context,
+            } => {
+                let recovery = "Draft retained. Refresh and reload the saved version, keep the draft, or save an independent copy.";
+                let heading = match error.kind() {
+                    ErrorKind::Conflict => {
+                        "Saved version or identity conflicts with the captured operation"
+                    }
+                    ErrorKind::HistoryConflict => {
+                        "Saved identity or creation history conflicts with the captured operation"
+                    }
+                    _ if *publishing => {
+                        "Library operation failed; inspect this location before retrying"
+                    }
+                    _ => "Library read failed",
+                };
+                let publication = if matches!(
+                    error.kind(),
+                    ErrorKind::Conflict | ErrorKind::HistoryConflict
+                ) {
+                    "\nThe conflicting operation did not publish a replacement."
                 } else {
-                    "Library read failed"
-                }
-            ),
+                    ""
+                };
+                format!(
+                    "{heading}\n{}\n{error}{publication}\n{recovery}",
+                    context.description()
+                )
+            }
             Self::InvalidOwner => {
                 "Saved content belongs to another sound; this sound’s saved state was not changed."
                     .into()
@@ -245,6 +283,12 @@ pub(super) enum FileStatus {
     Notice(FileNotice),
 }
 impl FileStatus {
+    pub(super) fn library_failure_notice(&self) -> Option<String> {
+        match self {
+            Self::Library(status @ LibraryStatus::Failed { .. }) => Some(status.description()),
+            _ => None,
+        }
+    }
     pub(super) fn conclusion(
         &self,
         operation: super::tasks::Conclusion,

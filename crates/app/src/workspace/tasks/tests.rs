@@ -672,3 +672,108 @@ fn shutdown_does_not_reclassify_a_historical_resolved_failure() {
     workspace.audio.status = AudioStatus::WorkerFailed(WorkerFailure::Panicked);
     assert!(Runner::new().shutdown(workspace).is_ok());
 }
+
+#[test]
+fn real_conflicting_save_reports_captured_selector_and_location_without_uncertain_publication() {
+    for shutdown in [false, true] {
+        let (_directory, store, mut workspace) = fixture();
+        let field = tone(&mut workspace, "440");
+        workspace.save().unwrap();
+        idle_files(&mut workspace);
+        let key = store.scan(&Cancel::default()).entries[0].key.clone();
+        let observed = store.load(&key).unwrap();
+        workspace.commit_field(field, "880").unwrap();
+        let job = close_after_save(&mut workspace);
+        // The same locked mutation used by the CLI changes the observed saved
+        // version after this coordinator has captured its immutable Save.
+        store
+            .apply(
+                Mutation::Rename {
+                    key: key.clone(),
+                    expect: Some(observed.version_token),
+                    title: "Concurrent writer".into(),
+                },
+                &Cancel::default(),
+            )
+            .unwrap();
+        let path = store
+            .root()
+            .path()
+            .join("recipes")
+            .join(format!("{}.toml", observed.snapshot.recipe().document.id));
+        let concurrent_bytes = std::fs::read(&path).unwrap();
+        let mut runner = Runner::new();
+        runner.start(job);
+        let notice = if shutdown {
+            runner.shutdown(workspace).unwrap_err()
+        } else {
+            pump(&mut runner, &mut workspace);
+            assert!(workspace.editor().dirty());
+            assert_eq!(
+                workspace.editor().draft().components()[0]
+                    .node
+                    .read(ParameterId::ToneFrequency),
+                Some(880.0)
+            );
+            assert!(closed(&mut workspace, false));
+            workspace.action_view().operation_details
+        };
+        assert_eq!(std::fs::read(&path).unwrap(), concurrent_bytes);
+        assert_eq!(
+            store.load(&key).unwrap().snapshot.title(),
+            "Concurrent writer"
+        );
+        assert!(notice.contains(&format!("Selector: {key}")), "{notice}");
+        assert!(
+            notice.contains(&format!("Location: {}", store.root().path().display())),
+            "{notice}"
+        );
+        assert!(
+            notice.contains("conflicts with the captured operation"),
+            "{notice}"
+        );
+        assert!(notice.contains("did not publish a replacement"), "{notice}");
+        assert!(notice.contains("Draft retained"), "{notice}");
+        assert!(
+            !notice.contains("inspect"),
+            "a known conflict is not an uncertain publication: {notice}"
+        );
+    }
+}
+
+#[test]
+fn history_conflicts_and_uncertain_write_failures_keep_distinct_recovery_notices() {
+    let (_directory, store, mut workspace) = fixture();
+    workspace.save().unwrap();
+    idle_files(&mut workspace);
+    let key = store.scan(&Cancel::default()).entries[0].key.clone();
+    for (kind, inspect) in [
+        (ErrorKind::HistoryConflict, false),
+        (ErrorKind::Write, true),
+    ] {
+        let status = FileStatus::Library(super::super::status::LibraryStatus::Failed {
+            error: Error::new(kind, "captured failure"),
+            publishing: true,
+            context: super::super::status::LibraryContext {
+                path: store.root().path().into(),
+                selector: Some(key.clone()),
+            },
+        });
+        let notice = status.library_failure_notice().unwrap();
+        assert_eq!(
+            notice.contains("inspect this location"),
+            inspect,
+            "{notice}"
+        );
+        assert_eq!(
+            notice.contains("did not publish a replacement"),
+            !inspect,
+            "{notice}"
+        );
+        assert!(notice.contains(&key.to_string()), "{notice}");
+        assert!(
+            notice.contains(&store.root().path().display().to_string()),
+            "{notice}"
+        );
+    }
+}

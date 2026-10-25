@@ -498,7 +498,14 @@ impl Runner {
                 && let Some((operation_error, context, active_file)) = failure
             {
                 if let Some(error) = operation_error {
-                    errors.push(format!("{error}{context}"));
+                    errors.push(
+                        if active_file {
+                            workspace.files.status.library_failure_notice()
+                        } else {
+                            None
+                        }
+                        .unwrap_or_else(|| format!("{error}{context}")),
+                    );
                 }
                 if active_file && let Some(error) = workspace.files.status.editor_reset_error() {
                     errors.push(format!(
