@@ -65,6 +65,7 @@ vocabulary! {
         RefreshDiagnosticsSnapshot => ("action-refresh-diagnostics-snapshot", "Refresh diagnostics snapshot"),
         Close => ("action-close", "Close"),
         CloseFilters => ("action-close-filters", "Close filters"),
+        QueryDetails => ("action-query-details", "Query details…"),
         AddComponent => ("action-add-component", "Add component…"),
         StopAudio => ("action-stop-audio", "Stop audio"),
         NewSound => ("action-new-sound", "New Sound"),
@@ -185,6 +186,7 @@ vocabulary! {
         LibraryFilters => ("caption-library-filters", "Filters"),
         LibraryOptions => ("caption-library-options", "Library options…"),
         PlaybackTransport => ("caption-playback-transport", "Playback transport"),
+        CommittedLibraryQuery => ("caption-committed-library-query", "Committed library query"),
         WorkspaceNavigation => ("caption-workspace-navigation", "Workspace navigation"),
         SourceDatesDetails => ("caption-source-dates-details", "Source, dates and technical details"),
         ResearchSummary => ("caption-research-summary", "Research summary and limitations"),
@@ -305,10 +307,13 @@ vocabulary! {
 }
 
 impl Action {
-    /// Labels needed to size the library playback button across its states.
+    /// Labels for Library playback and deliberate session replacement.
     #[must_use]
     pub const fn library_play_labels() -> [&'static str; 2] {
-        [Self::Listen.label(), Self::StopCurrentAndPlayRecipe.label()]
+        [
+            Self::PlaySelectedSound.label(),
+            Self::StopCurrentAndPlayRecipe.label(),
+        ]
     }
     /// Labels needed to size the transport across its states.
     #[must_use]

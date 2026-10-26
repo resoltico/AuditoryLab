@@ -1237,12 +1237,6 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     ui.set_scale_choices(scales.clone());
     monitor.set_span_choices(spans);
     monitor.set_scale_choices(scales);
-    ui.set_library_play_labels(strings(
-        auditorylab::vocabulary::Action::library_play_labels()
-            .iter()
-            .map(|s| (*s).to_owned())
-            .collect(),
-    ));
     ui.set_transport_labels(strings(
         auditorylab::vocabulary::Action::transport_labels()
             .iter()

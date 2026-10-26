@@ -1380,12 +1380,14 @@ fn incomplete_filtered_count_header_fits_large_text_in_compact_window() {
     ui.show().unwrap();
     ui.window().set_size(slint::LogicalSize::new(800.0, 600.0));
     crate::test_platform::settle(ui.window());
-    let (x, y, width, height) = exposed_bounds(
-        ui.window(),
-        "Applied library filters · 0 observed unique sounds · Inventory incomplete · Filters active · collapsed",
-    );
-    assert!(
-        x >= 0.0 && y >= 0.0 && x + width <= 800.0 && y + height <= 600.0,
-        "count disclosure must fit: {x} {y} {width} {height}"
-    );
+    for label in [
+        "0 observed unique sounds · Inventory incomplete · Filters active",
+        "Applied library filters",
+    ] {
+        let (x, y, width, height) = exposed_bounds(ui.window(), label);
+        assert!(
+            x >= 0.0 && y >= 0.0 && x + width <= 800.0 && y + height <= 600.0,
+            "count and disclosure must fit: {label}: {x} {y} {width} {height}"
+        );
+    }
 }

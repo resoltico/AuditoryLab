@@ -109,7 +109,9 @@ export component MainWindow inherits Window {
     in property <bool> library-filters-active;
     in-out property <bool> library-wide: false;
     out property <bool> library-tools-open: filters-popup.is-open;
-    in-out property <bool> library-query-open:false;
+    out property <bool> library-query-open: query-popup.is-open;
+    public function open-query-details(){query-popup.show();}
+    public function close-query-details(){query-popup.close();}
     public function open-library-filters(){filters-popup.show();}
     public function close-library-filters(){filters-popup.close();}
     in-out property <int> selected: 0;
@@ -145,7 +147,6 @@ export component MainWindow inherits Window {
     in property <bool> can-export;
     in property <bool> can-play;
     in property <string> library-play-action;
-    in property <[string]> library-play-labels;
     in property <bool> can-import;
     in property <bool> can-new;
     in property <bool> can-copy;
@@ -235,6 +236,8 @@ export component MainWindow inherits Window {
     in-out property <string> added-through;
     function apply-filters() { root.more-filters(root.study-query,root.population-choice,root.role-choice,root.analysis-choice,root.direction-choice,root.group-choice,root.created-from,root.created-through,root.modified-from,root.modified-through,root.added-from,root.added-through); }
 
+    private property <[string]> collection-labels: [Terms.collection-all-built-in-user, Terms.collection-built-in-read-only, Terms.collection-user, Terms.collection-open-files-temporary, Terms.collection-trash];
+    private property <[string]> sort-labels: [Terms.caption-automatic-order, Terms.caption-nominal-rate, Terms.caption-title, Terms.caption-created, Terms.caption-modified, Terms.facet-added-here, Terms.caption-study, Terms.caption-collection];
     in-out property <int> collection-choice: 0;
     in-out property <int> sort-choice: 0;
     callback refresh-library();
@@ -300,7 +303,7 @@ export component MainWindow inherits Window {
                     root.export-wav();
                 }
             }
-            MenuItem {title:root.playback-busy ? Terms.action-stop-current-and-play-recipe : Terms.action-play-selected-sound;enabled:root.tab-index==0 && root.can-play;activated=>{root.play-recipe();}}
+            MenuItem {title:root.library-play-action;enabled:root.tab-index==0 && root.can-play;activated=>{root.play-recipe();}}
             MenuItem {title:Terms.action-stop-audio;enabled:root.playback-busy;activated=>{root.stop-audio();}}
             MenuItem {
                 title: Terms.action-quit;
@@ -321,6 +324,23 @@ export component MainWindow inherits Window {
         }
     }
 
+    query-popup := PopupWindow {
+        x:max(8px,root.width - self.width - 12px);y:toolbar.height+8px;
+        width:min(520px,root.width - 24px);height:min(480px,root.height - toolbar.height - 24px);
+        close-policy:close-on-click-outside;
+        forward-focus:query-focus;
+        Rectangle {background:Palette.background;border-width:1px;border-color:Palette.border;border-radius:6px;}
+        query-focus := FocusScope {
+            key-pressed(event)=>{if event.text==Key.Escape {query-popup.close();return accept;}return reject;}
+            VerticalLayout {padding:12px;spacing:8px;
+                HorizontalBox {padding:0px;vertical-stretch:0;
+                    Text {text:Terms.facet-applied-library-filters;font-weight:600;horizontal-stretch:1;}
+                    Button {text:Terms.action-close;clicked=>{query-popup.close();}}
+                }
+                TextEdit {text:root.library-count;read-only:true;wrap:word-wrap;min-width:0px;accessible-label:Terms.caption-committed-library-query;}
+            }
+        }
+    }
     filters-popup := PopupWindow {
         x:max(8px,root.width - self.width - 12px);
         y:toolbar.height + 8px;
@@ -340,6 +360,8 @@ export component MainWindow inherits Window {
                     accessible-role:groupbox;
                     accessible-label:Terms.caption-library-filters;
                     VerticalBox {width:filter-scroll.visible-width;
+                        if root.compact: Text {text:Terms.caption-structural-method;vertical-stretch:0;}
+                        if root.compact: ComboBox {model:root.method-labels;current-index <=> root.method-choice;accessible-label:Terms.caption-structural-method;selected(value)=>{root.rhythm-filter(root.band-choice,root.method-choice);}}
 
                             Text {text:root.calendar-context;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
                             LineEdit {text <=> root.study-query;placeholder-text:Terms.caption-study-doi-or-key-source;accessible-label:Terms.facet-study-evidence-filter;}
@@ -376,6 +398,7 @@ export component MainWindow inherits Window {
             options-scroll := ScrollView {VerticalBox {
                 width:options-scroll.visible-width;
                 Text {text:Terms.caption-library-options;font-weight:600;vertical-stretch:0;}
+                if root.compact: ComboBox {model:root.sort-labels;current-index <=> root.sort-choice;accessible-label:Terms.facet-sort-library;selected(value)=>{root.collection-filter(root.collection-choice,root.sort-choice);}}
                 Button {text:Terms.action-open-recipe-dialog;enabled:root.can-import;clicked=>{root.open-recipe();library-options.close();}}
                 Button {text:Terms.action-refresh;clicked=>{root.refresh-library();}}
                 Button {text:Terms.action-show-saved;clicked=>{root.show-saved();library-options.close();}}
@@ -459,7 +482,7 @@ export component MainWindow inherits Window {
                             selected(value) => {root.rhythm-filter(root.band-choice, root.method-choice);}
                         }
                         ComboBox {
-                            model: [Terms.caption-automatic-order, Terms.caption-nominal-rate, Terms.caption-title, Terms.caption-created, Terms.caption-modified, Terms.facet-added-here, Terms.caption-study, Terms.caption-collection];
+                            model: root.sort-labels;
                             current-index <=> root.sort-choice;
                             accessible-label: Terms.facet-sort-library;
                             selected(value) => {root.collection-filter(root.collection-choice, root.sort-choice);}
@@ -482,7 +505,7 @@ export component MainWindow inherits Window {
                             padding: 10px;
                             spacing: 4px;
                             Text {text:Terms.caption-collections;font-weight:600;vertical-stretch:0;}
-                            for label[index] in [Terms.collection-all-built-in-user, Terms.collection-built-in-read-only, Terms.collection-user, Terms.collection-open-files-temporary, Terms.collection-trash]: LibraryNavigationItem {
+                            for label[index] in root.collection-labels: LibraryNavigationItem {
                                 label:label; description:label; selected:root.collection-choice==index;
                                 text-size:root.ui-size;
                                 activated=>{root.collection-filter(index,root.sort-choice);}
@@ -505,19 +528,27 @@ export component MainWindow inherits Window {
                         HorizontalBox {padding:0px;vertical-stretch:0;
                         ComboBox {
                             min-width:0px;
-                            model: [Terms.collection-all-built-in-user, Terms.collection-built-in-read-only, Terms.collection-user, Terms.collection-open-files-temporary, Terms.collection-trash];
+                            model: root.collection-labels;
                             current-index <=> root.collection-choice;
                             accessible-label: Terms.caption-library-collection;
                             selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
                         }
-                        ComboBox {
+                        if !root.compact: ComboBox {
                             min-width:0px;
-                            model: [Terms.caption-automatic-order, Terms.caption-nominal-rate, Terms.caption-title, Terms.caption-created, Terms.caption-modified, Terms.facet-added-here, Terms.caption-study, Terms.caption-collection];
+                            model: root.sort-labels;
                             current-index <=> root.sort-choice;
                             accessible-label: Terms.facet-sort-library;
                             selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
                         }
+                        if root.compact: ComboBox {
+                            min-width:0px;
+                            model: root.band-labels;
+                            current-index <=> root.band-choice;
+                            accessible-label: Terms.caption-nominal-rhythm-reference-band;
+                            selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
                         }
+                        }
+                        HorizontalBox {padding:0px;vertical-stretch:0;
                         LineEdit {
                             text <=> root.query;
                             placeholder-text: Terms.caption-title-id-sound-or-study-topic;
@@ -526,7 +557,9 @@ export component MainWindow inherits Window {
                                 root.search(value);
                             }
                         }
-                        HorizontalBox {padding:0px;vertical-stretch:0;
+                            Button {text:Terms.caption-library-filters;clicked=>{root.open-library-filters();}}
+                        }
+                        if !root.compact: HorizontalBox {padding:0px;vertical-stretch:0;
                         ComboBox {
                             min-width:0px;
                             model: root.band-labels;
@@ -558,31 +591,36 @@ export component MainWindow inherits Window {
                                 root.search("");
                             }
                         }
-                        HorizontalBox {
-                            padding:0px;vertical-stretch:0;
-                            Button {text:Terms.caption-library-filters;clicked=>{root.open-library-filters();}}
 
-                        }
                         }
                         if root.library-wide: VerticalBox {
                             vertical-stretch:0;padding:12px;spacing:8px;
-                            Text {text:root.band-choice!=0 || root.collection-choice==0 ? root.band-navigation[root.band-choice].label : [Terms.collection-all-built-in-user,Terms.collection-built-in-read-only,Terms.collection-user,Terms.collection-open-files-temporary,Terms.collection-trash][root.collection-choice];font-size:root.ui-size*1.4;font-weight:700;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
+                            Text {text:root.band-choice!=0 || root.collection-choice==0 ? root.band-navigation[root.band-choice].label : root.collection-labels[root.collection-choice];font-size:root.ui-size*1.4;font-weight:700;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
 
 
                         }
+                                HorizontalBox {padding:0px;vertical-stretch:0;
+                                    Text {text:root.library-overview;min-width:0px;wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;}
+                                    Button {text:Terms.action-query-details;accessible-label:Terms.facet-applied-library-filters;accessible-expanded:root.library-query-open;clicked=>{root.open-query-details();}}
+                                }
+
+                        catalog-scroll := ScrollView {
+                            min-height:max(64px,root.ui-size*3);
+                            content-y: root.library-scroll-y;
+                            changed content-y => {if !root.library-restoring {root.library-scroll-y=self.content-y;}}
+                            accessible-role:list;
+                            accessible-label:Terms.caption-library-results;
+                            VerticalBox {
+                                spacing: 4px;
+                                width:catalog-scroll.visible-width;
                                 if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
                                 if !root.has-results && root.file-activity != "": Text {text:root.file-activity;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                                Disclosure {label:root.library-overview;expanded <=> root.library-query-open;accessible-name:Terms.facet-applied-library-filters-prefix+root.library-overview;}
-                                if root.library-query-open: query-scroll := ScrollView {
-                                    height:root.ui-size*6;vertical-stretch:0;
-                                    accessible-role:groupbox;accessible-label:Terms.facet-applied-library-filters;
-                                    query-text := Text {width:query-scroll.visible-width;min-width:0px;text:root.library-count;wrap:word-wrap;accessible-label:Terms.facet-applied-library-filters-prefix+root.library-count;}
-                                }
                                 if !root.has-results: Text {text:root.library-empty-message;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
                                 if !root.has-results && root.library-filters-active: Button {text:Terms.action-clear-all-filters;clicked=>{root.clear-applied-filters();}}
 
                         if !root.has-results: HorizontalBox { vertical-stretch:0;
                         Button {
+                            horizontal-stretch:0;
                             text: Terms.action-open-recipe-dialog;
                             enabled: root.can-import;
                             clicked => {
@@ -590,18 +628,14 @@ export component MainWindow inherits Window {
                             }
                         }
                         Button {
+                            horizontal-stretch:0;
                             text:Terms.caption-create-sound;
                             enabled:root.can-new;
                             clicked=>{root.new-draft();}
                         }
+                        Rectangle {horizontal-stretch:1;}
                         }
-                        catalog-scroll := ScrollView {
-                            content-y: root.library-scroll-y;
-                            changed content-y => {if !root.library-restoring {root.library-scroll-y=self.content-y;}}
-                            accessible-role:list;
-                            accessible-label:Terms.caption-library-results;
-                            VerticalBox {
-                                spacing: 4px;
+
 
                                 for item[index] in root.catalog: catalog-row := Rectangle {
                                     property <bool> selected-row: root.selected==index;

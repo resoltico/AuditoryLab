@@ -1120,11 +1120,11 @@ fn answer_path(h: &Harness, path: &std::path::Path) {
 }
 
 #[test]
-fn library_button_admits_play_during_save() {
+fn library_play_command_admits_play_during_save() {
     assert_library_play_during_file(true);
 }
 #[test]
-fn library_button_admits_play_during_import() {
+fn library_play_command_admits_play_during_import() {
     assert_library_play_during_file(false);
 }
 
@@ -1172,7 +1172,7 @@ fn assert_library_play_during_file(save: bool) {
     ui.invoke_play_recipe();
     assert!(
         h.adapter.inspect(|w| w.audio_busy()),
-        "the actual accessible button dispatches Play"
+        "the retained Library command dispatches Play"
     );
     let audio = take_job(&h, JobKind::Audio);
     assert_eq!(
@@ -1186,7 +1186,7 @@ fn assert_library_play_during_file(save: bool) {
 }
 
 #[test]
-fn library_button_obeys_export_prompt_pending_and_capability_refusals() {
+fn library_play_command_obeys_export_prompt_pending_and_capability_refusals() {
     let (h, dir) = controlled_harness();
     let ui = h.ui();
     ui.invoke_export_wav();
@@ -1214,7 +1214,7 @@ fn library_button_obeys_export_prompt_pending_and_capability_refusals() {
 }
 
 #[test]
-fn library_button_obeys_unavailable_playback_capability() {
+fn library_play_command_obeys_unavailable_playback_capability() {
     let h = Harness::with_catalog(
         vec![auditorylab::editing::Draft::new().unwrap().snapshot()],
         Capabilities::no_device_playback(),
@@ -2250,6 +2250,10 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
     ui.invoke_collection_filter(2, 0);
     h.settle();
     assert_eq!(ui.get_catalog().row_count(), 0);
+    ui.set_query("missing".into());
+    ui.invoke_search("missing".into());
+    h.settle();
+    assert!(ui.get_library_filters_active());
     for size in [13.0, 26.0] {
         ui.set_ui_size(size);
         ui.window().set_size(slint::LogicalSize::new(800.0, 600.0));
@@ -2257,11 +2261,77 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
         for name in [
             "Filters",
             "Library options…",
+            "Clear all filters",
             "Open Recipe…",
             "Create sound",
             "Play selected sound",
         ] {
-            let position = centre(&action_button(ui, name));
+            let item = if matches!(name, "Clear all filters" | "Open Recipe…" | "Create sound") {
+                find_control(ui, |item| {
+                    item.is_accessible()
+                        && item
+                            .accessible_string_property(AccessibleStringProperty::Label)
+                            .as_deref()
+                            == Some(name)
+                })
+                .expect("scrollable action exists")
+            } else {
+                action_button(ui, name)
+            };
+            if matches!(name, "Clear all filters" | "Open Recipe…" | "Create sound") {
+                let owns_focus = || {
+                    let focused = WindowInner::from_pub(ui.window())
+                        .focus_item
+                        .borrow()
+                        .upgrade();
+                    focused.is_some_and(|focus| {
+                        focus == item
+                            || item
+                                .visit_descendants(|child| {
+                                    if child == &focus {
+                                        ControlFlow::Break(())
+                                    } else {
+                                        ControlFlow::Continue(())
+                                    }
+                                })
+                                .is_some()
+                    })
+                };
+                for _ in 0..80 {
+                    if owns_focus() {
+                        break;
+                    }
+                    h.key(Key::Tab);
+                }
+                assert!(owns_focus(), "Tab must reach {name} at {size}px");
+                h.settle();
+                let scroll = labelled(ui, "Library results");
+                let viewport = scroll
+                    .visit_descendants(|child| {
+                        if child
+                            .downcast::<slint::private_unstable_api::re_exports::Flickable>()
+                            .is_some()
+                        {
+                            ControlFlow::Break(child.clone())
+                        } else {
+                            ControlFlow::Continue(())
+                        }
+                    })
+                    .expect("result scroll exposes its actual viewport");
+                let view_bounds = viewport.geometry();
+                let view_origin = viewport.map_to_native_window(view_bounds.origin);
+                let bounds = item.geometry();
+                let origin = item.map_to_native_window(bounds.origin);
+                assert!(
+                    origin.y >= view_origin.y
+                        && origin.y + bounds.size.height <= view_origin.y + view_bounds.size.height,
+                    "{name} must be revealed inside the result viewport at {size}px: item={origin:?} size={:?}; view={view_origin:?} size={:?}; scroll={}",
+                    bounds.size,
+                    view_bounds.size,
+                    ui.get_library_scroll_y()
+                );
+            }
+            let position = centre(&item);
             assert!(
                 position.x >= 0.0 && position.x < 800.0 && position.y >= 0.0 && position.y < 600.0,
                 "{name} must remain reachable at {size}px, got {position:?}"
@@ -2996,26 +3066,17 @@ fn applied_filters_remain_readable_when_library_tools_are_closed() {
             "".into(),
         );
         h.settle();
-        ui.set_library_query_open(true);
+        ui.invoke_open_query_details();
         h.settle();
-        let summary = find_control(ui, |item| {
-            item.accessible_string_property(AccessibleStringProperty::Label)
-                .is_some_and(|label| {
-                    label.starts_with("Applied library filters")
-                        && label.contains("Study: ioannou-2015")
-                })
-        })
-        .expect("complete committed filter details are rendered");
-        // The fixed, bounded query disclosure remains outside the result scroll.
+        let summary = field(ui, "Committed library query");
         assert!(
             summary.is_visible(),
-            "applied filters are reachable at width {width}"
+            "committed query remains readable at width {width}"
         );
-        assert!(
-            summary
-                .accessible_string_property(AccessibleStringProperty::Label)
-                .is_some_and(|text| text.contains("Study: ioannou-2015"))
-        );
+        assert!(text_of(&summary).contains("Study: ioannou-2015"));
+        assert!(ui.get_library_query_open());
+        ui.invoke_close_query_details();
+        h.settle();
         assert!(!ui.get_library_tools_open());
     }
 }
