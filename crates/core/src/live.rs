@@ -119,10 +119,16 @@ impl Slot {
         let gain = match self.voice.modulation {
             None => 1.0,
             Some(Modulator::Sinusoidal { .. }) => {
-                let depth = self.depth_at(p);
-                let value = synthesis::sine(self.modulation_phase);
                 let step = glide(self.modulation_step.0, self.modulation_step.1, p);
+                let phase = self.modulation_phase;
                 self.modulation_phase = self.modulation_phase.wrapping_add(step);
+                // A closed pulse cannot contribute audio, but its modulation
+                // clock must continue so the next open pulse has the same phase.
+                if carrier == 0.0 {
+                    return carrier;
+                }
+                let depth = self.depth_at(p);
+                let value = synthesis::sine(phase);
                 (1.0 + depth * value) / (1.0 + depth)
             }
             Some(Modulator::Rectangular(pulse)) => pulse.sample(frame - self.origin),
@@ -521,6 +527,44 @@ mod tests {
             at = end;
         }
         out
+    }
+
+    #[test]
+    fn closed_pulses_keep_modulation_phase_and_exact_reopening_samples() {
+        for hz in [8_000, 44_100, 48_000, 768_000] {
+            for depth in [0.0, 0.3, 1.0] {
+                let voice = Voice {
+                    modulation: Some(Modulation::Sinusoidal {
+                        rate_hz: 39.0625,
+                        depth,
+                    }),
+                    ..clicks(40.0, 0.0)
+                };
+                let rate = SampleRate::new(hz).unwrap();
+                let target = Target::new(rate, &[(id(1), voice)]).unwrap();
+                let mut engine = Engine::new(rate);
+                engine.begin(&target);
+                let mut slot = engine.slots.iter().flatten().next().copied().unwrap();
+                let reference = target.mix().entries().next().unwrap().voice;
+                let mut closed = false;
+                let mut reopened = false;
+                for frame in 0..u64::from(hz / 10) {
+                    // The seekable generator computes phase from the absolute
+                    // frame, independently of the live slot's advancing clock.
+                    let expected = reference.sample(frame);
+                    assert_eq!(slot.sample(frame, None).to_bits(), expected.to_bits());
+                    if expected == 0.0 {
+                        closed = true;
+                    } else if closed {
+                        reopened = true;
+                    }
+                }
+                assert!(
+                    reopened,
+                    "the oracle must cover a pulse after a closed span"
+                );
+            }
+        }
     }
 
     #[test]

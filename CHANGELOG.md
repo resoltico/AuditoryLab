@@ -29,7 +29,8 @@ Use concise bullets without category labels or subheadings, grouping related cha
 - The Output monitor starts closed; waveform preview reveals it. Show/Hide preserves selection and audio, while persistent Stop remains available through browsing and file tasks.
 - Linux uses SystemUi and upstream Xft DPI; GNOME Wayland text scaling needs GLib gsettings. X11 needs its xkbcommon library. Pango/GTK font-preference loading is removed.
 - The catalog adds one-minute Ioannou 2015 binaural conditions at 2, 6, 20 and 40 Hz, with source evidence and adaptation limits. Rhythm labels describe audio structure rather than EEG effects.
-- Pulse generation reduces integer division without changing sample bits or pulse edges. Monitor publication avoids callback locks, keeps coherent bounded captures and counts dropped visual samples.
+- Pulse generation reduces integer division, and closed live pulses skip unused modulation work without changing phase or sample bits.
+- Monitor publication avoids callback locks, keeps coherent bounded captures and counts dropped visual samples.
 - CI qualifies callback cost with shipped optimization settings, authenticates vendor patches and checks authored-sound mutations. File-menu tests capture jobs before timers can complete them.
 
 ## [0.5.0] - 2026-10-23
