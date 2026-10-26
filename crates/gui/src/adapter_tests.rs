@@ -205,22 +205,34 @@ impl Drop for Harness {
     }
 }
 
-/// The text input inside the control whose accessible label is `label`.
-pub(crate) fn field(ui: &MainWindow, label: &str) -> ItemRc {
-    let root = WindowInner::from_pub(ui.window()).window_item_rc().unwrap();
-    let owner = root
-        .visit_descendants(|item| {
-            if item
-                .accessible_string_property(AccessibleStringProperty::Label)
-                .as_deref()
-                == Some(label)
-            {
+fn find_control(ui: &MainWindow, predicate: impl Fn(&ItemRc) -> bool) -> Option<ItemRc> {
+    let window = WindowInner::from_pub(ui.window());
+    let mut roots: Vec<_> = window
+        .active_popups()
+        .iter()
+        .rev()
+        .map(|popup| ItemRc::new(popup.component.clone(), 0))
+        .collect();
+    roots.push(window.window_item_rc().unwrap());
+    roots.into_iter().find_map(|root| {
+        root.visit_descendants(|item| {
+            if predicate(item) {
                 ControlFlow::Break(item.clone())
             } else {
                 ControlFlow::Continue(())
             }
         })
-        .unwrap_or_else(|| panic!("no control labelled {label}"));
+    })
+}
+
+/// The text input inside the control whose accessible label is `label`.
+pub(crate) fn field(ui: &MainWindow, label: &str) -> ItemRc {
+    let owner = find_control(ui, |item| {
+        item.accessible_string_property(AccessibleStringProperty::Label)
+            .as_deref()
+            == Some(label)
+    })
+    .unwrap_or_else(|| panic!("no control labelled {label}"));
     owner
         .visit_descendants(|item| {
             if item.downcast::<TextInput>().is_some() {
@@ -917,25 +929,16 @@ fn component_options_are_sized_to_their_content() {
 
 /// The first item whose accessible label starts with `prefix`.
 fn labelled(ui: &MainWindow, prefix: &str) -> ItemRc {
-    WindowInner::from_pub(ui.window())
-        .window_item_rc()
-        .unwrap()
-        .visit_descendants(|item| {
-            if item
-                .accessible_string_property(AccessibleStringProperty::Label)
-                .is_some_and(|label| label.starts_with(prefix))
-            {
-                ControlFlow::Break(item.clone())
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
-        .unwrap_or_else(|| panic!("an item labelled {prefix:?}"))
+    find_control(ui, |item| {
+        item.accessible_string_property(AccessibleStringProperty::Label)
+            .is_some_and(|label| label.starts_with(prefix))
+    })
+    .unwrap_or_else(|| panic!("an item labelled {prefix:?}"))
 }
 
 fn centre(item: &ItemRc) -> slint::LogicalPosition {
     let geometry = item.geometry();
-    let origin = item.map_to_window(geometry.origin);
+    let origin = item.map_to_native_window(geometry.origin);
     slint::LogicalPosition::new(
         origin.x + geometry.size.width / 2.0,
         origin.y + geometry.size.height / 2.0,
@@ -1117,35 +1120,26 @@ fn answer_path(h: &Harness, path: &std::path::Path) {
 }
 
 #[test]
-fn library_button_admits_play_during_save() {
+fn library_play_command_admits_play_during_save() {
     assert_library_play_during_file(true);
 }
 #[test]
-fn library_button_admits_play_during_import() {
+fn library_play_command_admits_play_during_import() {
     assert_library_play_during_file(false);
 }
 
 fn action_button(ui: &MainWindow, label: &str) -> ItemRc {
-    WindowInner::from_pub(ui.window())
-        .window_item_rc()
-        .unwrap()
-        .visit_descendants(|item| {
-            if item.is_visible()
-                && item.is_accessible()
-                && item
-                    .accessible_string_property(AccessibleStringProperty::Label)
-                    .is_some_and(|text| text == label)
-            {
-                ControlFlow::Break(item.clone())
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
-        .unwrap_or_else(|| panic!("visible accessible action {label:?}"))
+    find_control(ui, |item| {
+        item.is_visible()
+            && item.is_accessible()
+            && item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .is_some_and(|text| text == label)
+    })
+    .unwrap_or_else(|| panic!("visible accessible action {label:?}"))
 }
 
 fn assert_library_play_during_file(save: bool) {
-    use slint::private_unstable_api::re_exports::AccessibilityAction;
     let (h, dir) = controlled_harness();
     let ui = h.ui();
     let path = dir.path().join("sound.toml");
@@ -1164,7 +1158,7 @@ fn assert_library_play_during_file(save: bool) {
             !ui.get_can_play(),
             "a native path prompt blocks new playback"
         );
-        action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
+        ui.invoke_play_recipe();
         assert!(!h.adapter.inspect(|w| w.audio_busy()));
         answer_path(&h, &path);
         take_job(&h, JobKind::File)
@@ -1175,10 +1169,10 @@ fn assert_library_play_during_file(save: bool) {
         ui.get_library_play_action(),
         auditorylab::vocabulary::Action::library_play_labels()[0]
     );
-    action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
+    ui.invoke_play_recipe();
     assert!(
         h.adapter.inspect(|w| w.audio_busy()),
-        "the actual accessible button dispatches Play"
+        "the retained Library command dispatches Play"
     );
     let audio = take_job(&h, JobKind::Audio);
     assert_eq!(
@@ -1192,29 +1186,26 @@ fn assert_library_play_during_file(save: bool) {
 }
 
 #[test]
-fn library_button_obeys_export_prompt_pending_and_capability_refusals() {
-    use slint::private_unstable_api::re_exports::AccessibilityAction;
+fn library_play_command_obeys_export_prompt_pending_and_capability_refusals() {
     let (h, dir) = controlled_harness();
     let ui = h.ui();
     ui.invoke_export_wav();
     assert!(!ui.get_can_play());
-    action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
+    ui.invoke_play_recipe();
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
     answer_path(&h, &dir.path().join("sound.wav"));
     let export = take_job(&h, JobKind::File);
     assert!(!ui.get_can_play());
-    action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
+    ui.invoke_play_recipe();
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
     finish_file(&h, export);
     tick_until(&h, || !h.adapter.inspect(|w| w.file_busy()));
-    action_button(ui, "Listen").accessible_action(&AccessibilityAction::Default);
+    ui.invoke_play_recipe();
     let audio = take_job(&h, JobKind::Audio);
-    action_button(ui, "Stop current & play recipe")
-        .accessible_action(&AccessibilityAction::Default);
+    ui.invoke_play_recipe();
     assert!(h.adapter.inspect(|w| w.action_pending()));
     assert!(!ui.get_can_play());
-    action_button(ui, "Stop current & play recipe")
-        .accessible_action(&AccessibilityAction::Default);
+    ui.invoke_play_recipe();
     finish_stopped_audio(&h, audio);
     tick_until(&h, || !h.adapter.inspect(|w| w.action_pending()));
     let replacement = take_job(&h, JobKind::Audio);
@@ -1223,8 +1214,7 @@ fn library_button_obeys_export_prompt_pending_and_capability_refusals() {
 }
 
 #[test]
-fn library_button_obeys_unavailable_playback_capability() {
-    use slint::private_unstable_api::re_exports::AccessibilityAction;
+fn library_play_command_obeys_unavailable_playback_capability() {
     let h = Harness::with_catalog(
         vec![auditorylab::editing::Draft::new().unwrap().snapshot()],
         Capabilities::no_device_playback(),
@@ -1238,7 +1228,7 @@ fn library_button_obeys_unavailable_playback_capability() {
         h.ui().get_play_reason(),
         "Device playback is disabled for this workspace."
     );
-    action_button(h.ui(), "Listen").accessible_action(&AccessibilityAction::Default);
+    h.ui().invoke_play_recipe();
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
 
@@ -2146,20 +2136,19 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
     h.settle();
     assert!(ui.get_compact());
     let open_tools = || {
-        let button = action_button(ui, "Filters / recovery…");
+        let button = action_button(ui, "Filters");
         let position = centre(&button);
         assert!(position.x >= 0.0 && position.x < 800.0 && position.y < 900.0);
         drag(ui, position, position);
         h.settle();
-        assert!(ui.get_library_detail());
+        assert!(!ui.get_library_detail());
         assert!(
             ui.get_library_tools_open(),
             "entering tools must never hide them"
         );
     };
     open_tools();
-    labelled(ui, "More filters and grouping").accessible_action(&AccessibilityAction::Default);
-    h.settle();
+
     ui.set_study_query("missing-study".into());
     ui.set_analysis_choice(2);
     ui.set_created_from("2026-01-01".into());
@@ -2172,6 +2161,11 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
             && committed.contains("Analysis: Partial")
             && committed.contains("Created from inclusive:")
     );
+    assert!(
+        !ui.get_library_tools_open(),
+        "successful Apply closes the popup"
+    );
+    open_tools();
     ui.set_study_query("UNSUBMITTED".into());
     ui.set_created_from("invalid".into());
     reveal_library_control(&h, "Apply filters").accessible_action(&AccessibilityAction::Default);
@@ -2180,16 +2174,20 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
         committed,
         "invalid staged fields cannot replace applied summary"
     );
-    reveal_library_control(&h, "Back to recipes").accessible_action(&AccessibilityAction::Default);
+    assert!(
+        ui.get_library_tools_open(),
+        "invalid filters stay open for correction"
+    );
+    ui.invoke_close_library_filters();
     h.settle();
     assert!(!ui.get_library_detail());
     assert!(labelled(ui, "Applied library filters").is_visible());
     // Keyboard activation reaches the same production button with no result row.
-    let tools = action_button(ui, "Filters / recovery…");
+    let tools = action_button(ui, "Filters");
     WindowInner::from_pub(ui.window()).set_focus_item(&tools, true, FocusReason::Programmatic);
     h.key(Key::Return);
-    assert!(ui.get_library_detail());
-    reveal_library_control(&h, "Back to recipes").accessible_action(&AccessibilityAction::Default);
+    assert!(ui.get_library_tools_open());
+    ui.invoke_close_library_filters();
     h.settle();
     let clear = centre(&action_button(ui, "Clear all filters"));
     drag(ui, clear, clear);
@@ -2200,15 +2198,15 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
         ui.invoke_collection_filter(scope, 2);
         h.settle();
         assert_eq!(ui.get_catalog().row_count(), 0);
-        open_tools();
+        action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
+        h.settle();
         if !ui.get_storage_open() {
             reveal_library_control(&h, "Library storage and recovery")
                 .accessible_action(&AccessibilityAction::Default);
         }
         h.settle();
         assert!(reveal_library_control(&h, "Initialize configured library").is_visible());
-        reveal_library_control(&h, "Back to recipes")
-            .accessible_action(&AccessibilityAction::Default);
+        ui.invoke_close_library_filters();
         h.settle();
         let refresh = centre(&action_button(ui, "Refresh"));
         drag(ui, refresh, refresh);
@@ -2252,19 +2250,88 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
     ui.invoke_collection_filter(2, 0);
     h.settle();
     assert_eq!(ui.get_catalog().row_count(), 0);
+    ui.set_query("missing".into());
+    ui.invoke_search("missing".into());
+    h.settle();
+    assert!(ui.get_library_filters_active());
     for size in [13.0, 26.0] {
         ui.set_ui_size(size);
         ui.window().set_size(slint::LogicalSize::new(800.0, 600.0));
         h.settle();
         for name in [
-            "Filters / recovery…",
-            "Refresh",
+            "Filters",
+            "Library options…",
             "Clear all filters",
             "Open Recipe…",
             "Create sound",
             "Play selected sound",
         ] {
-            let position = centre(&action_button(ui, name));
+            let item = if matches!(name, "Clear all filters" | "Open Recipe…" | "Create sound") {
+                find_control(ui, |item| {
+                    item.is_accessible()
+                        && item
+                            .accessible_string_property(AccessibleStringProperty::Label)
+                            .as_deref()
+                            == Some(name)
+                })
+                .expect("scrollable action exists")
+            } else {
+                action_button(ui, name)
+            };
+            if matches!(name, "Clear all filters" | "Open Recipe…" | "Create sound") {
+                let owns_focus = || {
+                    let focused = WindowInner::from_pub(ui.window())
+                        .focus_item
+                        .borrow()
+                        .upgrade();
+                    focused.is_some_and(|focus| {
+                        focus == item
+                            || item
+                                .visit_descendants(|child| {
+                                    if child == &focus {
+                                        ControlFlow::Break(())
+                                    } else {
+                                        ControlFlow::Continue(())
+                                    }
+                                })
+                                .is_some()
+                    })
+                };
+                for _ in 0..80 {
+                    if owns_focus() {
+                        break;
+                    }
+                    h.key(Key::Tab);
+                }
+                assert!(owns_focus(), "Tab must reach {name} at {size}px");
+                h.settle();
+                let scroll = labelled(ui, "Library results");
+                let viewport = scroll
+                    .visit_descendants(|child| {
+                        if child
+                            .downcast::<slint::private_unstable_api::re_exports::Flickable>()
+                            .is_some()
+                        {
+                            ControlFlow::Break(child.clone())
+                        } else {
+                            ControlFlow::Continue(())
+                        }
+                    })
+                    .expect("result scroll exposes its actual viewport");
+                let view_bounds = viewport.geometry();
+                let view_origin = viewport.map_to_native_window(view_bounds.origin);
+                let bounds = item.geometry();
+                let origin = item.map_to_native_window(bounds.origin);
+                assert!(
+                    origin.y >= view_origin.y
+                        && origin.y + bounds.size.height <= view_origin.y + view_bounds.size.height,
+                    "{name} must be revealed inside the result viewport at {size}px: item={origin:?} size={:?}; view={view_origin:?} size={:?}; scroll={}",
+                    bounds.size,
+                    view_bounds.size,
+                    ui.get_library_scroll_y()
+                );
+            }
+            let position = centre(&item);
             assert!(
                 position.x >= 0.0 && position.x < 800.0 && position.y >= 0.0 && position.y < 600.0,
                 "{name} must remain reachable at {size}px, got {position:?}"
@@ -2277,8 +2344,14 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
 
     assert!(ui.get_library_count().contains("Inventory incomplete"));
     assert!(ui.get_library_alert().contains("incomplete"));
-    action_button(ui, "Filters / recovery…").accessible_action(&AccessibilityAction::Default);
+    assert!(
+        ui.get_library_empty_message()
+            .contains("Incomplete inventory")
+    );
+    action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
     h.settle();
+    assert!(action_button(ui, "Refresh").is_visible());
+    assert!(action_button(ui, "Clear all filters").is_visible());
     labelled(ui, "Library storage and recovery").accessible_action(&AccessibilityAction::Default);
     h.settle();
     assert!(reveal_library_control(&h, "Initialize configured library").is_visible());
@@ -2317,9 +2390,9 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
     let scroll = ui.get_library_scroll_y();
     assert!(scroll < 0.0);
     let key = ui.get_library_key();
-    action_button(ui, "Filters / recovery…").accessible_action(&AccessibilityAction::Default);
+    action_button(ui, "Filters").accessible_action(&AccessibilityAction::Default);
     h.settle();
-    reveal_library_control(&h, "Back to recipes").accessible_action(&AccessibilityAction::Default);
+    ui.invoke_close_library_filters();
     // A late native frame must not let the enclosing restore timer race
     // the selected row's deferred initial reveal.
     std::thread::sleep(Duration::from_millis(30));
@@ -2332,7 +2405,7 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
         ui.get_library_scroll_y()
     );
     assert_eq!(ui.get_library_key(), key);
-    action_button(ui, "Filters / recovery…").accessible_action(&AccessibilityAction::Default);
+    action_button(ui, "Filters").accessible_action(&AccessibilityAction::Default);
     h.settle();
     ui.invoke_more_filters(
         "no-such-study".into(),
@@ -2349,7 +2422,7 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
         "".into(),
     );
     h.settle();
-    reveal_library_control(&h, "Back to recipes").accessible_action(&AccessibilityAction::Default);
+    ui.invoke_close_library_filters();
     // A late native frame must not let the enclosing restore timer race
     // the selected row's deferred initial reveal.
     std::thread::sleep(Duration::from_millis(30));
@@ -2371,7 +2444,7 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
     let row = labelled(ui, &label);
     let row_rect = row.geometry();
     assert!(
-        row_rect.size.width <= 800.0 && row_rect.size.height > 26.0 * 4.5,
+        row_rect.size.width <= 800.0 && row_rect.size.height >= 26.0 * 3.5,
         "multi-line row grows rather than clipping its new metadata"
     );
     let child = row.visit_descendants(|item| {
@@ -2442,12 +2515,11 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     h.settle();
     let key = LibraryKey::User(id).to_string();
     assert_eq!(ui.get_library_key(), key);
-    action_button(ui, "Filters / recovery…").accessible_action(&AccessibilityAction::Default);
+    action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
     h.settle();
     action_button(ui, "Reset sort").accessible_action(&AccessibilityAction::Default);
     h.settle();
-    action_button(ui, "Filters / recovery…").accessible_action(&AccessibilityAction::Default);
-    h.settle();
+    h.key(Key::Escape);
     h.adapter.inspect(|w| {
         let q = w.catalog_query();
         assert_eq!(q.scope, auditorylab::collection::Scope::User);
@@ -2455,6 +2527,9 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
         assert!(q.direction.is_none());
         assert_eq!(q.search, "2");
     });
+    reveal_library_control(&h, "Source, dates and technical details")
+        .accessible_action(&AccessibilityAction::Default);
+    h.settle();
     reveal_library_control(&h, "Exact UTC dates").accessible_action(&AccessibilityAction::Default);
     h.settle();
     let exact = field(ui, "Exact UTC recipe and membership dates");
@@ -2944,8 +3019,8 @@ fn library_review_screenshots() {
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
-    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/evidence/library-experience");
+    let destination =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/evidence/library-ux");
     std::fs::create_dir_all(&destination).unwrap();
     for (name, width, height) in [
         ("library-startup", 1280_u32, 900_u32),
@@ -2975,7 +3050,7 @@ fn applied_filters_remain_readable_when_library_tools_are_closed() {
     ui.set_monitor_open(false);
     for width in [1440.0, 1100.0, 800.0] {
         ui.window().set_size(slint::LogicalSize::new(width, 900.0));
-        ui.set_library_tools_open(false);
+        ui.invoke_close_library_filters();
         ui.invoke_more_filters(
             "ioannou-2015".into(),
             0,
@@ -2991,30 +3066,17 @@ fn applied_filters_remain_readable_when_library_tools_are_closed() {
             "".into(),
         );
         h.settle();
-        let summary = labelled(ui, "Applied library filters");
-        // Selection reveal can scroll past the summary. It must remain readable
-        // through the real list scroll control without opening secondary tools.
-        let list = labelled(ui, "Library results");
-        for _ in 0..8 {
-            if summary.is_visible() {
-                break;
-            }
-            ui.window().dispatch_event(WindowEvent::PointerScrolled {
-                position: centre(&list),
-                delta_x: 0.0,
-                delta_y: 400.0,
-            });
-            h.settle();
-        }
+        ui.invoke_open_query_details();
+        h.settle();
+        let summary = field(ui, "Committed library query");
         assert!(
             summary.is_visible(),
-            "applied filters are reachable at width {width}"
+            "committed query remains readable at width {width}"
         );
-        assert!(
-            summary
-                .accessible_string_property(AccessibleStringProperty::Label)
-                .is_some_and(|text| text.contains("Study: ioannou-2015"))
-        );
+        assert!(text_of(&summary).contains("Study: ioannou-2015"));
+        assert!(ui.get_library_query_open());
+        ui.invoke_close_query_details();
+        h.settle();
         assert!(!ui.get_library_tools_open());
     }
 }
@@ -3061,4 +3123,294 @@ fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
     h.settle();
     assert!(!ui.get_monitor_open());
     assert_eq!(ui.get_library_key(), selected);
+}
+
+#[test]
+fn library_ux_preview_reveals_monitor_and_quiet_rows_preserve_identity() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 900.0));
+    h.settle();
+    let selected = ui.get_library_key();
+    let count = labelled(ui, "Applied library filters");
+    let count_bounds = count.geometry();
+    let count_y = count.map_to_window(count_bounds.origin).y;
+    let results = labelled(ui, "Library results");
+    let results_y = results.map_to_window(results.geometry().origin).y;
+    assert!(
+        count_y + count_bounds.size.height <= results_y + 1.0,
+        "the result count stays in the fixed header"
+    );
+    ui.invoke_navigate_library(2);
+    h.settle();
+    let count = labelled(ui, "Applied library filters");
+    assert_eq!(
+        count.map_to_window(count.geometry().origin).y,
+        count_y,
+        "scrolling/selecting the last result does not move the count"
+    );
+    ui.invoke_select(selected.clone());
+    h.settle();
+    assert!(
+        find_control(ui, |item| item
+            .accessible_string_property(AccessibleStringProperty::Label)
+            .as_deref()
+            == Some("Auditory Lab"))
+        .is_none(),
+        "the window title is the only product heading"
+    );
+    let row = ui.get_catalog().row_data(0).unwrap();
+    assert!(
+        row.built_in && row.text.contains("Read only") && row.text.contains("Created: Unknown")
+    );
+    assert!(
+        find_control(ui, |item| item.is_visible()
+            && item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref()
+                == Some("Created: Unknown"))
+        .is_none(),
+        "unknown Built-in dates belong in technical details"
+    );
+    assert!(
+        labelled(ui, "Playback transport").geometry().size.height < 80.0,
+        "idle transport must not reserve empty outcome rows"
+    );
+    assert!(
+        find_control(ui, |item| item.is_visible()
+            && item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref()
+                == Some("Listen"))
+        .is_none()
+    );
+    let preview = action_button(ui, "Preview waveform");
+    assert!(centre(&preview).y < centre(&labelled(ui, "Research summary and limitations")).y);
+    preview.accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(ui.get_monitor_open());
+    assert_eq!(ui.get_library_key(), selected);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn library_ux_empty_collection_is_distinct_from_filtered_or_incomplete_results() {
+    let h = Harness::new();
+    h.wait_for_files();
+    let ui = h.ui();
+    for (scope, message) in [
+        (2, "Your User Library is empty"),
+        (3, "No open files"),
+        (4, "Trash is empty"),
+    ] {
+        ui.invoke_collection_filter(scope, 0);
+        h.settle();
+        assert!(ui.get_library_empty_message().starts_with(message));
+        assert!(!ui.get_library_filters_active());
+        assert!(!ui.get_library_empty_message().contains("Clear"));
+    }
+    ui.invoke_collection_filter(1, 0);
+    ui.invoke_search("no-such-sound".into());
+    h.settle();
+    assert!(ui.get_library_empty_message().contains("No recipes match"));
+    assert!(ui.get_library_filters_active());
+    assert!(ui.get_library_overview().starts_with("0 unique sounds"));
+    ui.invoke_search("ioannou 2".into());
+    h.settle();
+    assert!(ui.get_library_overview().starts_with("1 unique sound ·"));
+    assert!(!ui.get_library_overview().contains("1 unique sounds"));
+}
+
+#[test]
+fn library_ux_filters_overlay_keeps_selection_and_geometry_and_escape_closes_it() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    h.settle();
+    let key = ui.get_library_key();
+    let title = ui.get_sound_title();
+    let geometry = labelled(ui, &title).map_to_window(labelled(ui, &title).geometry().origin);
+    action_button(ui, "Filters").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(ui.get_library_tools_open());
+    assert_eq!(ui.get_library_key(), key);
+    let after = labelled(ui, &title).map_to_window(labelled(ui, &title).geometry().origin);
+    assert_eq!(
+        geometry, after,
+        "filters must not push the selected sound down"
+    );
+    assert!(field(ui, "Study evidence filter").is_visible());
+    h.key(Key::Escape);
+    assert!(!ui.get_library_tools_open());
+    assert_eq!(ui.get_library_key(), key);
+}
+
+#[test]
+fn library_ux_component_menu_adds_every_kind_and_retains_its_document() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    h.workbench();
+    let ui = h.ui();
+    for (index, label) in [
+        "Add steady tone",
+        "Add click rhythm",
+        "Add binaural pair",
+        "Add monaural pair",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        action_button(ui, "Add component…").accessible_action(&AccessibilityAction::Default);
+        h.settle();
+        action_button(ui, label).accessible_action(&AccessibilityAction::Default);
+        h.settle();
+        assert_eq!(ui.get_components().row_count(), index + 1);
+    }
+    let previous = ui.get_document();
+    action_button(ui, "Add component…").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    ui.invoke_new_draft();
+    let [Request::Unsaved(prompt)] = h.take()[..] else {
+        panic!("dirty draft must be protected");
+    };
+    h.adapter.respond(prompt, PromptAnswer::Discard);
+    h.settle();
+    assert_ne!(ui.get_document(), previous);
+    action_button(ui, "Add steady tone").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert_eq!(
+        ui.get_components().row_count(),
+        0,
+        "an already-open component menu cannot retarget the replacement document"
+    );
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn library_ux_coupled_errors_appear_once_by_the_fields_and_clear_after_correction() {
+    let h = Harness::new();
+    h.workbench();
+    let ui = h.ui();
+    ui.invoke_add_component(ui.get_document(), 2);
+    h.settle();
+    let owner = h.component_key(0);
+    ui.invoke_commit_parameter(owner.clone(), ParameterKey::PairOffset, "50000".into());
+    h.settle();
+    let row = ui.get_components().row_data(0).unwrap();
+    let errors: Vec<_> = row
+        .parameters
+        .iter()
+        .filter(|p| !p.diagnostic.is_empty())
+        .collect();
+    assert_eq!(
+        errors.len(),
+        2,
+        "both coupled inputs must remain identified"
+    );
+    assert_eq!(errors.iter().filter(|p| p.show_diagnostic).count(), 1);
+    assert!(
+        errors[0].diagnostic.contains("50200")
+            && errors[0].diagnostic.contains("24000")
+            && errors[0].diagnostic.contains("export")
+    );
+    assert!(
+        row.error.is_empty(),
+        "field diagnostics must not be repeated below the component"
+    );
+    ui.invoke_commit_parameter(owner, ParameterKey::PairOffset, "2".into());
+    h.settle();
+    assert!(
+        ui.get_components()
+            .row_data(0)
+            .unwrap()
+            .parameters
+            .iter()
+            .all(|p| p.diagnostic.is_empty() && !p.show_diagnostic)
+    );
+}
+
+#[test]
+fn library_ux_file_menu_keeps_playback_and_independent_copy_commands() {
+    let (h, _directory) = controlled_harness();
+    let ui = h.ui();
+    let point = centre(&action_button(ui, "File"));
+    drag(ui, point, point);
+    h.settle();
+    assert!(action_button(ui, "Play selected sound").is_visible());
+    let point = centre(&action_button(ui, "Play selected sound"));
+    drag(ui, point, point);
+    h.settle();
+    assert!(h.adapter.inspect(|w| w.audio_busy()));
+    let audio = take_job(&h, JobKind::Audio);
+    finish_stopped_audio(&h, audio);
+    h.settle();
+    h.workbench();
+    let point = centre(&action_button(ui, "File"));
+    drag(ui, point, point);
+    h.settle();
+    let point = centre(&action_button(ui, "Save independent copy"));
+    drag(ui, point, point);
+    h.settle();
+    assert!(h.adapter.inspect(|w| w.file_busy()));
+    let file = take_job(&h, JobKind::File);
+    finish_file(&h, file);
+    h.wait_for_files();
+}
+
+#[test]
+fn workspace_navigation_owns_real_panels_and_supports_keyboard_switching() {
+    let h = Harness::new();
+    let ui = h.ui();
+    let panel = find_control(ui, |item| {
+        item.is_visible()
+            && item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref()
+                == Some("Library")
+            && item
+                .visit_descendants(|child| {
+                    if child
+                        .accessible_string_property(AccessibleStringProperty::Label)
+                        .as_deref()
+                        == Some("Find a recipe")
+                    {
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    }
+                })
+                .is_some()
+    })
+    .expect("the named Library panel owns its real controls");
+    assert!(panel.is_accessible());
+    let tabs = labelled(ui, "Workspace navigation");
+    WindowInner::from_pub(ui.window()).set_focus_item(&tabs, true, FocusReason::Programmatic);
+    h.key(Key::RightArrow);
+    assert_eq!(h.adapter.inspect(|w| w.view()), View::Workbench);
+    assert!(
+        find_control(ui, |item| item.is_visible()
+            && item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref()
+                == Some("Workbench")
+            && item
+                .visit_descendants(|child| {
+                    if child
+                        .accessible_string_property(AccessibleStringProperty::Label)
+                        .as_deref()
+                        == Some("Sound title")
+                    {
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    }
+                })
+                .is_some())
+        .is_some()
+    );
+    h.key(Key::LeftArrow);
+    assert_eq!(h.adapter.inspect(|w| w.view()), View::Library);
 }

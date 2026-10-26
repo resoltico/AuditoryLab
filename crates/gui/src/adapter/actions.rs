@@ -58,92 +58,101 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                           mt,
                           af,
                           at| {
-        a.command(|w| {
-            let mut query = w.catalog_query().clone();
-            let ranges = (|| -> Result<_, auditorylab::error::Error> {
-                Ok([
-                    auditorylab::calendar::local_range(
-                        auditorylab::calendar::CalendarField::Created,
-                        &cf,
-                        &ct,
-                    )?,
-                    auditorylab::calendar::local_range(
-                        auditorylab::calendar::CalendarField::Modified,
-                        &mf,
-                        &mt,
-                    )?,
-                    auditorylab::calendar::local_range(
-                        auditorylab::calendar::CalendarField::Added,
-                        &af,
-                        &at,
-                    )?,
-                ])
-            })();
-            let [created, modified, added] = match ranges {
-                Ok(ranges) => ranges,
-                Err(error) => {
-                    w.library_filter_error(error);
-                    return;
+        let applied = a
+            .command(|w| {
+                let mut query = w.catalog_query().clone();
+                let ranges = (|| -> Result<_, auditorylab::error::Error> {
+                    Ok([
+                        auditorylab::calendar::local_range(
+                            auditorylab::calendar::CalendarField::Created,
+                            &cf,
+                            &ct,
+                        )?,
+                        auditorylab::calendar::local_range(
+                            auditorylab::calendar::CalendarField::Modified,
+                            &mf,
+                            &mt,
+                        )?,
+                        auditorylab::calendar::local_range(
+                            auditorylab::calendar::CalendarField::Added,
+                            &af,
+                            &at,
+                        )?,
+                    ])
+                })();
+                let [created, modified, added] = match ranges {
+                    Ok(ranges) => ranges,
+                    Err(error) => {
+                        w.library_filter_error(error);
+                        return false;
+                    }
+                };
+                use auditorylab::collection::{Direction, GroupBy};
+                use auditorylab::core::{ConditionRole, Population};
+                query.created = created;
+                query.modified = modified;
+                query.added = added;
+                query.studies = if study.trim().is_empty() {
+                    Vec::new()
+                } else {
+                    vec![study.to_string()]
+                };
+                query.populations = choice(
+                    &[
+                        Population::Human,
+                        Population::Mouse,
+                        Population::OtherAnimal,
+                        Population::Mixed,
+                        Population::NotApplicable,
+                        Population::Unspecified,
+                    ],
+                    population - 1,
+                )
+                .into_iter()
+                .collect();
+                query.roles = choice(
+                    &[
+                        ConditionRole::Test,
+                        ConditionRole::Comparison,
+                        ConditionRole::Mixed,
+                        ConditionRole::Unspecified,
+                    ],
+                    role - 1,
+                )
+                .into_iter()
+                .collect();
+                query.analysis = choice(
+                    &[
+                        auditorylab::core::nominal::Completeness::Complete,
+                        auditorylab::core::nominal::Completeness::Partial,
+                        auditorylab::core::nominal::Completeness::Invalid,
+                    ],
+                    analysis - 1,
+                );
+                query.direction = choice(&[Direction::Asc, Direction::Desc], direction - 1);
+                query.group_by = choice(
+                    &[
+                        GroupBy::None,
+                        GroupBy::Band,
+                        GroupBy::Method,
+                        GroupBy::Study,
+                        GroupBy::Collection,
+                    ],
+                    group,
+                )
+                .unwrap_or(GroupBy::None);
+                match w.set_catalog_query(query) {
+                    Ok(()) => true,
+                    Err(error) => {
+                        w.library_filter_error(error);
+                        false
+                    }
                 }
-            };
-            use auditorylab::collection::{Direction, GroupBy};
-            use auditorylab::core::{ConditionRole, Population};
-            query.created = created;
-            query.modified = modified;
-            query.added = added;
-            query.studies = if study.trim().is_empty() {
-                Vec::new()
-            } else {
-                vec![study.to_string()]
-            };
-            query.populations = choice(
-                &[
-                    Population::Human,
-                    Population::Mouse,
-                    Population::OtherAnimal,
-                    Population::Mixed,
-                    Population::NotApplicable,
-                    Population::Unspecified,
-                ],
-                population - 1,
-            )
-            .into_iter()
-            .collect();
-            query.roles = choice(
-                &[
-                    ConditionRole::Test,
-                    ConditionRole::Comparison,
-                    ConditionRole::Mixed,
-                    ConditionRole::Unspecified,
-                ],
-                role - 1,
-            )
-            .into_iter()
-            .collect();
-            query.analysis = choice(
-                &[
-                    auditorylab::core::nominal::Completeness::Complete,
-                    auditorylab::core::nominal::Completeness::Partial,
-                    auditorylab::core::nominal::Completeness::Invalid,
-                ],
-                analysis - 1,
-            );
-            query.direction = choice(&[Direction::Asc, Direction::Desc], direction - 1);
-            query.group_by = choice(
-                &[
-                    GroupBy::None,
-                    GroupBy::Band,
-                    GroupBy::Method,
-                    GroupBy::Study,
-                    GroupBy::Collection,
-                ],
-                group,
-            )
-            .unwrap_or(GroupBy::None);
-            if let Err(error) = w.set_catalog_query(query) {
-                w.library_filter_error(error);
-            }
-        });
+            })
+            .unwrap_or(false);
+        if applied && let Some(ui) = a.main.upgrade() {
+            ui.invoke_close_library_filters();
+        }
     });
     on!(on_clear_library_filters, |a| a.command(|w| {
         {
@@ -235,8 +244,12 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(on_play_stop, |a| a.command(Workspace::play_stop));
     on!(on_play_recipe, |a| a.command(Workspace::play));
     on!(on_stop_audio, |a| a.command(Workspace::stop));
-    on!(on_preview_selected, |a| a
-        .command(Workspace::preview_current));
+    on!(on_preview_selected, |a| {
+        if let Some(ui) = a.main.upgrade() {
+            ui.set_monitor_open(true);
+        }
+        a.command(Workspace::preview_current);
+    });
     on!(on_open_recipe, |a| a.command(Workspace::import));
     on!(on_save_recipe, |a| a.command(Workspace::save));
     on!(on_export_recipe, |a| a.command(Workspace::export_recipe));

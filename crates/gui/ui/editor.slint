@@ -1,10 +1,11 @@
 import { Terms } from "vocabulary.slint";
-import { Button, LineEdit, TextEdit, Slider, HorizontalBox, ComboBox } from "std-widgets.slint";
+import { Palette, Button, LineEdit, TextEdit, Slider, HorizontalBox, VerticalBox, ComboBox } from "std-widgets.slint";
 import { ParameterKey, MetadataKey, ParameterRow, MetadataRow } from "models.slint";
 // A compact disclosure: as wide as its label, aligned with the content it opens.
 export component Disclosure inherits Rectangle {
     in-out property <bool> expanded: false;
     in property <string> label;
+    in property <string> accessible-name: root.label;
     min-width: toggle.min-width;
     preferred-width: toggle.preferred-width;
     max-width: toggle.preferred-width;
@@ -18,7 +19,7 @@ export component Disclosure inherits Rectangle {
         width: parent.width;
         height: parent.height;
         text: (root.expanded ? "▾ " : "▸ ") + root.label;
-        accessible-label: root.label + (root.expanded ? Terms.caption-expanded : Terms.caption-collapsed);
+        accessible-label: root.accessible-name + (root.expanded ? Terms.caption-expanded : Terms.caption-collapsed);
         accessible-expanded: root.expanded;
         clicked => {root.expanded = !root.expanded;}
     }
@@ -80,7 +81,7 @@ export component NumericField inherits LineEdit {
         }
     }
 }
-export component ParameterControl inherits HorizontalBox {
+export component ParameterControl inherits VerticalBox {
     in property <ParameterRow> parameter;
     in property <string> owner;
     in property <string> context;
@@ -94,6 +95,8 @@ export component ParameterControl inherits HorizontalBox {
     callback slide(string, ParameterKey, float);
     padding: 0px;
     vertical-stretch: 0;
+    HorizontalBox {
+    padding:0px;vertical-stretch:0;
     Text {
         text: root.parameter.label;
         vertical-alignment: center;
@@ -115,20 +118,36 @@ export component ParameterControl inherits HorizontalBox {
             root.slide(root.owner, root.parameter.key, value);
         }
     }
-    NumericField {
+    Rectangle {
+        preferred-width:root.ui-size*(root.compact ? 7 : 12);
+        max-width:root.ui-size*(root.compact ? 7 : 12);
+        preferred-height:field.preferred-height;min-height:field.min-height;
+        horizontal-stretch:0;
+    field := NumericField {
+        width:parent.width;height:parent.height;
         enabled: root.edit-enabled;
         binding: root.owner;
         display-text: root.parameter.text;
         edits-suspended:root.edits-suspended;
         staged:root.parameter.staged;
-        preferred-width:root.ui-size*(root.compact ? 7 : 12);
-        max-width:root.ui-size*(root.compact ? 7 : 12);
         horizontal-stretch: 0;
         accessible-label: root.context+": "+root.parameter.label;
         accessible-description: root.parameter.diagnostic != "" ? root.parameter.diagnostic : root.parameter.help;
         restore(owner) => { root.restore(owner, root.parameter.key); }
         stage(owner, value) => { root.stage(owner, root.parameter.key, value); }
         commit(owner, value) => { root.commit(owner, root.parameter.key, value); }
+    }
+    if root.parameter.diagnostic != "": Rectangle {
+        width:parent.width;height:parent.height;background:transparent;
+        border-width:2px;border-color:Palette.accent-background;border-radius:3px;
+    }
+    }
+    }
+    if root.parameter.show-diagnostic: Text {
+        text:root.parameter.diagnostic;
+        wrap:word-wrap;min-width:0px;vertical-stretch:0;
+        accessible-label:root.context+": "+root.parameter.label+" · "+root.parameter.diagnostic;
+        accessible-live-region:polite;
     }
 }
 export component NotesInput inherits TextEdit {

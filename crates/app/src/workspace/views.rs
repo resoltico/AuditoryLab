@@ -114,6 +114,8 @@ pub struct EditorView {
 /// A rendered catalog item. Empty keys are headings/diagnostics, never sounds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryRowView {
+    /// Whether this is an immutable Built-in sound, rather than a heading or local record.
+    pub built_in: bool,
     /// Immutable collection identity for selection and captured actions.
     pub key: String,
     /// Complete accessible description, generated from the same fields.
@@ -491,11 +493,11 @@ impl Workspace {
                     .map(|parameter| {
                         let field = EditingField::Parameter(*id, parameter);
                         let diagnostic = problem(field).unwrap_or_else(|| {
-                            coupled.filter(|e|e.parameters().contains(&parameter)).map(ToString::to_string).unwrap_or_else(|| {
+                            coupled.filter(|e|e.parameters().contains(&parameter)).map(|e| stimulus_diagnostic(e, &context)).unwrap_or_else(|| {
                             let error=match parameter {ParameterId::PairSecondLevel=>second,_=>acoustic};
                             error
                                 .filter(|e| e.parameters().contains(&parameter) || matches!(parameter,ParameterId::PairFirstLevel|ParameterId::PairSecondLevel) && matches!(e,auditorylab_core::ComponentError::PeakDbfs {..}))
-                                .map(ToString::to_string)
+                                .map(|error| component_diagnostic(error, &context))
                                 .unwrap_or_default()})
                         });
                         ParameterView {
@@ -522,8 +524,10 @@ impl Workspace {
                     .filter(|(f, _)| matches!(f, EditingField::Parameter(owner, _) if owner == id))
                     .map(|(f, p)| problem_text(*f, *p))
                     .collect();
-                for error in [acoustic,second].into_iter().flatten() {errors.push(format!("{error} ({context})"));}
-                if let Some(error)=coupled {errors.push(format!("{error} ({context})"));}
+                for error in [acoustic,second].into_iter().flatten() {errors.push(component_diagnostic(error, &context));}
+                if let Some(error)=coupled {errors.push(stimulus_diagnostic(error, &context));}
+                errors.retain(|error| !parameters.iter().any(|parameter| parameter.diagnostic == *error));
+                errors.dedup();
                 ComponentView {
                     key: editor.component_key(*id).unwrap_or_else(|| unreachable!("an active component has a rendered lifetime")),
                     id: *id,
@@ -1104,5 +1108,45 @@ impl Workspace {
     #[must_use]
     pub const fn export_rates() -> [SampleRate; 5] {
         controls::EXPORT_RATES
+    }
+}
+
+fn component_diagnostic(error: &auditorylab_core::ComponentError, context: &str) -> String {
+    match error {
+        auditorylab_core::ComponentError::Frequency {
+            hz, sample_rate_hz, ..
+        } => {
+            format!(
+                "Frequency {hz} Hz must be finite, above 0 and below {} Hz ({context}).",
+                f64::from(*sample_rate_hz) / 2.0
+            )
+        }
+        _ => format!("{error} ({context})"),
+    }
+}
+
+fn stimulus_diagnostic(error: &auditorylab_core::StimulusError, context: &str) -> String {
+    match error {
+        auditorylab_core::StimulusError::PairCarrier { error, .. } => {
+            component_diagnostic(error, context)
+        }
+        _ => format!("{error} ({context})"),
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    #[test]
+    fn frequency_limits_retain_the_half_hertz_boundary_at_odd_sample_rates() {
+        let error = auditorylab_core::ComponentError::Frequency {
+            parameter: auditorylab_core::ParameterId::ToneFrequency,
+            hz: 22050.5,
+            sample_rate_hz: 44101,
+        };
+        let message = super::component_diagnostic(&error, "at the 44101 Hz export rate");
+        assert_eq!(
+            message,
+            "Frequency 22050.5 Hz must be finite, above 0 and below 22050.5 Hz (at the 44101 Hz export rate)."
+        );
     }
 }

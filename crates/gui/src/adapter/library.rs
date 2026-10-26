@@ -25,6 +25,7 @@ impl SlintAdapter {
                 .rows
                 .iter()
                 .map(|row| CatalogRow {
+                    built_in: row.built_in,
                     text: read_only(&row.text),
                     binding: row.key.as_str().into(),
                     title: read_only(&row.title),
@@ -47,6 +48,10 @@ impl SlintAdapter {
             ui.set_library_dates_utc(read_only(&w.library_dates_utc()));
             ui.set_library_count(read_only(&w.library_count()));
             ui.set_library_overview(read_only(&w.library_overview()));
+            ui.set_library_empty_message(read_only(w.library_empty_message()));
+            ui.set_library_filters_active(
+                *w.catalog_query() != w.catalog_query().cleared_filters(),
+            );
             let strings = |labels: Vec<String>| {
                 ModelRc::new(VecModel::from(
                     labels
@@ -120,7 +125,11 @@ impl SlintAdapter {
             }
         }
         // Virtual group/diagnostic rows do not create a selectable sound.
-        ui.set_has_results(library.rows.iter().any(|row| !row.key.is_empty()));
+        let has_results = library.rows.iter().any(|row| !row.key.is_empty());
+        ui.set_has_results(has_results);
+        if !has_results {
+            ui.set_library_detail(false);
+        }
         ui.set_selected(
             library
                 .selected

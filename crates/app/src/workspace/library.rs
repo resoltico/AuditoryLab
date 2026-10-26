@@ -265,6 +265,7 @@ impl LibraryState {
             }
             let bands = memberships.join(" · ");
             LibraryRowView {
+                built_in: matches!(e.key, LibraryKey::BuiltIn(_)),
                 key: e.key.to_string(),
                 text: format!("{title} · {collection}\n{summary}\n{bands}\n{duration}\n{dates}"),
                 title,
@@ -325,6 +326,7 @@ impl LibraryState {
     }
     fn heading_row(text: String) -> LibraryRowView {
         LibraryRowView {
+            built_in: false,
             key: String::new(),
             title: text.clone(),
             text,
@@ -659,30 +661,39 @@ impl Workspace {
     #[must_use]
     pub fn library_overview(&self) -> String {
         let q = &self.library.query;
-        let (sort, direction) = q.effective_sort();
+        let sounds = if self.library.visible.len() == 1 {
+            "unique sound"
+        } else {
+            "unique sounds"
+        };
         let count = if self.library.inventory.complete {
-            format!("{} unique sounds", self.library.visible.len())
+            format!("{} {sounds}", self.library.visible.len())
         } else {
             format!(
-                "{} observed unique sounds · Inventory incomplete",
+                "{} observed {sounds} · Inventory incomplete",
                 self.library.visible.len()
             )
         };
-        format!(
-            "{} · {} · Sort {} {} · Group {}",
-            count,
-            q.scope.label(),
-            sort.label(),
-            direction.label(),
-            q.group_by.label()
-        )
+        if *q != q.cleared_filters() {
+            format!("{count} · Filters active")
+        } else {
+            count
+        }
     }
     /// Unique counts and active restrictions; group repeats are never counted as sounds.
     #[must_use]
     pub fn library_count(&self) -> String {
         {
             let q = &self.library.query;
-            let mut lines = vec![self.library_overview()];
+            let (sort, direction) = q.effective_sort();
+            let mut lines = vec![format!(
+                "{} · {} · Sort {} {} · Group {}",
+                self.library_overview(),
+                q.scope.label(),
+                sort.label(),
+                direction.label(),
+                q.group_by.label()
+            )];
             let mut restrictions = Vec::new();
             if !q.search.is_empty() {
                 restrictions.push(format!("Search: {}", q.search.display_scalar()));
@@ -738,6 +749,40 @@ impl Workspace {
             lines.join("\n")
         }
     }
+    /// Explain an empty result without treating an incomplete scan as an empty collection.
+    #[must_use]
+    pub fn library_empty_message(&self) -> &'static str {
+        use crate::vocabulary::Status;
+        if !self.library.visible.is_empty() {
+            return "";
+        }
+        if !matches!(self.library.query.scope, Scope::BuiltIn | Scope::OpenFiles)
+            && !self.library.inventory.complete
+        {
+            return Status::InventoryIncomplete.label();
+        }
+        if self
+            .library
+            .query
+            .cleared_filters()
+            .count(&self.library.entries)
+            .unwrap_or(0)
+            > 0
+        {
+            return Status::EmptyFilteredLibrary.label();
+        }
+        match self.library.query.scope {
+            Scope::User => {
+                "Your User Library is empty. Create a sound or edit a Built-in copy to start your collection."
+            }
+            Scope::OpenFiles => "No open files. Open a portable recipe to use it for this session.",
+            Scope::Trash => "Trash is empty. Deleted User sounds appear here.",
+            Scope::All | Scope::BuiltIn => {
+                "No sounds in this collection. Open a recipe or create a sound."
+            }
+        }
+    }
+
     /// Current persistent query; native filters and the CLI use the same contract.
     #[must_use]
     pub fn catalog_query(&self) -> &CatalogQuery {
