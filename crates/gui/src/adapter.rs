@@ -1387,7 +1387,6 @@ fn apply_font(windows: &Windows, font: &typography::Typography) {
     let family: SharedString = font.family.as_str().into();
     windows.main.set_ui_family(family.clone());
     windows.main.set_ui_size(font.size);
-    windows.about.set_ui_family(family.clone());
     windows.about.set_ui_size(font.size);
     windows.licenses.set_ui_family(family.clone());
     windows.licenses.set_ui_size(font.size);

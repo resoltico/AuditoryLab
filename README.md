@@ -70,6 +70,8 @@ cargo run --release --locked -p auditorylab-gui
 
 Cargo installs the CLI into its bin directory, which must be on PATH. Linux desktop use needs X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, OpenGL and an xdg-desktop-portal for file dialogs. Native UI fonts use platform defaults and toolkit DPI scaling. GNOME Wayland text scaling uses GLib’s `gsettings` utility. The desktop renderer uses OpenGL; sound synthesis runs on the CPU. Build commands also work with `--manifest-path` from another directory.
 
+On macOS, `cargo run` launches an unbundled executable. For the application identity and Dock/Finder icon, build a [distribution](docs/releasing.md#build-distributions), extract the GUI ZIP and open **Auditory Lab.app**. The packager compiles the editable Icon Composer artwork, declares the icon in `Info.plist`, includes the resources and signs the complete bundle.
+
 
 ## Guides
 
