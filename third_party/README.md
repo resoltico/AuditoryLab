@@ -22,7 +22,7 @@ The verifier authenticates archives before extraction, compares every source byt
 
 The standard Slint application About item opens the toolkit's predefined native panel. The custom About event routes to the application's window containing its project and license actions. AppKit termination is intercepted through Winit's own application delegate; the delegate is not replaced. Repeated Quit joins one pending request; unavailable or abandoned handlers deny it.
 
-The published AccessKit version accepted by the pinned `accesskit_winit` dependency is used with its cache-signal correction. Its dependency range does not accept the newer incompatible AccessKit Unix release.
+The AccessKit Unix patch must satisfy the pinned `accesskit_winit` dependency range as well as the cache-signal contract. The exact patched version is recorded in [patches.toml](patches.toml) and resolved in [Cargo.lock](../Cargo.lock).
 
 ## Checks
 

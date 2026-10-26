@@ -40,7 +40,7 @@ enum Command {
         #[arg(long, value_enum, default_value = "text")]
         format: library_cli::ReadFormat,
     },
-    /// Print or save an editable built-in TOML recipe.
+    /// Print or save the portable TOML of a Built-in or User recipe.
     Recipe {
         selector: String,
         #[arg(long, value_name = "PATH")]

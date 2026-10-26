@@ -107,11 +107,11 @@ The application defines the serializable reports in [`reports`](../crates/app/sr
 | --- | --- |
 | List and Trash list | `classifier_revision`, `effective_sort` (sort and direction), `stages` |
 | Describe | Each entry adds `recipe_toml` and `history_warnings` |
-| Inspect | Each entry's `validation` contains `not_checked`, `valid` with rate, frames, peaks and voice facts, or `invalid` with rate and diagnostics |
-| Library path | `root` contains the configured path, source, existence, format and initialization state; unknown existence is null |
+| Inspect | Each entry's `validation.status` is `valid` with rate, frames, peaks and voice facts, or `invalid` with rate and diagnostics; discovery entries use `not_checked` |
+| Library path | `root` contains the configured path, source, existence, layout and initialization state; unknown existence is null |
 | Library initialization | `root` contains the initialization result; `status` states whether it published or was unchanged |
 | Library check | `stages` names retained stages; entry and diagnostic arrays describe the bounded inventory |
 | Mutations | `status`, `selector`, `version_token`, entries and diagnostics report confirmed publication truth |
 | Errors | `status` classifies the exit outcome and `diagnostics` explains it |
 
-An entry includes its key, collection, title, document identity, duration, declared and membership dates, version token, directory-owned `trashed` state, nominal classification, evidence and validation state. Nominal descriptors carry owner and optional related owner, method, rate, band and derivation. Groups reference keys in the unique entry list. Diagnostics are storage-context objects or operation messages; unknown dates and absent comparison values are JSON null.
+`effective_sort` is a two-element JSON array `[sort, direction]`. An entry includes its key, collection, title, document identity, duration, declared and membership dates, version token, directory-owned `trashed` state, nominal classification, evidence and validation state. Nominal descriptors carry owner and optional related owner, method, rate, band and derivation. Groups reference keys in the unique entry list. Diagnostics are storage-context objects or operation messages; unknown dates and absent comparison values are JSON null.

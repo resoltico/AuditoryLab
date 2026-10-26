@@ -1,6 +1,6 @@
 # Woven icon assets
 
-Two sine waves at different frequencies weave across one another, representing the two tones of a binaural beat. [Software and artwork terms](../../LICENSE) govern use; [attribution and geometry](ORIGINALITY.md) identify the drawing source. The [application artwork guide](../README.md) documents actual runtime consumers.
+Two sine waves at different frequencies weave across one another, representing the two tones of a binaural beat. [Software and artwork terms](../../LICENSE) govern use; [attribution and geometry](ATTRIBUTION.md) identify the drawing source. The [application artwork guide](../README.md) documents actual runtime consumers.
 
 | Path | Contents |
 | --- | --- |

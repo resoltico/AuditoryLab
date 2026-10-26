@@ -80,7 +80,7 @@ An empty component array means silence; the document identity and finite envelop
 
 ## Fields and identity
 
-`schema_version = 3`, `duration_seconds`, `fade_seconds` and `[document] id` are required. The reader accepts only this document shape. Earlier shapes/versions are rejected, without migration, fallback parsing or silent identity insertion. Unknown/duplicate keys, mistyped fields, nonfinite numbers and duplicate/nonpositive component IDs fail. Whole numeric literals are accepted as reals. A finite sound may still be invalid at a selected sample rate and can be saved for repair.
+`schema_version = 3`, `duration_seconds`, `fade_seconds` and `[document] id` are required. The reader accepts only this document shape and requires an explicit identity. Unknown/duplicate keys, mistyped fields, nonfinite numbers and duplicate/nonpositive component IDs fail. Whole numeric literals are accepted as reals. A finite sound may still be invalid at a selected sample rate and can be saved for repair.
 
 | Field | Meaning |
 |---|---|

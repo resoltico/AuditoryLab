@@ -47,9 +47,9 @@ Choose a `builtin:ID` or `user:UUID` selector, `--file PATH` for a regular recip
 
 Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `auditorylab-gui` on Linux. Search and select a sound to see its description and explicitly labeled preview. **Listen** starts finite audio; the persistent player names the actual session while you browse. **Open Recipe…** imports a file, and **Export WAV…** chooses a destination through the native Save dialog.
 
-The player at the bottom keeps Stop and the elapsed time in reach on every screen. The optional **Output monitor** above it draws the samples being played, or a labeled preview, with their levels, and can hold a moment for a closer look. **Pattern explained** draws a sound's timing pattern beside its description.
+The player at the bottom keeps Play/Stop and the elapsed time in reach on every screen. Its Library action is **Listen**. The optional **Output monitor** above it draws the samples being played, or a labeled preview, with their levels, and can hold a moment for a closer look. **Pattern explained** draws a sound's timing pattern beside its description.
 
-Library scopes separate active **All**, read-only **Built-in**, **User**, temporary **Open files**, and recoverable **Trash**. Open does not add a file to persistent membership. Use **Add to User Library** or save a new draft; external originals remain unchanged by managed operations. GUI and CLI resolve the same native data root; an absolute `AUDITORYLAB_LIBRARY_DIR` overrides it. See [root and lifecycle commands](docs/cli.md#root-and-lifecycle).
+Library scopes separate active **All**, read-only **Built-in**, **User**, temporary **Open files**, and recoverable **Trash**. Open does not add a file to persistent membership. Use **Add to User Library** or save a new draft; external originals remain unchanged by managed operations. GUI and CLI resolve the same native data root; an absolute `AUDITORYLAB_LIBRARY_DIR` overrides it and requires explicit initialization. See [root and lifecycle commands](docs/cli.md#root-and-lifecycle).
 
 The **Workbench** builds sounds from up to 16 expanded tone/click voices, including signed-offset pairs. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or **Edit a copy** from Library, then **Save sound** to the User Library while audio continues, or stop audio to export a finite WAV. Source research stays attributed separately from your custom notes; dirty drafts are protected on New and Quit. See the [desktop guide](docs/desktop.md).
 
@@ -61,17 +61,16 @@ Install [rustup](https://rustup.rs/). [rust-toolchain.toml](rust-toolchain.toml)
 - Debian/Ubuntu: `sudo apt-get install build-essential pkg-config libasound2-dev libfontconfig1-dev libxkbcommon-x11-0 libglib2.0-bin`.
 - Windows: install Visual Studio Build Tools with Desktop development with C++, including the MSVC tools and Windows SDK for your processor. Use the native MSVC Rust host. Windows 10 or later is required on x86_64; ARM64 requires Windows 11. The x86_64 target requires SSE3, CMPXCHG16B and LAHF/SAHF.
 
-From a clean checkout:
+From the root of a clean checkout:
 
 ```sh
 cargo install --locked --path crates/cli
 cargo run --release --locked -p auditorylab-gui
 ```
 
-Cargo installs the CLI into its bin directory, which must be on PATH. Linux desktop use needs X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, OpenGL and an xdg-desktop-portal for file dialogs. Native UI fonts use platform defaults and toolkit DPI scaling. GNOME Wayland text scaling uses GLib’s `gsettings` utility. The desktop renderer uses OpenGL; sound synthesis runs on the CPU. Build commands also work with `--manifest-path` from another directory.
+Cargo installs the CLI into its bin directory, which must be on PATH. Linux desktop use needs X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, OpenGL and an xdg-desktop-portal with a desktop backend for file dialogs. Native UI fonts use platform defaults and toolkit DPI scaling. GNOME Wayland text scaling uses GLib’s `gsettings` utility. The desktop renderer uses OpenGL; sound synthesis runs on the CPU.
 
 On macOS, `cargo run` launches an unbundled executable. For the application identity and Dock/Finder icon, build a [distribution](docs/releasing.md#build-distributions), extract the GUI ZIP and open **Auditory Lab.app**. The packager compiles the editable Icon Composer artwork, declares the icon in `Info.plist`, includes the resources and signs the complete bundle.
-
 
 ## Guides
 
@@ -89,5 +88,3 @@ On macOS, `cargo run` launches an unbundled executable. For the application iden
 Copyright © 2026 Ervins Strauhmanis. Each download contains product-specific dependency notices.
 
 Software and documentation use MPL-2.0; third-party components retain their own terms. Owner artwork and drawing sources have separate proprietary terms in [LICENSE](LICENSE), with unchanged artwork permitted in original or modified Auditory Lab distributions. Editable sources and attribution are in the [artwork guide](artwork/README.md).
-
-Portable recipes carry stable UUID/history, authored signed-offset pairs, current notes and scoped bibliography/evidence/lineage. Copies receive a fresh identity. The supported [recipe format](docs/recipes.md), [library layout and JSON reports](docs/cli.md) have independent versions.

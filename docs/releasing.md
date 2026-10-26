@@ -31,7 +31,7 @@ Both macOS CLI architectures and the app are ad-hoc signed and verified after ex
 
 ## Source and build identity
 
-`workspace.package.version` and `workspace.metadata.auditorylab.build-number` in root [Cargo.toml](../Cargo.toml) are the release version and the sole product build counter. Increase the counter (1..9999) before distributing changed product binaries; keep it increasing across release versions. CLI, GUI and CPU variants share it. Private/source rebuilds and CI reruns reuse the committed value. Git history stores iterations (`git log -p -- Cargo.toml`); source revision and archive checksums identify source and exact delivered bytes separately.
+`workspace.package.version` and `workspace.metadata.auditorylab.build-number` in root [Cargo.toml](../Cargo.toml) are the release version and the sole product build counter. Increase the counter (1..9999) before distributing changed product binaries; keep it increasing across release versions. CLI, GUI and CPU variants share it. Private/source rebuilds and CI reruns reuse the committed value. Source revision and archive checksums identify source and exact delivered bytes separately.
 
 The library build script regenerates identity when the manifest or `AUDITORYLAB_SOURCE_REVISION` changes. Supplied revisions must be full 40- or 64-character ASCII hexadecimal IDs. CLI/GUI `--version`, About and macOS `CFBundleVersion` consume that identity; `CFBundleShortVersionString` uses the release version.
 

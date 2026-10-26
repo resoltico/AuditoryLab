@@ -2,10 +2,10 @@
 //!
 //! A [`Recipe`] is a portable document containing a [`Sound`] and attributed
 //! research. A Sound contains identified [`Component`]s, each a [`Node`] built
-//! from a [`Voice`] or an explicit pair. [`Sound::check`] compiles it at one
-//! [`SampleRate`] into a validated [`Target`]; a [`Signal`] adds the finite
-//! envelope. [`live::Engine`] renders targets as an open-ended stream, and an
-//! [`Observation`] states the facts of a generated frame.
+//! from a [`Voice`] or an explicit pair. [`Sound::check`] retains diagnostics at
+//! one [`SampleRate`]; [`Sound::target`] returns a validated [`Target`]. A
+//! [`Signal`] adds the finite envelope. [`live::Engine`] renders targets as an
+//! open-ended stream, and an [`Observation`] states the facts of a generated frame.
 #![no_std]
 #![forbid(unsafe_code)]
 extern crate alloc;

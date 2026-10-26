@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Auditory Lab app icon ("Woven" binaural waves) - single source for every asset.
+"""Generate the Auditory Lab "Woven" platform assets from explicit geometry.
 
-All artwork is generated here from two sine formulas and explicit numbers; nothing is
-traced or imported. Re-running this script reproduces every SVG and raster in the package.
+Two sine formulas and the palette define the drawing. The output covers assets/;
+preview.png is separate. Exported bytes depend on the image-library versions.
 
-Requires: Python 3.9+, shapely>=2, cairosvg, Pillow, numpy.
+Requires: Python 3.9+, shapely>=2, cairosvg, Pillow.
 Usage:    python3 make_icon.py OUTPUT_DIR
 """
 import io, json, math, os, sys
@@ -56,7 +56,7 @@ TILE = '<rect x="100" y="100" width="824" height="824" rx="185" fill="{bg}"/>'
 SHADOW = '<rect x="100" y="118" width="824" height="824" rx="185" fill="#000000" opacity="0.14"/>'
 
 def flat_svg(mode, shadow=False):
-    """Complete flat icon on the 824-unit rounded tile (legacy macOS, Windows, Linux, docs)."""
+    """Complete flat icon on the 824-unit rounded tile for reference and platform exports."""
     pal = PALETTE[mode]
     front, back = shapes()
     return ('<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
@@ -116,7 +116,7 @@ def build(out):
     }
     write(os.path.join(icon_dir, "icon.json"), json.dumps(icon_json, indent=2) + "\n")
 
-    # --- macOS legacy fallback (.icns), for builds without Xcode's actool ----------------
+    # --- Flat macOS reference export; app packaging compiles AppIcon.icon with actool ---
     light_mac = flat_svg("light", shadow=True)
     icns = os.path.join(out, "macos", "AppIcon.icns")
     png(light_mac, 1024).save(icns, sizes=[(16, 16), (32, 32), (64, 64), (128, 128),

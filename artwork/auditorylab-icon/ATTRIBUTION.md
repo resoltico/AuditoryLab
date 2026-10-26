@@ -1,6 +1,6 @@
 # Artwork attribution and geometry
 
-The Auditory Lab “Woven” icon is supplied as coordinate-defined artwork by Claude (Anthropic), under Ervins Strauhmanis's art direction and selection. The supplied authorship account states that the drawing is independently constructed without tracing, importing or adapting external artwork, icon libraries, fonts or system symbols. This records that account, not independent certification of originality, ownership or trademark clearance.
+The Auditory Lab “Woven” icon is credited to Claude (Anthropic), under Ervins Strauhmanis's art direction and selection. Its drawing source uses explicit coordinates and sine formulas, with no external artwork, icon libraries, fonts or system symbols as drawing inputs. This attribution does not certify originality, ownership or trademark clearance.
 
 [`source/make_icon.py`](source/make_icon.py) and [`source/palette.json`](source/palette.json) define the drawing:
 

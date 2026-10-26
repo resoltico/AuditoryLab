@@ -1,221 +1,99 @@
 # Changelog
 
-Notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+`Unreleased` summarizes implemented changes intended for the next release, including relevant uncommitted work, cumulatively against the preceding published non-prerelease version; the first release describes implemented scope. Verify actual publication rather than inferring it from headings, tags or workflow status; public prereleases do not reset this baseline. Check claims and material omissions against implementation, contracts, tests and documentation; commits and plans are leads. Describe consequences for users, operators, integrators or contributors, preserving material compatibility effects, limitations and required action, including for prerelease users. Exclude development chronology, superseded changes and verification logs.
+
+Use concise bullets without category labels or subheadings, grouping related changes and putting breaking changes and required actions first. Each bullet occupies one physical line, at most 200 characters including Markdown but excluding its `- ` marker: a ceiling, not a target. Shorten or split without losing material consequences. Use technical names when helpful; link to existing relevant documentation, without assuming paths or creating documents merely to satisfy this rule. Keep `## [Unreleased]` above dated `## [version] - YYYY-MM-DD` headings, newest first; retain existing release-note links. This file is authoritative for release summaries and their writing rules; derive published summaries from it and leave unrelated history unchanged. Review accuracy, completeness, duplication, compatibility and format; report unresolved evidence gaps outside this file and run applicable existing checks. Versioning, dating and publication require release authorization.
 
 ## [Unreleased]
 
-### Workspace UX
-
-- Use the companion EML application's toolkit typography in About, keeping its shared icon size and layout while retaining system text-size scaling.
-- Share native Library/Workbench tabs and persistent actions in one header; remove the duplicate product heading. Quiet result rows keep identity, duration and nominal facts while source/date metadata is disclosed on demand.
-- Reveal the monitor for waveform preview and distinguish empty collections, filtered results and incomplete inventories. Keep the result count/query disclosure fixed above scrolling results.
-- Move advanced filters and storage operations into separate bounded popups. Consolidate component creation while retaining the document captured when its menu opens.
-- Show coupled validation errors once beside outlined fields. Compact idle transport retains its safety guidance, outcomes and single visible Play/Stop control; File retains deliberate playback replacement and independent-copy saving.
-
-### Performance
-
-- Pulse generation compares exact onset boundaries with one integer division per sample, preserving sample bits and half-open pulse edges.
-
-### Library experience
-
-- Start with the monitor closed so the five reference bands are visible at the initial Library size. Show/Hide monitor remains explicit and does not change selection or start audio.
-
-- Applied query details remain exposed alongside results at every layout width, even with the secondary filter tools closed.
-
-- Compact Filters / recovery navigation always opens its tools, including after returning to an empty collection. The initial window exposes the band navigation rather than hiding it behind a dropdown.
-
-- Report unreadable publication, deletion and relocation verification as unconfirmed outcomes, not as proof of a destination state. Independent fault tests cover both applied and unapplied operations.
-
-- Wide native Library windows now separate visible collection/band navigation, structured result cards and selected-sound details, with search/method/sort in a dedicated toolbar. Medium/compact navigation, persistent transport and existing mutation protections remain intact.
-- Shared row projections retain exact selection identity alongside title, ownership, computed memberships, nominal structure, duration and date fields. The UI no longer relies on one undifferentiated text block.
-- Immediate rhythm controls follow the committed shared query; incomplete facet inventories explicitly label their counts as observed. Selected classification is independent of export/sample-rate validation.
-
-### Breaking
-
-- One authored core model uses `Sound`, identified `Component`, `Node` and primitive `Voice`; the application realization is `Rendition`. Application APIs live in named modules under `crates/app`, with core exposed as `auditorylab::core`.
-- Portable recipes use schema 3 with UUID/history, stable component IDs, signed-offset pairs and scoped bibliography/evidence/lineage. Library layout 1 stores exact portable TOML with timestamp-only membership; CLI JSON output has version 1.
-- CLI selectors use `builtin:ID` and `user:UUID`; temporary sources use `--file` or `--stdin`. Managed mutation tokens are content SHA-256. CLI `--expect` is optional, while the GUI checks its observed token.
-- Device code is compiled with the application. Workspace construction binds a real library or a typed unavailable-library state; typed jobs/responses and the application Runner replace thread-owning workspace execution.
-
-### Added
-
-- A shared User Library with active, Built-in, User, Open files and Trash scopes; explicit copies, rename, Trash/Restore/purge; correlated evidence/date/rhythm filters; deterministic sorts/groups and typed JSON reports.
-- One Method vocabulary for requested/generated structure; typed-fact Unicode and whole-number search independent of display wording; separately cached draft and saved classifications.
-- Application-owned RowKeys reject late callbacks after remove/Undo and document replacement while preserving surviving field focus and caret.
-- Lock-free callback monitor publication with coherent state, bounded sample history and counted overflow gaps. The release callback cost check reports median, p99 and maximum software cost; its median limit is half the buffer period.
-- One-minute Ioannou 2015 binaural conditions at 2, 6, 20 and 40 Hz, with source parameters and adaptation limits documented.
-
-### Changed
-
-- Shared publication verifies ambiguous I/O outcomes. Confirmed durability/cleanup warnings remain successful saves; newer edits stay dirty. Interrupted library moves preserve content and Trash authority without receipts or automatic stage promotion.
-- CLI and Slint render application vocabulary and descriptions. GUI controls use string row lifetimes; the coordinator retains typed state, one query path and one file/audio slot, with final completion after worker join.
-- Toolkit patches retain accessibility, focus, multiline editing, modeless windows and macOS Quit/About routing. Font shaping and X11 DPI follow upstream policy; a reduced scale-only reader preserves GNOME Wayland text scaling.
-- Compact Library filtering, local dates with selectable UTC details, persistent Stop controls, waveform captures and finite-invalid editing remain available. Staged/nonfinite input is preserved for correction; playback validates at the device's actual rate.
+- Recipes require schema 3 with explicit UUIDs and component IDs; schema 2 is rejected without migration. Recreate custom recipes using the [recipe guide](docs/recipes.md).
+- CLI sources require builtin:ID or user:UUID; bare catalog IDs reject. Files and streams still use --file or --stdin. Update scripts and saved command lines.
+- CLI JSON reports use output schema 1; text reports and exit codes also change. Update output consumers using the [CLI guide](docs/cli.md#output-and-failures).
+- Rust APIs use Sound, Component, Node, Voice and Rendition. Application APIs move into named modules under crates/app; core is exposed through auditorylab::core. Update imports and callers.
+- The device-playback feature is removed; auditorylab always depends on CPAL. Remove the feature from dependency declarations; device-independent consumers can use auditorylab-core.
+- Workspace construction requires a library binding; use typed jobs/responses and Runner for execution. File/audio slots remain occupied until their workers join.
+- Library layout 1 stores plain recipe TOML with separate membership dates. Unsupported layouts, including incompatible prerelease stores, are refused without automatic conversion.
+- CLI and desktop share a persistent User Library, immutable Built-ins, temporary Open files and recoverable Trash. Add, copy, rename, restore and confirmed purge preserve external originals.
+- Native data paths accept absolute overrides that require initialization; see [library setup](docs/cli.md#root-and-lifecycle). Unavailable storage leaves Built-ins usable without a fallback root.
+- Recipes retain dates, notes, bibliography and scoped evidence. Copies get fresh UUIDs and ancestry; copying or changing sound settings demotes current-study evidence to ancestor scope.
+- Workbench and TOML support signed-offset binaural/monaural pairs with separate levels and stable IDs. Each pair uses two of 16 expanded voices; the authored-component limit is also 16.
+- Shared search uses Unicode-normalized terms and whole numeric values. Correlated rhythm/evidence filters, unique grouping and deterministic sorts cover Built-in, User and temporary sounds.
+- Desktop date filters use inclusive local days with selectable UTC details. Unknown dates sort last; draft and saved classifications follow their respective content.
+- Managed writes lock and verify content; CLI --expect checks exact-byte SHA-256 tokens. GUI saves check captured versions. External Save rechecks identity/bytes but can still race another writer.
+- Ambiguous publication, deletion and move results are verified. Unreadable outcomes remain unconfirmed; confirmed durability/cleanup warnings preserve successful saves.
+- Library separates collection/band navigation, results and sound details. Filters and storage tools use bounded popups; committed query details remain accessible with empty or incomplete results.
+- Library/Workbench tabs, Save and transport stay visible while scrolling. Component creation is grouped, coupled errors appear once, and About uses toolkit typography with system text scaling.
+- Managed/external edits and independent-copy saves retain captured destinations. Newer edits stay dirty after saves; stale row callbacks cannot change replacement documents or restored controls.
+- The Output monitor starts closed; waveform preview reveals it. Show/Hide preserves selection and audio, while persistent Stop remains available through browsing and file tasks.
+- Linux uses SystemUi and upstream Xft DPI; GNOME Wayland text scaling needs GLib gsettings. X11 needs its xkbcommon library. Pango/GTK font-preference loading is removed.
+- The catalog adds one-minute Ioannou 2015 binaural conditions at 2, 6, 20 and 40 Hz, with source evidence and adaptation limits. Rhythm labels describe audio structure rather than EEG effects.
+- Pulse generation reduces integer division without changing sample bits or pulse edges. Monitor publication avoids callback locks, keeps coherent bounded captures and counts dropped visual samples.
+- CI adds a callback median-cost gate, authenticated vendor-patch checks and authored-sound mutation coverage.
 
 ## [0.5.0] - 2026-10-23
 
-### Breaking
+[Published release notes](https://github.com/resoltico/AuditoryLab/releases/tag/v0.5.0).
 
-- macOS desktop archives use `.zip`; update download and extraction commands that expect `.tar.gz`. Unix CLI and Linux desktop archives remain `.tar.gz`, and Windows archives remain `.zip`.
-- Every archive adds `SOURCE.txt` with its source revision and timestamp; Linux desktop archives also include the `hicolor` icon tree. Update exact archive-member allowlists, and keep the Linux launcher and icon tree together when installing.
-- Compiling macOS desktop icon resources requires full Xcode 26 or later with `actool` on macOS 26 or later. App assembly on macOS 15 accepts matching precompiled resources through `cargo xtask dist --icons DIR`; Command Line Tools alone cannot compile the layered icon. Windows desktop source builds require the Windows SDK resource compiler for the executable icon.
-- Packaging a source tree without Git requires explicit `AUDITORYLAB_SOURCE_REVISION` and `SOURCE_DATE_EPOCH` values from the release commit.
-- The `auditorylab` library has no default features. Enable `device-playback` for default-device playback (`auditorylab::device`); without it, the library builds without CPAL and `Workspace` refuses audio with a typed reason. The CLI and desktop enable it.
-- Library and core APIs use recipe vocabulary and semantic identifiers, with no aliases for the former names: core `Recipe` and library `RecipeSnapshot` (immutable content, origin and identity) replace `Preset`; `CarrierKind` replaces `SourceKind`; `ParameterId` with its label, unit and help descriptor replaces positional settings; `ComponentId` identifies components. `TargetCheck` compiles components once at a rate and replaces `Component::validate` and `Component::facts`; `Target` is a core type whose equality compares definitions and whose `same_audio` compares generated audio. Playback uses a single-owner `Session`, cloneable `PlaybackControl`, typed `PlaybackReport` and `EndReason`, replacing `Playback` and `Live`. Editing uses `EditorSession` with `FieldHandle` commands. Update imports and exhaustive matches. Recipe schema 2 and the catalog's signal parameters are unchanged.
-- Validation messages name quantities by label in display units, such as “Modulation depth 150% must be from 0% to 100%”, and the CLI reports an “unknown built-in recipe” rather than an “unknown preset”. Update consumers that match message text.
-
-### Added
-
-- Application icons for macOS, Windows and Linux, with editable drawing sources. The owner artwork has separate proprietary terms in `LICENSE`: unchanged artwork may accompany original or modified Auditory Lab distributions; independent reuse or artwork modification requires permission. Software remains MPL-2.0.
-- `auditorylab::workspace::Workspace` holds the interactive workflow shared by desktop frontends: library search and selection, one open document, one audio and one file task, prompts and their typed responses, action availability and change-driven views.
-- **Undo remove** in the desktop Workbench restores the most recently removed layer in its place, with any text typed into it, until another layer is removed or the sound is replaced. `Workspace::restore_component` and `EditorSession::restore_removed` provide it, and `Draft::remove` returns the removed position and component.
-- Pulse widths are reported as requested and realized, with the realized frame count at the stated rate, in CLI `inspect` and `describe`, desktop descriptions and generated details.
-
-### Changed
-
-- About shows the application icon, selectable identity, **Project website** and **Licenses** actions, and Slint attribution. The license window exposes complete software/artwork terms and bundled component notices. macOS apps contain their legal materials and source reference, so moving only the app preserves access to them.
-- Archive member timestamps use the source commit time instead of staging times or placeholder dates. ZIP dates use UTC civil fields rounded down to two-second precision; extraction tools may interpret them in local time.
-- Committing typed input applies the whole sound at once. If any typed entry does not parse or any value is not a finite number, including an imported one, nothing changes and every typed entry stays for correction; otherwise all entries apply together, even values the sound cannot play, so the draft can be saved and repaired. Changing a carrier or modulation discards typed entries only for the fields it removes.
-- Play and live playback are no longer blocked by the export rate. The device's actual rate decides validity before the stream starts: a 30 kHz tone can play on a 96 kHz device while it stays invalid for 48 kHz export, and a sound valid only at the export rate is refused before playback on a slower device. Live edits are checked at the device's rate.
-- Live playback accepts settings that differ only in requested values that generate identical samples, such as a width that rounds to the same frames, as a new revision without a transition. **Pattern explained** follows the playing session's accepted settings.
-- Recipe saving and WAV export without replacement reject an existing destination before writing anything, so CLI `recipe --output` and `export` to an existing path fail at once instead of after writing the whole file.
-- The desktop transport's Play/Stop button keeps one width for every label and shows Stop audio, rather than Cancel, while output is being prepared. Elapsed time is a clock (`0:09 / 5:00`, `h:mm:ss` from one hour) in a fixed column, in the desktop and the CLI status line, so the transport no longer shifts as time advances. Library's Listen button keeps its width when it becomes Stop current & play recipe. Disclosures are as wide as their labels, field labels are centred on their fields, and the monitor states receipt age in seconds, minutes or hours. An ordinary Stop or completion is no longer repeated in the document status.
-- In the desktop app, **Save sound…** suggests a file name from the sound's title, as does **Export WAV…** for drafts and imported recipes (built-in recipes keep their ID); the unsaved-changes dialog names the sound; the output monitor defaults to **Fit signal** so quiet sounds are visible; duration and fade messages speak in time rather than frame counts, and extreme values print in scientific notation. File paths in status messages are quoted as written, without escapes.
-- On macOS, Quit from the application menu or Command-Q and the window's close button use the same decision; repeated Quit asks once, and the app quits only after its audio and file tasks have finished. About in the application menu opens Auditory Lab's About window. The Stop button in a file panel stops only the audio that was playing when the panel opened.
-
-### Fixed
-
-- The Intel macOS CLI is ad-hoc signed and checked after extraction, matching Apple silicon. Downloads remain without Developer ID signing or notarization.
-- Desktop text and layout: long titles, messages and extreme values wrap within the page; Duration, Fade and Export WAV… retain ordinary sizes with nearby diagnostics; a layer's ears, carrier, modulation and Remove controls fit their content. A recipe without study or summary text leaves no blank rows, and modulated/gated carrier descriptions use lowercase (`carrier tone 440 Hz`).
-- Library selection follows a single click and an imported recipe scrolls into view. A search that hides every recipe clears the selection, so Play, Export and Edit a copy cannot act on an invisible recipe. Library and monitor dividers respond to the first drag.
-- Workbench sliders continue following typed values after a drag. Component errors appear once, input recovery clears stale/repeated status, and disabled Add buttons explain the 16-layer limit.
-- When an export ends, Cancel export leaves empty space instead of placing another button under the pointer.
-- Assistive technologies can no longer press a disabled desktop button.
-- CLI `inspect --sample-rate HZ` describes the sound only at the selected rate; it no longer adds a description at 48,000 Hz.
-
-### Removed
-
-- `cargo xtask check-lints` and `lint-exceptions.toml`. Lint exceptions are narrow `#[expect]` attributes whose reasons explain them in the source; `allow` attributes are denied.
-
-### Internal
-
-- CI splits the three longest mutation scopes into disjoint parallel shards while retaining every selected mutant, baseline and test budget. Tool caches survive unrelated workflow edits, and successful tool installs discard compiler intermediates. Property generation follows the catalog size; worker-lifecycle tests synchronize on publication rather than scheduler timing, and publication rejection tests compile on Windows.
-- Packaging binds source revision and archive times to the checked-out commit and rejects conflicting identity inputs. Dirty-tree packages carry the base HEAD identity and are development evidence only. Release preparation rejects a product build counter that does not exceed the prior release tag's counter; compilation and CI reruns retain the committed counter.
-- The six vendored toolkit crates record their upstream crates.io archives and SHA-256 values, with a command for reviewing the changes against them. The vendored Winit termination request state has unit tests that run on macOS CI.
-- CI runs a downstream consumer without device playback and checks that CPAL is absent from its dependency tree, and mutates the core file that compiles targets.
+- macOS desktop archives use ZIP; update tar.gz download/extraction scripts. Archives add SOURCE.txt, and Linux desktop packages add hicolor icons; update archive allowlists and launcher installs.
+- macOS icon compilation requires Xcode 26+ on macOS 26+; macOS 15 assembly accepts matching precompiled icons. Windows desktop builds require the SDK resource compiler.
+- Source packages without Git require AUDITORYLAB_SOURCE_REVISION and SOURCE_DATE_EPOCH from the release commit. Archive times and source identity are bound to that commit.
+- Release builds require an increased product build counter. Dirty-tree packages identify base HEAD and remain development evidence.
+- Rust APIs adopt Recipe, RecipeSnapshot, ParameterId, ComponentId, Session and EditorSession. Update imports and matches; recipe schema 2 and catalog signal parameters are unchanged.
+- Library playback requires the device-playback feature; CLI and desktop enable it. Workspace coordinates editing, prompts, one audio session and one file task.
+- Whole-draft input commits preserve invalid text for correction and allow finite-invalid saves. Playback and live edits validate at the actual device rate, independently of export settings.
+- Workbench adds Undo remove, stable transport controls and requested/realized pulse widths. Equivalent live settings update revision facts without an audio transition.
+- Icons have separate proprietary terms: unchanged art may accompany Auditory Lab distributions; modification or independent reuse requires permission. macOS apps retain legal resources when moved.
+- macOS Quit shares the save/stop decision; file-panel Stop targets captured audio. Disabled accessibility presses, sliders, selection, layout and selected-rate inspection are corrected.
+- Intel macOS CLI signatures are checked after extraction; downloads remain ad-hoc signed and unnotarized. Existing recipe/WAV output paths fail before rendering or writing.
+- Contributor lint exceptions use scoped, reasoned attributes; check-lints and its manifest are removed. Vendor review authenticates source patches, and CI shards mutation checks.
 
 ## [0.4.0] - 2026-10-21
 
-### Breaking
+[Published release notes](https://github.com/resoltico/AuditoryLab/releases/tag/v0.4.0).
 
-- macOS CLI and desktop archives use `.tar.gz` instead of `.zip`; update automated download and extraction commands. Apple silicon and Intel packages remain separate.
-- CLI and desktop archives add `COPYRIGHT-library.html` for Rust standard-library component notices. Keep it with `THIRD-PARTY-NOTICES.txt` when redistributing, and update exact archive-member allowlists.
-- Desktop drawing requires an OpenGL-capable graphics driver (OpenGL 2.0 or newer on Windows). Software-renderer recovery and `SLINT_BACKEND=winit-software` are unavailable; install a compatible graphics driver.
-- Integer-phase oscillators and exact frame-quantized pulse timing change generated sample bits. Click and rectangular-gate pulses last exactly `round(width_seconds × sample rate)` frames and start on the first frame at or after each onset. Recipes that leave no closed frame in a period, or whose pulse widths exceed 2^36 frames at the selected rate, are rejected; reduce those widths. Regenerate sample-exact reference audio and expectations. Recipe schema 2 and the built-in catalog's signal parameters are unchanged.
-- Rust packages are `auditorylab-core`, `auditorylab`, `auditorylab-cli` and `auditorylab-gui`, under `crates/core`, `crates/app`, `crates/cli` and `crates/gui`. WAV, device and application APIs are consolidated in `auditorylab`; use `Stimulus::signal`, immutable seekable `Signal` and the library's loading/export/playback and monitoring APIs. Update imports, observation consumers and exhaustive error matches. Install the CLI with `cargo install --locked --path crates/cli`.
-- Windows source builds require the native MSVC Rust host and Visual Studio Build Tools; downloads statically link the Microsoft C runtime. Linux source builds use distribution fontconfig and work with `--manifest-path` outside the repository root. Linux desktop font preferences use Pango/GTK 3/GIO; Debian/Ubuntu users need `libpango-1.0-0 libgtk-3-0`. See [source prerequisites](https://github.com/resoltico/AuditoryLab/blob/v0.4.0/README.md#build-from-source).
-- Source builds require Rust 1.99.1 or newer; the repository toolchain pins 1.99.1.
-- `--build-info` and build-kind markers are removed. Use `--version` or desktop About for product version, numeric native build counter and optional source revision; update identity parsers.
-- CLI playback completion moves from stdout to stderr alongside start/status text and warnings; update redirected-output consumers. Redirected stderr remains static, while terminal stderr displays generated status at 4 Hz. Other report formats also change; CLI commands, explicit input selection and exit codes are unchanged.
-
-### Added
-
-- A desktop Workbench builds and changes up to 16 tone/click components live, with sliders, exact numeric fields, ear routing, level and modulation controls. Smooth ramps, glides and crossfades connect valid settings. Save drafts as schema-2 recipes with custom title/summary text, or stop audio and export a finite WAV. The Rust library exposes draft editing, shared control ranges, live generation/control and generated observations.
-- Document-local **Pattern explained** shows static timing/envelope models for validated sounds and accepted draft settings, separately from actual-output captures. Click, gate and AM rhythms, steady companions and interaural/monaural pair conditions retain their distinct meanings.
-- CLI `-V` as an alias for `--version`.
-- Positive frequencies too small to advance the previous phase model are accepted.
-
-### Changed
-
-- Desktop navigation and Save stay fixed around a scrolling sound document, bounded optional Output monitor drawer and compact persistent transport. Large text/small space can use a focused monitor window with scrolling and keyboard access to its controls and warnings; full selectable diagnostics open separately. About is available through the application/Help menu.
-- Native desktop typography follows San Francisco on macOS, Windows message-font/text-size settings and the configured Linux desktop family/size. Native font changes reflow application windows while preserving pending edits.
-- Library search covers titles, IDs, research and sound parameters, with explicit human/mouse study context. Wrapped results, compact layers and collapsible settings keep sound actions accessible. Edited source research stays attributed separately from custom notes.
-- Exact fields retain precision and admit valid pending corrections without an extra blur. Setting-specific diagnostics identify coupled constraints and whole-mix peak errors. Slider gestures use three significant digits for frequency/rate/width, 0.1 dB levels and whole-percent depths.
-- One desktop player retains its session while browsing Library and editing Workbench. Generated rates, crossfade roles, stereo traces and window sample peak/RMS distinguish accepted settings from generated output. Waveforms show samples before device conversion, not microphone input, sound pressure or an acoustic playhead. Fixed/Fit use one stereo scale; Hold retains source/session/rate/span/scale/meter context across playback changes. Raw waveform history is bounded to 100 ms.
-- Live/Held/Stale/Waiting/Unavailable/Last capture states and receipt age distinguish current captures from retained data. Current coverage warnings recover independently of cumulative gaps. Coverage/display-range advice stays readable without repeated automatic speech; stale/unavailable monitoring, capture errors and independent backend underruns remain announced. Native motion preferences distinguish enabled, disabled and unavailable, with Hold/Return overrides, Follow system and a diagnosed live fallback.
-- Sound snapshots save while audio continues; later edits stay dirty, and obsolete results cannot mark replacement drafts saved. Audio Stop and file-task cancellation are independent. WAV export requires idle audio. Native Open/Save/Export dialogs select paths, and Save confirms replacement; CLI output remains no-clobber.
-- After open native dialogs are resolved, New, draft replacement, window close and File/app-menu Quit protect unsaved content with Save/Discard/Cancel and wait for the required audio/file workers to finish, including native macOS Cmd-Q. Save-and-close preserves newer edits. Forced termination can leave a hidden `.NAME.RANDOM.partial` file beside an interrupted destination.
-- Finite Stop fades over up to 30 ms; live Stop finishes its current transition before a 30 ms fade, allowing almost 60 ms of generation plus device buffering. CLI Ctrl-C retains exit 130.
-- CLI help and usage use clap. CLI/desktop durations use hours, minutes and seconds; desktop peak bounds use one decimal and silence reads −∞. Library waveform previews use the same seekable signal as finite playback/export; Workbench previews use the current valid settings.
-
-### Fixed
-
-- Fatal Windows application errors appear in a native dialog, including graphics-context creation failures.
-- macOS keyboard shortcuts honor native modifier flags when accessibility input supplies no separate modifier-key events.
-- Linux ALSA fault-poll waits are bounded to one second so missed fault notifications can reach recovery without spending the full 30-second stall deadline in one wait.
-
-### Removed
-
-- The sample observation transport and display-memory-budget API; library monitoring supplies bounded generated quantities and captures.
-- Python build/release tools and committed generated third-party notices; use `cargo xtask` and the product-specific notices inside each archive.
-
-### Internal
-
-- Authored Rust lint exceptions require an exact source scope and written rationale, checked across inactive platform code, macro attributes and opaque Rust syntax. Package lint inheritance and production lint-weakening flags are checked; numerical and native unsafe exceptions stay confined to their operations.
-- Packaging and reusable CI generate separate native CLI/GUI archives and verify their identities, architectures, notices and license-text coverage. Asset collection rejects incomplete, duplicate or unexpected product/target sets. Release calls run every native target and all five scoped mutation suites. Dispatch defaults to non-publishing verification with downloadable checksums, notes and provenance; notes and assets are attested, and publication requires `publish: true` on the verified current main commit.
-- Core seekable/live rendering and generated-state observation allocate nothing. Device monitoring uses preallocated storage and one nonblocking lock attempt per buffer; observation does not determine playback completion.
+- macOS archives use tar.gz; update ZIP extraction scripts. Archives add COPYRIGHT-library.html; retain it with dependency notices when redistributing.
+- Desktop drawing requires OpenGL, including OpenGL 2.0+ on Windows. Software-renderer recovery is unavailable; install a compatible driver.
+- Integer-phase synthesis changes sample bits; regenerate sample-exact references. Pulses round widths to frames, reject widths above 2^36 frames and require a closed frame per period.
+- Rust packages become auditorylab-core, auditorylab, auditorylab-cli and auditorylab-gui. WAV/device APIs join auditorylab; update imports, observation consumers and error matches.
+- Source builds require Rust 1.99.1 and native MSVC tools on Windows. Linux uses system fontconfig and Pango/GTK 3/GIO for desktop fonts; install the tagged source prerequisites.
+- --build-info and build-kind markers are removed; use --version or About. Playback start/status/completion use stderr; update identity and redirected-output consumers.
+- Workbench edits up to 16 tone/click components live with ramps, glides and crossfades. Save custom schema-2 recipes or stop audio to export finite WAVs; Pattern explained shows static timing.
+- Persistent transport, native typography and accessible scrolling preserve pending edits. Output captures retain source, rates, levels and Hold context; motion preferences control live drawing.
+- Saves retain newer edits; Stop and file cancellation are independent. Export requires idle audio. Native dialogs select paths, and Quit protects dirty content and waits for workers.
+- Windows failures use a native dialog, macOS shortcuts honor native modifiers, and ALSA fault polling is bounded. Finite Stop fades; live Stop may finish a transition before fading.
+- cargo xtask replaces Python release tooling and generates product-specific notices. Release verification checks native archives and attestations; publication requires explicit authorization.
 
 ## [0.3.0] - 2026-10-16
 
-### Breaking
+[Published release notes](https://github.com/resoltico/AuditoryLab/releases/tag/v0.3.0).
 
-- CLI and desktop packages require macOS 15 or later on both Apple silicon and Intel. CLI users on older macOS versions must upgrade the OS to use these packages.
-- The CLI executable is `auditorylab` (`auditorylab.exe` on Windows), installed from package `auditory-cli`; replace `auditory-lab` command invocations and install from `crates/auditory-cli`. Release CLI archives/folders use `auditorylab-VERSION-PLATFORM`; desktop archives use `auditorylab-gui-VERSION-PLATFORM`. No old executable alias is provided.
-- CLI commands `describe` and `recipe` replace `about` and `show`. `describe`, `inspect`, `play` and `export` accept exactly one positional built-in ID, `--file PATH`, or `--stdin`; `recipe` accepts only a built-in ID. Punctuation, existing paths and piped input no longer select sources implicitly. Update file/stdin invocations and consumers of changed human reports. No command aliases or compatibility modes are provided; schema 2's `[about]` table is unchanged.
-- Recipe path loading accepts only regular files and symlinks to regular files; use CLI `--stdin` or `auditory_app::load_reader` for intentional streams. FIFOs, devices and directories reject before reading. This does not impose deadlines on stalled regular-file filesystems.
-- Rust callers must replace `auditory_wav::export(session, path, cancel)` with `auditory_wav::encode(session, writer, cancel)` or use `auditory-app` export preparation/execution. The encoder no longer owns file creation, syncing, publication or cleanup, and `ExportError::DestinationExists` and `ExportError::IncompleteFileLeft` are removed. Update exhaustive matches.
-- Rust `Renderer::render` returns `RenderedSpan` instead of an active-frame count; use `.frames()` for the count and `.start()`/`.end()` for source coverage. `ComponentError` variants with field identifiers use `parameter: Parameter` instead of free-form `field` strings. Direct device callers must pass the observation argument to `Output::play(session, cancel, observation)` (`None` for ordinary playback). `auditory_device::ListeningAdvice` is removed; shared application descriptions/playback views supply typed `Notice` values. Update callers and exhaustive matches.
-
-### Added
-
-- A native `auditorylab-gui` desktop frontend with a Compact session layout, selectable research/diagnostic text, native/manual recipe paths, validation, WAV export and explicit Play/Stop. Close and ordinary macOS Quit wait for the actual operation and worker. Packages provide an ad hoc signed, unnotarized macOS `.app`, a console-free Windows application and an optional Linux desktop launcher. Slint enables native accessibility and GPU-capable drawing with software recovery; enabled accessibility is not screen-reader qualification. GPU drawing does not offload audio, use every installed GPU or promise recovery from every later graphics failure. See the [desktop guide](https://github.com/resoltico/AuditoryLab/blob/v0.3.0/docs/desktop.md) for platform and source-build prerequisites, including Windows import-library preparation and Linux system FreeType/Fontconfig requirements, and `SLINT_BACKEND=winit-software` recovery.
-- Optional Generated signal observation and separate-ear waveform detail/two-second recent Peak range views, with actual source coverage, gaps, freshness, bounded live/frozen displays and reduced-motion presentation. Charts show mixed/faded generated samples before output conversion, not microphone input, sound pressure or an audible playhead. Freeze display leaves audio running; observed samples cannot establish playback completion.
-- `auditory-app` supplies both frontends' input/catalog workflows, immutable declared descriptions and resolved facts, typed diagnostics, bound preparation views, listening notices and contextual completion reports. Synthesis/validation and signal analysis remain shared; WAV encoding accepts a caller-owned writer and application workflows own publication and cancellation.
-- Shared product/build identity and a narrow standalone `--build-info` artifact-verification response on both products. Local and candidate archives carry explicit local/development markers; candidate identities retain the full source revision. Read-only development qualification uses the release workflow's native checks and isolated final builds without publishing or inventing a next version.
-
-### Changed
-
-- Running the CLI with no arguments shows help successfully. Commands share concise help/error rules and accept native equals-form paths. `list` shows human durations and readable Sound records; `describe` adds declared routes/advice; inspection retains exact frames/rates, round-trip technical peak bounds and declared/resolved duration and fade. Preparation/completion reports retain their bound context, with explicit stream-rate labels and stop cues.
-- Three van Eeckhoutte AM titles state the configured 39.0625 Hz modulation instead of nominal 40 Hz. The Lahijanian adaptation retains the source's approximately -40 dB statement with its unspecified reference and participant comfort adjustment. Preset IDs, numeric parameters and generated samples are unchanged.
-- Recipe saving and WAV export stage complete output in the destination folder, sync it and publish without replacement. These operations create no final file before commit and never replace an existing destination; cancellation and failure clean only the owned stage, and cleanup failures retain both causes. Successful publication remains successful if cancellation or reporting fails afterward. Abnormal termination can leave a stage; no-overwrite publication is not universally atomic and file sync does not guarantee directory-entry persistence after power loss.
-
-### Internal
-
-- Sample callback terminal publication uses a fixed atomic outcome; asynchronous backend diagnostics are stored separately, and synchronous setup errors retain their original cause without waiting for a diagnostic writer. This covers application sample processing, not every native backend callback. Optional preallocated SPSC observation drops visual data without blocking audio; shared analysis/history and polling have explicit frame/work bounds, with caller-owned presentation capacity checked against the 8 MiB product-owned monitoring-buffer limit. This is not a process-RSS or native-graphics memory bound.
-- Required architecture tests check exhaustive workspace roles, dependency directions, anchored source/resource roots and frontend syntax boundaries. Qualification checks nonempty positive/rejection-control execution and a freestanding core build with a std-dependency rejection control. Product/platform/archive/source/kind assignments and product-bound Windows native evidence are verified before release assets are combined; package checks inspect the extracted copy. Windows CLI tests exercise native Ctrl-C/Ctrl-Break during silent export and pre-input waits, plus forced exit on a second interrupt; these are Cargo test binaries rather than packaged-interruption or acoustic qualification.
-- Portable `libm` arithmetic is forced across GUI dependency feature unification. Independent numerical, conversion, long-stream and callback characterization checks retain their own evidence limits. Third-party notices distinguish runtime dependencies, retained host code-generation material, generated resources and source-bound patches.
+- macOS packages require version 15+ on Apple silicon and Intel; users of older systems must upgrade to run them.
+- The CLI executable becomes auditorylab, installed from crates/auditory-cli. Replace auditory-lab invocations and archive-name assumptions; no executable alias is provided.
+- describe/recipe replace about/show. Describe, inspect, play and export require a built-in ID, --file or --stdin explicitly; update callers. Recipe accepts only a built-in ID; schema 2 is unchanged.
+- Recipe paths admit only regular files and symlinks to them; use --stdin or load_reader for streams. FIFOs, devices and directories reject before reading; stalled filesystems have no read deadline.
+- Rust application workflows own WAV publication; the encoder accepts a writer. Rendering spans, parameter diagnostics and device observations change; update callers and exhaustive matches.
+- A native desktop provides research details, validation, WAV export, Play/Stop and generated-signal monitoring. Close/Quit waits for workers; charts describe generated samples, not acoustic output.
+- Desktop packages include an unnotarized ad-hoc signed macOS app, console-free Windows executable and optional Linux launcher. Enabled accessibility does not establish screen-reader qualification.
+- Recipe/WAV export stages and syncs complete output without replacement. Cancellation cleans owned stages; abnormal termination can leave one, and file sync does not guarantee directory durability.
+- CLI help succeeds without arguments; reports distinguish requested/resolved facts. AM titles state 39.0625 Hz, and source adaptations retain calibration limits without changing catalog samples.
+- Both frontends share application workflows and build identity. Package checks inspect extracted binaries, notices and architectures; portable arithmetic remains stable across GUI feature unification.
 
 ## [0.2.0] - 2026-10-15
 
-### Breaking
+[Published release notes](https://github.com/resoltico/AuditoryLab/releases/tag/v0.2.0).
 
-- Windows source builds use the native Rust GNU LLVM host (`x86_64-pc-windows-gnullvm` or `aarch64-pc-windows-gnullvm`) with bundled startup libraries and linker, replacing the MSVC build route. Install the host and `rust-mingw` component using the [source setup](https://github.com/resoltico/AuditoryLab/blob/v0.2.0/README.md#install-from-source), and pass the native `--target` when building. Windows x86_64 executables require SSE3, CMPXCHG16B and LAHF/SAHF instructions.
-- Presets use `schema_version = 2`. Component levels are named `peak_dbfs`, and the optional `[provenance]` table is replaced by `[about]`, in which only `title` is required and `description` is renamed `study`. Schema 1 and the old names are rejected. Built-in schema 2 recipes can be saved with `show NAME --output FILE` and edited.
-- Rust callers must replace `Provenance` and `Preset.provenance` with `About` and `Preset.about`, rename `description` to `study`, and handle the optional descriptive fields. `Component` fields and its `level_dbfs()` accessor become `peak_dbfs` and `peak_dbfs()`. `ComponentError::Level`, `ClickRateTooSmall` and `ClickWidth` become `PeakDbfs`, `PulseRateTooSmall` and `PulseWidth`; the pulse errors include a `field` name. Update exhaustive matches for the added modulation and preset-error variants.
-- `inspect` retains the preset title but no longer prints citation, source URL, study description or adaptation. Use `about PRESET` for that text, and update consumers of the inspection output.
-
-### Added
-
-- `rectangular` modulation switches a component on for `width_seconds` at the start of each period, for tone-pip and pulsed-tone stimuli.
-- Built-in presets from Martorell et al. (2019), 1 ms 10 kHz tone trains at 8, 40 and 80 Hz, and Lahijanian et al. (2024), a 40 Hz train of 1 ms 5 kHz tones.
-- Every built-in preset states what its source studied it for and summarizes the study and its findings in plain language, including study limitations and differences between the recipe and the source stimulus. These descriptions do not establish benefits from listening.
-- `about PRESET` prints a preset's description, research source and adaptation as readable text, accepting a built-in name, file or standard input.
-- `show NAME --output FILE` saves a built-in preset as UTF-8 without shell redirection or encoding differences. It requires a new destination and never replaces an existing file.
-- A preset with a UTF-16 byte-order mark is reported as UTF-16 rather than as invalid UTF-8; preset input still requires UTF-8.
-
-### Changed
-
-- `list` and the Rust catalog order numeric parts of preset names as numbers, so 5 Hz precedes 10 Hz and 500 Hz precedes 1000 Hz.
-- Release archives contain four files: the executable, `README.txt`, `LICENSE` and a single `THIRD-PARTY-NOTICES.txt`. `README.txt` replaces `INSTALL.txt` and `USAGE.txt`; the separate `BUILD_INFO.json` and notice directories are removed. The consolidated notices retain the full Rust standard-library component notices as plain text alongside crate and native-runtime notices.
-- macOS executables are built for macOS 11 or later (Apple silicon) and 10.12 or later (Intel), where 0.1.0 required macOS 15. Release testing runs on macOS 15 and does not establish execution on those older minimum versions.
-- Windows executables use open-source MinGW startup/support and static LLVM unwind code instead of the MSVC runtime, with UCRT supplied by Windows 10 or later on x86_64, or Windows 11 on ARM64. Release archives include the complete reviewed MinGW and LLVM runtime notices; Windows archive platform names are unchanged.
-- Contributor release tools require Python 3.9 or later instead of 3.11, using only the standard library.
-- Release publication checks uploaded asset digests before making a draft public and no longer resumes a partially uploaded draft automatically. Follow the [failure recovery procedure](https://github.com/resoltico/AuditoryLab/blob/v0.2.0/docs/releasing.md#when-publishing-fails) before retrying; published versions must never be replaced.
-
-### Internal
-
-- Native packaging checks Windows runtime link inputs using evidence bound to the executable's SHA-256. Quality also packages native builds on macOS, Linux and both Windows architectures. The previous native Windows packaged-interruption harness is removed, so these checks do not establish Windows Ctrl-C or Ctrl-Break behavior.
+- Windows source builds use native Rust GNU LLVM hosts with rust-mingw and a native --target, replacing MSVC. x86_64 requires SSE3, CMPXCHG16B and LAHF/SAHF.
+- Recipes require schema 2, peak_dbfs and optional [about] metadata; schema 1 and old names reject. Rust callers must update Preset/About fields and exhaustive error matches.
+- inspect omits research context; use about PRESET. show NAME --output FILE saves UTF-8 built-ins to a new destination without shell encoding changes; UTF-16 inputs receive an explicit diagnostic.
+- Rectangular modulation adds gated tones. The catalog adds Martorell 8/40/80 Hz tone trains and Lahijanian 40 Hz tone pips, with study findings, limitations and adaptations.
+- Natural catalog ordering handles numeric names. Archives contain the executable, README.txt, LICENSE and consolidated notices; replace INSTALL.txt/USAGE.txt and notice-directory assumptions.
+- macOS deployment minima become 11 on Apple silicon and 10.12 on Intel; testing runs on macOS 15 and does not establish execution on the older minima.
+- Windows binaries use MinGW/LLVM runtime code and system UCRT, requiring Windows 10+ on x86_64 or Windows 11 on ARM64. Redistribute the bundled runtime notices.
+- Release tools require Python 3.9+. Publication checks uploaded digests and refuses automatic draft recovery; published versions must not be replaced.
+- Native package checks bind runtime-link evidence to binary hashes; they do not establish Windows Ctrl-C/Ctrl-Break behavior after removal of the packaged-interruption harness.
 
 ## [0.1.0] - 2026-10-14
 
-- First release.
+[Published release notes](https://github.com/resoltico/AuditoryLab/releases/tag/v0.1.0).
+
+- First release: a CLI for inspecting, playing and exporting stereo research-inspired sounds, with editable TOML recipes and an attributed built-in catalog.
