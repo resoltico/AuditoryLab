@@ -1,5 +1,6 @@
 //! Public loading and publication contracts.
 #![cfg(test)]
+mod common;
 use auditorylab::core::SampleRate;
 use auditorylab::error::Error;
 use auditorylab::error::ErrorKind;
@@ -19,10 +20,12 @@ fn dir() -> tempfile::TempDir {
     fs::create_dir_all(&base).unwrap();
     tempfile::tempdir_in(base).unwrap()
 }
-const SILENCE: &str = "schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
+fn silence() -> String {
+    common::silent(0.01, 0.0).to_toml().unwrap()
+}
 #[test]
 fn bounded_input_and_regular_file_admission() {
-    let mut bytes = SILENCE.as_bytes().to_vec();
+    let mut bytes = silence().as_bytes().to_vec();
     bytes.resize(65_536, b' ');
     assert!(load_reader(&bytes[..], "limit").is_ok());
     bytes.push(b' ');
@@ -33,8 +36,8 @@ fn bounded_input_and_regular_file_admission() {
     for bytes in [
         &[0xff][..],
         &[0xff, 0xfe][..],
-        b"schema_version=3",
-        b"schema_version=3\nunknown=1",
+        b"schema_version=4",
+        b"schema_version=4\nunknown=1",
     ] {
         assert_eq!(
             load_reader(bytes, "bad").unwrap_err().kind(),
@@ -47,7 +50,7 @@ fn bounded_input_and_regular_file_admission() {
         ErrorKind::Unreadable
     );
     let path = dir.path().join("sound.toml");
-    fs::write(&path, SILENCE).unwrap();
+    fs::write(&path, silence()).unwrap();
     assert!(load_file(&path).is_ok());
     #[cfg(unix)]
     {
@@ -70,7 +73,7 @@ fn bounded_input_and_regular_file_admission() {
 fn public_export_progress_no_clobber_replace_and_cancellation() {
     let dir = dir();
     let path = dir.path().join("silence.wav");
-    let sound = load_reader(SILENCE.as_bytes(), "silence")
+    let sound = load_reader(silence().as_bytes(), "silence")
         .unwrap()
         .at(SampleRate::DEFAULT)
         .unwrap();
@@ -128,9 +131,7 @@ fn shared_values_cross_threads() {
 
 #[test]
 fn untitled_file_names_are_concise_and_origins_remain_complete() {
-    let plain =
-        auditorylab::core::Recipe::parse("schema_version=3\nduration_seconds=1\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n")
-            .unwrap();
+    let plain = common::silent(1.0, 0.0);
     for (path, name, suggested) in [
         (
             "/deep/Rīga 🎧/huge-cancel.toml",

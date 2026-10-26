@@ -807,7 +807,7 @@ impl LibraryStore {
             if previous.same_editable_content(&recipe) {
                 return Ok(unchanged(key, kind, old.clone(), diagnostics));
             }
-            if !previous.stimulus.same_content(&recipe.stimulus) {
+            if !previous.sound.same_content(&recipe.sound) {
                 for evidence in &mut recipe.evidence {
                     evidence.scope = crate::core::EvidenceScope::Ancestor;
                 }

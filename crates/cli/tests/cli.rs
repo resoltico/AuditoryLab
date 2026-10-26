@@ -1,6 +1,7 @@
 //! CLI contracts through the shipped executable.
 #![cfg(test)]
 #[cfg(unix)]
+mod common;
 use std::time::{Duration, Instant};
 use std::{
     fs,
@@ -19,7 +20,9 @@ fn dir() -> tempfile::TempDir {
     tempfile::tempdir_in(base).unwrap()
 }
 const ID: &str = "builtin:chan-2022-clicks-40-hz";
-const SILENCE: &[u8] = b"schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
+fn silence() -> String {
+    common::silent(0.01, 0.0).to_toml().unwrap()
+}
 #[test]
 fn commands_sources_and_exit_codes() {
     for args in [
@@ -81,7 +84,12 @@ fn stdin_export_and_no_clobber() {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        child.stdin.take().unwrap().write_all(SILENCE).unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(silence().as_bytes())
+            .unwrap();
         let out = child.wait_with_output().unwrap();
         assert_eq!(out.status.success(), success);
         if !success {
@@ -109,7 +117,12 @@ fn broken_pipe_is_quiet_success() {
         .unwrap();
     // Input cannot finish until after the output reader has closed.
     drop(child.stdout.take());
-    child.stdin.take().unwrap().write_all(SILENCE).unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(silence().as_bytes())
+        .unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(out.status.success());
     assert!(out.stderr.is_empty());
@@ -128,7 +141,7 @@ fn play_reads_stdin_and_reports_native_silent_playback() {
         .stdin
         .take()
         .unwrap()
-        .write_all(b"schema_version=3\nduration_seconds=1\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n")
+        .write_all(common::silent(1.0, 0.0).to_toml().unwrap().as_bytes())
         .unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(
@@ -149,7 +162,7 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
     let output = dir.path().join("long.wav");
     fs::write(
         &input,
-        b"schema_version=3\nduration_seconds=1000000\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
+        common::silent(1000000.0, 0.0).to_toml().unwrap().as_bytes(),
     )
     .unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_auditorylab"))
@@ -193,40 +206,63 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
 fn public_cli_renders_shared_rhythms_and_rejects_pair_neighbors() {
     let d = dir();
     let file = d.path().join("meaning.toml");
-    let header = "schema_version=3\nduration_seconds=1\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
-    let click = "[[component]]\nid=1\nears=\"both\"\npeak_dbfs=-40\nkind=\"click\"\nrate_hz=40\nwidth_seconds=0.001\n";
-    let tone = |id, hz, ears: &str, level| {
-        format!(
-            "[[component]]\nid={id}\nears=\"{ears}\"\npeak_dbfs={level}\nkind=\"tone\"\nfrequency_hz={hz}\n"
-        )
+    use auditorylab::core::{Carrier, Component, ComponentForm, ComponentId, Ears, Voice};
+    let tone = |frequency_hz, ears, peak_dbfs| Voice {
+        ears,
+        peak_dbfs,
+        carrier: Carrier::Tone { frequency_hz },
+        modulation: None,
     };
-    for (body, needle, rejected) in [
+    let click = Voice {
+        ears: Ears::Both,
+        peak_dbfs: -40.0,
+        carrier: Carrier::Clicks {
+            rate_hz: 40.0,
+            width_seconds: 0.001,
+        },
+        modulation: None,
+    };
+    for (voices, needle, rejected) in [
         (
-            format!("{click}{}", tone(2, 440, "both", -40)),
+            vec![click, tone(440.0, Ears::Both, -40.0)],
             "40 Hz clicks",
             "400 Hz",
         ),
         (
-            format!(
-                "{}{}",
-                tone(1, 380, "left", -40),
-                tone(2, 420, "right", -40)
-            ),
+            vec![
+                tone(380.0, Ears::Left, -40.0),
+                tone(420.0, Ears::Right, -40.0),
+            ],
             "40 Hz interaural difference",
             "monaural",
         ),
         (
-            format!("{}{}", tone(1, 380, "both", -40), tone(2, 420, "both", -40)),
+            vec![
+                tone(380.0, Ears::Both, -40.0),
+                tone(420.0, Ears::Both, -40.0),
+            ],
             "40 Hz monaural",
             "interaural",
         ),
         (
-            format!("{}{}", tone(1, 380, "both", -40), tone(2, 420, "both", -41)),
+            vec![
+                tone(380.0, Ears::Both, -40.0),
+                tone(420.0, Ears::Both, -41.0),
+            ],
             "40 Hz monaural",
             "interaural",
         ),
     ] {
-        fs::write(&file, format!("{header}{body}")).unwrap();
+        let mut recipe = common::silent(1.0, 0.0);
+        recipe.sound.components = voices
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| Component {
+                id: ComponentId::numbered(index).unwrap(),
+                form: ComponentForm::Voice(voice),
+            })
+            .collect();
+        fs::write(&file, recipe.to_toml().unwrap()).unwrap();
         for command in ["describe", "inspect"] {
             let out = cli(&[command, "--file", file.to_str().unwrap()]);
             assert!(out.status.success(), "{:?}", out);
@@ -239,11 +275,20 @@ fn public_cli_renders_shared_rhythms_and_rejects_pair_neighbors() {
 fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realized_widths() {
     let dir = dir();
     let path = dir.path().join("pulse.toml");
-    fs::write(
-        &path,
-        "schema_version = 3\nduration_seconds = 0.05\nfade_seconds = 0.0\n\n[[component]]\nid=1\nkind = \"click\"\nears = \"both\"\npeak_dbfs = -30.0\nrate_hz = 40.0\nwidth_seconds = 0.0001\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
-    )
-    .unwrap();
+    let mut recipe = common::silent(0.05, 0.0);
+    recipe.sound.components.push(auditorylab::core::Component {
+        id: auditorylab::core::ComponentId::new(1),
+        form: auditorylab::core::ComponentForm::Voice(auditorylab::core::Voice {
+            ears: auditorylab::core::Ears::Both,
+            peak_dbfs: -30.0,
+            carrier: auditorylab::core::Carrier::Clicks {
+                rate_hz: 40.0,
+                width_seconds: 0.0001,
+            },
+            modulation: None,
+        }),
+    });
+    fs::write(&path, recipe.to_toml().unwrap()).unwrap();
     let out = cli(&[
         "inspect",
         "--file",
@@ -284,7 +329,8 @@ fn unicode_notes_roundtrip_and_terminal_controls_are_escaped_at_display_boundary
     let dir = dir();
     let path = dir.path().join("notes.toml");
     let mut recipe =
-        auditorylab::core::Recipe::parse(std::str::from_utf8(SILENCE).unwrap()).unwrap();
+        auditorylab::core::Recipe::parse(std::str::from_utf8(silence().as_bytes()).unwrap())
+            .unwrap();
     recipe.description = Some(auditorylab::core::Description {
         title: "Rīga \"🎧\"".into(),
         notes: Some("Line one\nLine two \u{1b}[31m \u{202e}reverse".into()),

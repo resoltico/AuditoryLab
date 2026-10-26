@@ -28,7 +28,7 @@ pub enum Carrier {
         frequency_hz: f64,
     },
     /// Unipolar rectangular pulses.
-    Click {
+    Clicks {
         /// Pulses per second.
         rate_hz: f64,
         /// Pulse length in seconds.
@@ -64,7 +64,7 @@ pub enum Modulation {
     /// Nominal gain follows `(1 + depth * sin(2π rate_hz t)) / (1 + depth)`,
     /// starting at phase zero. Validated gain is bounded by one; sampled
     /// values need not attain that bound.
-    Sinusoidal {
+    Am {
         /// Modulation frequency in hertz.
         rate_hz: f64,
         /// Modulation depth from 0 (none) to 1 (full).
@@ -73,7 +73,7 @@ pub enum Modulation {
     /// Gain 1 during the first `width_seconds` of each `1 / rate_hz` period
     /// and 0 otherwise, the first period starting at time zero: the same
     /// pulse train as a click, gating the carrier on and off.
-    Rectangular {
+    Gate {
         /// Gates per second.
         rate_hz: f64,
         /// Length of each open gate in seconds.
@@ -92,16 +92,16 @@ impl Ears {
 
 impl Voice {
     /// Check every value at `rate` and build the generator.
-    pub(crate) fn voice(&self, rate: SampleRate) -> Result<GeneratorVoice, ComponentError> {
+    pub(crate) fn voice(&self, rate: SampleRate) -> Result<GeneratorVoice, VoiceError> {
         let peak_dbfs = self.peak_dbfs;
         if !(peak_dbfs.is_finite() && peak_dbfs <= 0.0) {
-            return Err(ComponentError::PeakDbfs { peak_dbfs });
+            return Err(VoiceError::PeakDbfs { peak_dbfs });
         }
         let carrier = match self.carrier {
             Carrier::Tone { frequency_hz, .. } => Generator::Tone {
                 step: frequency_step(ParameterId::ToneFrequency, frequency_hz, rate)?,
             },
-            Carrier::Click {
+            Carrier::Clicks {
                 rate_hz,
                 width_seconds,
             } => Generator::Pulse(pulse_train(
@@ -113,27 +113,27 @@ impl Voice {
         };
         let modulation = match self.modulation {
             None => None,
-            Some(Modulation::Sinusoidal { rate_hz, depth }) => {
-                let step = frequency_step(ParameterId::AmplitudeModulationRate, rate_hz, rate)?;
+            Some(Modulation::Am { rate_hz, depth }) => {
+                let step = frequency_step(ParameterId::AmRate, rate_hz, rate)?;
                 if !(0.0..=1.0).contains(&depth) {
-                    return Err(ComponentError::Depth { depth });
+                    return Err(VoiceError::Depth { depth });
                 }
                 if let Carrier::Tone { frequency_hz } = self.carrier
                     && depth > 0.0
                     && frequency_hz + rate_hz >= rate.nyquist_hz()
                 {
-                    return Err(ComponentError::Sideband {
+                    return Err(VoiceError::Sideband {
                         frequency_hz,
                         rate_hz,
                         sample_rate_hz: rate.hz(),
                     });
                 }
-                Some(Modulator::Sinusoidal { step, depth })
+                Some(Modulator::Am { step, depth })
             }
-            Some(Modulation::Rectangular {
+            Some(Modulation::Gate {
                 rate_hz,
                 width_seconds,
-            }) => Some(Modulator::Rectangular(pulse_train(
+            }) => Some(Modulator::Gate(pulse_train(
                 (ParameterId::GateRate, ParameterId::GateWidth),
                 rate_hz,
                 width_seconds,
@@ -151,12 +151,8 @@ impl Voice {
     }
 }
 
-fn frequency_step(
-    parameter: ParameterId,
-    hz: f64,
-    rate: SampleRate,
-) -> Result<u64, ComponentError> {
-    synthesis::step(hz, rate.hz()).ok_or(ComponentError::Frequency {
+fn frequency_step(parameter: ParameterId, hz: f64, rate: SampleRate) -> Result<u64, VoiceError> {
+    synthesis::step(hz, rate.hz()).ok_or(VoiceError::Frequency {
         parameter,
         hz,
         sample_rate_hz: rate.hz(),
@@ -167,9 +163,9 @@ fn pulse_train(
     rate_hz: f64,
     width_seconds: f64,
     rate: SampleRate,
-) -> Result<Pulse, ComponentError> {
+) -> Result<Pulse, VoiceError> {
     frequency_step(rate_parameter, rate_hz, rate)?;
-    synthesis::pulse(width_seconds, rate_hz, rate.hz()).ok_or(ComponentError::PulseWidth {
+    synthesis::pulse(width_seconds, rate_hz, rate.hz()).ok_or(VoiceError::PulseWidth {
         parameter: width_parameter,
         width_seconds,
         rate_hz,
@@ -177,9 +173,9 @@ fn pulse_train(
     })
 }
 
-/// Why a stimulus cannot be rendered at a sample rate.
+/// Why a sound cannot be rendered at a sample rate.
 #[derive(Debug, Clone, PartialEq)]
-pub enum StimulusError {
+pub enum SoundError {
     /// Authored identity, voice-budget or coupled pair arithmetic failure.
     Authored(crate::LoweringError),
     /// A pair carrier is invalid at this rate; both coupled inputs are named.
@@ -191,7 +187,7 @@ pub enum StimulusError {
         /// Requested signed offset.
         offset_hz: f64,
         /// Underlying rate-dependent carrier failure.
-        error: ComponentError,
+        error: VoiceError,
     },
     /// `duration_seconds` is not finite, gives no frame, or spans more than
     /// [`Signal::MAX_FRAMES`].
@@ -213,7 +209,7 @@ pub enum StimulusError {
     FadesOverlap {
         /// Fade length at each edge.
         fade_frames: u64,
-        /// The stimulus length.
+        /// The sound length.
         frames: u64,
         /// The sample rate the lengths were resolved at.
         sample_rate_hz: u32,
@@ -233,7 +229,7 @@ pub enum StimulusError {
         /// The component's position, counting from 1.
         number: usize,
         /// What is wrong with it.
-        error: ComponentError,
+        error: VoiceError,
     },
     /// An ear's components add up to a peak above full scale.
     Peak {
@@ -244,9 +240,9 @@ pub enum StimulusError {
     },
 }
 
-impl StimulusError {
+impl SoundError {
     /// Every quantity the error concerns. Structural, identity and mix errors
-    /// concern the whole stimulus and name none.
+    /// concern the whole sound and name none.
     #[must_use]
     pub const fn parameters(&self) -> &'static [ParameterId] {
         match self {
@@ -268,7 +264,7 @@ impl StimulusError {
 
 /// Why a component cannot be rendered at a sample rate.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ComponentError {
+pub enum VoiceError {
     /// A frequency is not finite and positive below half the sample rate.
     Frequency {
         /// The quantity holding it.
@@ -310,7 +306,7 @@ pub enum ComponentError {
     },
 }
 
-impl ComponentError {
+impl VoiceError {
     /// Every quantity the error concerns. A constraint coupling two
     /// quantities names both.
     #[must_use]
@@ -318,20 +314,17 @@ impl ComponentError {
         match self {
             Self::Frequency { parameter, .. } => match parameter {
                 ParameterId::ClickRate => &[ParameterId::ClickRate],
-                ParameterId::AmplitudeModulationRate => &[ParameterId::AmplitudeModulationRate],
+                ParameterId::AmRate => &[ParameterId::AmRate],
                 ParameterId::GateRate => &[ParameterId::GateRate],
                 _ => &[ParameterId::ToneFrequency],
             },
-            Self::Sideband { .. } => &[
-                ParameterId::ToneFrequency,
-                ParameterId::AmplitudeModulationRate,
-            ],
+            Self::Sideband { .. } => &[ParameterId::ToneFrequency, ParameterId::AmRate],
             Self::PulseWidth { parameter, .. } => match parameter {
                 ParameterId::GateWidth => &[ParameterId::GateRate, ParameterId::GateWidth],
                 _ => &[ParameterId::ClickRate, ParameterId::ClickWidth],
             },
             Self::PeakDbfs { .. } => &[ParameterId::PeakLevel],
-            Self::Depth { .. } => &[ParameterId::ModulationDepth],
+            Self::Depth { .. } => &[ParameterId::AmDepth],
         }
     }
 }
@@ -382,7 +375,7 @@ impl Display for Quantity {
     }
 }
 
-impl Display for StimulusError {
+impl Display for SoundError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Authored(error) => error.fmt(f),
@@ -445,14 +438,15 @@ impl Display for StimulusError {
                 };
                 write!(
                     f,
-                    "the components for the {ear} add up to a peak of {level} dBFS, above full scale; lower their peak levels"
+                    "the components for the {} add up to a peak of {level} dBFS, above full scale; lower their peak levels",
+                    ear.phrase()
                 )
             }
         }
     }
 }
 
-impl Display for ComponentError {
+impl Display for VoiceError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Frequency {
@@ -473,7 +467,7 @@ impl Display for ComponentError {
                 f,
                 "{} plus {} must stay below {} Hz, half the {sample_rate_hz} Hz sample rate",
                 Quantity(ParameterId::ToneFrequency, *frequency_hz),
-                Quantity(ParameterId::AmplitudeModulationRate, *rate_hz),
+                Quantity(ParameterId::AmRate, *rate_hz),
                 f64::from(*sample_rate_hz) / 2.0
             ),
             Self::PulseWidth {
@@ -496,13 +490,13 @@ impl Display for ComponentError {
             Self::Depth { depth } => write!(
                 f,
                 "{} must be from 0% to 100%",
-                Quantity(ParameterId::ModulationDepth, *depth)
+                Quantity(ParameterId::AmDepth, *depth)
             ),
         }
     }
 }
 
-impl core::error::Error for StimulusError {
+impl core::error::Error for SoundError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::Authored(error) => Some(error),
@@ -513,40 +507,56 @@ impl core::error::Error for StimulusError {
     }
 }
 
-impl core::error::Error for ComponentError {}
+impl core::error::Error for VoiceError {}
 
-impl Display for Ears {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Left => "left ear",
-            Self::Right => "right ear",
-            Self::Both => "both ears",
-        })
+impl Ears {
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Left => ("Left ear", "left ear"),
+            Self::Right => ("Right ear", "right ear"),
+            Self::Both => ("Both ears", "both ears"),
+        }
+    }
+    /// Short route name for a heading or choice.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        self.terms().0
+    }
+    /// Route name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
-
-impl Display for Ear {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Left => "left ear",
-            Self::Right => "right ear",
-        })
+impl Ear {
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Left => ("Left ear", "left ear"),
+            Self::Right => ("Right ear", "right ear"),
+        }
+    }
+    /// Short ear name for a heading or choice.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        self.terms().0
+    }
+    /// Ear name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 
 impl Display for Modulation {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Sinusoidal { rate_hz, depth } => {
-                write!(f, "sinusoidal modulation {rate_hz} Hz, depth {depth}")
+            Self::Am { rate_hz, depth } => {
+                write!(f, "AM {rate_hz} Hz, depth {depth}")
             }
-            Self::Rectangular {
+            Self::Gate {
                 rate_hz,
                 width_seconds,
-            } => write!(
-                f,
-                "rectangular modulation {rate_hz} Hz, {width_seconds} s open"
-            ),
+            } => write!(f, "gate {rate_hz} Hz, {width_seconds} s open"),
         }
     }
 }
@@ -555,12 +565,12 @@ impl Display for Voice {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.carrier {
             Carrier::Tone { frequency_hz } => write!(f, "tone {frequency_hz} Hz")?,
-            Carrier::Click {
+            Carrier::Clicks {
                 rate_hz,
                 width_seconds,
             } => write!(f, "clicks {rate_hz} Hz, {width_seconds} s wide")?,
         }
-        write!(f, ", peak {} dBFS, {}", self.peak_dbfs, self.ears)?;
+        write!(f, ", peak {} dBFS, {}", self.peak_dbfs, self.ears.phrase())?;
         if let Some(modulation) = self.modulation {
             write!(f, ", {modulation}")?;
         }

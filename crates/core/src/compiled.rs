@@ -10,8 +10,8 @@
 //! engine reuse without compiling the raw components again.
 use crate::synthesis::GeneratorVoice;
 use crate::{
-    ComponentError, ComponentFacts, ComponentId, Ear, SampleRate, Signal, SlotRole, Sound,
-    StimulusError, Voice, VoiceObservation, numeric, signal::Envelope,
+    ComponentFacts, ComponentId, Ear, SampleRate, Signal, SlotRole, Sound, SoundError, Voice,
+    VoiceError, VoiceObservation, numeric, signal::Envelope,
 };
 use alloc::vec::Vec;
 
@@ -98,7 +98,7 @@ impl Target {
     pub(crate) fn new(
         rate: SampleRate,
         components: &[(ComponentId, Voice)],
-    ) -> Result<Self, StimulusError> {
+    ) -> Result<Self, SoundError> {
         TargetCheck::new(rate, components).into_result()
     }
 
@@ -165,13 +165,9 @@ impl Target {
     /// Give the target a finite envelope, reusing the compiled components.
     ///
     /// # Errors
-    /// Returns [`StimulusError::Duration`], [`StimulusError::Fade`] or
-    /// [`StimulusError::FadesOverlap`].
-    pub fn signal(
-        &self,
-        duration_seconds: f64,
-        fade_seconds: f64,
-    ) -> Result<Signal, StimulusError> {
+    /// Returns [`SoundError::Duration`], [`SoundError::Fade`] or
+    /// [`SoundError::FadesOverlap`].
+    pub fn signal(&self, duration_seconds: f64, fade_seconds: f64) -> Result<Signal, SoundError> {
         let envelope = Envelope::resolve(self.mix.rate, duration_seconds, fade_seconds)?;
         Ok(Signal::new(*self, envelope))
     }
@@ -182,8 +178,8 @@ impl Target {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetCheck {
     rate: SampleRate,
-    components: Vec<(ComponentId, Result<ComponentFacts, ComponentError>)>,
-    result: Result<Target, StimulusError>,
+    components: Vec<(ComponentId, Result<ComponentFacts, VoiceError>)>,
+    result: Result<Target, SoundError>,
 }
 
 impl TargetCheck {
@@ -196,7 +192,7 @@ impl TargetCheck {
                 return Self {
                     rate,
                     components: Vec::new(),
-                    result: Err(StimulusError::Authored(error)),
+                    result: Err(SoundError::Authored(error)),
                 };
             }
         };
@@ -205,26 +201,28 @@ impl TargetCheck {
             components
                 .iter()
                 .find(|c| c.id.get() == id.get())
-                .and_then(|c| match c.node {
-                    crate::Node::BinauralPair(pair) => Some((pair, crate::PairKind::Binaural)),
-                    crate::Node::MonauralPair { pair, .. } => {
+                .and_then(|c| match c.form {
+                    crate::ComponentForm::BinauralPair(pair) => {
+                        Some((pair, crate::PairKind::Binaural))
+                    }
+                    crate::ComponentForm::MonauralPair { pair, .. } => {
                         Some((pair, crate::PairKind::Monaural))
                     }
                     _ => None,
                 })
         };
-        if let Err(StimulusError::Component {
+        if let Err(SoundError::Component {
             number,
-            error: ComponentError::Frequency { .. },
+            error: VoiceError::Frequency { .. },
         }) = &check.result
         {
             let id = lowered[*number - 1].0;
             if let Some((pair, _)) = intent(id) {
                 let error = match &check.result {
-                    Err(StimulusError::Component { error, .. }) => error.clone(),
+                    Err(SoundError::Component { error, .. }) => error.clone(),
                     _ => unreachable!("matched carrier error above"),
                 };
-                check.result = Err(StimulusError::PairCarrier {
+                check.result = Err(SoundError::PairCarrier {
                     id,
                     first_hz: pair.first_hz,
                     offset_hz: pair.offset_hz,
@@ -270,7 +268,7 @@ impl TargetCheck {
             return Self {
                 rate,
                 components: Vec::new(),
-                result: Err(StimulusError::TooManyComponents {
+                result: Err(SoundError::TooManyComponents {
                     count: components.len(),
                 }),
             };
@@ -280,7 +278,7 @@ impl TargetCheck {
         let mut results = Vec::with_capacity(components.len());
         for (index, (id, component)) in components.iter().enumerate() {
             if first.is_none() && components[..index].iter().any(|(other, _)| other == id) {
-                first = Some(StimulusError::DuplicateComponentId { id: *id });
+                first = Some(SoundError::DuplicateComponentId { id: *id });
             }
             match component.voice(rate) {
                 Ok(voice) => {
@@ -295,7 +293,7 @@ impl TargetCheck {
                 }
                 Err(error) => {
                     if first.is_none() {
-                        first = Some(StimulusError::Component {
+                        first = Some(SoundError::Component {
                             number: index + 1,
                             error: error.clone(),
                         });
@@ -320,7 +318,7 @@ impl TargetCheck {
                     .into_iter()
                     .find(|(_, amplitude)| *amplitude > 1.0)
                     .map_or(Ok(Target { mix }), |(ear, amplitude)| {
-                        Err(StimulusError::Peak { ear, amplitude })
+                        Err(SoundError::Peak { ear, amplitude })
                     })
             }
         };
@@ -340,13 +338,13 @@ impl TargetCheck {
     /// Each component's own result in input order; empty when the input
     /// exceeds [`Sound::MAX_VOICES`].
     #[must_use]
-    pub fn components(&self) -> &[(ComponentId, Result<ComponentFacts, ComponentError>)] {
+    pub fn components(&self) -> &[(ComponentId, Result<ComponentFacts, VoiceError>)] {
         &self.components
     }
 
     /// The component's own result, when the check compiled it.
     #[must_use]
-    pub fn component(&self, id: ComponentId) -> Option<&Result<ComponentFacts, ComponentError>> {
+    pub fn component(&self, id: ComponentId) -> Option<&Result<ComponentFacts, VoiceError>> {
         self.components
             .iter()
             .find(|(other, _)| *other == id)
@@ -357,7 +355,7 @@ impl TargetCheck {
     ///
     /// # Errors
     /// Returns the first whole-target error.
-    pub const fn result(&self) -> Result<&Target, &StimulusError> {
+    pub const fn result(&self) -> Result<&Target, &SoundError> {
         self.result.as_ref()
     }
 
@@ -371,7 +369,7 @@ impl TargetCheck {
     ///
     /// # Errors
     /// Returns the first whole-target error.
-    pub fn into_result(self) -> Result<Target, StimulusError> {
+    pub fn into_result(self) -> Result<Target, SoundError> {
         self.result
     }
 }

@@ -3,22 +3,24 @@
 //! Strict one-version portable contract; independent shape, byte and numeric oracles.
 use super::{Recipe, RecipeError};
 use crate::{
-    Carrier, Component, ComponentId, Description, DocumentIdentity, Node, Pair, Sound, Voice,
+    Carrier, Component, ComponentForm, ComponentId, Description, DocumentIdentity, Pair, Sound,
+    Voice,
 };
 use alloc::{format, string::ToString, vec, vec::Vec};
 const PAIR: &str = r#"# Two raw tones retain their source order and authored identities.
-schema_version = 3
+schema_version = 4
+[sound]
 duration_seconds = 10.0
 fade_seconds = 0.1
 [document]
 id = "00000000-0000-4000-8000-000000000001"
-[[component]]
+[[sound.component]]
 id = 7
 ears = "left"
 kind = "tone"
 frequency_hz = 250.0
 peak_dbfs = -20.0
-[[component]]
+[[sound.component]]
 id = 19
 ears = "right"
 kind = "tone"
@@ -32,7 +34,7 @@ fn edited(from: &str, to: &str) -> Result<Recipe, RecipeError> {
 #[test]
 fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
     for (from, to) in [
-        ("schema_version = 3\n", ""),
+        ("schema_version = 4\n", ""),
         ("duration_seconds = 10.0\n", ""),
         ("fade_seconds = 0.1\n", ""),
         ("fade_seconds = 0.1", "fade_seconds = 0.1\ngain = 0.1"),
@@ -59,11 +61,11 @@ fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
         ("peak_dbfs = -20.0\n", ""),
         ("peak_dbfs = -20.0", "peak_dbfs = -20.0\npeak_dbfs = -10.0"),
         ("peak_dbfs = -20.0", "gain = 0.1"),
-        ("[[component]]", "[[components]]"),
-        ("[[component]]", "[component]"),
+        ("[[sound.component]]", "[[components]]"),
+        ("[[sound.component]]", "[component]"),
         (
-            "[[component]]",
-            "[signal]\nkind = \"tone\"\n\n[[component]]",
+            "[[sound.component]]",
+            "[signal]\nkind = \"tone\"\n\n[[sound.component]]",
         ),
     ] {
         assert!(
@@ -72,12 +74,12 @@ fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
         );
     }
     let modulated = format!(
-        "{PAIR}\n[component.modulation]\nkind = \"sinusoidal\"\nrate_hz = 4.0\ndepth = 0.5\n"
+        "{PAIR}\n[sound.component.modulation]\nkind = \"am\"\nrate_hz = 4.0\ndepth = 0.5\n"
     );
     assert!(Recipe::parse(&modulated).is_ok());
     for (from, to) in [
-        ("kind = \"sinusoidal\"\n", ""),
-        ("kind = \"sinusoidal\"", "kind = \"square\""),
+        ("kind = \"am\"\n", ""),
+        ("kind = \"am\"", "kind = \"square\""),
         ("depth = 0.5\n", ""),
         ("depth = 0.5", "depth = 0.5\nphase = 0.0"),
         ("rate_hz = 4.0\n", ""),
@@ -94,10 +96,10 @@ fn the_format_rejects_missing_unknown_duplicated_and_mistyped_fields() {
 
 #[test]
 fn another_schema_version_is_reported_before_its_fields_are_read() {
-    for version in [0, 1, 2, 4, 999, u32::MAX] {
+    for version in [0, 1, 2, 3, 999, u32::MAX] {
         // A later version may add fields this build does not know.
         let text = PAIR
-            .replace("schema_version = 3", &format!("schema_version = {version}"))
+            .replace("schema_version = 4", &format!("schema_version = {version}"))
             .replace(
                 "peak_dbfs = -20.0",
                 "peak_dbfs = -20.0\nphase_degrees = 90.0",
@@ -106,11 +108,11 @@ fn another_schema_version_is_reported_before_its_fields_are_read() {
         assert_eq!(error, RecipeError::UnsupportedVersion { found: version });
         assert_eq!(
             error.to_string(),
-            format!("recipe has schema_version {version}; this build reads 3")
+            format!("recipe has schema_version {version}; this build reads 4")
         );
     }
     assert!(matches!(
-        edited("schema_version = 3", "schema_version = \"1\""),
+        edited("schema_version = 4", "schema_version = \"1\""),
         Err(RecipeError::Format(_))
     ));
 }
@@ -172,7 +174,7 @@ fn raw_nodes_keep_ids_source_order_and_optional_description_is_not_audio() {
     let plain = Recipe::parse(PAIR).unwrap();
     assert_eq!(
         plain
-            .stimulus
+            .sound
             .components
             .iter()
             .map(|c| c.id.get())
@@ -184,7 +186,7 @@ fn raw_nodes_keep_ids_source_order_and_optional_description_is_not_audio() {
         "{PAIR}\n[description]\ntitle='Rīga'\nnotes='own notes'\n"
     ))
     .unwrap();
-    assert_eq!(plain.stimulus, with.stimulus);
+    assert_eq!(plain.sound, with.sound);
     for extra in [
         "[description]\nnotes='missing title'",
         "[description]\ntitle=''",
@@ -206,7 +208,7 @@ fn raw_nodes_keep_ids_source_order_and_optional_description_is_not_audio() {
         finite.to_toml().is_ok(),
         "finite acoustically invalid content remains serializable"
     );
-    assert!(finite.stimulus.signal(crate::SampleRate::DEFAULT).is_err());
+    assert!(finite.sound.signal(crate::SampleRate::DEFAULT).is_err());
 }
 #[test]
 fn all_owned_proposed_examples_roundtrip_and_all_rejection_examples_fail() {
@@ -276,7 +278,7 @@ fn every_catalog_recipe_reads_back_equal_after_writing() {
     for entry in crate::catalog::ENTRIES {
         let recipe = Recipe::parse(entry.text).unwrap();
         let text = recipe.to_toml().unwrap();
-        assert!(text.starts_with("schema_version = 3\n"));
+        assert!(text.starts_with("schema_version = 4\n"));
         assert_eq!(Recipe::parse(&text).unwrap(), recipe, "{}", entry.id);
     }
 }
@@ -322,27 +324,27 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                     title: format!("Title {title}"),
                     notes: Some("quote \" slash \\ newline\n é 🎧".into()),
                 });
-                recipe.stimulus = Sound {
+                recipe.sound = Sound {
                     duration_seconds: duration,
                     fade_seconds: fade,
                     components: vec![Component {
                         id: ComponentId::new(91),
-                        node: if compound {
-                            Node::BinauralPair(Pair {
+                        form: if compound {
+                            ComponentForm::BinauralPair(Pair {
                                 first_hz: base,
                                 offset_hz: offset,
                                 first_peak_dbfs: left,
                                 second_peak_dbfs: right,
                             })
                         } else {
-                            Node::Voice(Voice {
+                            ComponentForm::Voice(Voice {
                                 ears: crate::Ears::Both,
                                 peak_dbfs: left,
-                                carrier: Carrier::Click {
+                                carrier: Carrier::Clicks {
                                     rate_hz: base,
                                     width_seconds: offset,
                                 },
-                                modulation: Some(crate::Modulation::Sinusoidal {
+                                modulation: Some(crate::Modulation::Am {
                                     rate_hz: right,
                                     depth: 0.0,
                                 }),
@@ -352,10 +354,10 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                 };
                 let back = Recipe::parse(&recipe.to_toml().unwrap()).unwrap();
                 let bits = |recipe: &Recipe| {
-                    let s = &recipe.stimulus;
+                    let s = &recipe.sound;
                     let mut values = vec![s.duration_seconds.to_bits(), s.fade_seconds.to_bits()];
-                    match s.components[0].node {
-                        Node::BinauralPair(p) => values.extend(
+                    match s.components[0].form {
+                        ComponentForm::BinauralPair(p) => values.extend(
                             [
                                 p.first_hz,
                                 p.offset_hz,
@@ -364,18 +366,16 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                             ]
                             .map(f64::to_bits),
                         ),
-                        Node::Voice(c) => {
+                        ComponentForm::Voice(c) => {
                             values.push(c.peak_dbfs.to_bits());
-                            if let Carrier::Click {
+                            if let Carrier::Clicks {
                                 rate_hz,
                                 width_seconds,
                             } = c.carrier
                             {
                                 values.extend([rate_hz.to_bits(), width_seconds.to_bits()]);
                             }
-                            if let Some(crate::Modulation::Sinusoidal { rate_hz, depth }) =
-                                c.modulation
-                            {
+                            if let Some(crate::Modulation::Am { rate_hz, depth }) = c.modulation {
                                 values.extend([rate_hz.to_bits(), depth.to_bits()]);
                             }
                         }
@@ -398,7 +398,7 @@ fn documented_toml_examples_are_actual_supported_inputs() {
     for block in guide.split("```toml").skip(1) {
         let text = block.split("```").next().unwrap();
         let recipe = Recipe::parse(text).unwrap();
-        recipe.stimulus.signal(crate::SampleRate::DEFAULT).unwrap();
+        recipe.sound.signal(crate::SampleRate::DEFAULT).unwrap();
         count += 1;
     }
     assert_eq!(
@@ -441,4 +441,39 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
     lineage.lineage.push(original.lineage[0].clone());
     assert!(lineage.to_toml().is_err());
     assert_eq!(lineage.lineage.len(), 17);
+}
+
+#[test]
+fn sound_is_required_for_silence_and_root_envelopes_are_rejected() {
+    let silent = "schema_version = 4\n[document]\nid='00000000-0000-4000-8000-000000000001'\n";
+    assert!(matches!(Recipe::parse(silent), Err(RecipeError::Format(_))));
+    let valid = format!("{silent}[sound]\nduration_seconds=1\nfade_seconds=0\n");
+    assert!(Recipe::parse(&valid).unwrap().sound.components.is_empty());
+    let root_envelope = "schema_version = 4\nduration_seconds=1\nfade_seconds=0\n[document]\nid='00000000-0000-4000-8000-000000000001'\n[sound]\nduration_seconds=1\nfade_seconds=0\n";
+    assert!(matches!(
+        Recipe::parse(root_envelope),
+        Err(RecipeError::Format(_))
+    ));
+}
+
+#[test]
+fn canonical_tables_follow_document_description_sound_and_attribution_order() {
+    let recipe = Recipe::parse(include_str!(
+        "../../tests/fixtures/recipes/custom-derived-pair.toml"
+    ))
+    .unwrap();
+    let text = recipe.to_toml().unwrap();
+    let tables: Vec<_> = text.lines().filter(|line| line.starts_with('[')).collect();
+    assert_eq!(
+        tables,
+        [
+            "[document]",
+            "[description]",
+            "[sound]",
+            "[[sound.component]]",
+            "[[source]]",
+            "[[evidence]]",
+            "[[lineage]]"
+        ]
+    );
 }

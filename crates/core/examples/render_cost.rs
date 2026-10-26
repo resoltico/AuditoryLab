@@ -1,7 +1,8 @@
 //! Offline rendering cost at 48 kHz: `cargo run -p auditorylab-core --example render_cost --release`.
 //! Each case renders twenty seconds. No audio device is opened.
 use auditorylab_core::{
-    Carrier, Component, ComponentId, Ears, Modulation, Node, SampleRate, Sound, Voice, live::Engine,
+    Carrier, Component, ComponentForm, ComponentId, Ears, Modulation, SampleRate, Sound, Voice,
+    live::Engine,
 };
 use std::{error::Error, hint::black_box, time::Instant};
 const RATE: u32 = 48_000;
@@ -17,7 +18,7 @@ fn measure(components: Vec<Voice>) -> Result<[f64; 3], Box<dyn Error>> {
             .map(|(index, voice)| {
                 Ok(Component {
                     id: ComponentId::new(u32::try_from(index)? + 1),
-                    node: Node::Voice(voice),
+                    form: ComponentForm::Voice(voice),
                 })
             })
             .collect::<Result<_, std::num::TryFromIntError>>()?,
@@ -82,7 +83,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             carrier: Carrier::Tone {
                 frequency_hz: 200.0 + 50.0 * f64::from(i),
             },
-            modulation: Some(Modulation::Sinusoidal {
+            modulation: Some(Modulation::Am {
                 rate_hz: 40.0,
                 depth: 1.0,
             }),

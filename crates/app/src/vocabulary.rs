@@ -10,7 +10,7 @@ pub const fn method_search_terms(method: Method) -> &'static str {
         Method::Monaural => "monaural pair",
         Method::Clicks => "click clicks",
         Method::Gate => "gate gated rectangular",
-        Method::AmplitudeModulation => "am amplitude-modulation sinusoidal",
+        Method::Am => "am am sinusoidal",
         Method::SteadyTone => "steady-tone steady tone",
     }
 }

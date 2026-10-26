@@ -1,9 +1,7 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
 # Source parameters and adaptations: see docs/catalog.md.
-schema_version = 3
-duration_seconds = 60.0
-fade_seconds = 0.1
+schema_version = 4
 
 [document]
 id = "3f1e196c-7fb8-465b-98f4-2cb1163b6770"
@@ -11,7 +9,11 @@ id = "3f1e196c-7fb8-465b-98f4-2cb1163b6770"
 [description]
 title = "200 Hz pure tone"
 
-[[component]]
+[sound]
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[[sound.component]]
 id = 1
 ears = "both"
 kind = "tone"

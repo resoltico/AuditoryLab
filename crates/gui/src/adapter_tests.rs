@@ -338,8 +338,8 @@ fn generated_editing_callbacks_reach_the_workspace_and_project_its_results() {
         [
             ParameterKey::ToneFrequency,
             ParameterKey::PeakLevel,
-            ParameterKey::AmplitudeModulationRate,
-            ParameterKey::ModulationDepth
+            ParameterKey::AmRate,
+            ParameterKey::AmDepth
         ]
     );
     ui.invoke_set_ears(binding.clone(), 1);
@@ -437,13 +437,7 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
     ];
     let modulations = [
         (0, vec![]),
-        (
-            1,
-            vec![
-                ParameterKey::AmplitudeModulationRate,
-                ParameterKey::ModulationDepth,
-            ],
-        ),
+        (1, vec![ParameterKey::AmRate, ParameterKey::AmDepth]),
         (2, vec![ParameterKey::GateRate, ParameterKey::GateWidth]),
     ];
     for (carrier, carrier_keys) in &carriers {
@@ -497,7 +491,7 @@ fn a_focused_field_survives_updates_to_other_rows() {
     }
     h.settle();
     let nested_before = ui.get_components().row_data(1).unwrap().parameters;
-    let input = h.field("Click rhythm · component 2: Click rate (Hz)");
+    let input = h.field("Clicks rhythm · component 2: Clicks rate (Hz)");
     let inner = WindowInner::from_pub(ui.window());
     inner.set_focus_item(&input, true, FocusReason::Programmatic);
     for _ in 0..4 {
@@ -539,7 +533,7 @@ fn a_focused_field_survives_updates_to_other_rows() {
         "the nested model object is kept"
     );
     assert_eq!(
-        field(ui, "Click rhythm · component 1: Click rate (Hz)"),
+        field(ui, "Clicks rhythm · component 1: Clicks rate (Hz)"),
         input,
         "the moved row relabels the same widget"
     );
@@ -718,10 +712,14 @@ fn an_imported_recipe_is_scrolled_into_view() {
     ui.set_library_scroll_y(0.0);
     h.settle();
     let path = directory.path().join("imported.toml");
-    std::fs::write(
-        &path,
-        "schema_version = 3\nduration_seconds = 1.0\nfade_seconds = 0.01\n\n[description]\ntitle = \"Imported probe\"\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
-    )
+    std::fs::write(&path, {
+        let mut recipe = crate::test_recipes::silent(1.0, 0.01);
+        recipe.description = Some(auditorylab::core::Description {
+            title: "Imported probe".into(),
+            notes: None,
+        });
+        recipe.to_toml().unwrap()
+    })
     .unwrap();
     ui.invoke_open_recipe();
     let [Request::Path(prompt, PathPurpose::OpenRecipe, _)] = h.take()[..] else {
@@ -1152,7 +1150,11 @@ fn assert_library_play_during_file(save: bool) {
         h.settle();
         file
     } else {
-        std::fs::write(&path, "schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n").unwrap();
+        std::fs::write(
+            &path,
+            crate::test_recipes::silent(0.01, 0.0).to_toml().unwrap(),
+        )
+        .unwrap();
         ui.invoke_open_recipe();
         assert!(
             !ui.get_can_play(),
@@ -1500,7 +1502,7 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
     );
     let value = h.adapter.inspect(|w| {
         w.editor().draft().components()[0]
-            .node
+            .form
             .read(ParameterId::PairFirstFrequency)
             .unwrap()
     });
@@ -1527,10 +1529,10 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
 #[test]
 fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
     let mut recipe = auditorylab::editing::Draft::new().unwrap().recipe();
-    recipe.stimulus.components = vec![
+    recipe.sound.components = vec![
         auditorylab::core::Component {
             id: auditorylab::core::ComponentId::new(u32::MAX),
-            node: auditorylab::core::Node::BinauralPair(auditorylab::core::Pair {
+            form: auditorylab::core::ComponentForm::BinauralPair(auditorylab::core::Pair {
                 first_hz: 200.0,
                 offset_hz: 2.0,
                 first_peak_dbfs: -30.0,
@@ -1539,9 +1541,9 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
         },
         auditorylab::core::Component {
             id: auditorylab::core::ComponentId::new(u32::MAX - 1),
-            node: auditorylab::core::Node::Voice(auditorylab::controls::default_component(
-                auditorylab::core::CarrierKind::Clicks,
-            )),
+            form: auditorylab::core::ComponentForm::Voice(
+                auditorylab::controls::default_component(auditorylab::core::CarrierKind::Clicks),
+            ),
         },
     ];
     let snapshot = auditorylab::recipe::RecipeSnapshot::new(
@@ -1563,7 +1565,7 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
         .invoke_commit_parameter(first.clone(), ParameterKey::PairOffset, "6".into());
     assert_eq!(
         h.adapter.inspect(|w| w.editor().draft().components()[1]
-            .node
+            .form
             .read(ParameterId::ClickRate)),
         Some(40.0)
     );
@@ -2651,7 +2653,7 @@ fn filter_controls_map_to_independent_typed_queries() {
             (2, Method::Monaural),
             (3, Method::Clicks),
             (4, Method::Gate),
-            (5, Method::AmplitudeModulation),
+            (5, Method::Am),
             (6, Method::SteadyTone),
         ] {
             ui.invoke_rhythm_filter(band_choice, method_choice);
@@ -3256,7 +3258,7 @@ fn library_ux_component_menu_adds_every_kind_and_retains_its_document() {
     let ui = h.ui();
     for (index, label) in [
         "Add steady tone",
-        "Add click rhythm",
+        "Add clicks rhythm",
         "Add binaural pair",
         "Add monaural pair",
     ]

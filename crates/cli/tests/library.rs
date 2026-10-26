@@ -34,7 +34,7 @@ fn json(output: &std::process::Output) -> serde_json::Value {
 }
 #[expect(
     clippy::unwrap_used,
-    reason = "A bounded external schema-3 fixture with unknown history must construct"
+    reason = "A bounded external schema-4 fixture with unknown history must construct"
 )]
 fn input(path: &Path, title: &str) -> auditorylab::core::Recipe {
     let mut draft = auditorylab::editing::Draft::new().unwrap();
@@ -122,7 +122,7 @@ fn native_cli_lifecycle_conflicts_dates_export_and_trash_are_shared_store_operat
     );
     assert!(add.status.success(), "{add:?}");
     let added = json(&add);
-    assert_eq!(added["output_schema_version"], 1);
+    assert_eq!(added["output_schema_version"], 2);
     assert_eq!(added["status"], "published");
     assert_eq!(added["entries"][0]["created_at"], serde_json::Value::Null);
     assert_eq!(added["entries"][0]["modified_at"], serde_json::Value::Null);

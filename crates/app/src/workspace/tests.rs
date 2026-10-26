@@ -508,10 +508,12 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
 #[test]
 fn copy_availability_and_execution_share_the_component_limit() {
     let mut recipe = Draft::new().unwrap().recipe();
-    recipe.stimulus.components = (0..=Sound::MAX_COMPONENTS)
+    recipe.sound.components = (0..=Sound::MAX_COMPONENTS)
         .map(|i| crate::core::Component {
             id: ComponentId::numbered(i).unwrap(),
-            node: crate::core::Node::Voice(crate::controls::default_component(CarrierKind::Tone)),
+            form: crate::core::ComponentForm::Voice(crate::controls::default_component(
+                CarrierKind::Tone,
+            )),
         })
         .collect();
     let snapshot = RecipeSnapshot::new(crate::recipe::Origin::Stream("too many".into()), recipe);
@@ -531,9 +533,9 @@ fn copy_availability_and_execution_share_the_component_limit() {
 #[test]
 fn copy_preflight_refuses_nonfinite_or_full_metadata_before_touching_dirty_work() {
     let mut source = Draft::new().unwrap().recipe();
-    source.stimulus.components.push(crate::core::Component {
+    source.sound.components.push(crate::core::Component {
         id: ComponentId::new(1),
-        node: crate::core::Node::Voice(crate::core::Voice {
+        form: crate::core::ComponentForm::Voice(crate::core::Voice {
             carrier: crate::core::Carrier::Tone {
                 frequency_hz: f64::NAN,
             },
@@ -556,10 +558,10 @@ fn copy_preflight_refuses_nonfinite_or_full_metadata_before_touching_dirty_work(
     assert_eq!(ws.editor().document(), doc);
     assert_eq!(ws.editor().draft().recipe(), before);
     assert!(ws.take_effects().is_empty());
-    source.stimulus.components[0]
-        .node
+    source.sound.components[0]
+        .form
         .write(auditorylab_core::ParameterId::ToneFrequency, 440.0);
-    source.stimulus.duration_seconds = -1.0;
+    source.sound.duration_seconds = -1.0;
     let finite = RecipeSnapshot::new(
         crate::recipe::Origin::Stream("finite invalid".into()),
         source,
@@ -660,13 +662,19 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
     std::fs::create_dir_all(&base).unwrap();
     let dir = tempfile::tempdir_in(base).unwrap();
     let path = dir.path().join("same.toml");
-    let first_text = "schema_version=3\nduration_seconds=1\nfade_seconds=0\n[description]\ntitle='First'\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
-    std::fs::write(&path, first_text).unwrap();
+    let text = |duration, title: &str| {
+        let mut recipe = crate::test_recipes::silent(duration, 0.0);
+        recipe.description = Some(crate::core::Description {
+            title: title.into(),
+            notes: None,
+        });
+        recipe.to_toml().unwrap()
+    };
+    let first_text = text(1.0, "First");
+    let second_text = text(2.0, "Second");
+    std::fs::write(&path, &first_text).unwrap();
     let mut ws = workspace();
-    for text in [
-        first_text,
-        "schema_version=3\nduration_seconds=2\nfade_seconds=0\n[description]\ntitle='Second'\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
-    ] {
+    for text in [&first_text, &second_text] {
         std::fs::write(&path, text).unwrap();
         ws.import().unwrap();
         let Effect::ChoosePath { prompt, .. } = ws.take_effects()[0] else {
@@ -677,7 +685,7 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
             answer: PromptAnswer::Path(Some(path.clone())),
         });
         drain_files(&mut ws);
-        if text == first_text {
+        if text == &first_text {
             ws.copy_selected();
             assert!(matches!(
                 ws.take_effects().as_slice(),
@@ -813,8 +821,8 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
     let key = crate::library::LibraryKey::User(captured.document.id);
     let saved = workspace.store.load(&key).unwrap();
     assert_eq!(
-        saved.snapshot.stimulus().components[0]
-            .node
+        saved.snapshot.sound().components[0]
+            .form
             .read(ParameterId::ToneFrequency),
         Some(440.0)
     );
@@ -832,7 +840,7 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
     );
     assert_eq!(
         workspace.editor().draft().components()[0]
-            .node
+            .form
             .read(ParameterId::ToneFrequency),
         Some(880.0)
     );
@@ -872,8 +880,8 @@ fn captured_save_completion_never_replaces_a_different_editor_document() {
         .load(&crate::library::LibraryKey::User(captured.document.id))
         .unwrap();
     assert_eq!(
-        saved.snapshot.stimulus().components[0]
-            .node
+        saved.snapshot.sound().components[0]
+            .form
             .read(ParameterId::ToneFrequency),
         Some(440.0)
     );
@@ -1108,8 +1116,8 @@ fn portable_export_keeps_the_prompt_capture_and_does_not_advance_the_save_baseli
     let saved = crate::recipe::load_file(&path).unwrap();
     assert_eq!(saved.recipe().document.id, identity);
     assert_eq!(
-        saved.stimulus().components[0]
-            .node
+        saved.sound().components[0]
+            .form
             .read(ParameterId::ToneFrequency),
         Some(440.0)
     );
@@ -1264,7 +1272,7 @@ fn committed_brief_never_borrows_pending_pair_facts() {
         assert!(!view.brief.contains("357") && !view.brief.contains("No valid sound"));
         assert_eq!(
             ws.editor().draft().components()[0]
-                .node
+                .form
                 .pair()
                 .unwrap()
                 .offset_hz,

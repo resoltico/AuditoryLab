@@ -77,7 +77,7 @@ enum PreviewIssue {
     Acoustic {
         title: String,
         rate: SampleRate,
-        error: Option<crate::core::StimulusError>,
+        error: Option<crate::core::SoundError>,
     },
 }
 impl PreviewIssue {

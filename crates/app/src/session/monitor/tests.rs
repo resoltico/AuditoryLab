@@ -29,7 +29,7 @@ fn numbered(rate: SampleRate, components: &[Voice]) -> Target {
         .enumerate()
         .map(|(i, c)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(i).unwrap(),
-            node: auditorylab_core::Node::Voice(*c),
+            form: auditorylab_core::ComponentForm::Voice(*c),
         })
         .collect();
     Sound {
@@ -59,7 +59,7 @@ fn signal(hz: u32) -> crate::core::Signal {
         .enumerate()
         .map(|(index, voice)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-            node: auditorylab_core::Node::Voice(voice),
+            form: auditorylab_core::ComponentForm::Voice(voice),
         })
         .collect(),
     }
@@ -276,7 +276,7 @@ fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
     let clicks: Vec<Voice> = tones
         .iter()
         .map(|c| Voice {
-            carrier: Carrier::Click {
+            carrier: Carrier::Clicks {
                 rate_hz: 40.0,
                 width_seconds: 0.001,
             },
@@ -443,7 +443,7 @@ fn callback_cost() {
                         carrier: Carrier::Tone {
                             frequency_hz: 200.0 + f64::from(n) * 20.0,
                         },
-                        modulation: Some(crate::core::Modulation::Sinusoidal {
+                        modulation: Some(crate::core::Modulation::Am {
                             rate_hz: 23.0 + f64::from(n) * 0.75,
                             depth: 1.0,
                         }),
@@ -456,7 +456,7 @@ fn callback_cost() {
                         .iter()
                         .enumerate()
                         .map(|(n, c)| Voice {
-                            carrier: Carrier::Click {
+                            carrier: Carrier::Clicks {
                                 rate_hz: 40.0 + f64::from(u32::try_from(n).unwrap()),
                                 width_seconds: 0.001,
                             },
@@ -731,7 +731,7 @@ fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                node: auditorylab_core::Node::Voice(voice),
+                form: auditorylab_core::ComponentForm::Voice(voice),
             })
             .collect(),
         }
@@ -797,7 +797,7 @@ fn maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots() {
             carrier: Carrier::Tone {
                 frequency_hz: 200.0 + f64::from(n) * 20.0,
             },
-            modulation: Some(crate::core::Modulation::Sinusoidal {
+            modulation: Some(crate::core::Modulation::Am {
                 rate_hz: 23.0 + f64::from(n) * 0.75,
                 depth: 1.0,
             }),
@@ -809,7 +809,7 @@ fn maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots() {
         &voices
             .iter()
             .map(|voice| Voice {
-                carrier: Carrier::Click {
+                carrier: Carrier::Clicks {
                     rate_hz: 40.0,
                     width_seconds: 0.001,
                 },

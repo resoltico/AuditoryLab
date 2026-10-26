@@ -1,7 +1,5 @@
-schema_version = 3
+schema_version = 4
 band = "delta"
-duration_seconds = 60.0
-fade_seconds = 0.1
 
 [document]
 id = "00000000-0000-4000-8000-000000000108"
@@ -12,7 +10,11 @@ modified_at = "2026-10-24T06:30:00.000000000Z"
 title = "My 6 Hz exploration"
 notes = "Design fixture, not a clinical claim."
 
-[[component]]
+[sound]
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[[sound.component]]
 id = 1
 kind = "binaural_pair"
 left_hz = 200.0

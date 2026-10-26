@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use auditorylab_core::{Carrier, Component, Node};
+use auditorylab_core::{Carrier, Component, ComponentForm};
 
 fn editor_with(components: &[Voice]) -> EditorSession {
     let mut draft = Draft::new().unwrap();
@@ -115,7 +115,7 @@ fn commit_is_atomic_over_the_whole_candidate() {
 
 #[test]
 fn inherited_nonfinite_values_block_commit_save_until_repaired() {
-    let text = "schema_version=3\nduration_seconds=nan\nfade_seconds=0\n[[component]]\nid=1\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=inf\n[[component]]\nid=2\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=440\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
+    let text = "schema_version=4\n[sound]\nduration_seconds=nan\nfade_seconds=0\n[[sound.component]]\nid=1\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=inf\n[[sound.component]]\nid=2\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=440\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
     assert!(
         crate::recipe::load_reader(text.as_bytes(), "nonfinite import").is_err(),
         "nonfinite portable files are rejected"
@@ -212,7 +212,7 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
     editor
         .set_modulation(
             editor.component_key(first).unwrap(),
-            Some(ModulationKind::Rectangular),
+            Some(ModulationKind::Gate),
             SampleRate::DEFAULT,
         )
         .unwrap();
@@ -264,7 +264,7 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
             1,
             &Component {
                 id: middle,
-                node: Node::Voice(tone(550.0))
+                form: ComponentForm::Voice(tone(550.0))
             }
         ))
     );
@@ -283,7 +283,7 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     assert_eq!(ids[1], middle, "the same identity returns to its place");
     assert_eq!(
         editor.draft().component(middle),
-        Some(&Node::Voice(tone(550.0)))
+        Some(&ComponentForm::Voice(tone(550.0)))
     );
     assert_eq!(editor.staged(frequency.field), Some("bad"));
     assert_eq!(
@@ -319,7 +319,7 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
             1,
             &Component {
                 id: last,
-                node: Node::Voice(tone(660.0))
+                form: ComponentForm::Voice(tone(660.0))
             }
         ))
     );
@@ -342,7 +342,7 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
             1,
             &Component {
                 id: last,
-                node: Node::Voice(tone(660.0))
+                form: ComponentForm::Voice(tone(660.0))
             }
         ))
     );
@@ -479,12 +479,12 @@ fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids()
     assert_eq!(d.title(), format!("{} (edited)", snapshot.title()));
     assert_eq!(d.based_on().unwrap().id(), snapshot.id());
     let ids: Vec<_> = d.components().iter().map(|c| c.id).collect();
-    let target = snapshot.stimulus().target(SampleRate::DEFAULT).unwrap();
+    let target = snapshot.sound().target(SampleRate::DEFAULT).unwrap();
     let recipe_ids: Vec<_> = target.components().map(|(id, _)| id).collect();
     assert_eq!(
         ids,
         snapshot
-            .stimulus()
+            .sound()
             .components
             .iter()
             .map(|c| c.id)
@@ -516,7 +516,7 @@ fn save_round_trips_and_keeps_existing_destinations() {
     save_content(&d.recipe(), &path, crate::workflow::Replace::Never).unwrap();
     let bytes = std::fs::read(&path).unwrap();
     let loaded = crate::recipe::load_file(&path).unwrap();
-    assert_eq!(loaded.stimulus(), &d.stimulus());
+    assert_eq!(loaded.sound(), &d.sound());
     assert_eq!(
         save_content(&d.recipe(), &path, crate::workflow::Replace::Never)
             .unwrap_err()
@@ -595,11 +595,11 @@ fn the_entire_document_including_unicode_anchor_has_exact_byte_neighbours() {
 #[test]
 fn finite_invalid_current_content_saves_and_nonfinite_content_never_touches_a_destination() {
     let mut recipe = Draft::new().unwrap().recipe();
-    recipe.stimulus.duration_seconds = -1.0;
-    recipe.stimulus.fade_seconds = 9.0;
+    recipe.sound.duration_seconds = -1.0;
+    recipe.sound.fade_seconds = 9.0;
     let text = serialize(&recipe).unwrap();
     assert_eq!(Recipe::parse(&text).unwrap(), recipe);
-    recipe.stimulus.duration_seconds = f64::NAN;
+    recipe.sound.duration_seconds = f64::NAN;
     assert!(serialize(&recipe).is_err());
     let mut editor = EditorSession::new(Draft::from_recipe(Recipe::parse(&text).unwrap())).unwrap();
     assert!(editor.save_readiness().is_ok());
@@ -634,7 +634,7 @@ fn descriptions_and_equivalent_text_do_not_recompile_sound_inputs() {
 #[test]
 fn nominal_cache_and_saved_memberships_follow_distinct_committed_snapshots() {
     let mut c = tone(240.0);
-    c.carrier = Carrier::Click {
+    c.carrier = Carrier::Clicks {
         rate_hz: 2.0,
         width_seconds: 0.001,
     };
@@ -816,18 +816,14 @@ fn the_application_rejects_retired_field_and_structural_callbacks_after_undo() {
         Err(EditRefusal::StaleRow)
     );
     assert_eq!(
-        editor.set_modulation(
-            current,
-            Some(ModulationKind::Sinusoidal),
-            SampleRate::DEFAULT
-        ),
+        editor.set_modulation(current, Some(ModulationKind::Am), SampleRate::DEFAULT),
         Err(EditRefusal::StaleRow)
     );
     assert_eq!(editor.remove_component(current), Err(EditRefusal::StaleRow));
     assert_eq!(editor.staged(field.field), Some("bad"));
     assert_eq!(
         editor.draft().component(id),
-        Some(&Node::Voice(tone(440.0)))
+        Some(&ComponentForm::Voice(tone(440.0)))
     );
     editor
         .commit_field(
@@ -929,7 +925,7 @@ fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_a
         ComponentId::new(1).with_lane(auditorylab_core::Lane::Secondary),
     ] {
         let mut invalid = recipe.clone();
-        invalid.stimulus.components[0].id = id;
+        invalid.sound.components[0].id = id;
         assert_eq!(
             EditorSession::new(Draft::from_recipe(invalid))
                 .unwrap_err()
@@ -939,9 +935,9 @@ fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_a
     }
     let mut duplicate = recipe.clone();
     duplicate
-        .stimulus
+        .sound
         .components
-        .push(duplicate.stimulus.components[0]);
+        .push(duplicate.sound.components[0]);
     assert_eq!(
         EditorSession::new(Draft::from_recipe(duplicate))
             .unwrap_err()
@@ -949,8 +945,8 @@ fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_a
         ErrorKind::InvalidRecipe
     );
     let mut acoustic = recipe;
-    acoustic.stimulus.components[0]
-        .node
+    acoustic.sound.components[0]
+        .form
         .write(ParameterId::ToneFrequency, -1.0);
     let editor = EditorSession::new(Draft::from_recipe(acoustic)).unwrap();
     assert!(editor.component_key(ComponentId::new(1)).is_some());
@@ -967,7 +963,7 @@ fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_a
 #[test]
 fn authored_and_expanded_addition_boundaries_report_current_counts() {
     use auditorylab_core::PairKind;
-    let primitive = Node::Voice(tone(440.0));
+    let primitive = ComponentForm::Voice(tone(440.0));
     let pair = controls::default_pair(PairKind::Binaural);
     for (primitives, pairs, requested, expected) in [
         (
@@ -1026,7 +1022,7 @@ fn authored_and_expanded_addition_boundaries_report_current_counts() {
                 0,
                 Component {
                     id: ComponentId::new(100),
-                    node: requested
+                    form: requested
                 }
             ),
             Err(expected)

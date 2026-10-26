@@ -1,4 +1,5 @@
 //! Public-library live generation without an audio device.
+mod common;
 use auditorylab::core::interpretation::Structure;
 use auditorylab::core::{
     Carrier, CarrierKind, ComponentId, Ears, ParameterId, SampleRate, Target, Voice,
@@ -83,19 +84,28 @@ fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarg
 
 #[test]
 fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
-    for (text, expected) in [
-        ("", false),
+    for (voices, expected) in [
+        (vec![], false),
         (
-            "[[component]]\nid=1\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=380\n[[component]]\nid=2\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=420\n",
+            vec![component(380.0, Ears::Both), component(420.0, Ears::Both)],
             false,
         ),
         (
-            "[[component]]\nid=1\nears='left'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=380\n[[component]]\nid=2\nears='right'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=420\n",
+            vec![component(380.0, Ears::Left), component(420.0, Ears::Right)],
             true,
         ),
     ] {
+        let mut recipe = common::silent(1.0, 0.0);
+        recipe.sound.components = voices
+            .into_iter()
+            .enumerate()
+            .map(|(index, voice)| auditorylab::core::Component {
+                id: auditorylab::core::ComponentId::numbered(index).unwrap(),
+                form: auditorylab::core::ComponentForm::Voice(voice),
+            })
+            .collect();
         let snapshot = auditorylab::recipe::load_reader(
-            format!("schema_version=3\nduration_seconds=1\nfade_seconds=0\n{text}\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n").as_bytes(),
+            recipe.to_toml().unwrap().as_bytes(),
             "called binaural even if not a pair",
         )
         .unwrap();
@@ -121,7 +131,7 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,
-                node: auditorylab_core::Node::Voice(*voice),
+                form: auditorylab_core::ComponentForm::Voice(*voice),
             })
             .collect(),
     }
@@ -153,7 +163,7 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
         "role label, not Debug"
     );
     assert!(text.starts_with("Changing"));
-    assert_eq!(ParameterId::ClickWidth.descriptor().label, "Click width");
+    assert_eq!(ParameterId::ClickWidth.descriptor().label, "Clicks width");
 }
 
 #[test]

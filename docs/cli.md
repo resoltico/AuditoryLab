@@ -55,7 +55,7 @@ Search normalizes Unicode/case and requires every term. Bare numeric `20` matche
 | Option | Values / semantics |
 |---|---|
 | `--band` | delta, theta, alpha, beta, gamma |
-| `--method` | binaural, monaural, clicks, gate, amplitude-modulation, steady-tone |
+| `--method` | binaural, monaural, clicks, gate, am, steady-tone |
 | `--rhythms` | none, multiple, outside-bands, needs-review |
 | `--study` | DOI or local source key (`key:NAME` is explicit) |
 | `--role` | test, comparison, mixed, unspecified |
@@ -75,7 +75,7 @@ Automatic ordering is rate ascending for All/Built-in, modified descending for U
 
 ## Output and failures
 
-CLI JSON output **1**, defined by [`reports::OUTPUT_SCHEMA_VERSION`](../crates/app/src/reports.rs), uses numeric quantities, explicit null unknowns, normalized UTC instants, the effective query, unique entries, group-key references and diagnostics. Read-only partial inventories retain healthy rows with `complete:false`. IDs output accepts only reusable persistent selectors, rejects grouping/temporary inputs, and emits **no stdout IDs** when discovery is incomplete.
+CLI JSON output **2**, defined by [`reports::OUTPUT_SCHEMA_VERSION`](../crates/app/src/reports.rs), uses numeric quantities, explicit null unknowns, normalized UTC instants, the effective query, unique entries, group-key references and diagnostics. Read-only partial inventories retain healthy rows with `complete:false`. IDs output accepts only reusable persistent selectors, rejects grouping/temporary inputs, and emits **no stdout IDs** when discovery is incomplete.
 
 Human prose follows terminal width (78 columns when redirected); controls and bidi overrides are escaped. Raw recipe bytes remain unchanged. JSON escapes unsafe display controls without changing decoded data. Read-only broken pipes are quiet success; mutation reporting failure cannot undo publication and reports confirmed publication and an output warning on stderr.
 

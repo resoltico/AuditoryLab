@@ -99,3 +99,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     result?;
     shutdown.map_err(Into::into)
 }
+
+#[cfg(test)]
+#[path = "../tests/common/mod.rs"]
+mod test_recipes;

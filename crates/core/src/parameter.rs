@@ -139,13 +139,13 @@ pub enum ParameterId {
     ClickWidth,
     /// A component's peak level.
     PeakLevel,
-    /// Sinusoidal amplitude modulation's rate.
-    AmplitudeModulationRate,
-    /// Sinusoidal amplitude modulation's depth.
-    ModulationDepth,
-    /// Rectangular gating's repetition rate.
+    /// Sine amplitude modulation's rate.
+    AmRate,
+    /// Sine amplitude modulation's depth.
+    AmDepth,
+    /// Gating's repetition rate.
     GateRate,
-    /// Rectangular gating's requested open length.
+    /// Gating's requested open length.
     GateWidth,
     /// First/left carrier of an authored pair.
     PairFirstFrequency,
@@ -181,8 +181,8 @@ impl ParameterId {
         Self::ClickRate,
         Self::ClickWidth,
         Self::PeakLevel,
-        Self::AmplitudeModulationRate,
-        Self::ModulationDepth,
+        Self::AmRate,
+        Self::AmDepth,
         Self::GateRate,
         Self::GateWidth,
         Self::PairFirstFrequency,
@@ -199,8 +199,8 @@ impl ParameterId {
         Self::ClickRate,
         Self::ClickWidth,
         Self::PeakLevel,
-        Self::AmplitudeModulationRate,
-        Self::ModulationDepth,
+        Self::AmRate,
+        Self::AmDepth,
         Self::GateRate,
         Self::GateWidth,
         Self::PairFirstFrequency,
@@ -219,12 +219,12 @@ impl ParameterId {
                 "How many cycles per second the sine tone has.",
             ),
             Self::ClickRate => (
-                "Click rate",
+                "Clicks rate",
                 Unit::Hertz,
                 "How many clicks start each second; every click starts at its exact scheduled time.",
             ),
             Self::ClickWidth => (
-                "Click width",
+                "Clicks width",
                 Unit::Milliseconds,
                 "How long each click lasts; generation rounds it to whole frames at the sample rate.",
             ),
@@ -233,12 +233,12 @@ impl ParameterId {
                 Unit::DecibelsFullScale,
                 "The component's highest level relative to digital full scale; 0 dBFS is the maximum.",
             ),
-            Self::AmplitudeModulationRate => (
+            Self::AmRate => (
                 "Modulation rate",
                 Unit::Hertz,
                 "How many times each second the sinusoidal envelope rises and falls.",
             ),
-            Self::ModulationDepth => (
+            Self::AmDepth => (
                 "Modulation depth",
                 Unit::Percent,
                 "How far the envelope dips: 0% leaves the level steady and 100% reaches silence.",
@@ -301,12 +301,12 @@ impl ParameterId {
         match (self, component.carrier, component.modulation) {
             (Self::PeakLevel, _, _) => Some(component.peak_dbfs),
             (Self::ToneFrequency, Carrier::Tone { frequency_hz }, _) => Some(frequency_hz),
-            (Self::ClickRate, Carrier::Click { rate_hz, .. }, _) => Some(rate_hz),
-            (Self::ClickWidth, Carrier::Click { width_seconds, .. }, _) => Some(width_seconds),
-            (Self::AmplitudeModulationRate, _, Some(Modulation::Sinusoidal { rate_hz, .. }))
-            | (Self::GateRate, _, Some(Modulation::Rectangular { rate_hz, .. })) => Some(rate_hz),
-            (Self::ModulationDepth, _, Some(Modulation::Sinusoidal { depth, .. })) => Some(depth),
-            (Self::GateWidth, _, Some(Modulation::Rectangular { width_seconds, .. })) => {
+            (Self::ClickRate, Carrier::Clicks { rate_hz, .. }, _) => Some(rate_hz),
+            (Self::ClickWidth, Carrier::Clicks { width_seconds, .. }, _) => Some(width_seconds),
+            (Self::AmRate, _, Some(Modulation::Am { rate_hz, .. }))
+            | (Self::GateRate, _, Some(Modulation::Gate { rate_hz, .. })) => Some(rate_hz),
+            (Self::AmDepth, _, Some(Modulation::Am { depth, .. })) => Some(depth),
+            (Self::GateWidth, _, Some(Modulation::Gate { width_seconds, .. })) => {
                 Some(width_seconds)
             }
             _ => None,
@@ -319,26 +319,24 @@ impl ParameterId {
         let slot = match (self, &mut component.carrier, &mut component.modulation) {
             (Self::PeakLevel, _, _) => &mut component.peak_dbfs,
             (Self::ToneFrequency, Carrier::Tone { frequency_hz }, _) => frequency_hz,
-            (Self::ClickRate, Carrier::Click { rate_hz, .. }, _) => rate_hz,
-            (Self::ClickWidth, Carrier::Click { width_seconds, .. }, _) => width_seconds,
-            (Self::AmplitudeModulationRate, _, Some(Modulation::Sinusoidal { rate_hz, .. }))
-            | (Self::GateRate, _, Some(Modulation::Rectangular { rate_hz, .. })) => rate_hz,
-            (Self::ModulationDepth, _, Some(Modulation::Sinusoidal { depth, .. })) => depth,
-            (Self::GateWidth, _, Some(Modulation::Rectangular { width_seconds, .. })) => {
-                width_seconds
-            }
+            (Self::ClickRate, Carrier::Clicks { rate_hz, .. }, _) => rate_hz,
+            (Self::ClickWidth, Carrier::Clicks { width_seconds, .. }, _) => width_seconds,
+            (Self::AmRate, _, Some(Modulation::Am { rate_hz, .. }))
+            | (Self::GateRate, _, Some(Modulation::Gate { rate_hz, .. })) => rate_hz,
+            (Self::AmDepth, _, Some(Modulation::Am { depth, .. })) => depth,
+            (Self::GateWidth, _, Some(Modulation::Gate { width_seconds, .. })) => width_seconds,
             _ => return false,
         };
         *slot = value;
         true
     }
 
-    /// The stimulus's value of [`ParameterId::Duration`] or [`ParameterId::Fade`].
+    /// The sound's value of [`ParameterId::Duration`] or [`ParameterId::Fade`].
     #[must_use]
-    pub const fn read_envelope(self, stimulus: &Sound) -> Option<f64> {
+    pub const fn read_envelope(self, sound: &Sound) -> Option<f64> {
         match self {
-            Self::Duration => Some(stimulus.duration_seconds),
-            Self::Fade => Some(stimulus.fade_seconds),
+            Self::Duration => Some(sound.duration_seconds),
+            Self::Fade => Some(sound.fade_seconds),
             _ => None,
         }
     }
@@ -379,7 +377,7 @@ impl Carrier {
     pub const fn kind(&self) -> CarrierKind {
         match self {
             Self::Tone { .. } => CarrierKind::Tone,
-            Self::Click { .. } => CarrierKind::Clicks,
+            Self::Clicks { .. } => CarrierKind::Clicks,
         }
     }
 }
@@ -388,21 +386,21 @@ impl Carrier {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModulationKind {
     /// A sinusoidal envelope.
-    Sinusoidal,
-    /// Rectangular gating.
-    Rectangular,
+    Am,
+    /// Periodic rectangular gating.
+    Gate,
 }
 
 impl ModulationKind {
     /// Every modulation kind in display order.
-    pub const ALL: [Self; 2] = [Self::Sinusoidal, Self::Rectangular];
+    pub const ALL: [Self; 2] = [Self::Am, Self::Gate];
 
     /// A short name for the kind.
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Sinusoidal => "Sinusoidal",
-            Self::Rectangular => "Gate",
+            Self::Am => "AM",
+            Self::Gate => "Gate",
         }
     }
 
@@ -415,8 +413,8 @@ impl Modulation {
     #[must_use]
     pub const fn kind(&self) -> ModulationKind {
         match self {
-            Self::Sinusoidal { .. } => ModulationKind::Sinusoidal,
-            Self::Rectangular { .. } => ModulationKind::Rectangular,
+            Self::Am { .. } => ModulationKind::Am,
+            Self::Gate { .. } => ModulationKind::Gate,
         }
     }
 }
@@ -424,16 +422,6 @@ impl Modulation {
 impl Ears {
     /// Every route in display order.
     pub const ALL: [Self; 3] = [Self::Both, Self::Left, Self::Right];
-
-    /// A short name for the route.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Both => "Both ears",
-            Self::Left => "Left ear",
-            Self::Right => "Right ear",
-        }
-    }
 }
 
 /// What a component does in the sound, from its carrier and modulation.
@@ -442,7 +430,7 @@ pub enum ComponentRole {
     /// A gated carrier: a rhythm of on and off.
     GateRhythm,
     /// A carrier with an active sinusoidal envelope.
-    AmplitudeModulation,
+    AmEnvelope,
     /// An unmodulated click train.
     ClickRhythm,
     /// An unmodulated tone, or one whose envelope has zero depth.
@@ -455,8 +443,8 @@ impl ComponentRole {
     pub const fn label(self) -> &'static str {
         match self {
             Self::GateRhythm => "Gate rhythm",
-            Self::AmplitudeModulation => "AM envelope",
-            Self::ClickRhythm => "Click rhythm",
+            Self::AmEnvelope => "AM envelope",
+            Self::ClickRhythm => "Clicks rhythm",
             Self::SteadyTone => "Steady tone",
         }
     }
@@ -467,12 +455,10 @@ impl Voice {
     #[must_use]
     pub fn role(&self) -> ComponentRole {
         match self.modulation {
-            Some(Modulation::Rectangular { .. }) => ComponentRole::GateRhythm,
-            Some(Modulation::Sinusoidal { depth, .. }) if depth > 0.0 => {
-                ComponentRole::AmplitudeModulation
-            }
+            Some(Modulation::Gate { .. }) => ComponentRole::GateRhythm,
+            Some(Modulation::Am { depth, .. }) if depth > 0.0 => ComponentRole::AmEnvelope,
             _ => match self.carrier {
-                Carrier::Click { .. } => ComponentRole::ClickRhythm,
+                Carrier::Clicks { .. } => ComponentRole::ClickRhythm,
                 Carrier::Tone { .. } => ComponentRole::SteadyTone,
             },
         }
@@ -497,18 +483,18 @@ mod tests {
             Carrier::Tone {
                 frequency_hz: 440.0,
             },
-            Carrier::Click {
+            Carrier::Clicks {
                 rate_hz: 40.0,
                 width_seconds: 0.001,
             },
         ] {
             for modulation in [
                 None,
-                Some(Modulation::Sinusoidal {
+                Some(Modulation::Am {
                     rate_hz: 8.0,
                     depth: 0.5,
                 }),
-                Some(Modulation::Rectangular {
+                Some(Modulation::Gate {
                     rate_hz: 8.0,
                     width_seconds: 0.002,
                 }),
@@ -571,7 +557,7 @@ mod tests {
             assert_eq!(unit.to_model(-3.5), -3.5);
         }
         assert_eq!(ParameterId::ClickWidth.descriptor().unit.symbol(), "ms");
-        assert_eq!(ParameterId::ModulationDepth.descriptor().unit.symbol(), "%");
+        assert_eq!(ParameterId::AmDepth.descriptor().unit.symbol(), "%");
         for id in ParameterId::ALL {
             let descriptor = id.descriptor();
             assert_eq!(descriptor.id, id);
@@ -583,8 +569,8 @@ mod tests {
     #[test]
     fn nonfinite_quantities_are_named_and_roles_never_hide_active_modulation() {
         let mut c = every_shape()[1];
-        assert_eq!(c.role(), ComponentRole::AmplitudeModulation);
-        c.modulation = Some(Modulation::Sinusoidal {
+        assert_eq!(c.role(), ComponentRole::AmEnvelope);
+        c.modulation = Some(Modulation::Am {
             rate_hz: f64::INFINITY,
             depth: 0.0,
         });
@@ -592,7 +578,7 @@ mod tests {
         c.peak_dbfs = f64::NAN;
         assert_eq!(
             c.nonfinite().collect::<Vec<_>>(),
-            [ParameterId::PeakLevel, ParameterId::AmplitudeModulationRate]
+            [ParameterId::PeakLevel, ParameterId::AmRate]
         );
         assert_eq!(ComponentId::numbered(0), Some(ComponentId::new(1)));
         assert_eq!(ComponentId::numbered(usize::MAX), None);

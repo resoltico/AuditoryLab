@@ -29,11 +29,11 @@ impl Workspace {
     }
 
     pub(super) fn copy_content_admission(snapshot: &RecipeSnapshot) -> Result<(), Refusal> {
-        let count = snapshot.stimulus().components.len();
+        let count = snapshot.sound().components.len();
         if count > Sound::MAX_COMPONENTS {
             return Err(Refusal::TooManyComponents(count));
         }
-        if let Some((component, parameter)) = snapshot.stimulus().nonfinite().next() {
+        if let Some((component, parameter)) = snapshot.sound().nonfinite().next() {
             return Err(Refusal::NonfiniteContent {
                 component,
                 parameter,
@@ -142,7 +142,7 @@ impl Workspace {
                     ));
                 }
                 let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
-                if snapshot.stimulus().nonfinite().next().is_some() {
+                if snapshot.sound().nonfinite().next().is_some() {
                     return Err(Refusal::NotFinite);
                 }
                 let store = if self.library.selected_user() {

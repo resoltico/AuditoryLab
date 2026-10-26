@@ -12,7 +12,7 @@ fn tone(hz: f64, ears: Ears) -> Voice {
     clippy::unwrap_used,
     reason = "Fixture identities must fit the finite test component list"
 )]
-fn stimulus(components: Vec<Voice>) -> Vec<auditorylab_core::Component> {
+fn sound(components: Vec<Voice>) -> Vec<auditorylab_core::Component> {
     Sound {
         duration_seconds: 60.0,
         fade_seconds: 0.1,
@@ -21,7 +21,7 @@ fn stimulus(components: Vec<Voice>) -> Vec<auditorylab_core::Component> {
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                node: auditorylab_core::Node::Voice(voice),
+                form: auditorylab_core::ComponentForm::Voice(voice),
             })
             .collect(),
     }
@@ -49,57 +49,57 @@ fn exact_boundaries_and_adjacent_binary64_values_follow_the_disclosed_policy() {
 #[test]
 fn carrier_is_not_a_band_and_nominal_am_survives_target_invalidity() {
     for hz in [10.0, 40.0, 240.0] {
-        let a = analyze(&stimulus(vec![tone(hz, Ears::Both)]));
+        let a = analyze(&sound(vec![tone(hz, Ears::Both)]));
         assert!(a.no_rhythm());
         assert!(a.bands.is_empty());
     }
     let mut c = tone(1_000.0, Ears::Both);
-    c.modulation = Some(Modulation::Sinusoidal {
+    c.modulation = Some(Modulation::Am {
         rate_hz: 40.0,
         depth: 1.0,
     });
-    let a = analyze(&stimulus(vec![c]));
+    let a = analyze(&sound(vec![c]));
     assert_eq!(a.bands, [Band::Gamma]);
     c.carrier = Carrier::Tone {
         frequency_hz: 100_000.0,
     };
-    assert_eq!(analyze(&stimulus(vec![c])), a);
-    c.modulation = Some(Modulation::Sinusoidal {
+    assert_eq!(analyze(&sound(vec![c])), a);
+    c.modulation = Some(Modulation::Am {
         rate_hz: 40.0,
         depth: 0.0,
     });
-    assert!(analyze(&stimulus(vec![c])).no_rhythm());
-    c.modulation = Some(Modulation::Sinusoidal {
+    assert!(analyze(&sound(vec![c])).no_rhythm());
+    c.modulation = Some(Modulation::Am {
         rate_hz: 40.0,
         depth: f64::from_bits(1),
     });
-    assert_eq!(analyze(&stimulus(vec![c])).bands, [Band::Gamma]);
+    assert_eq!(analyze(&sound(vec![c])).bands, [Band::Gamma]);
     c.peak_dbfs = -10_000.0;
-    assert_eq!(analyze(&stimulus(vec![c])).bands, [Band::Gamma]);
+    assert_eq!(analyze(&sound(vec![c])).bands, [Band::Gamma]);
 }
 #[test]
 fn independent_processes_deduplicate_bands_but_never_rates() {
     let click = |hz| Voice {
-        carrier: Carrier::Click {
+        carrier: Carrier::Clicks {
             rate_hz: hz,
             width_seconds: 0.001,
         },
         ..tone(240.0, Ears::Both)
     };
-    let a = analyze(&stimulus(vec![click(2.0), click(3.0)]));
+    let a = analyze(&sound(vec![click(2.0), click(3.0)]));
     assert_eq!(a.rhythms.len(), 2);
     assert_eq!(a.bands, [Band::Delta]);
     assert!(a.multiple());
-    let a = analyze(&stimulus(vec![click(6.0), click(40.0)]));
+    let a = analyze(&sound(vec![click(6.0), click(40.0)]));
     assert_eq!(a.bands, [Band::Theta, Band::Gamma]);
     assert_eq!(a.matching_rate(&[Band::Gamma], &[]), Some(40.0));
     for hz in [0.05, 100.0] {
-        let a = analyze(&stimulus(vec![click(hz)]));
+        let a = analyze(&sound(vec![click(hz)]));
         assert!(a.outside_bands());
         assert!(!a.no_rhythm());
     }
     for hz in [-40.0, 0.0, f64::INFINITY, f64::NAN] {
-        let a = analyze(&stimulus(vec![click(hz)]));
+        let a = analyze(&sound(vec![click(hz)]));
         assert_eq!(a.completeness, Completeness::Invalid);
         assert!(a.rhythms.is_empty());
         assert!(!a.no_rhythm());
@@ -109,32 +109,32 @@ fn independent_processes_deduplicate_bands_but_never_rates() {
 fn raw_inference_is_exact_and_restricted_to_the_whole_two_tone_document() {
     let left = tone(200.0, Ears::Left);
     let mut right = tone(206.0, Ears::Right);
-    let a = analyze(&stimulus(vec![left, right]));
+    let a = analyze(&sound(vec![left, right]));
     assert_eq!(a.rhythms[0].hz, 6.0);
     assert_eq!(a.rhythms[0].method, Method::Binaural);
     right.carrier = Carrier::Tone {
         frequency_hz: 194.0,
     };
-    assert_eq!(analyze(&stimulus(vec![left, right])).rhythms[0].hz, 6.0);
+    assert_eq!(analyze(&sound(vec![left, right])).rhythms[0].hz, 6.0);
     right.carrier = Carrier::Tone {
         frequency_hz: 200.0,
     };
-    assert!(analyze(&stimulus(vec![left, right])).no_rhythm());
+    assert!(analyze(&sound(vec![left, right])).no_rhythm());
     right.carrier = Carrier::Tone {
         frequency_hz: 206.0,
     };
-    right.modulation = Some(Modulation::Sinusoidal {
+    right.modulation = Some(Modulation::Am {
         rate_hz: 40.0,
         depth: 0.0,
     });
-    assert_eq!(analyze(&stimulus(vec![left, right])).bands, [Band::Theta]);
-    let a = analyze(&stimulus(vec![left, right, tone(300.0, Ears::Both)]));
+    assert_eq!(analyze(&sound(vec![left, right])).bands, [Band::Theta]);
+    let a = analyze(&sound(vec![left, right, tone(300.0, Ears::Both)]));
     assert_eq!(a.completeness, Completeness::Partial);
     assert!(!a.no_rhythm());
     assert!(a.rhythms.is_empty());
-    let a = analyze(&stimulus(vec![tone(200.0, Ears::Both), right]));
+    let a = analyze(&sound(vec![tone(200.0, Ears::Both), right]));
     assert_eq!(a.completeness, Completeness::Partial);
-    let a = analyze(&stimulus(vec![
+    let a = analyze(&sound(vec![
         tone(200.0, Ears::Both),
         Voice {
             ears: Ears::Both,
@@ -161,19 +161,19 @@ fn correlated_facets_cannot_borrow_rates_from_another_process() {
             Descriptor {
                 owner: auditorylab_core::ComponentId::new(2),
                 related: None,
-                method: Method::AmplitudeModulation,
+                method: Method::Am,
                 hz: 40.0,
                 band: Some(Band::Gamma),
                 derivation: Derivation::Explicit,
             },
         ],
-        methods: vec![Method::Binaural, Method::AmplitudeModulation],
+        methods: vec![Method::Binaural, Method::Am],
         bands: vec![Band::Theta, Band::Gamma],
         completeness: Completeness::Complete,
         diagnostics: vec![],
     };
     assert!(!a.matches(&[Band::Gamma], &[Method::Binaural]));
-    assert!(a.matches(&[Band::Gamma], &[Method::AmplitudeModulation]));
+    assert!(a.matches(&[Band::Gamma], &[Method::Am]));
     assert!(!a.matches(&[Band::Gamma], &[Method::SteadyTone]));
     assert!(a.matches(&[Band::Theta, Band::Gamma], &[Method::Binaural]));
     assert_eq!(a.matching_rate(&[Band::Gamma], &[]), Some(40.0));
@@ -181,10 +181,10 @@ fn correlated_facets_cannot_borrow_rates_from_another_process() {
 
 #[test]
 fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
-    use auditorylab_core::{Component, ComponentId, Node, Pair};
+    use auditorylab_core::{Component, ComponentForm, ComponentId, Pair};
     let pair = |id, offset_hz| Component {
         id: ComponentId::new(id),
-        node: Node::BinauralPair(Pair {
+        form: ComponentForm::BinauralPair(Pair {
             first_hz: 200.0,
             offset_hz,
             first_peak_dbfs: -30.0,
@@ -193,8 +193,8 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
     };
     let am = Component {
         id: ComponentId::new(90),
-        node: Node::Voice(Voice {
-            modulation: Some(Modulation::Sinusoidal {
+        form: ComponentForm::Voice(Voice {
+            modulation: Some(Modulation::Am {
                 rate_hz: 40.0,
                 depth: 1.0,
             }),
@@ -209,7 +209,7 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
         [7, 90]
     );
     assert!(!a.matches(&[Band::Gamma], &[Method::Binaural]));
-    assert!(a.matches(&[Band::Gamma], &[Method::AmplitudeModulation]));
+    assert!(a.matches(&[Band::Gamma], &[Method::Am]));
     assert_eq!(analyze(&[pair(1, 2.0), pair(2, 3.0)]).bands, [Band::Delta]);
     assert!(analyze(&[pair(1, 2.0), pair(2, 3.0)]).multiple());
     for offset in [-6.0, 6.0] {
@@ -224,11 +224,11 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
     raw.extend([
         Component {
             id: ComponentId::new(5),
-            node: Node::Voice(tone(200.0, Ears::Left)),
+            form: ComponentForm::Voice(tone(200.0, Ears::Left)),
         },
         Component {
             id: ComponentId::new(6),
-            node: Node::Voice(tone(206.0, Ears::Right)),
+            form: ComponentForm::Voice(tone(206.0, Ears::Right)),
         },
     ]);
     let a = analyze(&raw);
@@ -264,13 +264,13 @@ fn catalog_methods_match_independent_expectations_at_48_khz() {
         Method::Binaural,
         Method::Monaural,
         Method::Monaural,
-        Method::AmplitudeModulation,
-        Method::AmplitudeModulation,
-        Method::AmplitudeModulation,
+        Method::Am,
+        Method::Am,
+        Method::Am,
     ];
     assert_eq!(catalog::ENTRIES.len(), expected.len());
     for (entry, method) in catalog::ENTRIES.iter().zip(expected) {
-        let sound = Recipe::parse(entry.text).unwrap().stimulus;
+        let sound = Recipe::parse(entry.text).unwrap().sound;
         assert_eq!(
             analyze(&sound.components).methods,
             [method],

@@ -1,9 +1,7 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
 # Source parameters and adaptations: see docs/catalog.md.
-schema_version = 3
-duration_seconds = 3600.0
-fade_seconds = 0.1
+schema_version = 4
 
 [document]
 id = "15c3152b-bc7e-4448-9862-05eb2d0419a1"
@@ -11,14 +9,18 @@ id = "15c3152b-bc7e-4448-9862-05eb2d0419a1"
 [description]
 title = "80 Hz train of 1 ms 10 kHz tones"
 
-[[component]]
+[sound]
+duration_seconds = 3600.0
+fade_seconds = 0.1
+
+[[sound.component]]
 id = 1
 ears = "both"
 kind = "tone"
 frequency_hz = 10000.0
 peak_dbfs = -20.0
-[component.modulation]
-kind = "rectangular"
+[sound.component.modulation]
+kind = "gate"
 rate_hz = 80.0
 width_seconds = 0.001
 

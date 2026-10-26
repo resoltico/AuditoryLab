@@ -24,7 +24,7 @@ fn matches_search(snapshot: &RecipeSnapshot, search: &str) -> bool {
 #[test]
 fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
     let mut recipe = auditorylab::editing::Draft::new().unwrap().recipe();
-    recipe.stimulus = auditorylab::core::Sound {
+    recipe.sound = auditorylab::core::Sound {
         duration_seconds: 60.0,
         fade_seconds: 0.1,
         components: (vec![auditorylab::core::Voice {
@@ -33,7 +33,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
             carrier: auditorylab::core::Carrier::Tone {
                 frequency_hz: 200.0,
             },
-            modulation: Some(auditorylab::core::Modulation::Sinusoidal {
+            modulation: Some(auditorylab::core::Modulation::Am {
                 rate_hz: 20.0,
                 depth: 1.0,
             }),
@@ -42,7 +42,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         .enumerate()
         .map(|(index, voice)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-            node: auditorylab_core::Node::Voice(voice),
+            form: auditorylab_core::ComponentForm::Voice(voice),
         })
         .collect(),
     };
@@ -71,7 +71,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         assert!(!matches_search(&snapshot, search), "{search}");
     }
     let mut steady = snapshot.recipe().clone();
-    if let auditorylab::core::Node::Voice(c) = &mut steady.stimulus.components[0].node {
+    if let auditorylab::core::ComponentForm::Voice(c) = &mut steady.sound.components[0].form {
         c.modulation = None;
     }
     let steady = RecipeSnapshot::new(Origin::Stream("steady".into()), steady);
@@ -83,7 +83,9 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
 
 #[test]
 fn search_excludes_generated_labels_and_unknown_date_captions() {
-    use auditorylab::core::{Carrier, Component, ComponentId, Description, Ears, Node, Voice};
+    use auditorylab::core::{
+        Carrier, Component, ComponentForm, ComponentId, Description, Ears, Voice,
+    };
     let mut recipe = auditorylab::editing::Draft::new().unwrap().recipe();
     recipe.document.created_at = None;
     recipe.document.modified_at = None;
@@ -91,9 +93,9 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
         title: "Reference".into(),
         notes: None,
     });
-    recipe.stimulus.components = vec![Component {
+    recipe.sound.components = vec![Component {
         id: ComponentId::new(1),
-        node: Node::Voice(Voice {
+        form: ComponentForm::Voice(Voice {
             ears: Ears::Both,
             peak_dbfs: -30.0,
             carrier: Carrier::Tone {

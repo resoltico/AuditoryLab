@@ -1,9 +1,7 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
 # Source parameters and adaptations: see docs/catalog.md.
-schema_version = 3
-duration_seconds = 300.0
-fade_seconds = 0.1
+schema_version = 4
 
 [document]
 id = "3621f9a9-3240-4bed-915b-4f310bc05951"
@@ -11,7 +9,11 @@ id = "3621f9a9-3240-4bed-915b-4f310bc05951"
 [description]
 title = "10 Hz binaural beat"
 
-[[component]]
+[sound]
+duration_seconds = 300.0
+fade_seconds = 0.1
+
+[[sound.component]]
 id = 1
 kind = "binaural_pair"
 left_hz = 250.0

@@ -8,7 +8,7 @@ use crate::recipe::{RecipeSnapshot, Rendition};
 use crate::vocabulary::{NumberStyle, Status, Term};
 use auditorylab_core::{
     CarrierFacts, ComponentFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate,
-    PulseFacts, SampleRate, Sound, StimulusError, VoiceObservation,
+    PulseFacts, SampleRate, Sound, SoundError, VoiceObservation,
     interpretation::{Structure, ToneRelationship},
     nominal::Method,
 };
@@ -226,12 +226,12 @@ fn generator_description(facts: &ComponentFacts, detail: bool) -> String {
     };
     match facts.modulation {
         None => format!("{opening} {value}"),
-        Some(ModulationFacts::Sinusoidal { rate, depth }) if depth > 0.0 => format!(
+        Some(ModulationFacts::Am { rate, depth }) if depth > 0.0 => format!(
             "Modulation {} · depth {}% · carrier {inner} {value}",
             phase(rate),
             compact_number(depth * 100.0)
         ),
-        Some(ModulationFacts::Sinusoidal { .. }) => {
+        Some(ModulationFacts::Am { .. }) => {
             format!("{opening} {value} · Modulation inactive (depth 0%)")
         }
         Some(ModulationFacts::Gate(p)) => format!("Gate {} · carrier {inner} {value}", pulse(p)),
@@ -346,11 +346,7 @@ fn structure_description(structure: &Structure) -> String {
             .iter()
             .find(|v| v.id == r.id && v.role == r.role)
             .map(|v| match (r.kind, v.facts.carrier, v.facts.modulation) {
-                (
-                    Method::AmplitudeModulation,
-                    _,
-                    Some(ModulationFacts::Sinusoidal { depth, .. }),
-                ) => {
+                (Method::Am, _, Some(ModulationFacts::Am { depth, .. })) => {
                     format!(" · depth {}%", compact_number(depth * 100.0))
                 }
                 (Method::Gate, _, Some(ModulationFacts::Gate(p)))
@@ -382,7 +378,7 @@ fn structure_description(structure: &Structure) -> String {
         if let CarrierFacts::Tone(rate) = v.facts.carrier {
             let steady = match v.facts.modulation {
                 None => true,
-                Some(ModulationFacts::Sinusoidal { depth, .. }) => depth == 0.0,
+                Some(ModulationFacts::Am { depth, .. }) => depth == 0.0,
                 Some(ModulationFacts::Gate(_)) => false,
             };
             parts.push(format!(
@@ -668,7 +664,7 @@ impl ParameterText for ParameterId {
         format!("{} ({})", descriptor.label, descriptor.unit.symbol())
     }
 }
-impl AudioErrorText for StimulusError {
+impl AudioErrorText for SoundError {
     /// A source that is not valid at a rate.
     fn at_rate(&self, title: &str, rate: SampleRate) -> String {
         let error = self;
@@ -775,7 +771,7 @@ impl RecipeSnapshot {
                 .and_then(|a| a.research.as_ref())
                 .and_then(|a| a.studied_for.as_deref())
                 .unwrap_or("Custom recipe"),
-            human_duration(snapshot.stimulus().duration_seconds)
+            human_duration(snapshot.sound().duration_seconds)
         )
     }
     /// A snapshot's research text, components and validated facts at one
@@ -788,7 +784,7 @@ impl RecipeSnapshot {
         for (name, value) in (snapshot).research() {
             text.push_str(&format!("{name}: {value}\n\n"));
         }
-        for (i, c) in snapshot.stimulus().components.iter().enumerate() {
+        for (i, c) in snapshot.sound().components.iter().enumerate() {
             text.push_str(&format!("Component {}: {c}\n", i + 1));
         }
         match snapshot.at(rate) {
@@ -814,7 +810,7 @@ impl RecipeSnapshot {
     #[must_use]
     pub fn description(&self) -> String {
         let snapshot = self;
-        let s = snapshot.stimulus();
+        let s = snapshot.sound();
         let mut out = format!(
             "{}\nSource: {}\nDuration: {}\nFade: {} at each edge\n",
             snapshot.title(),
@@ -862,7 +858,7 @@ impl RecipeSnapshot {
             output.sample_rate.hz(),
             output.channels,
             output.format,
-            Notice::for_sound(snapshot.stimulus())
+            Notice::for_sound(snapshot.sound())
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
@@ -970,11 +966,11 @@ impl Notice {
         )
     }
 
-    /// Guidance shown before playing a stimulus.
+    /// Guidance shown before playing a sound.
     #[must_use]
-    pub fn for_sound(stimulus: &Sound) -> Vec<Notice> {
+    pub fn for_sound(sound: &Sound) -> Vec<Notice> {
         let mut notices = vec![Notice::LowStartingVolume];
-        if stimulus.uses_separate_ears() {
+        if sound.uses_separate_ears() {
             notices.push(Notice::HeadphonesForSeparateEars);
         }
         notices
@@ -1022,7 +1018,7 @@ mod tests {
             components: (1..=8)
                 .map(|id| Component {
                     id: ComponentId::new(id),
-                    node: controls::default_pair(PairKind::Binaural),
+                    form: controls::default_pair(PairKind::Binaural),
                 })
                 .collect(),
         };
@@ -1098,7 +1094,7 @@ mod tests {
     fn editable_numbers_enter_the_same_model_value_again() {
         // 29 % is 0.29, whose naive display is 28.999999999999996.
         assert_eq!(0.29 * 100.0, 28.999999999999996);
-        assert_eq!((ParameterId::ModulationDepth).input_text(0.29), "29");
+        assert_eq!((ParameterId::AmDepth).input_text(0.29), "29");
         assert_eq!((ParameterId::ClickWidth).input_text(0.0011), "1.1");
         assert_eq!(
             (ParameterId::ToneFrequency).input_text(39.0625123456789),
@@ -1124,7 +1120,7 @@ mod tests {
                 assert_eq!(back.to_bits(), model.to_bits(), "{id:?} {typed} {text}");
             }
         }
-        assert_eq!((ParameterId::ClickWidth).input_label(), "Click width (ms)");
+        assert_eq!((ParameterId::ClickWidth).input_label(), "Clicks width (ms)");
     }
 
     #[test]

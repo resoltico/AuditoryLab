@@ -160,7 +160,7 @@ mod quantization {
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                node: auditorylab_core::Node::Voice(voice),
+                form: auditorylab_core::ComponentForm::Voice(voice),
             })
             .collect(),
         }
@@ -197,7 +197,7 @@ mod quantization {
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                node: auditorylab_core::Node::Voice(voice),
+                form: auditorylab_core::ComponentForm::Voice(voice),
             })
             .collect(),
         }

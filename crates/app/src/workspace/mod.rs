@@ -235,7 +235,7 @@ pub enum Refusal {
         /// The rate used for this check.
         rate: SampleRate,
         /// The acoustic failure, when analysis produced one.
-        error: Option<auditorylab_core::StimulusError>,
+        error: Option<auditorylab_core::SoundError>,
     },
     /// No recipe is selected: the search shows none.
     NoSelection,

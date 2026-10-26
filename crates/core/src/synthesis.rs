@@ -161,8 +161,8 @@ pub(crate) enum Carrier {
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Modulator {
-    Sinusoidal { step: u64, depth: f64 },
-    Rectangular(Pulse),
+    Am { step: u64, depth: f64 },
+    Gate(Pulse),
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct GeneratorVoice {
@@ -188,10 +188,10 @@ impl GeneratorVoice {
         };
         let gain = match self.modulation {
             None => 1.0,
-            Some(Modulator::Sinusoidal { step, depth }) => {
+            Some(Modulator::Am { step, depth }) => {
                 (1.0 + depth * sine(n.wrapping_mul(step))) / (1.0 + depth)
             }
-            Some(Modulator::Rectangular(pulse)) => pulse.sample(n),
+            Some(Modulator::Gate(pulse)) => pulse.sample(n),
         };
         self.amplitude * (carrier * gain)
     }
@@ -401,7 +401,7 @@ mod pulses {
             modulation: None,
         };
         let gated = GeneratorVoice {
-            modulation: Some(Modulator::Rectangular(pulse)),
+            modulation: Some(Modulator::Gate(pulse)),
             ..plain
         };
         let clicks = GeneratorVoice {

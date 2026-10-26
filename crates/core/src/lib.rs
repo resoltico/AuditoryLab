@@ -1,7 +1,7 @@
 //! Auditory recipes, validation and pure seekable and live stereo synthesis.
 //!
 //! A [`Recipe`] is a portable document containing a [`Sound`] and attributed
-//! research. A Sound contains identified [`Component`]s, each a [`Node`] built
+//! research. A Sound contains identified [`Component`]s, each a [`ComponentForm`] built
 //! from a [`Voice`] or an explicit pair. [`Sound::check`] retains diagnostics at
 //! one [`SampleRate`]; [`Sound::target`] returns a validated [`Target`]. A
 //! [`Signal`] adds the finite envelope. [`live::Engine`] renders targets as an
@@ -25,11 +25,11 @@ pub mod provenance;
 mod rate;
 mod recipe;
 mod signal;
-mod stimulus;
 mod synthesis;
 pub mod timing;
+mod voice;
 pub mod waveform;
-pub use authored::{Component, LoweringError, Node, Pair, PairIssue, PairKind, Sound};
+pub use authored::{Component, ComponentForm, LoweringError, Pair, PairIssue, PairKind, Sound};
 pub use compiled::{Target, TargetCheck};
 pub use facts::{
     CarrierFacts, ComponentFacts, ModulationFacts, Observation, PairFacts, PhaseRate, PulseFacts,
@@ -47,5 +47,5 @@ pub use provenance::{
 pub use rate::{SampleRate, SampleRateError};
 pub use recipe::{About, Recipe, RecipeError, Research};
 pub use signal::Signal;
-pub use stimulus::{Carrier, ComponentError, Ear, Ears, Modulation, StimulusError, Voice};
+pub use voice::{Carrier, Ear, Ears, Modulation, SoundError, Voice, VoiceError};
 pub use waveform::Extent;

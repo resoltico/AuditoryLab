@@ -2,9 +2,9 @@
 
 A recipe is UTF-8 TOML describing a stereo sound, in hertz, seconds and dBFS. It has no sample rate: `inspect` and `export` choose one, and playback uses the device's. `auditorylab recipe builtin:CATALOG_ID --output PATH` saves any built-in recipe as a starting point.
 
-The desktop [Workbench](desktop.md#workbench) writes the same strict schema-3 document as the CLI reader. Identity, current notes, bibliography, evidence scope and flat ancestry are portable. Exporting a saved recipe preserves its UUID; **Edit a copy** creates a fresh identity and retains attribution without inherited validation. Inspect custom files with `auditorylab inspect --file PATH` before playback or export.
+The desktop [Workbench](desktop.md#workbench) writes the same strict schema-4 document as the CLI reader. Identity, current notes, bibliography, evidence scope and flat ancestry are portable. Exporting a saved recipe preserves its UUID; **Edit a copy** creates a fresh identity and retains attribution without inherited validation. Inspect custom files with `auditorylab inspect --file PATH` before playback or export.
 
-Recipe schema **3**, defined by [`Recipe::SCHEMA_VERSION`](../crates/core/src/recipe.rs), describes the portable UTF-8 TOML document. Unsupported schema versions and unknown fields are rejected.
+Recipe schema **4**, defined by [`Recipe::SCHEMA_VERSION`](../crates/core/src/recipe.rs), describes the portable UTF-8 TOML document. Unsupported schema versions and unknown fields are rejected.
 
 ## Examples
 
@@ -13,14 +13,15 @@ These UUIDs are illustrative fixtures. Use **New** or **Edit a copy** to allocat
 An explicit signed-offset pair, 250 Hz left and 240 Hz right:
 
 ```toml
-schema_version = 3
+schema_version = 4
+[sound]
 duration_seconds = 2.0
 fade_seconds = 0.01
 [document]
 id = "00000000-0000-4000-8000-000000000001"
 [description]
 title = "Ten-hertz pair example"
-[[component]]
+[[sound.component]]
 id = 17
 kind = "binaural_pair"
 left_hz = 250.0
@@ -32,19 +33,20 @@ right_peak_dbfs = -20.0
 A 1000 Hz tone with full-depth 40 Hz sinusoidal amplitude modulation:
 
 ```toml
-schema_version = 3
+schema_version = 4
+[sound]
 duration_seconds = 1.0
 fade_seconds = 0.01
 [document]
 id = "00000000-0000-4000-8000-000000000002"
-[[component]]
+[[sound.component]]
 id = 1
 ears = "both"
 kind = "tone"
 frequency_hz = 1000.0
 peak_dbfs = -20.0
-[component.modulation]
-kind = "sinusoidal"
+[sound.component.modulation]
+kind = "am"
 rate_hz = 40.0
 depth = 1.0
 ```
@@ -52,25 +54,26 @@ depth = 1.0
 A gated 5 kHz tone and an independent click train, preserving authored order:
 
 ```toml
-schema_version = 3
+schema_version = 4
+[sound]
 duration_seconds = 1.0
 fade_seconds = 0.01
 [document]
 id = "00000000-0000-4000-8000-000000000003"
-[[component]]
+[[sound.component]]
 id = 7
 ears = "left"
 kind = "tone"
 frequency_hz = 5000.0
 peak_dbfs = -20.0
-[component.modulation]
-kind = "rectangular"
+[sound.component.modulation]
+kind = "gate"
 rate_hz = 40.0
 width_seconds = 0.001
-[[component]]
+[[sound.component]]
 id = 19
 ears = "right"
-kind = "click"
+kind = "clicks"
 rate_hz = 40.0
 width_seconds = 0.001
 peak_dbfs = -20.0
@@ -80,21 +83,21 @@ An empty component array means silence; the document identity and finite envelop
 
 ## Fields and identity
 
-`schema_version = 3`, `duration_seconds`, `fade_seconds` and `[document] id` are required. The reader accepts only this document shape and requires an explicit identity. Unknown/duplicate keys, mistyped fields, nonfinite numbers and duplicate/nonpositive component IDs fail. Whole numeric literals are accepted as reals. A finite sound may still be invalid at a selected sample rate and can be saved for repair.
+`schema_version = 4`, `[sound] duration_seconds`, `fade_seconds` and `[document] id` are required. The reader accepts only this document shape and requires an explicit identity. Unknown/duplicate keys, mistyped fields, nonfinite numbers and duplicate/nonpositive component IDs fail. Whole numeric literals are accepted as reals. A finite sound may still be invalid at a selected sample rate and can be saved for repair.
 
 | Field | Meaning |
 |---|---|
 | `[document] id` | Canonical lowercase UUIDv4; declares identity, never ownership or scientific trust. |
 | `document.created_at`, `document.modified_at` | Optional declared recipe history; omission is Unknown. |
 | `[description] title`, `notes` | Current sound's nonempty title and optional own notes. |
-| `[[component]] id` | Unique positive u32 owner, stable across edits/removals; source order determines summation. |
+| `[[sound.component]] id` | Unique positive u32 owner, stable across edits/removals; source order determines summation. |
 | `[[source]]` | Bibliography: unique `key`, `label`, `citation`, DOI and/or explicit http(s) `url`. |
 | `[[evidence]]` | Source key, scope, population/role/measures, methods locator, summary, limitations and adaptations. |
 | `[[lineage]]` | Flat ancestor title/note, optional declared UUID/catalog ID and bibliography keys; no recursive documents or private path field. |
 
 Dates use years 0001–9999, uppercase `T`/`Z`, explicit `Z` or numeric offset, seconds 00–59 and at most nine fractional digits. Unknown offset `-00:00`, leap seconds and missing zones are rejected. Accepted instants normalize to UTC with nine fractional digits without inventing precision. Reading, playback and export preserve declared dates; they never come from filesystem timestamps or study years. Copy drafts receive a new UUID and unknown dates. Local membership history belongs outside portable TOML.
 
-Raw `tone` and `click` nodes use `ears = "left"|"right"|"both"`, `peak_dbfs`, and their frequency or rate/width. Optional `[component.modulation]` is `sinusoidal` (rate/depth) or `rectangular` (rate/width). Each node's modulation applies to that node only.
+Raw `tone` and `clicks` nodes use `ears = "left"|"right"|"both"`, `peak_dbfs`, and their frequency or rate/width. Optional `[sound.component.modulation]` is `am` (rate/depth) or `gate` (rate/width). Each node's modulation applies to that node only.
 
 `binaural_pair` uses `left_hz`, signed `offset_hz`, `left_peak_dbfs` and `right_peak_dbfs`; right carrier is left + offset. `monaural_pair` uses `ears`, `first_hz`, signed `offset_hz`, `first_peak_dbfs` and `second_peak_dbfs`. Pairs have no modulation table, duplicate second-carrier field or recursive children. Zero offset is a valid no-rhythm construction. Nonzero offsets that disappear during carrier addition cannot compile, with both coupled fields identified. Pair lowering preserves left/first then right/second order, levels, primitive phase/generator formulas and stable owner/lane attribution. Each raw tone or click expands to one voice; each pair expands to two. The authored-component count must fit [`Sound::MAX_COMPONENTS`](../crates/core/src/authored.rs), and the total expanded voice count must independently fit [`Sound::MAX_VOICES`](../crates/core/src/authored.rs). Both limits are 16, so eight pairs fill the voice budget while using only eight authored components.
 
@@ -113,9 +116,9 @@ The whole UTF-8 document, including multibyte notes and all metadata, is limited
 For frame `n` at sample rate `fs`, tones and sinusoidal modulation use a 64-bit integer phase: one cycle is `2^64` units. Its step is `ceil(hz × 2^64 / fs)`, computed exactly from the binary64 frequency. Frame `n` uses `n × step` modulo `2^64`. The frequency resolution is `fs / 2^64`; any finite positive frequency below Nyquist has a positive step.
 
 - Tone: `sin(2π × c)`, where `c` is the signed top 53 phase bits converted exactly to cycles in `[-0.5, 0.5)`.
-- Click: let `W = round(width_seconds × fs)`, halves away from zero. A pulse starts on the first frame at or after each period's onset and stays open for exactly `W` frames. Pulses use the exact binary64 rate: with `K(n) = floor(n × rate_hz / fs)`, a frame after the initial open span is open exactly when `K(n) > K(n − W)`.
-- Sinusoidal modulation: multiply by `(1 + depth × sin(2π × c_m)) / (1 + depth)` at the modulation phase.
-- Rectangular modulation: multiply by the click waveform at its rate and width. A tone keeps its phase across closed gates.
+- Clicks: let `W = round(width_seconds × fs)`, halves away from zero. A pulse starts on the first frame at or after each period's onset and stays open for exactly `W` frames. Pulses use the exact binary64 rate: with `K(n) = floor(n × rate_hz / fs)`, a frame after the initial open span is open exactly when `K(n) > K(n − W)`.
+- Am modulation: multiply by `(1 + depth × sin(2π × c_m)) / (1 + depth)` at the modulation phase.
+- Gate modulation: multiply by the click waveform at its rate and width. A tone keeps its phase across closed gates.
 - Peak: multiply each component by `10^(peak_dbfs / 20)`.
 - Mixing: sum each ear's components in file order, then apply the fade gain.
 
@@ -149,7 +152,7 @@ Each built-in recipe is a parameterized audio adaptation of a selected condition
 
 A condition qualifies only when its full primary methods give enough evidence to identify the waveform, frequencies or rates and widths, continuous duration, and original presentation. Headphone routing must be stated; a documented speaker presentation may be explicitly adapted to identical ear channels, without claiming that this recreates the acoustic field. Selecting one stated ear or EEG session from a wider protocol must also be disclosed. Unexplained routing guesses, unreported carrier or pulse parameters, sweeps, live-controlled sounds, unstated maskers/noise and short recording-locked trial reconstructions do not qualify. Record missing phase, ramps, audio rate and calibration instead of inventing them. Check supplements and publisher corrections/retractions, and state unavailable evidence honestly.
 
-Name the file `firstauthor-year-condition.toml`, in lowercase, under `crates/core/catalog/`, and add its recipe to the independent table in `crates/core/src/catalog/tests.rs`. The build script discovers conditions in natural order and generates standalone schema-3 recipes. Conditions use a bibliography key under `[[source]]` to refer to a citation/DOI record under `crates/core/studies/`. Citation and URL exist only in that study record; condition-specific methods, findings and adaptations remain in the condition. Add an independent numerical expectation for each condition in `crates/core/src/catalog/tests.rs`. Text supports Unicode, correctly escaped quotes and multiline TOML strings.
+Name the file `firstauthor-year-condition.toml`, in lowercase, under `crates/core/catalog/`, and add its recipe to the independent table in `crates/core/src/catalog/tests.rs`. The build script discovers conditions in natural order and generates standalone schema-4 recipes. Conditions use a bibliography key under `[[source]]` to refer to a citation/DOI record under `crates/core/studies/`. Citation and URL exist only in that study record; condition-specific methods, findings and adaptations remain in the condition. Add an independent numerical expectation for each condition in `crates/core/src/catalog/tests.rs`. Text supports Unicode, correctly escaped quotes and multiline TOML strings.
 
 - Population, condition role and measures name what was investigated; they do not state a benefit.
 - `summary` says what the listener hears, what the study tested on whom, what it found, including null results and the study's size, and whether the result comes from animals. It reports findings and never promises an effect. Where a disease is named, state that the sound is not an established treatment.

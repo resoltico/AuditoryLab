@@ -84,7 +84,7 @@ pub struct RecipeSnapshot {
 struct Realizations {
     values: Vec<(
         SampleRate,
-        Result<Arc<Signal>, auditorylab_core::StimulusError>,
+        Result<Arc<Signal>, auditorylab_core::SoundError>,
     )>,
     #[cfg(test)]
     compilations: u64,
@@ -94,9 +94,7 @@ impl RecipeSnapshot {
     /// Capture content under a new identity.
     #[must_use]
     pub fn new(origin: Origin, recipe: Recipe) -> Self {
-        let nominal = Arc::new(auditorylab_core::nominal::analyze(
-            &recipe.stimulus.components,
-        ));
+        let nominal = Arc::new(auditorylab_core::nominal::analyze(&recipe.sound.components));
         let about = Arc::new(recipe.display_about());
         Self {
             nominal,
@@ -195,8 +193,8 @@ impl RecipeSnapshot {
 
     /// Declared sound parameters.
     #[must_use]
-    pub fn stimulus(&self) -> &Sound {
-        &self.recipe.stimulus
+    pub fn sound(&self) -> &Sound {
+        &self.recipe.sound
     }
 
     /// Validate the recipe and realize it at a sample rate.
@@ -217,7 +215,7 @@ impl RecipeSnapshot {
     pub(crate) fn realize(
         &self,
         rate: SampleRate,
-    ) -> Result<Rendition, auditorylab_core::StimulusError> {
+    ) -> Result<Rendition, auditorylab_core::SoundError> {
         // Application/device preparation only; callbacks use the captured Signal.
         let mut cache = self
             .realizations
@@ -230,7 +228,7 @@ impl RecipeSnapshot {
             {
                 cache.compilations += 1;
             }
-            let result = self.stimulus().signal(rate).map(Arc::new);
+            let result = self.sound().signal(rate).map(Arc::new);
             if cache.values.len() == 2 {
                 let _ = cache.values.remove(0);
             }

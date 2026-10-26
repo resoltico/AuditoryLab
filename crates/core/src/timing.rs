@@ -14,7 +14,7 @@ pub enum ModelKind {
     Clicks,
     /// Exact frame-quantized gate schedule.
     Gate,
-    /// Sinusoidal amplitude envelope bounds, not carrier waveform samples.
+    /// Am amplitude envelope bounds, not carrier waveform samples.
     Envelope,
 }
 /// One independently attributed process. Dense periods aggregate into bounded columns.
@@ -85,10 +85,8 @@ pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
             lane(ModelKind::Clicks, &|s, e| pulse.extent(s, e));
         }
         match voice.modulation {
-            Some(Modulator::Rectangular(pulse)) => {
-                lane(ModelKind::Gate, &|s, e| pulse.extent(s, e))
-            }
-            Some(Modulator::Sinusoidal { step, depth }) if depth > 0.0 => {
+            Some(Modulator::Gate(pulse)) => lane(ModelKind::Gate, &|s, e| pulse.extent(s, e)),
+            Some(Modulator::Am { step, depth }) if depth > 0.0 => {
                 lane(ModelKind::Envelope, &|s, e| envelope(step, depth, s, e))
             }
             _ if matches!(voice.carrier, Carrier::Tone { .. }) => {

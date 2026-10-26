@@ -2,8 +2,8 @@
 //! change facts and revisions, never generated samples, ramps or phases.
 //! Expected samples come from engines that never received those edits.
 use auditorylab_core::{
-    Carrier, CarrierFacts, Component, ComponentId, Ears, Node, Observation, SampleRate, SlotRole,
-    Sound, Target, Voice, live::Engine,
+    Carrier, CarrierFacts, Component, ComponentForm, ComponentId, Ears, Observation, SampleRate,
+    SlotRole, Sound, Target, Voice, live::Engine,
 };
 
 const fn rate() -> SampleRate {
@@ -17,7 +17,7 @@ fn clicks(rate_hz: f64, width_seconds: f64) -> Voice {
     Voice {
         ears: Ears::Both,
         peak_dbfs: -20.0,
-        carrier: Carrier::Click {
+        carrier: Carrier::Clicks {
             rate_hz,
             width_seconds,
         },
@@ -35,7 +35,7 @@ fn target(component: Voice) -> Target {
         fade_seconds: 0.0,
         components: vec![Component {
             id: ComponentId::new(1),
-            node: Node::Voice(component),
+            form: ComponentForm::Voice(component),
         }],
     }
     .target(rate())

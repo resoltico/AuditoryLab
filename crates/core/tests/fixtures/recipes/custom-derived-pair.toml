@@ -1,7 +1,5 @@
 # Demonstrates durable ancestry. Not a tested 3 Hz intervention.
-schema_version = 3
-duration_seconds = 60.0
-fade_seconds = 0.1
+schema_version = 4
 
 [document]
 id = "00000000-0000-4000-8000-000000000001"
@@ -12,7 +10,11 @@ modified_at = "2026-10-23T12:30:00.000000000Z"
 title = "My 3 Hz pair"
 notes = "Edited from the source condition; no outcome claim for this version."
 
-[[component]]
+[sound]
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[[sound.component]]
 id = 1
 kind = "binaural_pair"
 left_hz = 200.0

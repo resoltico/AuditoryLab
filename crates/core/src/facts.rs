@@ -46,23 +46,23 @@ impl PulseFacts {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CarrierFacts {
-    /// Sinusoidal carrier.
+    /// Sine carrier.
     Tone(PhaseRate),
-    /// Rectangular click train.
+    /// A rectangular pulse train.
     Clicks(PulseFacts),
 }
 /// A component's envelope quantities.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModulationFacts {
-    /// Sinusoidal amplitude modulation; depth zero is inactive.
-    Sinusoidal {
+    /// Sine amplitude modulation; depth zero is inactive.
+    Am {
         /// Requested and realized modulation rate.
         rate: PhaseRate,
         /// Modulation depth in 0..1.
         depth: f64,
     },
-    /// Rectangular gating.
+    /// Periodic rectangular gating.
     Gate(PulseFacts),
 }
 /// Authored pair intent retained with its generated lanes, never reconstructed
@@ -111,7 +111,7 @@ impl ComponentFacts {
                 CarrierFacts::Tone(PhaseRate::from_step(frequency_hz, step, rate))
             }
             (
-                Carrier::Click {
+                Carrier::Clicks {
                     rate_hz,
                     width_seconds,
                 },
@@ -121,18 +121,18 @@ impl ComponentFacts {
         };
         let modulation = match (c.modulation, v.modulation) {
             (
-                Some(Modulation::Sinusoidal { rate_hz, depth }),
-                Some(crate::synthesis::Modulator::Sinusoidal { step, .. }),
-            ) => Some(ModulationFacts::Sinusoidal {
+                Some(Modulation::Am { rate_hz, depth }),
+                Some(crate::synthesis::Modulator::Am { step, .. }),
+            ) => Some(ModulationFacts::Am {
                 rate: PhaseRate::from_step(rate_hz, step, rate),
                 depth,
             }),
             (
-                Some(Modulation::Rectangular {
+                Some(Modulation::Gate {
                     rate_hz,
                     width_seconds,
                 }),
-                Some(crate::synthesis::Modulator::Rectangular(p)),
+                Some(crate::synthesis::Modulator::Gate(p)),
             ) => Some(ModulationFacts::Gate(pulse(
                 rate_hz,
                 width_seconds,

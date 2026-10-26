@@ -28,7 +28,7 @@ fn signal(frames: u64, hz: u32) -> Signal {
         .enumerate()
         .map(|(index, voice)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-            node: auditorylab_core::Node::Voice(voice),
+            form: auditorylab_core::ComponentForm::Voice(voice),
         })
         .collect(),
     }
@@ -471,7 +471,7 @@ fn mailbox_is_polled_once_per_buffer_and_updates_wait_for_the_next_buffer() {
         fade_seconds: 0.0,
         components: vec![crate::core::Component {
             id: ComponentId::new(1),
-            node: crate::core::Node::Voice(Voice {
+            form: crate::core::ComponentForm::Voice(Voice {
                 ears: Ears::Both,
                 peak_dbfs: -30.0,
                 carrier: crate::core::Carrier::Tone {
@@ -559,7 +559,7 @@ fn routed(frames: u32) -> Signal {
                 ears: Ears::Right,
                 peak_dbfs: -14.0,
                 modulation: None,
-                carrier: crate::core::Carrier::Click {
+                carrier: crate::core::Carrier::Clicks {
                     rate_hz: 37.0,
                     width_seconds: 0.001,
                 },
@@ -569,7 +569,7 @@ fn routed(frames: u32) -> Signal {
         .enumerate()
         .map(|(index, voice)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-            node: auditorylab_core::Node::Voice(voice),
+            form: auditorylab_core::ComponentForm::Voice(voice),
         })
         .collect(),
     }

@@ -41,7 +41,7 @@ fn tone_session(frames: u32, sample_rate: SampleRate) -> Signal {
         .enumerate()
         .map(|(index, voice)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-            node: auditorylab_core::Node::Voice(voice),
+            form: auditorylab_core::ComponentForm::Voice(voice),
         })
         .collect(),
     }
@@ -131,7 +131,7 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                node: auditorylab_core::Node::Voice(voice),
+                form: auditorylab_core::ComponentForm::Voice(voice),
             })
             .collect(),
     }
@@ -159,9 +159,9 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
 
 fn short_catalog_session(name: &str) -> Signal {
     let mut recipe = Recipe::parse(catalog::find(name).unwrap().text).unwrap();
-    recipe.stimulus.duration_seconds = 0.125;
-    recipe.stimulus.fade_seconds = 0.01;
-    recipe.stimulus.signal(rate()).unwrap()
+    recipe.sound.duration_seconds = 0.125;
+    recipe.sound.fade_seconds = 0.01;
+    recipe.sound.signal(rate()).unwrap()
 }
 
 fn edge_gain(frame: u32) -> f64 {

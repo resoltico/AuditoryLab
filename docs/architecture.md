@@ -16,8 +16,8 @@ Auditory Lab has a pure synthesis core, shared application capabilities, and CLI
 | --- | --- |
 | Recipe | Portable document with identity/history, description, sources, evidence, lineage and a Sound. |
 | Sound | Authored duration, fade and ordered Components. |
-| Component | Stable owner ID and one Node. |
-| Node | A Voice, BinauralPair or MonauralPair. |
+| Component | Stable owner ID and one ComponentForm. |
+| ComponentForm | A Voice, BinauralPair or MonauralPair. |
 | Voice | Ear routing, peak level, carrier and optional modulation. |
 | Target | A Sound compiled at one sample rate, without a finite envelope. |
 | Signal | A validated Target plus a finite envelope; directly seekable. |

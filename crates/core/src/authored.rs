@@ -20,7 +20,7 @@ pub struct Pair {
 }
 /// One authored primitive or explicit two-tone construction, without an identity.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Node {
+pub enum ComponentForm {
     /// Existing raw tone/click and optional modulation semantics.
     Voice(Voice),
     /// First tone exclusively left; second tone exclusively right.
@@ -33,13 +33,13 @@ pub enum Node {
         pair: Pair,
     },
 }
-/// An authored node and its positive stable owner identity.
+/// An authored form and its positive stable owner identity.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Component {
     /// Owner identity. Portable nodes always use the primary lane.
     pub id: ComponentId,
     /// Authored sound structure.
-    pub node: Node,
+    pub form: ComponentForm,
 }
 /// Coupled carrier/offset failure, independent of sample-rate Nyquist checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +65,7 @@ impl fmt::Display for PairIssue {
 pub enum LoweringError {
     /// Duplicate, zero or already-expanded identities are not authored owner IDs.
     Identity,
-    /// Authored node or expanded voice count exceeds the established budget.
+    /// Authored form or expanded voice count exceeds the established budget.
     VoiceBudget,
     /// The first carrier and signed offset cannot produce the intended second tone.
     PairDifference {
@@ -104,7 +104,7 @@ impl fmt::Display for LoweringError {
     }
 }
 impl core::error::Error for LoweringError {}
-impl Node {
+impl ComponentForm {
     /// Number of primitive generators needed, before live crossfade expansion.
     #[must_use]
     pub const fn voices(self) -> usize {
@@ -126,7 +126,7 @@ impl Node {
 /// Refuses invalid owners, either voice budget, and unrepresentable pair sums.
 pub(crate) fn lower(components: &[Component]) -> Result<Vec<(ComponentId, Voice)>, LoweringError> {
     if components.len() > Sound::MAX_COMPONENTS
-        || components.iter().map(|c| c.node.voices()).sum::<usize>() > Sound::MAX_VOICES
+        || components.iter().map(|c| c.form.voices()).sum::<usize>() > Sound::MAX_VOICES
     {
         return Err(LoweringError::VoiceBudget);
     }
@@ -139,13 +139,13 @@ pub(crate) fn lower(components: &[Component]) -> Result<Vec<(ComponentId, Voice)
         {
             return Err(LoweringError::Identity);
         }
-        match component.node {
-            Node::Voice(value) => output.push((id, value)),
-            node => {
-                let (pair, first_ears, second_ears) = match node {
-                    Node::BinauralPair(pair) => (pair, Ears::Left, Ears::Right),
-                    Node::MonauralPair { pair, ears } => (pair, ears, ears),
-                    Node::Voice(_) => unreachable!("raw node handled above"),
+        match component.form {
+            ComponentForm::Voice(value) => output.push((id, value)),
+            form => {
+                let (pair, first_ears, second_ears) = match form {
+                    ComponentForm::BinauralPair(pair) => (pair, Ears::Left, Ears::Right),
+                    ComponentForm::MonauralPair { pair, ears } => (pair, ears, ears),
+                    ComponentForm::Voice(_) => unreachable!("raw form handled above"),
                 };
                 let second_hz = pair.first_hz + pair.offset_hz;
                 // A finite IEEE binary64 sum requires finite operands; this
@@ -186,7 +186,7 @@ pub(crate) fn lower(components: &[Component]) -> Result<Vec<(ComponentId, Voice)
 
 #[derive(Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-enum DocumentNode {
+enum DocumentComponentForm {
     Tone {
         id: u32,
         ears: Ears,
@@ -195,7 +195,7 @@ enum DocumentNode {
         #[serde(skip_serializing_if = "Option::is_none")]
         modulation: Option<Modulation>,
     },
-    Click {
+    Clicks {
         id: u32,
         ears: Ears,
         rate_hz: f64,
@@ -220,11 +220,11 @@ enum DocumentNode {
         second_peak_dbfs: f64,
     },
 }
-impl From<Component> for DocumentNode {
+impl From<Component> for DocumentComponentForm {
     fn from(value: Component) -> Self {
         let id = value.id.get();
-        match value.node {
-            Node::Voice(Voice {
+        match value.form {
+            ComponentForm::Voice(Voice {
                 ears,
                 peak_dbfs,
                 modulation,
@@ -237,10 +237,10 @@ impl From<Component> for DocumentNode {
                     peak_dbfs,
                     modulation,
                 },
-                Carrier::Click {
+                Carrier::Clicks {
                     rate_hz,
                     width_seconds,
-                } => Self::Click {
+                } => Self::Clicks {
                     id,
                     ears,
                     rate_hz,
@@ -249,7 +249,7 @@ impl From<Component> for DocumentNode {
                     modulation,
                 },
             },
-            Node::BinauralPair(Pair {
+            ComponentForm::BinauralPair(Pair {
                 first_hz,
                 offset_hz,
                 first_peak_dbfs,
@@ -261,7 +261,7 @@ impl From<Component> for DocumentNode {
                 left_peak_dbfs: first_peak_dbfs,
                 right_peak_dbfs: second_peak_dbfs,
             },
-            Node::MonauralPair {
+            ComponentForm::MonauralPair {
                 ears,
                 pair:
                     Pair {
@@ -281,10 +281,10 @@ impl From<Component> for DocumentNode {
         }
     }
 }
-impl From<DocumentNode> for Component {
-    fn from(value: DocumentNode) -> Self {
-        let (id, node) = match value {
-            DocumentNode::Tone {
+impl From<DocumentComponentForm> for Component {
+    fn from(value: DocumentComponentForm) -> Self {
+        let (id, form) = match value {
+            DocumentComponentForm::Tone {
                 id,
                 ears,
                 frequency_hz,
@@ -292,14 +292,14 @@ impl From<DocumentNode> for Component {
                 modulation,
             } => (
                 id,
-                Node::Voice(Voice {
+                ComponentForm::Voice(Voice {
                     ears,
                     peak_dbfs,
                     modulation,
                     carrier: Carrier::Tone { frequency_hz },
                 }),
             ),
-            DocumentNode::Click {
+            DocumentComponentForm::Clicks {
                 id,
                 ears,
                 rate_hz,
@@ -308,17 +308,17 @@ impl From<DocumentNode> for Component {
                 modulation,
             } => (
                 id,
-                Node::Voice(Voice {
+                ComponentForm::Voice(Voice {
                     ears,
                     peak_dbfs,
                     modulation,
-                    carrier: Carrier::Click {
+                    carrier: Carrier::Clicks {
                         rate_hz,
                         width_seconds,
                     },
                 }),
             ),
-            DocumentNode::BinauralPair {
+            DocumentComponentForm::BinauralPair {
                 id,
                 left_hz,
                 offset_hz,
@@ -326,14 +326,14 @@ impl From<DocumentNode> for Component {
                 right_peak_dbfs,
             } => (
                 id,
-                Node::BinauralPair(Pair {
+                ComponentForm::BinauralPair(Pair {
                     first_hz: left_hz,
                     offset_hz,
                     first_peak_dbfs: left_peak_dbfs,
                     second_peak_dbfs: right_peak_dbfs,
                 }),
             ),
-            DocumentNode::MonauralPair {
+            DocumentComponentForm::MonauralPair {
                 id,
                 ears,
                 first_hz,
@@ -342,7 +342,7 @@ impl From<DocumentNode> for Component {
                 second_peak_dbfs,
             } => (
                 id,
-                Node::MonauralPair {
+                ComponentForm::MonauralPair {
                     ears,
                     pair: Pair {
                         first_hz,
@@ -355,7 +355,7 @@ impl From<DocumentNode> for Component {
         };
         Self {
             id: ComponentId::new(id),
-            node,
+            form,
         }
     }
 }
@@ -366,12 +366,12 @@ impl Serialize for Component {
                 "authored component requires a positive primary-lane owner",
             ));
         }
-        DocumentNode::from(*self).serialize(serializer)
+        DocumentComponentForm::from(*self).serialize(serializer)
     }
 }
 impl<'de> Deserialize<'de> for Component {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = Self::from(DocumentNode::deserialize(deserializer)?);
+        let value = Self::from(DocumentComponentForm::deserialize(deserializer)?);
         if value.id.get() == 0 {
             return Err(D::Error::custom("component id must be a positive u32"));
         }
@@ -404,14 +404,14 @@ impl Sound {
     ///
     /// # Errors
     /// Rejects pair arithmetic, budgets and all existing target-specific rules.
-    pub fn target(&self, rate: crate::SampleRate) -> Result<crate::Target, crate::StimulusError> {
+    pub fn target(&self, rate: crate::SampleRate) -> Result<crate::Target, crate::SoundError> {
         self.check(rate).into_result()
     }
     /// Give the authored target a finite envelope using the existing generators.
     ///
     /// # Errors
     /// Returns authored/target validation or finite-envelope errors.
-    pub fn signal(&self, rate: crate::SampleRate) -> Result<crate::Signal, crate::StimulusError> {
+    pub fn signal(&self, rate: crate::SampleRate) -> Result<crate::Signal, crate::SoundError> {
         let envelope =
             crate::signal::Envelope::resolve(rate, self.duration_seconds, self.fade_seconds)?;
         Ok(crate::Signal::new(self.target(rate)?, envelope))
@@ -419,7 +419,7 @@ impl Sound {
     /// Whether exact ear separation matters, independent of playback validity.
     #[must_use]
     pub fn uses_separate_ears(&self) -> bool {
-        self.components.iter().any(|c| c.node.ears() != Ears::Both)
+        self.components.iter().any(|c| c.form.ears() != Ears::Both)
     }
     /// Nonfinite authored values, without inferring or realizing derived carriers.
     pub fn nonfinite(&self) -> impl Iterator<Item = (Option<usize>, crate::ParameterId)> + '_ {
@@ -433,12 +433,12 @@ impl Sound {
         .chain(self.components.iter().enumerate().flat_map(|(i, c)| {
             crate::ParameterId::COMPONENT
                 .into_iter()
-                .filter(move |p| c.node.read(*p).is_some_and(|v| !v.is_finite()))
+                .filter(move |p| c.form.read(*p).is_some_and(|v| !v.is_finite()))
                 .map(move |p| (Some(i), p))
         }))
     }
 }
-impl Node {
+impl ComponentForm {
     /// Authored ear route. A binaural pair requires separate left/right channels.
     #[must_use]
     pub const fn ears(self) -> Ears {
@@ -454,8 +454,8 @@ impl Node {
         use crate::ParameterId as P;
         match self {
             Self::Voice(c) => parameter.read(&c),
-            node => {
-                let p = node.pair()?;
+            form => {
+                let p = form.pair()?;
                 match parameter {
                     P::PairFirstFrequency => Some(p.first_hz),
                     P::PairOffset => Some(p.offset_hz),
@@ -487,13 +487,13 @@ impl Node {
 }
 impl fmt::Display for Component {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.node {
-            Node::Voice(c) => c.fmt(f),
-            node => {
-                let (p, method) = match node {
-                    Node::BinauralPair(p) => (p, "binaural"),
-                    Node::MonauralPair { pair, .. } => (pair, "monaural"),
-                    Node::Voice(_) => unreachable!("primitive handled above"),
+        match self.form {
+            ComponentForm::Voice(c) => c.fmt(f),
+            form => {
+                let (p, method) = match form {
+                    ComponentForm::BinauralPair(p) => (p, "binaural"),
+                    ComponentForm::MonauralPair { pair, .. } => (pair, "monaural"),
+                    ComponentForm::Voice(_) => unreachable!("primitive handled above"),
                 };
                 write!(
                     f,
@@ -509,7 +509,7 @@ impl fmt::Display for Component {
     }
 }
 
-impl Node {
+impl ComponentForm {
     /// Exact authored comparison for dirty/no-op semantics, including signed zeros.
     #[must_use]
     pub fn same_content(self, other: Self) -> bool {
@@ -530,7 +530,7 @@ impl Node {
     }
 }
 
-impl Node {
+impl ComponentForm {
     /// Primitive carrier choice for existing primitive options; pairs have no choice.
     #[must_use]
     pub const fn primitive_kind(self) -> Option<crate::CarrierKind> {
@@ -570,8 +570,8 @@ pub enum PairKind {
     /// Two tones on one identical route.
     Monaural,
 }
-impl Node {
-    /// Whether ear routing is editable for this authored node.
+impl ComponentForm {
+    /// Whether ear routing is editable for this authored form.
     #[must_use]
     pub const fn routing_editable(self) -> bool {
         !matches!(self, Self::BinauralPair(_))
@@ -589,7 +589,7 @@ impl Sound {
                 .components
                 .iter()
                 .zip(&other.components)
-                .all(|(a, b)| a.id == b.id && a.node.same_content(b.node))
+                .all(|(a, b)| a.id == b.id && a.form.same_content(b.form))
     }
 }
 

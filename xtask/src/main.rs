@@ -289,7 +289,7 @@ fn smoke(cli: &Path, scratch: &Path) -> Result<()> {
             .stdin
             .take()
             .ok_or("stdin missing")?
-            .write_all(b"schema_version=3\nduration_seconds=0.000125\nfade_seconds=0\n[document]\nid='00000000-0000-4000-8000-000000000001'\n")?;
+            .write_all(b"schema_version=4\n[sound]\nduration_seconds=0.000125\nfade_seconds=0\n[document]\nid='00000000-0000-4000-8000-000000000001'\n")?;
         let output = child.wait_with_output()?;
         if output.status.success() != expected_success {
             return Err(format!(

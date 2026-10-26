@@ -1,7 +1,7 @@
 //! Shared query counterexamples using actual authored classification and typed evidence.
 use auditorylab::core::{
-    Carrier, Component, ComponentId, DocumentIdentity, Ears, Node, Pair, Recipe, Sound, Timestamp,
-    Voice,
+    Carrier, Component, ComponentForm, ComponentId, DocumentIdentity, Ears, Pair, Recipe, Sound,
+    Timestamp, Voice,
     nominal::{Band, Method},
 };
 use auditorylab::recipe::{Origin, RecipeSnapshot};
@@ -24,7 +24,7 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
         title: title.into(),
         notes: None,
     });
-    recipe.stimulus = Sound {
+    recipe.sound = Sound {
         duration_seconds: 60.0,
         fade_seconds: 0.1,
         components: nodes,
@@ -36,7 +36,7 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
 fn pair(offset_hz: f64) -> Component {
     Component {
         id: ComponentId::new(7),
-        node: Node::BinauralPair(Pair {
+        form: ComponentForm::BinauralPair(Pair {
             first_hz: 200.0,
             offset_hz,
             first_peak_dbfs: -30.0,
@@ -47,13 +47,13 @@ fn pair(offset_hz: f64) -> Component {
 fn am(rate_hz: f64) -> Component {
     Component {
         id: ComponentId::new(90),
-        node: Node::Voice(Voice {
+        form: ComponentForm::Voice(Voice {
             ears: Ears::Both,
             peak_dbfs: -30.0,
             carrier: Carrier::Tone {
                 frequency_hz: 1000.0,
             },
-            modulation: Some(auditorylab::core::Modulation::Sinusoidal {
+            modulation: Some(auditorylab::core::Modulation::Am {
                 rate_hz,
                 depth: 1.0,
             }),
@@ -69,7 +69,7 @@ fn correlated_rate_sort_and_groups_use_unique_actual_authored_keys() {
     q.rhythm.bands = vec![Band::Gamma];
     q.rhythm.methods = vec![Method::Binaural];
     assert_eq!(q.execute(&input).unwrap().unique_count(), 0);
-    q.rhythm.methods = vec![Method::AmplitudeModulation];
+    q.rhythm.methods = vec![Method::Am];
     q.group_by = GroupBy::Band;
     let result = q.execute(&input).unwrap();
     assert_eq!(result.unique_count(), 2);

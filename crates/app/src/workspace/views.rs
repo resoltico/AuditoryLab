@@ -477,7 +477,7 @@ impl Workspace {
             .iter()
             .enumerate()
             .map(|(index, component)| {
-                let (id,committed)=(&component.id,&component.node);
+                let (id,committed)=(&component.id,&component.form);
                 let shown = candidate
                     .draft()
                     .component(*id)
@@ -486,17 +486,17 @@ impl Workspace {
                 let own = analysis.check().component(*id);
                 let acoustic = own.and_then(|r| r.as_ref().err());
                 let second=analysis.check().component(id.with_lane(auditorylab_core::Lane::Secondary)).and_then(|r|r.as_ref().err());
-                let coupled=analysis.check().result().err().filter(|error|match error {auditorylab_core::StimulusError::Authored(auditorylab_core::LoweringError::PairDifference {id:owner,..})|auditorylab_core::StimulusError::PairCarrier {id:owner,..}=>owner.get()==id.get(),_=>false});
+                let coupled=analysis.check().result().err().filter(|error|match error {auditorylab_core::SoundError::Authored(auditorylab_core::LoweringError::PairDifference {id:owner,..})|auditorylab_core::SoundError::PairCarrier {id:owner,..}=>owner.get()==id.get(),_=>false});
                 let parameters = ParameterId::COMPONENT
                     .into_iter()
                     .filter(|p| committed.read(*p).is_some())
                     .map(|parameter| {
                         let field = EditingField::Parameter(*id, parameter);
                         let diagnostic = problem(field).unwrap_or_else(|| {
-                            coupled.filter(|e|e.parameters().contains(&parameter)).map(|e| stimulus_diagnostic(e, &context)).unwrap_or_else(|| {
+                            coupled.filter(|e|e.parameters().contains(&parameter)).map(|e| sound_diagnostic(e, &context)).unwrap_or_else(|| {
                             let error=match parameter {ParameterId::PairSecondLevel=>second,_=>acoustic};
                             error
-                                .filter(|e| e.parameters().contains(&parameter) || matches!(parameter,ParameterId::PairFirstLevel|ParameterId::PairSecondLevel) && matches!(e,auditorylab_core::ComponentError::PeakDbfs {..}))
+                                .filter(|e| e.parameters().contains(&parameter) || matches!(parameter,ParameterId::PairFirstLevel|ParameterId::PairSecondLevel) && matches!(e,auditorylab_core::VoiceError::PeakDbfs {..}))
                                 .map(|error| component_diagnostic(error, &context))
                                 .unwrap_or_default()})
                         });
@@ -525,7 +525,7 @@ impl Workspace {
                     .map(|(f, p)| problem_text(*f, *p))
                     .collect();
                 for error in [acoustic,second].into_iter().flatten() {errors.push(component_diagnostic(error, &context));}
-                if let Some(error)=coupled {errors.push(stimulus_diagnostic(error, &context));}
+                if let Some(error)=coupled {errors.push(sound_diagnostic(error, &context));}
                 errors.retain(|error| !parameters.iter().any(|parameter| parameter.diagnostic == *error));
                 errors.dedup();
                 ComponentView {
@@ -716,8 +716,8 @@ impl Workspace {
                 .unwrap_or_default(),
             timing: format!(
                 "Duration {} · fade {} at each edge",
-                NumberStyle::Duration.format(snapshot.stimulus().duration_seconds),
-                NumberStyle::Duration.format(snapshot.stimulus().fade_seconds)
+                NumberStyle::Duration.format(snapshot.sound().duration_seconds),
+                NumberStyle::Duration.format(snapshot.sound().fade_seconds)
             ),
             summary: about
                 .and_then(|a| {
@@ -790,7 +790,7 @@ impl Workspace {
             String::new()
         };
         let draft = self.editor.session.draft();
-        let component_add = draft.check_addition(auditorylab_core::Node::Voice(
+        let component_add = draft.check_addition(auditorylab_core::ComponentForm::Voice(
             controls::default_component(CarrierKind::Tone),
         ));
         let pair_add =
@@ -833,7 +833,7 @@ impl Workspace {
                 .map(|(index, component)| {
                     format!(
                         "Removed {} · component {}.",
-                        component.node.heading(),
+                        component.form.heading(),
                         index + 1
                     )
                 })
@@ -843,7 +843,7 @@ impl Workspace {
                     .editor
                     .session
                     .removed()
-                    .is_some_and(|(_, component)| draft.check_addition(component.node).is_ok()),
+                    .is_some_and(|(_, component)| draft.check_addition(component.form).is_ok()),
             file_busy: self.files.slot.is_some() || self.prompt.is_some(),
             playback_busy: playing,
             exporting,
@@ -1111,9 +1111,9 @@ impl Workspace {
     }
 }
 
-fn component_diagnostic(error: &auditorylab_core::ComponentError, context: &str) -> String {
+fn component_diagnostic(error: &auditorylab_core::VoiceError, context: &str) -> String {
     match error {
-        auditorylab_core::ComponentError::Frequency {
+        auditorylab_core::VoiceError::Frequency {
             hz, sample_rate_hz, ..
         } => {
             format!(
@@ -1125,9 +1125,9 @@ fn component_diagnostic(error: &auditorylab_core::ComponentError, context: &str)
     }
 }
 
-fn stimulus_diagnostic(error: &auditorylab_core::StimulusError, context: &str) -> String {
+fn sound_diagnostic(error: &auditorylab_core::SoundError, context: &str) -> String {
     match error {
-        auditorylab_core::StimulusError::PairCarrier { error, .. } => {
+        auditorylab_core::SoundError::PairCarrier { error, .. } => {
             component_diagnostic(error, context)
         }
         _ => format!("{error} ({context})"),
@@ -1138,7 +1138,7 @@ fn stimulus_diagnostic(error: &auditorylab_core::StimulusError, context: &str) -
 mod diagnostic_tests {
     #[test]
     fn frequency_limits_retain_the_half_hertz_boundary_at_odd_sample_rates() {
-        let error = auditorylab_core::ComponentError::Frequency {
+        let error = auditorylab_core::VoiceError::Frequency {
             parameter: auditorylab_core::ParameterId::ToneFrequency,
             hz: 22050.5,
             sample_rate_hz: 44101,

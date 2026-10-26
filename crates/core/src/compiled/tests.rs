@@ -27,7 +27,7 @@ fn clicks(rate_hz: f64, width_seconds: f64) -> Voice {
     Voice {
         ears: Ears::Both,
         peak_dbfs: -30.0,
-        carrier: crate::Carrier::Click {
+        carrier: crate::Carrier::Clicks {
             rate_hz,
             width_seconds,
         },
@@ -37,7 +37,7 @@ fn clicks(rate_hz: f64, width_seconds: f64) -> Voice {
 
 fn gate(width_seconds: f64) -> Voice {
     Voice {
-        modulation: Some(Modulation::Rectangular {
+        modulation: Some(Modulation::Gate {
             rate_hz: 40.0,
             width_seconds,
         }),
@@ -85,7 +85,7 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
     let errors: Vec<_> = check
         .components()
         .iter()
-        .map(|(id, result)| (*id, result.as_ref().err().map(ComponentError::parameters)))
+        .map(|(id, result)| (*id, result.as_ref().err().map(VoiceError::parameters)))
         .collect();
     assert_eq!(
         errors,
@@ -101,9 +101,9 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
     );
     assert!(matches!(
         check.result(),
-        Err(StimulusError::Component {
+        Err(SoundError::Component {
             number: 1,
-            error: ComponentError::Frequency {
+            error: VoiceError::Frequency {
                 parameter: ParameterId::ToneFrequency,
                 ..
             }
@@ -111,14 +111,14 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
     ));
     // Coupled and modulation constraints name every participating quantity.
     let sideband = Voice {
-        modulation: Some(Modulation::Sinusoidal {
+        modulation: Some(Modulation::Am {
             rate_hz: 10_000.0,
             depth: 0.5,
         }),
         ..tone(16_000.0, -30.0)
     };
     let depth = Voice {
-        modulation: Some(Modulation::Sinusoidal {
+        modulation: Some(Modulation::Am {
             rate_hz: 40.0,
             depth: 1.5,
         }),
@@ -128,12 +128,9 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
     for (component, parameters) in [
         (
             sideband,
-            &[
-                ParameterId::ToneFrequency,
-                ParameterId::AmplitudeModulationRate,
-            ][..],
+            &[ParameterId::ToneFrequency, ParameterId::AmRate][..],
         ),
-        (depth, &[ParameterId::ModulationDepth][..]),
+        (depth, &[ParameterId::AmDepth][..]),
         (
             gate_width,
             &[ParameterId::GateRate, ParameterId::GateWidth][..],
@@ -155,7 +152,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
     );
     assert_eq!(
         check.result().unwrap_err(),
-        &StimulusError::DuplicateComponentId { id: id(1) }
+        &SoundError::DuplicateComponentId { id: id(1) }
     );
     assert!(check.result().unwrap_err().parameters().is_empty());
     assert!(
@@ -196,7 +193,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
     let check = TargetCheck::new(rate(48_000), &loud);
     assert!(matches!(
         check.result(),
-        Err(StimulusError::Peak { ear: Ear::Left, .. })
+        Err(SoundError::Peak { ear: Ear::Left, .. })
     ));
     assert!(check.result().unwrap_err().parameters().is_empty());
     assert!(check.components().iter().all(|(_, row)| row.is_ok()));
@@ -209,7 +206,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
         if count > Sound::MAX_COMPONENTS {
             assert_eq!(
                 check.result().unwrap_err(),
-                &StimulusError::TooManyComponents { count }
+                &SoundError::TooManyComponents { count }
             );
             assert!(check.components().is_empty());
         } else {
@@ -220,7 +217,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
 
 #[test]
 fn finite_entry_points_select_envelope_errors_before_component_errors() {
-    let stimulus = Sound {
+    let sound = Sound {
         duration_seconds: 0.0,
         fade_seconds: 0.0,
         components: (vec![tone(30_000.0, -30.0)])
@@ -228,17 +225,17 @@ fn finite_entry_points_select_envelope_errors_before_component_errors() {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                node: crate::Node::Voice(voice),
+                form: crate::ComponentForm::Voice(voice),
             })
             .collect(),
     };
     assert!(matches!(
-        stimulus.signal(rate(48_000)),
-        Err(StimulusError::Duration { .. })
+        sound.signal(rate(48_000)),
+        Err(SoundError::Duration { .. })
     ));
     assert!(matches!(
-        stimulus.target(rate(48_000)),
-        Err(StimulusError::Component { number: 1, .. })
+        sound.target(rate(48_000)),
+        Err(SoundError::Component { number: 1, .. })
     ));
     // An already valid target checks only its envelope.
     let target = Sound {
@@ -247,27 +244,27 @@ fn finite_entry_points_select_envelope_errors_before_component_errors() {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                node: crate::Node::Voice(voice),
+                form: crate::ComponentForm::Voice(voice),
             })
             .collect(),
-        ..stimulus.clone()
+        ..sound.clone()
     }
     .target(rate(48_000))
     .unwrap();
     assert!(matches!(
         target.signal(0.0, 0.0),
-        Err(StimulusError::Duration { .. })
+        Err(SoundError::Duration { .. })
     ));
     assert!(matches!(
         target.signal(1.0, f64::NAN),
-        Err(StimulusError::Fade { .. })
+        Err(SoundError::Fade { .. })
     ));
     assert!(matches!(
         target.signal(1.0, 0.5),
-        Err(StimulusError::FadesOverlap { .. })
+        Err(SoundError::FadesOverlap { .. })
     ));
     assert_eq!(
-        StimulusError::FadesOverlap {
+        SoundError::FadesOverlap {
             fade_frames: 1,
             frames: 2,
             sample_rate_hz: 8_000
@@ -279,7 +276,7 @@ fn finite_entry_points_select_envelope_errors_before_component_errors() {
 
 #[test]
 fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
-    let stimulus = Sound {
+    let sound = Sound {
         duration_seconds: 0.0,
         fade_seconds: 0.0,
         components: (vec![tone(440.0, -30.0), clicks(40.0, 0.001)])
@@ -287,11 +284,11 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                node: crate::Node::Voice(voice),
+                form: crate::ComponentForm::Voice(voice),
             })
             .collect(),
     };
-    let target = stimulus.target(rate(48_000)).unwrap();
+    let target = sound.target(rate(48_000)).unwrap();
     assert_eq!(target.len(), 2);
     assert!(target.signal(0.0, 0.0).is_err());
     // Conversions reuse the compiled mix with its identities, facts and rate.
@@ -301,14 +298,14 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
     assert!(signal.components().eq(target.components()));
     let ids: Vec<_> = signal.components().map(|(id, _)| id).collect();
     assert_eq!(ids, [id(1), id(2)]);
-    let via_stimulus = Sound {
+    let via_sound = Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.1,
-        ..stimulus
+        ..sound
     }
     .signal(rate(48_000))
     .unwrap();
-    assert_eq!(via_stimulus, signal);
+    assert_eq!(via_sound, signal);
 }
 
 #[test]

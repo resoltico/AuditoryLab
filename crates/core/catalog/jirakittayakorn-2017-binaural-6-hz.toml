@@ -1,9 +1,7 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
 # Source parameters and adaptations: see docs/catalog.md.
-schema_version = 3
-duration_seconds = 1800.0
-fade_seconds = 0.1
+schema_version = 4
 
 [document]
 id = "a3adec3c-1a43-4146-bf67-cb889af88550"
@@ -11,7 +9,11 @@ id = "a3adec3c-1a43-4146-bf67-cb889af88550"
 [description]
 title = "6 Hz binaural beat"
 
-[[component]]
+[sound]
+duration_seconds = 1800.0
+fade_seconds = 0.1
+
+[[sound.component]]
 id = 1
 kind = "binaural_pair"
 left_hz = 250.0
@@ -30,7 +32,7 @@ population = "human"
 population_detail = "Human study: Meditation-like brain activity"
 condition_role = "test"
 measures = ["eeg", "subjective"]
-methods_locator = "A 30-minute binaural beat, 250 Hz in the left ear and 256 Hz in the right, heard by 17 seated adults between 5-minute baseline and post-stimulus EEG recordings; a control group of 11 heard silence. Theta activity increased within 10 minutes of exposure in the beat group."
+methods_locator = "A 30-minute binaural beat, 250 Hz in the left ear and 256 Hz in the right, heard by 17 seated adults between 5-minute baseline and post-sound EEG recordings; a control group of 11 heard silence. Theta activity increased within 10 minutes of exposure in the beat group."
 summary = "250 Hz in the left ear and 256 Hz in the right: a slow 6-per-second binaural beat for headphones. In one study, 17 adults listened for 30 minutes and 11 sat in silence. The authors reported more theta brain activity within 10 minutes and linked it with attention and meditation. They also measured mood: the beat group reported less worry and some more negative feelings, while both groups reported more fatigue and less vigor. These mixed mood findings do not establish a benefit over the control group or a wellbeing or performance benefit. Reviews of binaural-beat research report mixed results."
 limitations = "Source findings concern the stated population and condition; adaptations do not establish efficacy for generated audio. See the summary and adaptation for study-specific limitations."
-adaptation = "The source made the stimulus in Sound Forge Pro and played it at 65 dB SPL; it states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added. The baseline and post-stimulus periods are not part of this recipe."
+adaptation = "The source made the sound in Sound Forge Pro and played it at 65 dB SPL; it states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added. The baseline and post-sound periods are not part of this recipe."

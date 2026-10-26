@@ -24,11 +24,11 @@ fn digest(frames: &[[f64; 2]]) -> u64 {
 /// Two faded seconds at 48,000 Hz, rendered in buffers of uneven length.
 fn rendered(components: &str) -> Vec<[f64; 2]> {
     let text = format!(
-        "schema_version = 3\nduration_seconds = 2.0\nfade_seconds = 0.1\n{components}\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n"
+        "schema_version = 4\n[sound]\nduration_seconds = 2.0\nfade_seconds = 0.1\n{components}\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n"
     );
     let session = Recipe::parse(&text)
         .unwrap()
-        .stimulus
+        .sound
         .signal(SampleRate::new(48_000).unwrap())
         .unwrap();
     let mut frames = vec![[0.0; 2]; 96_000];
@@ -47,23 +47,23 @@ fn rendered(components: &str) -> Vec<[f64; 2]> {
 const CASES: [(&str, &str); 5] = [
     (
         "separate-ear tones",
-        "[[component]]\nid=1\nears = \"left\"\nkind = \"tone\"\nfrequency_hz = 250.0\npeak_dbfs = -20.0\n[[component]]\nid=2\nears = \"right\"\nkind = \"tone\"\nfrequency_hz = 256.0\npeak_dbfs = -20.0\n",
+        "[[sound.component]]\nid=1\nears = \"left\"\nkind = \"tone\"\nfrequency_hz = 250.0\npeak_dbfs = -20.0\n[[sound.component]]\nid=2\nears = \"right\"\nkind = \"tone\"\nfrequency_hz = 256.0\npeak_dbfs = -20.0\n",
     ),
     (
         "summed tones",
-        "[[component]]\nid=1\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 396.5\npeak_dbfs = -23.0103\n[[component]]\nid=2\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 403.5\npeak_dbfs = -23.0103\n",
+        "[[sound.component]]\nid=1\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 396.5\npeak_dbfs = -23.0103\n[[sound.component]]\nid=2\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 403.5\npeak_dbfs = -23.0103\n",
     ),
     (
         "modulated tone",
-        "[[component]]\nid=1\nears = \"left\"\nkind = \"tone\"\nfrequency_hz = 1000.0\npeak_dbfs = -20.0\n[component.modulation]\nkind = \"sinusoidal\"\nrate_hz = 39.0625\ndepth = 1.0\n",
+        "[[sound.component]]\nid=1\nears = \"left\"\nkind = \"tone\"\nfrequency_hz = 1000.0\npeak_dbfs = -20.0\n[sound.component.modulation]\nkind = \"am\"\nrate_hz = 39.0625\ndepth = 1.0\n",
     ),
     (
         "gated tone",
-        "[[component]]\nid=1\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 5000.0\npeak_dbfs = -20.0\n[component.modulation]\nkind = \"rectangular\"\nrate_hz = 40.0\nwidth_seconds = 0.001\n",
+        "[[sound.component]]\nid=1\nears = \"both\"\nkind = \"tone\"\nfrequency_hz = 5000.0\npeak_dbfs = -20.0\n[sound.component.modulation]\nkind = \"gate\"\nrate_hz = 40.0\nwidth_seconds = 0.001\n",
     ),
     (
         "clicks",
-        "[[component]]\nid=1\nears = \"both\"\nkind = \"click\"\nrate_hz = 40.0\nwidth_seconds = 0.001\npeak_dbfs = -20.0\n",
+        "[[sound.component]]\nid=1\nears = \"both\"\nkind = \"clicks\"\nrate_hz = 40.0\nwidth_seconds = 0.001\npeak_dbfs = -20.0\n",
     ),
 ];
 

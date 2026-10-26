@@ -1,9 +1,7 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
 # Source parameters and adaptations: see docs/catalog.md.
-schema_version = 3
-duration_seconds = 307.2
-fade_seconds = 0.1
+schema_version = 4
 
 [document]
 id = "89fd4faf-4afb-4835-8d96-7877b04153d5"
@@ -11,14 +9,18 @@ id = "89fd4faf-4afb-4835-8d96-7877b04153d5"
 [description]
 title = "39.0625 Hz amplitude-modulated 500 Hz tone, left ear"
 
-[[component]]
+[sound]
+duration_seconds = 307.2
+fade_seconds = 0.1
+
+[[sound.component]]
 id = 1
 ears = "left"
 kind = "tone"
 frequency_hz = 500.0
 peak_dbfs = -20.0
-[component.modulation]
-kind = "sinusoidal"
+[sound.component.modulation]
+kind = "am"
 rate_hz = 39.0625
 depth = 1.0
 

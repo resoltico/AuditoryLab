@@ -25,7 +25,7 @@ fn tone(frequency_hz: f64) -> Target {
         fade_seconds: 0.0,
         components: vec![crate::core::Component {
             id: ComponentId::new(1),
-            node: crate::core::Node::Voice(Voice {
+            form: crate::core::ComponentForm::Voice(Voice {
                 ears: Ears::Both,
                 peak_dbfs: -30.0,
                 carrier: Carrier::Tone { frequency_hz },

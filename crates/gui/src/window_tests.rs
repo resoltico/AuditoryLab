@@ -760,7 +760,7 @@ fn assert_monitor_warning_accessibility(ui: &MainWindow) {
         );
         assert!(
             find(backend_text).is_some_and(|item| item == backend),
-            "coverage changes must not recreate the backend warning node"
+            "coverage changes must not recreate the backend warning form"
         );
         sync_monitor_warnings(ui, None, None, 1, false);
         window.set_data(ui.get_monitor_data());
@@ -1024,7 +1024,7 @@ fn assert_audio_controls_keep_stop_visible(
         previous_height = minimum.height;
         controls.window().set_size(minimum);
         slint::platform::update_timers_and_animations();
-        // Click inside the bottom row of the actual generated window at its native minimum.
+        // Clicks inside the bottom row of the actual generated window at its native minimum.
         let position = slint::LogicalPosition::new(minimum.width / 2.0, minimum.height - 24.0);
         controls
             .window()

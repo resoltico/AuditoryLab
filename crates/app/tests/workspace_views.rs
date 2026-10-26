@@ -38,7 +38,7 @@ fn summary(components: &[Voice]) -> Structure {
         .enumerate()
         .map(|(i, c)| auditorylab::core::Component {
             id: ComponentId::numbered(i).unwrap(),
-            node: auditorylab::core::Node::Voice(*c),
+            form: auditorylab::core::ComponentForm::Voice(*c),
         })
         .collect();
     Structure::of_target(
@@ -54,7 +54,7 @@ fn summary(components: &[Voice]) -> Structure {
 #[test]
 fn physical_meaning_has_positive_and_rejected_neighbors() {
     let click = Voice {
-        carrier: Carrier::Click {
+        carrier: Carrier::Clicks {
             rate_hz: 40.0,
             width_seconds: 0.001,
         },
@@ -91,7 +91,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
         assert!(summary(&bad).relationship.is_none());
     }
     let gate = Voice {
-        modulation: Some(Modulation::Rectangular {
+        modulation: Some(Modulation::Gate {
             rate_hz: 8.0,
             width_seconds: 0.001,
         }),
@@ -101,7 +101,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     assert_eq!(s.rhythms.len(), 2);
     assert!(s.summary().contains("8 Hz gate") && s.summary().contains("40 Hz clicks"));
     let active = Voice {
-        modulation: Some(Modulation::Sinusoidal {
+        modulation: Some(Modulation::Am {
             rate_hz: 39.0625,
             depth: 0.5,
         }),
@@ -109,10 +109,10 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     };
     let am = summary(&[active]);
     assert_eq!(am.rhythms.len(), 1);
-    assert_eq!(am.rhythms[0].kind, Method::AmplitudeModulation);
+    assert_eq!(am.rhythms[0].kind, Method::Am);
     assert!(am.summary().contains("39.0625") && am.summary().contains("50%"));
     let inactive = Voice {
-        modulation: Some(Modulation::Sinusoidal {
+        modulation: Some(Modulation::Am {
             rate_hz: 39.0625,
             depth: 0.0,
         }),
@@ -221,7 +221,7 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
         "39.0625123456789"
     );
     let c = Voice {
-        carrier: Carrier::Click {
+        carrier: Carrier::Clicks {
             rate_hz: 40.0,
             width_seconds: 0.001,
         },
@@ -232,7 +232,7 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
         fade_seconds: 0.0,
         components: vec![auditorylab::core::Component {
             id: ComponentId::new(9),
-            node: auditorylab::core::Node::Voice(c),
+            form: auditorylab::core::ComponentForm::Voice(c),
         }],
     }
     .target(SampleRate::new(44100).unwrap())
@@ -255,7 +255,7 @@ fn a_carrier_is_named_in_sentence_case() {
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
-                    node: auditorylab_core::Node::Voice(*voice),
+                    form: auditorylab_core::ComponentForm::Voice(*voice),
                 })
                 .collect(),
         }
@@ -267,7 +267,7 @@ fn a_carrier_is_named_in_sentence_case() {
         ..tone(440.0, Ears::Both)
     };
     let clicks = Voice {
-        carrier: Carrier::Click {
+        carrier: Carrier::Clicks {
             rate_hz: 40.0,
             width_seconds: 0.001,
         },
@@ -277,12 +277,12 @@ fn a_carrier_is_named_in_sentence_case() {
     assert!(plain.starts_with("Tone 440 Hz"), "{plain}");
     let pulses = describe(clicks);
     assert!(pulses.starts_with("Pulse rate 40 "), "{pulses}");
-    let am = describe(modulated(Modulation::Sinusoidal {
+    let am = describe(modulated(Modulation::Am {
         rate_hz: 8.0,
         depth: 0.5,
     }));
     assert!(am.contains("· carrier tone 440 Hz"), "{am}");
-    let gate = describe(modulated(Modulation::Rectangular {
+    let gate = describe(modulated(Modulation::Gate {
         rate_hz: 8.0,
         width_seconds: 0.001,
     }));
@@ -298,7 +298,7 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
     ] {
         let rate = SampleRate::new(hz).unwrap();
         let component = Voice {
-            carrier: Carrier::Click {
+            carrier: Carrier::Clicks {
                 rate_hz: 40.0,
                 width_seconds: requested,
             },
@@ -311,7 +311,7 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
-                    node: auditorylab_core::Node::Voice(*voice),
+                    form: auditorylab_core::ComponentForm::Voice(*voice),
                 })
                 .collect(),
         }
@@ -354,7 +354,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
-                    node: auditorylab_core::Node::Voice(*voice),
+                    form: auditorylab_core::ComponentForm::Voice(*voice),
                 })
                 .collect(),
         }
@@ -371,7 +371,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         [ParameterId::ToneFrequency]
     );
     let clicks = Voice {
-        carrier: Carrier::Click {
+        carrier: Carrier::Clicks {
             rate_hz: 160.0,
             width_seconds: 0.010,
         },
@@ -382,7 +382,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         [ParameterId::ClickRate, ParameterId::ClickWidth]
     );
     let sideband = Voice {
-        modulation: Some(Modulation::Sinusoidal {
+        modulation: Some(Modulation::Am {
             rate_hz: 10000.0,
             depth: 0.5,
         }),
@@ -390,10 +390,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
     };
     assert_eq!(
         check(sideband),
-        [
-            ParameterId::ToneFrequency,
-            ParameterId::AmplitudeModulationRate
-        ]
+        [ParameterId::ToneFrequency, ParameterId::AmRate]
     );
     assert_eq!(
         check(Voice {
@@ -403,7 +400,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         [ParameterId::PeakLevel]
     );
     let depth = Voice {
-        modulation: Some(Modulation::Sinusoidal {
+        modulation: Some(Modulation::Am {
             rate_hz: 40.0,
             depth: 1.5,
         }),
@@ -416,7 +413,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,
-                node: auditorylab_core::Node::Voice(*voice),
+                form: auditorylab_core::ComponentForm::Voice(*voice),
             })
             .collect(),
     }
@@ -446,7 +443,7 @@ fn two_tone_timing_includes_monaural_and_inactive_am_without_inventing_an_envelo
         let a = tone(200.0, ears);
         let mut b = tone(202.0, if interaural { Ears::Right } else { ears });
         b.peak_dbfs = -41.0;
-        b.modulation = Some(Modulation::Sinusoidal {
+        b.modulation = Some(Modulation::Am {
             rate_hz: 40.0,
             depth: 0.0,
         });
@@ -455,7 +452,7 @@ fn two_tone_timing_includes_monaural_and_inactive_am_without_inventing_an_envelo
         assert!((s.slowest_rate().unwrap() - 2.0).abs() < 1e-10);
         assert!(s.rhythms.is_empty());
         assert_eq!(s.interaural().is_some(), interaural);
-        b.modulation = Some(Modulation::Sinusoidal {
+        b.modulation = Some(Modulation::Am {
             rate_hz: 40.0,
             depth: 0.001,
         });

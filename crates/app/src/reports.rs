@@ -16,7 +16,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 
 /// Version of the command-line JSON report envelope.
-pub const OUTPUT_SCHEMA_VERSION: u32 = 1;
+pub const OUTPUT_SCHEMA_VERSION: u32 = 2;
 
 macro_rules! report_struct {
     ($(#[$attr:meta])* $name:ident { $($(#[$field_attr:meta])* $field:ident: $ty:ty),* $(,)? }) => {

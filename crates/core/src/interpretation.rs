@@ -107,8 +107,8 @@ impl Structure {
             }
             match v.facts.modulation {
                 Some(ModulationFacts::Gate(p)) => add(Method::Gate, p.rate_hz),
-                Some(ModulationFacts::Sinusoidal { rate, depth }) if depth > 0.0 => {
-                    add(Method::AmplitudeModulation, rate.realized_hz);
+                Some(ModulationFacts::Am { rate, depth }) if depth > 0.0 => {
+                    add(Method::Am, rate.realized_hz);
                 }
                 _ => {}
             }
@@ -207,6 +207,6 @@ impl Structure {
 fn effectively_unmodulated(modulation: Option<ModulationFacts>) -> bool {
     matches!(
         modulation,
-        None | Some(ModulationFacts::Sinusoidal { depth: 0.0, .. })
+        None | Some(ModulationFacts::Am { depth: 0.0, .. })
     )
 }

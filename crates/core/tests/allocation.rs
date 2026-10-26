@@ -13,9 +13,9 @@ use std::hint::black_box;
 fn rendering_any_catalog_entry_allocates_nothing() {
     for entry in catalog::ENTRIES {
         for hz in [44_100, 48_000] {
-            let mut stimulus = Recipe::parse(entry.text).unwrap().stimulus;
-            stimulus.duration_seconds = 0.5;
-            let signal = stimulus.signal(SampleRate::new(hz).unwrap()).unwrap();
+            let mut sound = Recipe::parse(entry.text).unwrap().sound;
+            sound.duration_seconds = 0.5;
+            let signal = sound.signal(SampleRate::new(hz).unwrap()).unwrap();
             let mut buffers = [
                 vec![],
                 vec![[1.0; 2]; 1],

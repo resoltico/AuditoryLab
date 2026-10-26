@@ -620,9 +620,11 @@ fn refused_editor_replacement_never_rebinds_the_surviving_document() {
     let original = workspace.editor().document();
     let location = workspace.document_location();
     let mut recipe = bad.snapshot.recipe().clone();
-    recipe.stimulus.components = vec![crate::core::Component {
+    recipe.sound.components = vec![crate::core::Component {
         id: crate::core::ComponentId::new(0),
-        node: crate::core::Node::Voice(crate::controls::default_component(CarrierKind::Tone)),
+        form: crate::core::ComponentForm::Voice(crate::controls::default_component(
+            CarrierKind::Tone,
+        )),
     }];
     bad.snapshot = RecipeSnapshot::new(bad.snapshot.origin().clone(), recipe);
     workspace.run(super::super::Pending {
@@ -735,7 +737,7 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
             assert!(workspace.editor().dirty());
             assert_eq!(
                 workspace.editor().draft().components()[0]
-                    .node
+                    .form
                     .read(ParameterId::ToneFrequency),
                 Some(880.0)
             );

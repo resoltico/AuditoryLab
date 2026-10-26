@@ -15,7 +15,7 @@ use crate::presentation::ParameterText;
 use crate::recipe::{Origin, RecipeSnapshot};
 use auditorylab_core::{
     CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, Recipe, SampleRate, Signal, Sound,
-    StimulusError, Target, TargetCheck, Voice,
+    SoundError, Target, TargetCheck, Voice,
 };
 use std::{
     collections::BTreeMap,
@@ -244,7 +244,7 @@ impl Draft {
     #[must_use]
     pub fn from_recipe(content: Recipe) -> Self {
         let next_id = content
-            .stimulus
+            .sound
             .components
             .iter()
             .map(|c| c.id.get())
@@ -283,47 +283,47 @@ impl Draft {
     /// Authored components in source order, including stable owner identities.
     #[must_use]
     pub fn components(&self) -> &[auditorylab_core::Component] {
-        &self.content.stimulus.components
+        &self.content.sound.components
     }
-    /// One authored node by its primary owner identity.
+    /// One authored form by its primary owner identity.
     #[must_use]
-    pub fn component(&self, id: ComponentId) -> Option<&auditorylab_core::Node> {
+    pub fn component(&self, id: ComponentId) -> Option<&auditorylab_core::ComponentForm> {
         self.content
-            .stimulus
+            .sound
             .components
             .iter()
             .find(|c| c.id == id)
-            .map(|c| &c.node)
+            .map(|c| &c.form)
     }
-    fn component_mut(&mut self, id: ComponentId) -> Option<&mut auditorylab_core::Node> {
+    fn component_mut(&mut self, id: ComponentId) -> Option<&mut auditorylab_core::ComponentForm> {
         self.content
-            .stimulus
+            .sound
             .components
             .iter_mut()
             .find(|c| c.id == id)
-            .map(|c| &mut c.node)
+            .map(|c| &mut c.form)
     }
     /// Add one default primitive, checking authored and expanded budgets.
     ///
     /// # Errors
     /// Refuses full budgets or exhausted nonreused owner identities.
     pub fn add(&mut self, kind: CarrierKind) -> Result<ComponentId, EditRefusal> {
-        self.add_node(auditorylab_core::Node::Voice(controls::default_component(
-            kind,
-        )))
+        self.add_node(auditorylab_core::ComponentForm::Voice(
+            controls::default_component(kind),
+        ))
     }
     /// Check the authored and expanded capacity for one additional component.
     ///
     /// # Errors
     /// Reports current counts and the requested voice cost if either limit is exceeded.
-    pub fn check_addition(&self, node: auditorylab_core::Node) -> Result<(), EditRefusal> {
+    pub fn check_addition(&self, form: auditorylab_core::ComponentForm) -> Result<(), EditRefusal> {
         let components = self.components().len();
         let voices = self
             .components()
             .iter()
-            .map(|c| c.node.voices())
+            .map(|c| c.form.voices())
             .sum::<usize>();
-        let additional_voices = node.voices();
+        let additional_voices = form.voices();
         if components >= Sound::MAX_COMPONENTS || voices + additional_voices > Sound::MAX_VOICES {
             Err(EditRefusal::BudgetExceeded {
                 components,
@@ -334,17 +334,20 @@ impl Draft {
             Ok(())
         }
     }
-    /// Add an atomic authored node, including a two-voice pair.
+    /// Add an atomic authored form, including a two-voice pair.
     ///
     /// # Errors
     /// Refuses full budgets or exhausted owner identities.
-    pub fn add_node(&mut self, node: auditorylab_core::Node) -> Result<ComponentId, EditRefusal> {
-        self.check_addition(node)?;
-        let components = &mut self.content.stimulus.components;
+    pub fn add_node(
+        &mut self,
+        form: auditorylab_core::ComponentForm,
+    ) -> Result<ComponentId, EditRefusal> {
+        self.check_addition(form)?;
+        let components = &mut self.content.sound.components;
         let next = self.next_id.ok_or(EditRefusal::IdentitiesExhausted)?;
         let id = ComponentId::new(next);
         self.next_id = next.checked_add(1);
-        components.push(auditorylab_core::Component { id, node });
+        components.push(auditorylab_core::Component { id, form });
         self.demote_evidence();
         Ok(id)
     }
@@ -353,20 +356,20 @@ impl Draft {
         let Some(before) = self.component(id).copied() else {
             return false;
         };
-        let node = auditorylab_core::Node::Voice(component);
-        if !before.same_content(node) {
+        let form = auditorylab_core::ComponentForm::Voice(component);
+        if !before.same_content(form) {
             self.demote_evidence();
         }
         if let Some(value) = self.component_mut(id) {
-            *value = node;
+            *value = form;
             true
         } else {
             false
         }
     }
-    /// Remove one authored node without reusing its owner identity.
+    /// Remove one authored form without reusing its owner identity.
     pub fn remove(&mut self, id: ComponentId) -> Option<(usize, auditorylab_core::Component)> {
-        let components = &mut self.content.stimulus.components;
+        let components = &mut self.content.sound.components;
         let index = components.iter().position(|c| c.id == id)?;
         let removed = components.remove(index);
         self.demote_evidence();
@@ -377,8 +380,8 @@ impl Draft {
         index: usize,
         component: auditorylab_core::Component,
     ) -> Result<(), EditRefusal> {
-        self.check_addition(component.node)?;
-        let components = &mut self.content.stimulus.components;
+        self.check_addition(component.form)?;
+        let components = &mut self.content.sound.components;
         components.insert(index.min(components.len()), component);
         self.demote_evidence();
         Ok(())
@@ -424,26 +427,26 @@ impl Draft {
     /// Requested finite duration.
     #[must_use]
     pub const fn duration_seconds(&self) -> f64 {
-        self.content.stimulus.duration_seconds
+        self.content.sound.duration_seconds
     }
     /// Set finite duration; invalid finite values remain editable for repair.
     pub fn set_duration_seconds(&mut self, value: f64) {
-        if self.content.stimulus.duration_seconds.to_bits() != value.to_bits() {
+        if self.content.sound.duration_seconds.to_bits() != value.to_bits() {
             self.demote_evidence();
         }
-        self.content.stimulus.duration_seconds = value;
+        self.content.sound.duration_seconds = value;
     }
     /// Requested endpoint fade.
     #[must_use]
     pub const fn fade_seconds(&self) -> f64 {
-        self.content.stimulus.fade_seconds
+        self.content.sound.fade_seconds
     }
     /// Set endpoint fade.
     pub fn set_fade_seconds(&mut self, value: f64) {
-        if self.content.stimulus.fade_seconds.to_bits() != value.to_bits() {
+        if self.content.sound.fade_seconds.to_bits() != value.to_bits() {
             self.demote_evidence();
         }
-        self.content.stimulus.fade_seconds = value;
+        self.content.sound.fade_seconds = value;
     }
     /// Applicable semantic quantity, preserving exact binary64 values.
     #[must_use]
@@ -490,8 +493,8 @@ impl Draft {
     }
     /// Complete authored sound, with pair intent and stable owners retained.
     #[must_use]
-    pub fn stimulus(&self) -> auditorylab_core::Sound {
-        self.content.stimulus.clone()
+    pub fn sound(&self) -> auditorylab_core::Sound {
+        self.content.sound.clone()
     }
     /// Immutable full portable candidate. Rendition edits demote current-condition evidence.
     #[must_use]
@@ -517,7 +520,7 @@ impl Draft {
     /// Compile all expanded pair lanes as one atomic target candidate.
     #[must_use]
     pub fn check(&self, rate: SampleRate) -> TargetCheck {
-        self.content.stimulus.check(rate)
+        self.content.sound.check(rate)
     }
     /// Serialize a complete finite candidate without I/O.
     ///
@@ -597,7 +600,7 @@ impl Candidate {
 pub struct Analysis {
     rate: SampleRate,
     check: TargetCheck,
-    envelope: Result<(), StimulusError>,
+    envelope: Result<(), SoundError>,
     signal: Option<Arc<Signal>>,
 }
 
@@ -642,7 +645,7 @@ impl Analysis {
     ///
     /// # Errors
     /// Returns the first duration or fade error.
-    pub const fn envelope(&self) -> Result<(), &StimulusError> {
+    pub const fn envelope(&self) -> Result<(), &SoundError> {
         match &self.envelope {
             Ok(()) => Ok(()),
             Err(error) => Err(error),
@@ -652,7 +655,7 @@ impl Analysis {
     /// The first finite-signal error in the established order: envelope
     /// before components.
     #[must_use]
-    pub fn finite_error(&self) -> Option<&StimulusError> {
+    pub fn finite_error(&self) -> Option<&SoundError> {
         self.envelope
             .as_ref()
             .err()
@@ -695,7 +698,7 @@ impl PartialEq for AnalysisKey {
                 .components
                 .iter()
                 .zip(&other.components)
-                .all(|(a, b)| a.id == b.id && a.node.same_content(b.node))
+                .all(|(a, b)| a.id == b.id && a.form.same_content(b.form))
     }
 }
 impl Eq for AnalysisKey {}
@@ -979,7 +982,7 @@ impl EditorSession {
                 }
             }
         }
-        for (index, parameter) in draft.stimulus().nonfinite() {
+        for (index, parameter) in draft.sound().nonfinite() {
             let field = match index {
                 None if parameter == ParameterId::Duration => {
                     EditingField::Metadata(MetadataField::Duration)
@@ -1051,7 +1054,7 @@ impl EditorSession {
     fn structural(
         &mut self,
         row: RowKey,
-        change: impl FnOnce(&mut auditorylab_core::Node),
+        change: impl FnOnce(&mut auditorylab_core::ComponentForm),
     ) -> Result<(), EditRefusal> {
         let id = self.admit_component(row)?;
         let component = self
@@ -1087,13 +1090,13 @@ impl EditorSession {
         if self
             .draft
             .component(id)
-            .is_some_and(|c| matches!(c, auditorylab_core::Node::BinauralPair(_)))
+            .is_some_and(|c| matches!(c, auditorylab_core::ComponentForm::BinauralPair(_)))
         {
             return Err(EditRefusal::Inapplicable);
         }
         self.structural(row, |c| match c {
-            auditorylab_core::Node::Voice(c) => c.ears = ears,
-            auditorylab_core::Node::MonauralPair { ears: route, .. } => *route = ears,
+            auditorylab_core::ComponentForm::Voice(c) => c.ears = ears,
+            auditorylab_core::ComponentForm::MonauralPair { ears: route, .. } => *route = ears,
             _ => {}
         })
     }
@@ -1105,12 +1108,14 @@ impl EditorSession {
     /// Returns [`EditRefusal`] for a stale component lifetime or unknown component.
     pub fn set_carrier(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), EditRefusal> {
         self.structural(row, |c| match c {
-            auditorylab_core::Node::Voice(c) => {
+            auditorylab_core::ComponentForm::Voice(c) => {
                 if c.carrier.kind() != kind {
                     c.carrier = controls::default_carrier(kind);
                 }
             }
-            node => *node = auditorylab_core::Node::Voice(controls::default_component(kind)),
+            form => {
+                *form = auditorylab_core::ComponentForm::Voice(controls::default_component(kind))
+            }
         })
     }
 
@@ -1129,12 +1134,12 @@ impl EditorSession {
         if self
             .draft
             .component(id)
-            .is_some_and(|c| !matches!(c, auditorylab_core::Node::Voice(_)))
+            .is_some_and(|c| !matches!(c, auditorylab_core::ComponentForm::Voice(_)))
         {
             return Err(EditRefusal::Inapplicable);
         }
-        self.structural(row, |node| {
-            if let auditorylab_core::Node::Voice(c) = node
+        self.structural(row, |form| {
+            if let auditorylab_core::ComponentForm::Voice(c) = form
                 && c.modulation.map(|m| m.kind()) != kind
             {
                 c.modulation = kind.map(|kind| controls::default_modulation(kind, rate));
@@ -1267,7 +1272,7 @@ impl EditorSession {
         if document != self.document || content.document.id != self.draft.content.document.id {
             return false;
         }
-        self.saved_nominal = Some(crate::core::nominal::analyze(&content.stimulus.components));
+        self.saved_nominal = Some(crate::core::nominal::analyze(&content.sound.components));
         if self.draft.content.document != content.document {
             self.draft.content.document = content.document.clone();
             self.candidate = None;

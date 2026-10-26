@@ -1,7 +1,8 @@
 //! Independent generated-state, attribution and revision oracles.
 use auditorylab_core::{
-    Carrier, CarrierFacts, Component, ComponentFacts, ComponentId, Ears, LoweringError, Modulation,
-    ModulationFacts, Node, SampleRate, SlotRole, Sound, StimulusError, Target, Voice, live::Engine,
+    Carrier, CarrierFacts, Component, ComponentFacts, ComponentForm, ComponentId, Ears,
+    LoweringError, Modulation, ModulationFacts, SampleRate, SlotRole, Sound, SoundError, Target,
+    Voice, live::Engine,
 };
 fn tone(hz: f64, ears: Ears) -> Voice {
     Voice {
@@ -21,7 +22,7 @@ fn target(rate: SampleRate, component: Voice) -> Target {
         fade_seconds: 0.0,
         components: vec![Component {
             id: ComponentId::new(7),
-            node: Node::Voice(component),
+            form: ComponentForm::Voice(component),
         }],
     }
     .target(rate)
@@ -39,7 +40,7 @@ fn facts(component: Voice, rate: SampleRate) -> ComponentFacts {
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,
-                node: auditorylab_core::Node::Voice(*voice),
+                form: auditorylab_core::ComponentForm::Voice(*voice),
             })
             .collect(),
     }
@@ -109,7 +110,7 @@ fn glide_reports_the_increment_used_for_the_last_sample() {
 fn changed_pulses_preserve_both_real_rates_and_roles() {
     let rate = SampleRate::new(48000).unwrap();
     let clicks = |hz| Voice {
-        carrier: Carrier::Click {
+        carrier: Carrier::Clicks {
             rate_hz: hz,
             width_seconds: 0.001,
         },
@@ -144,16 +145,16 @@ fn changed_pulses_preserve_both_real_rates_and_roles() {
             components: vec![
                 Component {
                     id: ComponentId::new(1),
-                    node: Node::Voice(clicks(40.0))
+                    form: ComponentForm::Voice(clicks(40.0))
                 },
                 Component {
                     id: ComponentId::new(1),
-                    node: Node::Voice(clicks(80.0))
+                    form: ComponentForm::Voice(clicks(80.0))
                 },
             ],
         }
         .target(rate),
-        Err(StimulusError::Authored(LoweringError::Identity))
+        Err(SoundError::Authored(LoweringError::Identity))
     ));
 }
 #[test]
@@ -186,7 +187,7 @@ fn realized_rates_widths_depth_and_tiny_frequencies_are_explicit() {
     for hz in [44100, 48000, 768000] {
         let rate = SampleRate::new(hz).unwrap();
         let c = Voice {
-            modulation: Some(Modulation::Sinusoidal {
+            modulation: Some(Modulation::Am {
                 rate_hz: 39.0625,
                 depth: 0.0,
             }),
@@ -200,7 +201,7 @@ fn realized_rates_widths_depth_and_tiny_frequencies_are_explicit() {
         assert_eq!(t.realized_hz, step * f64::from(hz) / 18446744073709551616.0);
         assert!(matches!(
             f.modulation,
-            Some(ModulationFacts::Sinusoidal { depth: 0.0, .. })
+            Some(ModulationFacts::Am { depth: 0.0, .. })
         ));
         let CarrierFacts::Tone(tiny) = facts(tone(f64::from_bits(1), Ears::Both), rate).carrier
         else {

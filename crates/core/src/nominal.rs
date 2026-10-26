@@ -112,10 +112,10 @@ pub enum Method {
     Monaural,
     /// Intrinsic rectangular click schedule.
     Clicks,
-    /// Rectangular amplitude gating of a carrier.
+    /// Periodic amplitude gating of a carrier.
     Gate,
     /// Positive-depth sinusoidal amplitude modulation.
-    AmplitudeModulation,
+    Am,
     /// Effectively unmodulated tone, with no rhythm inferred from its carrier.
     SteadyTone,
 }
@@ -128,7 +128,7 @@ impl Method {
             Self::Monaural => "monaural pair",
             Self::Clicks => "clicks",
             Self::Gate => "gate",
-            Self::AmplitudeModulation => "AM",
+            Self::Am => "AM",
             Self::SteadyTone => "steady tone",
         }
     }
@@ -151,7 +151,7 @@ impl Method {
         Self::Monaural,
         Self::Clicks,
         Self::Gate,
-        Self::AmplitudeModulation,
+        Self::Am,
         Self::SteadyTone,
     ];
     /// Stable command-line spelling.
@@ -162,7 +162,7 @@ impl Method {
             Self::Monaural => "monaural",
             Self::Clicks => "clicks",
             Self::Gate => "gate",
-            Self::AmplitudeModulation => "amplitude-modulation",
+            Self::Am => "am",
             Self::SteadyTone => "steady-tone",
         }
     }
@@ -300,7 +300,7 @@ impl Analysis {
 fn unmodulated(component: &Voice) -> bool {
     matches!(
         component.modulation,
-        None | Some(Modulation::Sinusoidal { depth: 0.0, .. })
+        None | Some(Modulation::Am { depth: 0.0, .. })
     )
 }
 /// Analyze authored nodes, retaining signed-offset intent in arbitrary mixtures.
@@ -308,7 +308,7 @@ fn unmodulated(component: &Voice) -> bool {
 /// represent it. Such a document is classified and marked for review, not played.
 #[must_use]
 pub fn analyze(components: &[crate::Component]) -> Analysis {
-    use crate::{Node, authored};
+    use crate::{ComponentForm, authored};
     let mut analysis = Analysis {
         rhythms: Vec::new(),
         methods: Vec::new(),
@@ -318,15 +318,15 @@ pub fn analyze(components: &[crate::Component]) -> Analysis {
     };
     let mut tones = Vec::new();
     for component in components {
-        match component.node {
-            Node::Voice(value) => {
+        match component.form {
+            ComponentForm::Voice(value) => {
                 let id = component.id;
                 let value = &value;
                 if !value.peak_dbfs.is_finite() || value.peak_dbfs > 0.0 {
                     analysis.invalid("component peak must be finite and at most 0 dBFS");
                 }
                 match value.carrier {
-                    Carrier::Click {
+                    Carrier::Clicks {
                         rate_hz,
                         width_seconds,
                     } => {
@@ -346,7 +346,7 @@ pub fn analyze(components: &[crate::Component]) -> Analysis {
                     }
                 }
                 match value.modulation {
-                    Some(Modulation::Sinusoidal { rate_hz, depth }) => {
+                    Some(Modulation::Am { rate_hz, depth }) => {
                         if !rate_hz.is_finite()
                             || rate_hz <= 0.0
                             || !depth.is_finite()
@@ -357,16 +357,10 @@ pub fn analyze(components: &[crate::Component]) -> Analysis {
                             );
                         }
                         if depth > 0.0 {
-                            analysis.add(
-                                id,
-                                None,
-                                Method::AmplitudeModulation,
-                                rate_hz,
-                                Derivation::Explicit,
-                            );
+                            analysis.add(id, None, Method::Am, rate_hz, Derivation::Explicit);
                         }
                     }
-                    Some(Modulation::Rectangular {
+                    Some(Modulation::Gate {
                         rate_hz,
                         width_seconds,
                     }) => {
@@ -378,13 +372,15 @@ pub fn analyze(components: &[crate::Component]) -> Analysis {
                     None => {}
                 }
             }
-            node => {
-                let (pair, method) = match node {
-                    Node::BinauralPair(pair) => (pair, Method::of_pair(crate::PairKind::Binaural)),
-                    Node::MonauralPair { pair, .. } => {
+            form => {
+                let (pair, method) = match form {
+                    ComponentForm::BinauralPair(pair) => {
+                        (pair, Method::of_pair(crate::PairKind::Binaural))
+                    }
+                    ComponentForm::MonauralPair { pair, .. } => {
                         (pair, Method::of_pair(crate::PairKind::Monaural))
                     }
-                    Node::Voice(_) => unreachable!("raw node handled above"),
+                    ComponentForm::Voice(_) => unreachable!("raw form handled above"),
                 };
                 analysis.methods.push(method);
                 if pair.offset_hz != 0.0 {

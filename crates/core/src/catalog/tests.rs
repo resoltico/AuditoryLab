@@ -18,7 +18,7 @@ use std::{borrow::ToOwned, format, string::String, vec::Vec};
 enum Mod {
     /// Full-depth sinusoidal modulation at this rate.
     Sam(f64),
-    /// Rectangular gating at this rate, open for 1 ms.
+    /// Gate gating at this rate, open for 1 ms.
     Gate(f64),
 }
 
@@ -67,7 +67,7 @@ const RECIPES: &[Written] = &[
     (
         "chan-2022-clicks-40-hz",
         180.0,
-        &[(B, "click", 40.0, -20.0, None)],
+        &[(B, "clicks", 40.0, -20.0, None)],
     ),
     (
         "ioannou-2015-binaural-2-hz",
@@ -273,8 +273,8 @@ fn every_entry_has_its_independently_written_recipe() {
         RECIPES.iter().map(|r| r.0).collect::<Vec<_>>()
     );
     for (entry, (name, seconds, parts)) in catalog::ENTRIES.iter().zip(RECIPES) {
-        let authored = recipe(entry).stimulus;
-        let stimulus = auditorylab_core::Sound {
+        let authored = recipe(entry).sound;
+        let sound = auditorylab_core::Sound {
             duration_seconds: authored.duration_seconds,
             fade_seconds: authored.fade_seconds,
             components: (auditorylab_core::authored::lower(&authored.components)
@@ -286,17 +286,16 @@ fn every_entry_has_its_independently_written_recipe() {
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                node: auditorylab_core::Node::Voice(voice),
+                form: auditorylab_core::ComponentForm::Voice(voice),
             })
             .collect(),
         };
-        assert_eq!(stimulus.duration_seconds, *seconds, "{name}");
-        assert_eq!(stimulus.fade_seconds, 0.1, "{name}");
-        assert_eq!(stimulus.components.len(), parts.len(), "{name}");
-        for (component, (ears, kind, hz, level, modulation)) in
-            stimulus.components.iter().zip(*parts)
+        assert_eq!(sound.duration_seconds, *seconds, "{name}");
+        assert_eq!(sound.fade_seconds, 0.1, "{name}");
+        assert_eq!(sound.components.len(), parts.len(), "{name}");
+        for (component, (ears, kind, hz, level, modulation)) in sound.components.iter().zip(*parts)
         {
-            let auditorylab_core::Node::Voice(component) = component.node else {
+            let auditorylab_core::ComponentForm::Voice(component) = component.form else {
                 panic!("voice fixture")
             };
             assert_eq!(component.ears, *ears, "{name}");
@@ -304,11 +303,11 @@ fn every_entry_has_its_independently_written_recipe() {
             assert_eq!(
                 component.modulation,
                 modulation.map(|modulation| match modulation {
-                    Mod::Sam(rate_hz) => Modulation::Sinusoidal {
+                    Mod::Sam(rate_hz) => Modulation::Am {
                         rate_hz,
                         depth: 1.0,
                     },
-                    Mod::Gate(rate_hz) => Modulation::Rectangular {
+                    Mod::Gate(rate_hz) => Modulation::Gate {
                         rate_hz,
                         width_seconds: 0.001,
                     },
@@ -320,12 +319,12 @@ fn every_entry_has_its_independently_written_recipe() {
                     assert_eq!(frequency_hz, hz, "{name}")
                 }
                 (
-                    Carrier::Click {
+                    Carrier::Clicks {
                         rate_hz,
                         width_seconds,
                         ..
                     },
-                    "click",
+                    "clicks",
                 ) => {
                     assert_eq!(rate_hz, hz, "{name}");
                     assert_eq!(*width_seconds, 0.001, "{name}");
@@ -334,7 +333,7 @@ fn every_entry_has_its_independently_written_recipe() {
             }
         }
         assert_eq!(
-            stimulus.uses_separate_ears(),
+            sound.uses_separate_ears(),
             parts.iter().any(|p| p.0 != B),
             "{name}"
         );
@@ -403,8 +402,8 @@ fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
 fn every_entry_validates_and_pulses_follow_integer_onsets() {
     for entry in catalog::ENTRIES {
         for hz in [44_100, 48_000, 96_000] {
-            let authored = recipe(entry).stimulus;
-            let mut stimulus = auditorylab_core::Sound {
+            let authored = recipe(entry).sound;
+            let mut sound = auditorylab_core::Sound {
                 duration_seconds: authored.duration_seconds,
                 fade_seconds: authored.fade_seconds,
                 components: (auditorylab_core::authored::lower(&authored.components)
@@ -416,22 +415,22 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
                 .enumerate()
                 .map(|(index, voice)| auditorylab_core::Component {
                     id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                    node: auditorylab_core::Node::Voice(voice),
+                    form: auditorylab_core::ComponentForm::Voice(voice),
                 })
                 .collect(),
             };
-            let signal = stimulus.signal(SampleRate::new(hz).unwrap()).unwrap();
-            assert_eq!(signal.duration_seconds(), stimulus.duration_seconds);
-            stimulus.fade_seconds = 0.0;
-            let signal = stimulus.signal(SampleRate::new(hz).unwrap()).unwrap();
-            if let [part] = &stimulus.components[..] {
-                let auditorylab_core::Node::Voice(part) = part.node else {
+            let signal = sound.signal(SampleRate::new(hz).unwrap()).unwrap();
+            assert_eq!(signal.duration_seconds(), sound.duration_seconds);
+            sound.fade_seconds = 0.0;
+            let signal = sound.signal(SampleRate::new(hz).unwrap()).unwrap();
+            if let [part] = &sound.components[..] {
+                let auditorylab_core::ComponentForm::Voice(part) = part.form else {
                     panic!("voice fixture")
                 };
                 let pulse_rate = match part.carrier {
-                    Carrier::Click { rate_hz, .. } => Some(rate_hz),
+                    Carrier::Clicks { rate_hz, .. } => Some(rate_hz),
                     _ => match part.modulation {
-                        Some(Modulation::Rectangular { rate_hz, .. }) => Some(rate_hz),
+                        Some(Modulation::Gate { rate_hz, .. }) => Some(rate_hz),
                         _ => None,
                     },
                 };
@@ -444,7 +443,7 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
                             let value = signal.frame(onset + offset)[0];
                             if offset == width {
                                 assert_eq!(value, 0.0);
-                            } else if matches!(part.carrier, Carrier::Click { .. }) {
+                            } else if matches!(part.carrier, Carrier::Clicks { .. }) {
                                 assert!(value > 0.0);
                             }
                         }

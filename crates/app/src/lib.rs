@@ -26,3 +26,7 @@ pub mod wav;
 pub mod waveform_view;
 pub mod workflow;
 pub mod workspace;
+
+#[cfg(test)]
+#[path = "../tests/common/mod.rs"]
+mod test_recipes;

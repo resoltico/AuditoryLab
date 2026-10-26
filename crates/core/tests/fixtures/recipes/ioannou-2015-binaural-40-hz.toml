@@ -1,8 +1,6 @@
 # Schema-3 authored recipe fixture.
 # Source values and adaptations are checked independently.
-schema_version = 3
-duration_seconds = 60.0
-fade_seconds = 0.1
+schema_version = 4
 
 [document]
 id = "00000000-0000-4000-8000-000000000004"
@@ -11,7 +9,11 @@ id = "00000000-0000-4000-8000-000000000004"
 title = "40 Hz interaural tone pair"
 notes = "Selected study sound condition. Requires separate left/right presentation."
 
-[[component]]
+[sound]
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[[sound.component]]
 id = 1
 kind = "binaural_pair"
 left_hz = 200.0

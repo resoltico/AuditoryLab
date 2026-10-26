@@ -345,7 +345,7 @@ impl ModelView {
                 _ => unreachable!("gate lane modulation"),
             },
             ModelKind::Envelope => match lane.facts.modulation {
-                Some(crate::core::ModulationFacts::Sinusoidal { rate, depth }) => format!(
+                Some(crate::core::ModulationFacts::Am { rate, depth }) => format!(
                     "{} Hz AM · {}%",
                     NumberStyle::Compact.format(rate.realized_hz),
                     NumberStyle::Compact.format(depth * 100.0)

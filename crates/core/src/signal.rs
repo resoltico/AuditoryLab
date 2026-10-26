@@ -1,7 +1,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::{ComponentFacts, ComponentId, SampleRate, StimulusError, Target, numeric};
+use crate::{ComponentFacts, ComponentId, SampleRate, SoundError, Target, numeric};
 use core::f64::consts::PI;
 
 /// The length of a session and its per-frame gain. A positive resolved
@@ -21,20 +21,20 @@ impl Envelope {
         rate: SampleRate,
         duration_seconds: f64,
         fade_seconds: f64,
-    ) -> Result<Self, StimulusError> {
+    ) -> Result<Self, SoundError> {
         let frames = rate
             .frames_in(duration_seconds)
             .filter(|frames| *frames > 0)
-            .ok_or(StimulusError::Duration {
+            .ok_or(SoundError::Duration {
                 seconds: duration_seconds,
                 sample_rate_hz: rate.hz(),
             })?;
-        let fade_frames = rate.frames_in(fade_seconds).ok_or(StimulusError::Fade {
+        let fade_frames = rate.frames_in(fade_seconds).ok_or(SoundError::Fade {
             seconds: fade_seconds,
             sample_rate_hz: rate.hz(),
         })?;
         if fade_frames > (frames - 1) / 2 {
-            return Err(StimulusError::FadesOverlap {
+            return Err(SoundError::FadesOverlap {
                 fade_frames,
                 frames,
                 sample_rate_hz: rate.hz(),
@@ -61,7 +61,7 @@ impl Envelope {
     }
 }
 
-/// A stimulus checked at a sample rate: a known number of stereo frames,
+/// A sound checked at a sample rate: a known number of stereo frames,
 /// ready to render from the first.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Signal {
@@ -83,13 +83,13 @@ impl Signal {
     /// [`Sound::signal`](crate::Sound::signal), without components.
     ///
     /// # Errors
-    /// Returns [`StimulusError::Duration`], [`StimulusError::Fade`] or
-    /// [`StimulusError::FadesOverlap`].
+    /// Returns [`SoundError::Duration`], [`SoundError::Fade`] or
+    /// [`SoundError::FadesOverlap`].
     pub fn check_envelope(
         rate: SampleRate,
         duration_seconds: f64,
         fade_seconds: f64,
-    ) -> Result<(), StimulusError> {
+    ) -> Result<(), SoundError> {
         Envelope::resolve(rate, duration_seconds, fade_seconds).map(|_| ())
     }
 

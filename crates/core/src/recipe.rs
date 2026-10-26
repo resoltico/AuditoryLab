@@ -13,14 +13,14 @@ use core::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 /// One portable authored document, independent of local ownership and membership.
-/// Schema 3 uses a strict bounded document shape; finite acoustic errors remain
+/// Schema 4 uses a strict bounded document shape; finite acoustic errors remain
 /// editable and serializable.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Recipe {
     /// Stable identity and optional declared history, never filesystem dates.
     pub document: DocumentIdentity,
     /// Ordered authored sound; pairs retain their signed nominal offset.
-    pub stimulus: Sound,
+    pub sound: Sound,
     /// Current title and notes, independent of source evidence.
     pub description: Option<Description>,
     /// Bounded bibliography referenced by evidence and lineage.
@@ -112,13 +112,10 @@ struct Version {
 #[serde(deny_unknown_fields)]
 struct Document {
     schema_version: u32,
-    duration_seconds: f64,
-    fade_seconds: f64,
     document: DocumentIdentity,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<Description>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    component: Vec<Component>,
+    sound: DocumentSound,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     source: Vec<BibliographySource>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -126,9 +123,17 @@ struct Document {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     lineage: Vec<Lineage>,
 }
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentSound {
+    duration_seconds: f64,
+    fade_seconds: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    component: Vec<Component>,
+}
 impl Recipe {
     /// Version of the portable UTF-8 TOML recipe format.
-    pub const SCHEMA_VERSION: u32 = 3;
+    pub const SCHEMA_VERSION: u32 = 4;
     /// Maximum portable UTF-8 bytes, including metadata.
     pub const MAX_BYTES: usize = 65_536;
     /// An empty authored document with the supplied provisional identity/history.
@@ -136,7 +141,7 @@ impl Recipe {
     pub fn silent(document: DocumentIdentity) -> Self {
         Self {
             document,
-            stimulus: Sound {
+            sound: Sound {
                 duration_seconds: 60.0,
                 fade_seconds: 0.1,
                 components: Vec::new(),
@@ -182,10 +187,10 @@ impl Recipe {
         let d: Document = toml::from_str(text).map_err(RecipeError::Format)?;
         let mut value = Self {
             document: d.document,
-            stimulus: Sound {
-                duration_seconds: d.duration_seconds,
-                fade_seconds: d.fade_seconds,
-                components: d.component,
+            sound: Sound {
+                duration_seconds: d.sound.duration_seconds,
+                fade_seconds: d.sound.fade_seconds,
+                components: d.sound.component,
             },
             description: d.description,
             sources: d.source,
@@ -213,14 +218,14 @@ impl Recipe {
     /// Returns the first nonfinite, identity, capacity or metadata reference error.
     pub fn validate(&self) -> Result<(), RecipeError> {
         let invalid = |message: &str| RecipeError::Contract(message.into());
-        if let Some((component, parameter)) = self.stimulus.nonfinite().next() {
+        if let Some((component, parameter)) = self.sound.nonfinite().next() {
             return Err(RecipeError::Contract(alloc::format!(
                 "{parameter} must be finite (component {component:?})"
             )));
         }
-        let nodes = &self.stimulus.components;
+        let nodes = &self.sound.components;
         if nodes.len() > crate::Sound::MAX_COMPONENTS
-            || nodes.iter().map(|c| c.node.voices()).sum::<usize>() > crate::Sound::MAX_VOICES
+            || nodes.iter().map(|c| c.form.voices()).sum::<usize>() > crate::Sound::MAX_VOICES
         {
             return Err(invalid(
                 "at most 16 authored nodes and 16 expanded voices; a pair costs two",
@@ -255,11 +260,13 @@ impl Recipe {
         normalized.normalize_sources();
         let text = toml::to_string(&Document {
             schema_version: Self::SCHEMA_VERSION,
-            duration_seconds: self.stimulus.duration_seconds,
-            fade_seconds: self.stimulus.fade_seconds,
             document: self.document.clone(),
             description: self.description.clone(),
-            component: self.stimulus.components.clone(),
+            sound: DocumentSound {
+                duration_seconds: self.sound.duration_seconds,
+                fade_seconds: self.sound.fade_seconds,
+                component: self.sound.components.clone(),
+            },
             source: normalized.sources,
             evidence: self.evidence.clone(),
             lineage: self.lineage.clone(),
@@ -274,7 +281,7 @@ impl Recipe {
     /// Exact sound bits/order/owners are preserved; normalized DOI identity is used.
     #[must_use]
     pub fn same_editable_content(&self, other: &Self) -> bool {
-        self.stimulus.same_content(&other.stimulus)
+        self.sound.same_content(&other.sound)
             && self.description == other.description
             && self.sources.len() == other.sources.len()
             && self.sources.iter().zip(&other.sources).all(|(a, b)| {

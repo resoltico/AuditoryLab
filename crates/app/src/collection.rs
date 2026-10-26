@@ -109,7 +109,7 @@ impl EntrySummary {
             version_token,
             nominal: snapshot.nominal().clone(),
             evidence,
-            duration_seconds: recipe.stimulus.duration_seconds,
+            duration_seconds: recipe.sound.duration_seconds,
             search: SearchIndex::from_snapshot(snapshot),
         }
     }

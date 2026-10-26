@@ -600,9 +600,9 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
         let retained = workspace.editor().document();
         let replacement = if invalid_editor {
             let mut recipe = workspace.editor().draft().recipe();
-            recipe.stimulus.components = vec![crate::core::Component {
+            recipe.sound.components = vec![crate::core::Component {
                 id: crate::core::ComponentId::new(0),
-                node: crate::core::Node::Voice(crate::controls::default_component(
+                form: crate::core::ComponentForm::Voice(crate::controls::default_component(
                     crate::core::CarrierKind::Tone,
                 )),
             }];

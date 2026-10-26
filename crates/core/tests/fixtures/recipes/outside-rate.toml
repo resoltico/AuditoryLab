@@ -1,6 +1,4 @@
-schema_version = 3
-duration_seconds = 60.0
-fade_seconds = 0.1
+schema_version = 4
 
 [document]
 id = "00000000-0000-4000-8000-000000000104"
@@ -9,13 +7,17 @@ id = "00000000-0000-4000-8000-000000000104"
 title = "100 Hz amplitude modulation"
 notes = "Design fixture, not a clinical claim."
 
-[[component]]
+[sound]
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[[sound.component]]
 id = 1
 kind = "tone"
 ears = "both"
 frequency_hz = 1000.0
 peak_dbfs = -20.0
-[component.modulation]
-kind = "sinusoidal"
+[sound.component.modulation]
+kind = "am"
 rate_hz = 100.0
 depth = 1.0

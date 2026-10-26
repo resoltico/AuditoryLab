@@ -60,7 +60,10 @@ mod tests {
         let path = dir.path().join("recipe");
         fs::write(
             &path,
-            b"schema_version=3\nduration_seconds=0.01\nfade_seconds=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n",
+            crate::test_recipes::silent(0.01, 0.0)
+                .to_toml()
+                .unwrap()
+                .as_bytes(),
         )
         .unwrap();
         let file = open(&path).unwrap_or_else(|_| panic!("regular fixture not admitted"));
@@ -79,7 +82,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("recipe");
         let saved = dir.path().join("original");
-        fs::write(&path, b"schema_version=3").unwrap();
+        fs::write(&path, b"schema_version=4").unwrap();
         let file = open_handle(&path).unwrap();
         fs::rename(&path, &saved).unwrap();
         assert!(
