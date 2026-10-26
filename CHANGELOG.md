@@ -4,6 +4,10 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Performance
+
+- Pulse generation compares exact onset boundaries with one integer division per sample, preserving sample bits and half-open pulse edges.
+
 ### Library experience
 
 - Start with the monitor closed so the five reference bands are visible at the initial Library size. Show/Hide monitor remains explicit and does not change selection or start audio.
