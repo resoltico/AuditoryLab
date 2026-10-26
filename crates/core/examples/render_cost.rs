@@ -17,17 +17,22 @@ fn measure(components: Vec<Voice>) -> Result<[f64; 3], Box<dyn Error>> {
             .enumerate()
             .map(|(index, voice)| {
                 Ok(Component {
-                    id: ComponentId::new(u32::try_from(index)? + 1),
+                    id: ComponentId::numbered(index).ok_or("too many component identities")?,
                     form: ComponentForm::Voice(voice),
                 })
             })
-            .collect::<Result<_, std::num::TryFromIntError>>()?,
+            .collect::<Result<_, &str>>()?,
     };
     let signal = sound.signal(rate)?;
     let mut alternate = sound.clone();
     let offset = u32::try_from(Sound::MAX_COMPONENTS)?;
     for component in &mut alternate.components {
-        component.id = ComponentId::new(component.id.get() + offset);
+        component.id = component
+            .id
+            .get()
+            .checked_add(offset)
+            .and_then(ComponentId::new)
+            .ok_or("component identity exhausted")?;
     }
     let targets = [sound.target(rate)?, alternate.target(rate)?];
     let mut engine = Engine::new(rate);

@@ -11,14 +11,12 @@ use crate::{Carrier, Ears, Modulation, Sound, Voice};
 use core::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
-/// The identity of a component within a target. It distinguishes components
-/// that otherwise have the same values; allocation and non-reuse belong to the
-/// document that owns the component.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-pub struct ComponentId {
-    owner: u32,
-    lane: Lane,
-}
+/// A positive authored owner identity, independent of expanded generator lanes.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize, Serialize,
+)]
+#[serde(transparent)]
+pub struct ComponentId(core::num::NonZeroU32);
 
 /// A stable generator lane within one authored component.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -29,51 +27,74 @@ pub enum Lane {
     /// Second/right voice of a pair.
     Secondary,
 }
-
 impl ComponentId {
-    /// Wrap a caller-chosen identity.
+    /// Construct an authored identity; zero has no identity.
     #[must_use]
-    pub const fn new(value: u32) -> Self {
-        Self {
-            owner: value,
-            lane: Lane::Primary,
+    pub const fn new(value: u32) -> Option<Self> {
+        match core::num::NonZeroU32::new(value) {
+            Some(value) => Some(Self(value)),
+            None => None,
         }
     }
-
-    /// The identity's number.
+    /// The authored identity's positive number.
     #[must_use]
     pub const fn get(self) -> u32 {
-        self.owner
+        self.0.get()
     }
-
-    /// The generator lane; both lanes retain the same authored owner.
+    /// The identity of an element at a zero-based position, when representable.
+    #[must_use]
+    pub fn numbered(index: usize) -> Option<Self> {
+        Self::new(u32::try_from(index).ok()?.checked_add(1)?)
+    }
+    /// Address a generator lane belonging to this authored component.
+    #[must_use]
+    pub const fn with_lane(self, lane: Lane) -> VoiceId {
+        VoiceId {
+            component: self,
+            lane,
+        }
+    }
+}
+impl Display for ComponentId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+/// One expanded generator identity, retaining its authored owner and lane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+pub struct VoiceId {
+    /// Authored owner of this generator.
+    pub component: ComponentId,
+    /// Stable lane within the authored owner.
+    pub lane: Lane,
+}
+impl VoiceId {
+    /// The authored owner's number.
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.component.get()
+    }
+    /// The stable generator lane.
     #[must_use]
     pub const fn lane(self) -> Lane {
         self.lane
     }
-
-    /// Address one lane without arithmetic, truncation or owner collisions.
+    /// Address another generator of the same authored component.
     #[must_use]
     pub const fn with_lane(self, lane: Lane) -> Self {
-        Self {
-            owner: self.owner,
-            lane,
-        }
-    }
-
-    /// The identity a recipe gives the component at `index`: its position,
-    /// counting from 1. `None` when the position does not fit the identity.
-    #[must_use]
-    pub fn numbered(index: usize) -> Option<Self> {
-        u32::try_from(index).ok()?.checked_add(1).map(Self::new)
+        Self { lane, ..self }
     }
 }
-
-impl Display for ComponentId {
+impl From<ComponentId> for VoiceId {
+    fn from(component: ComponentId) -> Self {
+        component.with_lane(Lane::Primary)
+    }
+}
+impl Display for VoiceId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.lane {
-            Lane::Primary => write!(f, "{}", self.owner),
-            Lane::Secondary => write!(f, "{}:second", self.owner),
+            Lane::Primary => self.component.fmt(f),
+            Lane::Secondary => write!(f, "{}:second", self.component),
         }
     }
 }
@@ -580,7 +601,7 @@ mod tests {
             c.nonfinite().collect::<Vec<_>>(),
             [ParameterId::PeakLevel, ParameterId::AmRate]
         );
-        assert_eq!(ComponentId::numbered(0), Some(ComponentId::new(1)));
+        assert_eq!(ComponentId::numbered(0), ComponentId::new(1));
         assert_eq!(ComponentId::numbered(usize::MAX), None);
     }
 }

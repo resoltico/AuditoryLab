@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
+use crate::{ComponentId, Sound};
 use alloc::{string::ToString, vec, vec::Vec};
 use core::f64::consts::TAU;
 
@@ -230,7 +231,7 @@ fn guards_accept_and_reject_neighbours() {
     s.components = sound(vec![tone(Ears::Both, 1000.0, 0.0)]).components;
     assert!(s.signal(rate(48_000)).is_ok());
     s.components.push(crate::Component {
-        id: ComponentId::new(2),
+        id: ComponentId::new(2).unwrap(),
         form: crate::ComponentForm::Voice(tone(Ears::Both, 1000.0, -20.0)),
     });
     assert!(matches!(
@@ -242,7 +243,9 @@ fn guards_accept_and_reject_neighbours() {
     s.components.push(s.components[0]);
     assert!(matches!(
         s.signal(rate(48_000)),
-        Err(SoundError::Authored(crate::LoweringError::VoiceBudget))
+        Err(SoundError::Authored(
+            crate::LoweringError::ComponentBudget { count: 17 }
+        ))
     ));
     s.components.clear();
     s.duration_seconds = rate(48_000).seconds_in(Signal::MAX_FRAMES);
@@ -319,13 +322,11 @@ fn click_nyquist_rejection_is_not_masked_by_the_closed_frame_rule() {
 }
 
 mod validate {
-    use crate::{
-        Carrier, ComponentId, Ears, Modulation, SampleRate, Sound, TargetCheck, Voice, VoiceError,
-    };
+    use crate::{Carrier, ComponentId, Ears, Modulation, SampleRate, Sound, Voice, VoiceError};
     use alloc::vec;
 
     pub(super) fn own(component: Voice, rate: SampleRate) -> Result<(), VoiceError> {
-        let check = TargetCheck::new(rate, &[(ComponentId::new(1), component)]);
+        let check = crate::test_support::check(rate, &[(ComponentId::new(1).unwrap(), component)]);
         check.components()[0].1.clone().map(|_| ())
     }
 

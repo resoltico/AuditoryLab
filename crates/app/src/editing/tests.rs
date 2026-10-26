@@ -742,15 +742,18 @@ fn publication_history_updates_the_same_draft_without_reusing_a_stale_candidate_
 #[test]
 fn row_keys_round_trip_without_losing_any_identity_or_generation_bits() {
     for generation in [0, 1, u64::MAX] {
-        let key =
-            RowKey::for_component(DocumentId(u64::MAX), ComponentId::new(u32::MAX), generation);
+        let key = RowKey::for_component(
+            DocumentId(u64::MAX),
+            ComponentId::new(u32::MAX).unwrap(),
+            generation,
+        );
         assert_eq!(key.to_string().parse::<RowKey>(), Ok(key));
         assert!(key.to_string().len() <= 42);
     }
     let document = RowKey::for_document(DocumentId(1));
     assert_eq!(document.to_string().parse::<RowKey>(), Ok(document));
     assert!(document.parameter(ParameterId::PeakLevel).is_none());
-    let component = RowKey::for_component(DocumentId(1), ComponentId::new(1), 0);
+    let component = RowKey::for_component(DocumentId(1), ComponentId::new(1).unwrap(), 0);
     assert!(component.metadata(MetadataField::Title).is_none());
     for text in [
         "",
@@ -847,7 +850,7 @@ fn unknown_or_cross_row_field_requests_cannot_acquire_another_lifetime() {
     let mut editor = EditorSession::new(Draft::new().unwrap()).unwrap();
     assert_eq!(
         editor.handle(EditingField::Parameter(
-            ComponentId::new(1),
+            ComponentId::new(1).unwrap(),
             ParameterId::ToneFrequency
         )),
         Err(EditRefusal::UnknownComponent)
@@ -920,19 +923,7 @@ fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_a
     let mut draft = Draft::new().unwrap();
     draft.add(CarrierKind::Tone).unwrap();
     let recipe = draft.recipe();
-    for id in [
-        ComponentId::new(0),
-        ComponentId::new(1).with_lane(auditorylab_core::Lane::Secondary),
-    ] {
-        let mut invalid = recipe.clone();
-        invalid.sound.components[0].id = id;
-        assert_eq!(
-            EditorSession::new(Draft::from_recipe(invalid))
-                .unwrap_err()
-                .kind(),
-            ErrorKind::InvalidRecipe
-        );
-    }
+    assert!(ComponentId::new(0).is_none());
     let mut duplicate = recipe.clone();
     duplicate
         .sound
@@ -949,11 +940,11 @@ fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_a
         .form
         .write(ParameterId::ToneFrequency, -1.0);
     let editor = EditorSession::new(Draft::from_recipe(acoustic)).unwrap();
-    assert!(editor.component_key(ComponentId::new(1)).is_some());
+    assert!(editor.component_key(ComponentId::new(1).unwrap()).is_some());
     assert!(
         editor
             .handle(EditingField::Parameter(
-                ComponentId::new(1),
+                ComponentId::new(1).unwrap(),
                 ParameterId::ToneFrequency
             ))
             .is_ok()
@@ -1021,7 +1012,7 @@ fn authored_and_expanded_addition_boundaries_report_current_counts() {
             draft.restore(
                 0,
                 Component {
-                    id: ComponentId::new(100),
+                    id: ComponentId::new(100).unwrap(),
                     form: requested
                 }
             ),

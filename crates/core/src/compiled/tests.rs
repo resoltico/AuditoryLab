@@ -10,8 +10,8 @@ fn rate(hz: u32) -> SampleRate {
     SampleRate::new(hz).unwrap()
 }
 
-fn id(n: u32) -> ComponentId {
-    ComponentId::new(n)
+fn id(n: u32) -> crate::ComponentId {
+    crate::ComponentId::new(n).unwrap()
 }
 
 fn tone(frequency_hz: f64, peak_dbfs: f64) -> Voice {
@@ -54,7 +54,7 @@ fn requested_and_realized_pulse_widths_keep_their_rate() {
         (clicks(40.0, 0.001), 44_100, 44, 44.0 / 44_100.0),
         (gate(0.001), 44_100, 44, 44.0 / 44_100.0),
     ] {
-        let check = TargetCheck::new(rate(hz), &[(id(1), component)]);
+        let check = crate::test_support::check(rate(hz), &[(id(1), component)]);
         let facts = check.components()[0].1.as_ref().unwrap();
         let pulse = match (facts.carrier, facts.modulation) {
             (CarrierFacts::Clicks(p), _) | (_, Some(ModulationFacts::Gate(p))) => p,
@@ -81,7 +81,7 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
         (id(3), tone(440.0, 1.0)),
         (id(4), clicks(160.0, 0.01)),
     ];
-    let check = TargetCheck::new(rate(48_000), &rows);
+    let check = crate::test_support::check(rate(48_000), &rows);
     let errors: Vec<_> = check
         .components()
         .iter()
@@ -90,11 +90,11 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
     assert_eq!(
         errors,
         [
-            (id(1), Some(&[ParameterId::ToneFrequency][..])),
-            (id(2), None),
-            (id(3), Some(&[ParameterId::PeakLevel][..])),
+            (id(1).into(), Some(&[ParameterId::ToneFrequency][..])),
+            (id(2).into(), None),
+            (id(3).into(), Some(&[ParameterId::PeakLevel][..])),
             (
-                id(4),
+                id(4).into(),
                 Some(&[ParameterId::ClickRate, ParameterId::ClickWidth][..])
             ),
         ]
@@ -136,7 +136,7 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
             &[ParameterId::GateRate, ParameterId::GateWidth][..],
         ),
     ] {
-        let check = TargetCheck::new(rate(48_000), &[(id(9), component)]);
+        let check = crate::test_support::check(rate(48_000), &[(id(9), component)]);
         let error = check.components()[0].1.as_ref().unwrap_err();
         assert_eq!(error.parameters(), parameters, "{component:?}");
         assert_eq!(check.result().unwrap_err().parameters(), parameters);
@@ -146,18 +146,18 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
 #[test]
 fn identity_count_and_mix_errors_stay_global_with_their_established_precedence() {
     // A duplicate identity precedes that entry's own compilation error.
-    let check = TargetCheck::new(
+    let check = crate::test_support::check(
         rate(48_000),
         &[(id(1), tone(440.0, -30.0)), (id(1), tone(30_000.0, -30.0))],
     );
     assert_eq!(
         check.result().unwrap_err(),
-        &SoundError::DuplicateComponentId { id: id(1) }
+        &SoundError::Authored(crate::LoweringError::Identity { id: id(1) })
     );
     assert!(check.result().unwrap_err().parameters().is_empty());
     assert!(
-        check.components()[1].1.is_err(),
-        "the row still has its own error"
+        check.components().is_empty(),
+        "invalid structure is refused before compiling any row"
     );
     // Left precedes right; neither is attributed to a field.
     let loud = [
@@ -190,7 +190,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
             },
         ),
     ];
-    let check = TargetCheck::new(rate(48_000), &loud);
+    let check = crate::test_support::check(rate(48_000), &loud);
     assert!(matches!(
         check.result(),
         Err(SoundError::Peak { ear: Ear::Left, .. })
@@ -200,13 +200,13 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
     // Capacity follows MAX_COMPONENTS and over-capacity input compiles nothing.
     for count in [0, Sound::MAX_COMPONENTS, Sound::MAX_COMPONENTS + 1] {
         let rows: Vec<_> = (0..count)
-            .map(|n| (id(u32::try_from(n).unwrap()), tone(30_000.0, -60.0)))
+            .map(|n| (id(u32::try_from(n).unwrap() + 1), tone(30_000.0, -60.0)))
             .collect();
-        let check = TargetCheck::new(rate(48_000), &rows);
+        let check = crate::test_support::check(rate(48_000), &rows);
         if count > Sound::MAX_COMPONENTS {
             assert_eq!(
                 check.result().unwrap_err(),
-                &SoundError::TooManyComponents { count }
+                &SoundError::Authored(crate::LoweringError::ComponentBudget { count })
             );
             assert!(check.components().is_empty());
         } else {
@@ -297,7 +297,7 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
     assert_eq!(signal.sample_rate(), target.sample_rate());
     assert!(signal.components().eq(target.components()));
     let ids: Vec<_> = signal.components().map(|(id, _)| id).collect();
-    assert_eq!(ids, [id(1), id(2)]);
+    assert_eq!(ids, [id(1).into(), id(2).into()]);
     let via_sound = Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.1,
@@ -310,42 +310,47 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
 
 #[test]
 fn definition_equality_includes_requested_facts_and_same_audio_does_not() {
-    let narrow = Target::new(rate(8_000), &[(id(1), clicks(40.0, 0.000_10))]).unwrap();
-    let wider = Target::new(rate(8_000), &[(id(1), clicks(40.0, 0.000_11))]).unwrap();
+    let narrow =
+        crate::test_support::target(rate(8_000), &[(id(1), clicks(40.0, 0.000_10))]).unwrap();
+    let wider =
+        crate::test_support::target(rate(8_000), &[(id(1), clicks(40.0, 0.000_11))]).unwrap();
     // Both widths round to one frame at 8 kHz.
     assert!(narrow.same_audio(&wider));
     assert_ne!(
         narrow, wider,
         "a cache keyed only by same_audio would miss this edit"
     );
-    let moved = Target::new(rate(8_000), &[(id(2), clicks(40.0, 0.000_10))]).unwrap();
+    let moved =
+        crate::test_support::target(rate(8_000), &[(id(2), clicks(40.0, 0.000_10))]).unwrap();
     assert!(
         !narrow.same_audio(&moved),
         "identity is part of the audio structure"
     );
-    let other_rate = Target::new(rate(16_000), &[(id(1), clicks(40.0, 0.000_062_5))]).unwrap();
+    let other_rate =
+        crate::test_support::target(rate(16_000), &[(id(1), clicks(40.0, 0.000_062_5))]).unwrap();
     assert!(!narrow.same_audio(&other_rate));
-    let changed = Target::new(rate(8_000), &[(id(1), clicks(41.0, 0.000_10))]).unwrap();
+    let changed =
+        crate::test_support::target(rate(8_000), &[(id(1), clicks(41.0, 0.000_10))]).unwrap();
     assert!(!narrow.same_audio(&changed));
 }
 
 #[test]
 fn each_component_result_is_found_by_its_own_identity() {
-    let check = TargetCheck::new(
+    let check = crate::test_support::check(
         rate(48_000),
         &[(id(7), tone(440.0, -30.0)), (id(3), tone(30_000.0, -30.0))],
     );
-    let valid = check.component(id(7)).unwrap();
+    let valid = check.component(id(7).into()).unwrap();
     assert!(matches!(
         valid.as_ref().unwrap().carrier,
         CarrierFacts::Tone(rate) if rate.requested_hz == 440.0
     ));
     assert!(
-        check.component(id(3)).unwrap().is_err(),
+        check.component(id(3).into()).unwrap().is_err(),
         "the invalid component's own error"
     );
     assert!(
-        check.component(id(1)).is_none(),
+        check.component(id(1).into()).is_none(),
         "an unknown identity has no result"
     );
 }
@@ -353,7 +358,7 @@ fn each_component_result_is_found_by_its_own_identity() {
 #[test]
 fn emptiness_counts_components() {
     assert!(Target::silence(rate(8_000)).is_empty());
-    let target = Target::new(rate(8_000), &[(id(1), tone(440.0, -30.0))]).unwrap();
+    let target = crate::test_support::target(rate(8_000), &[(id(1), tone(440.0, -30.0))]).unwrap();
     assert!(!target.is_empty());
     assert_eq!(target.len(), 1);
 }

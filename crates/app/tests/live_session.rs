@@ -127,7 +127,7 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
     let check = auditorylab_core::Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
-        components: ([(ComponentId::new(1), component(440.0, Ears::Right))])
+        components: ([(ComponentId::new(1).unwrap(), component(440.0, Ears::Right))])
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,
@@ -139,7 +139,7 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
     let facts = *check.target().unwrap().components().next().unwrap().1;
     let mut voices = [None; Observation::MAX_VOICES];
     voices[0] = Some(VoiceObservation {
-        id: ComponentId::new(1),
+        id: ComponentId::new(1).unwrap().into(),
         role: SlotRole::Continuing,
         facts,
         gains: [0.05, 0.05],
@@ -202,7 +202,7 @@ fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarg
         let observed = generator.observation().unwrap();
         let voices: Vec<_> = observed.voices.iter().flatten().collect();
         assert_eq!(voices.len(), 2);
-        assert_eq!(voices[0].id, owner);
+        assert_eq!(voices[0].id, owner.into());
         assert_eq!(voices[1].id, owner.with_lane(Lane::Secondary));
         assert_eq!(voices[0].facts.pair, voices[1].facts.pair);
         assert_eq!(voices[0].facts.pair.unwrap().offset_hz, offset);

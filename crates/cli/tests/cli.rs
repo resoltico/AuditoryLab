@@ -277,7 +277,7 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
     let path = dir.path().join("pulse.toml");
     let mut recipe = common::silent(0.05, 0.0);
     recipe.sound.components.push(auditorylab::core::Component {
-        id: auditorylab::core::ComponentId::new(1),
+        id: auditorylab::core::ComponentId::new(1).unwrap(),
         form: auditorylab::core::ComponentForm::Voice(auditorylab::core::Voice {
             ears: auditorylab::core::Ears::Both,
             peak_dbfs: -30.0,

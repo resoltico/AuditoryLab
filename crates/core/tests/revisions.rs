@@ -34,7 +34,7 @@ fn target(component: Voice) -> Target {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
         components: vec![Component {
-            id: ComponentId::new(1),
+            id: ComponentId::new(1).unwrap(),
             form: ComponentForm::Voice(component),
         }],
     }
@@ -162,8 +162,16 @@ fn a_destination_facts_edit_during_a_ramp_keeps_the_ramp_and_outgoing_facts() {
     assert_eq!(
         roles,
         [
-            (ComponentId::new(1), SlotRole::Outgoing, 0.000_10),
-            (ComponentId::new(1), SlotRole::Incoming, 0.000_11)
+            (
+                ComponentId::new(1).unwrap().into(),
+                SlotRole::Outgoing,
+                0.000_10
+            ),
+            (
+                ComponentId::new(1).unwrap().into(),
+                SlotRole::Incoming,
+                0.000_11
+            )
         ]
     );
     assert_eq!(render(&mut edited, 2_000), render(&mut reference, 2_000));

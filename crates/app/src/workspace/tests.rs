@@ -534,7 +534,7 @@ fn copy_availability_and_execution_share_the_component_limit() {
 fn copy_preflight_refuses_nonfinite_or_full_metadata_before_touching_dirty_work() {
     let mut source = Draft::new().unwrap().recipe();
     source.sound.components.push(crate::core::Component {
-        id: ComponentId::new(1),
+        id: ComponentId::new(1).unwrap(),
         form: crate::core::ComponentForm::Voice(crate::core::Voice {
             carrier: crate::core::Carrier::Tone {
                 frequency_hz: f64::NAN,

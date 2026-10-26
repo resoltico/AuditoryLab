@@ -1531,7 +1531,7 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
     let mut recipe = auditorylab::editing::Draft::new().unwrap().recipe();
     recipe.sound.components = vec![
         auditorylab::core::Component {
-            id: auditorylab::core::ComponentId::new(u32::MAX),
+            id: auditorylab::core::ComponentId::new(u32::MAX).unwrap(),
             form: auditorylab::core::ComponentForm::BinauralPair(auditorylab::core::Pair {
                 first_hz: 200.0,
                 offset_hz: 2.0,
@@ -1540,7 +1540,7 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
             }),
         },
         auditorylab::core::Component {
-            id: auditorylab::core::ComponentId::new(u32::MAX - 1),
+            id: auditorylab::core::ComponentId::new(u32::MAX - 1).unwrap(),
             form: auditorylab::core::ComponentForm::Voice(
                 auditorylab::controls::default_component(auditorylab::core::CarrierKind::Clicks),
             ),

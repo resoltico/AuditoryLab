@@ -4,8 +4,12 @@ use auditorylab_core::{
     SoundError, Target, Voice, live::Engine, timing::ModelKind,
 };
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "Test fixture owner numbers are positive"
+)]
 fn id(n: u32) -> ComponentId {
-    ComponentId::new(n)
+    ComponentId::new(n).unwrap()
 }
 fn target(rate: SampleRate, voices: &[(ComponentId, Voice)]) -> Result<Target, SoundError> {
     Sound {
@@ -47,7 +51,7 @@ fn every_column_contains_all_rational_pulses_including_single_frame_impulses() {
             let model = target.timing_model(257);
             let lane = &model.lanes[0];
             assert_eq!(lane.kind, ModelKind::Clicks);
-            assert_eq!(lane.id, id(7));
+            assert_eq!(lane.id, id(7).into());
             let w = if width == 0.001 {
                 if fs == 44100 {
                     44

@@ -601,11 +601,12 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
         let replacement = if invalid_editor {
             let mut recipe = workspace.editor().draft().recipe();
             recipe.sound.components = vec![crate::core::Component {
-                id: crate::core::ComponentId::new(0),
+                id: crate::core::ComponentId::new(1).unwrap(),
                 form: crate::core::ComponentForm::Voice(crate::controls::default_component(
                     crate::core::CarrierKind::Tone,
                 )),
             }];
+            recipe.sound.components.push(recipe.sound.components[0]);
             EditorSession::new(Draft::from_recipe(recipe))
         } else {
             Err(Error::new(

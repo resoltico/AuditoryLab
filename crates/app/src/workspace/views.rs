@@ -483,10 +483,10 @@ impl Workspace {
                     .component(*id)
                     .copied()
                     .unwrap_or(*committed);
-                let own = analysis.check().component(*id);
+                let own = analysis.check().component((*id).into());
                 let acoustic = own.and_then(|r| r.as_ref().err());
                 let second=analysis.check().component(id.with_lane(auditorylab_core::Lane::Secondary)).and_then(|r|r.as_ref().err());
-                let coupled=analysis.check().result().err().filter(|error|match error {auditorylab_core::SoundError::Authored(auditorylab_core::LoweringError::PairDifference {id:owner,..})|auditorylab_core::SoundError::PairCarrier {id:owner,..}=>owner.get()==id.get(),_=>false});
+                let coupled=analysis.check().result().err().filter(|error|match error {auditorylab_core::SoundError::Authored(auditorylab_core::LoweringError::PairDifference {id:owner,..})=>owner.get()==id.get(),auditorylab_core::SoundError::PairCarrier {id:owner,..}=>owner.component==*id,_=>false});
                 let parameters = ParameterId::COMPONENT
                     .into_iter()
                     .filter(|p| committed.read(*p).is_some())

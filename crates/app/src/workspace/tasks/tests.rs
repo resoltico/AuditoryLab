@@ -621,11 +621,12 @@ fn refused_editor_replacement_never_rebinds_the_surviving_document() {
     let location = workspace.document_location();
     let mut recipe = bad.snapshot.recipe().clone();
     recipe.sound.components = vec![crate::core::Component {
-        id: crate::core::ComponentId::new(0),
+        id: crate::core::ComponentId::new(1).unwrap(),
         form: crate::core::ComponentForm::Voice(crate::controls::default_component(
             CarrierKind::Tone,
         )),
     }];
+    recipe.sound.components.push(recipe.sound.components[0]);
     bad.snapshot = RecipeSnapshot::new(bad.snapshot.origin().clone(), recipe);
     workspace.run(super::super::Pending {
         action: super::super::Action::Document(DocumentAction::EditManaged(bad)),

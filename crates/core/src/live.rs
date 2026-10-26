@@ -17,13 +17,13 @@
 //! starts no ramp, resets no phase and discards an older waiting target.
 //! Rendering allocates nothing, takes no lock and performs no I/O.
 use crate::synthesis::{self, Carrier, GeneratorVoice, Modulator};
-use crate::{ComponentId, Observation, SampleRate, Signal, SlotRole, Target};
+use crate::{Observation, SampleRate, Signal, SlotRole, Target, VoiceId};
 
 const SLOTS: usize = Engine::SLOTS;
 
 #[derive(Debug, Clone, Copy)]
 struct Slot {
-    id: ComponentId,
+    id: VoiceId,
     facts: crate::ComponentFacts,
     role: SlotRole,
     voice: GeneratorVoice,
@@ -501,11 +501,11 @@ mod tests {
         }
     }
 
-    fn id(n: u32) -> ComponentId {
-        ComponentId::new(n)
+    fn id(n: u32) -> crate::ComponentId {
+        crate::ComponentId::new(n + 1).unwrap()
     }
 
-    fn numbered(components: &[Voice]) -> Vec<(ComponentId, Voice)> {
+    fn numbered(components: &[Voice]) -> Vec<(crate::ComponentId, Voice)> {
         components
             .iter()
             .enumerate()
@@ -539,7 +539,7 @@ mod tests {
                     ..clicks(40.0, 0.0)
                 };
                 let rate = SampleRate::new(hz).unwrap();
-                let target = Target::new(rate, &[(id(1), voice)]).unwrap();
+                let target = crate::test_support::target(rate, &[(id(1), voice)]).unwrap();
                 let mut engine = Engine::new(rate);
                 engine.begin(&target);
                 let mut slot = engine.slots.iter().flatten().next().copied().unwrap();
@@ -583,7 +583,9 @@ mod tests {
                     })
                     .collect();
                 let mut engine = Engine::new(SampleRate::new(hz).unwrap());
-                engine.set(&Target::new(engine.rate, &numbered(&components)).unwrap());
+                engine.set(
+                    &crate::test_support::target(engine.rate, &numbered(&components)).unwrap(),
+                );
                 engine.render(&mut [[0.0; 2]]);
                 let mut slots: Vec<_> = engine.slots.into_iter().flatten().collect();
                 for progress in [None, Some(0.0), Some(0.25), Some(0.999), Some(1.0)] {
@@ -698,13 +700,15 @@ mod tests {
         );
         let loud = [tone(440.0, -3.0, Ears::Left), tone(441.0, -3.0, Ears::Left)];
         assert!(matches!(
-            Target::new(rate(), &numbered(&loud)),
+            crate::test_support::target(rate(), &numbered(&loud)),
             Err(SoundError::Peak { ear: Ear::Left, .. })
         ));
         let many = vec![tone(440.0, -40.0, Ears::Both); 17];
         assert!(matches!(
-            Target::new(rate(), &numbered(&many)),
-            Err(SoundError::TooManyComponents { count: 17 })
+            crate::test_support::target(rate(), &numbered(&many)),
+            Err(SoundError::Authored(
+                crate::LoweringError::ComponentBudget { count: 17 }
+            ))
         ));
         let other = SampleRate::new(44_100).unwrap();
         let mut engine = Engine::new(rate());
@@ -718,10 +722,16 @@ mod tests {
     )]
     fn a_retuned_tone_keeps_its_phase_and_a_reset_would_not() {
         let mut engine = Engine::new(rate());
-        engine.set(&Target::new(rate(), &[(id(7), tone(440.0, -6.0, Ears::Both))]).unwrap());
+        engine.set(
+            &crate::test_support::target(rate(), &[(id(7), tone(440.0, -6.0, Ears::Both))])
+                .unwrap(),
+        );
         // 4,827 frames end near a crest of 440 Hz, where a phase reset would jump.
         let mut frames = render(&mut engine, 4_827);
-        engine.set(&Target::new(rate(), &[(id(7), tone(880.0, -6.0, Ears::Both))]).unwrap());
+        engine.set(
+            &crate::test_support::target(rate(), &[(id(7), tone(880.0, -6.0, Ears::Both))])
+                .unwrap(),
+        );
         frames.extend(render(&mut engine, 9_600));
         let amplitude = libm::pow(10.0, -6.0 / 20.0);
         // A sine changes by at most 2π f / fs per frame at its amplitude.
@@ -763,13 +773,13 @@ mod tests {
             modulation: None,
         };
         let mut engine = Engine::new(rate());
-        engine.set(&Target::new(rate(), &[(id(1), held)]).unwrap());
+        engine.set(&crate::test_support::target(rate(), &[(id(1), held)]).unwrap());
         render(&mut engine, 2_000);
         let louder = Voice {
             peak_dbfs: -6.0,
             ..held
         };
-        engine.set(&Target::new(rate(), &[(id(1), louder)]).unwrap());
+        engine.set(&crate::test_support::target(rate(), &[(id(1), louder)]).unwrap());
         let ramp = engine.ramp_frames() as usize;
         let frames = render(&mut engine, ramp + 10);
         let from = libm::pow(10.0, -20.0 / 20.0);
@@ -788,19 +798,25 @@ mod tests {
     )]
     fn a_changed_pulse_crossfades_and_a_retuned_tone_does_not() {
         let mut engine = Engine::new(rate());
-        engine.set(&Target::new(rate(), &[(id(1), clicks(40.0, -20.0))]).unwrap());
+        engine.set(&crate::test_support::target(rate(), &[(id(1), clicks(40.0, -20.0))]).unwrap());
         render(&mut engine, 2_000);
-        engine.set(&Target::new(rate(), &[(id(1), clicks(80.0, -20.0))]).unwrap());
+        engine.set(&crate::test_support::target(rate(), &[(id(1), clicks(80.0, -20.0))]).unwrap());
         let ramp = engine.ramp_frames() as usize;
         render(&mut engine, 1);
         assert_eq!(engine.live_slots(), 2);
         render(&mut engine, ramp);
         assert_eq!(engine.live_slots(), 1);
-        engine.set(&Target::new(rate(), &[(id(1), tone(300.0, -20.0, Ears::Left))]).unwrap());
+        engine.set(
+            &crate::test_support::target(rate(), &[(id(1), tone(300.0, -20.0, Ears::Left))])
+                .unwrap(),
+        );
         render(&mut engine, 1);
         assert_eq!(engine.live_slots(), 2);
         render(&mut engine, ramp);
-        engine.set(&Target::new(rate(), &[(id(1), tone(600.0, -10.0, Ears::Right))]).unwrap());
+        engine.set(
+            &crate::test_support::target(rate(), &[(id(1), tone(600.0, -10.0, Ears::Right))])
+                .unwrap(),
+        );
         render(&mut engine, 1);
         assert_eq!(engine.live_slots(), 1);
     }
@@ -812,9 +828,14 @@ mod tests {
     )]
     fn targets_during_a_ramp_wait_and_only_the_newest_applies() {
         let mut engine = Engine::new(rate());
-        let quiet = Target::new(rate(), &[(id(1), tone(440.0, -40.0, Ears::Both))]).unwrap();
-        let skipped = Target::new(rate(), &[(id(2), tone(500.0, -10.0, Ears::Both))]).unwrap();
-        let newest = Target::new(rate(), &[(id(3), tone(600.0, -20.0, Ears::Left))]).unwrap();
+        let quiet = crate::test_support::target(rate(), &[(id(1), tone(440.0, -40.0, Ears::Both))])
+            .unwrap();
+        let skipped =
+            crate::test_support::target(rate(), &[(id(2), tone(500.0, -10.0, Ears::Both))])
+                .unwrap();
+        let newest =
+            crate::test_support::target(rate(), &[(id(3), tone(600.0, -20.0, Ears::Left))])
+                .unwrap();
         engine.set(&quiet);
         render(&mut engine, 10);
         engine.set(&skipped);
@@ -823,8 +844,8 @@ mod tests {
         render(&mut engine, remaining);
         assert_eq!(engine.live_slots(), 1);
         render(&mut engine, 1);
-        assert!(engine.slots.iter().flatten().all(|s| s.id != id(2)));
-        assert!(engine.slots.iter().flatten().any(|s| s.id == id(3)));
+        assert!(engine.slots.iter().flatten().all(|s| s.id != id(2).into()));
+        assert!(engine.slots.iter().flatten().any(|s| s.id == id(3).into()));
     }
 
     #[test]
@@ -834,7 +855,10 @@ mod tests {
     )]
     fn stopping_fades_out_within_one_ramp_and_then_finishes() {
         let mut engine = Engine::new(rate());
-        engine.set(&Target::new(rate(), &[(id(1), tone(440.0, -6.0, Ears::Both))]).unwrap());
+        engine.set(
+            &crate::test_support::target(rate(), &[(id(1), tone(440.0, -6.0, Ears::Both))])
+                .unwrap(),
+        );
         render(&mut engine, 4_800);
         assert!(!engine.is_finished());
         engine.stop();
@@ -855,9 +879,9 @@ mod tests {
             .collect();
         let pulses: Vec<Voice> = (0..16).map(|_| clicks(40.0, -24.1)).collect();
         let mut engine = Engine::new(rate());
-        engine.set(&Target::new(rate(), &numbered(&tones)).unwrap());
+        engine.set(&crate::test_support::target(rate(), &numbered(&tones)).unwrap());
         render(&mut engine, 2_000);
-        engine.set(&Target::new(rate(), &numbered(&pulses)).unwrap());
+        engine.set(&crate::test_support::target(rate(), &numbered(&pulses)).unwrap());
         render(&mut engine, 1);
         assert_eq!(engine.live_slots(), 32);
         for frame in render(&mut engine, 2_000) {
@@ -913,13 +937,14 @@ mod tests {
                 for (parts, frames) in edits {
                     // Scale levels so that each ear's sum is exactly at most one.
                     let n = parts.len().max(1) as f64;
-                    let components: Vec<(ComponentId, Voice)> = parts
+                    let components: Vec<(crate::ComponentId, Voice)> = parts
                         .iter()
                         .enumerate()
                         .map(|(i, (id, ears, carrier, modulation, level))| {
                             let amplitude = (0.05 + 0.95 * level) / n;
                             (
-                                ComponentId::new(id * 16 + u32::try_from(i).unwrap()),
+                                crate::ComponentId::new(id * 16 + u32::try_from(i).unwrap() + 1)
+                                    .unwrap(),
                                 Voice {
                                     ears: *ears,
                                     peak_dbfs: 20.0 * libm::log10(amplitude),
@@ -929,7 +954,7 @@ mod tests {
                             )
                         })
                         .collect();
-                    if let Ok(target) = Target::new(rate(), &components) {
+                    if let Ok(target) = crate::test_support::target(rate(), &components) {
                         engine.set(&target);
                     }
                     for _ in 0..frames {
@@ -947,12 +972,12 @@ mod tests {
 
     #[test]
     fn rendering_and_editing_allocate_nothing() {
-        let a = Target::new(
+        let a = crate::test_support::target(
             rate(),
             &numbered(&[tone(440.0, -20.0, Ears::Left), clicks(40.0, -20.0)]),
         )
         .unwrap();
-        let b = Target::new(
+        let b = crate::test_support::target(
             rate(),
             &numbered(&[clicks(80.0, -20.0), tone(450.0, -26.0, Ears::Right)]),
         )
@@ -996,9 +1021,9 @@ mod tests {
             (gated(500.0, -20.0, 0.001), gated(500.0, -20.0, 0.002), 2),
         ] {
             let mut engine = Engine::new(rate());
-            engine.set(&Target::new(rate(), &[(id(1), before)]).unwrap());
+            engine.set(&crate::test_support::target(rate(), &[(id(1), before)]).unwrap());
             render(&mut engine, 2_000);
-            engine.set(&Target::new(rate(), &[(id(1), after)]).unwrap());
+            engine.set(&crate::test_support::target(rate(), &[(id(1), after)]).unwrap());
             render(&mut engine, 1);
             assert_eq!(engine.live_slots(), slots, "{before:?} -> {after:?}");
         }
@@ -1016,9 +1041,9 @@ mod tests {
             ..tone(hz, -20.0, Ears::Both)
         };
         let mut engine = Engine::new(rate());
-        engine.set(&Target::new(rate(), &[(id(1), am(440.0, 10.0, 0.0))]).unwrap());
+        engine.set(&crate::test_support::target(rate(), &[(id(1), am(440.0, 10.0, 0.0))]).unwrap());
         render(&mut engine, 2_000);
-        engine.set(&Target::new(rate(), &[(id(1), am(880.0, 40.0, 1.0))]).unwrap());
+        engine.set(&crate::test_support::target(rate(), &[(id(1), am(880.0, 40.0, 1.0))]).unwrap());
         let ramp = engine.ramp_frames() as usize;
         render(&mut engine, ramp / 2);
         let slot = engine.slots.iter().flatten().next().copied().unwrap();
@@ -1056,7 +1081,7 @@ mod tests {
         let mut engine = Engine::new(rate());
         render(&mut engine, 1_000);
         assert_eq!(engine.frame(), 1_000);
-        engine.set(&Target::new(rate(), &[(id(1), clicks(40.0, -6.0))]).unwrap());
+        engine.set(&crate::test_support::target(rate(), &[(id(1), clicks(40.0, -6.0))]).unwrap());
         let frames = render(&mut engine, 6_000);
         assert_eq!(engine.frame(), 7_000);
         let level = libm::pow(10.0, -6.0 / 20.0);
@@ -1070,7 +1095,9 @@ mod tests {
         }
         let mut engine = Engine::new(rate());
         render(&mut engine, 777);
-        engine.set(&Target::new(rate(), &[(id(1), gated(1_000.0, -6.0, 0.001))]).unwrap());
+        engine.set(
+            &crate::test_support::target(rate(), &[(id(1), gated(1_000.0, -6.0, 0.001))]).unwrap(),
+        );
         let frames = render(&mut engine, 6_000);
         for (t, frame) in frames
             .iter()
@@ -1087,7 +1114,10 @@ mod tests {
     #[test]
     fn stop_waits_for_the_active_ramp_then_fades_for_one_ramp() {
         let mut engine = Engine::new(rate());
-        engine.set(&Target::new(rate(), &[(id(1), tone(440.0, -30.0, Ears::Both))]).unwrap());
+        engine.set(
+            &crate::test_support::target(rate(), &[(id(1), tone(440.0, -30.0, Ears::Both))])
+                .unwrap(),
+        );
         render(&mut engine, 1);
         engine.stop();
         let expected = 2 * engine.ramp_frames() - 1;
@@ -1134,12 +1164,15 @@ mod tests {
     )]
     fn an_empty_target_plays_silence_until_stopped() {
         let mut engine = Engine::new(rate());
-        assert!(engine.set(&Target::new(rate(), &[]).unwrap()));
+        assert!(engine.set(&crate::test_support::target(rate(), &[]).unwrap()));
         let mut out = vec![[1.0; 2]; 10_000];
         assert_eq!(engine.render(&mut out), 10_000);
         assert!(out.iter().all(|f| *f == [0.0; 2]));
         assert!(!engine.is_finished());
-        engine.set(&Target::new(rate(), &[(id(1), tone(440.0, -20.0, Ears::Both))]).unwrap());
+        engine.set(
+            &crate::test_support::target(rate(), &[(id(1), tone(440.0, -20.0, Ears::Both))])
+                .unwrap(),
+        );
         engine.render(&mut out);
         engine.set(&Target::silence(rate()));
         engine.render(&mut out);

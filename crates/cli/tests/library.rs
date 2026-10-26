@@ -673,3 +673,29 @@ fn optional_expect_plain_recipe_bytes_and_unknown_trash_dates_use_the_new_layout
             .exists()
     );
 }
+
+#[test]
+fn inspection_serializes_expanded_identity_without_conflating_authored_owners() {
+    let root = dir();
+    let result = cli(
+        root.path(),
+        &[
+            "inspect",
+            "builtin:ioannou-2015-binaural-10-hz",
+            "--format",
+            "json",
+        ],
+    );
+    assert!(result.status.success(), "{result:?}");
+    let report = json(&result);
+    assert_eq!(report["output_schema_version"], 2);
+    let voices = &report["entries"][0]["validation"]["components"];
+    assert_eq!(
+        voices[0]["id"],
+        serde_json::json!({"component": 1, "lane": "primary"})
+    );
+    assert_eq!(
+        voices[1]["id"],
+        serde_json::json!({"component": 1, "lane": "secondary"})
+    );
+}

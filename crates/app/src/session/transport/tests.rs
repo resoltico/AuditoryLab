@@ -470,7 +470,7 @@ fn mailbox_is_polled_once_per_buffer_and_updates_wait_for_the_next_buffer() {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
         components: vec![crate::core::Component {
-            id: ComponentId::new(1),
+            id: ComponentId::new(1).unwrap(),
             form: crate::core::ComponentForm::Voice(Voice {
                 ears: Ears::Both,
                 peak_dbfs: -30.0,

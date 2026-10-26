@@ -1,10 +1,10 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 //! Ordered authored components and lossless lowering into primitive generator lanes.
-use crate::{Carrier, ComponentId, Ears, Lane, Modulation, Voice};
+use crate::{Carrier, ComponentId, Ears, Lane, Modulation, Voice, VoiceId};
 use alloc::vec::Vec;
 use core::fmt;
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A signed-offset two-tone construction. The second carrier is first + offset.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,7 +36,7 @@ pub enum ComponentForm {
 /// An authored form and its positive stable owner identity.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Component {
-    /// Owner identity. Portable nodes always use the primary lane.
+    /// Authored owner, independent of generator lanes.
     pub id: ComponentId,
     /// Authored sound structure.
     pub form: ComponentForm,
@@ -64,9 +64,20 @@ impl fmt::Display for PairIssue {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LoweringError {
     /// Duplicate, zero or already-expanded identities are not authored owner IDs.
-    Identity,
+    Identity {
+        /// Repeated authored owner.
+        id: ComponentId,
+    },
     /// Authored form or expanded voice count exceeds the established budget.
-    VoiceBudget,
+    VoiceBudget {
+        /// Expanded generator count.
+        count: usize,
+    },
+    /// Too many authored components.
+    ComponentBudget {
+        /// Authored component count.
+        count: usize,
+    },
     /// The first carrier and signed offset cannot produce the intended second tone.
     PairDifference {
         /// Failure in the coupled first carrier and signed offset.
@@ -82,13 +93,15 @@ pub enum LoweringError {
 impl fmt::Display for LoweringError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Identity => f.write_str(
-                "authored component IDs must be unique positive primary-lane u32 values",
-            ),
-            Self::VoiceBudget => write!(
+            Self::Identity { id } => write!(f, "two authored components share identity {id}"),
+            Self::ComponentBudget { count } => write!(
                 f,
-                "at most {} authored nodes and {} expanded voices are supported; a pair costs two voices",
-                Sound::MAX_COMPONENTS,
+                "{count} authored components exceed the limit of {}",
+                Sound::MAX_COMPONENTS
+            ),
+            Self::VoiceBudget { count } => write!(
+                f,
+                "{count} expanded voices exceed the limit of {}",
                 Sound::MAX_VOICES
             ),
             Self::PairDifference {
@@ -124,23 +137,13 @@ impl ComponentForm {
 ///
 /// # Errors
 /// Refuses invalid owners, either voice budget, and unrepresentable pair sums.
-pub(crate) fn lower(components: &[Component]) -> Result<Vec<(ComponentId, Voice)>, LoweringError> {
-    if components.len() > Sound::MAX_COMPONENTS
-        || components.iter().map(|c| c.form.voices()).sum::<usize>() > Sound::MAX_VOICES
-    {
-        return Err(LoweringError::VoiceBudget);
-    }
+pub(crate) fn lower(components: &[Component]) -> Result<Vec<(VoiceId, Voice)>, LoweringError> {
+    Sound::check_structure(components)?;
     let mut output = Vec::new();
-    for (index, component) in components.iter().enumerate() {
+    for component in components {
         let id = component.id;
-        if id.get() == 0
-            || id.lane() != Lane::Primary
-            || components[..index].iter().any(|c| c.id == id)
-        {
-            return Err(LoweringError::Identity);
-        }
         match component.form {
-            ComponentForm::Voice(value) => output.push((id, value)),
+            ComponentForm::Voice(value) => output.push((id.into(), value)),
             form => {
                 let (pair, first_ears, second_ears) = match form {
                     ComponentForm::BinauralPair(pair) => (pair, Ears::Left, Ears::Right),
@@ -173,7 +176,10 @@ pub(crate) fn lower(components: &[Component]) -> Result<Vec<(ComponentId, Voice)
                     ears,
                     modulation: None,
                 };
-                output.push((id, tone(pair.first_hz, pair.first_peak_dbfs, first_ears)));
+                output.push((
+                    id.into(),
+                    tone(pair.first_hz, pair.first_peak_dbfs, first_ears),
+                ));
                 output.push((
                     id.with_lane(Lane::Secondary),
                     tone(second_hz, pair.second_peak_dbfs, second_ears),
@@ -188,7 +194,7 @@ pub(crate) fn lower(components: &[Component]) -> Result<Vec<(ComponentId, Voice)
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum DocumentComponentForm {
     Tone {
-        id: u32,
+        id: ComponentId,
         ears: Ears,
         frequency_hz: f64,
         peak_dbfs: f64,
@@ -196,7 +202,7 @@ enum DocumentComponentForm {
         modulation: Option<Modulation>,
     },
     Clicks {
-        id: u32,
+        id: ComponentId,
         ears: Ears,
         rate_hz: f64,
         width_seconds: f64,
@@ -205,14 +211,14 @@ enum DocumentComponentForm {
         modulation: Option<Modulation>,
     },
     BinauralPair {
-        id: u32,
+        id: ComponentId,
         left_hz: f64,
         offset_hz: f64,
         left_peak_dbfs: f64,
         right_peak_dbfs: f64,
     },
     MonauralPair {
-        id: u32,
+        id: ComponentId,
         ears: Ears,
         first_hz: f64,
         offset_hz: f64,
@@ -222,7 +228,7 @@ enum DocumentComponentForm {
 }
 impl From<Component> for DocumentComponentForm {
     fn from(value: Component) -> Self {
-        let id = value.id.get();
+        let id = value.id;
         match value.form {
             ComponentForm::Voice(Voice {
                 ears,
@@ -353,29 +359,19 @@ impl From<DocumentComponentForm> for Component {
                 },
             ),
         };
-        Self {
-            id: ComponentId::new(id),
-            form,
-        }
+        Self { id, form }
     }
 }
 impl Serialize for Component {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if self.id.get() == 0 || self.id.lane() != Lane::Primary {
-            return Err(serde::ser::Error::custom(
-                "authored component requires a positive primary-lane owner",
-            ));
-        }
         DocumentComponentForm::from(*self).serialize(serializer)
     }
 }
 impl<'de> Deserialize<'de> for Component {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = Self::from(DocumentComponentForm::deserialize(deserializer)?);
-        if value.id.get() == 0 {
-            return Err(D::Error::custom("component id must be a positive u32"));
-        }
-        Ok(value)
+        Ok(Self::from(DocumentComponentForm::deserialize(
+            deserializer,
+        )?))
     }
 }
 
@@ -390,6 +386,30 @@ pub struct Sound {
     pub components: Vec<Component>,
 }
 impl Sound {
+    /// Enforce authored uniqueness and both independent structural budgets.
+    ///
+    /// # Errors
+    /// Returns one identity or capacity diagnostic before any acoustic compilation.
+    pub fn check_structure(components: &[Component]) -> Result<(), LoweringError> {
+        if components.len() > Self::MAX_COMPONENTS {
+            return Err(LoweringError::ComponentBudget {
+                count: components.len(),
+            });
+        }
+        let count = components.iter().map(|c| c.form.voices()).sum::<usize>();
+        if count > Self::MAX_VOICES {
+            return Err(LoweringError::VoiceBudget { count });
+        }
+        for (index, component) in components.iter().enumerate() {
+            if components[..index]
+                .iter()
+                .any(|other| other.id == component.id)
+            {
+                return Err(LoweringError::Identity { id: component.id });
+            }
+        }
+        Ok(())
+    }
     /// Maximum number of authored components.
     pub const MAX_COMPONENTS: usize = 16;
     /// Maximum number of expanded generator voices.

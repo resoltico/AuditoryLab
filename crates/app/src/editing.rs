@@ -120,7 +120,7 @@ impl std::str::FromStr for RowKey {
         }
         Ok(Self {
             document: DocumentId(document),
-            component: (component != 0).then_some(ComponentId::new(component)),
+            component: ComponentId::new(component),
             generation,
         })
     }
@@ -345,7 +345,7 @@ impl Draft {
         self.check_addition(form)?;
         let components = &mut self.content.sound.components;
         let next = self.next_id.ok_or(EditRefusal::IdentitiesExhausted)?;
-        let id = ComponentId::new(next);
+        let id = ComponentId::new(next).ok_or(EditRefusal::IdentitiesExhausted)?;
         self.next_id = next.checked_add(1);
         components.push(auditorylab_core::Component { id, form });
         self.demote_evidence();
@@ -750,18 +750,13 @@ impl EditorSession {
     /// Refuses invalid component owner identities or exhausted document identities.
     pub fn new(draft: Draft) -> Result<Self, Error> {
         let saved = Draft::empty(draft.content.document.clone()).recipe();
-        let mut row_generations = BTreeMap::new();
-        for component in draft.components() {
-            if component.id.get() == 0
-                || component.id.lane() != auditorylab_core::Lane::Primary
-                || row_generations.insert(component.id, 0).is_some()
-            {
-                return Err(Error::new(
-                    ErrorKind::InvalidRecipe,
-                    "Each component needs a unique positive owner identity.",
-                ));
-            }
-        }
+        auditorylab_core::Sound::check_structure(draft.components())
+            .map_err(|error| Error::new(ErrorKind::InvalidRecipe, error.to_string()))?;
+        let row_generations = draft
+            .components()
+            .iter()
+            .map(|component| (component.id, 0))
+            .collect();
         Ok(Self {
             document: DocumentId::allocate()?,
             row_generations,

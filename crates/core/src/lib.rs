@@ -38,7 +38,7 @@ pub use facts::{
 pub use history::{DocumentIdentity, DocumentUuid, Timestamp};
 pub use parameter::{
     CarrierKind, ComponentId, ComponentRole, Lane, ModulationKind, ParameterDescriptor,
-    ParameterId, Unit,
+    ParameterId, Unit, VoiceId,
 };
 pub use provenance::{
     BibliographySource, ConditionRole, Description, Evidence, EvidenceScope, Lineage, Measure,
@@ -49,3 +49,6 @@ pub use recipe::{About, Recipe, RecipeError, Research};
 pub use signal::Signal;
 pub use voice::{Carrier, Ear, Ears, Modulation, SoundError, Voice, VoiceError};
 pub use waveform::Extent;
+
+#[cfg(test)]
+mod test_support;

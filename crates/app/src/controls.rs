@@ -221,7 +221,7 @@ mod tests {
         auditorylab_core::Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
-            components: ([(ComponentId::new(1), component)])
+            components: ([(ComponentId::new(1).unwrap(), component)])
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
@@ -330,7 +330,7 @@ mod tests {
                         let mut form = default_pair(kind);
                         assert!(form.write(id, id.descriptor().unit.to_model(r.default)));
                         let authored = [auditorylab_core::Component {
-                            id: ComponentId::new(1),
+                            id: ComponentId::new(1).unwrap(),
                             form,
                         }];
                         assert!(

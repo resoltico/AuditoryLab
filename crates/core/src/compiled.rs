@@ -10,8 +10,8 @@
 //! engine reuse without compiling the raw components again.
 use crate::synthesis::GeneratorVoice;
 use crate::{
-    ComponentFacts, ComponentId, Ear, SampleRate, Signal, SlotRole, Sound, SoundError, Voice,
-    VoiceError, VoiceObservation, numeric, signal::Envelope,
+    ComponentFacts, Ear, SampleRate, Signal, SlotRole, Sound, SoundError, Voice, VoiceError,
+    VoiceId, VoiceObservation, numeric, signal::Envelope,
 };
 use alloc::vec::Vec;
 
@@ -20,7 +20,7 @@ use alloc::vec::Vec;
 /// facts separately, so they cannot disagree.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct CompiledComponent {
-    pub(crate) id: ComponentId,
+    pub(crate) id: VoiceId,
     pub(crate) voice: GeneratorVoice,
     pub(crate) facts: ComponentFacts,
 }
@@ -93,15 +93,6 @@ impl Target {
         }
     }
 
-    /// Compile already-lowered lanes for compiler and live-engine unit tests.
-    #[cfg(test)]
-    pub(crate) fn new(
-        rate: SampleRate,
-        components: &[(ComponentId, Voice)],
-    ) -> Result<Self, SoundError> {
-        TargetCheck::new(rate, components).into_result()
-    }
-
     pub(crate) const fn mix(&self) -> &CompiledMix {
         &self.mix
     }
@@ -125,7 +116,7 @@ impl Target {
     }
 
     /// Each component's identity and validated facts, in order.
-    pub fn components(&self) -> impl Iterator<Item = (ComponentId, &ComponentFacts)> {
+    pub fn components(&self) -> impl Iterator<Item = (VoiceId, &ComponentFacts)> {
         self.mix.entries().map(|entry| (entry.id, &entry.facts))
     }
 
@@ -178,7 +169,7 @@ impl Target {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetCheck {
     rate: SampleRate,
-    components: Vec<(ComponentId, Result<ComponentFacts, VoiceError>)>,
+    components: Vec<(VoiceId, Result<ComponentFacts, VoiceError>)>,
     result: Result<Target, SoundError>,
 }
 
@@ -196,8 +187,8 @@ impl TargetCheck {
                 };
             }
         };
-        let mut check = Self::new(rate, &lowered);
-        let intent = |id: ComponentId| {
+        let mut check = Self::compile_lanes(rate, &lowered);
+        let intent = |id: VoiceId| {
             components
                 .iter()
                 .find(|c| c.id.get() == id.get())
@@ -230,10 +221,10 @@ impl TargetCheck {
                 });
             }
         }
-        let annotate = |id: ComponentId, facts: &mut ComponentFacts| {
+        let annotate = |id: VoiceId, facts: &mut ComponentFacts| {
             if let Some((pair, kind)) = intent(id) {
                 facts.pair = Some(crate::PairFacts {
-                    owner: id.with_lane(crate::Lane::Primary),
+                    owner: id.component,
                     kind,
                     first_hz: pair.first_hz,
                     offset_hz: pair.offset_hz,
@@ -254,32 +245,11 @@ impl TargetCheck {
         check
     }
 
-    /// Compile each component once, in order.
-    ///
-    /// The whole-target error is the first of: too many components; then,
-    /// for each component in order, a duplicate identity and then the
-    /// component's own first error (level, carrier, modulation); then the
-    /// left ear's peak and the right ear's peak. An over-capacity input is
-    /// rejected without compiling any component. Otherwise every component
-    /// is compiled, so each has its own result even after an earlier one fails.
-    #[must_use]
-    pub(crate) fn new(rate: SampleRate, components: &[(ComponentId, Voice)]) -> Self {
-        if components.len() > Sound::MAX_VOICES {
-            return Self {
-                rate,
-                components: Vec::new(),
-                result: Err(SoundError::TooManyComponents {
-                    count: components.len(),
-                }),
-            };
-        }
+    fn compile_lanes(rate: SampleRate, components: &[(VoiceId, Voice)]) -> Self {
         let mut mix = CompiledMix::empty(rate);
         let mut first = None;
         let mut results = Vec::with_capacity(components.len());
         for (index, (id, component)) in components.iter().enumerate() {
-            if first.is_none() && components[..index].iter().any(|(other, _)| other == id) {
-                first = Some(SoundError::DuplicateComponentId { id: *id });
-            }
             match component.voice(rate) {
                 Ok(voice) => {
                     let facts = ComponentFacts::from_voice(component, &voice, rate);
@@ -338,13 +308,13 @@ impl TargetCheck {
     /// Each component's own result in input order; empty when the input
     /// exceeds [`Sound::MAX_VOICES`].
     #[must_use]
-    pub fn components(&self) -> &[(ComponentId, Result<ComponentFacts, VoiceError>)] {
+    pub fn components(&self) -> &[(VoiceId, Result<ComponentFacts, VoiceError>)] {
         &self.components
     }
 
     /// The component's own result, when the check compiled it.
     #[must_use]
-    pub fn component(&self, id: ComponentId) -> Option<&Result<ComponentFacts, VoiceError>> {
+    pub fn component(&self, id: VoiceId) -> Option<&Result<ComponentFacts, VoiceError>> {
         self.components
             .iter()
             .find(|(other, _)| *other == id)

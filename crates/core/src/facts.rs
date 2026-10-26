@@ -1,5 +1,5 @@
 //! Typed requested and realized generator quantities.
-use crate::{Carrier, ComponentId, Ears, Modulation, SampleRate, Sound, Voice};
+use crate::{Carrier, ComponentId, Ears, Modulation, SampleRate, Sound, Voice, VoiceId};
 use serde::Serialize;
 /// Requested rate and the rate represented by the renderer's phase increment.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -175,7 +175,7 @@ impl SlotRole {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VoiceObservation {
     /// Caller component identity; crossfades can have two roles with the same identity.
-    pub id: ComponentId,
+    pub id: VoiceId,
     /// Slot attribution within the transition.
     pub role: SlotRole,
     /// Requested and generated component quantities.

@@ -1,6 +1,6 @@
 //! Bounded origin-zero timing and envelope projections, independent of live phase history.
 use crate::{
-    ComponentFacts, ComponentId, Extent, SampleRate,
+    ComponentFacts, Extent, SampleRate, VoiceId,
     compiled::CompiledMix,
     synthesis::{Carrier, Modulator, sine},
 };
@@ -21,7 +21,7 @@ pub enum ModelKind {
 #[derive(Debug, Clone)]
 pub struct ModelLane {
     /// Caller component identity.
-    pub id: ComponentId,
+    pub id: VoiceId,
     /// Process type.
     pub kind: ModelKind,
     /// Validated physical quantities.

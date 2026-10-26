@@ -94,7 +94,7 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
         notes: None,
     });
     recipe.sound.components = vec![Component {
-        id: ComponentId::new(1),
+        id: ComponentId::new(1).unwrap(),
         form: ComponentForm::Voice(Voice {
             ears: Ears::Both,
             peak_dbfs: -30.0,

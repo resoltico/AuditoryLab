@@ -21,7 +21,7 @@ fn target(rate: SampleRate, component: Voice) -> Target {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
         components: vec![Component {
-            id: ComponentId::new(7),
+            id: ComponentId::new(7).unwrap(),
             form: ComponentForm::Voice(component),
         }],
     }
@@ -36,7 +36,7 @@ fn facts(component: Voice, rate: SampleRate) -> ComponentFacts {
     let check = auditorylab_core::Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
-        components: ([(ComponentId::new(1), component)])
+        components: ([(ComponentId::new(1).unwrap(), component)])
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,
@@ -144,17 +144,17 @@ fn changed_pulses_preserve_both_real_rates_and_roles() {
             fade_seconds: 0.0,
             components: vec![
                 Component {
-                    id: ComponentId::new(1),
+                    id: ComponentId::new(1).unwrap(),
                     form: ComponentForm::Voice(clicks(40.0))
                 },
                 Component {
-                    id: ComponentId::new(1),
+                    id: ComponentId::new(1).unwrap(),
                     form: ComponentForm::Voice(clicks(80.0))
                 },
             ],
         }
         .target(rate),
-        Err(SoundError::Authored(LoweringError::Identity))
+        Err(SoundError::Authored(LoweringError::Identity { .. }))
     ));
 }
 #[test]

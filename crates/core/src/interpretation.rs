@@ -7,7 +7,7 @@
 //! defined two-tone relationship. It never infers a rate from a title and
 //! makes no claim about perception or biological response.
 use crate::{
-    CarrierFacts, ComponentId, ModulationFacts, Observation, SlotRole, Target, VoiceObservation,
+    CarrierFacts, ModulationFacts, Observation, SlotRole, Target, VoiceId, VoiceObservation,
 };
 use alloc::vec::Vec;
 
@@ -17,7 +17,7 @@ use crate::nominal::Method;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rhythm {
     /// Voice/component identity.
-    pub id: ComponentId,
+    pub id: VoiceId,
     /// Role during structural transitions.
     pub role: SlotRole,
     /// Physical mechanism.

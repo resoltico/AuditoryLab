@@ -2,10 +2,10 @@
 use crate as auditorylab_core;
 use auditorylab_core::{
     Carrier, Component, ComponentForm, ComponentId, Ears, Lane, LoweringError, Pair, PairIssue,
-    SampleRate, Sound, Target, Voice, authored,
+    SampleRate, Sound, TargetCheck, Voice, authored,
 };
 use serde::{Deserialize, Serialize};
-use std::{format, string::ToString, vec, vec::Vec};
+use std::{format, vec, vec::Vec};
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Document {
@@ -21,7 +21,7 @@ fn pair(offset_hz: f64) -> Pair {
 }
 fn form(id: u32, form: ComponentForm) -> Component {
     Component {
-        id: ComponentId::new(id),
+        id: ComponentId::new(id).unwrap(),
         form,
     }
 }
@@ -337,7 +337,7 @@ fn node_content_comparison_uses_bits_for_nan_payloads_and_signed_zero() {
 }
 
 #[test]
-fn sound_content_comparison_keeps_envelope_owner_order_and_node_identity() {
+fn sound_content_comparison_keeps_envelope_owner_order_and_component_identity() {
     let original = Sound {
         duration_seconds: 2.0,
         fade_seconds: 0.125,
@@ -361,11 +361,8 @@ fn sound_content_comparison_keeps_envelope_owner_order_and_node_identity() {
     shorter.components.pop();
     changed.push(shorter);
     let mut owner = original.clone();
-    owner.components[0].id = ComponentId::new(8);
+    owner.components[0].id = ComponentId::new(8).unwrap();
     changed.push(owner);
-    let mut lane = original.clone();
-    lane.components[0].id = lane.components[0].id.with_lane(Lane::Secondary);
-    changed.push(lane);
     let mut reordered = original.clone();
     reordered.components.swap(0, 1);
     changed.push(reordered);
@@ -506,7 +503,7 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
 }
 
 #[test]
-fn component_serialization_independently_rejects_zero_and_secondary_owners() {
+fn component_deserialization_rejects_zero_and_preserves_positive_owners() {
     for value in [
         ComponentForm::Voice(tone(437.0, -24.0, Ears::Both)),
         ComponentForm::BinauralPair(pair(-6.0)),
@@ -515,13 +512,10 @@ fn component_serialization_independently_rejects_zero_and_secondary_owners() {
             pair: pair(6.0),
         },
     ] {
-        for id in [
-            ComponentId::new(0),
-            ComponentId::new(7).with_lane(Lane::Secondary),
-        ] {
-            let error = toml::to_string(&Component { id, form: value }).unwrap_err();
-            assert!(error.to_string().contains("positive primary-lane owner"));
-        }
+        let zero = toml::to_string(&form(7, value))
+            .unwrap()
+            .replace("id = 7", "id = 0");
+        assert!(toml::from_str::<Component>(&zero).is_err());
         let valid = form(7, value);
         let text = toml::to_string(&valid).unwrap();
         assert_eq!(toml::from_str::<Component>(&text).unwrap(), valid);
@@ -547,9 +541,14 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
             assert_eq!(
                 lowered,
                 [
-                    (ComponentId::new(u32::MAX), tone(200.0, -20.0, routes[0])),
                     (
-                        ComponentId::new(u32::MAX).with_lane(Lane::Secondary),
+                        ComponentId::new(u32::MAX).unwrap().into(),
+                        tone(200.0, -20.0, routes[0])
+                    ),
+                    (
+                        ComponentId::new(u32::MAX)
+                            .unwrap()
+                            .with_lane(Lane::Secondary),
                         tone(second, -30.0, routes[1])
                     )
                 ]
@@ -557,7 +556,9 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
             assert_ne!(lowered[0].0, lowered[1].0);
             for hz in [44_100, 48_000, 96_000] {
                 let rate = SampleRate::new(hz).unwrap();
-                let target = Target::new(rate, &lowered).unwrap();
+                let target = TargetCheck::authored(rate, &[form(u32::MAX, node_kind)])
+                    .into_result()
+                    .unwrap();
                 let actual = target.signal(1.0, 0.1).unwrap();
                 let expected = Sound {
                     duration_seconds: 1.0,
@@ -607,14 +608,22 @@ fn raw_order_is_never_regrouped_and_both_budgets_are_enforced() {
     assert_eq!(authored::lower(&eight).unwrap().len(), 16);
     let mut nine = eight;
     nine.push(form(9, ComponentForm::Voice(raw)));
-    assert_eq!(authored::lower(&nine), Err(LoweringError::VoiceBudget));
+    assert_eq!(
+        authored::lower(&nine),
+        Err(LoweringError::VoiceBudget { count: 17 })
+    );
     let raw17 = (1..=17)
         .map(|id| form(id, ComponentForm::Voice(raw)))
         .collect::<Vec<_>>();
-    assert_eq!(authored::lower(&raw17), Err(LoweringError::VoiceBudget));
+    assert_eq!(
+        authored::lower(&raw17),
+        Err(LoweringError::ComponentBudget { count: 17 })
+    );
     assert_eq!(
         authored::lower(&[values[0], values[0]]),
-        Err(LoweringError::Identity)
+        Err(LoweringError::Identity {
+            id: ComponentId::new(7).unwrap()
+        })
     );
 }
 #[test]
@@ -834,7 +843,7 @@ fn pair_timing_extends_only_the_bounded_model_not_the_audio_history() {
 }
 
 #[test]
-fn every_raw_budget_and_owner_lane_boundary_is_checked_at_the_authored_boundary() {
+fn raw_component_budget_and_duplicate_owners_are_checked_at_the_authored_boundary() {
     let raw = tone(440.0, -40.0, Ears::Both);
     let sixteen = (1..=16)
         .map(|id| form(id, ComponentForm::Voice(raw)))
@@ -842,68 +851,18 @@ fn every_raw_budget_and_owner_lane_boundary_is_checked_at_the_authored_boundary(
     assert_eq!(authored::lower(&sixteen).unwrap().len(), 16);
     let mut seventeen = sixteen;
     seventeen.push(form(17, ComponentForm::Voice(raw)));
-    assert_eq!(authored::lower(&seventeen), Err(LoweringError::VoiceBudget));
-    for invalid in [
-        Component {
-            id: ComponentId::new(0),
-            form: ComponentForm::Voice(raw),
-        },
-        Component {
-            id: ComponentId::new(1).with_lane(Lane::Secondary),
-            form: ComponentForm::Voice(raw),
-        },
-    ] {
-        assert_eq!(authored::lower(&[invalid]), Err(LoweringError::Identity));
-        let sound = Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: vec![invalid],
-        };
-        assert_eq!(
-            sound.target(SampleRate::DEFAULT),
-            Err(crate::SoundError::Authored(LoweringError::Identity))
-        );
-        assert_eq!(
-            sound.check(SampleRate::DEFAULT).into_result(),
-            Err(crate::SoundError::Authored(LoweringError::Identity))
-        );
-    }
-    for (first_hz, offset_hz) in [
-        (f64::INFINITY, 1.0),
-        (200.0, f64::INFINITY),
-        (f64::NAN, 1.0),
-        (200.0, f64::NAN),
-    ] {
-        let value = form(
-            1,
-            ComponentForm::BinauralPair(Pair {
-                first_hz,
-                offset_hz,
-                ..pair(0.0)
-            }),
-        );
-        assert!(matches!(
-            authored::lower(&[value]),
-            Err(LoweringError::PairDifference {
-                issue: PairIssue::Nonfinite,
-                ..
-            })
-        ));
-    }
-    assert!(matches!(
-        authored::lower(&[form(
-            1,
-            ComponentForm::BinauralPair(Pair {
-                first_hz: -200.0,
-                offset_hz: 400.0,
-                ..pair(0.0)
-            })
-        )]),
-        Err(LoweringError::PairDifference {
-            issue: PairIssue::Nonpositive,
-            ..
+    assert_eq!(
+        authored::lower(&seventeen),
+        Err(LoweringError::ComponentBudget { count: 17 })
+    );
+    assert!(ComponentId::new(0).is_none());
+    let duplicate = [form(1, ComponentForm::Voice(raw)); 2];
+    assert_eq!(
+        Sound::check_structure(&duplicate),
+        Err(LoweringError::Identity {
+            id: ComponentId::new(1).unwrap()
         })
-    ));
+    );
 }
 
 #[test]
@@ -935,14 +894,14 @@ fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
     ];
     let expected = [
         PairFacts {
-            owner: ComponentId::new(11),
+            owner: ComponentId::new(11).unwrap(),
             kind: PairKind::Binaural,
             first_hz: 200.0,
             offset_hz: -6.0,
             second_hz: 194.0,
         },
         PairFacts {
-            owner: ComponentId::new(29),
+            owner: ComponentId::new(29).unwrap(),
             kind: PairKind::Monaural,
             first_hz: 210.0,
             offset_hz: 6.0,
@@ -955,7 +914,7 @@ fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
     assert_eq!(target.len(), 5);
     assert!(
         check
-            .component(ComponentId::new(7))
+            .component(ComponentId::new(7).unwrap().into())
             .unwrap()
             .as_ref()
             .unwrap()
@@ -993,11 +952,16 @@ fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
 
 #[test]
 fn lowering_failures_explain_the_rejected_owner_budget_or_pair() {
-    let identity = format!("{}", LoweringError::Identity);
-    assert!(identity.contains("unique positive"));
-    let budget = format!("{}", LoweringError::VoiceBudget);
+    let identity = format!(
+        "{}",
+        LoweringError::Identity {
+            id: ComponentId::new(1).unwrap()
+        }
+    );
+    assert!(identity.contains("identity 1"));
+    let budget = format!("{}", LoweringError::VoiceBudget { count: 18 });
     assert!(budget.contains("16"));
-    assert!(budget.contains("pair costs two voices"));
+    assert!(budget.contains("18 expanded voices"));
     for (issue, explanation) in [
         (PairIssue::Nonfinite, "nonfinite"),
         (PairIssue::Nonpositive, "positive"),
@@ -1007,7 +971,7 @@ fn lowering_failures_explain_the_rejected_owner_budget_or_pair() {
             "{}",
             LoweringError::PairDifference {
                 issue,
-                id: ComponentId::new(42),
+                id: ComponentId::new(42).unwrap(),
                 first_hz: 200.0,
                 offset_hz: -6.0,
             }
@@ -1020,7 +984,7 @@ fn lowering_failures_explain_the_rejected_owner_budget_or_pair() {
 }
 
 #[test]
-fn authored_primitive_callback_workloads_compile_to_identical_targets() {
+fn authored_callback_workloads_preserve_distinct_owner_lanes() {
     for hz in [48_000, 768_000] {
         let rate = SampleRate::new(hz).unwrap();
         for clicks in [false, true] {
@@ -1037,7 +1001,7 @@ fn authored_primitive_callback_workloads_compile_to_identical_targets() {
                         }
                     };
                     (
-                        ComponentId::new(n + 1),
+                        ComponentId::new(n + 1).unwrap(),
                         Voice {
                             ears: Ears::Both,
                             peak_dbfs: -30.0,
@@ -1061,10 +1025,46 @@ fn authored_primitive_callback_workloads_compile_to_identical_targets() {
                     })
                     .collect(),
             };
+            let target = authored.target(rate).unwrap();
+            assert_eq!(target.len(), 16);
+            assert_eq!(target.sample_rate(), rate);
             assert_eq!(
-                authored.target(rate).unwrap(),
-                Target::new(rate, &voices).unwrap()
+                target
+                    .components()
+                    .map(|(id, _)| (id.component.get(), id.lane))
+                    .collect::<Vec<_>>(),
+                (1..=16).map(|n| (n, Lane::Primary)).collect::<Vec<_>>()
             );
         }
+    }
+}
+
+#[test]
+fn structural_failures_are_single_and_distinguish_both_budgets() {
+    let raw = tone(440.0, -40.0, Ears::Both);
+    for (components, expected) in [
+        (
+            vec![form(7, ComponentForm::Voice(raw)); 2],
+            LoweringError::Identity {
+                id: ComponentId::new(7).unwrap(),
+            },
+        ),
+        (
+            (1..=17)
+                .map(|id| form(id, ComponentForm::Voice(raw)))
+                .collect(),
+            LoweringError::ComponentBudget { count: 17 },
+        ),
+        (
+            (1..=9)
+                .map(|id| form(id, ComponentForm::BinauralPair(pair(6.0))))
+                .collect(),
+            LoweringError::VoiceBudget { count: 18 },
+        ),
+    ] {
+        assert_eq!(Sound::check_structure(&components), Err(expected.clone()));
+        let check = TargetCheck::authored(SampleRate::DEFAULT, &components);
+        assert!(check.components().is_empty());
+        assert_eq!(check.result(), Err(&crate::SoundError::Authored(expected)));
     }
 }

@@ -1,7 +1,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::{ComponentFacts, ComponentId, SampleRate, SoundError, Target, numeric};
+use crate::{ComponentFacts, SampleRate, SoundError, Target, VoiceId, numeric};
 use core::f64::consts::PI;
 
 /// The length of a session and its per-frame gain. A positive resolved
@@ -138,7 +138,7 @@ impl Signal {
     }
 
     /// Each component's identity and validated facts, in order.
-    pub fn components(&self) -> impl Iterator<Item = (ComponentId, &ComponentFacts)> {
+    pub fn components(&self) -> impl Iterator<Item = (VoiceId, &ComponentFacts)> {
         self.target.components()
     }
 

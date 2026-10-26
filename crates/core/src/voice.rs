@@ -3,7 +3,7 @@
 
 use crate::signal::Signal;
 use crate::synthesis::{self, Carrier as Generator, GeneratorVoice, Modulator, Pulse};
-use crate::{ComponentId, ParameterId, SampleRate, Sound, numeric};
+use crate::{ParameterId, SampleRate, VoiceId, numeric};
 use core::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
@@ -181,7 +181,7 @@ pub enum SoundError {
     /// A pair carrier is invalid at this rate; both coupled inputs are named.
     PairCarrier {
         /// Authored owner, including which lane failed.
-        id: ComponentId,
+        id: VoiceId,
         /// Requested first carrier.
         first_hz: f64,
         /// Requested signed offset.
@@ -214,16 +214,6 @@ pub enum SoundError {
         /// The sample rate the lengths were resolved at.
         sample_rate_hz: u32,
     },
-    /// Two components of a target share an identity.
-    DuplicateComponentId {
-        /// The duplicated identity.
-        id: ComponentId,
-    },
-    /// More than [`Sound::MAX_COMPONENTS`] components.
-    TooManyComponents {
-        /// The number of components.
-        count: usize,
-    },
     /// A component has a value it cannot render.
     Component {
         /// The component's position, counting from 1.
@@ -255,9 +245,7 @@ impl SoundError {
             Self::Fade { .. } => &[ParameterId::Fade],
             Self::FadesOverlap { .. } => &[ParameterId::Duration, ParameterId::Fade],
             Self::Component { error, .. } => error.parameters(),
-            Self::DuplicateComponentId { .. }
-            | Self::TooManyComponents { .. }
-            | Self::Peak { .. } => &[],
+            Self::Peak { .. } => &[],
         }
     }
 }
@@ -388,9 +376,6 @@ impl Display for SoundError {
                 f,
                 "component {id}: first carrier {first_hz} Hz and signed offset {offset_hz} Hz: {error}"
             ),
-            Self::DuplicateComponentId { id } => {
-                write!(f, "two components share the identity {id}")
-            }
             Self::Duration {
                 seconds,
                 sample_rate_hz,
@@ -422,11 +407,6 @@ impl Display for SoundError {
                     Number(seconds(*frames))
                 )
             }
-            Self::TooManyComponents { count } => write!(
-                f,
-                "{count} components exceed the limit of {}",
-                Sound::MAX_COMPONENTS
-            ),
             Self::Component { number, error } => write!(f, "component {number}: {error}"),
             Self::Peak { ear, amplitude } => {
                 let db = numeric::dbfs(*amplitude);

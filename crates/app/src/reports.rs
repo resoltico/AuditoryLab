@@ -4,7 +4,7 @@ use crate::{
         CatalogQuery, Collection, Direction, EntrySummary, EvidenceFacet, QueryResult, ResultGroup,
         SortBy,
     },
-    core::{ComponentFacts, DocumentUuid, Lane, SampleRate, Timestamp, nominal},
+    core::{ComponentFacts, DocumentUuid, SampleRate, Timestamp, VoiceId, nominal},
     error::Error,
     library::{
         Initialization, Inventory, LibraryDiagnostic, LibraryKey, LibraryRoot, MutationStatus,
@@ -75,8 +75,7 @@ impl From<&nominal::Analysis> for NominalReport {
     }
 }
 report_struct!(ComponentReport {
-    owner: u32,
-    lane: Lane,
+    id: VoiceId,
     facts: ComponentFacts
 });
 /// Validation at the explicitly requested output rate.
@@ -298,11 +297,7 @@ impl Report {
                     .signal()
                     .target()
                     .components()
-                    .map(|(id, facts)| ComponentReport {
-                        owner: id.get(),
-                        lane: id.lane(),
-                        facts: *facts,
-                    })
+                    .map(|(id, facts)| ComponentReport { id, facts: *facts })
                     .collect(),
             },
             Err(error) => {

@@ -328,7 +328,7 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                     duration_seconds: duration,
                     fade_seconds: fade,
                     components: vec![Component {
-                        id: ComponentId::new(91),
+                        id: ComponentId::new(91).unwrap(),
                         form: if compound {
                             ComponentForm::BinauralPair(Pair {
                                 first_hz: base,

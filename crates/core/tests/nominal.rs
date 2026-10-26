@@ -151,7 +151,7 @@ fn correlated_facets_cannot_borrow_rates_from_another_process() {
     let a = Analysis {
         rhythms: vec![
             Descriptor {
-                owner: auditorylab_core::ComponentId::new(1),
+                owner: auditorylab_core::ComponentId::new(1).unwrap(),
                 related: None,
                 method: Method::Binaural,
                 hz: 6.0,
@@ -159,7 +159,7 @@ fn correlated_facets_cannot_borrow_rates_from_another_process() {
                 derivation: Derivation::Explicit,
             },
             Descriptor {
-                owner: auditorylab_core::ComponentId::new(2),
+                owner: auditorylab_core::ComponentId::new(2).unwrap(),
                 related: None,
                 method: Method::Am,
                 hz: 40.0,
@@ -183,7 +183,7 @@ fn correlated_facets_cannot_borrow_rates_from_another_process() {
 fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
     use auditorylab_core::{Component, ComponentForm, ComponentId, Pair};
     let pair = |id, offset_hz| Component {
-        id: ComponentId::new(id),
+        id: ComponentId::new(id).unwrap(),
         form: ComponentForm::BinauralPair(Pair {
             first_hz: 200.0,
             offset_hz,
@@ -192,7 +192,7 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
         }),
     };
     let am = Component {
-        id: ComponentId::new(90),
+        id: ComponentId::new(90).unwrap(),
         form: ComponentForm::Voice(Voice {
             modulation: Some(Modulation::Am {
                 rate_hz: 40.0,
@@ -223,11 +223,11 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
     let mut raw = vec![pair(1, 6.0), am];
     raw.extend([
         Component {
-            id: ComponentId::new(5),
+            id: ComponentId::new(5).unwrap(),
             form: ComponentForm::Voice(tone(200.0, Ears::Left)),
         },
         Component {
-            id: ComponentId::new(6),
+            id: ComponentId::new(6).unwrap(),
             form: ComponentForm::Voice(tone(206.0, Ears::Right)),
         },
     ]);

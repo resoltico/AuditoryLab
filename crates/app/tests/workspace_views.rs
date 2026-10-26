@@ -231,7 +231,7 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
         duration_seconds: 1.0,
         fade_seconds: 0.0,
         components: vec![auditorylab::core::Component {
-            id: ComponentId::new(9),
+            id: ComponentId::new(9).unwrap(),
             form: auditorylab::core::ComponentForm::Voice(c),
         }],
     }
@@ -251,7 +251,7 @@ fn a_carrier_is_named_in_sentence_case() {
         let check = auditorylab_core::Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
-            components: ([(ComponentId::new(1), component)])
+            components: ([(ComponentId::new(1).unwrap(), component)])
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
@@ -307,7 +307,7 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
         let check = auditorylab_core::Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
-            components: ([(ComponentId::new(1), component)])
+            components: ([(ComponentId::new(1).unwrap(), component)])
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
@@ -350,7 +350,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         auditorylab_core::Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
-            components: ([(ComponentId::new(1), c)])
+            components: ([(ComponentId::new(1).unwrap(), c)])
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
@@ -409,7 +409,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
     let error = auditorylab_core::Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
-        components: ([(ComponentId::new(1), depth)])
+        components: ([(ComponentId::new(1).unwrap(), depth)])
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,

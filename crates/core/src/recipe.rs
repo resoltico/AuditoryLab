@@ -223,24 +223,8 @@ impl Recipe {
                 "{parameter} must be finite (component {component:?})"
             )));
         }
-        let nodes = &self.sound.components;
-        if nodes.len() > crate::Sound::MAX_COMPONENTS
-            || nodes.iter().map(|c| c.form.voices()).sum::<usize>() > crate::Sound::MAX_VOICES
-        {
-            return Err(invalid(
-                "at most 16 authored nodes and 16 expanded voices; a pair costs two",
-            ));
-        }
-        for (i, c) in nodes.iter().enumerate() {
-            if c.id.get() == 0
-                || c.id.lane() != crate::Lane::Primary
-                || nodes[..i].iter().any(|v| v.id == c.id)
-            {
-                return Err(invalid(
-                    "component IDs must be unique positive primary-lane u32 values",
-                ));
-            }
-        }
+        Sound::check_structure(&self.sound.components)
+            .map_err(|error| RecipeError::Contract(error.to_string()))?;
         if self
             .description
             .as_ref()

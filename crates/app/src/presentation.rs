@@ -1017,7 +1017,7 @@ mod tests {
             fade_seconds: 0.0,
             components: (1..=8)
                 .map(|id| Component {
-                    id: ComponentId::new(id),
+                    id: ComponentId::new(id).unwrap(),
                     form: controls::default_pair(PairKind::Binaural),
                 })
                 .collect(),

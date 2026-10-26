@@ -33,9 +33,13 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
     let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe);
     EntrySummary::from_snapshot(key, &snapshot, None)
 }
+#[expect(
+    clippy::unwrap_used,
+    reason = "The fixture owner is a positive constant"
+)]
 fn pair(offset_hz: f64) -> Component {
     Component {
-        id: ComponentId::new(7),
+        id: ComponentId::new(7).unwrap(),
         form: ComponentForm::BinauralPair(Pair {
             first_hz: 200.0,
             offset_hz,
@@ -44,9 +48,13 @@ fn pair(offset_hz: f64) -> Component {
         }),
     }
 }
+#[expect(
+    clippy::unwrap_used,
+    reason = "The fixture owner is a positive constant"
+)]
 fn am(rate_hz: f64) -> Component {
     Component {
-        id: ComponentId::new(90),
+        id: ComponentId::new(90).unwrap(),
         form: ComponentForm::Voice(Voice {
             ears: Ears::Both,
             peak_dbfs: -30.0,
