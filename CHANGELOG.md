@@ -6,15 +6,17 @@ Use concise bullets without category labels or subheadings, grouping related cha
 
 ## [Unreleased]
 
-- Recipes require schema 3 with explicit UUIDs and component IDs; schema 2 is rejected without migration. Recreate custom recipes using the [recipe guide](docs/recipes.md).
+## [0.6.0] - 2026-10-26
+
+- Schema 3 requires UUIDs and component IDs; schema 2 is not migrated. Recreate custom files using the [recipe guide](https://github.com/resoltico/AuditoryLab/blob/v0.6.0/docs/recipes.md).
 - CLI sources require builtin:ID or user:UUID; bare catalog IDs reject. Files and streams still use --file or --stdin. Update scripts and saved command lines.
-- CLI JSON reports use output schema 1; text reports and exit codes also change. Update output consumers using the [CLI guide](docs/cli.md#output-and-failures).
+- CLI JSON schema 1, text reports and exit codes change; update consumers using the [CLI guide](https://github.com/resoltico/AuditoryLab/blob/v0.6.0/docs/cli.md#output-and-failures).
 - Rust APIs use Sound, Component, Node, Voice and Rendition. Application APIs move into named modules under crates/app; core is exposed through auditorylab::core. Update imports and callers.
 - The device-playback feature is removed; auditorylab always depends on CPAL. Remove the feature from dependency declarations; device-independent consumers can use auditorylab-core.
 - Workspace construction requires a library binding; use typed jobs/responses and Runner for execution. File/audio slots remain occupied until their workers join.
 - Library layout 1 stores plain recipe TOML with separate membership dates. Unsupported layouts, including incompatible prerelease stores, are refused without automatic conversion.
 - CLI and desktop share a persistent User Library, immutable Built-ins, temporary Open files and recoverable Trash. Add, copy, rename, restore and confirmed purge preserve external originals.
-- Native data paths accept absolute overrides that require initialization; see [library setup](docs/cli.md#root-and-lifecycle). Unavailable storage leaves Built-ins usable without a fallback root.
+- Absolute library overrides require initialization; see [setup](https://github.com/resoltico/AuditoryLab/blob/v0.6.0/docs/cli.md#root-and-lifecycle). Unavailable roots never silently fall back.
 - Recipes retain dates, notes, bibliography and scoped evidence. Copies get fresh UUIDs and ancestry; copying or changing sound settings demotes current-study evidence to ancestor scope.
 - Workbench and TOML support signed-offset binaural/monaural pairs with separate levels and stable IDs. Each pair uses two of 16 expanded voices; the authored-component limit is also 16.
 - Shared search uses Unicode-normalized terms and whole numeric values. Correlated rhythm/evidence filters, unique grouping and deterministic sorts cover Built-in, User and temporary sounds.
@@ -28,7 +30,7 @@ Use concise bullets without category labels or subheadings, grouping related cha
 - Linux uses SystemUi and upstream Xft DPI; GNOME Wayland text scaling needs GLib gsettings. X11 needs its xkbcommon library. Pango/GTK font-preference loading is removed.
 - The catalog adds one-minute Ioannou 2015 binaural conditions at 2, 6, 20 and 40 Hz, with source evidence and adaptation limits. Rhythm labels describe audio structure rather than EEG effects.
 - Pulse generation reduces integer division without changing sample bits or pulse edges. Monitor publication avoids callback locks, keeps coherent bounded captures and counts dropped visual samples.
-- CI adds a callback median-cost gate, authenticated vendor-patch checks and authored-sound mutation coverage.
+- CI qualifies callback cost with shipped optimization settings, authenticates vendor patches and checks authored-sound mutations. File-menu tests capture jobs before timers can complete them.
 
 ## [0.5.0] - 2026-10-23
 

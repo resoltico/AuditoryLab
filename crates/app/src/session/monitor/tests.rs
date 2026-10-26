@@ -409,7 +409,7 @@ fn unchanged_receipts_do_not_hide_stale_observations() {
     assert_eq!(reader.freshness(), ObservationFreshness::Stale);
 }
 #[test]
-#[ignore = "release-only callback median cost gate; no device is opened"]
+#[ignore = "optimized callback median cost gate; qualify with --profile dist; no device is opened"]
 #[expect(
     clippy::assertions_on_constants,
     reason = "The ignored cost gate rejects a debug-profile invocation instead of recording misleading regression measurements"
@@ -417,7 +417,7 @@ fn unchanged_receipts_do_not_hide_stale_observations() {
 fn callback_cost() {
     assert!(
         !cfg!(debug_assertions),
-        "run callback_cost in the release profile"
+        "run callback_cost with --profile dist"
     );
     const WARMUP: u64 = 100;
     const MEASURED: usize = 3000;

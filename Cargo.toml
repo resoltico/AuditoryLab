@@ -5,7 +5,7 @@ members = ["crates/core", "crates/app", "crates/cli", "crates/gui", "xtask"]
 exclude = ["third_party"]
 
 [workspace.package]
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.99.1"
 license = "MPL-2.0"
@@ -13,7 +13,7 @@ repository = "https://github.com/resoltico/AuditoryLab"
 publish = false
 
 [workspace.metadata.auditorylab]
-build-number = 2
+build-number = 3
 
 [workspace.dependencies]
 same-file = "1"

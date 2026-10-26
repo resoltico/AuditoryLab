@@ -28,10 +28,10 @@ Workspace tests drive commands, emitted jobs and typed completions. Runner tests
 ## Callback cost check
 
 ```sh
-cargo test -p auditorylab --release --locked callback_cost -- --ignored --nocapture
+cargo test -p auditorylab --profile dist --locked callback_cost -- --ignored --nocapture
 ```
 
-Run this once on the intended source after other builds/tests finish. It opens no device. Each configuration warms up 100 callbacks and measures 3,000, with 16 distinct carrier/modulation schedules, full target replacements and up to 32 transition slots. Configurations cover 48/768 kHz, 64/256/1024/4096 frames and none/quantities/waveform monitoring. The median wall time must fit half the buffer period; p99 and maximum are reported without gating them. CI runs it on Linux x86_64 and macOS arm64. Investigate a failure rather than rerunning or changing the limit. Ordinary tests check allocation/free behavior, overflow, coherence and lifecycle authority; playback reports actual backend underruns.
+Run this once on the intended source after other builds/tests finish. Use the distribution profile so the gate measures the shipped thin-LTO/codegen settings. It opens no device. Each configuration warms up 100 callbacks and measures 3,000, with 16 distinct carrier/modulation schedules, full target replacements and up to 32 transition slots. Configurations cover 48/768 kHz, 64/256/1024/4096 frames and none/quantities/waveform monitoring. The median wall time must fit half the buffer period; p99 and maximum are reported without gating them. CI runs it on Linux x86_64 and macOS arm64. Investigate a failure rather than rerunning or changing the limit. Ordinary tests check allocation/free behavior, overflow, coherence and lifecycle authority; playback reports actual backend underruns.
 
 ## Mutation testing
 

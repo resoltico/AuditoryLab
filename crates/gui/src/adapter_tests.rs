@@ -3353,7 +3353,7 @@ fn library_ux_file_menu_keeps_playback_and_independent_copy_commands() {
     h.settle();
     let point = centre(&action_button(ui, "Save independent copy"));
     drag(ui, point, point);
-    h.settle();
+    // Capture the admitted job before timer polling can execute file jobs.
     assert!(h.adapter.inspect(|w| w.file_busy()));
     let file = take_job(&h, JobKind::File);
     finish_file(&h, file);
