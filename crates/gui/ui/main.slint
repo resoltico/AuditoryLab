@@ -1,12 +1,13 @@
 import { BoundButton, BoundTitleEdit } from "library-controls.slint";
+import { LibraryNavigationItem } from "library-navigation.slint";
 export { Terms } from "vocabulary.slint";
 import { Terms } from "vocabulary.slint";
 import {
     Palette, Button, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, TabWidget, ProgressIndicator
 }
 from "std-widgets.slint";
-export { CatalogRow, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
-import { CatalogRow, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+export { CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import { CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
 import { Disclosure, NumericField, ParameterControl, MetadataField, NotesField, StableButton, ExportRate } from "editor.slint";
 export { AboutWindow, LicenseWindow } from "about.slint";
 
@@ -17,7 +18,7 @@ export component MainWindow inherits Window {
     icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
     title: Terms.caption-product-name;
     in-out property <bool> edits-suspended:false;
-    in-out property <bool> monitor-open:true;
+    in-out property <bool> monitor-open:false;
     in property <bool> native-mac: false;
     in property <string> draft-brief;
     in property <string> draft-location;
@@ -92,11 +93,17 @@ export component MainWindow inherits Window {
     in property <length> ui-size: 13px;
     default-font-family: root.ui-family;
     default-font-size: root.ui-size;
-    preferred-width: 1100px;
+    preferred-width: 1280px;
     preferred-height: 900px;
     min-width: 680px;
     min-height: 600px;
     in property <[CatalogRow]> catalog;
+    in property <[LibraryFacet]> band-navigation;
+    in property <string> library-classification;
+    in property <string> library-ownership;
+    in property <string> library-overview;
+    in-out property <bool> library-wide: false;
+    in-out property <bool> library-tools-open: false;
     in-out property <int> selected: 0;
     in property <string> sound-title;
     in property <string> studied;
@@ -177,9 +184,10 @@ export component MainWindow inherits Window {
     in-out property <string> query;
     in property <bool> has-results;
     in-out property <bool> compact: false;
-    changed ui-size => {root.compact = root.width < root.ui-size*70;root.update-monitor-layout();}
+    changed ui-size => {root.compact = root.width < root.ui-size*70;root.library-wide = root.width >= root.ui-size*90;root.update-monitor-layout();}
     changed width => {
         root.compact = self.width < root.ui-size*70;
+        root.library-wide = self.width >= root.ui-size*90;
         root.update-monitor-layout();
     }
     callback select(string);
@@ -333,23 +341,86 @@ export component MainWindow inherits Window {
             }
             Tab {
                 title: Terms.collection-library;
+                VerticalBox {
+                    spacing: 0px;
+                    padding: 0px;
+                    if root.library-wide: HorizontalBox {
+                        vertical-stretch: 0;
+                        padding: 12px;
+                        spacing: 10px;
+                        LineEdit {
+                            text <=> root.query;
+                            placeholder-text: Terms.caption-title-id-sound-or-study-topic;
+                            accessible-label: Terms.caption-find-arecipe;
+                            horizontal-stretch: 1;
+                            edited(value) => {root.search(value);}
+                        }
+                        ComboBox {
+                            model: root.method-labels;
+                            current-index <=> root.method-choice;
+                            accessible-label: Terms.caption-structural-method;
+                            selected(value) => {root.rhythm-filter(root.band-choice, root.method-choice);}
+                        }
+                        ComboBox {
+                            model: [Terms.caption-automatic-order, Terms.caption-nominal-rate, Terms.caption-title, Terms.caption-created, Terms.caption-modified, Terms.facet-added-here, Terms.caption-study, Terms.caption-collection];
+                            current-index <=> root.sort-choice;
+                            accessible-label: Terms.facet-sort-library;
+                            selected(value) => {root.collection-filter(root.collection-choice, root.sort-choice);}
+                        }
+                        Button {text:Terms.facet-filters-recovery-dialog;checkable:true;checked:root.library-tools-open;clicked=>{root.library-tools-open=!root.library-tools-open;}}
+                        Button {text:Terms.action-refresh;clicked=>{root.refresh-library();}}
+                        Button {text:Terms.action-clear-all-filters;clicked=>{root.clear-applied-filters();}}
+                    }
                 HorizontalBox {
                     padding: 0px;
                     vertical-stretch: 1;
+                    if root.library-wide: navigation-scroll := ScrollView {
+                        preferred-width: 220px;
+                        max-width: 250px;
+                        min-width: 190px;
+                        horizontal-stretch: 0;
+                        accessible-role: groupbox;
+                        accessible-label: Terms.caption-browse-rhythm;
+                        VerticalBox {
+                            width: navigation-scroll.visible-width;
+                            padding: 10px;
+                            spacing: 4px;
+                            Text {text:Terms.caption-collections;font-weight:600;vertical-stretch:0;}
+                            for label[index] in [Terms.collection-all-built-in-user, Terms.collection-built-in-read-only, Terms.collection-user, Terms.collection-open-files-temporary, Terms.collection-trash]: LibraryNavigationItem {
+                                label:label; description:label; selected:root.collection-choice==index;
+                                text-size:root.ui-size;
+                                activated=>{root.collection-filter(index,root.sort-choice);}
+                            }
+                            Rectangle {height:1px;background:Palette.border;vertical-stretch:0;}
+                            Text {text:Terms.caption-browse-rhythm;font-weight:600;vertical-stretch:0;}
+                            for facet[index] in root.band-navigation: LibraryNavigationItem {
+                                label:facet.label;detail:facet.detail;count:facet.count;description:facet.text;
+                                selected:root.band-choice==index;text-size:root.ui-size;
+                                activated=>{root.rhythm-filter(index,root.method-choice);}
+                            }
+                            Rectangle {vertical-stretch:1;}
+                        }
+                    }
                     if !root.compact || !root.library-detail: VerticalBox {
                         preferred-width: !root.compact ? root.sidebar-width : 600px;
                         max-width: !root.compact ? root.sidebar-width : 3000px;
+                        if !root.library-wide: VerticalBox {
+                            vertical-stretch:0;padding:0px;spacing:4px;
+                        HorizontalBox {padding:0px;vertical-stretch:0;
                         ComboBox {
+                            min-width:0px;
                             model: [Terms.collection-all-built-in-user, Terms.collection-built-in-read-only, Terms.collection-user, Terms.collection-open-files-temporary, Terms.collection-trash];
                             current-index <=> root.collection-choice;
                             accessible-label: Terms.caption-library-collection;
                             selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
                         }
                         ComboBox {
+                            min-width:0px;
                             model: [Terms.caption-automatic-order, Terms.caption-nominal-rate, Terms.caption-title, Terms.caption-created, Terms.caption-modified, Terms.facet-added-here, Terms.caption-study, Terms.caption-collection];
                             current-index <=> root.sort-choice;
                             accessible-label: Terms.facet-sort-library;
                             selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
+                        }
                         }
                         LineEdit {
                             text <=> root.query;
@@ -359,17 +430,21 @@ export component MainWindow inherits Window {
                                 root.search(value);
                             }
                         }
+                        HorizontalBox {padding:0px;vertical-stretch:0;
                         ComboBox {
+                            min-width:0px;
                             model: root.band-labels;
                             current-index <=> root.band-choice;
                             accessible-label: Terms.caption-nominal-rhythm-reference-band;
                             selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
                         }
                         ComboBox {
+                            min-width:0px;
                             model: root.method-labels;
                             current-index <=> root.method-choice;
                             accessible-label: Terms.caption-structural-method;
                             selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
+                        }
                         }
                         if root.band-choice != 0 || root.method-choice != 0: Button {
                             text: Terms.action-clear-rhythm-filters;
@@ -390,11 +465,18 @@ export component MainWindow inherits Window {
                                 root.search("");
                             }
                         }
-                        if root.compact: HorizontalBox {
-                            vertical-stretch:0;
-                            Button {text:Terms.facet-filters-recovery-dialog;clicked=>{root.library-detail=true;}}
+                        HorizontalBox {
+                            padding:0px;vertical-stretch:0;
+                            Button {text:Terms.facet-filters-recovery-dialog;clicked=>{if root.compact {root.library-tools-open=true;root.library-detail=true;} else {root.library-tools-open=!root.library-tools-open;}}}
                             Button {text:Terms.action-refresh;clicked=>{root.refresh-library();}}
                             Button {text:Terms.action-clear-all-filters;clicked=>{root.clear-applied-filters();}}
+                        }
+                        }
+                        if root.library-wide: VerticalBox {
+                            vertical-stretch:0;padding:12px;spacing:8px;
+                            Text {text:root.band-navigation[root.band-choice].label;font-size:root.ui-size*1.4;font-weight:700;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
+                            Text {text:root.library-overview;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
+                            if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
                         }
                         catalog-scroll := ScrollView {
                             content-y: root.library-scroll-y;
@@ -403,7 +485,7 @@ export component MainWindow inherits Window {
                             accessible-label:Terms.caption-library-results;
                             VerticalBox {
                                 spacing: 4px;
-                                if root.compact: Text {text:root.library-count;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-label:Terms.facet-applied-library-filters-prefix + root.library-count;}
+                                Text {text:root.library-count;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-label:Terms.facet-applied-library-filters-prefix + root.library-count;}
                                 if root.compact && root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
                                 for item[index] in root.catalog: catalog-row := Rectangle {
                                     property <bool> selected-row: root.selected==index;
@@ -428,9 +510,10 @@ export component MainWindow inherits Window {
                                     changed y => {self.reveal();}
                                     changed height => {self.reveal();}
 
-                                    height: max(root.ui-size*4.5, label.preferred-height + 16px);
+                                    height: max(root.ui-size*4.5, card-content.preferred-height + 24px);
+                                    border-radius: 6px;
                                     background: root.selected == index ? Palette.selection-background : Palette.control-background;
-                                    border-width: focus.has-focus ? 2px : 0px;
+                                    border-width: focus.has-focus || self.selected-row ? 2px : 1px;
                                     border-color: root.selected == index ? Palette.accent-background : Palette.border;
                                     accessible-role: list-item;
                                     accessible-label: item.text;
@@ -442,13 +525,17 @@ export component MainWindow inherits Window {
                                     accessible-action-default => {
                                         touch.clicked();
                                     }
-                                    label := Text {min-width:0px;
-                                        x: 10px;
-                                        y: 10px;
-                                        width: parent.width - 20px;
-                                        text: item.text;
-                                        wrap: word-wrap;
-                                        color: root.selected == index ? Palette.selection-foreground : Palette.control-foreground;
+                                    card-content := VerticalLayout {
+                                        x:12px;y:12px;width:parent.width - 24px;height:parent.height - 24px;spacing:4px;
+                                        Text {text:item.title;font-size:root.ui-size*1.08;font-weight:600;min-width:0px;wrap:word-wrap;color:catalog-row.selected-row ? Palette.selection-foreground : Palette.control-foreground;}
+                                        HorizontalLayout {
+                                            spacing:8px;
+                                            if item.collection != "": Text {text:item.collection;min-width:0px;wrap:word-wrap;font-size:root.ui-size*0.9;color:catalog-row.selected-row ? Palette.selection-foreground : Palette.control-foreground;}
+                                            if item.bands != "": Text {text:item.bands;min-width:0px;max-width:parent.width*0.5;horizontal-stretch:0;wrap:word-wrap;font-weight:500;color:catalog-row.selected-row ? Palette.selection-foreground : Palette.control-foreground;}
+                                        }
+                                        if item.summary != "": Text {text:item.summary;min-width:0px;wrap:word-wrap;color:catalog-row.selected-row ? Palette.selection-foreground : Palette.control-foreground;}
+                                        if item.duration != "": Text {text:item.duration;min-width:0px;wrap:word-wrap;color:catalog-row.selected-row ? Palette.selection-foreground : Palette.control-foreground;}
+                                        if item.dates != "": Text {text:item.dates;min-width:0px;wrap:word-wrap;font-size:root.ui-size*0.9;color:catalog-row.selected-row ? Palette.selection-foreground : Palette.control-foreground;}
                                     }
                                     focus := FocusScope {
                                         enabled:item.binding != "";
@@ -573,6 +660,8 @@ export component MainWindow inherits Window {
                                     root.library-detail=false;
                                 }
                             }
+                        if root.library-tools-open: VerticalBox {
+                            vertical-stretch:0;
                         HorizontalBox { padding:0px; vertical-stretch:0;
                             Button {text:Terms.action-refresh;clicked=>{root.refresh-library();}}
                             Button {text:Terms.action-show-saved;clicked=>{root.show-saved();}}
@@ -602,6 +691,7 @@ export component MainWindow inherits Window {
                             Text {text:root.library-status;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
                             Button {text:Terms.action-initialize-configured-library;clicked=>{root.initialize-library();}}
                         }
+                        }
                             if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
                             if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
                         if !root.has-results: Text {min-width:0px;
@@ -611,6 +701,7 @@ export component MainWindow inherits Window {
                             }
                             if root.has-results: VerticalBox {
                                 vertical-stretch: 0;
+                                if root.library-ownership != "": Text {text:root.library-ownership;font-weight:600;min-width:0px;wrap:word-wrap;vertical-stretch:0;}
                                 Text {min-width:0px;
                                     text:root.sound-title;
                                     font-size:root.ui-size*1.85;
@@ -664,6 +755,11 @@ export component MainWindow inherits Window {
                                         }
                                     }
                                 }
+                                Rectangle {height:1px;background:Palette.border;vertical-stretch:0;}
+                                Text {text:Terms.caption-classification;font-weight:600;vertical-stretch:0;}
+                                Text {text:root.library-classification;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
+                                Rectangle {height:1px;background:Palette.border;vertical-stretch:0;}
+                                Text {text:Terms.caption-dates-identity;font-weight:600;vertical-stretch:0;}
                                 if root.library-dates != "": Text {text:root.library-dates;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
                                 utc-dates := Disclosure {label:Terms.facet-exact-utc-dates;}
                                 if utc-dates.expanded: TextEdit {text:root.library-dates-utc;read-only:true;wrap:word-wrap;accessible-label:Terms.facet-exact-utc-recipe-and-membership-dates;min-width:0px;height:root.ui-size*8;vertical-stretch:0;}
@@ -709,6 +805,7 @@ export component MainWindow inherits Window {
                             }
                         }
                     }
+                }
                 }
             }
             Tab {

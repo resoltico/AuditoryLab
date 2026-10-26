@@ -82,7 +82,7 @@ pub struct MetadataView {
     pub text: String,
     /// Whether the text is staged and not committed.
     pub staged: bool,
-    /// What is wrong with this field, if anything.
+    /// What is wrong with the field, if anything.
     pub diagnostic: String,
 }
 
@@ -111,19 +111,55 @@ pub struct EditorView {
     pub retained_warning: String,
 }
 
+/// A rendered catalog item. Empty keys are headings/diagnostics, never sounds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LibraryRowView {
+    /// Immutable collection identity for selection and captured actions.
+    pub key: String,
+    /// Complete accessible description, generated from the same fields.
+    pub text: String,
+    /// Recipe title or nonselectable heading.
+    pub title: String,
+    /// Runtime ownership and read-only/last-observed status.
+    pub collection: String,
+    /// Nominal structural summary; no target compilation.
+    pub summary: String,
+    /// Independent calculated memberships, never an efficacy claim.
+    pub bands: String,
+    /// Requested duration in shared presentation units.
+    pub duration: String,
+    /// Sort-relevant date and any necessary unknown-history context.
+    pub dates: String,
+}
+
+/// A navigation facet, including its disclosed interval and disjunctive count.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LibraryFacetView {
+    /// Short shared name.
+    pub label: String,
+    /// Interval or qualification, independent of count.
+    pub detail: String,
+    /// Unique matching sounds; explicitly observed when inventory is incomplete.
+    pub count: String,
+    /// Full accessible/compact selector label.
+    pub text: String,
+}
+
 /// The library and the selected recipe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryView {
-    /// Stable collection keys parallel to rows; empty keys are nonselectable group headings.
-    pub keys: Vec<String>,
-    /// One label per matching entry.
-    pub rows: Vec<String>,
+    /// Structured rows; headers and diagnostic rows have empty keys.
+    pub rows: Vec<LibraryRowView>,
     /// The selected entry's position among the rows.
     pub selected: Option<usize>,
     /// Selected title.
     pub title: String,
     /// Selected structure at the export rate.
     pub structure: String,
+    /// Sample-rate-independent classification of the selected saved snapshot.
+    pub classification: String,
+    /// Runtime collection and read-only status of the selected record.
+    pub ownership: String,
     /// What the source studied the sound for.
     pub studied: String,
     /// Duration and fade.
@@ -636,14 +672,15 @@ impl Workspace {
 
     fn build_library_view(&self) -> LibraryView {
         let rate = self.editor.export_rate;
-        let (keys, rows, selected) = self.library.rows();
+        let (rows, selected) = self.library.rows();
         let Some(snapshot) = self.selected() else {
             return LibraryView {
-                keys,
                 rows,
                 selected,
                 title: String::new(),
                 structure: String::new(),
+                classification: String::new(),
+                ownership: String::new(),
                 studied: String::new(),
                 timing: String::new(),
                 summary: String::new(),
@@ -652,11 +689,20 @@ impl Workspace {
             };
         };
         let about = snapshot.about();
+        let ownership = selected
+            .and_then(|index| rows.get(index))
+            .map(|row| row.collection.clone())
+            .unwrap_or_default();
         LibraryView {
-            keys,
             rows,
             selected,
             title: snapshot.title(),
+            classification: format!(
+                "{}\nReference: {}. This describes the sound, not measured brain activity.",
+                snapshot.nominal().summary(),
+                crate::core::nominal::CONVENTION
+            ),
+            ownership,
             structure: snapshot
                 .at(rate)
                 .map_or_else(|e| e.to_string(), |s| s.brief()),

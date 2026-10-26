@@ -279,7 +279,21 @@ pub(crate) fn publish_in<T>(
                     ),
                 ));
             }
-            _ => {
+            Err(verification_error) => {
+                return Err(cleanup(
+                    dir,
+                    &stage,
+                    path,
+                    io(
+                        path,
+                        &format!(
+                            "publication outcome is unconfirmed; destination could not be verified ({verification_error}); inspect this path before retrying"
+                        ),
+                        error,
+                    ),
+                ));
+            }
+            Ok(_) => {
                 return Err(cleanup(
                     dir,
                     &stage,
@@ -491,22 +505,32 @@ pub(crate) fn relocate(
     pause(FaultPoint::AfterRemove);
     let mut warnings = Vec::new();
     if let Err(error) = removal {
-        match from.symlink_metadata(name) {
+        match fault(FaultPoint::Verify).and_then(|()| from.symlink_metadata(name)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(format!(
                 "Moved; source removal verified after I/O error: {error}"
             )),
-            _ if destination.parent().and_then(Path::file_name)
-                == Some(std::ffi::OsStr::new("trash"))
-                && same_file(from, name, to, name)? =>
+            Ok(_)
+                if destination.parent().and_then(Path::file_name)
+                    == Some(std::ffi::OsStr::new("trash"))
+                    && same_file(from, name, to, name)? =>
             {
                 warnings.push(format!(
                     "Moved to Trash; redundant active link remains at {source:?}: {error}"
                 ))
             }
-            _ => {
+            Ok(_) => {
                 return Err(io(
                     destination,
                     "relocation did not remove its source; Trash remains authoritative for same-file links",
+                    error,
+                ));
+            }
+            Err(verification_error) => {
+                return Err(io(
+                    destination,
+                    &format!(
+                        "relocation outcome is unconfirmed; source {source:?} could not be inspected ({verification_error}); recheck before retrying"
+                    ),
                     error,
                 ));
             }
@@ -533,14 +557,23 @@ pub(crate) fn remove(dir: &Dir, name: &Path, path: &Path) -> Result<Vec<String>,
     pause(FaultPoint::AfterRemove);
     let mut warnings = Vec::new();
     if let Err(error) = result {
-        match dir.symlink_metadata(name) {
+        match fault(FaultPoint::Verify).and_then(|()| dir.symlink_metadata(name)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(format!(
                 "Deleted; absence verified under the exclusive lock after I/O error: {error}"
             )),
-            _ => {
+            Ok(_) => {
                 return Err(io(
                     path,
                     "deletion was not applied; the destination remains",
+                    error,
+                ));
+            }
+            Err(verification_error) => {
+                return Err(io(
+                    path,
+                    &format!(
+                        "deletion outcome is unconfirmed; destination could not be inspected ({verification_error}); recheck before retrying"
+                    ),
                     error,
                 ));
             }

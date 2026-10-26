@@ -78,19 +78,22 @@ impl Pulse {
     pub(crate) const fn frames(self) -> u64 {
         self.frames
     }
-    /// floor(n × rate/fs), with n below Signal::MAX_FRAMES.
+    /// floor(n × rate), with n below Signal::MAX_FRAMES.
     #[inline]
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "The validated n < 2^36 and rate < 2^19 bound the shifted pulse count below 2^55"
+        reason = "The validated n < 2^36 and rate < 2^19 bound the floored rate product below 2^55"
     )]
-    fn periods(self, n: u64) -> u64 {
-        // floor(floor(n*m/2^shift)/fs) = floor(n*m/(2^shift*fs)).
+    fn rate_product(self, n: u64) -> u64 {
         // n < 2^36 and rate < 2^19 keep the shifted value below 2^55.
-        let whole = (u128::from(n) * u128::from(self.mantissa))
+        (u128::from(n) * u128::from(self.mantissa))
             .checked_shr(self.shift)
-            .unwrap_or(0) as u64;
-        whole / u64::from(self.fs)
+            .unwrap_or(0) as u64
+    }
+    /// floor(n × rate/fs), using floor(floor(n × rate)/fs).
+    #[inline]
+    fn periods(self, n: u64) -> u64 {
+        self.rate_product(n) / u64::from(self.fs)
     }
     /// Extrema over every discrete frame of [start,end), without enumerating pulses.
     pub(crate) fn extent(self, start: u64, end: u64) -> crate::Extent {
@@ -114,7 +117,12 @@ impl Pulse {
     pub(crate) fn sample(self, n: u64) -> f64 {
         // A pulse starts at ceil(k*fs/rate). For n ≥ W it is open exactly
         // when that onset lies after n-W: K(n) > K(n-W), K(t)=floor(t*rate/fs).
-        if n < self.frames || self.periods(n) > self.periods(n - self.frames) {
+        // For integer a >= b and d > 0, floor(a/d) > floor(b/d)
+        // exactly when floor(a/d)*d > b. Only one quotient is needed.
+        // Its product is at most rate_product(n), so it cannot overflow.
+        if n < self.frames
+            || self.periods(n) * u64::from(self.fs) > self.rate_product(n - self.frames)
+        {
             1.0
         } else {
             0.0

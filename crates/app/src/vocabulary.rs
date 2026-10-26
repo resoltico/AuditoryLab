@@ -179,6 +179,11 @@ vocabulary! {
         UnmodifiedDraft => ("status-unmodified-draft", "Unmodified draft"),
     }
     Caption {
+        Collections => ("caption-collections", "Collections"),
+        BrowseRhythm => ("caption-browse-rhythm", "Browse by rhythm"),
+        Classification => ("caption-classification", "Classification"),
+        DatesIdentity => ("caption-dates-identity", "Dates and identity"),
+        SoundFacts => ("caption-sound-facts", "Sound"),
         ReferenceCondition => ("caption-reference-condition", "Reference condition"),
         Ancestor => ("caption-ancestor", "Ancestor"),
         Eeg => ("caption-eeg", "EEG"),

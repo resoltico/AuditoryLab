@@ -204,7 +204,7 @@ impl LibraryState {
         let (_, id) = self.snapshots.iter().rev().find(|(k, _)| k == key)?;
         self.catalog.iter().find(|s| s.id() == *id)
     }
-    pub(super) fn rows(&self) -> (Vec<String>, Vec<String>, Option<usize>) {
+    pub(super) fn rows(&self) -> (Vec<LibraryRowView>, Option<usize>) {
         let label = |e: &EntrySummary| {
             use crate::collection::SortBy;
             let sort = self.query.effective_sort().0;
@@ -229,44 +229,67 @@ impl LibraryState {
                     dates.push_str(&format!("\nAdded here: {}", shown(e.added_at)));
                 }
             }
-            format!(
-                "{} · {}{}\n{}\nDuration {}\n{}",
-                e.title.display_scalar(),
+            let collection = format!(
+                "{}{}",
                 match e.key {
                     LibraryKey::BuiltIn(_) => "Built-in · Read only",
                     LibraryKey::User(_) if e.trashed => "Trash",
                     LibraryKey::User(_) => "User",
-                    LibraryKey::External(_) => "Open file",
+                    LibraryKey::External(_) => "Open file · Temporary",
                 },
                 if self.requires_read(&e.key) {
                     " · Last observed · Needs review"
                 } else {
                     ""
-                },
-                e.nominal.summary(),
-                NumberStyle::Duration.format(e.duration_seconds),
+                }
+            );
+            let title = e.title.display_scalar();
+            let summary = e.nominal.summary();
+            let duration = format!(
+                "Duration {}",
+                NumberStyle::Duration.format(e.duration_seconds)
+            );
+            let mut memberships: Vec<String> =
+                e.nominal.bands.iter().map(ToString::to_string).collect();
+            if e.nominal.outside_bands() {
+                memberships.push("Other rates".into());
+            }
+            if e.nominal.no_rhythm() {
+                memberships.push("No rhythmic rate".into());
+            }
+            if e.nominal.multiple() {
+                memberships.push("Multiple rhythms".into());
+            }
+            if e.nominal.completeness != crate::core::nominal::Completeness::Complete {
+                memberships.push("Needs review".into());
+            }
+            let bands = memberships.join(" · ");
+            LibraryRowView {
+                key: e.key.to_string(),
+                text: format!("{title} · {collection}\n{summary}\n{bands}\n{duration}\n{dates}"),
+                title,
+                collection,
+                summary,
+                bands,
+                duration,
                 dates,
-            )
+            }
         };
-        let mut keys = Vec::new();
         let mut rows = Vec::new();
         if let Ok(result) = self.query.execute(&self.entries) {
             if result.groups.is_empty() {
                 for e in result.entries {
-                    keys.push(e.key.to_string());
                     rows.push(label(e));
                 }
             } else {
                 for group in result.groups {
-                    keys.push(String::new());
-                    rows.push(format!(
+                    rows.push(Self::heading_row(format!(
                         "{} · {} unique sounds",
                         group.label,
                         group.keys.len()
-                    ));
+                    )));
                     for key in group.keys {
                         if let Some(e) = self.entries.iter().find(|e| e.key == key) {
-                            keys.push(key.to_string());
                             rows.push(label(e));
                         }
                     }
@@ -284,21 +307,33 @@ impl LibraryState {
             Scope::BuiltIn | Scope::OpenFiles | Scope::Trash
         ) && !diagnostics.is_empty()
         {
-            keys.push(String::new());
-            rows.push("Unreadable storage entries · not included in sound counts".into());
+            rows.push(Self::heading_row(
+                "Unreadable storage entries · not included in sound counts".into(),
+            ));
             for problem in diagnostics {
-                keys.push(String::new());
-                rows.push(format!(
+                rows.push(Self::heading_row(format!(
                     "Needs review · {}\n{}",
                     problem.storage_id, problem.message
-                ));
+                )));
             }
         }
         let selected = self
             .selection
             .as_ref()
-            .and_then(|key| keys.iter().position(|k| k == &key.to_string()));
-        (keys, rows, selected)
+            .and_then(|key| rows.iter().position(|row| row.key == key.to_string()));
+        (rows, selected)
+    }
+    fn heading_row(text: String) -> LibraryRowView {
+        LibraryRowView {
+            key: String::new(),
+            title: text.clone(),
+            text,
+            collection: String::new(),
+            summary: String::new(),
+            bands: String::new(),
+            duration: String::new(),
+            dates: String::new(),
+        }
     }
     fn accept_record(&mut self, record: LoadedRecord) {
         self.unreadable.remove(&record.key);
@@ -568,24 +603,37 @@ impl Workspace {
     }
     /// Disjunctive unique counts from the shared query, with reference intervals.
     #[must_use]
-    pub fn library_facet_labels(&self) -> (Vec<String>, Vec<String>) {
+    pub fn library_facets(&self) -> (Vec<LibraryFacetView>, Vec<String>) {
         use crate::core::nominal::{Band, Method};
         use crate::query::RhythmState;
-        let count = |query: &CatalogQuery| Some(query.count(&self.library.entries).unwrap_or(0));
+        let facet = |query: &CatalogQuery, label: String, detail: &str| {
+            let count = query.count(&self.library.entries).unwrap_or(0);
+            let count = if self.library.inventory.complete {
+                count.to_string()
+            } else {
+                format!("{count} observed")
+            };
+            let text = if detail.is_empty() {
+                format!("{label} · {count}")
+            } else {
+                format!("{label} · {detail} · {count}")
+            };
+            LibraryFacetView {
+                label,
+                detail: detail.into(),
+                count,
+                text,
+            }
+        };
         let base = self.catalog_query().clone();
-        let suffix = |count: Option<usize>| count.map_or(String::new(), |n| format!(" · {n}"));
         let mut unrestricted = base.clone();
         unrestricted.rhythm.bands.clear();
         unrestricted.rhythm.state = None;
-        let mut bands = vec![format!("All sounds{}", suffix(count(&unrestricted)))];
+        let mut bands = vec![facet(&unrestricted, "All sounds".into(), "")];
         for band in Band::ALL {
             let mut query = unrestricted.clone();
             query.rhythm.bands = vec![band];
-            bands.push(format!(
-                "{band} · {}{}",
-                band.interval(),
-                suffix(count(&query))
-            ));
+            bands.push(facet(&query, band.to_string(), band.interval()));
         }
         for state in [
             RhythmState::OutsideBands,
@@ -593,43 +641,48 @@ impl Workspace {
             RhythmState::Multiple,
             RhythmState::NeedsReview,
         ] {
-            let label = state.label();
             let mut query = unrestricted.clone();
             query.rhythm.state = Some(state);
-            bands.push(format!("{label}{}", suffix(count(&query))));
+            bands.push(facet(&query, state.label().into(), ""));
         }
-        let mut unrestricted = base.clone();
+        let mut unrestricted = base;
         unrestricted.rhythm.methods.clear();
-        let mut methods = vec![format!("All methods{}", suffix(count(&unrestricted)))];
+        let mut methods = vec![facet(&unrestricted, "All methods".into(), "").text];
         for method in Method::ALL {
             let mut query = unrestricted.clone();
             query.rhythm.methods = vec![method];
-            methods.push(format!("{}{}", method.key(), suffix(count(&query))));
+            methods.push(facet(&query, method.key().into(), "").text);
         }
         (bands, methods)
+    }
+    /// Concise authoritative query summary for the results header.
+    #[must_use]
+    pub fn library_overview(&self) -> String {
+        let q = &self.library.query;
+        let (sort, direction) = q.effective_sort();
+        let count = if self.library.inventory.complete {
+            format!("{} unique sounds", self.library.visible.len())
+        } else {
+            format!(
+                "{} observed unique sounds · Inventory incomplete",
+                self.library.visible.len()
+            )
+        };
+        format!(
+            "{} · {} · Sort {} {} · Group {}",
+            count,
+            q.scope.label(),
+            sort.label(),
+            direction.label(),
+            q.group_by.label()
+        )
     }
     /// Unique counts and active restrictions; group repeats are never counted as sounds.
     #[must_use]
     pub fn library_count(&self) -> String {
         {
             let q = &self.library.query;
-            let (sort, direction) = q.effective_sort();
-            let count = if self.library.inventory.complete {
-                format!("{} unique sounds", self.library.visible.len())
-            } else {
-                format!(
-                    "{} observed unique sounds · Inventory incomplete",
-                    self.library.visible.len()
-                )
-            };
-            let mut lines = vec![format!(
-                "{} · {} · Sort {} {} · Group {}",
-                count,
-                q.scope.label(),
-                sort.label(),
-                direction.label(),
-                q.group_by.label()
-            )];
+            let mut lines = vec![self.library_overview()];
             let mut restrictions = Vec::new();
             if !q.search.is_empty() {
                 restrictions.push(format!("Search: {}", q.search.display_scalar()));

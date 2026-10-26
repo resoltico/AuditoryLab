@@ -24,10 +24,15 @@ impl SlintAdapter {
             library
                 .rows
                 .iter()
-                .zip(&library.keys)
-                .map(|(label, key)| CatalogRow {
-                    text: read_only(label),
-                    binding: key.as_str().into(),
+                .map(|row| CatalogRow {
+                    text: read_only(&row.text),
+                    binding: row.key.as_str().into(),
+                    title: read_only(&row.title),
+                    collection: read_only(&row.collection),
+                    summary: read_only(&row.summary),
+                    bands: read_only(&row.bands),
+                    duration: read_only(&row.duration),
+                    dates: read_only(&row.dates),
                 })
                 .collect(),
         );
@@ -41,6 +46,7 @@ impl SlintAdapter {
             ui.set_library_dates(read_only(&w.library_dates()));
             ui.set_library_dates_utc(read_only(&w.library_dates_utc()));
             ui.set_library_count(read_only(&w.library_count()));
+            ui.set_library_overview(read_only(&w.library_overview()));
             let strings = |labels: Vec<String>| {
                 ModelRc::new(VecModel::from(
                     labels
@@ -49,13 +55,51 @@ impl SlintAdapter {
                         .collect::<Vec<_>>(),
                 ))
             };
-            let (bands, methods) = w.library_facet_labels();
-            ui.set_band_labels(strings(bands));
+            let (bands, methods) = w.library_facets();
+            ui.set_band_labels(strings(
+                bands.iter().map(|band| band.text.clone()).collect(),
+            ));
+            ui.set_band_navigation(ModelRc::new(VecModel::from(
+                bands
+                    .into_iter()
+                    .map(|band| crate::generated::LibraryFacet {
+                        label: band.label.into(),
+                        detail: band.detail.into(),
+                        count: band.count.into(),
+                        text: band.text.into(),
+                    })
+                    .collect::<Vec<_>>(),
+            )));
             ui.set_method_labels(strings(methods));
             ui.set_calendar_context(auditorylab::calendar::local_context().into());
             {
                 let query = w.catalog_query();
                 use auditorylab::collection::{Scope, SortBy};
+                use auditorylab::core::nominal::{Band, Method};
+                use auditorylab::query::RhythmState;
+                let band = query
+                    .rhythm
+                    .bands
+                    .first()
+                    .and_then(|band| Band::ALL.iter().position(|value| value == band))
+                    .and_then(|index| i32::try_from(index + 1).ok())
+                    .unwrap_or(match query.rhythm.state {
+                        Some(RhythmState::OutsideBands) => 6,
+                        Some(RhythmState::None) => 7,
+                        Some(RhythmState::Multiple) => 8,
+                        Some(RhythmState::NeedsReview) => 9,
+                        None => 0,
+                    });
+                ui.set_band_choice(band);
+                ui.set_method_choice(
+                    query
+                        .rhythm
+                        .methods
+                        .first()
+                        .and_then(|method| Method::ALL.iter().position(|value| value == method))
+                        .and_then(|index| i32::try_from(index + 1).ok())
+                        .unwrap_or(0),
+                );
                 ui.set_collection_choice(match query.scope {
                     Scope::All => 0,
                     Scope::BuiltIn => 1,
@@ -76,7 +120,7 @@ impl SlintAdapter {
             }
         }
         // Virtual group/diagnostic rows do not create a selectable sound.
-        ui.set_has_results(library.keys.iter().any(|key| !key.is_empty()));
+        ui.set_has_results(library.rows.iter().any(|row| !row.key.is_empty()));
         ui.set_selected(
             library
                 .selected
@@ -85,6 +129,8 @@ impl SlintAdapter {
         );
         ui.set_sound_title(library.title.display_scalar().into());
         ui.set_structure(read_only(&library.structure));
+        ui.set_library_classification(read_only(&library.classification));
+        ui.set_library_ownership(read_only(&library.ownership));
         ui.set_studied(read_only(&library.studied));
         ui.set_recipe_timing(read_only(&library.timing));
         ui.set_summary(read_only(&library.summary));

@@ -1,0 +1,39 @@
+import { Palette } from "std-widgets.slint";
+export component LibraryNavigationItem inherits Rectangle {
+    in property <string> label;
+    in property <string> detail;
+    in property <string> count;
+    in property <string> description;
+    in property <bool> selected;
+    in property <length> text-size: 13px;
+    callback activated();
+    accessible-role: button;
+    accessible-label: root.description;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-action-default => {root.activated();}
+    height: max(root.text-size * 3, content.preferred-height + 20px);
+    background: root.selected ? Palette.selection-background : Palette.background;
+    border-width: focus.has-focus ? 2px : 0px;
+    border-color: Palette.accent-background;
+    border-radius: 5px;
+    Rectangle {x:0px;width:3px;height:parent.height;background:Palette.accent-background;visible:root.selected;}
+    content := VerticalLayout {
+        x:12px;y:10px;width:parent.width - 24px;height:parent.height - 20px;
+        spacing:3px;
+        HorizontalLayout {
+            spacing:8px;
+            Text {text:root.label;min-width:0px;wrap:word-wrap;font-weight:root.selected ? 700 : 500;color:root.selected ? Palette.selection-foreground : Palette.control-foreground;}
+            Text {text:root.count;horizontal-stretch:0;vertical-alignment:center;color:root.selected ? Palette.selection-foreground : Palette.control-foreground;}
+        }
+        if root.detail != "": Text {text:root.detail;min-width:0px;wrap:word-wrap;font-size:root.text-size * 0.9;color:root.selected ? Palette.selection-foreground : Palette.control-foreground;}
+    }
+    forward-focus: focus;
+    focus := FocusScope {
+        key-pressed(event) => {
+            if event.text == "\n" || event.text == " " {root.activated();return accept;}
+            return reject;
+        }
+    }
+    TouchArea {clicked => {focus.focus();root.activated();}}
+}

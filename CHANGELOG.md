@@ -4,6 +4,24 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Performance
+
+- Pulse generation compares exact onset boundaries with one integer division per sample, preserving sample bits and half-open pulse edges.
+
+### Library experience
+
+- Start with the monitor closed so the five reference bands are visible at the initial Library size. Show/Hide monitor remains explicit and does not change selection or start audio.
+
+- Applied query details remain exposed alongside results at every layout width, even with the secondary filter tools closed.
+
+- Compact Filters / recovery navigation always opens its tools, including after returning to an empty collection. The initial window exposes the band navigation rather than hiding it behind a dropdown.
+
+- Report unreadable publication, deletion and relocation verification as unconfirmed outcomes, not as proof of a destination state. Independent fault tests cover both applied and unapplied operations.
+
+- Wide native Library windows now separate visible collection/band navigation, structured result cards and selected-sound details, with search/method/sort in a dedicated toolbar. Medium/compact navigation, persistent transport and existing mutation protections remain intact.
+- Shared row projections retain exact selection identity alongside title, ownership, computed memberships, nominal structure, duration and date fields. The UI no longer relies on one undifferentiated text block.
+- Immediate rhythm controls follow the committed shared query; incomplete facet inventories explicitly label their counts as observed. Selected classification is independent of export/sample-rate validation.
+
 ### Breaking
 
 - One authored core model uses `Sound`, identified `Component`, `Node` and primitive `Voice`; the application realization is `Rendition`. Application APIs live in named modules under `crates/app`, with core exposed as `auditorylab::core`.

@@ -65,6 +65,7 @@ fn platform_modifiers_drive_text_shortcuts() {
 fn monitor_drawer_and_focused_window_layout() {
     let auxiliary_constraints = install();
     let ui = MainWindow::new().unwrap();
+    ui.set_monitor_open(true);
     ui.set_ui_family(typography::resolve().family.into());
     ui.show().unwrap();
     ui.window().set_size(slint::PhysicalSize::new(1100, 900));

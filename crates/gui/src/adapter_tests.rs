@@ -103,6 +103,15 @@ impl Harness {
     }
 
     fn with_workspace(workspace: Workspace) -> Self {
+        let harness = Self::with_startup_workspace(workspace);
+        // Most integration cases also exercise the open monitor and its focus
+        // handoffs. Request that view explicitly, not through a startup default.
+        harness.ui().set_monitor_open(true);
+        harness.settle();
+        harness
+    }
+
+    fn with_startup_workspace(workspace: Workspace) -> Self {
         install();
         let windows = Windows::new().unwrap();
         let requests = Rc::new(RefCell::new(Vec::new()));
@@ -752,8 +761,34 @@ fn clicking_a_recipe_row_selects_it() {
     let second = ui.get_catalog().row_data(1).unwrap();
     let expected_key = second.binding.clone();
     let row = labelled(ui, &second.text);
-    let centre = centre(&row);
-    drag(ui, centre, centre);
+    let list = labelled(ui, "Library results");
+    // Reveal the row through the real scroll control before clicking. Neither
+    // accessibility visibility nor a card's centre implies an unclipped hit.
+    let mut pointer = None;
+    for _ in 0..8 {
+        let row_bounds = row.geometry();
+        let list_bounds = list.geometry();
+        let row_origin = row.map_to_window(row_bounds.origin);
+        let list_origin = list.map_to_window(list_bounds.origin);
+        let top = row_origin.y.max(list_origin.y);
+        let bottom =
+            (row_origin.y + row_bounds.size.height).min(list_origin.y + list_bounds.size.height);
+        if bottom - top > 8.0 {
+            pointer = Some(slint::LogicalPosition::new(
+                row_origin.x + row_bounds.size.width / 2.0,
+                (top + bottom) / 2.0,
+            ));
+            break;
+        }
+        ui.window().dispatch_event(WindowEvent::PointerScrolled {
+            position: centre(&list),
+            delta_x: 0.0,
+            delta_y: centre(&list).y - centre(&row).y,
+        });
+        h.settle();
+    }
+    let pointer = pointer.expect("second card must be reachable by scrolling");
+    drag(ui, pointer, pointer);
     h.settle();
     assert_eq!(ui.get_selected(), 1);
     assert_eq!(ui.get_library_key(), expected_key);
@@ -1274,6 +1309,8 @@ fn monitor_presentation_waits_for_main_and_failures_are_visible_and_retryable() 
     let fail = Rc::new(std::cell::Cell::new(true));
     crate::test_platform::install_with_auxiliary_failure(fail.clone());
     let windows = Windows::new().unwrap();
+    // Exercise the requested monitor; startup now leaves it closed for discovery.
+    windows.main.set_monitor_open(true);
     let (workspace, _library_directory, _store) = bound_workspace(
         auditorylab::recipe::catalog().unwrap(),
         Capabilities::no_device_playback(),
@@ -1370,9 +1407,9 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
     h.adapter.inspect(|w| {
         assert_eq!(
             w.library_view()
-                .keys
+                .rows
                 .iter()
-                .filter(|key| !key.is_empty())
+                .filter(|row| !row.key.is_empty())
                 .count(),
             1
         );
@@ -2115,6 +2152,10 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
         drag(ui, position, position);
         h.settle();
         assert!(ui.get_library_detail());
+        assert!(
+            ui.get_library_tools_open(),
+            "entering tools must never hide them"
+        );
     };
     open_tools();
     labelled(ui, "More filters and grouping").accessible_action(&AccessibilityAction::Default);
@@ -2337,7 +2378,7 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
         if item
             .accessible_string_property(AccessibleStringProperty::Label)
             .as_deref()
-            == Some(label.as_str())
+            == Some(ui.get_catalog().row_data(0).unwrap().title.as_str())
             && item.geometry().size.width < row_rect.size.width
         {
             ControlFlow::Break(item.clone())
@@ -2401,7 +2442,11 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     h.settle();
     let key = LibraryKey::User(id).to_string();
     assert_eq!(ui.get_library_key(), key);
+    action_button(ui, "Filters / recovery…").accessible_action(&AccessibilityAction::Default);
+    h.settle();
     action_button(ui, "Reset sort").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    action_button(ui, "Filters / recovery…").accessible_action(&AccessibilityAction::Default);
     h.settle();
     h.adapter.inspect(|w| {
         let q = w.catalog_query();
@@ -2801,4 +2846,219 @@ fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
             assert!(range.from.unwrap() < range.before.unwrap());
         });
     }
+}
+
+#[test]
+fn wide_library_navigation_uses_real_shared_filters_and_structured_cards() {
+    use auditorylab::core::nominal::Band;
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window()
+        .set_size(slint::LogicalSize::new(1440.0, 1000.0));
+    h.settle();
+    assert!(ui.get_library_wide());
+    assert_eq!(ui.get_band_navigation().row_count(), 10);
+    for (index, band) in Band::ALL.iter().enumerate() {
+        let facet = ui.get_band_navigation().row_data(index + 1).unwrap();
+        assert_eq!(facet.label, band.to_string());
+        assert_eq!(facet.detail, band.interval());
+        let item = labelled(ui, &facet.text);
+        assert!(
+            item.is_visible(),
+            "band navigation is not a closed dropdown"
+        );
+        assert!(item.geometry().size.height > 0.0);
+    }
+    let delta = ui.get_band_navigation().row_data(1).unwrap();
+    labelled(ui, &delta.text).accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert_eq!(
+        h.adapter
+            .inspect(|w| w.catalog_query().rhythm.bands.clone()),
+        vec![Band::Delta]
+    );
+    assert_eq!(ui.get_band_choice(), 1);
+    assert_eq!(ui.get_catalog().row_count(), 1);
+    let row = ui.get_catalog().row_data(0).unwrap();
+    assert!(!row.title.is_empty());
+    assert!(row.collection.contains("Read only"));
+    assert_eq!(row.bands, "Delta");
+    assert!(row.duration.contains("1 min"));
+    assert!(row.dates.contains("Unknown"));
+    assert!(
+        ui.get_library_classification()
+            .contains("not measured brain activity")
+    );
+    assert!(ui.get_library_ownership().contains("Read only"));
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    // The next query originates outside the widget: its selected state must follow.
+    ui.invoke_rhythm_filter(3, 0);
+    h.settle();
+    assert_eq!(ui.get_band_choice(), 3);
+    assert!(
+        h.adapter
+            .inspect(|w| w.catalog_query().rhythm.bands == [Band::Alpha])
+    );
+}
+
+#[test]
+fn wide_library_group_headings_have_no_selectable_identity() {
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window().set_size(slint::LogicalSize::new(1440.0, 900.0));
+    ui.invoke_more_filters(
+        "".into(),
+        0,
+        0,
+        0,
+        0,
+        1,
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+    );
+    h.settle();
+    let rows = ui.get_catalog();
+    assert!(rows.iter().any(|row| row.binding.is_empty()));
+    assert!(
+        rows.iter()
+            .filter(|row| row.binding.is_empty())
+            .all(|row| row.collection.is_empty() && row.duration.is_empty())
+    );
+    let before = ui.get_library_key();
+    ui.invoke_select("".into());
+    assert_eq!(ui.get_library_key(), before);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+#[ignore = "explicit silent native visual evidence, not a device test"]
+fn library_review_screenshots() {
+    use std::io::Write;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/evidence/library-experience");
+    std::fs::create_dir_all(&destination).unwrap();
+    for (name, width, height) in [
+        ("library-startup", 1280_u32, 900_u32),
+        ("library-with-monitor", 1280_u32, 900_u32),
+        ("library-wide", 1440_u32, 1000_u32),
+        ("library-medium", 1024, 768),
+        ("library-compact", 800, 600),
+    ] {
+        ui.set_monitor_open(name == "library-with-monitor");
+        ui.window()
+            .set_size(slint::PhysicalSize::new(width, height));
+        h.settle();
+        let pixels = ui.window().take_snapshot().unwrap();
+        let mut file = std::fs::File::create(destination.join(format!("{name}.ppm"))).unwrap();
+        write!(file, "P6\n{} {}\n255\n", pixels.width(), pixels.height()).unwrap();
+        for pixel in pixels.as_slice() {
+            file.write_all(&[pixel.r, pixel.g, pixel.b]).unwrap();
+        }
+    }
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn applied_filters_remain_readable_when_library_tools_are_closed() {
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    for width in [1440.0, 1100.0, 800.0] {
+        ui.window().set_size(slint::LogicalSize::new(width, 900.0));
+        ui.set_library_tools_open(false);
+        ui.invoke_more_filters(
+            "ioannou-2015".into(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+        );
+        h.settle();
+        let summary = labelled(ui, "Applied library filters");
+        // Selection reveal can scroll past the summary. It must remain readable
+        // through the real list scroll control without opening secondary tools.
+        let list = labelled(ui, "Library results");
+        for _ in 0..8 {
+            if summary.is_visible() {
+                break;
+            }
+            ui.window().dispatch_event(WindowEvent::PointerScrolled {
+                position: centre(&list),
+                delta_x: 0.0,
+                delta_y: 400.0,
+            });
+            h.settle();
+        }
+        assert!(
+            summary.is_visible(),
+            "applied filters are reachable at width {width}"
+        );
+        assert!(
+            summary
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .is_some_and(|text| text.contains("Study: ioannou-2015"))
+        );
+        assert!(!ui.get_library_tools_open());
+    }
+}
+
+#[test]
+fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let (workspace, _directory, _store) = bound_workspace(
+        auditorylab::recipe::catalog().unwrap(),
+        Capabilities::no_device_playback(),
+    );
+    let h = Harness::with_startup_workspace(workspace);
+    let ui = h.ui();
+    assert!(
+        !ui.get_monitor_open(),
+        "startup must leave room for discovery"
+    );
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 900.0));
+    h.settle();
+    assert!(ui.get_library_wide());
+    let navigation = labelled(ui, "Browse by rhythm");
+    let bounds = navigation.geometry();
+    let origin = navigation.map_to_window(bounds.origin);
+    for index in 1..=5 {
+        let facet = ui.get_band_navigation().row_data(index).unwrap();
+        let item = labelled(ui, &facet.text);
+        let item_bounds = item.geometry();
+        let item_origin = item.map_to_window(item_bounds.origin);
+        assert!(item.is_visible());
+        assert!(item_origin.y >= origin.y);
+        assert!(
+            item_origin.y + item_bounds.size.height <= origin.y + bounds.size.height,
+            "{} must be visible without scrolling at the initial size",
+            facet.label
+        );
+    }
+    let selected = ui.get_library_key();
+    action_button(ui, "Show output monitor").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(ui.get_monitor_open());
+    assert_eq!(ui.get_library_key(), selected);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    action_button(ui, "Hide output monitor").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(!ui.get_monitor_open());
+    assert_eq!(ui.get_library_key(), selected);
 }
