@@ -94,7 +94,9 @@ impl RecipeSnapshot {
     /// Capture content under a new identity.
     #[must_use]
     pub fn new(origin: Origin, recipe: Recipe) -> Self {
-        let nominal = Arc::new(auditorylab_core::nominal::analyze(&recipe.sound.components));
+        let nominal = Arc::new(auditorylab_core::nominal::analyze(
+            &recipe.sound().components,
+        ));
         let about = Arc::new(recipe.display_about());
         Self {
             nominal,
@@ -194,7 +196,7 @@ impl RecipeSnapshot {
     /// Declared sound parameters.
     #[must_use]
     pub fn sound(&self) -> &Sound {
-        &self.recipe.sound
+        self.recipe.sound()
     }
 
     /// Validate the recipe and realize it at a sample rate.

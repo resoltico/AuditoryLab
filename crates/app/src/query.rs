@@ -85,9 +85,15 @@ impl SearchIndex {
     pub(crate) fn from_snapshot(snapshot: &crate::recipe::RecipeSnapshot) -> Self {
         use crate::core::{Carrier, ComponentForm, Ears, Modulation, ParameterId};
         let recipe = snapshot.recipe();
-        let mut facts = vec![recipe.document.id.to_string()];
-        facts.extend(recipe.document.created_at.iter().map(ToString::to_string));
-        facts.extend(recipe.document.modified_at.iter().map(ToString::to_string));
+        let mut facts = vec![recipe.document().id.to_string()];
+        facts.extend(recipe.document().created_at.iter().map(ToString::to_string));
+        facts.extend(
+            recipe
+                .document()
+                .modified_at
+                .iter()
+                .map(ToString::to_string),
+        );
         match snapshot.origin() {
             crate::recipe::Origin::BuiltIn(id) => facts.push((*id).into()),
             crate::recipe::Origin::User { id, .. } => facts.push(id.to_string()),
@@ -96,16 +102,16 @@ impl SearchIndex {
                 facts.push(label.clone())
             }
         }
-        if let Some(description) = &recipe.description {
+        if let Some(description) = &recipe.description() {
             facts.push(description.title.clone());
             facts.extend(description.notes.iter().cloned());
         }
-        for ancestor in &recipe.lineage {
+        for ancestor in recipe.lineage() {
             facts.extend([ancestor.title.clone(), ancestor.note.clone()]);
             facts.extend(ancestor.catalog_id.iter().cloned());
             facts.extend(ancestor.document_id.iter().map(ToString::to_string));
         }
-        for source in &recipe.sources {
+        for source in recipe.sources() {
             facts.extend([
                 source.key.clone(),
                 source.label.clone(),
@@ -114,7 +120,7 @@ impl SearchIndex {
             facts.extend(source.url.iter().cloned());
             facts.extend(source.doi.iter().cloned());
         }
-        for evidence in &recipe.evidence {
+        for evidence in recipe.evidence() {
             facts.extend([
                 evidence.source.clone(),
                 evidence.methods_locator.clone(),
@@ -134,8 +140,8 @@ impl SearchIndex {
         for band in &snapshot.nominal().bands {
             facts.push(band.key().into());
         }
-        let mut numbers = vec![recipe.sound.duration_seconds, recipe.sound.fade_seconds];
-        for component in &recipe.sound.components {
+        let mut numbers = vec![recipe.sound().duration_seconds, recipe.sound().fade_seconds];
+        for component in &recipe.sound().components {
             let ears = match component.form {
                 ComponentForm::Voice(voice) => {
                     facts.push(

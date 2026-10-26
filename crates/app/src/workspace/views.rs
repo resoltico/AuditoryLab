@@ -300,14 +300,6 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
         Refusal::NoSelection => "No recipe matches the search; clear it or choose a recipe.".into(),
         Refusal::NoExport => "No export is running.".into(),
         Refusal::Input(problems) => input_text(problems),
-        Refusal::NonfiniteContent {
-            component,
-            parameter,
-        } => format!(
-            "Cannot edit a copy: authored content {}{} is not finite. Correct the source document before deriving a sound.",
-            component.map_or_else(String::new, |index| format!("component {} ", index + 1)),
-            parameter.descriptor().label,
-        ),
         Refusal::NotFinite => "The recipe's numbers must all be finite before it can play.".into(),
         Refusal::Document(message) => message.clone(),
         Refusal::Invalid { title, rate, error } => error.as_ref().map_or_else(
@@ -315,10 +307,6 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
             |error| (error).at_rate(title, *rate),
         ),
         Refusal::Edit(error) => error.description(),
-        Refusal::TooManyComponents(count) => format!(
-            "The workbench supports at most {} components; this recipe has {count}. Edit the recipe file to reduce them.",
-            auditorylab_core::Sound::MAX_COMPONENTS
-        ),
     }
 }
 
@@ -749,14 +737,7 @@ impl Workspace {
             View::Library => copy
                 .as_ref()
                 .err()
-                .filter(|r| {
-                    matches!(
-                        r,
-                        Refusal::NonfiniteContent { .. }
-                            | Refusal::TooManyComponents(_)
-                            | Refusal::Document(_)
-                    )
-                })
+                .filter(|r| matches!(r, Refusal::Document(_)))
                 .map(refusal_text),
         };
         let outcome_details = [

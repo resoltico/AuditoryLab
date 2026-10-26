@@ -270,7 +270,7 @@ fn catalog_methods_match_independent_expectations_at_48_khz() {
     ];
     assert_eq!(catalog::ENTRIES.len(), expected.len());
     for (entry, method) in catalog::ENTRIES.iter().zip(expected) {
-        let sound = Recipe::parse(entry.text).unwrap().sound;
+        let sound = Recipe::parse(entry.text).unwrap().sound().clone();
         assert_eq!(
             analyze(&sound.components).methods,
             [method],

@@ -30,7 +30,7 @@ fn fixture() -> (
     draft.set_title("Initial".into());
     let record = store
         .apply(
-            Mutation::Create(Arc::new(draft.recipe())),
+            Mutation::Create(Arc::new(draft.recipe().unwrap())),
             &Cancel::default(),
         )
         .unwrap()

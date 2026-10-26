@@ -23,7 +23,11 @@ fn matches_search(snapshot: &RecipeSnapshot, search: &str) -> bool {
 }
 #[test]
 fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
-    let mut recipe = auditorylab::editing::Draft::new().unwrap().recipe();
+    let mut recipe = auditorylab::editing::Draft::new()
+        .unwrap()
+        .recipe()
+        .unwrap()
+        .into_builder();
     recipe.sound = auditorylab::core::Sound {
         duration_seconds: 60.0,
         fade_seconds: 0.1,
@@ -51,7 +55,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         notes: Some("two words".into()),
     });
     recipe.document.id = "20abcdef-0000-4000-8000-000000000001".parse().unwrap();
-    let snapshot = RecipeSnapshot::new(Origin::Stream("external".into()), recipe);
+    let snapshot = RecipeSnapshot::new(Origin::Stream("external".into()), recipe.build().unwrap());
     for search in [
         "RĪGA",
         "Ri\u{304}ga",
@@ -70,11 +74,11 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
     for search in ["2", "201", "two absent", "rīga 19"] {
         assert!(!matches_search(&snapshot, search), "{search}");
     }
-    let mut steady = snapshot.recipe().clone();
+    let mut steady = snapshot.recipe().clone().into_builder();
     if let auditorylab::core::ComponentForm::Voice(c) = &mut steady.sound.components[0].form {
         c.modulation = None;
     }
-    let steady = RecipeSnapshot::new(Origin::Stream("steady".into()), steady);
+    let steady = RecipeSnapshot::new(Origin::Stream("steady".into()), steady.build().unwrap());
     assert!(
         !matches_search(&steady, "20"),
         "200 Hz and 2015 must not match 20"
@@ -86,7 +90,11 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
     use auditorylab::core::{
         Carrier, Component, ComponentForm, ComponentId, Description, Ears, Voice,
     };
-    let mut recipe = auditorylab::editing::Draft::new().unwrap().recipe();
+    let mut recipe = auditorylab::editing::Draft::new()
+        .unwrap()
+        .recipe()
+        .unwrap()
+        .into_builder();
     recipe.document.created_at = None;
     recipe.document.modified_at = None;
     recipe.description = Some(Description {
@@ -104,7 +112,7 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
             modulation: None,
         }),
     }];
-    let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe);
+    let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe.build().unwrap());
     // These captions are deliberately present in display output, not authored facts.
     assert!(snapshot.description().contains("Unknown"));
     assert!((snapshot.nominal()).summary().contains("No rhythmic rate"));

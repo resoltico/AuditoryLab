@@ -26,7 +26,7 @@ fn fixture() -> (tempfile::TempDir, PathBuf, LibraryStore) {
 fn recipe(title: &str) -> Recipe {
     let mut draft = Draft::new().unwrap();
     draft.set_title(title.into());
-    draft.recipe()
+    draft.recipe().unwrap()
 }
 #[test]
 fn readonly_discovery_and_builtin_refusals_never_initialize_a_root() {
@@ -75,7 +75,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
     store.root().initialize().unwrap();
     assert!(!store.root().initialize().unwrap().created);
     let original = recipe("Imported unknown history");
-    let id = original.document.id;
+    let id = original.document().id;
     let key = LibraryKey::User(id);
     let external = temp.path().join("original.toml");
     let text = original.to_toml().unwrap();
@@ -88,8 +88,8 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         .unwrap();
     assert_eq!(first.status, MutationStatus::Published);
     let loaded = store.load(&key).unwrap();
-    assert_eq!(loaded.snapshot.recipe().document.created_at, None);
-    assert_eq!(loaded.snapshot.recipe().document.modified_at, None);
+    assert_eq!(loaded.snapshot.recipe().document().created_at, None);
+    assert_eq!(loaded.snapshot.recipe().document().modified_at, None);
     let added = loaded.added_at;
     let initial = loaded.version_token;
     let record_path = path.join("recipes").join(format!("{id}.toml"));
@@ -105,11 +105,14 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         MutationStatus::Unchanged
     );
     assert_eq!(fs::read(&record_path).unwrap(), original_bytes);
-    let mut collision = original.clone();
+    let mut collision = original.clone().into_builder();
     collision.description.as_mut().unwrap().title = "same UUID different title".into();
     assert_eq!(
         store
-            .apply(Mutation::Add(Arc::new(collision)), &Cancel::default())
+            .apply(
+                Mutation::Add(Arc::new(collision.build().unwrap())),
+                &Cancel::default()
+            )
             .unwrap_err()
             .kind(),
         ErrorKind::Conflict
@@ -129,9 +132,9 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         MutationStatus::Published | MutationStatus::PublishedWithWarning
     ));
     let changed = store.load(&key).unwrap();
-    assert_eq!(changed.snapshot.recipe().document.id, id);
-    assert_eq!(changed.snapshot.recipe().document.created_at, None);
-    assert!(changed.snapshot.recipe().document.modified_at.is_some());
+    assert_eq!(changed.snapshot.recipe().document().id, id);
+    assert_eq!(changed.snapshot.recipe().document().created_at, None);
+    assert!(changed.snapshot.recipe().document().modified_at.is_some());
     assert_eq!(changed.added_at, added);
     assert_ne!(changed.version_token, initial);
     let changed_bytes = fs::read(&record_path).unwrap();
@@ -147,7 +150,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         .unwrap_err();
     assert_eq!(error.kind(), ErrorKind::Conflict);
     assert_eq!(fs::read(&record_path).unwrap(), changed_bytes);
-    let mut wrong_history = changed.snapshot.recipe().clone();
+    let mut wrong_history = changed.snapshot.recipe().clone().into_builder();
     wrong_history.document.created_at = Some("2020-01-01T00:00:00Z".parse().unwrap());
     assert_eq!(
         store
@@ -155,7 +158,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
                 Mutation::Update {
                     key: key.clone(),
                     expect: Some(changed.version_token),
-                    recipe: Arc::new(wrong_history)
+                    recipe: Arc::new(wrong_history.build().unwrap())
                 },
                 &Cancel::default()
             )
@@ -163,7 +166,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
             .kind(),
         ErrorKind::HistoryConflict
     );
-    let history = changed.snapshot.recipe().document.clone();
+    let history = changed.snapshot.recipe().document().clone();
     let trashed = store
         .apply(
             Mutation::Trash {
@@ -175,7 +178,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         .unwrap();
     let trash = trashed.record.unwrap();
     assert!(trash.trashed_at.is_some());
-    assert_eq!(trash.snapshot.recipe().document, history);
+    assert_eq!(trash.snapshot.recipe().document(), &history);
     assert_eq!(trash.added_at, added);
     assert_eq!(
         store
@@ -199,7 +202,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         .record
         .unwrap();
     assert_eq!(restored.trashed_at, None);
-    assert_eq!(restored.snapshot.recipe().document, history);
+    assert_eq!(restored.snapshot.recipe().document(), &history);
     assert_eq!(restored.added_at, added);
     assert!(
         store
@@ -276,8 +279,8 @@ fn new_creation_dates_are_assigned_only_to_the_confirmed_snapshot_and_noops_keep
     let (_temp, path, store) = fixture();
     store.root().initialize().unwrap();
     let provisional = recipe("New sound");
-    let id = provisional.document.id;
-    assert_eq!(provisional.document.created_at, None);
+    let id = provisional.document().id;
+    assert_eq!(provisional.document().created_at, None);
     let result = store
         .apply(
             Mutation::Create(Arc::new(provisional.clone())),
@@ -285,12 +288,13 @@ fn new_creation_dates_are_assigned_only_to_the_confirmed_snapshot_and_noops_keep
         )
         .unwrap();
     let record = result.record.unwrap();
-    let identity = &record.snapshot.recipe().document;
+    let identity = &record.snapshot.recipe().document();
     assert_eq!(identity.id, id);
     assert_eq!(identity.created_at, record.added_at);
     assert_eq!(identity.modified_at, identity.created_at);
     assert_eq!(
-        provisional.document.created_at, None,
+        provisional.document().created_at,
+        None,
         "captured input is immutable"
     );
     let file = path.join("recipes").join(format!("{id}.toml"));
@@ -319,7 +323,7 @@ fn exact_byte_digest_detects_manual_whitespace_edits() {
     let record = result.record.unwrap();
     let path = path
         .join("recipes")
-        .join(format!("{}.toml", record.snapshot.recipe().document.id));
+        .join(format!("{}.toml", record.snapshot.recipe().document().id));
     let mut bytes = fs::read(&path).unwrap();
     bytes.push(b' ');
     fs::write(&path, &bytes).unwrap();
@@ -419,7 +423,7 @@ fn corrupt_plain_files_and_owned_stages_are_reported_without_read_side_repairs()
         .unwrap()
         .record
         .unwrap();
-    let id = record.snapshot.recipe().document.id;
+    let id = record.snapshot.recipe().document().id;
     let file = path.join("recipes").join(format!("{id}.toml"));
     let bytes = fs::read(&file).unwrap();
     let stage = path.join("recipes/.auditorylab-00000000-0000-4000-8000-000000000099.partial");

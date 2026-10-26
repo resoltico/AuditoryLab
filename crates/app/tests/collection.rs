@@ -19,7 +19,7 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
         created_at: None,
         modified_at: modified.map(|s| s.parse().unwrap()),
     };
-    let mut recipe = Recipe::silent(document);
+    let mut recipe = Recipe::builder(document);
     recipe.description = Some(auditorylab::core::Description {
         title: title.into(),
         notes: None,
@@ -30,7 +30,7 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
         components: nodes,
     };
     let key = LibraryKey::User(recipe.document.id);
-    let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe);
+    let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe.build().unwrap());
     EntrySummary::from_snapshot(key, &snapshot, None)
 }
 #[expect(
@@ -128,7 +128,11 @@ fn evidence_filters_cannot_borrow_population_or_role_and_ancestors_never_assert_
     use auditorylab_core::{
         BibliographySource, ConditionRole as R, Evidence, EvidenceScope as S, Population as P,
     };
-    let mut recipe = auditorylab::editing::Draft::new().unwrap().recipe();
+    let mut recipe = auditorylab::editing::Draft::new()
+        .unwrap()
+        .recipe()
+        .unwrap()
+        .into_builder();
     recipe.sources = (0..3)
         .map(|i| BibliographySource {
             key: format!("study-{i}"),
@@ -161,9 +165,8 @@ fn evidence_filters_cannot_borrow_population_or_role_and_ancestors_never_assert_
         adaptation: "declared adaptation".into(),
     })
     .collect();
-    recipe.validate().unwrap();
     let key = LibraryKey::User(recipe.document.id);
-    let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe);
+    let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe.build().unwrap());
     let input = [EntrySummary::from_snapshot(key, &snapshot, None)];
     let mut q = CatalogQuery {
         studies: vec!["10.1000/study-0".into()],

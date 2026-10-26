@@ -28,7 +28,8 @@ fn rendered(components: &str) -> Vec<[f64; 2]> {
     );
     let session = Recipe::parse(&text)
         .unwrap()
-        .sound
+        .sound()
+        .clone()
         .signal(SampleRate::new(48_000).unwrap())
         .unwrap();
     let mut frames = vec![[0.0; 2]; 96_000];

@@ -125,11 +125,8 @@ impl ExternalWriter {
         }
         let original = Recipe::from_bytes(&bytes)
             .map_err(|e| Error::new(ErrorKind::InvalidRecipe, e.to_string()))?;
-        recipe
-            .validate()
-            .map_err(|e| Error::new(ErrorKind::InvalidRecipe, e.to_string()))?;
-        if original.document.id != recipe.document.id
-            || original.document.created_at != recipe.document.created_at
+        if original.document().id != recipe.document().id
+            || original.document().created_at != recipe.document().created_at
         {
             return Err(Error::new(
                 ErrorKind::HistoryConflict,
@@ -145,17 +142,21 @@ impl ExternalWriter {
                 diagnostics: Vec::new(),
             });
         }
-        let mut recipe = (*recipe).clone();
+        let mut document = recipe.document().clone();
         let now = crate::library::store::observed_now()?;
         let mut diagnostics = Vec::new();
         if original
-            .document
+            .document()
             .modified_at
             .is_some_and(|prior| now < prior)
         {
             diagnostics.push("Observed clock predates the prior declared edit time; no artificial timestamp was fabricated.".into());
         }
-        recipe.document.modified_at = Some(now);
+        document.modified_at = Some(now);
+        let recipe = (*recipe)
+            .clone()
+            .with_document(document)
+            .map_err(|e| Error::new(ErrorKind::InvalidRecipe, e.to_string()))?;
         let bytes = recipe
             .to_toml()
             .map_err(|e| Error::new(ErrorKind::InvalidRecipe, e.to_string()))?

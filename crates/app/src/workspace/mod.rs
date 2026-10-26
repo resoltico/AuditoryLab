@@ -42,7 +42,7 @@ use crate::recipe::{RecipeSnapshot, Rendition};
 use crate::session::{PlaybackControl, PlaybackPhase, Session, StopRequest};
 use crate::waveform_view::WaveformScale;
 use crate::workflow::{Cancel, Progress};
-use auditorylab_core::{CarrierKind, Ears, ModulationKind, Recipe, SampleRate, Sound};
+use auditorylab_core::{CarrierKind, Ears, ModulationKind, Recipe, SampleRate};
 use output::OutputState;
 use status::{
     AudioStatus, EditStatus, FileActivity, FileNotice, FileStatus, InventoryStatus, LibraryStatus,
@@ -219,13 +219,6 @@ pub enum Refusal {
     Input(Vec<(EditingField, InputProblem)>),
     /// The recipe's numbers are not all finite.
     NotFinite,
-    /// The current authored content has a nonfinite number.
-    NonfiniteContent {
-        /// Zero-based source component, or a recipe-wide field.
-        component: Option<usize>,
-        /// The source quantity requiring correction.
-        parameter: auditorylab_core::ParameterId,
-    },
     /// The document does not serialize.
     Document(String),
     /// The source is not valid at the export rate.
@@ -241,8 +234,6 @@ pub enum Refusal {
     NoSelection,
     /// An editing command addressed something that no longer exists.
     Edit(EditRefusal),
-    /// The recipe has more components than a document can hold.
-    TooManyComponents(usize),
 }
 
 #[derive(Debug, Clone)]

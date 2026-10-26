@@ -107,7 +107,7 @@ impl LoadedRecord {
         membership: Option<&Membership>,
     ) -> Result<Self, Error> {
         let recipe=Recipe::from_bytes(&bytes).map_err(|_|Error::new(ErrorKind::IncompleteInventory,format!("user:{id}: recipe violates the supported portable contract; file was left intact")))?;
-        if recipe.document.id != id {
+        if recipe.document().id != id {
             return Err(Error::new(
                 ErrorKind::IncompleteInventory,
                 format!("user:{id}: filename UUID does not match document.id"),
@@ -321,7 +321,7 @@ impl LibraryStore {
             let recipe = Recipe::parse(entry.text).map_err(|e| {
                 Error::caused(ErrorKind::InvalidRecipe, "invalid shipped identity", e)
             })?;
-            if !reserved.insert(recipe.document.id) {
+            if !reserved.insert(recipe.document().id) {
                 return Err(Error::new(
                     ErrorKind::InvalidRecipe,
                     "duplicate shipped UUID",
@@ -605,12 +605,12 @@ impl LibraryStore {
     pub fn apply(&self, mutation: Mutation, cancel: &Cancel) -> Result<WriteOutcome, Error> {
         let (key, kind, expected) = match &mutation {
             Mutation::Create(recipe) => (
-                LibraryKey::User(recipe.document.id),
+                LibraryKey::User(recipe.document().id),
                 MutationKind::Create,
                 None,
             ),
             Mutation::Add(recipe) => (
-                LibraryKey::User(recipe.document.id),
+                LibraryKey::User(recipe.document().id),
                 MutationKind::Add,
                 None,
             ),
@@ -624,16 +624,12 @@ impl LibraryStore {
         self.reserved(id)?;
         if let Mutation::Create(recipe) | Mutation::Add(recipe) | Mutation::Update { recipe, .. } =
             &mutation
+            && recipe.document().id != id
         {
-            recipe
-                .validate()
-                .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?;
-            if recipe.document.id != id {
-                return Err(Error::new(
-                    ErrorKind::Conflict,
-                    "proposed document identity differs from the selected key",
-                ));
-            }
+            return Err(Error::new(
+                ErrorKind::Conflict,
+                "proposed document identity differs from the selected key",
+            ));
         }
         if let Mutation::Purge {
             confirmed: false, ..
@@ -764,27 +760,25 @@ impl LibraryStore {
             }
             return Ok(outcome(key, kind, Some(record), diagnostics));
         }
-        let mut recipe = match mutation {
+        let recipe = match mutation {
             Mutation::Create(recipe) | Mutation::Add(recipe) | Mutation::Update { recipe, .. } => {
                 (*recipe).clone()
             }
             Mutation::Rename { title, .. } => {
-                let mut recipe = old
+                let recipe = old
                     .as_ref()
                     .ok_or_else(|| Error::new(ErrorKind::Conflict, "selected entry disappeared"))?
                     .snapshot
                     .recipe()
                     .clone();
-                let notes = recipe.description.as_ref().and_then(|d| d.notes.clone());
-                recipe.description = Some(crate::core::Description { title, notes });
+                let notes = recipe.description().as_ref().and_then(|d| d.notes.clone());
                 recipe
+                    .with_description(Some(crate::core::Description { title, notes }))
+                    .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?
             }
             _ => unreachable!("lifecycle operations handled above"),
         };
-        recipe
-            .validate()
-            .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?;
-        if recipe.document.id != id {
+        if recipe.document().id != id {
             return Err(Error::new(
                 ErrorKind::Conflict,
                 "proposed document identity differs from the selected key",
@@ -798,7 +792,7 @@ impl LibraryStore {
                 ));
             }
             let previous = old.snapshot.recipe();
-            if previous.document.created_at != recipe.document.created_at {
+            if previous.document().created_at != recipe.document().created_at {
                 return Err(Error::new(
                     ErrorKind::HistoryConflict,
                     "an update cannot replace this identity's creation history",
@@ -807,18 +801,24 @@ impl LibraryStore {
             if previous.same_editable_content(&recipe) {
                 return Ok(unchanged(key, kind, old.clone(), diagnostics));
             }
-            if !previous.sound.same_content(&recipe.sound) {
-                for evidence in &mut recipe.evidence {
-                    evidence.scope = crate::core::EvidenceScope::Ancestor;
-                }
+        }
+        let mut proposal = recipe.into_builder();
+        if let Some(old) = &old
+            && !old.snapshot.recipe().sound().same_content(&proposal.sound)
+        {
+            for evidence in &mut proposal.evidence {
+                evidence.scope = crate::core::EvidenceScope::Ancestor;
             }
         }
         if kind == MutationKind::Create {
-            recipe.document.created_at = Some(now);
-            recipe.document.modified_at = Some(now);
+            proposal.document.created_at = Some(now);
+            proposal.document.modified_at = Some(now);
         } else if !creating {
-            recipe.document.modified_at = Some(now);
+            proposal.document.modified_at = Some(now);
         }
+        let recipe = proposal
+            .build()
+            .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?;
         diagnostics.extend(chronology(
             &recipe,
             old.as_ref().map(|r| r.snapshot.recipe()),
@@ -1076,21 +1076,21 @@ fn budget() -> Error {
 fn chronology(recipe: &Recipe, previous: Option<&Recipe>, now: Timestamp) -> Vec<String> {
     let mut warnings = Vec::new();
     if recipe
-        .document
+        .document()
         .created_at
-        .zip(recipe.document.modified_at)
+        .zip(recipe.document().modified_at)
         .is_some_and(|(created, modified)| modified < created)
     {
         warnings.push("declared modification precedes creation; history was not clamped.".into());
     }
     if previous
-        .and_then(|p| p.document.modified_at.or(p.document.created_at))
+        .and_then(|p| p.document().modified_at.or(p.document().created_at))
         .is_some_and(|prior| now < prior)
     {
         warnings.push("observed clock is earlier than prior history; exact bytes remain the conflict authority.".into());
     }
-    if recipe.document.created_at.is_some_and(|date| date > now)
-        || recipe.document.modified_at.is_some_and(|date| date > now)
+    if recipe.document().created_at.is_some_and(|date| date > now)
+        || recipe.document().modified_at.is_some_and(|date| date > now)
     {
         warnings.push("declared history lies in the future; it was preserved.".into());
     }

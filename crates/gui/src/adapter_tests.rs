@@ -704,7 +704,7 @@ fn an_imported_recipe_is_scrolled_into_view() {
         let mut draft = auditorylab::editing::Draft::new().unwrap();
         draft.set_title(format!("A earlier opened recipe {index:02}"));
         let path = directory.path().join(format!("earlier-{index}.toml"));
-        std::fs::write(&path, draft.recipe().to_toml().unwrap()).unwrap();
+        std::fs::write(&path, draft.recipe().unwrap().to_toml().unwrap()).unwrap();
         ui.invoke_open_recipe();
         answer_path(&h, &path);
         h.wait_for_files();
@@ -713,12 +713,12 @@ fn an_imported_recipe_is_scrolled_into_view() {
     h.settle();
     let path = directory.path().join("imported.toml");
     std::fs::write(&path, {
-        let mut recipe = crate::test_recipes::silent(1.0, 0.01);
+        let mut recipe = crate::test_recipes::silent(1.0, 0.01).into_builder();
         recipe.description = Some(auditorylab::core::Description {
             title: "Imported probe".into(),
             notes: None,
         });
-        recipe.to_toml().unwrap()
+        recipe.build().unwrap().to_toml().unwrap()
     })
     .unwrap();
     ui.invoke_open_recipe();
@@ -1073,7 +1073,7 @@ fn controlled_harness() -> (Harness, tempfile::TempDir) {
     let mut draft = auditorylab::editing::Draft::new().unwrap();
     draft.set_duration_seconds(0.01);
     draft.set_fade_seconds(0.0);
-    let h = Harness::with_catalog(vec![draft.snapshot()], Capabilities::available());
+    let h = Harness::with_catalog(vec![draft.snapshot().unwrap()], Capabilities::available());
     // This is a real temporary input in the one persistent workspace query path.
     h.ui().invoke_collection_filter(3, 0);
     h.wait_for_files();
@@ -1218,7 +1218,12 @@ fn library_play_command_obeys_export_prompt_pending_and_capability_refusals() {
 #[test]
 fn library_play_command_obeys_unavailable_playback_capability() {
     let h = Harness::with_catalog(
-        vec![auditorylab::editing::Draft::new().unwrap().snapshot()],
+        vec![
+            auditorylab::editing::Draft::new()
+                .unwrap()
+                .snapshot()
+                .unwrap(),
+        ],
         Capabilities::no_device_playback(),
     );
     h.ui().invoke_collection_filter(3, 0);
@@ -1528,7 +1533,11 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
 
 #[test]
 fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
-    let mut recipe = auditorylab::editing::Draft::new().unwrap().recipe();
+    let mut recipe = auditorylab::editing::Draft::new()
+        .unwrap()
+        .recipe()
+        .unwrap()
+        .into_builder();
     recipe.sound.components = vec![
         auditorylab::core::Component {
             id: auditorylab::core::ComponentId::new(u32::MAX).unwrap(),
@@ -1548,7 +1557,7 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
     ];
     let snapshot = auditorylab::recipe::RecipeSnapshot::new(
         auditorylab::recipe::Origin::Stream("large owners".into()),
-        recipe,
+        recipe.build().unwrap(),
     );
     let h = Harness::with_catalog(vec![snapshot], Capabilities::no_device_playback());
     h.ui().invoke_collection_filter(3, 0);
@@ -1883,7 +1892,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     let file = temp.path().join("external.toml");
     let mut draft = auditorylab::editing::Draft::new().unwrap();
     draft.set_title("External original".into());
-    let original = draft.recipe();
+    let original = draft.recipe().unwrap();
     std::fs::write(&file, original.to_toml().unwrap()).unwrap();
     let initial_bytes = std::fs::read(&file).unwrap();
     let h = Harness::with_workspace(
@@ -1926,8 +1935,8 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     assert!(ui.get_draft_location().starts_with("External file"));
     assert_eq!(
         h.adapter
-            .inspect(|w| w.editor().draft().recipe().document.id),
-        original.document.id
+            .inspect(|w| w.editor().draft().recipe().unwrap().document().id),
+        original.document().id
     );
     ui.invoke_commit_metadata(
         ui.get_document(),
@@ -1951,9 +1960,10 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     let mut other = auditorylab::recipe::load_file(&file)
         .unwrap()
         .recipe()
-        .clone();
+        .clone()
+        .into_builder();
     other.description.as_mut().unwrap().title = "Other application".into();
-    std::fs::write(&file, other.to_toml().unwrap()).unwrap();
+    std::fs::write(&file, other.build().unwrap().to_toml().unwrap()).unwrap();
     ui.invoke_commit_metadata(
         ui.get_document(),
         MetadataKey::Title,
@@ -1972,8 +1982,8 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     assert!(!ui.get_dirty());
     assert_ne!(
         h.adapter
-            .inspect(|w| w.editor().draft().recipe().document.id),
-        original.document.id
+            .inspect(|w| w.editor().draft().recipe().unwrap().document().id),
+        original.document().id
     );
     assert_eq!(
         store
@@ -2000,7 +2010,7 @@ fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_co
     draft.set_title(raw.into());
     let record = store
         .apply(
-            auditorylab::library::Mutation::Add(std::sync::Arc::new(draft.recipe())),
+            auditorylab::library::Mutation::Add(std::sync::Arc::new(draft.recipe().unwrap())),
             &auditorylab::workflow::Cancel::default(),
         )
         .unwrap()
@@ -2035,7 +2045,7 @@ fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_co
             .unwrap()
             .snapshot
             .recipe()
-            .description
+            .description()
             .as_ref()
             .unwrap()
             .title,
@@ -2477,14 +2487,14 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
         &auditorylab::recipe::builtin("ioannou-2015-binaural-2-hz").unwrap(),
     )
     .unwrap();
-    let mut recipe = draft.recipe();
+    let mut recipe = draft.recipe().unwrap().into_builder();
     let created = "2026-10-25T00:30:00.123456789Z".parse().unwrap();
     recipe.document.created_at = Some(created);
     recipe.document.modified_at = None;
     let id = recipe.document.id;
     store
         .apply(
-            Mutation::Add(std::sync::Arc::new(recipe)),
+            Mutation::Add(std::sync::Arc::new(recipe.build().unwrap())),
             &auditorylab::workflow::Cancel::default(),
         )
         .unwrap();

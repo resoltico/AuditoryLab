@@ -571,7 +571,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                     let recipe = if as_copy {
                         let mut copy = lab::editing::Draft::from_snapshot(&snapshot)?;
                         copy.set_title(snapshot.title());
-                        copy.recipe()
+                        copy.recipe()?
                     } else {
                         snapshot.recipe().clone()
                     };

@@ -6,7 +6,7 @@ fn fixture() -> (tempfile::TempDir, PathBuf, RecipeSnapshot) {
     fs::create_dir_all(&base).unwrap();
     let temp = tempfile::tempdir_in(base).unwrap();
     let path = temp.path().join("recipe.toml");
-    let recipe = Draft::new().unwrap().recipe();
+    let recipe = Draft::new().unwrap().recipe().unwrap();
     fs::write(
         &path,
         format!("# retained formatting\n{}", recipe.to_toml().unwrap()),
@@ -29,20 +29,27 @@ fn unchanged_save_preserves_exact_bytes_and_changed_save_keeps_identity_and_crea
         .unwrap();
     assert_eq!(same.status, MutationStatus::Unchanged);
     assert_eq!(fs::read(&path).unwrap(), original);
-    let mut recipe = snapshot.recipe().clone();
+    let mut recipe = snapshot.recipe().clone().into_builder();
     recipe.description = Some(crate::core::Description {
         title: "Edited external".into(),
         notes: Some("own notes".into()),
     });
     let outcome = ExternalWriter
-        .save(expected, Arc::new(recipe), &Cancel::default())
+        .save(
+            expected,
+            Arc::new(recipe.build().unwrap()),
+            &Cancel::default(),
+        )
         .unwrap();
-    assert_eq!(outcome.recipe.document.id, snapshot.recipe().document.id);
     assert_eq!(
-        outcome.recipe.document.created_at,
-        snapshot.recipe().document.created_at
+        outcome.recipe.document().id,
+        snapshot.recipe().document().id
     );
-    assert!(outcome.recipe.document.modified_at.is_some());
+    assert_eq!(
+        outcome.recipe.document().created_at,
+        snapshot.recipe().document().created_at
+    );
+    assert!(outcome.recipe.document().modified_at.is_some());
     assert_eq!(outcome.snapshot().title(), "Edited external");
     assert_eq!(load_file(&path).unwrap().recipe(), outcome.recipe.as_ref());
     assert!(!fs::read_dir(temp.path()).unwrap().any(|entry| {
@@ -87,11 +94,15 @@ fn history_change_and_cancel_are_refused_without_a_stage_or_file_replacement() {
     let (temp, path, snapshot) = fixture();
     let expected = snapshot.external_file().unwrap();
     let before = fs::read(&path).unwrap();
-    let mut changed = snapshot.recipe().clone();
+    let mut changed = snapshot.recipe().clone().into_builder();
     changed.document.created_at = Some("2020-01-01T00:00:00Z".parse().unwrap());
     assert_eq!(
         ExternalWriter
-            .save(expected, Arc::new(changed), &Cancel::default())
+            .save(
+                expected,
+                Arc::new(changed.build().unwrap()),
+                &Cancel::default()
+            )
             .unwrap_err()
             .kind(),
         ErrorKind::HistoryConflict

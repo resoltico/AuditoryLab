@@ -253,7 +253,7 @@ fn public_cli_renders_shared_rhythms_and_rejects_pair_neighbors() {
             "interaural",
         ),
     ] {
-        let mut recipe = common::silent(1.0, 0.0);
+        let mut recipe = common::silent(1.0, 0.0).into_builder();
         recipe.sound.components = voices
             .into_iter()
             .enumerate()
@@ -262,7 +262,7 @@ fn public_cli_renders_shared_rhythms_and_rejects_pair_neighbors() {
                 form: ComponentForm::Voice(voice),
             })
             .collect();
-        fs::write(&file, recipe.to_toml().unwrap()).unwrap();
+        fs::write(&file, recipe.build().unwrap().to_toml().unwrap()).unwrap();
         for command in ["describe", "inspect"] {
             let out = cli(&[command, "--file", file.to_str().unwrap()]);
             assert!(out.status.success(), "{:?}", out);
@@ -275,7 +275,7 @@ fn public_cli_renders_shared_rhythms_and_rejects_pair_neighbors() {
 fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realized_widths() {
     let dir = dir();
     let path = dir.path().join("pulse.toml");
-    let mut recipe = common::silent(0.05, 0.0);
+    let mut recipe = common::silent(0.05, 0.0).into_builder();
     recipe.sound.components.push(auditorylab::core::Component {
         id: auditorylab::core::ComponentId::new(1).unwrap(),
         form: auditorylab::core::ComponentForm::Voice(auditorylab::core::Voice {
@@ -288,7 +288,7 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
             modulation: None,
         }),
     });
-    fs::write(&path, recipe.to_toml().unwrap()).unwrap();
+    fs::write(&path, recipe.build().unwrap().to_toml().unwrap()).unwrap();
     let out = cli(&[
         "inspect",
         "--file",
@@ -330,11 +330,13 @@ fn unicode_notes_roundtrip_and_terminal_controls_are_escaped_at_display_boundary
     let path = dir.path().join("notes.toml");
     let mut recipe =
         auditorylab::core::Recipe::parse(std::str::from_utf8(silence().as_bytes()).unwrap())
-            .unwrap();
+            .unwrap()
+            .into_builder();
     recipe.description = Some(auditorylab::core::Description {
         title: "Rīga \"🎧\"".into(),
         notes: Some("Line one\nLine two \u{1b}[31m \u{202e}reverse".into()),
     });
+    let recipe = recipe.build().unwrap();
     let text = recipe.to_toml().unwrap();
     fs::write(&path, &text).unwrap();
     assert_eq!(auditorylab::core::Recipe::parse(&text).unwrap(), recipe);

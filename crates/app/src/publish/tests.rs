@@ -235,10 +235,13 @@ fn process_child() {
         .parse()
         .unwrap();
     if mode == "create" {
-        let mut recipe = Draft::new().unwrap().recipe();
+        let mut recipe = Draft::new().unwrap().recipe().unwrap().into_builder();
         recipe.document.id = id;
         store
-            .apply(Mutation::Create(Arc::new(recipe)), &Cancel::default())
+            .apply(
+                Mutation::Create(Arc::new(recipe.build().unwrap())),
+                &Cancel::default(),
+            )
             .unwrap();
         return;
     }
@@ -258,12 +261,12 @@ fn process_child() {
             confirmed: true,
         },
         _ => {
-            let mut recipe = record.snapshot.recipe().clone();
+            let mut recipe = record.snapshot.recipe().clone().into_builder();
             recipe.description.as_mut().unwrap().title = "Complete candidate".into();
             Mutation::Update {
                 key: record.key,
                 expect: Some(record.version_token),
-                recipe: Arc::new(recipe),
+                recipe: Arc::new(recipe.build().unwrap()),
             }
         }
     };
@@ -325,7 +328,7 @@ fn store_fixture() -> (
     let record = store
         .apply(
             crate::library::Mutation::Create(Arc::new(
-                crate::editing::Draft::new().unwrap().recipe(),
+                crate::editing::Draft::new().unwrap().recipe().unwrap(),
             )),
             &Cancel::default(),
         )
@@ -342,7 +345,7 @@ fn killed_recipe_writers_leave_old_or_complete_bytes_and_no_stage_is_promoted() 
         let ready = temp.path().join("ready");
         let mut process = child(
             store.root().path(),
-            &record.snapshot.recipe().document.id.to_string(),
+            &record.snapshot.recipe().document().id.to_string(),
             "update",
             phase,
             &ready,
@@ -416,7 +419,7 @@ fn killed_moves_preserve_content_and_recognize_only_same_inode_duplicates() {
             let ready = temp.path().join("ready");
             let mut process = child(
                 store.root().path(),
-                &record.snapshot.recipe().document.id.to_string(),
+                &record.snapshot.recipe().document().id.to_string(),
                 mode,
                 phase,
                 &ready,
@@ -439,13 +442,13 @@ fn killed_moves_preserve_content_and_recognize_only_same_inode_duplicates() {
                     &Cancel::default(),
                 )
                 .unwrap();
-            let name = format!("{}.toml", record.snapshot.recipe().document.id);
+            let name = format!("{}.toml", record.snapshot.recipe().document().id);
             assert!(!store.root().path().join("recipes").join(&name).exists());
             assert!(store.root().path().join("trash").join(name).exists());
         }
     }
     let (_temp, store, record) = store_fixture();
-    let name = format!("{}.toml", record.snapshot.recipe().document.id);
+    let name = format!("{}.toml", record.snapshot.recipe().document().id);
     fs::write(
         store.root().path().join("trash").join(&name),
         record.recipe_toml.as_bytes(),
@@ -509,7 +512,7 @@ fn killed_purge_never_recreates_the_removed_identity() {
     let ready = temp.path().join("ready");
     let mut process = child(
         store.root().path(),
-        &record.snapshot.recipe().document.id.to_string(),
+        &record.snapshot.recipe().document().id.to_string(),
         "purge",
         "after-remove",
         &ready,
@@ -542,7 +545,9 @@ fn failed_membership_write_is_saved_with_unknown_new_dates() {
     AFTER_PUBLISH.with(|slot| *slot.borrow_mut() = Some(Box::new(|| inject(&[FaultPoint::Write]))));
     let result = store
         .apply(
-            Mutation::Create(Arc::new(crate::editing::Draft::new().unwrap().recipe())),
+            Mutation::Create(Arc::new(
+                crate::editing::Draft::new().unwrap().recipe().unwrap(),
+            )),
             &Cancel::default(),
         )
         .unwrap();
@@ -556,7 +561,7 @@ fn failed_membership_write_is_saved_with_unknown_new_dates() {
     let record = result.record.unwrap();
     assert_eq!(record.added_at, None);
     assert_eq!(store.load(&record.key).unwrap().added_at, None);
-    assert!(record.snapshot.recipe().document.created_at.is_some());
+    assert!(record.snapshot.recipe().document().created_at.is_some());
 }
 
 #[test]

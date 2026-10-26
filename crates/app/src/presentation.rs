@@ -423,7 +423,7 @@ fn structure_description(structure: &Structure) -> String {
 }
 
 fn document_notes(snapshot: &RecipeSnapshot) -> String {
-    let document = &snapshot.recipe().document;
+    let document = &snapshot.recipe().document();
     let mut text = format!(
         "Document: {}\nCreated (declared): {}\nEdited (declared): {}\n",
         document.id,
@@ -441,10 +441,10 @@ fn document_notes(snapshot: &RecipeSnapshot) -> String {
     {
         text.push_str(&format!("Sound notes: {notes}\n"));
     }
-    for ancestor in &snapshot.recipe().lineage {
+    for ancestor in snapshot.recipe().lineage() {
         text.push_str(&format!("Based on: {}\nAncestor note: {}\nResearch findings describe the ancestor, not this sound.\n",ancestor.title,ancestor.note));
     }
-    for source in &snapshot.recipe().sources {
+    for source in snapshot.recipe().sources() {
         text.push_str(&format!(
             "Source {}: {}\nSource citation: {}\n",
             source.key, source.label, source.citation
@@ -456,7 +456,7 @@ fn document_notes(snapshot: &RecipeSnapshot) -> String {
             text.push_str(&format!("Source DOI: {doi}\n"));
         }
     }
-    for evidence in &snapshot.recipe().evidence {
+    for evidence in snapshot.recipe().evidence() {
         if let Some(detail) = &evidence.population_detail {
             text.push_str(&format!("Population detail: {detail}\n"));
         }

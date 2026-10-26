@@ -319,7 +319,7 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                     created_at: None,
                     modified_at: None,
                 };
-                let mut recipe = Recipe::silent(document);
+                let mut recipe = Recipe::builder(document);
                 recipe.description = Some(Description {
                     title: format!("Title {title}"),
                     notes: Some("quote \" slash \\ newline\n é 🎧".into()),
@@ -352,6 +352,7 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                         },
                     }],
                 };
+                let recipe = recipe.build().unwrap();
                 let back = Recipe::parse(&recipe.to_toml().unwrap()).unwrap();
                 let bits = |recipe: &Recipe| {
                     let s = &recipe.sound;
@@ -413,7 +414,7 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
         "../../tests/fixtures/recipes/custom-derived-pair.toml"
     ))
     .unwrap();
-    let mut sources = original.clone();
+    let mut sources = original.clone().into_builder();
     sources.sources = (0..16)
         .map(|i| {
             let mut source = original.sources[0].clone();
@@ -423,23 +424,59 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
         .collect();
     sources.evidence[0].source = "source-0".into();
     sources.lineage[0].source_keys = vec!["source-0".into()];
-    assert!(sources.to_toml().is_ok());
+    assert!(
+        sources
+            .clone()
+            .build()
+            .and_then(|recipe| recipe.to_toml())
+            .is_ok()
+    );
     let mut extra = original.sources[0].clone();
     extra.key = "source-16".into();
     sources.sources.push(extra);
-    assert!(sources.to_toml().is_err());
+    assert!(
+        sources
+            .clone()
+            .build()
+            .and_then(|recipe| recipe.to_toml())
+            .is_err()
+    );
     assert_eq!(sources.sources.len(), 17);
-    let mut evidence = original.clone();
+    let mut evidence = original.clone().into_builder();
     evidence.evidence = vec![original.evidence[0].clone(); 32];
-    assert!(evidence.to_toml().is_ok());
+    assert!(
+        evidence
+            .clone()
+            .build()
+            .and_then(|recipe| recipe.to_toml())
+            .is_ok()
+    );
     evidence.evidence.push(original.evidence[0].clone());
-    assert!(evidence.to_toml().is_err());
+    assert!(
+        evidence
+            .clone()
+            .build()
+            .and_then(|recipe| recipe.to_toml())
+            .is_err()
+    );
     assert_eq!(evidence.evidence.len(), 33);
-    let mut lineage = original.clone();
+    let mut lineage = original.clone().into_builder();
     lineage.lineage = vec![original.lineage[0].clone(); 16];
-    assert!(lineage.to_toml().is_ok());
+    assert!(
+        lineage
+            .clone()
+            .build()
+            .and_then(|recipe| recipe.to_toml())
+            .is_ok()
+    );
     lineage.lineage.push(original.lineage[0].clone());
-    assert!(lineage.to_toml().is_err());
+    assert!(
+        lineage
+            .clone()
+            .build()
+            .and_then(|recipe| recipe.to_toml())
+            .is_err()
+    );
     assert_eq!(lineage.lineage.len(), 17);
 }
 
@@ -476,4 +513,25 @@ fn canonical_tables_follow_document_description_sound_and_attribution_order() {
             "[[lineage]]"
         ]
     );
+}
+
+#[test]
+fn the_builder_separates_portable_contracts_from_acoustic_validity() {
+    let original = Recipe::parse(PAIR).unwrap();
+    let mut builder = original.clone().into_builder();
+    builder.sound.duration_seconds = -1.0;
+    let finite = builder.clone().build().unwrap();
+    assert!(finite.to_toml().is_ok());
+    assert!(finite.sound().signal(crate::SampleRate::DEFAULT).is_err());
+    builder.sound.duration_seconds = f64::NAN;
+    assert!(matches!(builder.build(), Err(RecipeError::Contract(_))));
+    let mut builder = original.clone().into_builder();
+    builder.description = Some(Description {
+        title: " ".into(),
+        notes: None,
+    });
+    assert!(matches!(builder.build(), Err(RecipeError::Contract(_))));
+    let mut builder = original.into_builder();
+    builder.sound.components.push(builder.sound.components[0]);
+    assert!(matches!(builder.build(), Err(RecipeError::Contract(_))));
 }

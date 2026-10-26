@@ -158,10 +158,13 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
 }
 
 fn short_catalog_session(name: &str) -> Signal {
-    let mut recipe = Recipe::parse(catalog::find(name).unwrap().text).unwrap();
-    recipe.sound.duration_seconds = 0.125;
-    recipe.sound.fade_seconds = 0.01;
-    recipe.sound.signal(rate()).unwrap()
+    let mut sound = Recipe::parse(catalog::find(name).unwrap().text)
+        .unwrap()
+        .sound()
+        .clone();
+    sound.duration_seconds = 0.125;
+    sound.fade_seconds = 0.01;
+    sound.signal(rate()).unwrap()
 }
 
 fn edge_gain(frame: u32) -> f64 {

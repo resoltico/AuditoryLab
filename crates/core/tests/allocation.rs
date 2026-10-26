@@ -13,7 +13,7 @@ use std::hint::black_box;
 fn rendering_any_catalog_entry_allocates_nothing() {
     for entry in catalog::ENTRIES {
         for hz in [44_100, 48_000] {
-            let mut sound = Recipe::parse(entry.text).unwrap().sound;
+            let mut sound = Recipe::parse(entry.text).unwrap().sound().clone();
             sound.duration_seconds = 0.5;
             let signal = sound.signal(SampleRate::new(hz).unwrap()).unwrap();
             let mut buffers = [

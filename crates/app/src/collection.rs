@@ -81,12 +81,12 @@ impl EntrySummary {
                 (Some(added), trashed, Some(token))
             });
         let evidence = recipe
-            .evidence
+            .evidence()
             .iter()
             .map(|e| EvidenceFacet {
                 source: e.source.clone(),
                 doi: recipe
-                    .sources
+                    .sources()
                     .iter()
                     .find(|s| s.key == e.source)
                     .and_then(|s| s.doi.clone()),
@@ -98,18 +98,18 @@ impl EntrySummary {
             .collect();
         Self {
             key,
-            document_id: recipe.document.id,
+            document_id: recipe.document().id,
             normalized_title: query::normalize(&title),
             title,
-            created_at: recipe.document.created_at,
-            modified_at: recipe.document.modified_at,
+            created_at: recipe.document().created_at,
+            modified_at: recipe.document().modified_at,
             added_at,
             trashed_at,
             trashed: trashed_at.is_some(),
             version_token,
             nominal: snapshot.nominal().clone(),
             evidence,
-            duration_seconds: recipe.sound.duration_seconds,
+            duration_seconds: recipe.sound().duration_seconds,
             search: SearchIndex::from_snapshot(snapshot),
         }
     }

@@ -246,7 +246,7 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
 fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     let mut editor = editor_with(&[tone(440.0), tone(550.0), tone(660.0)]);
     let document = editor.document();
-    editor.record_saved(document, &editor.draft().recipe());
+    editor.record_saved(document, &editor.draft().recipe().unwrap());
     let middle = editor.draft().components()[1].id;
     let frequency = field(&editor, 1, ParameterId::ToneFrequency);
     let other = field(&editor, 0, ParameterId::ToneFrequency);
@@ -378,7 +378,7 @@ fn stale_document_handles_are_rejected_everywhere() {
         Err(EditRefusal::StaleDocument)
     );
     assert!(!replacement.has_staged());
-    assert!(!replacement.record_saved(old_document, &Draft::new().unwrap().recipe()));
+    assert!(!replacement.record_saved(old_document, &Draft::new().unwrap().recipe().unwrap()));
     assert!(old.stage(handle, "1").is_ok());
 }
 
@@ -388,7 +388,7 @@ fn saved_baselines_compare_content_and_belong_to_one_document() {
     assert!(!editor.dirty(), "an untouched blank document is clean");
     let title = metadata(&editor, MetadataField::Title);
     editor.commit_field(title, "A").unwrap().unwrap();
-    let saved_a = editor.draft().recipe();
+    let saved_a = editor.draft().recipe().unwrap();
     editor.commit_field(title, "B").unwrap().unwrap();
     assert!(editor.record_saved(editor.document(), &saved_a));
     assert!(editor.dirty(), "newer edits stay dirty after saving A");
@@ -499,7 +499,7 @@ fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids()
             .collect::<Vec<_>>(),
         recipe_ids
     );
-    let about = d.recipe().display_about().unwrap();
+    let about = d.recipe().unwrap().display_about().unwrap();
     assert_eq!(about.summary, snapshot.about().unwrap().summary);
     assert!(about.research.is_none());
 }
@@ -513,26 +513,34 @@ fn save_round_trips_and_keeps_existing_destinations() {
     let mut d = Draft::new().unwrap();
     d.add(CarrierKind::Clicks).unwrap();
     d.set_title("Quotes \" 🎧".into());
-    save_content(&d.recipe(), &path, crate::workflow::Replace::Never).unwrap();
+    save_content(&d.recipe().unwrap(), &path, crate::workflow::Replace::Never).unwrap();
     let bytes = std::fs::read(&path).unwrap();
     let loaded = crate::recipe::load_file(&path).unwrap();
     assert_eq!(loaded.sound(), &d.sound());
     assert_eq!(
-        save_content(&d.recipe(), &path, crate::workflow::Replace::Never)
+        save_content(&d.recipe().unwrap(), &path, crate::workflow::Replace::Never)
             .unwrap_err()
             .kind(),
         ErrorKind::DestinationExists
     );
     d.set_title("🎧".repeat(Recipe::MAX_BYTES));
     assert_eq!(
-        save_content(&d.recipe(), &path, crate::workflow::Replace::Allowed)
-            .unwrap_err()
-            .kind(),
+        save_content(
+            &d.recipe().unwrap(),
+            &path,
+            crate::workflow::Replace::Allowed
+        )
+        .unwrap_err()
+        .kind(),
         ErrorKind::InvalidRecipe
     );
     d.set_title("Small".into());
     d.set_duration_seconds(f64::NAN);
-    assert!(save_content(&d.recipe(), &path, crate::workflow::Replace::Allowed).is_err());
+    assert!(
+        d.recipe()
+            .and_then(|recipe| save_content(&recipe, &path, crate::workflow::Replace::Allowed))
+            .is_err()
+    );
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
 }
 
@@ -547,12 +555,12 @@ fn derivatives_reopen_with_full_scoped_graph_and_bounded_flat_ancestry() {
     for expected in 1..=16 {
         let reopened = crate::recipe::load_reader(bytes.as_bytes(), "reopened elsewhere").unwrap();
         assert!(reopened.about().unwrap().research.is_none());
-        assert_eq!(reopened.recipe().sources, original.sources);
-        assert_eq!(reopened.recipe().lineage.len(), expected);
+        assert_eq!(reopened.recipe().sources(), original.sources());
+        assert_eq!(reopened.recipe().lineage().len(), expected);
         assert!(
             reopened
                 .recipe()
-                .evidence
+                .evidence()
                 .iter()
                 .all(|e| e.scope == auditorylab_core::EvidenceScope::Ancestor)
         );
@@ -585,26 +593,41 @@ fn the_entire_document_including_unicode_anchor_has_exact_byte_neighbours() {
     .unwrap();
     let path = dir.path().join("existing.toml");
     std::fs::write(&path, b"unchanged").unwrap();
-    assert!(save_content(&draft.recipe(), &path, crate::workflow::Replace::Allowed).is_err());
+    assert!(
+        save_content(
+            &draft.recipe().unwrap(),
+            &path,
+            crate::workflow::Replace::Allowed
+        )
+        .is_err()
+    );
     assert_eq!(std::fs::read(&path).unwrap(), b"unchanged");
     let absent = dir.path().join("absent.toml");
-    assert!(save_content(&draft.recipe(), &absent, crate::workflow::Replace::Never).is_err());
+    assert!(
+        save_content(
+            &draft.recipe().unwrap(),
+            &absent,
+            crate::workflow::Replace::Never
+        )
+        .is_err()
+    );
     assert!(!absent.exists());
 }
 
 #[test]
 fn finite_invalid_current_content_saves_and_nonfinite_content_never_touches_a_destination() {
-    let mut recipe = Draft::new().unwrap().recipe();
-    recipe.sound.duration_seconds = -1.0;
-    recipe.sound.fade_seconds = 9.0;
+    let mut builder = Draft::new().unwrap().recipe().unwrap().into_builder();
+    builder.sound.duration_seconds = -1.0;
+    builder.sound.fade_seconds = 9.0;
+    let recipe = builder.clone().build().unwrap();
     let text = serialize(&recipe).unwrap();
     assert_eq!(Recipe::parse(&text).unwrap(), recipe);
-    recipe.sound.duration_seconds = f64::NAN;
-    assert!(serialize(&recipe).is_err());
+    builder.sound.duration_seconds = f64::NAN;
+    assert!(builder.build().is_err());
     let mut editor = EditorSession::new(Draft::from_recipe(Recipe::parse(&text).unwrap())).unwrap();
     assert!(editor.save_readiness().is_ok());
     let document = editor.document();
-    let saved = editor.draft().recipe();
+    let saved = editor.draft().recipe().unwrap();
     assert!(editor.record_saved(document, &saved));
     assert!(!editor.dirty());
 }
@@ -640,7 +663,7 @@ fn nominal_cache_and_saved_memberships_follow_distinct_committed_snapshots() {
     };
     let mut editor = editor_with(&[c]);
     let first = editor.nominal();
-    let saved = editor.draft().recipe();
+    let saved = editor.draft().recipe().unwrap();
     let rate = field(&editor, 0, ParameterId::ClickRate);
     editor.stage(rate, "bad").unwrap();
     assert!(Arc::ptr_eq(&first, &editor.nominal()));
@@ -667,18 +690,18 @@ fn committed_sound_edits_never_repromote_evidence_by_merely_retuning_back() {
     let title = metadata(&editor, MetadataField::Title);
     editor.commit_field(title, "My title").unwrap().unwrap();
     assert_eq!(
-        editor.draft().recipe().evidence[0].scope,
+        editor.draft().recipe().unwrap().evidence()[0].scope,
         crate::core::EvidenceScope::ReferenceCondition
     );
     let offset = field(&editor, 0, ParameterId::PairOffset);
     editor.commit_field(offset, "6").unwrap().unwrap();
     assert_eq!(
-        editor.draft().recipe().evidence[0].scope,
+        editor.draft().recipe().unwrap().evidence()[0].scope,
         crate::core::EvidenceScope::Ancestor
     );
     editor.commit_field(offset, "2").unwrap().unwrap();
     assert_eq!(
-        editor.draft().recipe().evidence[0].scope,
+        editor.draft().recipe().unwrap().evidence()[0].scope,
         crate::core::EvidenceScope::Ancestor
     );
 }
@@ -694,7 +717,7 @@ fn complete_remove_undo_restores_full_metadata_but_partial_or_published_undo_can
             .remove_component(editor.component_key(id).unwrap())
             .unwrap();
         assert_eq!(
-            editor.draft().recipe().evidence[0].scope,
+            editor.draft().recipe().unwrap().evidence()[0].scope,
             crate::core::EvidenceScope::Ancestor
         );
         if intervening == 1 {
@@ -702,12 +725,12 @@ fn complete_remove_undo_restores_full_metadata_but_partial_or_published_undo_can
             editor.commit_field(notes, "later note").unwrap().unwrap();
         }
         if intervening == 2 {
-            let published = editor.draft().recipe();
+            let published = editor.draft().recipe().unwrap();
             editor.record_saved(doc, &published);
         }
         editor.restore_removed(editor.document_key()).unwrap();
         assert_eq!(
-            editor.draft().recipe().evidence[0].scope,
+            editor.draft().recipe().unwrap().evidence()[0].scope,
             if intervening == 0 {
                 crate::core::EvidenceScope::ReferenceCondition
             } else {
@@ -726,15 +749,19 @@ fn complete_remove_undo_restores_full_metadata_but_partial_or_published_undo_can
 fn publication_history_updates_the_same_draft_without_reusing_a_stale_candidate_cache() {
     let mut editor = EditorSession::new(Draft::new().unwrap()).unwrap();
     let before = editor.candidate();
-    let mut published = before.draft().recipe();
+    let mut published = before.draft().recipe().unwrap().into_builder();
     published.document.created_at = Some("2026-10-24T09:00:00Z".parse().unwrap());
     published.document.modified_at = published.document.created_at;
     let title = metadata(&editor, MetadataField::Title);
     editor.commit_field(title, "Later title").unwrap().unwrap();
+    let published = published.build().unwrap();
     assert!(editor.record_saved(editor.document(), &published));
     assert!(editor.dirty());
     let after = editor.candidate();
-    assert_eq!(after.draft().recipe().document, published.document);
+    assert_eq!(
+        after.draft().recipe().unwrap().document(),
+        published.document()
+    );
     assert_eq!(after.draft().title(), "Later title");
     assert_ne!(after.draft().title(), before.draft().title());
 }
@@ -898,12 +925,18 @@ fn row_generation_storage_is_bounded_and_exhaustion_never_wraps_or_drops_undo() 
     }
     editor.row_generations.insert(id, u64::MAX);
     let key = editor.component_key(id).unwrap();
-    let before = editor.draft().recipe();
+    let before = editor.draft().recipe().unwrap();
     assert_eq!(
         editor.remove_component(key),
         Err(EditRefusal::IdentitiesExhausted)
     );
-    assert!(editor.draft().recipe().same_editable_content(&before));
+    assert!(
+        editor
+            .draft()
+            .recipe()
+            .unwrap()
+            .same_editable_content(&before)
+    );
     assert!(editor.removed().is_none());
     editor.row_generations.insert(id, u64::MAX - 1);
     editor
@@ -922,24 +955,19 @@ fn row_generation_storage_is_bounded_and_exhaustion_never_wraps_or_drops_undo() 
 fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_acoustics() {
     let mut draft = Draft::new().unwrap();
     draft.add(CarrierKind::Tone).unwrap();
-    let recipe = draft.recipe();
+    let recipe = draft.recipe().unwrap();
     assert!(ComponentId::new(0).is_none());
-    let mut duplicate = recipe.clone();
+    let mut duplicate = recipe.clone().into_builder();
     duplicate
         .sound
         .components
         .push(duplicate.sound.components[0]);
-    assert_eq!(
-        EditorSession::new(Draft::from_recipe(duplicate))
-            .unwrap_err()
-            .kind(),
-        ErrorKind::InvalidRecipe
-    );
-    let mut acoustic = recipe;
+    assert!(duplicate.build().is_err());
+    let mut acoustic = recipe.into_builder();
     acoustic.sound.components[0]
         .form
         .write(ParameterId::ToneFrequency, -1.0);
-    let editor = EditorSession::new(Draft::from_recipe(acoustic)).unwrap();
+    let editor = EditorSession::new(Draft::from_recipe(acoustic.build().unwrap())).unwrap();
     assert!(editor.component_key(ComponentId::new(1).unwrap()).is_some());
     assert!(
         editor

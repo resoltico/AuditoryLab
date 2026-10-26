@@ -3,19 +3,25 @@ use super::*;
 
 pub(super) enum PreparedExport {
     Library(Rendition, String),
-    Draft(
-        Arc<crate::editing::Candidate>,
-        Arc<auditorylab_core::Signal>,
-        String,
-    ),
+    Draft {
+        origin: crate::recipe::Origin,
+        recipe: Recipe,
+        signal: Arc<auditorylab_core::Signal>,
+        name: String,
+    },
 }
 
 impl PreparedExport {
     pub(super) fn capture(self) -> (Rendition, String) {
         match self {
             Self::Library(sound, name) => (sound, name),
-            Self::Draft(draft, signal, name) => (
-                Rendition::from_parts(draft.draft().snapshot(), signal),
+            Self::Draft {
+                origin,
+                recipe,
+                signal,
+                name,
+            } => (
+                Rendition::from_parts(RecipeSnapshot::new(origin, recipe), signal),
                 name,
             ),
         }
@@ -29,21 +35,7 @@ impl Workspace {
     }
 
     pub(super) fn copy_content_admission(snapshot: &RecipeSnapshot) -> Result<(), Refusal> {
-        let count = snapshot.sound().components.len();
-        if count > Sound::MAX_COMPONENTS {
-            return Err(Refusal::TooManyComponents(count));
-        }
-        if let Some((component, parameter)) = snapshot.sound().nonfinite().next() {
-            return Err(Refusal::NonfiniteContent {
-                component,
-                parameter,
-            });
-        }
-        snapshot
-            .recipe()
-            .validate()
-            .map_err(|e| Refusal::Document(e.to_string()))?;
-        if snapshot.recipe().lineage.len() >= auditorylab_core::provenance::MAX_LINEAGE {
+        if snapshot.recipe().lineage().len() >= auditorylab_core::provenance::MAX_LINEAGE {
             return Err(Refusal::Document(
                 "Lineage capacity reached; review metadata before making a copy.".into(),
             ));
@@ -83,7 +75,13 @@ impl Workspace {
                 SaveRefusal::Input(problems) => Refusal::Input(problems),
                 SaveRefusal::Document(message) => Refusal::Document(message),
             })?;
-        Ok(Arc::new(self.editor.session.candidate().draft().recipe()))
+        self.editor
+            .session
+            .candidate()
+            .draft()
+            .recipe()
+            .map(Arc::new)
+            .map_err(|error| Refusal::Document(error.to_string()))
     }
 
     pub(super) fn prepare_export(&mut self) -> Result<PreparedExport, Refusal> {
@@ -118,7 +116,15 @@ impl Workspace {
                     error: analysis.finite_error().cloned(),
                 })?;
                 let name = file_name(candidate.draft().title(), "wav");
-                Ok(PreparedExport::Draft(candidate, signal, name))
+                Ok(PreparedExport::Draft {
+                    origin: crate::recipe::Origin::Draft(candidate.draft().title().into()),
+                    recipe: candidate
+                        .draft()
+                        .recipe()
+                        .map_err(|error| Refusal::Document(error.to_string()))?,
+                    signal,
+                    name,
+                })
             }
         }
     }

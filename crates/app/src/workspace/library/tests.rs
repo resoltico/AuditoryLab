@@ -183,7 +183,7 @@ fn save_publishes_captured_history_and_keeps_later_draft_and_filters() {
     w.new_document();
     title(&mut w, "captured");
     // Capture before a later edit; the real worker publishes only this Arc.
-    let content = Arc::new(w.editor.session.draft().recipe());
+    let content = Arc::new(w.editor.session.draft().recipe().unwrap());
     w.start_managed_save(w.editor.session.document(), content)
         .unwrap();
     title(&mut w, "later");
@@ -243,7 +243,8 @@ fn two_editors_conflict_even_for_noop_and_refresh_preserves_draft() {
             .session
             .draft()
             .recipe()
-            .document
+            .unwrap()
+            .document()
             .created_at
             .is_some()
     );
@@ -334,7 +335,7 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
             .root()
             .path()
             .join("recipes")
-            .join(format!("{}.toml", record.snapshot.recipe().document.id)),
+            .join(format!("{}.toml", record.snapshot.recipe().document().id)),
         b"broken",
     )
     .unwrap();
@@ -470,7 +471,7 @@ fn retained_user_source_is_captured_temporary_content_not_a_fresh_user_selection
     user(&mut w);
     let original = w.selected().unwrap().clone();
     w.copy_selected();
-    let key: LibraryKey = format!("user:{}", original.recipe().document.id)
+    let key: LibraryKey = format!("user:{}", original.recipe().document().id)
         .parse()
         .unwrap();
     let record = store.load(&key).unwrap();
@@ -599,7 +600,7 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
         let result = workspace.accept_managed_outcome(None, outcome);
         let retained = workspace.editor().document();
         let replacement = if invalid_editor {
-            let mut recipe = workspace.editor().draft().recipe();
+            let mut recipe = workspace.editor().draft().recipe().unwrap().into_builder();
             recipe.sound.components = vec![crate::core::Component {
                 id: crate::core::ComponentId::new(1).unwrap(),
                 form: crate::core::ComponentForm::Voice(crate::controls::default_component(
@@ -607,7 +608,10 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
                 )),
             }];
             recipe.sound.components.push(recipe.sound.components[0]);
-            EditorSession::new(Draft::from_recipe(recipe))
+            recipe
+                .build()
+                .map_err(|error| Error::new(ErrorKind::InvalidRecipe, error.to_string()))
+                .and_then(|recipe| EditorSession::new(Draft::from_recipe(recipe)))
         } else {
             Err(Error::new(
                 ErrorKind::Identity,
@@ -654,7 +658,7 @@ fn selected_users() -> (
         draft.set_title(name.into());
         let result = store
             .apply(
-                Mutation::Create(Arc::new(draft.recipe())),
+                Mutation::Create(Arc::new(draft.recipe().unwrap())),
                 &Cancel::default(),
             )
             .unwrap();

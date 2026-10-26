@@ -14,8 +14,8 @@ use crate::error::{Error, ErrorKind};
 use crate::presentation::ParameterText;
 use crate::recipe::{Origin, RecipeSnapshot};
 use auditorylab_core::{
-    CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, Recipe, SampleRate, Signal, Sound,
-    SoundError, Target, TargetCheck, Voice,
+    CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, Recipe, RecipeBuilder, SampleRate,
+    Signal, Sound, SoundError, Target, TargetCheck, Voice,
 };
 use std::{
     collections::BTreeMap,
@@ -220,7 +220,7 @@ pub struct CommitRefusal {
 /// Committed settings may be finite but acoustically invalid and remain repairable.
 #[derive(Clone, Debug)]
 pub struct Draft {
-    content: Recipe,
+    content: RecipeBuilder,
     next_id: Option<u32>,
     based_on: Option<RecipeSnapshot>,
 }
@@ -233,16 +233,21 @@ impl Draft {
         Ok(Self::empty(crate::identity::fresh_document()?))
     }
     fn empty(document: auditorylab_core::DocumentIdentity) -> Self {
-        let mut content = Recipe::silent(document);
+        let mut content = Recipe::builder(document);
         content.description = Some(auditorylab_core::Description {
             title: "Untitled sound".into(),
             notes: Some(String::new()),
         });
-        Self::from_recipe(content)
+        Self {
+            content,
+            next_id: Some(1),
+            based_on: None,
+        }
     }
     /// Open editable owned content without changing its identity or declared dates.
     #[must_use]
     pub fn from_recipe(content: Recipe) -> Self {
+        let content = content.into_builder();
         let next_id = content
             .sound
             .components
@@ -497,9 +502,14 @@ impl Draft {
         self.content.sound.clone()
     }
     /// Immutable full portable candidate. Rendition edits demote current-condition evidence.
-    #[must_use]
-    pub fn recipe(&self) -> Recipe {
-        self.content.clone()
+    ///
+    /// # Errors
+    /// Returns the portable-contract failure for an incomplete editable candidate.
+    pub fn recipe(&self) -> Result<Recipe, Error> {
+        self.content
+            .clone()
+            .build()
+            .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))
     }
     fn demote_evidence(&mut self) {
         for evidence in &mut self.content.evidence {
@@ -507,15 +517,22 @@ impl Draft {
         }
     }
     /// Capture full content under a new process-local snapshot identity.
-    #[must_use]
-    pub fn snapshot(&self) -> RecipeSnapshot {
-        RecipeSnapshot::new(Origin::Draft(self.title().into()), self.recipe())
+    ///
+    /// # Errors
+    /// Refuses a candidate that is not a valid portable recipe.
+    pub fn snapshot(&self) -> Result<RecipeSnapshot, Error> {
+        Ok(RecipeSnapshot::new(
+            Origin::Draft(self.title().into()),
+            self.recipe()?,
+        ))
     }
     /// Exact editable content equality, excluding portable history.
     #[must_use]
     pub fn content_matches(&self, recipe: &Recipe) -> bool {
-        let own = self.recipe();
-        own.document.id == recipe.document.id && own.same_editable_content(recipe)
+        self.content.document.id == recipe.document().id
+            && self
+                .content
+                .same_editable_content(&recipe.clone().into_builder())
     }
     /// Compile all expanded pair lanes as one atomic target candidate.
     #[must_use]
@@ -527,7 +544,7 @@ impl Draft {
     /// # Errors
     /// Rejects portable contract violations, including nonfinite values and capacity.
     pub fn to_toml(&self) -> Result<String, Error> {
-        serialize(&self.recipe())
+        serialize(&self.recipe()?)
     }
 }
 /// Serialize finite recipe content within the reader's byte limit.
@@ -714,8 +731,8 @@ struct Removed {
     index: usize,
     id: ComponentId,
     component: auditorylab_core::Component,
-    before: Recipe,
-    after: Recipe,
+    before: RecipeBuilder,
+    after: RecipeBuilder,
     saved: Arc<Recipe>,
     staged: Vec<(EditingField, String)>,
 }
@@ -749,7 +766,7 @@ impl EditorSession {
     /// # Errors
     /// Refuses invalid component owner identities or exhausted document identities.
     pub fn new(draft: Draft) -> Result<Self, Error> {
-        let saved = Draft::empty(draft.content.document.clone()).recipe();
+        let saved = Draft::empty(draft.content.document.clone()).recipe()?;
         auditorylab_core::Sound::check_structure(draft.components())
             .map_err(|error| Error::new(ErrorKind::InvalidRecipe, error.to_string()))?;
         let row_generations = draft
@@ -1185,9 +1202,9 @@ impl EditorSession {
             .generation
             .checked_add(1)
             .ok_or(EditRefusal::IdentitiesExhausted)?;
-        let before = self.draft.recipe();
+        let before = self.draft.content.clone();
         let (index, component) = self.draft.remove(id).ok_or(EditRefusal::UnknownComponent)?;
-        let after = self.draft.recipe();
+        let after = self.draft.content.clone();
         let owned = |field: &EditingField| matches!(field, EditingField::Parameter(owner, _) if *owner == id);
         let staged: Vec<_> = self
             .staged
@@ -1236,7 +1253,7 @@ impl EditorSession {
             return Err(EditRefusal::IdentitiesExhausted);
         };
         let complete_undo = Arc::ptr_eq(&removed.saved, &self.saved)
-            && self.draft.recipe().same_editable_content(&removed.after);
+            && self.draft.content.same_editable_content(&removed.after);
         if let Err(refusal) = self.draft.restore(removed.index, removed.component) {
             self.removed = Some(removed);
             return Err(refusal);
@@ -1264,12 +1281,12 @@ impl EditorSession {
     /// Record successfully published content as this document's saved
     /// baseline. Returns `false`, changing nothing, for another document.
     pub fn record_saved(&mut self, document: DocumentId, content: &Recipe) -> bool {
-        if document != self.document || content.document.id != self.draft.content.document.id {
+        if document != self.document || content.document().id != self.draft.content.document.id {
             return false;
         }
-        self.saved_nominal = Some(crate::core::nominal::analyze(&content.sound.components));
-        if self.draft.content.document != content.document {
-            self.draft.content.document = content.document.clone();
+        self.saved_nominal = Some(crate::core::nominal::analyze(&content.sound().components));
+        if &self.draft.content.document != content.document() {
+            self.draft.content.document = content.document().clone();
             self.candidate = None;
             self.save_check = None;
         }

@@ -273,7 +273,7 @@ fn every_entry_has_its_independently_written_recipe() {
         RECIPES.iter().map(|r| r.0).collect::<Vec<_>>()
     );
     for (entry, (name, seconds, parts)) in catalog::ENTRIES.iter().zip(RECIPES) {
-        let authored = recipe(entry).sound;
+        let authored = recipe(entry).sound().clone();
         let sound = auditorylab_core::Sound {
             duration_seconds: authored.duration_seconds,
             fade_seconds: authored.fade_seconds,
@@ -402,7 +402,7 @@ fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
 fn every_entry_validates_and_pulses_follow_integer_onsets() {
     for entry in catalog::ENTRIES {
         for hz in [44_100, 48_000, 96_000] {
-            let authored = recipe(entry).sound;
+            let authored = recipe(entry).sound().clone();
             let mut sound = auditorylab_core::Sound {
                 duration_seconds: authored.duration_seconds,
                 fade_seconds: authored.fade_seconds,
@@ -459,12 +459,12 @@ fn builtins_have_unique_curated_identities_and_do_not_invent_creation_dates() {
     for entry in catalog::ENTRIES {
         let recipe = recipe(entry);
         assert!(
-            identities.insert(recipe.document.id),
+            identities.insert(recipe.document().id),
             "{} duplicates a builtin UUID",
             entry.id
         );
-        assert_eq!(recipe.document.created_at, None);
-        assert_eq!(recipe.document.modified_at, None);
+        assert_eq!(recipe.document().created_at, None);
+        assert_eq!(recipe.document().modified_at, None);
     }
     assert_eq!(identities.len(), catalog::ENTRIES.len());
 }

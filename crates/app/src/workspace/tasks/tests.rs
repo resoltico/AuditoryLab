@@ -12,7 +12,7 @@ use crate::session::{
 };
 use crate::workspace::status::{AudioStatus, FileStatus};
 use crate::workspace::{
-    Capabilities, DocumentAction, Effect, PromptAnswer, ResponseDisposition, View, WorkerFailure,
+    Capabilities, Effect, PromptAnswer, ResponseDisposition, View, WorkerFailure,
 };
 use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant};
@@ -504,18 +504,25 @@ fn wrong_library_identity_or_kind_cannot_mark_a_clean_draft_saved_or_close_it() 
         };
         match fault {
             0 => {
-                let other = Draft::new().unwrap().recipe();
+                let other = Draft::new().unwrap().recipe().unwrap();
                 **outcome = store
                     .apply(Mutation::Create(Arc::new(other)), &Cancel::default())
                     .unwrap();
             }
             1 => outcome.kind = crate::library::MutationKind::Rename,
             _ => {
-                let mut recipe = outcome.record.as_ref().unwrap().snapshot.recipe().clone();
-                recipe.document.id = Draft::new().unwrap().recipe().document.id;
+                let mut recipe = outcome
+                    .record
+                    .as_ref()
+                    .unwrap()
+                    .snapshot
+                    .recipe()
+                    .clone()
+                    .into_builder();
+                recipe.document.id = Draft::new().unwrap().recipe().unwrap().document().id;
                 outcome.record.as_mut().unwrap().snapshot = RecipeSnapshot::new(
                     crate::recipe::Origin::Stream("wrong record".into()),
-                    recipe,
+                    recipe.build().unwrap(),
                 );
             }
         }
@@ -550,7 +557,7 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
         .unwrap();
     idle_files(&mut workspace);
     assert_eq!(
-        crate::library::LibraryKey::User(workspace.selected().unwrap().recipe().document.id),
+        crate::library::LibraryKey::User(workspace.selected().unwrap().recipe().document().id),
         a
     );
     let first = store.load(&a).unwrap();
@@ -589,7 +596,7 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
     );
     let other = store
         .apply(
-            Mutation::Create(Arc::new(Draft::new().unwrap().recipe())),
+            Mutation::Create(Arc::new(Draft::new().unwrap().recipe().unwrap())),
             &Cancel::default(),
         )
         .unwrap()
@@ -611,39 +618,32 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
 }
 
 #[test]
-fn refused_editor_replacement_never_rebinds_the_surviving_document() {
+fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
     let (_directory, store, mut workspace) = fixture();
     workspace.save().unwrap();
     idle_files(&mut workspace);
     let record = store.scan(&Cancel::default()).entries[0].key.clone();
-    let mut bad = store.load(&record).unwrap();
     let original = workspace.editor().document();
     let location = workspace.document_location();
-    let mut recipe = bad.snapshot.recipe().clone();
-    recipe.sound.components = vec![crate::core::Component {
+    let mut candidate = store
+        .load(&record)
+        .unwrap()
+        .snapshot
+        .recipe()
+        .clone()
+        .into_builder();
+    let component = crate::core::Component {
         id: crate::core::ComponentId::new(1).unwrap(),
         form: crate::core::ComponentForm::Voice(crate::controls::default_component(
             CarrierKind::Tone,
         )),
-    }];
-    recipe.sound.components.push(recipe.sound.components[0]);
-    bad.snapshot = RecipeSnapshot::new(bad.snapshot.origin().clone(), recipe);
-    workspace.run(super::super::Pending {
-        action: super::super::Action::Document(DocumentAction::EditManaged(bad)),
-        audio: None,
-        file: None,
-        failed: false,
-        saved: None,
-    });
+    };
+    candidate.sound.components = vec![component; 2];
+    assert!(candidate.build().is_err());
     assert_eq!(workspace.editor().document(), original);
     assert_eq!(workspace.document_location(), location);
-    assert!(
-        workspace
-            .action_view()
-            .operation_details
-            .contains("component")
-    );
 }
+
 #[test]
 fn shutdown_reports_prior_rejected_preparation_even_when_real_job_stops_ok() {
     let (_directory, _store, mut workspace) = fixture();
@@ -677,7 +677,7 @@ fn shutdown_reports_wrong_kind_success_after_coordinator_validation() {
     let job = take_job(&mut workspace, JobKind::File);
     let id = job.id();
     drop(job);
-    let snapshot = Draft::new().unwrap().snapshot();
+    let snapshot = Draft::new().unwrap().snapshot().unwrap();
     let (_, prepared) = mpsc::channel();
     let mut runner = Runner::new();
     runner.started(
@@ -727,7 +727,7 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
             .root()
             .path()
             .join("recipes")
-            .join(format!("{}.toml", observed.snapshot.recipe().document.id));
+            .join(format!("{}.toml", observed.snapshot.recipe().document().id));
         let concurrent_bytes = std::fs::read(&path).unwrap();
         let mut runner = Runner::new();
         runner.start(job);

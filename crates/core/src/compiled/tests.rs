@@ -301,7 +301,7 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
     let via_sound = Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.1,
-        ..sound
+        ..sound.clone()
     }
     .signal(rate(48_000))
     .unwrap();

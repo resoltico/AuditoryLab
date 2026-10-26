@@ -318,7 +318,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
     draft.set_summary("Own notes".into());
     let derivative = dir.path().join("derivative.toml");
     crate::editing::save_content(
-        &draft.recipe(),
+        &draft.recipe().unwrap(),
         &derivative,
         crate::workflow::Replace::Never,
     )
@@ -334,18 +334,18 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
         "navigation addresses the captured copied-from document, not a fabricated ancestor waveform"
     );
     assert_eq!(
-        ws.selected().unwrap().recipe().lineage[0].document_id,
-        Some(original.recipe().document.id)
+        ws.selected().unwrap().recipe().lineage()[0].document_id,
+        Some(original.recipe().document().id)
     );
     assert_eq!(
-        ws.selected().unwrap().recipe().sources,
-        original.recipe().sources
+        ws.selected().unwrap().recipe().sources(),
+        original.recipe().sources()
     );
     assert!(
         ws.selected()
             .unwrap()
             .recipe()
-            .evidence
+            .evidence()
             .iter()
             .all(|e| e.scope == crate::core::EvidenceScope::Ancestor)
     );
@@ -379,14 +379,14 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
     assert!((ws.visible_count() == 0));
     let mut custom = Draft::new().unwrap();
     custom.set_summary("custom-notes-marker".into());
-    ws.add_import(custom.snapshot());
+    ws.add_import(custom.snapshot().unwrap());
     ws.set_query("custom-notes-marker");
     assert_eq!(ws.visible_count(), 1);
     ws.set_query("unique-own-notes-marker");
     assert_eq!(ws.visible_count(), 1);
     ws.add_import(crate::recipe::RecipeSnapshot::new(
         crate::recipe::Origin::Stream("reopened derivative".into()),
-        custom.recipe(),
+        custom.recipe().unwrap(),
     ));
     ws.set_query("unique-own-notes-marker");
     // A reimport under the same origin must remove stale search text.
@@ -432,7 +432,7 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     assert_eq!(selected.realization_count(), count + 1);
     let mut invalid = Draft::new().unwrap();
     invalid.set_duration_seconds(-1.0);
-    let snapshot = invalid.snapshot();
+    let snapshot = invalid.snapshot().unwrap();
     let mut bad =
         TestWorkspace::new(vec![snapshot.clone()], Capabilities::no_device_playback()).unwrap();
     for _ in 0..10 {
@@ -477,7 +477,7 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
 fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
     let mut original = Draft::new().unwrap();
     original.set_summary("original-custom-note-marker".into());
-    let mut edited = Draft::from_snapshot(&original.snapshot()).unwrap();
+    let mut edited = Draft::from_snapshot(&original.snapshot().unwrap()).unwrap();
     edited.set_summary("current-own-notes-marker".into());
     let reopened =
         crate::recipe::load_reader(edited.to_toml().unwrap().as_bytes(), "derivative").unwrap();
@@ -491,9 +491,12 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
     ws.set_query("original-custom-note-marker");
     assert_eq!(ws.visible_count(), 1);
     let initial = first.realization_count();
-    let mut changed = recipe;
+    let mut changed = recipe.into_builder();
     changed.lineage[0].note = "reimport-source-marker".into();
-    let replacement = RecipeSnapshot::new(crate::recipe::Origin::File("same.toml".into()), changed);
+    let replacement = RecipeSnapshot::new(
+        crate::recipe::Origin::File("same.toml".into()),
+        changed.build().unwrap(),
+    );
     ws.add_import(replacement.clone());
     ws.set_query("original-custom-note-marker");
     assert!(ws.library_view().rows.is_empty());
@@ -506,9 +509,9 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
 }
 
 #[test]
-fn copy_availability_and_execution_share_the_component_limit() {
-    let mut recipe = Draft::new().unwrap().recipe();
-    recipe.sound.components = (0..=Sound::MAX_COMPONENTS)
+fn over_budget_copy_content_is_refused_before_becoming_a_snapshot() {
+    let mut candidate = Draft::new().unwrap().recipe().unwrap().into_builder();
+    candidate.sound.components = (0..17)
         .map(|i| crate::core::Component {
             id: ComponentId::numbered(i).unwrap(),
             form: crate::core::ComponentForm::Voice(crate::controls::default_component(
@@ -516,23 +519,12 @@ fn copy_availability_and_execution_share_the_component_limit() {
             )),
         })
         .collect();
-    let snapshot = RecipeSnapshot::new(crate::recipe::Origin::Stream("too many".into()), recipe);
-    let mut ws = TestWorkspace::new(vec![snapshot], Capabilities::no_device_playback()).unwrap();
-    let document = ws.editor().document();
-    assert!(!ws.action_view().can_copy);
-    ws.copy_selected();
-    assert_eq!(ws.editor().document(), document);
-    assert!(
-        ws.action_view()
-            .file_status
-            .contains("Edit the recipe file to reduce them")
-    );
-    assert!(ws.take_effects().is_empty());
+    assert!(candidate.build().is_err());
 }
 
 #[test]
-fn copy_preflight_refuses_nonfinite_or_full_metadata_before_touching_dirty_work() {
-    let mut source = Draft::new().unwrap().recipe();
+fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
+    let mut source = Draft::new().unwrap().recipe().unwrap().into_builder();
     source.sound.components.push(crate::core::Component {
         id: ComponentId::new(1).unwrap(),
         form: crate::core::ComponentForm::Voice(crate::core::Voice {
@@ -542,32 +534,17 @@ fn copy_preflight_refuses_nonfinite_or_full_metadata_before_touching_dirty_work(
             ..crate::controls::default_component(CarrierKind::Tone)
         }),
     });
-    let snapshot = RecipeSnapshot::new(
-        crate::recipe::Origin::Stream("nonfinite source".into()),
-        source.clone(),
-    );
-    let mut ws = TestWorkspace::new(vec![snapshot], Capabilities::no_device_playback()).unwrap();
-    let doc = ws.editor().document();
-    ws.set_view(View::Workbench);
-    let document_key = ws.editor().document_key();
-    ws.add_component(document_key, CarrierKind::Tone).unwrap();
-    ws.set_view(View::Library);
-    let before = ws.editor().draft().recipe();
-    assert!(!ws.action_view().can_copy);
-    ws.copy_selected();
-    assert_eq!(ws.editor().document(), doc);
-    assert_eq!(ws.editor().draft().recipe(), before);
-    assert!(ws.take_effects().is_empty());
+    assert!(source.clone().build().is_err());
     source.sound.components[0]
         .form
         .write(auditorylab_core::ParameterId::ToneFrequency, 440.0);
     source.sound.duration_seconds = -1.0;
     let finite = RecipeSnapshot::new(
         crate::recipe::Origin::Stream("finite invalid".into()),
-        source,
+        source.build().unwrap(),
     );
     assert!(Workspace::copy_content_admission(&finite).is_ok());
-    let mut full = finite.recipe().clone();
+    let mut full = finite.recipe().clone().into_builder();
     full.lineage = vec![
         crate::core::Lineage {
             title: "ancestor".into(),
@@ -578,7 +555,10 @@ fn copy_preflight_refuses_nonfinite_or_full_metadata_before_touching_dirty_work(
         };
         16
     ];
-    let full = RecipeSnapshot::new(crate::recipe::Origin::Stream("full ancestry".into()), full);
+    let full = RecipeSnapshot::new(
+        crate::recipe::Origin::Stream("full ancestry".into()),
+        full.build().unwrap(),
+    );
     assert!(Workspace::copy_content_admission(&full).is_err());
 }
 
@@ -663,12 +643,12 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
     let dir = tempfile::tempdir_in(base).unwrap();
     let path = dir.path().join("same.toml");
     let text = |duration, title: &str| {
-        let mut recipe = crate::test_recipes::silent(duration, 0.0);
+        let mut recipe = crate::test_recipes::silent(duration, 0.0).into_builder();
         recipe.description = Some(crate::core::Description {
             title: title.into(),
             notes: None,
         });
-        recipe.to_toml().unwrap()
+        recipe.build().unwrap().to_toml().unwrap()
     };
     let first_text = text(1.0, "First");
     let second_text = text(2.0, "Second");
@@ -792,14 +772,14 @@ fn short_silent_source() -> RecipeSnapshot {
     let mut draft = Draft::new().unwrap();
     draft.set_duration_seconds(0.01);
     draft.set_fade_seconds(0.0);
-    draft.snapshot()
+    draft.snapshot().unwrap()
 }
 
 #[test]
 fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
     let mut workspace = workspace();
     let (_, field) = document(&mut workspace, 440.0);
-    let captured = workspace.editor().draft().recipe();
+    let captured = workspace.editor().draft().recipe().unwrap();
     workspace.save().unwrap();
     let job = take_file_job(&mut workspace);
     let identity = job.id();
@@ -818,7 +798,7 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
     assert!(workspace.file_busy());
     assert!(workspace.store.scan(&Cancel::default()).entries.is_empty());
     let response = execute_file(job);
-    let key = crate::library::LibraryKey::User(captured.document.id);
+    let key = crate::library::LibraryKey::User(captured.document().id);
     let saved = workspace.store.load(&key).unwrap();
     assert_eq!(
         saved.snapshot.sound().components[0]
@@ -845,8 +825,14 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
         Some(880.0)
     );
     assert_eq!(
-        workspace.editor().draft().recipe().document.created_at,
-        saved.snapshot.recipe().document.created_at
+        workspace
+            .editor()
+            .draft()
+            .recipe()
+            .unwrap()
+            .document()
+            .created_at,
+        saved.snapshot.recipe().document().created_at
     );
 }
 
@@ -854,7 +840,7 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
 fn captured_save_completion_never_replaces_a_different_editor_document() {
     let mut workspace = workspace();
     document(&mut workspace, 440.0);
-    let captured = workspace.editor().draft().recipe();
+    let captured = workspace.editor().draft().recipe().unwrap();
     workspace.save().unwrap();
     let job = take_file_job(&mut workspace);
     // The identity guard must also protect an independently replaced embedding/editor session.
@@ -862,14 +848,14 @@ fn captured_save_completion_never_replaces_a_different_editor_document() {
     replacement.set_summary("Replacement content must stay independent".into());
     assert!(workspace.replace_document(replacement));
     let replacement_id = workspace.editor().document();
-    let before = workspace.editor().draft().recipe();
+    let before = workspace.editor().draft().recipe().unwrap();
     let dirty = workspace.editor().dirty();
     assert_eq!(
         workspace.respond(execute_file(job)),
         ResponseDisposition::Applied
     );
     assert_eq!(workspace.editor().document(), replacement_id);
-    assert_eq!(workspace.editor().draft().recipe(), before);
+    assert_eq!(workspace.editor().draft().recipe().unwrap(), before);
     assert_eq!(workspace.editor().dirty(), dirty);
     assert!(matches!(
         workspace.editor.location,
@@ -877,7 +863,7 @@ fn captured_save_completion_never_replaces_a_different_editor_document() {
     ));
     let saved = workspace
         .store
-        .load(&crate::library::LibraryKey::User(captured.document.id))
+        .load(&crate::library::LibraryKey::User(captured.document().id))
         .unwrap();
     assert_eq!(
         saved.snapshot.sound().components[0]
@@ -891,7 +877,7 @@ fn captured_save_completion_never_replaces_a_different_editor_document() {
 fn save_before_close_waits_for_the_captured_job_completion() {
     let mut workspace = workspace();
     document(&mut workspace, 440.0);
-    let captured = workspace.editor().draft().recipe();
+    let captured = workspace.editor().draft().recipe().unwrap();
     workspace.close();
     workspace.close();
     let prompt = take_unsaved_prompt(&mut workspace);
@@ -909,7 +895,7 @@ fn save_before_close_waits_for_the_captured_job_completion() {
     assert!(
         workspace
             .store
-            .load(&crate::library::LibraryKey::User(captured.document.id))
+            .load(&crate::library::LibraryKey::User(captured.document().id))
             .is_ok()
     );
     for _ in 0..10 {
@@ -933,7 +919,7 @@ fn save_before_close_waits_for_the_captured_job_completion() {
 fn failed_captured_save_denies_close_and_preserves_foreign_storage() {
     let mut workspace = workspace();
     document(&mut workspace, 440.0);
-    let captured = workspace.editor().draft().recipe();
+    let captured = workspace.editor().draft().recipe().unwrap();
     workspace.close();
     let prompt = take_unsaved_prompt(&mut workspace);
     workspace.respond(Response::Prompt {
@@ -946,7 +932,7 @@ fn failed_captured_save_denies_close_and_preserves_foreign_storage() {
         .root()
         .path()
         .join("recipes")
-        .join(format!("{}.toml", captured.document.id));
+        .join(format!("{}.toml", captured.document().id));
     std::fs::write(&path, b"foreign malformed content must remain").unwrap();
     assert_eq!(
         workspace.respond(execute_file(job)),
@@ -1097,7 +1083,7 @@ fn actual_import_completion_controls_dependent_close_and_never_runs_on_poll() {
 fn portable_export_keeps_the_prompt_capture_and_does_not_advance_the_save_baseline() {
     let mut workspace = workspace();
     let (_, field) = document(&mut workspace, 440.0);
-    let identity = workspace.editor().draft().recipe().document.id;
+    let identity = workspace.editor().draft().recipe().unwrap().document().id;
     let directory = temporary_directory();
     let path = directory.path().join("portable.toml");
     workspace.export_recipe().unwrap();
@@ -1114,7 +1100,7 @@ fn portable_export_keeps_the_prompt_capture_and_does_not_advance_the_save_baseli
     workspace.commit_field(field, "880").unwrap();
     let response = execute_file(job);
     let saved = crate::recipe::load_file(&path).unwrap();
-    assert_eq!(saved.recipe().document.id, identity);
+    assert_eq!(saved.recipe().document().id, identity);
     assert_eq!(
         saved.sound().components[0]
             .form
@@ -1201,7 +1187,7 @@ fn a_close_request_after_export_publication_does_not_unpublish_the_real_file() {
 fn managed_save_can_run_beside_admitted_audio_and_stop_does_not_cancel_it() {
     let mut workspace = workspace();
     document(&mut workspace, 440.0);
-    let identity = workspace.editor().draft().recipe().document.id;
+    let identity = workspace.editor().draft().recipe().unwrap().document().id;
     workspace.play().unwrap();
     let effects = workspace.take_effects();
     let mut jobs = effects.into_iter().filter_map(|effect| match effect {

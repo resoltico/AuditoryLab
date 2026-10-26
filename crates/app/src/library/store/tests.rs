@@ -13,8 +13,8 @@ fn fixture() -> (tempfile::TempDir, PathBuf, LibraryStore) {
 #[test]
 fn recipe_files_are_exact_portable_toml_and_tokens_are_exact_byte_hashes() {
     let (_temp, path, store) = fixture();
-    let recipe = Draft::new().unwrap().recipe();
-    let id = recipe.document.id;
+    let recipe = Draft::new().unwrap().recipe().unwrap();
+    let id = recipe.document().id;
     let record = store
         .apply(Mutation::Add(Arc::new(recipe)), &Cancel::default())
         .unwrap()
@@ -65,7 +65,7 @@ fn missing_membership_dates_never_change_directory_state_or_invent_history() {
     let (_temp, path, store) = fixture();
     let record = store
         .apply(
-            Mutation::Add(Arc::new(Draft::new().unwrap().recipe())),
+            Mutation::Add(Arc::new(Draft::new().unwrap().recipe().unwrap())),
             &Cancel::default(),
         )
         .unwrap()
@@ -117,13 +117,13 @@ fn exact_a_to_b_to_a_bytes_accept_the_original_token_without_random_revisions() 
     let (_temp, path, store) = fixture();
     let record = store
         .apply(
-            Mutation::Add(Arc::new(Draft::new().unwrap().recipe())),
+            Mutation::Add(Arc::new(Draft::new().unwrap().recipe().unwrap())),
             &Cancel::default(),
         )
         .unwrap()
         .record
         .unwrap();
-    let id = record.snapshot.recipe().document.id;
+    let id = record.snapshot.recipe().document().id;
     let file = path.join("recipes").join(format!("{id}.toml"));
     let original = fs::read(&file).unwrap();
     let mut other = original.clone();
@@ -154,7 +154,7 @@ fn orphan_timestamps_and_owned_stages_are_reported_then_cleaned_only_under_write
     let (_temp, path, store) = fixture();
     let record = store
         .apply(
-            Mutation::Add(Arc::new(Draft::new().unwrap().recipe())),
+            Mutation::Add(Arc::new(Draft::new().unwrap().recipe().unwrap())),
             &Cancel::default(),
         )
         .unwrap()
@@ -209,9 +209,9 @@ fn orphan_timestamps_and_owned_stages_are_reported_then_cleaned_only_under_write
 #[test]
 fn thousand_plain_files_rebuild_without_retaining_full_recipe_snapshots() {
     let (_temp, path, store) = fixture();
-    let recipe = Draft::new().unwrap().recipe();
+    let recipe = Draft::new().unwrap().recipe().unwrap();
     for n in 0..1000 {
-        let mut value = recipe.clone();
+        let mut value = recipe.clone().into_builder();
         let id = format!("00000000-0000-4000-8000-{n:012}");
         value.document.id = id.parse().unwrap();
         value.description = Some(crate::core::Description {
@@ -220,7 +220,7 @@ fn thousand_plain_files_rebuild_without_retaining_full_recipe_snapshots() {
         });
         fs::write(
             path.join("recipes").join(format!("{id}.toml")),
-            value.to_toml().unwrap(),
+            value.build().unwrap().to_toml().unwrap(),
         )
         .unwrap();
     }
@@ -239,7 +239,7 @@ fn bounded_scan_retains_healthy_rows_and_unknown_files_are_never_deleted() {
     let (_temp, path, store) = fixture();
     store
         .apply(
-            Mutation::Add(Arc::new(Draft::new().unwrap().recipe())),
+            Mutation::Add(Arc::new(Draft::new().unwrap().recipe().unwrap())),
             &Cancel::default(),
         )
         .unwrap();

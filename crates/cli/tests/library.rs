@@ -49,7 +49,7 @@ fn input(path: &Path, title: &str) -> auditorylab::core::Recipe {
         ))
         .unwrap();
     editor.commit_field(field, "2").unwrap().unwrap();
-    let recipe = editor.draft().recipe();
+    let recipe = editor.draft().recipe().unwrap();
     fs::write(path, recipe.to_toml().unwrap()).unwrap();
     recipe
 }
@@ -107,7 +107,7 @@ fn native_cli_lifecycle_conflicts_dates_export_and_trash_are_shared_store_operat
     let file = temp.path().join("external.toml");
     let original = input(&file, "My Delta sound");
     let bytes = fs::read(&file).unwrap();
-    let key = format!("user:{}", original.document.id);
+    let key = format!("user:{}", original.document().id);
     assert!(cli(&root, &["library", "init"]).status.success());
     let add = cli(
         &root,
@@ -202,7 +202,7 @@ fn native_cli_lifecycle_conflicts_dates_export_and_trash_are_shared_store_operat
     let export = cli(&root, &["recipe", &key]);
     assert!(export.status.success());
     let exported = auditorylab::core::Recipe::from_bytes(&export.stdout).unwrap();
-    assert_eq!(exported.document.id, original.document.id);
+    assert_eq!(exported.document().id, original.document().id);
     assert!(exported.to_toml().unwrap().contains("A renamed sound"));
     assert!(!String::from_utf8_lossy(&export.stdout).contains("added_at"));
     assert_eq!(fs::read(&file).unwrap(), bytes);
@@ -403,7 +403,7 @@ fn copy_of_reserved_builtin_is_explicit_and_machine_output_escapes_bidi_controls
     let copied = json(&copy);
     assert_ne!(
         copied["entries"][0]["document_id"],
-        source.recipe().document.id.to_string()
+        source.recipe().document().id.to_string()
     );
     assert!(
         copied["entries"][0]["evidence"]
@@ -460,7 +460,7 @@ fn lost_completion_pipe_does_not_undo_or_misreport_committed_mutation() {
         &root,
         &[
             "describe",
-            &format!("user:{}", recipe.document.id),
+            &format!("user:{}", recipe.document().id),
             "--format",
             "json",
         ],
@@ -526,7 +526,7 @@ fn two_ordinary_cli_processes_cannot_overwrite_each_others_expected_version() {
     let root = temp.path().join("library");
     let file = temp.path().join("external.toml");
     let original = input(&file, "Two ordinary writers");
-    let key = format!("user:{}", original.document.id);
+    let key = format!("user:{}", original.document().id);
     assert!(cli(&root, &["library", "init"]).status.success());
     let added = cli(
         &root,
@@ -591,7 +591,7 @@ fn optional_expect_plain_recipe_bytes_and_unknown_trash_dates_use_the_new_layout
     let root = temp.path().join("library");
     let input_path = temp.path().join("input.toml");
     let recipe = input(&input_path, "Direct recipe bytes");
-    let key = format!("user:{}", recipe.document.id);
+    let key = format!("user:{}", recipe.document().id);
     assert!(cli(&root, &["library", "init"]).status.success());
     assert!(root.join("library.toml").is_file());
     assert!(root.join("membership.toml").is_file());
@@ -617,7 +617,7 @@ fn optional_expect_plain_recipe_bytes_and_unknown_trash_dates_use_the_new_layout
     );
     let file = root
         .join("recipes")
-        .join(format!("{}.toml", recipe.document.id));
+        .join(format!("{}.toml", recipe.document().id));
     let mut manual = fs::read(&file).unwrap();
     manual.extend_from_slice(b"\n# direct file comment\n");
     fs::write(&file, &manual).unwrap();
@@ -669,7 +669,7 @@ fn optional_expect_plain_recipe_bytes_and_unknown_trash_dates_use_the_new_layout
     assert!(
         !root
             .join("trash")
-            .join(format!("{}.toml", recipe.document.id))
+            .join(format!("{}.toml", recipe.document().id))
             .exists()
     );
 }

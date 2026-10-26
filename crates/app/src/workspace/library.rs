@@ -396,7 +396,7 @@ impl LibraryJob {
             Operation::Load(key) | Operation::DiscardTrash { key, .. } => Some(key.clone()),
             Operation::Write { mutation, .. } => Some(match mutation {
                 Mutation::Create(recipe) | Mutation::Add(recipe) => {
-                    LibraryKey::User(recipe.document.id)
+                    LibraryKey::User(recipe.document().id)
                 }
                 Mutation::Update { key, .. }
                 | Mutation::Rename { key, .. }
@@ -427,7 +427,7 @@ impl LibraryJob {
     pub(super) fn accepts(&self, outcome: &LibraryOutcome) -> bool {
         let record_matches = |record: &LoadedRecord, key: &LibraryKey| {
             record.key == *key
-                && matches!(key,LibraryKey::User(id) if record.snapshot.recipe().document.id==*id)
+                && matches!(key,LibraryKey::User(id) if record.snapshot.recipe().document().id==*id)
                 && matches!(record.snapshot.origin(),crate::recipe::Origin::User {id,version} if key==&LibraryKey::User(*id) && version==&record.version_token)
         };
         let written_matches = |outcome: &WriteOutcome, key: &LibraryKey, kind: MutationKind| {
@@ -455,10 +455,10 @@ impl LibraryJob {
             (Operation::Write { mutation, .. }, LibraryOutcome::Written(outcome)) => {
                 let (key, kind) = match mutation {
                     Mutation::Create(recipe) => {
-                        (LibraryKey::User(recipe.document.id), MutationKind::Create)
+                        (LibraryKey::User(recipe.document().id), MutationKind::Create)
                     }
                     Mutation::Add(recipe) => {
-                        (LibraryKey::User(recipe.document.id), MutationKind::Add)
+                        (LibraryKey::User(recipe.document().id), MutationKind::Add)
                     }
                     Mutation::Update { key, .. } => (key.clone(), MutationKind::Update),
                     Mutation::Rename { key, .. } => (key.clone(), MutationKind::Rename),
@@ -475,8 +475,8 @@ impl LibraryJob {
                 LibraryOutcome::ExternalWritten(outcome),
             ) => {
                 outcome.previous.matches(expected)
-                    && outcome.recipe.document.id == recipe.document.id
-                    && outcome.recipe.document.created_at == recipe.document.created_at
+                    && outcome.recipe.document().id == recipe.document().id
+                    && outcome.recipe.document().created_at == recipe.document().created_at
             }
             _ => false,
         }
@@ -1282,7 +1282,7 @@ impl Workspace {
         if self.editor.location.managed().is_none()
             && p.entries
                 .iter()
-                .any(|e| e.key == LibraryKey::User(recipe.document.id))
+                .any(|e| e.key == LibraryKey::User(recipe.document().id))
         {
             return Err(Refusal::Document("Detached draft belongs to an existing saved identity. Restore/edit that version or Save independent copy.".into()));
         }

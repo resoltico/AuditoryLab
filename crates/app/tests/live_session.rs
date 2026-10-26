@@ -95,7 +95,7 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
             true,
         ),
     ] {
-        let mut recipe = common::silent(1.0, 0.0);
+        let mut recipe = common::silent(1.0, 0.0).into_builder();
         recipe.sound.components = voices
             .into_iter()
             .enumerate()
@@ -105,7 +105,7 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
             })
             .collect();
         let snapshot = auditorylab::recipe::load_reader(
-            recipe.to_toml().unwrap().as_bytes(),
+            recipe.build().unwrap().to_toml().unwrap().as_bytes(),
             "called binaural even if not a pair",
         )
         .unwrap();
