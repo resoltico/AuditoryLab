@@ -12,6 +12,12 @@ The optional **Output monitor** is a bounded lower drawer above transport, with 
 
 ## Library
 
+The initial 1280-pixel window exposes collection and rhythm navigation. Narrower windows retain the same shared filters in compact controls. **Filters / recovery…** opens the tools in compact layouts; returning to the list and reopening it never collapses those tools.
+
+Wide Library windows use three regions: always-visible collection/rhythm navigation, structured result cards, and selected-sound details. The five band names, their reference intervals and disjunctive unique counts are visible without opening a dropdown. Search, Method and Sort occupy a separate toolbar. **Filters / recovery…** discloses advanced controls without permanently placing them ahead of the selected sound. Medium and compact windows keep the existing selectors and list/detail navigation, including Back, scroll retention and persistent transport.
+
+Cards receive typed title, ownership, calculated memberships, nominal structure, duration and date fields from the application; the GUI does not split or reinterpret a prose label. Complete accessible row descriptions derive from those same fields. Headings and storage diagnostics have no selectable identity. Classification details describe the exact selected saved snapshot independently of sample-rate validation, and incomplete facet counts say **observed**.
+
 **All** contains active Built-in and User entries. **Built-in** is read only; **User** contains managed local records. **Open files** are temporary and disappear on restart; **Trash** is separate from active results. Selection never plays audio. A missing default library starts empty without being created by browsing; **Save sound** initializes it on first publication. An absolute `AUDITORYLAB_LIBRARY_DIR` overrides the native data root and requires explicit initialization. **Library storage and recovery** shows the actual path, initialization/inventory diagnostics and Recheck. An unavailable root does not silently select another location.
 
 Search normalizes Unicode and requires every term; bare numeric terms match whole values. Delta, Theta, Alpha, Beta and Gamma have prominent shared-reference intervals and unique counts, followed by Other rates, No rhythmic rate, Multiple rhythms and Needs review. Band/method restrictions match the same process. Nominal classification describes authored audio structure, independent of device-rate validity or EEG. See the [reference convention](catalog.md#nominal-rhythm-references).

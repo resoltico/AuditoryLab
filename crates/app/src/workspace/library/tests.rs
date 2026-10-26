@@ -148,29 +148,29 @@ fn summary_rows_show_real_sort_date_unknown_edit_and_added_without_loading_docum
         ..CatalogQuery::default()
     };
     p.refilter();
-    let (keys, rows, _) = p.rows();
+    let (rows, _) = p.rows();
     assert_eq!(
-        keys[0],
+        rows[0].key,
         known.key.to_string(),
         "Unknown edit must not sort by newer Added here"
     );
-    assert!(rows[1].contains("Edited: Unknown") && rows[1].contains("Added here:"));
-    assert!(rows[0].contains("Duration 1 min"));
+    assert!(rows[1].text.contains("Edited: Unknown") && rows[1].text.contains("Added here:"));
+    assert!(rows[0].text.contains("Duration 1 min"));
     p.query.sort = SortBy::Created;
     p.query.direction = Some(Direction::Asc);
     p.refilter();
-    let (keys, rows, _) = p.rows();
-    assert_eq!(keys[0], unknown.key.to_string());
-    assert!(rows[0].contains(&format!(
+    let (rows, _) = p.rows();
+    assert_eq!(rows[0].key, unknown.key.to_string());
+    assert!(rows[0].text.contains(&format!(
         "Created: {}",
         crate::calendar::local_timestamp(unknown.created_at.unwrap())
     )));
     p.query.sort = SortBy::Added;
     p.query.direction = Some(Direction::Desc);
     p.refilter();
-    let (keys, rows, _) = p.rows();
-    assert_eq!(keys[0], unknown.key.to_string());
-    assert!(rows[0].contains("Edited: Unknown") && rows[0].contains("Added here:"));
+    let (rows, _) = p.rows();
+    assert_eq!(rows[0].key, unknown.key.to_string());
+    assert!(rows[0].text.contains("Edited: Unknown") && rows[0].text.contains("Added here:"));
     assert!(
         p.loaded.is_none(),
         "Rows consume summaries, not full selected User documents"
@@ -342,9 +342,9 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
     idle(&mut w);
     assert_eq!(
         w.library_view()
-            .keys
+            .rows
             .iter()
-            .filter(|key| !key.is_empty())
+            .filter(|row| !row.key.is_empty())
             .count(),
         1
     );
@@ -352,7 +352,7 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
         w.library_view()
             .rows
             .iter()
-            .any(|row| row.contains("Needs review"))
+            .any(|row| row.text.contains("Needs review"))
     );
     assert!(w.selected_unreadable());
     assert!(w.library_status().contains("incomplete"));

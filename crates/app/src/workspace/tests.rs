@@ -52,14 +52,14 @@ impl TestWorkspace {
         self.inner.poll()
     }
     fn select(&mut self, position: usize) {
-        let key = self.library_view().keys[position].clone();
+        let key = self.library_view().rows[position].key.clone();
         self.select_library_key(&key);
     }
     fn visible_count(&self) -> usize {
         self.library_view()
-            .keys
+            .rows
             .iter()
-            .filter(|key| !key.is_empty())
+            .filter(|row| !row.key.is_empty())
             .count()
     }
 }
@@ -1307,4 +1307,22 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
             assert!(view.add_component_reason.contains("1 more voice"));
         }
     }
+}
+
+
+#[test]
+fn structured_library_rows_keep_saved_identity_and_rate_independent_classification() {
+    let mut ws = workspace();
+    ws.set_query("ioannou 2");
+    let view = ws.library_view();
+    assert_eq!(view.rows.len(), 1);
+    let row = &view.rows[0];
+    assert!(row.key.contains("ioannou-2015-binaural-2-hz"));
+    assert_eq!(row.bands, "Delta");
+    assert!(row.collection.contains("Read only"));
+    assert!(row.text.contains(&row.title) && row.text.contains(&row.dates));
+    let classification = view.classification.clone();
+    ws.set_export_rate(auditorylab_core::SampleRate::new(96_000).unwrap());
+    assert_eq!(ws.library_view().classification, classification);
+    assert_eq!(ws.library_view().rows[0].key, row.key);
 }

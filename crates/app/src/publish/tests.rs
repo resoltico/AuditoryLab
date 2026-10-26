@@ -560,16 +560,26 @@ fn failed_membership_write_is_saved_with_unknown_new_dates() {
 }
 
 #[test]
-fn unreadable_postpublication_verification_names_the_path_without_claiming_no_change() {
-    let (_temp, dir, path) = fixture();
-    fs::write(&path, b"previous").unwrap();
-    inject(&[FaultPoint::AfterPublish, FaultPoint::Verify]);
-    let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
-    // Context names the complete path using Rust's escaped path representation,
-    // including doubled Windows separators rather than an unescaped substring.
-    assert!(error.to_string().contains(&format!("{path:?}")));
-    assert!(!error.to_string().contains("previous content remains"));
-    assert_eq!(fs::read(path).unwrap(), b"candidate");
+fn unreadable_publication_verification_never_guesses_the_destination_state() {
+    for (point, expected) in [
+        (FaultPoint::BeforePublish, b"previous".as_slice()),
+        (FaultPoint::AfterPublish, b"candidate".as_slice()),
+    ] {
+        let (_temp, dir, path) = fixture();
+        fs::write(&path, b"previous").unwrap();
+        inject(&[point, FaultPoint::Verify]);
+        let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
+        let message = error.to_string();
+        assert_eq!(error.kind(), ErrorKind::Write);
+        assert!(message.contains(&format!("{path:?}")));
+        assert!(message.contains("publication outcome is unconfirmed"));
+        assert!(message.contains("destination could not be verified"));
+        assert!(!message.contains("previous content remains"));
+        assert!(!message.contains("differs from both"));
+        // The test oracle can read actual storage after the injected failure;
+        // the operation itself could not, and must report the same uncertainty.
+        assert_eq!(fs::read(path).unwrap(), expected);
+    }
 }
 
 #[test]
@@ -721,4 +731,52 @@ fn relocation_flushes_the_source_without_changing_bytes_or_file_identity() {
     );
     assert_eq!(fs::read(&source).unwrap(), bytes);
     assert_eq!(fs::read(&destination).unwrap(), b"foreign destination");
+}
+
+#[test]
+fn unreadable_deletion_verification_never_claims_the_file_remains() {
+    for (point, exists) in [
+        (FaultPoint::BeforeRemove, true),
+        (FaultPoint::AfterRemove, false),
+    ] {
+        let (_temp, dir, path) = fixture();
+        fs::write(&path, b"original").unwrap();
+        inject(&[point, FaultPoint::Verify]);
+        let error = remove(&dir, Path::new("entry"), &path).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains(&format!("{path:?}")));
+        assert!(message.contains("deletion outcome is unconfirmed"));
+        assert!(!message.contains("was not applied"));
+        assert_eq!(path.exists(), exists);
+    }
+}
+
+#[test]
+fn unreadable_relocation_verification_does_not_guess_source_removal() {
+    for (point, source_exists) in [
+        (FaultPoint::BeforeRemove, true),
+        (FaultPoint::AfterRemove, false),
+    ] {
+        let (temp, dir, path) = fixture();
+        fs::write(&path, b"original").unwrap();
+        dir.create_dir("trash").unwrap();
+        let trash = dir.open_dir("trash").unwrap();
+        let destination = temp.path().join("trash/entry");
+        inject(&[point, FaultPoint::Verify]);
+        let error = relocate(
+            &dir,
+            &trash,
+            Path::new("entry"),
+            &path,
+            &destination,
+            &Cancel::default(),
+        )
+        .unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains(&format!("{destination:?}")));
+        assert!(message.contains("relocation outcome is unconfirmed"));
+        assert!(!message.contains("did not remove its source"));
+        assert_eq!(path.exists(), source_exists);
+        assert_eq!(fs::read(destination).unwrap(), b"original");
+    }
 }
