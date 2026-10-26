@@ -5,7 +5,7 @@ use auditorylab_core::{
     Sound, Target, Voice, authored,
 };
 use serde::{Deserialize, Serialize};
-use std::{format, vec, vec::Vec};
+use std::{format, string::ToString, vec, vec::Vec};
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Document {
@@ -31,6 +31,485 @@ fn tone(hz: f64, level: f64, ears: Ears) -> Voice {
         peak_dbfs: level,
         carrier: Carrier::Tone { frequency_hz: hz },
         modulation: None,
+    }
+}
+
+#[test]
+fn pair_parameters_read_exact_values_and_write_only_the_requested_field() {
+    use crate::ParameterId as P;
+    let original = pair(-6.0);
+    for monaural in [false, true] {
+        let make = |pair| {
+            if monaural {
+                Node::MonauralPair {
+                    ears: Ears::Right,
+                    pair,
+                }
+            } else {
+                Node::BinauralPair(pair)
+            }
+        };
+        for (parameter, before, after) in [
+            (
+                P::PairFirstFrequency,
+                200.0,
+                Pair {
+                    first_hz: 317.0,
+                    ..original
+                },
+            ),
+            (
+                P::PairOffset,
+                -6.0,
+                Pair {
+                    offset_hz: 317.0,
+                    ..original
+                },
+            ),
+            (
+                P::PairFirstLevel,
+                -20.0,
+                Pair {
+                    first_peak_dbfs: 317.0,
+                    ..original
+                },
+            ),
+            (
+                P::PairSecondLevel,
+                -30.0,
+                Pair {
+                    second_peak_dbfs: 317.0,
+                    ..original
+                },
+            ),
+        ] {
+            let mut actual = make(original);
+            assert_eq!(actual.read(parameter), Some(before));
+            assert!(actual.write(parameter, 317.0));
+            assert_eq!(actual, make(after));
+            assert_eq!(actual.read(parameter), Some(317.0));
+        }
+        for parameter in [
+            P::ToneFrequency,
+            P::ClickRate,
+            P::ClickWidth,
+            P::PeakLevel,
+            P::AmplitudeModulationRate,
+            P::ModulationDepth,
+            P::GateRate,
+            P::GateWidth,
+            P::Duration,
+            P::Fade,
+        ] {
+            let mut actual = make(original);
+            assert_eq!(actual.read(parameter), None);
+            assert!(!actual.write(parameter, 999.0));
+            assert_eq!(actual, make(original));
+        }
+    }
+    let mut primitive = Node::Voice(tone(437.0, -24.0, Ears::Left));
+    assert_eq!(primitive.read(P::ToneFrequency), Some(437.0));
+    assert_eq!(primitive.read(P::PeakLevel), Some(-24.0));
+    assert!(primitive.write(P::ToneFrequency, 509.0));
+    assert_eq!(primitive, Node::Voice(tone(509.0, -24.0, Ears::Left)));
+    assert!(!primitive.write(P::PairOffset, 6.0));
+    assert_eq!(primitive.read(P::PairOffset), None);
+    assert_eq!(primitive, Node::Voice(tone(509.0, -24.0, Ears::Left)));
+}
+
+#[test]
+fn node_content_comparison_preserves_shape_routes_and_each_requested_value() {
+    use crate::Modulation as M;
+    let plain = tone(437.0, -24.0, Ears::Left);
+    let click = Voice {
+        carrier: Carrier::Click {
+            rate_hz: 40.0,
+            width_seconds: 0.002,
+        },
+        ..plain
+    };
+    let am = Voice {
+        modulation: Some(M::Sinusoidal {
+            rate_hz: 7.0,
+            depth: 0.5,
+        }),
+        ..plain
+    };
+    let gate = Voice {
+        modulation: Some(M::Rectangular {
+            rate_hz: 7.0,
+            width_seconds: 0.01,
+        }),
+        ..plain
+    };
+    let p = pair(-6.0);
+    // Each unequal pair changes one authored fact; audio equivalence is irrelevant.
+    let mut unequal = vec![
+        (
+            Node::Voice(plain),
+            Node::Voice(Voice {
+                ears: Ears::Right,
+                ..plain
+            }),
+        ),
+        (Node::Voice(plain), Node::Voice(click)),
+        (Node::Voice(plain), Node::Voice(am)),
+        (Node::Voice(am), Node::Voice(gate)),
+        (
+            Node::Voice(plain),
+            Node::Voice(tone(438.0, -24.0, Ears::Left)),
+        ),
+        (
+            Node::Voice(plain),
+            Node::Voice(Voice {
+                peak_dbfs: -25.0,
+                ..plain
+            }),
+        ),
+        (
+            Node::Voice(click),
+            Node::Voice(Voice {
+                carrier: Carrier::Click {
+                    rate_hz: 41.0,
+                    width_seconds: 0.002,
+                },
+                ..click
+            }),
+        ),
+        (
+            Node::Voice(click),
+            Node::Voice(Voice {
+                carrier: Carrier::Click {
+                    rate_hz: 40.0,
+                    width_seconds: 0.003,
+                },
+                ..click
+            }),
+        ),
+        (
+            Node::Voice(am),
+            Node::Voice(Voice {
+                modulation: Some(M::Sinusoidal {
+                    rate_hz: 8.0,
+                    depth: 0.5,
+                }),
+                ..am
+            }),
+        ),
+        (
+            Node::Voice(am),
+            Node::Voice(Voice {
+                modulation: Some(M::Sinusoidal {
+                    rate_hz: 7.0,
+                    depth: 0.6,
+                }),
+                ..am
+            }),
+        ),
+        (
+            Node::Voice(gate),
+            Node::Voice(Voice {
+                modulation: Some(M::Rectangular {
+                    rate_hz: 8.0,
+                    width_seconds: 0.01,
+                }),
+                ..gate
+            }),
+        ),
+        (
+            Node::Voice(gate),
+            Node::Voice(Voice {
+                modulation: Some(M::Rectangular {
+                    rate_hz: 7.0,
+                    width_seconds: 0.02,
+                }),
+                ..gate
+            }),
+        ),
+        (
+            Node::BinauralPair(p),
+            Node::MonauralPair {
+                ears: Ears::Left,
+                pair: p,
+            },
+        ),
+        (Node::Voice(plain), Node::BinauralPair(p)),
+        (
+            Node::MonauralPair {
+                ears: Ears::Left,
+                pair: p,
+            },
+            Node::MonauralPair {
+                ears: Ears::Right,
+                pair: p,
+            },
+        ),
+    ];
+    for changed in [
+        Pair {
+            first_hz: 201.0,
+            ..p
+        },
+        Pair {
+            offset_hz: -7.0,
+            ..p
+        },
+        Pair {
+            first_peak_dbfs: -21.0,
+            ..p
+        },
+        Pair {
+            second_peak_dbfs: -31.0,
+            ..p
+        },
+    ] {
+        unequal.push((Node::BinauralPair(p), Node::BinauralPair(changed)));
+        unequal.push((
+            Node::MonauralPair {
+                ears: Ears::Both,
+                pair: p,
+            },
+            Node::MonauralPair {
+                ears: Ears::Both,
+                pair: changed,
+            },
+        ));
+    }
+    for (left, right) in unequal {
+        assert!(!left.same_content(right), "{left:?} versus {right:?}");
+        assert!(!right.same_content(left));
+    }
+    for value in [
+        Node::Voice(plain),
+        Node::Voice(click),
+        Node::Voice(am),
+        Node::Voice(gate),
+        Node::BinauralPair(p),
+        Node::MonauralPair {
+            ears: Ears::Both,
+            pair: p,
+        },
+    ] {
+        assert!(value.same_content(value), "{value:?}");
+    }
+}
+
+#[test]
+fn node_content_comparison_uses_bits_for_nan_payloads_and_signed_zero() {
+    let nan = f64::from_bits(0x7ff8_0000_0000_0042);
+    let other_nan = f64::from_bits(0x7ff8_0000_0000_0043);
+    for value in [0.0, nan] {
+        let changed = if value.is_nan() { other_nan } else { -0.0 };
+        for (left, right) in [
+            (
+                Node::Voice(tone(value, -20.0, Ears::Both)),
+                Node::Voice(tone(changed, -20.0, Ears::Both)),
+            ),
+            (
+                Node::BinauralPair(pair(value)),
+                Node::BinauralPair(pair(changed)),
+            ),
+            (
+                Node::MonauralPair {
+                    ears: Ears::Both,
+                    pair: pair(value),
+                },
+                Node::MonauralPair {
+                    ears: Ears::Both,
+                    pair: pair(changed),
+                },
+            ),
+        ] {
+            assert!(left.same_content(left));
+            assert!(!left.same_content(right));
+            assert!(!right.same_content(left));
+        }
+    }
+}
+
+#[test]
+fn sound_content_comparison_keeps_envelope_owner_order_and_node_identity() {
+    let original = Sound {
+        duration_seconds: 2.0,
+        fade_seconds: 0.125,
+        components: vec![
+            node(7, Node::Voice(tone(437.0, -24.0, Ears::Left))),
+            node(19, Node::BinauralPair(pair(-6.0))),
+        ],
+    };
+    assert!(original.same_content(&original.clone()));
+    let mut changed = vec![
+        Sound {
+            duration_seconds: 3.0,
+            ..original.clone()
+        },
+        Sound {
+            fade_seconds: 0.25,
+            ..original.clone()
+        },
+    ];
+    let mut shorter = original.clone();
+    shorter.components.pop();
+    changed.push(shorter);
+    let mut owner = original.clone();
+    owner.components[0].id = ComponentId::new(8);
+    changed.push(owner);
+    let mut lane = original.clone();
+    lane.components[0].id = lane.components[0].id.with_lane(Lane::Secondary);
+    changed.push(lane);
+    let mut reordered = original.clone();
+    reordered.components.swap(0, 1);
+    changed.push(reordered);
+    let mut parameter = original.clone();
+    parameter.components[1].node = Node::BinauralPair(pair(-7.0));
+    changed.push(parameter);
+    let mut shape = original.clone();
+    shape.components[0].node = Node::BinauralPair(pair(-6.0));
+    changed.push(shape);
+    for candidate in changed {
+        assert!(!original.same_content(&candidate), "{candidate:?}");
+        assert!(!candidate.same_content(&original));
+    }
+    // Envelope comparisons retain bits too, including invalid-but-editable values.
+    for (first, second) in [
+        (0.0, -0.0),
+        (
+            f64::from_bits(0x7ff8_0000_0000_0042),
+            f64::from_bits(0x7ff8_0000_0000_0043),
+        ),
+    ] {
+        let duration = Sound {
+            duration_seconds: first,
+            ..original.clone()
+        };
+        assert!(duration.same_content(&duration.clone()));
+        assert!(!duration.same_content(&Sound {
+            duration_seconds: second,
+            ..duration.clone()
+        }));
+        let fade = Sound {
+            fade_seconds: first,
+            ..original.clone()
+        };
+        assert!(fade.same_content(&fade.clone()));
+        assert!(!fade.same_content(&Sound {
+            fade_seconds: second,
+            ..fade.clone()
+        }));
+    }
+}
+
+#[test]
+fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
+    use crate::{CarrierKind as C, Modulation as M, ModulationKind as K};
+    let plain = tone(437.0, -24.0, Ears::Left);
+    for (value, carrier, modulation, heading, editable) in [
+        (Node::Voice(plain), Some(C::Tone), None, "Steady tone", true),
+        (
+            Node::Voice(Voice {
+                carrier: Carrier::Click {
+                    rate_hz: 40.0,
+                    width_seconds: 0.002,
+                },
+                ..plain
+            }),
+            Some(C::Clicks),
+            None,
+            "Click rhythm",
+            true,
+        ),
+        (
+            Node::Voice(Voice {
+                modulation: Some(M::Sinusoidal {
+                    rate_hz: 7.0,
+                    depth: 0.5,
+                }),
+                ..plain
+            }),
+            Some(C::Tone),
+            Some(K::Sinusoidal),
+            "AM envelope",
+            true,
+        ),
+        (
+            Node::Voice(Voice {
+                modulation: Some(M::Rectangular {
+                    rate_hz: 7.0,
+                    width_seconds: 0.01,
+                }),
+                ..plain
+            }),
+            Some(C::Tone),
+            Some(K::Rectangular),
+            "Gate rhythm",
+            true,
+        ),
+        (
+            Node::BinauralPair(pair(-6.0)),
+            None,
+            None,
+            "Binaural pair",
+            false,
+        ),
+        (
+            Node::MonauralPair {
+                ears: Ears::Right,
+                pair: pair(-6.0),
+            },
+            None,
+            None,
+            "Monaural pair",
+            true,
+        ),
+    ] {
+        assert_eq!(value.primitive_kind(), carrier);
+        assert_eq!(value.modulation_kind(), modulation);
+        assert_eq!(value.heading(), heading);
+        assert_eq!(value.routing_editable(), editable);
+    }
+    assert_eq!(
+        format!("{}", node(7, Node::Voice(plain))),
+        "tone 437 Hz, peak -24 dBFS, left ear"
+    );
+    assert_eq!(
+        format!("{}", node(7, Node::BinauralPair(pair(-6.0)))),
+        "binaural pair, first 200 Hz, signed offset -6 Hz, second 194 Hz, peaks -20 / -30 dBFS"
+    );
+    assert_eq!(
+        format!(
+            "{}",
+            node(
+                7,
+                Node::MonauralPair {
+                    ears: Ears::Right,
+                    pair: pair(6.0)
+                }
+            )
+        ),
+        "monaural pair, first 200 Hz, signed offset 6 Hz, second 206 Hz, peaks -20 / -30 dBFS"
+    );
+}
+
+#[test]
+fn component_serialization_independently_rejects_zero_and_secondary_owners() {
+    for value in [
+        Node::Voice(tone(437.0, -24.0, Ears::Both)),
+        Node::BinauralPair(pair(-6.0)),
+        Node::MonauralPair {
+            ears: Ears::Right,
+            pair: pair(6.0),
+        },
+    ] {
+        for id in [
+            ComponentId::new(0),
+            ComponentId::new(7).with_lane(Lane::Secondary),
+        ] {
+            let error = toml::to_string(&Component { id, node: value }).unwrap_err();
+            assert!(error.to_string().contains("positive primary-lane owner"));
+        }
+        let valid = node(7, value);
+        let text = toml::to_string(&valid).unwrap();
+        assert_eq!(toml::from_str::<Component>(&text).unwrap(), valid);
     }
 }
 #[test]
