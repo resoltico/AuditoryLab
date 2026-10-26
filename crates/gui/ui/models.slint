@@ -13,6 +13,7 @@ export struct ParameterRow {
     has-slider: bool,
     position: float,
     diagnostic: string,
+    show-diagnostic: bool,
 }
 // The application key identifies one rendered component lifetime.
 export struct ComponentRow {
@@ -33,6 +34,7 @@ export struct ModelLane { component: string, label: string, trace: string }
 
 // A process-local immutable snapshot binding, independent of row position.
 export struct CatalogRow {
+    built-in: bool,
     text: string, binding: string, title: string, collection: string,
     summary: string, bands: string, duration: string, dates: string
 }

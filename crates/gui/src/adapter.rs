@@ -1272,6 +1272,7 @@ fn parameter_row(view: &ParameterView) -> ParameterRow {
         has_slider: view.slider.is_some(),
         position,
         diagnostic: view.diagnostic.as_str().into(),
+        show_diagnostic: !view.diagnostic.is_empty(),
     }
 }
 
@@ -1297,7 +1298,11 @@ fn component_row(entry: &ComponentEntry, view: &ComponentView) -> ComponentRow {
 
 /// Reconcile one component's parameters by key with minimal notifications.
 fn reconcile_parameters(model: &VecModel<ParameterRow>, views: &[ParameterView]) {
-    let rows: Vec<_> = views.iter().map(parameter_row).collect();
+    let mut rows: Vec<_> = views.iter().map(parameter_row).collect();
+    let mut shown = std::collections::BTreeSet::new();
+    for row in rows.iter_mut().rev() {
+        row.show_diagnostic = !row.diagnostic.is_empty() && shown.insert(row.diagnostic.clone());
+    }
     let mut index = 0;
     while index < model.row_count() {
         if model

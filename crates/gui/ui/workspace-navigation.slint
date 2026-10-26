@@ -1,0 +1,53 @@
+import { Palette } from "std-widgets.slint";
+import { Terms } from "vocabulary.slint";
+
+// One keyboard stop for the two destinations, with real panels owned by MainWindow.
+export component WorkspaceNavigation inherits FocusScope {
+    in-out property <int> current;
+    in property <length> text-size:13px;
+    callback selected(int);
+    changed current=>{root.selected(self.current);}
+    accessible-role:tab-list;
+    accessible-label:Terms.caption-workspace-navigation;
+    min-width:tabs.min-width;
+    preferred-width:tabs.preferred-width;
+    max-width:tabs.preferred-width;
+    min-height:tabs.min-height;
+    preferred-height:tabs.preferred-height;
+    max-height:tabs.preferred-height;
+    horizontal-stretch:0;
+    key-pressed(event)=>{
+        if event.text==Key.LeftArrow || event.text==Key.Home {
+            root.current=0;return accept;
+        }
+        if event.text==Key.RightArrow || event.text==Key.End {
+            root.current=1;return accept;
+        }
+        return reject;
+    }
+    tabs := HorizontalLayout {
+        spacing:4px;
+        for label[index] in [Terms.collection-library,Terms.caption-workbench]: Rectangle {
+            min-width:caption.preferred-width+24px;
+            min-height:max(root.text-size*2.5,caption.preferred-height+12px);
+            border-radius:5px;
+            background:root.current==index ? Palette.accent-background.with-alpha(0.12) : Palette.background;
+            border-width:root.has-focus && root.current==index ? 2px : 0px;
+            border-color:Palette.accent-background;
+            accessible-role:tab;
+            accessible-label:label;
+            accessible-item-index:index;
+            accessible-item-selectable:true;
+            accessible-item-selected:root.current==index;
+            accessible-action-default=>{root.current=index;root.focus();}
+            caption := Text {
+                width:parent.width;height:parent.height;
+                text:label;
+                font-weight:root.current==index ? 600 : 400;
+                horizontal-alignment:center;vertical-alignment:center;
+                color:Palette.foreground;
+            }
+            TouchArea {clicked=>{root.current=index;root.focus();}}
+        }
+    }
+}

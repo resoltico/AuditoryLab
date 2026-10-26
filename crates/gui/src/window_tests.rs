@@ -1367,3 +1367,25 @@ fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_sc
         }
     }
 }
+
+#[test]
+fn incomplete_filtered_count_header_fits_large_text_in_compact_window() {
+    install();
+    let ui = MainWindow::new().unwrap();
+    ui.set_ui_family(typography::resolve().family.into());
+    ui.set_ui_size(26.0);
+    ui.set_library_overview(
+        "0 observed unique sounds · Inventory incomplete · Filters active".into(),
+    );
+    ui.show().unwrap();
+    ui.window().set_size(slint::LogicalSize::new(800.0, 600.0));
+    crate::test_platform::settle(ui.window());
+    let (x, y, width, height) = exposed_bounds(
+        ui.window(),
+        "Applied library filters · 0 observed unique sounds · Inventory incomplete · Filters active · collapsed",
+    );
+    assert!(
+        x >= 0.0 && y >= 0.0 && x + width <= 800.0 && y + height <= 600.0,
+        "count disclosure must fit: {x} {y} {width} {height}"
+    );
+}

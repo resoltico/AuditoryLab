@@ -4,6 +4,13 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+### Workspace UX
+
+- Share native Library/Workbench tabs and persistent actions in one header; remove the duplicate product heading. Quiet result rows keep identity, duration and nominal facts while source/date metadata is disclosed on demand.
+- Reveal the monitor for waveform preview and distinguish empty collections, filtered results and incomplete inventories. Keep the result count/query disclosure fixed above scrolling results.
+- Move advanced filters and storage operations into separate bounded popups. Consolidate component creation while retaining the document captured when its menu opens.
+- Show coupled validation errors once beside outlined fields. Compact idle transport retains its safety guidance, outcomes and single visible Play/Stop control; File retains deliberate playback replacement and independent-copy saving.
+
 ### Performance
 
 - Pulse generation compares exact onset boundaries with one integer division per sample, preserving sample bits and half-open pulse edges.
