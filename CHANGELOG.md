@@ -6,6 +6,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Workspace UX
 
+- Use the companion EML application's toolkit typography in About, keeping its shared icon size and layout while retaining system text-size scaling.
 - Share native Library/Workbench tabs and persistent actions in one header; remove the duplicate product heading. Quiet result rows keep identity, duration and nominal facts while source/date metadata is disclosed on demand.
 - Reveal the monitor for waveform preview and distinguish empty collections, filtered results and incomplete inventories. Keep the result count/query disclosure fixed above scrolling results.
 - Move advanced filters and storage operations into separate bounded popups. Consolidate component creation while retaining the document captured when its menu opens.

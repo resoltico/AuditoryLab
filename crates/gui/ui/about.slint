@@ -10,9 +10,8 @@ component AboutLabel inherits TextInput {
 export component AboutWindow inherits Window {
     title: Terms.caption-about-product;
     icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
-    in property <string> ui-family;
     in property <length> ui-size: 13px;
-    default-font-family: root.ui-family;
+    // Match the companion EML About dialog's toolkit typography.
     default-font-size: root.ui-size;
     preferred-width: max(420px, root.ui-size * 30);
     preferred-height: max(410px, root.ui-size * 27);

@@ -1296,7 +1296,6 @@ fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_sc
     use std::ops::ControlFlow;
     install();
     let about = AboutWindow::new().unwrap();
-    about.set_ui_family(typography::resolve().family.into());
     about.set_identity("Version 0.4.0 (Build 2)".into());
     about.show().unwrap();
     for scale in [1.0, 2.0] {
