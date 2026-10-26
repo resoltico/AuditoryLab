@@ -6,6 +6,10 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Library experience
 
+- Start with the monitor closed so the five reference bands are visible at the initial Library size. Show/Hide monitor remains explicit and does not change selection or start audio.
+
+- Applied query details remain exposed alongside results at every layout width, even with the secondary filter tools closed.
+
 - Compact Filters / recovery navigation always opens its tools, including after returning to an empty collection. The initial window exposes the band navigation rather than hiding it behind a dropdown.
 
 - Report unreadable publication, deletion and relocation verification as unconfirmed outcomes, not as proof of a destination state. Independent fault tests cover both applied and unapplied operations.

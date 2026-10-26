@@ -18,7 +18,7 @@ export component MainWindow inherits Window {
     icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
     title: Terms.caption-product-name;
     in-out property <bool> edits-suspended:false;
-    in-out property <bool> monitor-open:true;
+    in-out property <bool> monitor-open:false;
     in property <bool> native-mac: false;
     in property <string> draft-brief;
     in property <string> draft-location;
@@ -485,7 +485,7 @@ export component MainWindow inherits Window {
                             accessible-label:Terms.caption-library-results;
                             VerticalBox {
                                 spacing: 4px;
-                                if root.compact: Text {text:root.library-count;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-label:Terms.facet-applied-library-filters-prefix + root.library-count;}
+                                Text {text:root.library-count;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-label:Terms.facet-applied-library-filters-prefix + root.library-count;}
                                 if root.compact && root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
                                 for item[index] in root.catalog: catalog-row := Rectangle {
                                     property <bool> selected-row: root.selected==index;

@@ -103,6 +103,15 @@ impl Harness {
     }
 
     fn with_workspace(workspace: Workspace) -> Self {
+        let harness = Self::with_startup_workspace(workspace);
+        // Most integration cases also exercise the open monitor and its focus
+        // handoffs. Request that view explicitly, not through a startup default.
+        harness.ui().set_monitor_open(true);
+        harness.settle();
+        harness
+    }
+
+    fn with_startup_workspace(workspace: Workspace) -> Self {
         install();
         let windows = Windows::new().unwrap();
         let requests = Rc::new(RefCell::new(Vec::new()));
@@ -753,20 +762,32 @@ fn clicking_a_recipe_row_selects_it() {
     let expected_key = second.binding.clone();
     let row = labelled(ui, &second.text);
     let list = labelled(ui, "Library results");
-    let row_bounds = row.geometry();
-    let list_bounds = list.geometry();
-    let row_origin = row.map_to_window(row_bounds.origin);
-    let list_origin = list.map_to_window(list_bounds.origin);
-    // A short viewport can clip the card centre. Click its actually visible
-    // portion, as a pointer user must, rather than the control below the list.
-    let top = row_origin.y.max(list_origin.y);
-    let bottom = (row_origin.y + row_bounds.size.height)
-        .min(list_origin.y + list_bounds.size.height);
-    assert!(bottom - top > 4.0, "second card has a visible pointer target");
-    let pointer = slint::LogicalPosition::new(
-        row_origin.x + row_bounds.size.width / 2.0,
-        (top + bottom) / 2.0,
-    );
+    // Reveal the row through the real scroll control before clicking. Neither
+    // accessibility visibility nor a card's centre implies an unclipped hit.
+    let mut pointer = None;
+    for _ in 0..8 {
+        let row_bounds = row.geometry();
+        let list_bounds = list.geometry();
+        let row_origin = row.map_to_window(row_bounds.origin);
+        let list_origin = list.map_to_window(list_bounds.origin);
+        let top = row_origin.y.max(list_origin.y);
+        let bottom = (row_origin.y + row_bounds.size.height)
+            .min(list_origin.y + list_bounds.size.height);
+        if bottom - top > 8.0 {
+            pointer = Some(slint::LogicalPosition::new(
+                row_origin.x + row_bounds.size.width / 2.0,
+                (top + bottom) / 2.0,
+            ));
+            break;
+        }
+        ui.window().dispatch_event(WindowEvent::PointerScrolled {
+            position: centre(&list),
+            delta_x: 0.0,
+            delta_y: centre(&list).y - centre(&row).y,
+        });
+        h.settle();
+    }
+    let pointer = pointer.expect("second card must be reachable by scrolling");
     drag(ui, pointer, pointer);
     h.settle();
     assert_eq!(ui.get_selected(), 1);
@@ -1288,6 +1309,8 @@ fn monitor_presentation_waits_for_main_and_failures_are_visible_and_retryable() 
     let fail = Rc::new(std::cell::Cell::new(true));
     crate::test_platform::install_with_auxiliary_failure(fail.clone());
     let windows = Windows::new().unwrap();
+    // Exercise the requested monitor; startup now leaves it closed for discovery.
+    windows.main.set_monitor_open(true);
     let (workspace, _library_directory, _store) = bound_workspace(
         auditorylab::recipe::catalog().unwrap(),
         Capabilities::no_device_playback(),
@@ -2893,12 +2916,13 @@ fn library_review_screenshots() {
         .join("../../target/evidence/library-experience");
     std::fs::create_dir_all(&destination).unwrap();
     for (name, width, height) in [
-        ("library-default-monitor", 1280_u32, 900_u32),
+        ("library-startup", 1280_u32, 900_u32),
+        ("library-with-monitor", 1280_u32, 900_u32),
         ("library-wide", 1440_u32, 1000_u32),
         ("library-medium", 1024, 768),
         ("library-compact", 800, 600),
     ] {
-        ui.set_monitor_open(name == "library-default-monitor");
+        ui.set_monitor_open(name == "library-with-monitor");
         ui.window().set_size(slint::PhysicalSize::new(width, height));
         h.settle();
         let pixels = ui.window().take_snapshot().unwrap();
@@ -2909,4 +2933,76 @@ fn library_review_screenshots() {
         }
     }
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn applied_filters_remain_readable_when_library_tools_are_closed() {
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    for width in [1440.0, 1100.0, 800.0] {
+        ui.window().set_size(slint::LogicalSize::new(width, 900.0));
+        ui.set_library_tools_open(false);
+        ui.invoke_more_filters("ioannou-2015".into(), 0, 0, 0, 0, 0,
+            "".into(), "".into(), "".into(), "".into(), "".into(), "".into());
+        h.settle();
+        let summary = labelled(ui, "Applied library filters");
+        // Selection reveal can scroll past the summary. It must remain readable
+        // through the real list scroll control without opening secondary tools.
+        let list = labelled(ui, "Library results");
+        for _ in 0..8 {
+            if summary.is_visible() {
+                break;
+            }
+            ui.window().dispatch_event(WindowEvent::PointerScrolled {
+                position: centre(&list),
+                delta_x: 0.0,
+                delta_y: 400.0,
+            });
+            h.settle();
+        }
+        assert!(summary.is_visible(), "applied filters are reachable at width {width}");
+        assert!(summary.accessible_string_property(AccessibleStringProperty::Label)
+            .is_some_and(|text| text.contains("Study: ioannou-2015")));
+        assert!(!ui.get_library_tools_open());
+    }
+}
+
+
+#[test]
+fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let (workspace, _directory, _store) = bound_workspace(
+        auditorylab::recipe::catalog().unwrap(),
+        Capabilities::no_device_playback(),
+    );
+    let h = Harness::with_startup_workspace(workspace);
+    let ui = h.ui();
+    assert!(!ui.get_monitor_open(), "startup must leave room for discovery");
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 900.0));
+    h.settle();
+    assert!(ui.get_library_wide());
+    let navigation = labelled(ui, "Browse by rhythm");
+    let bounds = navigation.geometry();
+    let origin = navigation.map_to_window(bounds.origin);
+    for index in 1..=5 {
+        let facet = ui.get_band_navigation().row_data(index).unwrap();
+        let item = labelled(ui, &facet.text);
+        let item_bounds = item.geometry();
+        let item_origin = item.map_to_window(item_bounds.origin);
+        assert!(item.is_visible());
+        assert!(item_origin.y >= origin.y);
+        assert!(item_origin.y + item_bounds.size.height <= origin.y + bounds.size.height,
+            "{} must be visible without scrolling at the initial size", facet.label);
+    }
+    let selected = ui.get_library_key();
+    action_button(ui, "Show output monitor").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(ui.get_monitor_open());
+    assert_eq!(ui.get_library_key(), selected);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    action_button(ui, "Hide output monitor").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert!(!ui.get_monitor_open());
+    assert_eq!(ui.get_library_key(), selected);
 }
