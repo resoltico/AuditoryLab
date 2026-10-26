@@ -27,7 +27,9 @@ pub(crate) struct Published<T> {
 }
 /// Open without following the last symlink or waiting for a FIFO.
 pub(crate) fn open_regular(dir: &Dir, name: &Path) -> Result<File, Error> {
-    let mut options = OpenOptions::new();
+    open_regular_with(dir, name, OpenOptions::new())
+}
+fn open_regular_with(dir: &Dir, name: &Path, mut options: OpenOptions) -> Result<File, Error> {
     options.read(true).follow(FollowSymlinks::No);
     #[cfg(unix)]
     {
@@ -460,6 +462,15 @@ pub(crate) fn relocate(
             ),
         ));
     }
+    #[cfg(windows)]
+    let mut source_file = {
+        // Windows FlushFileBuffers requires GENERIC_WRITE. Retain the same
+        // safely opened regular file for flushing and hashing; never truncate it.
+        let mut options = OpenOptions::new();
+        options.write(true);
+        open_regular_with(from, name, options)?
+    };
+    #[cfg(not(windows))]
     let mut source_file = open_regular(from, name)?;
     source_file
         .sync_all()

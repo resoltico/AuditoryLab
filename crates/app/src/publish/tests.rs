@@ -661,3 +661,60 @@ fn directory_sync_uses_a_synchronizable_read_handle() {
     sync_directory(&dir).unwrap();
     assert_eq!(dir.read_dir(".").unwrap().count(), 0);
 }
+
+#[test]
+fn relocation_flushes_the_source_without_changing_bytes_or_file_identity() {
+    let (temp, from, source) = fixture();
+    from.create_dir("trash").unwrap();
+    let to = from.open_dir("trash").unwrap();
+    let name = Path::new("entry");
+    let destination = temp.path().join("trash/entry");
+    let bytes = b"exact portable bytes\nincluding trailing whitespace \n";
+    fs::write(&source, bytes).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // Unix relocation needs readable content and writable directories,
+        // without requiring write permission on the source file itself.
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o444)).unwrap();
+    }
+    let identity = same_file::Handle::from_file(open_regular(&from, name).unwrap()).unwrap();
+    assert!(
+        relocate(&from, &to, name, &source, &destination, &Cancel::default())
+            .unwrap()
+            .is_empty()
+    );
+    assert!(!source.exists());
+    assert_eq!(fs::read(&destination).unwrap(), bytes);
+    let moved = same_file::Handle::from_file(open_regular(&to, name).unwrap()).unwrap();
+    assert_eq!(identity, moved);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            fs::metadata(&destination).unwrap().permissions().mode() & 0o777,
+            0o444
+        );
+    }
+    // Restoring uses the same flush contract and retains the same file.
+    assert!(
+        relocate(&to, &from, name, &destination, &source, &Cancel::default())
+            .unwrap()
+            .is_empty()
+    );
+    assert!(!destination.exists());
+    assert_eq!(fs::read(&source).unwrap(), bytes);
+    assert_eq!(
+        identity,
+        same_file::Handle::from_file(open_regular(&from, name).unwrap()).unwrap()
+    );
+    fs::write(&destination, b"foreign destination").unwrap();
+    assert_eq!(
+        relocate(&from, &to, name, &source, &destination, &Cancel::default())
+            .unwrap_err()
+            .kind(),
+        ErrorKind::Conflict
+    );
+    assert_eq!(fs::read(&source).unwrap(), bytes);
+    assert_eq!(fs::read(&destination).unwrap(), b"foreign destination");
+}
