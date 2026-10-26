@@ -126,8 +126,7 @@ impl Slot {
                     return carrier;
                 }
                 let depth = self.depth_at(p);
-                let value = synthesis::sine(phase);
-                (1.0 + depth * value) / (1.0 + depth)
+                synthesis::am_gain(phase, depth)
             }
             Some(Modulator::Gate(pulse)) => pulse.sample(frame - self.origin),
         };
@@ -165,7 +164,7 @@ impl Engine {
     /// A silent engine; the first target fades in.
     #[must_use]
     pub fn new(rate: SampleRate) -> Self {
-        let ramp_frames = rate.frames_in(Self::RAMP_SECONDS).unwrap_or(1).max(1);
+        let ramp_frames = Self::ramp_frames_at(rate);
         Self {
             rate,
             ramp_frames,
@@ -181,6 +180,12 @@ impl Engine {
             stopping: false,
             finished: false,
         }
+    }
+
+    /// Shared live/finite Stop-ramp length at the selected sample rate.
+    #[must_use]
+    pub fn ramp_frames_at(rate: SampleRate) -> u64 {
+        rate.frames_in(Self::RAMP_SECONDS).unwrap_or(1).max(1)
     }
 
     /// The engine's sample rate.

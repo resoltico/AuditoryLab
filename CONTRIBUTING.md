@@ -42,7 +42,7 @@ TMPDIR="$PWD/target/tmp" cargo mutants --file crates/core/src/synthesis.rs \
   --timeout 60 --cargo-arg=--locked --output target/mutations
 ```
 
-Use `--re` or a bounded shard to select a small investigation. The [workflow matrix](.github/workflows/ci.yml) owns CI source/shard selection. Its scopes cover synthesis, compilation, live transitions, facts, timing and waveform reduction; update those scopes when code moves. Each shard checks the unmutated baseline. Equivalent mutations are excluded by operator/function name with a reason beside the command, without line or column numbers. Keep Nyquist and pulse-width guards under mutation. Investigate survivors against an independent oracle. Each extra worker adds a compiler directory; use one unless parallel work is explicitly useful and authorized.
+Use `--re` or a bounded shard to select a small investigation. The [workflow matrix](.github/workflows/ci.yml) owns CI source/shard selection. Its scopes cover synthesis, voice validation, compilation, live transitions, finite Stop fades, facts, timing and waveform reduction; update those scopes when code moves. Each shard checks the unmutated baseline. Equivalent mutations are excluded by operator/function name with a reason beside the command, without line or column numbers. Keep Nyquist and pulse-width guards under mutation. Investigate survivors against an independent oracle. Each extra worker adds a compiler directory; use one unless parallel work is explicitly useful and authorized.
 
 ## Design and implementation
 

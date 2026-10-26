@@ -249,6 +249,10 @@ jobs:
             shard: 0/1
           - source: facts
             shard: 0/1
+          - source: voice
+            shard: 0/1
+          - source: finite
+            shard: 0/1
           - source: waveform
             shard: 0/1
     needs: [lint, icons]

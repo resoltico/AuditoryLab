@@ -15,6 +15,7 @@ pub mod authored;
 pub mod catalog;
 mod compiled;
 mod facts;
+pub mod finite;
 mod history;
 pub mod interpretation;
 pub mod live;

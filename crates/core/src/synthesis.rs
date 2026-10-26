@@ -3,6 +3,12 @@ use core::f64::consts::TAU;
 #[cfg(test)]
 const UNITS_PER_CYCLE: f64 = 18_446_744_073_709_551_616.0;
 
+/// Shared bounded AM formula, retaining the specified evaluation order.
+#[inline]
+pub(crate) fn am_gain(phase: u64, depth: f64) -> f64 {
+    (1.0 + depth * sine(phase)) / (1.0 + depth)
+}
+
 /// Exact non-negative binary64 decomposition: mantissa × 2^exponent.
 fn parts(value: f64) -> (u64, i32) {
     let bits = value.to_bits();
@@ -188,9 +194,7 @@ impl GeneratorVoice {
         };
         let gain = match self.modulation {
             None => 1.0,
-            Some(Modulator::Am { step, depth }) => {
-                (1.0 + depth * sine(n.wrapping_mul(step))) / (1.0 + depth)
-            }
+            Some(Modulator::Am { step, depth }) => am_gain(n.wrapping_mul(step), depth),
             Some(Modulator::Gate(pulse)) => pulse.sample(n),
         };
         self.amplitude * (carrier * gain)
