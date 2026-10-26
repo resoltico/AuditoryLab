@@ -1309,7 +1309,6 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
     }
 }
 
-
 #[test]
 fn structured_library_rows_keep_saved_identity_and_rate_independent_classification() {
     let mut ws = workspace();

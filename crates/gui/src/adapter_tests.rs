@@ -771,8 +771,8 @@ fn clicking_a_recipe_row_selects_it() {
         let row_origin = row.map_to_window(row_bounds.origin);
         let list_origin = list.map_to_window(list_bounds.origin);
         let top = row_origin.y.max(list_origin.y);
-        let bottom = (row_origin.y + row_bounds.size.height)
-            .min(list_origin.y + list_bounds.size.height);
+        let bottom =
+            (row_origin.y + row_bounds.size.height).min(list_origin.y + list_bounds.size.height);
         if bottom - top > 8.0 {
             pointer = Some(slint::LogicalPosition::new(
                 row_origin.x + row_bounds.size.width / 2.0,
@@ -2152,7 +2152,10 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
         drag(ui, position, position);
         h.settle();
         assert!(ui.get_library_detail());
-        assert!(ui.get_library_tools_open(), "entering tools must never hide them");
+        assert!(
+            ui.get_library_tools_open(),
+            "entering tools must never hide them"
+        );
     };
     open_tools();
     labelled(ui, "More filters and grouping").accessible_action(&AccessibilityAction::Default);
@@ -2845,7 +2848,6 @@ fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
     }
 }
 
-
 #[test]
 fn wide_library_navigation_uses_real_shared_filters_and_structured_cards() {
     use auditorylab::core::nominal::Band;
@@ -2853,7 +2855,8 @@ fn wide_library_navigation_uses_real_shared_filters_and_structured_cards() {
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
-    ui.window().set_size(slint::LogicalSize::new(1440.0, 1000.0));
+    ui.window()
+        .set_size(slint::LogicalSize::new(1440.0, 1000.0));
     h.settle();
     assert!(ui.get_library_wide());
     assert_eq!(ui.get_band_navigation().row_count(), 10);
@@ -2862,13 +2865,20 @@ fn wide_library_navigation_uses_real_shared_filters_and_structured_cards() {
         assert_eq!(facet.label, band.to_string());
         assert_eq!(facet.detail, band.interval());
         let item = labelled(ui, &facet.text);
-        assert!(item.is_visible(), "band navigation is not a closed dropdown");
+        assert!(
+            item.is_visible(),
+            "band navigation is not a closed dropdown"
+        );
         assert!(item.geometry().size.height > 0.0);
     }
     let delta = ui.get_band_navigation().row_data(1).unwrap();
     labelled(ui, &delta.text).accessible_action(&AccessibilityAction::Default);
     h.settle();
-    assert_eq!(h.adapter.inspect(|w| w.catalog_query().rhythm.bands.clone()), vec![Band::Delta]);
+    assert_eq!(
+        h.adapter
+            .inspect(|w| w.catalog_query().rhythm.bands.clone()),
+        vec![Band::Delta]
+    );
     assert_eq!(ui.get_band_choice(), 1);
     assert_eq!(ui.get_catalog().row_count(), 1);
     let row = ui.get_catalog().row_data(0).unwrap();
@@ -2877,14 +2887,20 @@ fn wide_library_navigation_uses_real_shared_filters_and_structured_cards() {
     assert_eq!(row.bands, "Delta");
     assert!(row.duration.contains("1 min"));
     assert!(row.dates.contains("Unknown"));
-    assert!(ui.get_library_classification().contains("not measured brain activity"));
+    assert!(
+        ui.get_library_classification()
+            .contains("not measured brain activity")
+    );
     assert!(ui.get_library_ownership().contains("Read only"));
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
     // The next query originates outside the widget: its selected state must follow.
     ui.invoke_rhythm_filter(3, 0);
     h.settle();
     assert_eq!(ui.get_band_choice(), 3);
-    assert!(h.adapter.inspect(|w| w.catalog_query().rhythm.bands == [Band::Alpha]));
+    assert!(
+        h.adapter
+            .inspect(|w| w.catalog_query().rhythm.bands == [Band::Alpha])
+    );
 }
 
 #[test]
@@ -2893,12 +2909,28 @@ fn wide_library_group_headings_have_no_selectable_identity() {
     let ui = h.ui();
     ui.set_monitor_open(false);
     ui.window().set_size(slint::LogicalSize::new(1440.0, 900.0));
-    ui.invoke_more_filters("".into(), 0, 0, 0, 0, 1,
-        "".into(), "".into(), "".into(), "".into(), "".into(), "".into());
+    ui.invoke_more_filters(
+        "".into(),
+        0,
+        0,
+        0,
+        0,
+        1,
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+    );
     h.settle();
     let rows = ui.get_catalog();
     assert!(rows.iter().any(|row| row.binding.is_empty()));
-    assert!(rows.iter().filter(|row| row.binding.is_empty()).all(|row| row.collection.is_empty() && row.duration.is_empty()));
+    assert!(
+        rows.iter()
+            .filter(|row| row.binding.is_empty())
+            .all(|row| row.collection.is_empty() && row.duration.is_empty())
+    );
     let before = ui.get_library_key();
     ui.invoke_select("".into());
     assert_eq!(ui.get_library_key(), before);
@@ -2923,7 +2955,8 @@ fn library_review_screenshots() {
         ("library-compact", 800, 600),
     ] {
         ui.set_monitor_open(name == "library-with-monitor");
-        ui.window().set_size(slint::PhysicalSize::new(width, height));
+        ui.window()
+            .set_size(slint::PhysicalSize::new(width, height));
         h.settle();
         let pixels = ui.window().take_snapshot().unwrap();
         let mut file = std::fs::File::create(destination.join(format!("{name}.ppm"))).unwrap();
@@ -2943,8 +2976,20 @@ fn applied_filters_remain_readable_when_library_tools_are_closed() {
     for width in [1440.0, 1100.0, 800.0] {
         ui.window().set_size(slint::LogicalSize::new(width, 900.0));
         ui.set_library_tools_open(false);
-        ui.invoke_more_filters("ioannou-2015".into(), 0, 0, 0, 0, 0,
-            "".into(), "".into(), "".into(), "".into(), "".into(), "".into());
+        ui.invoke_more_filters(
+            "ioannou-2015".into(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+        );
         h.settle();
         let summary = labelled(ui, "Applied library filters");
         // Selection reveal can scroll past the summary. It must remain readable
@@ -2961,13 +3006,18 @@ fn applied_filters_remain_readable_when_library_tools_are_closed() {
             });
             h.settle();
         }
-        assert!(summary.is_visible(), "applied filters are reachable at width {width}");
-        assert!(summary.accessible_string_property(AccessibleStringProperty::Label)
-            .is_some_and(|text| text.contains("Study: ioannou-2015")));
+        assert!(
+            summary.is_visible(),
+            "applied filters are reachable at width {width}"
+        );
+        assert!(
+            summary
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .is_some_and(|text| text.contains("Study: ioannou-2015"))
+        );
         assert!(!ui.get_library_tools_open());
     }
 }
-
 
 #[test]
 fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
@@ -2978,7 +3028,10 @@ fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
     );
     let h = Harness::with_startup_workspace(workspace);
     let ui = h.ui();
-    assert!(!ui.get_monitor_open(), "startup must leave room for discovery");
+    assert!(
+        !ui.get_monitor_open(),
+        "startup must leave room for discovery"
+    );
     ui.window().set_size(slint::LogicalSize::new(1280.0, 900.0));
     h.settle();
     assert!(ui.get_library_wide());
@@ -2992,8 +3045,11 @@ fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
         let item_origin = item.map_to_window(item_bounds.origin);
         assert!(item.is_visible());
         assert!(item_origin.y >= origin.y);
-        assert!(item_origin.y + item_bounds.size.height <= origin.y + bounds.size.height,
-            "{} must be visible without scrolling at the initial size", facet.label);
+        assert!(
+            item_origin.y + item_bounds.size.height <= origin.y + bounds.size.height,
+            "{} must be visible without scrolling at the initial size",
+            facet.label
+        );
     }
     let selected = ui.get_library_key();
     action_button(ui, "Show output monitor").accessible_action(&AccessibilityAction::Default);

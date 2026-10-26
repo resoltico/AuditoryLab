@@ -237,15 +237,29 @@ impl LibraryState {
                     LibraryKey::User(_) => "User",
                     LibraryKey::External(_) => "Open file · Temporary",
                 },
-                if self.requires_read(&e.key) { " · Last observed · Needs review" } else { "" }
+                if self.requires_read(&e.key) {
+                    " · Last observed · Needs review"
+                } else {
+                    ""
+                }
             );
             let title = e.title.display_scalar();
             let summary = e.nominal.summary();
-            let duration = format!("Duration {}", NumberStyle::Duration.format(e.duration_seconds));
-            let mut memberships: Vec<String> = e.nominal.bands.iter().map(ToString::to_string).collect();
-            if e.nominal.outside_bands() { memberships.push("Other rates".into()); }
-            if e.nominal.no_rhythm() { memberships.push("No rhythmic rate".into()); }
-            if e.nominal.multiple() { memberships.push("Multiple rhythms".into()); }
+            let duration = format!(
+                "Duration {}",
+                NumberStyle::Duration.format(e.duration_seconds)
+            );
+            let mut memberships: Vec<String> =
+                e.nominal.bands.iter().map(ToString::to_string).collect();
+            if e.nominal.outside_bands() {
+                memberships.push("Other rates".into());
+            }
+            if e.nominal.no_rhythm() {
+                memberships.push("No rhythmic rate".into());
+            }
+            if e.nominal.multiple() {
+                memberships.push("Multiple rhythms".into());
+            }
             if e.nominal.completeness != crate::core::nominal::Completeness::Complete {
                 memberships.push("Needs review".into());
             }
@@ -253,7 +267,12 @@ impl LibraryState {
             LibraryRowView {
                 key: e.key.to_string(),
                 text: format!("{title} · {collection}\n{summary}\n{bands}\n{duration}\n{dates}"),
-                title, collection, summary, bands, duration, dates,
+                title,
+                collection,
+                summary,
+                bands,
+                duration,
+                dates,
             }
         };
         let mut rows = Vec::new();
@@ -265,7 +284,9 @@ impl LibraryState {
             } else {
                 for group in result.groups {
                     rows.push(Self::heading_row(format!(
-                        "{} · {} unique sounds", group.label, group.keys.len()
+                        "{} · {} unique sounds",
+                        group.label,
+                        group.keys.len()
                     )));
                     for key in group.keys {
                         if let Some(e) = self.entries.iter().find(|e| e.key == key) {
@@ -286,10 +307,13 @@ impl LibraryState {
             Scope::BuiltIn | Scope::OpenFiles | Scope::Trash
         ) && !diagnostics.is_empty()
         {
-            rows.push(Self::heading_row("Unreadable storage entries · not included in sound counts".into()));
+            rows.push(Self::heading_row(
+                "Unreadable storage entries · not included in sound counts".into(),
+            ));
             for problem in diagnostics {
                 rows.push(Self::heading_row(format!(
-                    "Needs review · {}\n{}", problem.storage_id, problem.message
+                    "Needs review · {}\n{}",
+                    problem.storage_id, problem.message
                 )));
             }
         }
@@ -301,9 +325,14 @@ impl LibraryState {
     }
     fn heading_row(text: String) -> LibraryRowView {
         LibraryRowView {
-            key: String::new(), title: text.clone(), text,
-            collection: String::new(), summary: String::new(), bands: String::new(),
-            duration: String::new(), dates: String::new(),
+            key: String::new(),
+            title: text.clone(),
+            text,
+            collection: String::new(),
+            summary: String::new(),
+            bands: String::new(),
+            duration: String::new(),
+            dates: String::new(),
         }
     }
     fn accept_record(&mut self, record: LoadedRecord) {
@@ -589,7 +618,12 @@ impl Workspace {
             } else {
                 format!("{label} · {detail} · {count}")
             };
-            LibraryFacetView { label, detail: detail.into(), count, text }
+            LibraryFacetView {
+                label,
+                detail: detail.into(),
+                count,
+                text,
+            }
         };
         let base = self.catalog_query().clone();
         let mut unrestricted = base.clone();
@@ -601,7 +635,12 @@ impl Workspace {
             query.rhythm.bands = vec![band];
             bands.push(facet(&query, band.to_string(), band.interval()));
         }
-        for state in [RhythmState::OutsideBands, RhythmState::None, RhythmState::Multiple, RhythmState::NeedsReview] {
+        for state in [
+            RhythmState::OutsideBands,
+            RhythmState::None,
+            RhythmState::Multiple,
+            RhythmState::NeedsReview,
+        ] {
             let mut query = unrestricted.clone();
             query.rhythm.state = Some(state);
             bands.push(facet(&query, state.label().into(), ""));
@@ -624,9 +663,19 @@ impl Workspace {
         let count = if self.library.inventory.complete {
             format!("{} unique sounds", self.library.visible.len())
         } else {
-            format!("{} observed unique sounds · Inventory incomplete", self.library.visible.len())
+            format!(
+                "{} observed unique sounds · Inventory incomplete",
+                self.library.visible.len()
+            )
         };
-        format!("{} · {} · Sort {} {} · Group {}", count, q.scope.label(), sort.label(), direction.label(), q.group_by.label())
+        format!(
+            "{} · {} · Sort {} {} · Group {}",
+            count,
+            q.scope.label(),
+            sort.label(),
+            direction.label(),
+            q.group_by.label()
+        )
     }
     /// Unique counts and active restrictions; group repeats are never counted as sounds.
     #[must_use]

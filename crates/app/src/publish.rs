@@ -509,9 +509,10 @@ pub(crate) fn relocate(
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(format!(
                 "Moved; source removal verified after I/O error: {error}"
             )),
-            Ok(_) if destination.parent().and_then(Path::file_name)
-                == Some(std::ffi::OsStr::new("trash"))
-                && same_file(from, name, to, name)? =>
+            Ok(_)
+                if destination.parent().and_then(Path::file_name)
+                    == Some(std::ffi::OsStr::new("trash"))
+                    && same_file(from, name, to, name)? =>
             {
                 warnings.push(format!(
                     "Moved to Trash; redundant active link remains at {source:?}: {error}"

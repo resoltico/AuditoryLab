@@ -56,12 +56,19 @@ impl SlintAdapter {
                 ))
             };
             let (bands, methods) = w.library_facets();
-            ui.set_band_labels(strings(bands.iter().map(|band| band.text.clone()).collect()));
+            ui.set_band_labels(strings(
+                bands.iter().map(|band| band.text.clone()).collect(),
+            ));
             ui.set_band_navigation(ModelRc::new(VecModel::from(
-                bands.into_iter().map(|band| crate::generated::LibraryFacet {
-                    label: band.label.into(), detail: band.detail.into(),
-                    count: band.count.into(), text: band.text.into(),
-                }).collect::<Vec<_>>()
+                bands
+                    .into_iter()
+                    .map(|band| crate::generated::LibraryFacet {
+                        label: band.label.into(),
+                        detail: band.detail.into(),
+                        count: band.count.into(),
+                        text: band.text.into(),
+                    })
+                    .collect::<Vec<_>>(),
             )));
             ui.set_method_labels(strings(methods));
             ui.set_calendar_context(auditorylab::calendar::local_context().into());
@@ -70,9 +77,13 @@ impl SlintAdapter {
                 use auditorylab::collection::{Scope, SortBy};
                 use auditorylab::core::nominal::{Band, Method};
                 use auditorylab::query::RhythmState;
-                let band = query.rhythm.bands.first().and_then(|band| Band::ALL.iter().position(|value| value == band))
+                let band = query
+                    .rhythm
+                    .bands
+                    .first()
+                    .and_then(|band| Band::ALL.iter().position(|value| value == band))
                     .and_then(|index| i32::try_from(index + 1).ok())
-                    .unwrap_or_else(|| match query.rhythm.state {
+                    .unwrap_or(match query.rhythm.state {
                         Some(RhythmState::OutsideBands) => 6,
                         Some(RhythmState::None) => 7,
                         Some(RhythmState::Multiple) => 8,
@@ -80,9 +91,15 @@ impl SlintAdapter {
                         None => 0,
                     });
                 ui.set_band_choice(band);
-                ui.set_method_choice(query.rhythm.methods.first()
-                    .and_then(|method| Method::ALL.iter().position(|value| value == method))
-                    .and_then(|index| i32::try_from(index + 1).ok()).unwrap_or(0));
+                ui.set_method_choice(
+                    query
+                        .rhythm
+                        .methods
+                        .first()
+                        .and_then(|method| Method::ALL.iter().position(|value| value == method))
+                        .and_then(|index| i32::try_from(index + 1).ok())
+                        .unwrap_or(0),
+                );
                 ui.set_collection_choice(match query.scope {
                     Scope::All => 0,
                     Scope::BuiltIn => 1,

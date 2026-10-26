@@ -27,7 +27,8 @@ pub use library::{LibraryBinding, LibraryOutcome};
 pub use output::{MotionPreference, OutputView};
 pub use tasks::{FileOutcome, Job, JobKind, JobOutcome, Runner, TaskId, WorkerFailure};
 pub use views::{
-    ActionView, ComponentView, EditorView, LibraryFacetView, LibraryRowView, LibraryView, MetadataView, ParameterView, TransportView,
+    ActionView, ComponentView, EditorView, LibraryFacetView, LibraryRowView, LibraryView,
+    MetadataView, ParameterView, TransportView,
 };
 
 use crate::controls;
