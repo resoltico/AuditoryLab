@@ -399,7 +399,7 @@ pub fn analyze(components: &[crate::Component]) -> Analysis {
                 {
                     analysis.invalid("pair levels must be finite and at most 0 dBFS");
                 }
-                if let Err(error) = authored::lower(core::slice::from_ref(component)) {
+                if let Err(error) = authored::lower(component) {
                     analysis.invalid(&alloc::format!("{error}"));
                 }
             }
@@ -437,7 +437,7 @@ pub fn analyze(components: &[crate::Component]) -> Analysis {
             .diagnostics
             .push("ambiguous raw-tone mixture; no arbitrary pairwise differences inferred".into());
     }
-    if let Err(error) = authored::lower(components)
+    if let Err(error) = crate::Sound::check_structure(components)
         && !analysis
             .diagnostics
             .iter()

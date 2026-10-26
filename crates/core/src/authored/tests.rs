@@ -2,7 +2,7 @@
 use crate as auditorylab_core;
 use auditorylab_core::{
     Carrier, Component, ComponentForm, ComponentId, Ears, Lane, LoweringError, Pair, PairIssue,
-    SampleRate, Sound, TargetCheck, Voice, authored,
+    SampleRate, Sound, TargetCheck, Voice,
 };
 use serde::{Deserialize, Serialize};
 use std::{format, vec, vec::Vec};
@@ -537,7 +537,7 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
                 [Ears::Both, Ears::Both],
             ),
         ] {
-            let lowered = authored::lower(&[form(u32::MAX, node_kind)]).unwrap();
+            let lowered = crate::test_support::lower(&[form(u32::MAX, node_kind)]).unwrap();
             assert_eq!(
                 lowered,
                 [
@@ -595,7 +595,7 @@ fn raw_order_is_never_regrouped_and_both_budgets_are_enforced() {
         form(2, ComponentForm::BinauralPair(pair(6.0))),
         form(9, ComponentForm::Voice(raw)),
     ];
-    let lowered = authored::lower(&values).unwrap();
+    let lowered = crate::test_support::lower(&values).unwrap();
     assert_eq!(
         lowered.iter().map(|c| c.0.get()).collect::<Vec<_>>(),
         [7, 2, 2, 9]
@@ -605,22 +605,22 @@ fn raw_order_is_never_regrouped_and_both_budgets_are_enforced() {
     let eight = (1..=8)
         .map(|id| form(id, ComponentForm::BinauralPair(pair(6.0))))
         .collect::<Vec<_>>();
-    assert_eq!(authored::lower(&eight).unwrap().len(), 16);
+    assert_eq!(crate::test_support::lower(&eight).unwrap().len(), 16);
     let mut nine = eight;
     nine.push(form(9, ComponentForm::Voice(raw)));
     assert_eq!(
-        authored::lower(&nine),
+        crate::test_support::lower(&nine),
         Err(LoweringError::VoiceBudget { count: 17 })
     );
     let raw17 = (1..=17)
         .map(|id| form(id, ComponentForm::Voice(raw)))
         .collect::<Vec<_>>();
     assert_eq!(
-        authored::lower(&raw17),
+        crate::test_support::lower(&raw17),
         Err(LoweringError::ComponentBudget { count: 17 })
     );
     assert_eq!(
-        authored::lower(&[values[0], values[0]]),
+        crate::test_support::lower(&[values[0], values[0]]),
         Err(LoweringError::Identity {
             id: ComponentId::new(7).unwrap()
         })
@@ -643,7 +643,7 @@ fn coupled_pair_failures_are_not_clamped_or_rounded_into_valid_audio() {
             ..pair(0.0)
         };
         assert!(
-            matches!(authored::lower(&[form(1,ComponentForm::BinauralPair(p))]),Err(LoweringError::PairDifference {issue:found,..}) if found==issue)
+            matches!(crate::test_support::lower(&[form(1,ComponentForm::BinauralPair(p))]),Err(LoweringError::PairDifference {issue:found,..}) if found==issue)
         );
     }
 }
@@ -848,11 +848,11 @@ fn raw_component_budget_and_duplicate_owners_are_checked_at_the_authored_boundar
     let sixteen = (1..=16)
         .map(|id| form(id, ComponentForm::Voice(raw)))
         .collect::<Vec<_>>();
-    assert_eq!(authored::lower(&sixteen).unwrap().len(), 16);
+    assert_eq!(crate::test_support::lower(&sixteen).unwrap().len(), 16);
     let mut seventeen = sixteen;
     seventeen.push(form(17, ComponentForm::Voice(raw)));
     assert_eq!(
-        authored::lower(&seventeen),
+        crate::test_support::lower(&seventeen),
         Err(LoweringError::ComponentBudget { count: 17 })
     );
     assert!(ComponentId::new(0).is_none());
@@ -1066,5 +1066,79 @@ fn structural_failures_are_single_and_distinguish_both_budgets() {
         let check = TargetCheck::authored(SampleRate::DEFAULT, &components);
         assert!(check.components().is_empty());
         assert_eq!(check.result(), Err(&crate::SoundError::Authored(expected)));
+    }
+}
+
+#[test]
+fn direct_pair_compilation_reports_the_failing_lane_and_requested_carrier() {
+    use crate::{ParameterId, SoundError, VoiceError};
+    let owner = ComponentId::new(42).unwrap();
+    for (first_hz, offset_hz, lane, failed_hz) in [
+        (24_000.0, -6.0, Lane::Primary, 24_000.0),
+        (23_999.0, 6.0, Lane::Secondary, 24_005.0),
+    ] {
+        let components = [form(
+            42,
+            ComponentForm::BinauralPair(Pair {
+                first_hz,
+                offset_hz,
+                ..pair(0.0)
+            }),
+        )];
+        let check = TargetCheck::authored(SampleRate::DEFAULT, &components);
+        assert_eq!(
+            check.result(),
+            Err(&SoundError::PairCarrier {
+                id: owner.with_lane(lane),
+                first_hz,
+                offset_hz,
+                error: VoiceError::Frequency {
+                    parameter: ParameterId::ToneFrequency,
+                    hz: failed_hz,
+                    sample_rate_hz: 48_000
+                },
+            })
+        );
+        assert!(check.component(owner.with_lane(lane)).unwrap().is_err());
+    }
+}
+
+#[test]
+fn direct_pair_arithmetic_failures_retain_their_independent_reason() {
+    for (first, offset, expected) in [
+        (f64::NAN, 6.0, PairIssue::Nonfinite),
+        (200.0, f64::INFINITY, PairIssue::Nonfinite),
+        (f64::MAX, f64::MAX, PairIssue::Nonfinite),
+        (0.0, 6.0, PairIssue::Nonpositive),
+        (200.0, -200.0, PairIssue::Nonpositive),
+        (
+            200.0,
+            f64::from_bits(1),
+            PairIssue::UnrepresentablePairDifference,
+        ),
+    ] {
+        let components = [form(
+            7,
+            ComponentForm::BinauralPair(Pair {
+                first_hz: first,
+                offset_hz: offset,
+                ..pair(0.0)
+            }),
+        )];
+        let check = TargetCheck::authored(SampleRate::DEFAULT, &components);
+        let Err(crate::SoundError::Authored(LoweringError::PairDifference {
+            issue,
+            id,
+            first_hz,
+            offset_hz,
+        })) = check.result()
+        else {
+            panic!("missing pair arithmetic failure")
+        };
+        assert_eq!(*issue, expected);
+        assert_eq!(id.get(), 7);
+        assert_eq!(first_hz.to_bits(), first.to_bits());
+        assert_eq!(offset_hz.to_bits(), offset.to_bits());
+        assert!(check.components().is_empty());
     }
 }

@@ -277,7 +277,7 @@ fn every_entry_has_its_independently_written_recipe() {
         let sound = auditorylab_core::Sound {
             duration_seconds: authored.duration_seconds,
             fade_seconds: authored.fade_seconds,
-            components: (auditorylab_core::authored::lower(&authored.components)
+            components: (crate::test_support::lower(&authored.components)
                 .unwrap()
                 .into_iter()
                 .map(|(_, c)| c)
@@ -406,7 +406,7 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
             let mut sound = auditorylab_core::Sound {
                 duration_seconds: authored.duration_seconds,
                 fade_seconds: authored.fade_seconds,
-                components: (auditorylab_core::authored::lower(&authored.components)
+                components: (crate::test_support::lower(&authored.components)
                     .unwrap()
                     .into_iter()
                     .map(|(_, c)| c)

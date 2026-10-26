@@ -132,59 +132,56 @@ impl ComponentForm {
         }
     }
 }
-/// Lower nodes in source order, preserving primitive sample formulas and pair order.
+/// Expand one authored component in stable primary/secondary generator order.
 /// No reordering/regrouping of raw tones or inferred pairing occurs.
 ///
 /// # Errors
-/// Refuses invalid owners, either voice budget, and unrepresentable pair sums.
-pub(crate) fn lower(components: &[Component]) -> Result<Vec<(VoiceId, Voice)>, LoweringError> {
-    Sound::check_structure(components)?;
+/// Refuses unrepresentable pair carrier arithmetic.
+pub(crate) fn lower(component: &Component) -> Result<Vec<(VoiceId, Voice)>, LoweringError> {
     let mut output = Vec::new();
-    for component in components {
-        let id = component.id;
-        match component.form {
-            ComponentForm::Voice(value) => output.push((id.into(), value)),
-            form => {
-                let (pair, first_ears, second_ears) = match form {
-                    ComponentForm::BinauralPair(pair) => (pair, Ears::Left, Ears::Right),
-                    ComponentForm::MonauralPair { pair, ears } => (pair, ears, ears),
-                    ComponentForm::Voice(_) => unreachable!("raw form handled above"),
-                };
-                let second_hz = pair.first_hz + pair.offset_hz;
-                // A finite IEEE binary64 sum requires finite operands; this
-                // single check also detects overflow of otherwise finite inputs.
-                let issue = if !second_hz.is_finite() {
-                    Some(PairIssue::Nonfinite)
-                } else if pair.first_hz <= 0.0 || second_hz <= 0.0 {
-                    Some(PairIssue::Nonpositive)
-                } else if pair.offset_hz != 0.0 && second_hz == pair.first_hz {
-                    Some(PairIssue::UnrepresentablePairDifference)
-                } else {
-                    None
-                };
-                if let Some(issue) = issue {
-                    return Err(LoweringError::PairDifference {
-                        issue,
-                        id,
-                        first_hz: pair.first_hz,
-                        offset_hz: pair.offset_hz,
-                    });
-                }
-                let tone = |frequency_hz, peak_dbfs, ears| Voice {
-                    carrier: Carrier::Tone { frequency_hz },
-                    peak_dbfs,
-                    ears,
-                    modulation: None,
-                };
-                output.push((
-                    id.into(),
-                    tone(pair.first_hz, pair.first_peak_dbfs, first_ears),
-                ));
-                output.push((
-                    id.with_lane(Lane::Secondary),
-                    tone(second_hz, pair.second_peak_dbfs, second_ears),
-                ));
+    let id = component.id;
+    match component.form {
+        ComponentForm::Voice(value) => output.push((id.into(), value)),
+        form => {
+            let (pair, first_ears, second_ears) = match form {
+                ComponentForm::BinauralPair(pair) => (pair, Ears::Left, Ears::Right),
+                ComponentForm::MonauralPair { pair, ears } => (pair, ears, ears),
+                ComponentForm::Voice(_) => unreachable!("raw form handled above"),
+            };
+            let second_hz = pair.first_hz + pair.offset_hz;
+            // A finite IEEE binary64 sum requires finite operands; this
+            // single check also detects overflow of otherwise finite inputs.
+            let issue = if !second_hz.is_finite() {
+                Some(PairIssue::Nonfinite)
+            } else if pair.first_hz <= 0.0 || second_hz <= 0.0 {
+                Some(PairIssue::Nonpositive)
+            } else if pair.offset_hz != 0.0 && second_hz == pair.first_hz {
+                Some(PairIssue::UnrepresentablePairDifference)
+            } else {
+                None
+            };
+            if let Some(issue) = issue {
+                return Err(LoweringError::PairDifference {
+                    issue,
+                    id,
+                    first_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                });
             }
+            let tone = |frequency_hz, peak_dbfs, ears| Voice {
+                carrier: Carrier::Tone { frequency_hz },
+                peak_dbfs,
+                ears,
+                modulation: None,
+            };
+            output.push((
+                id.into(),
+                tone(pair.first_hz, pair.first_peak_dbfs, first_ears),
+            ));
+            output.push((
+                id.with_lane(Lane::Secondary),
+                tone(second_hz, pair.second_peak_dbfs, second_ears),
+            ));
         }
     }
     Ok(output)

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use crate::{CarrierFacts, Ears, Modulation, ModulationFacts, ParameterId};
+use crate::{CarrierFacts, Ears, Modulation, ModulationFacts, ParameterId, Voice};
 use alloc::vec;
 use alloc::vec::Vec;
 

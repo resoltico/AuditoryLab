@@ -10,8 +10,8 @@
 //! engine reuse without compiling the raw components again.
 use crate::synthesis::GeneratorVoice;
 use crate::{
-    ComponentFacts, Ear, SampleRate, Signal, SlotRole, Sound, SoundError, Voice, VoiceError,
-    VoiceId, VoiceObservation, numeric, signal::Envelope,
+    ComponentFacts, Ear, SampleRate, Signal, SlotRole, Sound, SoundError, VoiceError, VoiceId,
+    VoiceObservation, numeric, signal::Envelope,
 };
 use alloc::vec::Vec;
 
@@ -174,101 +174,64 @@ pub struct TargetCheck {
 }
 
 impl TargetCheck {
-    /// Lower an atomic authored candidate before compiling any generator lane.
+    /// Compile each admitted authored component with its pair intent in scope.
     #[must_use]
     pub(crate) fn authored(rate: SampleRate, components: &[crate::Component]) -> Self {
-        let lowered = match crate::authored::lower(components) {
-            Ok(values) => values,
-            Err(error) => {
-                return Self {
-                    rate,
-                    components: Vec::new(),
-                    result: Err(SoundError::Authored(error)),
-                };
-            }
+        let refused = |error| Self {
+            rate,
+            components: Vec::new(),
+            result: Err(SoundError::Authored(error)),
         };
-        let mut check = Self::compile_lanes(rate, &lowered);
-        let intent = |id: VoiceId| {
-            components
-                .iter()
-                .find(|c| c.id.get() == id.get())
-                .and_then(|c| match c.form {
-                    crate::ComponentForm::BinauralPair(pair) => {
-                        Some((pair, crate::PairKind::Binaural))
-                    }
-                    crate::ComponentForm::MonauralPair { pair, .. } => {
-                        Some((pair, crate::PairKind::Monaural))
-                    }
-                    _ => None,
-                })
-        };
-        if let Err(SoundError::Component {
-            number,
-            error: VoiceError::Frequency { .. },
-        }) = &check.result
-        {
-            let id = lowered[*number - 1].0;
-            if let Some((pair, _)) = intent(id) {
-                let error = match &check.result {
-                    Err(SoundError::Component { error, .. }) => error.clone(),
-                    _ => unreachable!("matched carrier error above"),
-                };
-                check.result = Err(SoundError::PairCarrier {
-                    id,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    error,
-                });
-            }
+        if let Err(error) = Sound::check_structure(components) {
+            return refused(error);
         }
-        let annotate = |id: VoiceId, facts: &mut ComponentFacts| {
-            if let Some((pair, kind)) = intent(id) {
-                facts.pair = Some(crate::PairFacts {
-                    owner: id.component,
-                    kind,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    second_hz: pair.first_hz + pair.offset_hz,
-                });
-            }
-        };
-        for (id, result) in &mut check.components {
-            if let Ok(facts) = result {
-                annotate(*id, facts);
-            }
-        }
-        if let Ok(target) = &mut check.result {
-            for entry in target.mix.entries[..target.mix.len].iter_mut().flatten() {
-                annotate(entry.id, &mut entry.facts);
-            }
-        }
-        check
-    }
-
-    fn compile_lanes(rate: SampleRate, components: &[(VoiceId, Voice)]) -> Self {
         let mut mix = CompiledMix::empty(rate);
         let mut first = None;
-        let mut results = Vec::with_capacity(components.len());
-        for (index, (id, component)) in components.iter().enumerate() {
-            match component.voice(rate) {
-                Ok(voice) => {
-                    let facts = ComponentFacts::from_voice(component, &voice, rate);
-                    results.push((*id, Ok(facts)));
-                    mix.entries[mix.len] = Some(CompiledComponent {
-                        id: *id,
-                        voice,
-                        facts,
-                    });
-                    mix.len += 1;
-                }
-                Err(error) => {
-                    if first.is_none() {
-                        first = Some(SoundError::Component {
-                            number: index + 1,
-                            error: error.clone(),
-                        });
+        let mut results = Vec::new();
+        for component in components {
+            let pair = component.form.pair().map(|pair| crate::PairFacts {
+                owner: component.id,
+                kind: if matches!(component.form, crate::ComponentForm::BinauralPair(_)) {
+                    crate::PairKind::Binaural
+                } else {
+                    crate::PairKind::Monaural
+                },
+                first_hz: pair.first_hz,
+                offset_hz: pair.offset_hz,
+                second_hz: pair.first_hz + pair.offset_hz,
+            });
+            let lanes = match crate::authored::lower(component) {
+                Ok(lanes) => lanes,
+                Err(error) => return refused(error),
+            };
+            for (id, definition) in lanes {
+                match definition.voice(rate) {
+                    Ok(voice) => {
+                        let mut facts = ComponentFacts::from_voice(&definition, &voice, rate);
+                        facts.pair = pair;
+                        results.push((id, Ok(facts)));
+                        mix.entries[mix.len] = Some(CompiledComponent { id, voice, facts });
+                        mix.len += 1;
                     }
-                    results.push((*id, Err(error)));
+                    Err(error) => {
+                        if first.is_none() {
+                            first = Some(match (pair, &error) {
+                                (Some(pair), VoiceError::Frequency { .. }) => {
+                                    SoundError::PairCarrier {
+                                        id,
+                                        first_hz: pair.first_hz,
+                                        offset_hz: pair.offset_hz,
+                                        error: error.clone(),
+                                    }
+                                }
+                                _ => SoundError::Component {
+                                    number: results.len() + 1,
+                                    error: error.clone(),
+                                },
+                            });
+                        }
+                        results.push((id, Err(error)));
+                    }
                 }
             }
         }

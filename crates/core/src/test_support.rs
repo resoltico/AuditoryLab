@@ -24,3 +24,14 @@ pub(crate) fn target(
 ) -> Result<Target, SoundError> {
     check(rate, voices).into_result()
 }
+
+pub(crate) fn lower(
+    components: &[Component],
+) -> Result<Vec<(crate::VoiceId, Voice)>, crate::LoweringError> {
+    Sound::check_structure(components)?;
+    let mut voices = Vec::new();
+    for component in components {
+        voices.extend(crate::authored::lower(component)?);
+    }
+    Ok(voices)
+}
