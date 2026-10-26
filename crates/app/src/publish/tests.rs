@@ -151,7 +151,9 @@ fn postcommit_failures_verify_candidate_previous_and_foreign_content() {
     });
     inject(&[FaultPoint::AfterPublish]);
     let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
-    assert!(error.to_string().contains(path.to_str().unwrap()));
+    // Context names the complete path using Rust's escaped path representation,
+    // including doubled Windows separators rather than an unescaped substring.
+    assert!(error.to_string().contains(&format!("{path:?}")));
     assert!(error.to_string().contains("differs from both"));
     assert_eq!(fs::read(path).unwrap(), b"foreign");
 }
@@ -563,7 +565,9 @@ fn unreadable_postpublication_verification_names_the_path_without_claiming_no_ch
     fs::write(&path, b"previous").unwrap();
     inject(&[FaultPoint::AfterPublish, FaultPoint::Verify]);
     let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
-    assert!(error.to_string().contains(path.to_str().unwrap()));
+    // Context names the complete path using Rust's escaped path representation,
+    // including doubled Windows separators rather than an unescaped substring.
+    assert!(error.to_string().contains(&format!("{path:?}")));
     assert!(!error.to_string().contains("previous content remains"));
     assert_eq!(fs::read(path).unwrap(), b"candidate");
 }
