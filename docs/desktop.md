@@ -8,7 +8,7 @@ Library and Workbench share a tab header. **Save sound** always addresses the Wo
 
 The transport identifies the actual playing source, generated description, estimated elapsed time and Play/Stop action. When idle, it identifies the next Play target. Browsing does not retune or rename a playing session. **Details…** opens full audio information; **Task details…** opens the current task status there. File offers **Stop current & play recipe** for explicit session replacement.
 
-About is available from the macOS application menu or Windows/Linux Help menu. It shows version/build, source revision and Slint attribution. **Project website** opens the repository; **Licenses** shows software/artwork terms; **Third-party licenses…** shows packaged notices and source information. macOS legal resources stay inside the app when it moves to Applications. Source builds embed the root license; full dependency notices require packaging. Missing packaged resources are reported in the license window. Escape closes About and license windows.
+About is available from the macOS application menu or Windows/Linux Help menu. It shows version/build and Slint attribution; the source revision is available through `--version` and packaged `SOURCE.txt`. **Project website** opens the repository; **Licenses** shows software/artwork terms; **Third-party licenses…** opens the folder containing packaged notices and source information. macOS legal resources stay inside the app when it moves to Applications. Source builds embed the root license; full dependency notices require packaging. Missing packaged resources are reported in the license window. Escape closes About and license windows.
 
 ## Library
 

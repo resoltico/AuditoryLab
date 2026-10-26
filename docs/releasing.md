@@ -33,7 +33,7 @@ Both macOS CLI architectures and the app are ad-hoc signed and verified after ex
 
 `workspace.package.version` and `workspace.metadata.auditorylab.build-number` in root [Cargo.toml](../Cargo.toml) are the release version and the sole product build counter. Increase the counter (1..9999) before distributing changed product binaries; keep it increasing across release versions. CLI, GUI and CPU variants share it. Private/source rebuilds and CI reruns reuse the committed value. Source revision and archive checksums identify source and exact delivered bytes separately.
 
-The library build script regenerates identity when the manifest or `AUDITORYLAB_SOURCE_REVISION` changes. Supplied revisions must be full 40- or 64-character ASCII hexadecimal IDs. CLI/GUI `--version`, About and macOS `CFBundleVersion` consume that identity; `CFBundleShortVersionString` uses the release version.
+The library build script regenerates identity when the manifest or `AUDITORYLAB_SOURCE_REVISION` changes. Supplied revisions must be full 40- or 64-character ASCII hexadecimal IDs. CLI/GUI `--version` includes the source revision when supplied; About shows version/build. macOS `CFBundleVersion` uses the build counter, and `CFBundleShortVersionString` uses the release version.
 
 Distribution resolves source revision and `SOURCE_DATE_EPOCH` from HEAD and its commit time, rejecting conflicting supplied values. A source tree without `.git` requires both values from the release commit; these inputs identify a claimed source and do not authenticate it. Commit reviewed source before native checks: dirty-tree packages still carry HEAD's base identity and are development evidence only. `SOURCE.txt` records the revision, source URL, version, build and epoch.
 

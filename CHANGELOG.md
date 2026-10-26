@@ -8,6 +8,8 @@ Use concise bullets without category labels or subheadings, grouping related cha
 
 ## [0.6.0] - 2026-10-26
 
+[Published release notes](https://github.com/resoltico/AuditoryLab/releases/tag/v0.6.0).
+
 - Schema 3 requires UUIDs and component IDs; schema 2 is not migrated. Recreate custom files using the [recipe guide](https://github.com/resoltico/AuditoryLab/blob/v0.6.0/docs/recipes.md).
 - CLI sources require builtin:ID or user:UUID; bare catalog IDs reject. Files and streams still use --file or --stdin. Update scripts and saved command lines.
 - CLI JSON schema 1, text reports and exit codes change; update consumers using the [CLI guide](https://github.com/resoltico/AuditoryLab/blob/v0.6.0/docs/cli.md#output-and-failures).
