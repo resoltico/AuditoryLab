@@ -367,9 +367,15 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
 
 #[test]
 fn documented_toml_examples_are_actual_supported_inputs() {
-    let guide = include_str!("../../../../docs/recipes.md");
+    let guides = [
+        include_str!("../../../../docs/recipes.md"),
+        include_str!("../../../../docs/formats.md"),
+    ];
     let mut count = 0;
-    for block in guide.split("```toml").skip(1) {
+    for block in guides
+        .iter()
+        .flat_map(|guide| guide.split("```toml").skip(1))
+    {
         let text = block.split("```").next().unwrap();
         let recipe = Recipe::parse(text).unwrap();
         recipe.sound.signal(crate::SampleRate::DEFAULT).unwrap();

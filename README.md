@@ -1,90 +1,74 @@
 # Auditory Lab
 
-Auditory Lab plays and exports sounds used in hearing and brain-rhythm research: binaural and monaural beats, steady and amplitude-modulated tones, click trains and pulsed tones. Each built-in sound describes what its published study tested and found, with a citation and the recipe's adaptations. You can edit these sounds in the desktop Workbench or as TOML text files.
+Auditory Lab lets you inspect, edit, play and export steady tones, click trains, amplitude modulation, gates and explicit binaural or monaural pairs. Built-in recipes include citations, study populations, methods and the adaptations used to make the sound. The desktop Workbench and UTF-8 TOML files describe the same sounds.
 
-Use the `auditorylab` CLI or the `auditorylab-gui` desktop app. Both share immutable built-ins and a persistent User Library, validate recipes at the chosen sample rate, export stereo float WAV files and play through the default audio output.
+The `auditorylab` CLI and `auditorylab-gui` desktop share a persistent User Library. You can keep temporary Open files separate, save independent copies and recover User recipes from Trash.
 
 ## Listening safely
 
-Turn the volume down before playing anything, then raise it slowly. Digital levels do not limit how loud a sound is, and long sessions at high volume can damage hearing. Binaural beats need headphones, because each ear must hear its own tone.
-
-Most of the studies behind these sounds are small, and their results are mixed. A sound's description reports what its study found.
+Set the device volume low before pressing Play, then raise it gradually. Digital dBFS values describe samples; device volume, headphones and speakers determine the listening level. Use headphones for binaural pairs so each ear receives its intended tone.
 
 ## Download
 
-Choose a CLI or desktop archive from [Releases](https://github.com/resoltico/AuditoryLab/releases/latest). Choose **Mac · Apple silicon** (`macos-aarch64`) or **Mac · Intel** (`macos-x86_64`); both require macOS 15 or later. CLI and desktop archives are separate, and every macOS executable contains exactly one architecture. macOS desktop downloads use ZIP; Unix CLI and Linux desktop downloads use tar.gz; Windows downloads use ZIP. Follow the archive's README for platform requirements and launch instructions. The macOS app contains its own legal resources, so it can be moved alone to Applications. macOS binaries are ad-hoc signed, without Developer ID signing or notarization.
+Choose a CLI or desktop archive for your OS and processor from [Releases](https://github.com/resoltico/AuditoryLab/releases/latest). macOS packages require macOS 15 or later and contain either Apple silicon or Intel code. Windows requires Windows 10 on x86_64 or Windows 11 on ARM64. See the [desktop platform requirements](docs/desktop.md#platforms) for graphics and Linux dependencies.
 
-Download `SHA256SUMS` alongside the archive and compare its entry before extracting. On macOS use `shasum -a 256 ARCHIVE`; on Linux use `sha256sum ARCHIVE`; in PowerShell use `Get-FileHash ARCHIVE -Algorithm SHA256`.
+Compare the archive with its entry in `SHA256SUMS` before extracting: use `shasum -a 256 ARCHIVE` on macOS, `sha256sum ARCHIVE` on Linux, or `Get-FileHash ARCHIVE -Algorithm SHA256` in PowerShell. Follow the included `README.txt` to launch it. The macOS app contains its legal resources and can be moved to Applications.
 
-## CLI quick start
+## Find a sound
 
-From a download, use `./auditorylab` on macOS/Linux or `.\auditorylab.exe` in PowerShell. An installed command on PATH uses `auditorylab`:
+Use `./auditorylab` from an extracted macOS/Linux archive, `.\auditorylab.exe` on Windows, or `auditorylab` when installed on PATH:
 
 ```text
-auditorylab list
+auditorylab list --collection builtin --band alpha --method binaural
 auditorylab describe builtin:ioannou-2015-binaural-10-hz
 auditorylab inspect builtin:ioannou-2015-binaural-10-hz
-auditorylab export builtin:ioannou-2015-binaural-10-hz --output beat.wav
 ```
 
-`describe` shows declared parameters and study context. `inspect` validates without opening an audio device. To listen after checking the sound and turning the volume down:
+These commands open no audio device. `describe` gives the sound and study context; `inspect` checks the sound at the selected sample rate.
+
+## Make a recipe and WAV
 
 ```text
-auditorylab play builtin:ioannou-2015-binaural-10-hz
+auditorylab recipe builtin:ioannou-2015-binaural-10-hz --output my-pair.toml
+auditorylab inspect --file my-pair.toml --sample-rate 44100
+auditorylab export --file my-pair.toml --output my-pair.wav --sample-rate 48000
 ```
 
-Save and edit a recipe, then check and export it:
+Edit the TOML to change the sound, then inspect it again. CLI exports keep existing output files untouched. [Authoring recipes](docs/recipes.md) covers fields and waveforms; [formats](docs/formats.md) defines the supported document, JSON and library contracts.
 
-```text
-auditorylab recipe builtin:chan-2022-clicks-40-hz --output my-clicks.toml
-auditorylab inspect --file my-clicks.toml
-auditorylab export --file my-clicks.toml --output my-clicks.wav
-```
+## Create a sound in the desktop
 
-Choose a `builtin:ID` or `user:UUID` selector, `--file PATH` for a regular recipe file or `--stdin` for a stream. Ctrl-C stops playback or export. The CLI keeps existing output files untouched. Run `auditorylab` for help or see the [CLI guide](docs/cli.md).
+Open **Auditory Lab.app**, `auditorylab-gui.exe`, or `auditorylab-gui`. Choose **New Sound** for an empty, silent Workbench. Add a component, enter its rate and level, and use the persistent Play/Stop control to audition it after setting device volume low. **Save sound** stores the draft in User Library. Stop audio before **Export WAV…**.
 
-## Desktop
-
-Open **Auditory Lab.app** on macOS, `auditorylab-gui.exe` on Windows, or `auditorylab-gui` on Linux. Search and select a sound to see its description and explicitly labeled preview. **Listen** starts finite audio; the persistent player names the actual session while you browse. **Open Recipe…** imports a file, and **Export WAV…** chooses a destination through the native Save dialog.
-
-The player at the bottom keeps Play/Stop and the elapsed time in reach on every screen. Its Library action is **Listen**. The optional **Output monitor** above it draws the samples being played, or a labeled preview, with their levels, and can hold a moment for a closer look. **Pattern explained** draws a sound's timing pattern beside its description.
-
-Library scopes separate active **All**, read-only **Built-in**, **User**, temporary **Open files**, and recoverable **Trash**. Open does not add a file to persistent membership. Use **Add to User Library** or save a new draft; external originals remain unchanged by managed operations. GUI and CLI resolve the same native data root; an absolute `AUDITORYLAB_LIBRARY_DIR` overrides it and requires explicit initialization. See [root and lifecycle commands](docs/cli.md#root-and-lifecycle).
-
-The **Workbench** builds sounds from up to 16 expanded tone/click voices, including signed-offset pairs. Change their frequency, level, ears and modulation while they play, with smooth ramps, glides and crossfades. Start from an empty sound or **Edit a copy** from Library, then **Save sound** to the User Library while audio continues, or stop audio to export a finite WAV. Source research stays attributed separately from your custom notes; dirty drafts are protected on New and Quit. See the [desktop guide](docs/desktop.md).
+Selecting a Library row shows its description and preview. **Play selected sound** starts that captured recipe; browsing keeps the playing session unchanged. **Open Recipe…** adds temporary input. Use **Add to User Library**, **Edit a copy**, or **Save independent copy** when you want persistent content. See the [desktop guide](docs/desktop.md).
 
 ## Build from source
 
-Install [rustup](https://rustup.rs/). [rust-toolchain.toml](rust-toolchain.toml) selects the compiler and components.
+Install [rustup](https://rustup.rs/); [rust-toolchain.toml](rust-toolchain.toml) selects Rust and its components.
 
-- macOS 15 or later: install Xcode Command Line Tools with `xcode-select --install`. Compiling Icon Composer resources for app packaging needs full Xcode 26 or later on a macOS 26 or later host; app assembly can use those resources on macOS 15. See [packaging](docs/releasing.md#build-distributions).
-- Debian/Ubuntu: `sudo apt-get install build-essential pkg-config libasound2-dev libfontconfig1-dev libxkbcommon-x11-0 libglib2.0-bin`.
-- Windows: install Visual Studio Build Tools with Desktop development with C++, including the MSVC tools and Windows SDK for your processor. Use the native MSVC Rust host. Windows 10 or later is required on x86_64; ARM64 requires Windows 11. The x86_64 target requires SSE3, CMPXCHG16B and LAHF/SAHF.
+- macOS: install Xcode Command Line Tools. Native app icon compilation needs full Xcode 26 or later on macOS 26 or later; [packaging](docs/releasing.md#build-distributions) also supports matching precompiled icon resources.
+- Debian/Ubuntu: install `build-essential pkg-config libasound2-dev libfontconfig1-dev libxkbcommon-x11-0 libglib2.0-bin`.
+- Windows: install Visual Studio Build Tools with Desktop development with C++, native MSVC tools and the Windows SDK. Use the native MSVC Rust host.
 
-From the root of a clean checkout:
+From a clean checkout:
 
 ```sh
 cargo install --locked --path crates/cli
 cargo run --release --locked -p auditorylab-gui
 ```
 
-Cargo installs the CLI into its bin directory, which must be on PATH. Linux desktop use needs X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, OpenGL and an xdg-desktop-portal with a desktop backend for file dialogs. Native UI fonts use platform defaults and toolkit DPI scaling. GNOME Wayland text scaling uses GLib’s `gsettings` utility. The desktop renderer uses OpenGL; sound synthesis runs on the CPU.
-
-On macOS, `cargo run` launches an unbundled executable. For the application identity and Dock/Finder icon, build a [distribution](docs/releasing.md#build-distributions), extract the GUI ZIP and open **Auditory Lab.app**. The packager compiles the editable Icon Composer artwork, declares the icon in `Info.plist`, includes the resources and signs the complete bundle.
+An unbundled macOS executable can be run through Cargo; build a distribution for its app bundle and Dock/Finder identity. Linux desktop use needs X11 or Wayland, fonts, fontconfig, xkbcommon, OpenGL and an xdg-desktop-portal backend for native file dialogs. GNOME Wayland text scaling uses GLib’s `gsettings`.
 
 ## Guides
 
-- [CLI](docs/cli.md): commands, input, output, exit codes and Ctrl-C.
-- [Desktop](docs/desktop.md): window controls, dialogs and platform requirements.
-- [Recipes](docs/recipes.md): recipe fields, waveforms, validation and catalog additions.
-- [Catalog sources](docs/catalog.md): study methods, parameters and adaptations.
-- [Architecture](docs/architecture.md): crates, synthesis, playback, the shared workspace and the desktop adapter.
-- [Contributing](CONTRIBUTING.md): checks and dependencies.
-- [Packaging and releases](docs/releasing.md): distribution contents, build identity, package checks and publication.
-- [Changelog](CHANGELOG.md) and [security](SECURITY.md).
+- [CLI](docs/cli.md): sources, queries, lifecycle commands and cancellation.
+- [Desktop](docs/desktop.md): editing, transport, monitoring and file decisions.
+- [Formats](docs/formats.md): recipe schema, JSON, library layout and exit codes.
+- [Recipes](docs/recipes.md): authoring and waveform formulas.
+- [Catalog](docs/catalog.md): primary methods, conditions and adaptations.
+- [Architecture](docs/architecture.md) and [contributing](CONTRIBUTING.md).
+- [Packaging](docs/releasing.md), [changelog](CHANGELOG.md) and [security](SECURITY.md).
 
 ## License
 
-Copyright © 2026 Ervins Strauhmanis. Each download contains product-specific dependency notices.
-
-Software and documentation use MPL-2.0; third-party components retain their own terms. Owner artwork and drawing sources have separate proprietary terms in [LICENSE](LICENSE), with unchanged artwork permitted in original or modified Auditory Lab distributions. Editable sources and attribution are in the [artwork guide](artwork/README.md).
+Copyright © 2026 Ervins Strauhmanis. Software and documentation use MPL-2.0. Third-party components retain their own terms and appear in product-specific dependency notices. Owner artwork has separate terms in [LICENSE](LICENSE); the [artwork guide](artwork/README.md) identifies editable sources and attribution.

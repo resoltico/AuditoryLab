@@ -2,16 +2,16 @@
 
 `Unreleased` summarizes implemented changes intended for the next release, including relevant uncommitted work, cumulatively against the preceding published non-prerelease version; the first release describes implemented scope. Verify actual publication rather than inferring it from headings, tags or workflow status; public prereleases do not reset this baseline. Check claims and material omissions against implementation, contracts, tests and documentation; commits and plans are leads. Describe consequences for users, operators, integrators or contributors, preserving material compatibility effects, limitations and required action, including for prerelease users. Exclude development chronology, superseded changes and verification logs.
 
-Use concise bullets without category labels or subheadings, grouping related changes and putting breaking changes and required actions first. Each bullet occupies one physical line, at most 200 characters including Markdown but excluding its `- ` marker: a ceiling, not a target. Shorten or split without losing material consequences. Use technical names when helpful; link to existing relevant documentation, without assuming paths or creating documents merely to satisfy this rule. Keep `## [Unreleased]` above dated `## [version] - YYYY-MM-DD` headings, newest first; retain existing release-note links. This file is authoritative for release summaries and their writing rules; derive published summaries from it and leave unrelated history unchanged. Review accuracy, completeness, duplication, compatibility and format; report unresolved evidence gaps outside this file and run applicable existing checks. Versioning, dating and publication require release authorization.
+Use concise bullets without category labels or subheadings, grouping related changes and putting breaking changes and required actions first. Each bullet occupies one physical line, at most 200 characters including Markdown but excluding its `- ` marker: a ceiling, not a target. Shorten or split without losing material consequences. Use technical names when helpful; link to existing relevant documentation, without assuming paths or creating documents merely to satisfy this rule. Keep `## [Unreleased]
 
-## [Unreleased]
-
-- The Rust application package is `auditorylab-app`; APIs are grouped by document, discovery, services, storage, audio and presentation. Update dependencies and imports.
-
-- Recipes require schema 4: envelope settings move into `[sound]`; carrier/modulation kinds use `clicks`, `am` and `gate`. Rewrite schema-3 files before loading them.
-- CLI analysis uses `complete` or `invalid`; raw tones are independent steady tones unless authored as a pair. Classifier revision is 2.
-- CLI `--method am` replaces `--method amplitude-modulation`; JSON output uses schema 2. Update scripts and report consumers.
-- Rust APIs use `sound`, `ComponentForm`, `SoundError`, `VoiceError`, `Clicks`, `Am` and `Gate`; update imports and exhaustive matches.
+- Recipes require schema 4: move duration/fades and components into `[sound]`, and use `clicks`, `am` and `gate`. Rewrite schema-3 files using the [format reference](docs/formats.md#recipe-schema).
+- Schema-3 files stay unchanged; User discovery is incomplete and `list` exits 5. Rewrite or remove them; see [recovery](docs/formats.md#unsupported-recipes-and-schema-3-libraries).
+- CLI `--method am` replaces `amplitude-modulation`; `--analysis` accepts `complete` or `invalid`. Plain tones stay independent unless authored as explicit pairs.
+- CLI JSON output is schema 2 and nominal classifier revision is 2. Update consumers for expanded owner/lane identities and removal of inferred tone relationships.
+- The Rust app package is `auditorylab-app`, exposing core as `auditorylab_app::core`. Frontends use shared services; native storage/audio adapters are private.
+- Rust recipes use checked builders and typed contract/operation errors. Update construction, error matches and imports for `Sound`, `ComponentForm`, `Clicks`, `Am` and `Gate`.
+- Action availability shares workspace admission, including preview, new-identity limits, restore, portable export and independent-copy saving. Newer edits and captured destinations remain protected.
+- Application buttons gate disabled activation while retaining toolkit rendering/focus. TextEdit uses shaped cursor geometry; native toolkit archives retain their lockfiles.
 
 ## [0.6.0] - 2026-10-26
 
