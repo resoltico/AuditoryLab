@@ -1,37 +1,37 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-//! Components validated at one sample rate, each compiled once.
+//! Voices validated at one sample rate, each compiled once.
 //!
-//! A [`TargetCheck`] compiles every component of a candidate in one bounded
-//! pass. It keeps each component's own result for diagnostics and the first
+//! A [`TargetCheck`] compiles every voice of a candidate in one bounded
+//! pass. It keeps each voice's own result for diagnostics and the first
 //! whole-target error in the established order. A valid check yields a
 //! [`Target`]: the compiled mix, which a finite [`Signal`] and the live
 //! engine reuse without compiling the raw components again.
 use crate::synthesis::GeneratorVoice;
 use crate::{
-    ComponentFacts, Ear, SampleRate, Signal, SlotRole, Sound, SoundError, VoiceError, VoiceId,
+    Ear, SampleRate, Signal, SlotRole, Sound, SoundError, VoiceError, VoiceFacts, VoiceId,
     VoiceObservation, numeric, signal::Envelope,
 };
 use alloc::vec::Vec;
 
-/// One validated component: its identity, its generator and the facts derived
+/// One validated voice: its identity, its generator and the facts derived
 /// from that generator and the requested definition. Nothing stores voices or
 /// facts separately, so they cannot disagree.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct CompiledComponent {
+pub(crate) struct CompiledVoice {
     pub(crate) id: VoiceId,
     pub(crate) voice: GeneratorVoice,
-    pub(crate) facts: ComponentFacts,
+    pub(crate) facts: VoiceFacts,
 }
 
-/// An ordered, bounded mix of compiled components at one rate, with each
+/// An ordered, bounded mix of compiled voices at one rate, with each
 /// ear's summed peak bound.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct CompiledMix {
     rate: SampleRate,
     len: usize,
-    entries: [Option<CompiledComponent>; Sound::MAX_VOICES],
+    entries: [Option<CompiledVoice>; Sound::MAX_VOICES],
     peak: [f64; 2],
 }
 
@@ -49,7 +49,7 @@ impl CompiledMix {
         self.rate
     }
 
-    pub(crate) fn voices(&self) -> impl Iterator<Item = VoiceObservation> + '_ {
+    pub(crate) fn observations(&self) -> impl Iterator<Item = VoiceObservation> + '_ {
         self.entries().map(|entry| VoiceObservation {
             id: entry.id,
             role: SlotRole::Continuing,
@@ -58,14 +58,14 @@ impl CompiledMix {
         })
     }
 
-    /// The components in rendering order.
-    pub(crate) fn entries(&self) -> impl Iterator<Item = &CompiledComponent> {
+    /// The voices in rendering order.
+    pub(crate) fn entries(&self) -> impl Iterator<Item = &CompiledVoice> {
         self.entries[..self.len].iter().flatten()
     }
 }
 
-/// A validated set of components at one sample rate, each with a caller-chosen
-/// identity. A component that keeps its identity across targets keeps its
+/// A validated set of voices at one sample rate, each with a caller-chosen
+/// identity. A voice that keeps its identity across targets keeps its
 /// phase in the live engine; a new identity starts a new generator.
 ///
 /// Two targets are equal when they define the same audio and the same
@@ -85,7 +85,7 @@ pub struct Target {
 }
 
 impl Target {
-    /// No components: the live engine fades to silence.
+    /// No voices: the live engine fades to silence.
     #[must_use]
     pub const fn silence(rate: SampleRate) -> Self {
         Self {
@@ -97,32 +97,32 @@ impl Target {
         &self.mix
     }
 
-    /// The sample rate the components were validated at.
+    /// The sample rate the voices were validated at.
     #[must_use]
     pub const fn sample_rate(&self) -> SampleRate {
         self.mix.rate
     }
 
-    /// The number of components.
+    /// The number of voices.
     #[must_use]
     pub const fn len(&self) -> usize {
         self.mix.len
     }
 
-    /// Whether the target has no components.
+    /// Whether the target has no voices.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.mix.len == 0
     }
 
-    /// Each component's identity and validated facts, in order.
-    pub fn components(&self) -> impl Iterator<Item = (VoiceId, &ComponentFacts)> {
+    /// Each voice's identity and validated facts, in order.
+    pub fn voices(&self) -> impl Iterator<Item = (VoiceId, &VoiceFacts)> {
         self.mix.entries().map(|entry| (entry.id, &entry.facts))
     }
 
     /// Validated target quantities at model origin zero, not generated engine observations.
-    pub fn voices(&self) -> impl Iterator<Item = VoiceObservation> + '_ {
-        self.mix.voices()
+    pub fn observations(&self) -> impl Iterator<Item = VoiceObservation> + '_ {
+        self.mix.observations()
     }
 
     /// Bounded, origin-zero timing/envelope projection; never advances an engine.
@@ -153,7 +153,7 @@ impl Target {
                 .all(|(a, b)| a.id == b.id && a.voice == b.voice)
     }
 
-    /// Give the target a finite envelope, reusing the compiled components.
+    /// Give the target a finite envelope, reusing the compiled voices.
     ///
     /// # Errors
     /// Returns [`SoundError::Duration`], [`SoundError::Fade`] or
@@ -164,12 +164,12 @@ impl Target {
     }
 }
 
-/// The result of compiling a candidate's components at one rate: each
-/// component's own result and the whole target or its first error.
+/// The result of compiling a candidate's voices at one rate: each
+/// voice's own result and the whole target or its first error.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetCheck {
     rate: SampleRate,
-    components: Vec<(VoiceId, Result<ComponentFacts, VoiceError>)>,
+    voices: Vec<(VoiceId, Result<VoiceFacts, VoiceError>)>,
     result: Result<Target, SoundError>,
 }
 
@@ -179,7 +179,7 @@ impl TargetCheck {
     pub(crate) fn authored(rate: SampleRate, components: &[crate::Component]) -> Self {
         let refused = |error| Self {
             rate,
-            components: Vec::new(),
+            voices: Vec::new(),
             result: Err(error),
         };
         if let Err(error) = Sound::check_structure(components) {
@@ -207,10 +207,10 @@ impl TargetCheck {
             for (id, definition) in lanes {
                 match definition.voice(rate) {
                     Ok(voice) => {
-                        let mut facts = ComponentFacts::from_voice(&definition, &voice, rate);
+                        let mut facts = VoiceFacts::from_voice(&definition, &voice, rate);
                         facts.pair = pair;
                         results.push((id, Ok(facts)));
-                        mix.entries[mix.len] = Some(CompiledComponent { id, voice, facts });
+                        mix.entries[mix.len] = Some(CompiledVoice { id, voice, facts });
                         mix.len += 1;
                     }
                     Err(error) => {
@@ -224,8 +224,8 @@ impl TargetCheck {
                                         error: error.clone(),
                                     }
                                 }
-                                _ => SoundError::Component {
-                                    number: results.len() + 1,
+                                _ => SoundError::Voice {
+                                    id,
                                     error: error.clone(),
                                 },
                             });
@@ -257,28 +257,28 @@ impl TargetCheck {
         };
         Self {
             rate,
-            components: results,
+            voices: results,
             result,
         }
     }
 
-    /// The rate the components were checked at.
+    /// The rate the voices were checked at.
     #[must_use]
     pub const fn sample_rate(&self) -> SampleRate {
         self.rate
     }
 
-    /// Each component's own result in input order; empty when the input
+    /// Each voice's own result in input order; empty when the input
     /// exceeds [`Sound::MAX_VOICES`].
     #[must_use]
-    pub fn components(&self) -> &[(VoiceId, Result<ComponentFacts, VoiceError>)] {
-        &self.components
+    pub fn voices(&self) -> &[(VoiceId, Result<VoiceFacts, VoiceError>)] {
+        &self.voices
     }
 
-    /// The component's own result, when the check compiled it.
+    /// The voice's own result, when the check compiled it.
     #[must_use]
-    pub fn component(&self, id: VoiceId) -> Option<&Result<ComponentFacts, VoiceError>> {
-        self.components
+    pub fn voice(&self, id: VoiceId) -> Option<&Result<VoiceFacts, VoiceError>> {
+        self.voices
             .iter()
             .find(|(other, _)| *other == id)
             .map(|(_, result)| result)

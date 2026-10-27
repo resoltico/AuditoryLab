@@ -680,14 +680,7 @@ fn requested_pair_intent_survives_identical_realized_audio_without_a_new_live_ra
         [auditorylab_core::rhythm::Band::Beta]
     );
     assert_eq!(
-        second
-            .components()
-            .next()
-            .unwrap()
-            .1
-            .pair
-            .unwrap()
-            .offset_hz,
+        second.voices().next().unwrap().1.pair.unwrap().offset_hz,
         13.0_f64.next_up()
     );
     let mut engine = auditorylab_core::live::Engine::new(rate);
@@ -889,11 +882,11 @@ fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
     ];
     let check = TargetCheck::authored(SampleRate::DEFAULT, &authored);
     let target = check.target().unwrap();
-    assert_eq!(check.components().len(), 5);
+    assert_eq!(check.voices().len(), 5);
     assert_eq!(target.len(), 5);
     assert!(
         check
-            .component(ComponentId::new(7).unwrap().into())
+            .voice(ComponentId::new(7).unwrap().into())
             .unwrap()
             .as_ref()
             .unwrap()
@@ -903,13 +896,10 @@ fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
     for facts in expected {
         for lane in [Lane::Primary, Lane::Secondary] {
             let id = facts.owner.with_lane(lane);
-            assert_eq!(
-                check.component(id).unwrap().as_ref().unwrap().pair,
-                Some(facts)
-            );
+            assert_eq!(check.voice(id).unwrap().as_ref().unwrap().pair, Some(facts));
             assert_eq!(
                 target
-                    .components()
+                    .voices()
                     .find(|(owner, _)| *owner == id)
                     .unwrap()
                     .1
@@ -918,7 +908,7 @@ fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
             );
             assert_eq!(
                 target
-                    .voices()
+                    .observations()
                     .find(|voice| voice.id == id)
                     .unwrap()
                     .facts
@@ -976,7 +966,7 @@ fn authored_callback_workloads_preserve_distinct_owner_lanes() {
             assert_eq!(target.sample_rate(), rate);
             assert_eq!(
                 target
-                    .components()
+                    .voices()
                     .map(|(id, _)| (id.component.get(), id.lane))
                     .collect::<Vec<_>>(),
                 (1..=16).map(|n| (n, Lane::Primary)).collect::<Vec<_>>()
@@ -1010,7 +1000,7 @@ fn structural_failures_are_single_and_distinguish_both_budgets() {
     ] {
         assert_eq!(Sound::check_structure(&components), Err(expected));
         let check = TargetCheck::authored(SampleRate::DEFAULT, &components);
-        assert!(check.components().is_empty());
+        assert!(check.voices().is_empty());
         assert_eq!(check.result(), Err(&crate::SoundError::Structure(expected)));
     }
 }
@@ -1045,7 +1035,7 @@ fn direct_pair_compilation_reports_the_failing_lane_and_requested_carrier() {
                 },
             })
         );
-        assert!(check.component(owner.with_lane(lane)).unwrap().is_err());
+        assert!(check.voice(owner.with_lane(lane)).unwrap().is_err());
     }
 }
 
@@ -1085,6 +1075,6 @@ fn direct_pair_arithmetic_failures_retain_their_independent_reason() {
         assert_eq!(id.get(), 7);
         assert_eq!(first_hz.to_bits(), first.to_bits());
         assert_eq!(offset_hz.to_bits(), offset.to_bits());
-        assert!(check.components().is_empty());
+        assert!(check.voices().is_empty());
     }
 }

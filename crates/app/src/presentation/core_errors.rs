@@ -40,7 +40,7 @@ pub fn contract_error(error: &ContractError) -> String {
             value,
         } => format!(
             "{}{} {value} must be finite",
-            component.map_or_else(String::new, |id| format!("component {id}: ")),
+            component.map_or_else(String::new, |id| format!("Component {id}: ")),
             parameter.descriptor().label
         ),
         ContractError::Structure(error) => structure_error(error),
@@ -124,7 +124,7 @@ pub fn pair_error(error: &PairError) -> String {
         }
     };
     format!(
-        "component {}: first/left carrier {} Hz and signed offset {} Hz: {reason}",
+        "Component {}: first/left carrier {} Hz and signed offset {} Hz: {reason}",
         error.id, error.first_hz, error.offset_hz
     )
 }

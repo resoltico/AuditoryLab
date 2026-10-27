@@ -1,6 +1,6 @@
 //! Typed machine-readable application reports.
 use crate::{
-    core::{ComponentFacts, DocumentUuid, Timestamp, VoiceId, rhythm},
+    core::{DocumentUuid, Timestamp, VoiceFacts, VoiceId, rhythm},
     discovery::collection::{
         CatalogQuery, Collection, Direction, EntrySummary, EvidenceFacet, ResultGroup, SortBy,
     },
@@ -62,9 +62,9 @@ impl From<&rhythm::Analysis> for NominalReport {
         }
     }
 }
-report_struct!(ComponentReport {
+report_struct!(VoiceReport {
     id: VoiceId,
-    facts: ComponentFacts
+    facts: VoiceFacts
 });
 /// Validation at the explicitly requested output rate.
 #[derive(Debug, Clone, Serialize)]
@@ -81,7 +81,7 @@ pub enum Validation {
         /// Conservative per-ear peak bounds.
         peak_dbfs: [f64; 2],
         /// Compiled voice facts.
-        components: Vec<ComponentReport>,
+        voices: Vec<VoiceReport>,
     },
     /// The document remains inspectable, but rendering failed at this rate.
     Invalid {
@@ -263,11 +263,11 @@ impl Report {
                 sample_rate_hz: rate.hz(),
                 frames: sound.signal().frames(),
                 peak_dbfs: sound.signal().peak_dbfs(),
-                components: sound
+                voices: sound
                     .signal()
                     .target()
-                    .components()
-                    .map(|(id, facts)| ComponentReport { id, facts: *facts })
+                    .voices()
+                    .map(|(id, facts)| VoiceReport { id, facts: *facts })
                     .collect(),
             },
             Err(error) => Validation::Invalid {

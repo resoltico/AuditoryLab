@@ -141,7 +141,7 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
             .collect(),
     }
     .check(SampleRate::DEFAULT);
-    let facts = *check.target().unwrap().components().next().unwrap().1;
+    let facts = *check.target().unwrap().voices().next().unwrap().1;
     let mut voices = [None; Observation::MAX_VOICES];
     voices[0] = Some(VoiceObservation {
         id: ComponentId::new(1).unwrap().into(),

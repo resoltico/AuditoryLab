@@ -55,8 +55,8 @@ pub enum Ear {
     Right,
 }
 
-/// A periodic change of a component's amplitude. Every modulation's gain
-/// lies within `[0, 1]`, so it never raises the component's peak.
+/// A periodic change of a voice's amplitude. Every modulation's gain
+/// lies within `[0, 1]`, so it never raises the voice's peak.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Modulation {
@@ -228,14 +228,14 @@ pub enum SoundError {
         /// The sample rate the lengths were resolved at.
         sample_rate_hz: u32,
     },
-    /// A component has a value it cannot render.
-    Component {
-        /// The component's position, counting from 1.
-        number: usize,
+    /// A generator lane has a value it cannot render.
+    Voice {
+        /// The failing generator's authored owner and lane.
+        id: crate::VoiceId,
         /// What is wrong with it.
         error: VoiceError,
     },
-    /// An ear's components add up to a peak above full scale.
+    /// An ear's voices add up to a peak above full scale.
     Peak {
         /// The ear.
         ear: Ear,
@@ -257,13 +257,13 @@ impl SoundError {
             Self::Duration { .. } => &[ParameterId::Duration],
             Self::Fade { .. } => &[ParameterId::Fade],
             Self::FadesOverlap { .. } => &[ParameterId::Duration, ParameterId::Fade],
-            Self::Component { error, .. } => error.parameters(),
+            Self::Voice { error, .. } => error.parameters(),
             Self::Peak { .. } => &[],
         }
     }
 }
 
-/// Why a component cannot be rendered at a sample rate.
+/// Why a generator lane cannot be rendered at a sample rate.
 #[derive(Debug, Clone, PartialEq)]
 pub enum VoiceError {
     /// A frequency is not finite and positive below half the sample rate.
@@ -339,7 +339,7 @@ impl Display for SoundError {
             Self::Duration { .. } => "sound.duration",
             Self::Fade { .. } => "sound.fade",
             Self::FadesOverlap { .. } => "sound.fades_overlap",
-            Self::Component { .. } => "sound.component",
+            Self::Voice { .. } => "sound.voice",
             Self::Peak { .. } => "sound.peak",
         })
     }
@@ -362,7 +362,7 @@ impl core::error::Error for SoundError {
             Self::Structure(error) => Some(error),
             Self::Pair(error) => Some(error),
             Self::PairCarrier { error, .. } => Some(error),
-            Self::Component { error, .. } => Some(error),
+            Self::Voice { error, .. } => Some(error),
             _ => None,
         }
     }

@@ -496,7 +496,7 @@ fn a_focused_field_survives_updates_to_other_rows() {
     }
     h.settle();
     let nested_before = ui.get_components().row_data(1).unwrap().parameters;
-    let input = h.field("Click rhythm · component 2: Clicks rate (Hz)");
+    let input = h.field("Click rhythm · Component 2: Clicks rate (Hz)");
     let inner = WindowInner::from_pub(ui.window());
     inner.set_focus_item(&input, true, FocusReason::Programmatic);
     for _ in 0..4 {
@@ -538,9 +538,9 @@ fn a_focused_field_survives_updates_to_other_rows() {
         "the nested model object is kept"
     );
     assert_eq!(
-        field(ui, "Click rhythm · component 1: Clicks rate (Hz)"),
+        field(ui, "Click rhythm · Component 2: Clicks rate (Hz)"),
         input,
-        "the moved row relabels the same widget"
+        "the moved row keeps its authored identity and the same widget"
     );
     let rate = h.adapter.inspect(parameter(0, ParameterId::ClickRate));
     assert_eq!(
@@ -641,7 +641,7 @@ fn a_dragged_slider_keeps_following_typed_values() {
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 0);
     h.settle();
-    let label = "Steady tone · component 1: Tone frequency (Hz) slider";
+    let label = "Steady tone · Component 1: Tone frequency (Hz) slider";
     let slider = || {
         let root = WindowInner::from_pub(ui.window()).window_item_rc().unwrap();
         root.visit_descendants(|item| {
@@ -850,7 +850,7 @@ fn a_removed_component_returns_through_undo_remove() {
     assert_eq!(ui.get_components().row_count(), 1);
     assert_eq!(
         ui.get_removed_component(),
-        "Removed Steady tone · component 1."
+        "Removed Steady tone · Component 1."
     );
     assert!(ui.get_can_restore_component());
     let button = labelled(ui, "Undo remove");

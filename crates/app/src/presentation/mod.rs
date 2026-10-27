@@ -19,8 +19,8 @@ pub(crate) mod workspace_text;
 use crate::document::recipe::{RecipeSnapshot, Rendition};
 use crate::presentation::vocabulary::{NumberStyle, Status};
 use auditorylab_core::{
-    CarrierFacts, ComponentFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate,
-    PulseFacts, SampleRate, Sound, SoundError, VoiceObservation, rhythm::Method, rhythm::Structure,
+    CarrierFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate, PulseFacts,
+    SampleRate, Sound, SoundError, VoiceFacts, VoiceObservation, rhythm::Method, rhythm::Structure,
 };
 pub use commands::DesktopDiagnostics;
 
@@ -211,7 +211,7 @@ fn pulse_brief(p: PulseFacts) -> String {
 
 /// Requested and realized carrier and modulation quantities. Brief views
 /// state realized values; detail states both, with the rate.
-fn generator_description(facts: &ComponentFacts, detail: bool) -> String {
+fn generator_description(facts: &VoiceFacts, detail: bool) -> String {
     let phase = |p: PhaseRate| {
         if detail && p.requested_hz != p.realized_hz {
             format!(
@@ -252,12 +252,12 @@ const fn route(ears: Ears) -> &'static str {
     ears.label()
 }
 
-/// A validated component's quantities, route and peak bound. `detail` adds
+/// A validated voice's quantities, route and peak bound. `detail` adds
 /// requested values and the rate they were resolved at.
 #[must_use]
-fn component_description(facts: &ComponentFacts, detail: bool) -> String {
+fn voice_description(facts: &VoiceFacts, detail: bool) -> String {
     let generated = format!(
-        "{} · {} · component peak bound {} dBFS",
+        "{} · {} · voice peak bound {} dBFS",
         generator_description(facts, detail),
         route(facts.ears),
         format_dbfs(facts.peak_dbfs)
@@ -281,7 +281,7 @@ fn gain_route(gains: [f64; 2]) -> &'static str {
     }
 }
 
-fn voice_description(voice: &VoiceObservation) -> String {
+fn observation_description(voice: &VoiceObservation) -> String {
     let db = |gain: f64| {
         if gain == 0.0 {
             f64::NEG_INFINITY
@@ -307,10 +307,10 @@ fn generated_details(observation: &Observation) -> String {
         .flatten()
         .map(|v| {
             format!(
-                "Component {} · {}: {} · gains L {} / R {}",
-                v.id,
+                "{} · {}: {} · gains L {} / R {}",
+                acoustic_errors::voice_reference(v.id),
                 v.role.label(),
-                voice_description(v),
+                observation_description(v),
                 v.gains[0],
                 v.gains[1]
             )
@@ -582,14 +582,14 @@ pub trait DisplayText {
     #[must_use]
     fn display_scalar(&self) -> String;
 }
-impl AudioSummary for ComponentFacts {
+impl AudioSummary for VoiceFacts {
     fn summary(&self) -> String {
-        component_description(self, false)
+        voice_description(self, false)
     }
 }
-impl AudioDetails for ComponentFacts {
+impl AudioDetails for VoiceFacts {
     fn details(&self) -> String {
-        component_description(self, true)
+        voice_description(self, true)
     }
 }
 impl AudioSummary for Structure {
@@ -740,10 +740,11 @@ impl Rendition {
             );
             text.push_str(&format!("\n{}", model.caption()));
         }
-        for (id, facts) in sound.signal().components() {
+        for (id, facts) in sound.signal().voices() {
             text.push_str(&format!(
-                "\nComponent {id}: {}",
-                component_description(facts, detail)
+                "\n{}: {}",
+                acoustic_errors::voice_reference(id),
+                voice_description(facts, detail)
             ));
         }
         text
@@ -835,10 +836,10 @@ impl RecipeSnapshot {
         for (name, value) in (snapshot).research() {
             text.push_str(&format!("{name}: {value}\n\n"));
         }
-        for (i, c) in snapshot.sound().components.iter().enumerate() {
+        for c in &snapshot.sound().components {
             text.push_str(&format!(
                 "Component {}: {}\n",
-                i + 1,
+                c.id,
                 recipe_text::component(c)
             ));
         }
@@ -891,10 +892,10 @@ impl RecipeSnapshot {
                 sound.description(false)
             )),
             Err(error) => {
-                for (i, component) in s.components.iter().enumerate() {
+                for component in &s.components {
                     out.push_str(&format!(
                         "Component {}: {}\n",
-                        i + 1,
+                        component.id,
                         recipe_text::component(component)
                     ));
                 }
@@ -1050,7 +1051,8 @@ pub fn rhythm_diagnostic(issue: &auditorylab_core::rhythm::Issue) -> String {
         Issue::Value { owner, issue } => {
             let parameter = issue.parameter.descriptor();
             format!(
-                "component {owner}: {} {} {} must be {}",
+                "{}: {} {} {} must be {}",
+                acoustic_errors::voice_reference(*owner),
                 parameter.label,
                 compact_number(parameter.unit.to_display(issue.value)),
                 parameter.unit.symbol(),

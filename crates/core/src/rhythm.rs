@@ -495,7 +495,7 @@ pub fn realized<'a>(source: impl Into<RealizedInput<'a>>) -> Structure {
             observation.voices.iter().flatten().copied(),
             observation.transitioning,
         ),
-        RealizedInput::Target(target) => classify(target.voices(), false),
+        RealizedInput::Target(target) => classify(target.observations(), false),
     }
 }
 pub(crate) fn classify(

@@ -1,5 +1,5 @@
 //! Human explanations of rate-dependent acoustic failures.
-use crate::core::{ParameterId, Signal, SoundError, VoiceError};
+use crate::core::{Lane, ParameterId, Signal, SoundError, VoiceError, VoiceId};
 use std::fmt::{self, Display, Formatter};
 struct SoundText<'a>(&'a SoundError);
 struct VoiceText<'a>(&'a VoiceError);
@@ -81,7 +81,8 @@ impl Display for SoundText<'_> {
                 error,
             } => write!(
                 f,
-                "component {id}: first carrier {first_hz} Hz and signed offset {offset_hz} Hz: {}",
+                "{}: first carrier {first_hz} Hz and signed offset {offset_hz} Hz: {}",
+                voice_reference(*id),
                 VoiceText(error)
             ),
             SoundError::Duration {
@@ -115,8 +116,8 @@ impl Display for SoundText<'_> {
                     Number(seconds(*frames))
                 )
             }
-            SoundError::Component { number, error } => {
-                write!(f, "component {number}: {}", VoiceText(error))
+            SoundError::Voice { id, error } => {
+                write!(f, "{}: {}", voice_reference(*id), VoiceText(error))
             }
             SoundError::Peak { ear, amplitude } => {
                 let db = 20.0 * amplitude.log10();
@@ -260,5 +261,40 @@ mod tests {
             overlap,
             "a 0.5 s fade at each edge does not fit in 1 s; the two fades together must be shorter than the duration"
         );
+    }
+}
+
+/// The authored component and, for a pair, its secondary tone.
+#[must_use]
+pub fn voice_reference(id: VoiceId) -> String {
+    match id.lane {
+        Lane::Primary => format!("Component {}", id.component),
+        Lane::Secondary => format!("Component {} · second tone", id.component),
+    }
+}
+
+#[cfg(test)]
+mod reference_tests {
+    use super::*;
+    use crate::core::ComponentId;
+
+    #[test]
+    fn acoustic_errors_name_the_authored_owner_and_secondary_tone() {
+        let owner = ComponentId::new(9).unwrap();
+        let error = VoiceError::Frequency {
+            parameter: ParameterId::ToneFrequency,
+            hz: 30_000.0,
+            sample_rate_hz: 48_000,
+        };
+        let primary = SoundError::Voice {
+            id: owner.with_lane(Lane::Primary),
+            error: error.clone(),
+        };
+        assert!(sound_error(&primary).starts_with("Component 9: "));
+        let secondary = SoundError::Voice {
+            id: owner.with_lane(Lane::Secondary),
+            error,
+        };
+        assert!(sound_error(&secondary).starts_with("Component 9 · second tone: "));
     }
 }

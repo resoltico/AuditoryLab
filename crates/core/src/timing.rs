@@ -1,6 +1,6 @@
 //! Bounded origin-zero timing and envelope projections, independent of live phase history.
 use crate::{
-    ComponentFacts, Extent, SampleRate, VoiceId,
+    Extent, SampleRate, VoiceFacts, VoiceId,
     compiled::CompiledMix,
     synthesis::{Carrier, Modulator, sine},
 };
@@ -20,12 +20,12 @@ pub enum ModelKind {
 /// One independently attributed process. Dense periods aggregate into bounded columns.
 #[derive(Debug, Clone)]
 pub struct ModelLane {
-    /// Caller component identity.
+    /// Authored owner and generator lane.
     pub id: VoiceId,
     /// Process type.
     pub kind: ModelKind,
     /// Validated physical quantities.
-    pub facts: ComponentFacts,
+    pub facts: VoiceFacts,
     /// Per-column envelope bounds/occupancy over every frame, not point subsampling.
     pub columns: Vec<Extent>,
 }
@@ -38,7 +38,7 @@ pub struct TimingModel {
     pub frames: u64,
     /// A slow rhythmic process cannot complete one cycle in the capped span.
     pub insufficient_cycle: bool,
-    /// Up to two physical processes per component; at most 32 lanes × 512 columns.
+    /// Up to two physical processes per voice; at most 32 lanes × 512 columns.
     pub lanes: Vec<ModelLane>,
 }
 #[expect(
@@ -48,7 +48,7 @@ pub struct TimingModel {
 )]
 pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
     let rate = mix.rate();
-    let slowest = crate::rhythm::classify(mix.voices(), false)
+    let slowest = crate::rhythm::classify(mix.observations(), false)
         .slowest_rate()
         .unwrap_or(f64::INFINITY);
     let seconds = (4.0 / slowest).clamp(0.25, 4.0);

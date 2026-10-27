@@ -55,7 +55,7 @@ fn requested_and_realized_pulse_widths_keep_their_rate() {
         (gate(0.001), 44_100, 44, 44.0 / 44_100.0),
     ] {
         let check = crate::test_support::check(rate(hz), &[(id(1), component)]);
-        let facts = check.components()[0].1.as_ref().unwrap();
+        let facts = check.voices()[0].1.as_ref().unwrap();
         let pulse = match (facts.carrier, facts.modulation) {
             (CarrierFacts::Clicks(p), _) | (_, Some(ModulationFacts::Gate(p))) => p,
             _ => panic!("pulse facts"),
@@ -83,7 +83,7 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
     ];
     let check = crate::test_support::check(rate(48_000), &rows);
     let errors: Vec<_> = check
-        .components()
+        .voices()
         .iter()
         .map(|(id, result)| (*id, result.as_ref().err().map(VoiceError::parameters)))
         .collect();
@@ -101,13 +101,13 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
     );
     assert!(matches!(
         check.result(),
-        Err(SoundError::Component {
-            number: 1,
+        Err(SoundError::Voice {
+            id: voice_id,
             error: VoiceError::Frequency {
                 parameter: ParameterId::ToneFrequency,
                 ..
             }
-        })
+        }) if *voice_id == id(1).into()
     ));
     // Coupled and modulation constraints name every participating quantity.
     let sideband = Voice {
@@ -137,7 +137,7 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
         ),
     ] {
         let check = crate::test_support::check(rate(48_000), &[(id(9), component)]);
-        let error = check.components()[0].1.as_ref().unwrap_err();
+        let error = check.voices()[0].1.as_ref().unwrap_err();
         assert_eq!(error.parameters(), parameters, "{component:?}");
         assert_eq!(check.result().unwrap_err().parameters(), parameters);
     }
@@ -156,7 +156,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
     );
     assert!(check.result().unwrap_err().parameters().is_empty());
     assert!(
-        check.components().is_empty(),
+        check.voices().is_empty(),
         "invalid structure is refused before compiling any row"
     );
     // Left precedes right; neither is attributed to a field.
@@ -196,7 +196,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
         Err(SoundError::Peak { ear: Ear::Left, .. })
     ));
     assert!(check.result().unwrap_err().parameters().is_empty());
-    assert!(check.components().iter().all(|(_, row)| row.is_ok()));
+    assert!(check.voices().iter().all(|(_, row)| row.is_ok()));
     // Capacity follows MAX_COMPONENTS and over-capacity input compiles nothing.
     for count in [0, Sound::MAX_COMPONENTS, Sound::MAX_COMPONENTS + 1] {
         let rows: Vec<_> = (0..count)
@@ -208,15 +208,15 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
                 check.result().unwrap_err(),
                 &SoundError::Structure(crate::StructureError::ComponentBudget { count })
             );
-            assert!(check.components().is_empty());
+            assert!(check.voices().is_empty());
         } else {
-            assert_eq!(check.components().len(), count);
+            assert_eq!(check.voices().len(), count);
         }
     }
 }
 
 #[test]
-fn finite_entry_points_select_envelope_errors_before_component_errors() {
+fn finite_entry_points_select_envelope_errors_before_voice_errors() {
     let sound = Sound {
         duration_seconds: 0.0,
         fade_seconds: 0.0,
@@ -235,7 +235,7 @@ fn finite_entry_points_select_envelope_errors_before_component_errors() {
     ));
     assert!(matches!(
         sound.target(rate(48_000)),
-        Err(SoundError::Component { number: 1, .. })
+        Err(SoundError::Voice { id: voice_id, .. }) if voice_id == id(1).into()
     ));
     // An already valid target checks only its envelope.
     let target = Sound {
@@ -295,8 +295,8 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
     let signal = target.signal(1.0, 0.1).unwrap();
     assert_eq!(signal.target(), &target);
     assert_eq!(signal.sample_rate(), target.sample_rate());
-    assert!(signal.components().eq(target.components()));
-    let ids: Vec<_> = signal.components().map(|(id, _)| id).collect();
+    assert!(signal.voices().eq(target.voices()));
+    let ids: Vec<_> = signal.voices().map(|(id, _)| id).collect();
     assert_eq!(ids, [id(1).into(), id(2).into()]);
     let via_sound = Sound {
         duration_seconds: 1.0,
@@ -335,30 +335,66 @@ fn definition_equality_includes_requested_facts_and_same_audio_does_not() {
 }
 
 #[test]
-fn each_component_result_is_found_by_its_own_identity() {
+fn each_voice_result_is_found_by_its_own_identity() {
     let check = crate::test_support::check(
         rate(48_000),
         &[(id(7), tone(440.0, -30.0)), (id(3), tone(30_000.0, -30.0))],
     );
-    let valid = check.component(id(7).into()).unwrap();
+    let valid = check.voice(id(7).into()).unwrap();
     assert!(matches!(
         valid.as_ref().unwrap().carrier,
         CarrierFacts::Tone(rate) if rate.requested_hz == 440.0
     ));
     assert!(
-        check.component(id(3).into()).unwrap().is_err(),
-        "the invalid component's own error"
+        check.voice(id(3).into()).unwrap().is_err(),
+        "the invalid voice's own error"
     );
     assert!(
-        check.component(id(1).into()).is_none(),
+        check.voice(id(1).into()).is_none(),
         "an unknown identity has no result"
     );
 }
 
 #[test]
-fn emptiness_counts_components() {
+fn emptiness_counts_voices() {
     assert!(Target::silence(rate(8_000)).is_empty());
     let target = crate::test_support::target(rate(8_000), &[(id(1), tone(440.0, -30.0))]).unwrap();
     assert!(!target.is_empty());
     assert_eq!(target.len(), 1);
+}
+
+#[test]
+fn voice_error_retains_the_owner_after_pair_expansion_and_without_a_pair() {
+    use crate::{Component, ComponentForm, Lane, Pair};
+    let bad = Component {
+        id: id(9),
+        form: ComponentForm::Voice(tone(30_000.0, -20.0)),
+    };
+    let pair = Component {
+        id: id(7),
+        form: ComponentForm::BinauralPair(Pair {
+            first_hz: 200.0,
+            offset_hz: 10.0,
+            first_peak_dbfs: -20.0,
+            second_peak_dbfs: -20.0,
+        }),
+    };
+    for components in [vec![pair, bad], vec![bad]] {
+        let sound = Sound {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components,
+        };
+        assert_eq!(
+            sound.target(rate(48_000)).unwrap_err(),
+            SoundError::Voice {
+                id: id(9).with_lane(Lane::Primary),
+                error: VoiceError::Frequency {
+                    parameter: ParameterId::ToneFrequency,
+                    hz: 30_000.0,
+                    sample_rate_hz: 48_000,
+                },
+            }
+        );
+    }
 }

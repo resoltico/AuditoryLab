@@ -289,7 +289,7 @@ fn a_carrier_is_named_in_sentence_case() {
                 .collect(),
         }
         .check(SampleRate::DEFAULT);
-        check.components()[0].1.clone().unwrap().summary()
+        check.voices()[0].1.clone().unwrap().summary()
     };
     let modulated = |modulation| Voice {
         modulation: Some(modulation),
@@ -345,7 +345,7 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
                 .collect(),
         }
         .check(rate);
-        let facts = check.components()[0].1.clone().unwrap();
+        let facts = check.voices()[0].1.clone().unwrap();
         let brief = facts.summary();
         let detail = facts.details();
         assert!(brief.contains(&format!("{realized} ms open")), "{brief}");
@@ -388,7 +388,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
                 .collect(),
         }
         .check(rate)
-        .components()[0]
+        .voices()[0]
             .1
             .clone()
             .unwrap_err()
@@ -447,7 +447,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
             .collect(),
     }
     .check(rate)
-    .components()[0]
+    .voices()[0]
         .1
         .clone()
         .unwrap_err();

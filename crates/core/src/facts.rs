@@ -42,7 +42,7 @@ impl PulseFacts {
         self.sample_rate.seconds_in(self.width_frames)
     }
 }
-/// A component's carrier quantities.
+/// A voice's carrier quantities.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CarrierFacts {
@@ -51,7 +51,7 @@ pub enum CarrierFacts {
     /// A rectangular pulse train.
     Clicks(PulseFacts),
 }
-/// A component's envelope quantities.
+/// A voice's envelope quantities.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModulationFacts {
@@ -80,21 +80,21 @@ pub struct PairFacts {
     /// Computed requested second/right carrier.
     pub second_hz: f64,
 }
-/// Validated component facts at a specific rendering rate.
+/// Validated voice facts at a specific rendering rate.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-pub struct ComponentFacts {
+pub struct VoiceFacts {
     /// Authored pair intent, absent for unpaired raw primitives.
     pub pair: Option<PairFacts>,
     /// Declared ear route.
     pub ears: Ears,
-    /// Declared component peak bound in dBFS.
+    /// Declared voice peak bound in dBFS.
     pub peak_dbfs: f64,
     /// Carrier quantities.
     pub carrier: CarrierFacts,
     /// Optional envelope quantities.
     pub modulation: Option<ModulationFacts>,
 }
-impl ComponentFacts {
+impl VoiceFacts {
     pub(crate) fn from_voice(
         c: &Voice,
         v: &crate::synthesis::GeneratorVoice,
@@ -182,12 +182,12 @@ impl SlotRole {
 /// Actual generator quantities and routing gains for one generated frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VoiceObservation {
-    /// Caller component identity; crossfades can have two roles with the same identity.
+    /// Caller voice identity; crossfades can have two roles with the same identity.
     pub id: VoiceId,
     /// Slot attribution within the transition.
     pub role: SlotRole,
-    /// Requested and generated component quantities.
-    pub facts: ComponentFacts,
+    /// Requested and generated voice quantities.
+    pub facts: VoiceFacts,
     /// Actual linear routing gains, left/right, at this frame.
     pub gains: [f64; 2],
 }
@@ -206,7 +206,7 @@ pub struct Observation {
     pub voices: [Option<VoiceObservation>; Observation::MAX_VOICES],
 }
 impl Observation {
-    /// The most generators that run at once: every component of an outgoing
-    /// target crossfading with every component of its replacement.
+    /// The most generators that run at once: every voice of an outgoing
+    /// target crossfading with every voice of its replacement.
     pub const MAX_VOICES: usize = 2 * Sound::MAX_VOICES;
 }

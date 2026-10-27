@@ -6,7 +6,7 @@
 //!
 //! - levels, ear routes and sinusoidal depth move linearly;
 //! - tone and sinusoidal-modulation frequencies glide with continuous phase;
-//! - a component whose carrier or modulation kind changes, or whose pulse
+//! - a voice whose carrier or modulation kind changes, or whose pulse
 //!   rate or width changes, crossfades from the old generator to the new one.
 //!
 //! Every ramp runs from one validated state to another with one shared
@@ -24,7 +24,7 @@ const SLOTS: usize = Engine::SLOTS;
 #[derive(Debug, Clone, Copy)]
 struct Slot {
     id: VoiceId,
-    facts: crate::ComponentFacts,
+    facts: crate::VoiceFacts,
     role: SlotRole,
     voice: GeneratorVoice,
     gain: (f64, f64, f64, f64),
@@ -243,7 +243,7 @@ impl Engine {
                     .flatten()
                     .filter(|slot| slot.role != SlotRole::Outgoing)
                 {
-                    if let Some((_, facts)) = target.components().find(|(id, _)| *id == slot.id) {
+                    if let Some((_, facts)) = target.voices().find(|(id, _)| *id == slot.id) {
                         slot.facts = *facts;
                     }
                 }
@@ -878,7 +878,7 @@ mod tests {
     }
 
     #[test]
-    fn sixteen_components_changing_kind_use_every_slot_within_full_scale() {
+    fn sixteen_voices_changing_kind_use_every_slot_within_full_scale() {
         let tones: Vec<Voice> = (0..16)
             .map(|i| tone(200.0 + 50.0 * f64::from(i), -24.1, Ears::Both))
             .collect();

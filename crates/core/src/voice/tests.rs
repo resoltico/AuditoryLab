@@ -267,7 +267,7 @@ fn peak_and_pulse_width_guards_reject_invalid_values() {
         first_voice(&mut s).peak_dbfs = peak;
         assert!(matches!(
             s.signal(rate(48000)),
-            Err(SoundError::Component {
+            Err(SoundError::Voice {
                 error: VoiceError::PeakDbfs { .. },
                 ..
             })
@@ -281,7 +281,7 @@ fn peak_and_pulse_width_guards_reject_invalid_values() {
         };
         assert!(matches!(
             s.signal(rate(48000)),
-            Err(SoundError::Component {
+            Err(SoundError::Voice {
                 error: VoiceError::PulseWidth { .. },
                 ..
             })
@@ -307,7 +307,7 @@ fn click_nyquist_rejection_is_not_masked_by_the_closed_frame_rule() {
     }]);
     assert!(matches!(
         s.signal(rate(48000)),
-        Err(SoundError::Component {
+        Err(SoundError::Voice {
             error: VoiceError::Frequency {
                 parameter: ParameterId::ClickRate,
                 ..
@@ -328,7 +328,7 @@ mod validate {
 
     pub(super) fn own(component: Voice, rate: SampleRate) -> Result<(), VoiceError> {
         let check = crate::test_support::check(rate, &[(ComponentId::new(1).unwrap(), component)]);
-        check.components()[0].1.clone().map(|_| ())
+        check.voices()[0].1.clone().map(|_| ())
     }
 
     #[test]
@@ -481,13 +481,8 @@ mod validate {
             .signal(rate);
             match (own, whole) {
                 (Ok(()), Ok(_)) => {}
-                (
-                    Err(error),
-                    Err(crate::SoundError::Component {
-                        number: 1,
-                        error: same,
-                    }),
-                ) => {
+                (Err(error), Err(crate::SoundError::Voice { id, error: same })) => {
+                    assert_eq!(id, crate::ComponentId::new(1).unwrap().into());
                     assert_eq!(error, same);
                 }
                 (own, whole) => panic!("{own:?} vs {whole:?}"),

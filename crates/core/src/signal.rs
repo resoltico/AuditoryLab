@@ -1,7 +1,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::{ComponentFacts, SampleRate, SoundError, Target, VoiceId, numeric};
+use crate::{SampleRate, SoundError, Target, VoiceFacts, VoiceId, numeric};
 use core::f64::consts::PI;
 
 /// The length of a session and its per-frame gain. A positive resolved
@@ -80,7 +80,7 @@ impl Signal {
     }
 
     /// Check a duration and fade at `rate` with the same rules and order as
-    /// [`Sound::signal`](crate::Sound::signal), without components.
+    /// [`Sound::signal`](crate::Sound::signal), without voices.
     ///
     /// # Errors
     /// Returns [`SoundError::Duration`], [`SoundError::Fade`] or
@@ -131,15 +131,15 @@ impl Signal {
         self.target.peak_dbfs()
     }
 
-    /// The validated components, without the finite envelope.
+    /// The validated voices, without the finite envelope.
     #[must_use]
     pub const fn target(&self) -> &Target {
         &self.target
     }
 
-    /// Each component's identity and validated facts, in order.
-    pub fn components(&self) -> impl Iterator<Item = (VoiceId, &ComponentFacts)> {
-        self.target.components()
+    /// Each voice's identity and validated facts, in order.
+    pub fn voices(&self) -> impl Iterator<Item = (VoiceId, &VoiceFacts)> {
+        self.target.voices()
     }
 
     /// Observe a generated frame's finite-source quantities, or None outside the signal.

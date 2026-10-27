@@ -38,8 +38,8 @@ pub use authored::{
 };
 pub use compiled::{Target, TargetCheck};
 pub use facts::{
-    CarrierFacts, ComponentFacts, ModulationFacts, Observation, PairFacts, PhaseRate, PulseFacts,
-    SlotRole, VoiceObservation,
+    CarrierFacts, ModulationFacts, Observation, PairFacts, PhaseRate, PulseFacts, SlotRole,
+    VoiceFacts, VoiceObservation,
 };
 pub use history::{DocumentIdentity, DocumentUuid, Timestamp};
 pub use parameter::{

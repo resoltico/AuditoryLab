@@ -299,7 +299,7 @@ fn actual_rate_preparation_submits_committed_edits_but_never_staged_text() {
         .unwrap();
     assert_eq!(accepted.0, 2);
     assert_eq!(accepted.1.sample_rate().hz(), 96000);
-    let (_, facts) = accepted.1.components().next().unwrap();
+    let (_, facts) = accepted.1.voices().next().unwrap();
     let crate::core::CarrierFacts::Tone(rate) = facts.carrier else {
         panic!()
     };

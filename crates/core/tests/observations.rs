@@ -1,8 +1,8 @@
 //! Independent generated-state, attribution and revision oracles.
 use auditorylab_core::{
-    Carrier, CarrierFacts, Component, ComponentFacts, ComponentForm, ComponentId, Ears, Modulation,
+    Carrier, CarrierFacts, Component, ComponentForm, ComponentId, Ears, Modulation,
     ModulationFacts, SampleRate, SlotRole, Sound, SoundError, StructureError, Target, Voice,
-    live::Engine,
+    VoiceFacts, live::Engine,
 };
 fn tone(hz: f64, ears: Ears) -> Voice {
     Voice {
@@ -32,7 +32,7 @@ fn target(rate: SampleRate, component: Voice) -> Target {
     clippy::unwrap_used,
     reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
 )]
-fn facts(component: Voice, rate: SampleRate) -> ComponentFacts {
+fn facts(component: Voice, rate: SampleRate) -> VoiceFacts {
     let check = auditorylab_core::Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
@@ -45,7 +45,7 @@ fn facts(component: Voice, rate: SampleRate) -> ComponentFacts {
             .collect(),
     }
     .check(rate);
-    *check.target().unwrap().components().next().unwrap().1
+    *check.target().unwrap().voices().next().unwrap().1
 }
 #[test]
 fn observations_identify_last_frame_without_advancing_phase() {

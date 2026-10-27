@@ -228,17 +228,16 @@ pub(crate) fn editor_view(
         .draft()
         .components()
         .iter()
-        .enumerate()
-        .map(|(index, component)| {
+        .map(|component| {
             let (id,committed)=(&component.id,&component.form);
             let shown = candidate
                 .draft()
                 .component(*id)
                 .copied()
                 .unwrap_or(*committed);
-            let own = analysis.check().component((*id).into());
+            let own = analysis.check().voice((*id).into());
             let acoustic = own.and_then(|r| r.as_ref().err());
-            let second=analysis.check().component(id.with_lane(auditorylab_core::Lane::Secondary)).and_then(|r|r.as_ref().err());
+            let second=analysis.check().voice(id.with_lane(auditorylab_core::Lane::Secondary)).and_then(|r|r.as_ref().err());
             let coupled=analysis.check().result().err().filter(|error|match error {auditorylab_core::SoundError::Pair(auditorylab_core::PairError {id:owner,..})=>owner.get()==id.get(),auditorylab_core::SoundError::PairCarrier {id:owner,..}=>owner.component==*id,_=>false});
             let parameters = ParameterId::COMPONENT
                 .into_iter()
@@ -289,7 +288,7 @@ pub(crate) fn editor_view(
                 carrier: committed.primitive_kind(),
                 modulation: committed.modulation_kind(),
                 heading: shown.heading(),
-                name: format!("{} · component {}", shown.heading(), index + 1),
+                name: format!("{} · Component {id}", shown.heading()),
                 context: if let Some(pair)=shown.pair() {
                     format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz+pair.offset_hz,pair.offset_hz.abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)
                 } else {match own {
@@ -647,8 +646,11 @@ pub(crate) fn library_view(
             .filter(|url| url.starts_with("https://") || url.starts_with("http://")),
     }
 }
-pub(crate) fn removed_component(form: crate::core::ComponentForm, index: usize) -> String {
-    format!("Removed {} · component {}.", form.heading(), index + 1)
+pub(crate) fn removed_component(
+    form: crate::core::ComponentForm,
+    id: crate::core::ComponentId,
+) -> String {
+    format!("Removed {} · Component {id}.", form.heading())
 }
 pub(crate) fn file_activity(kind: Option<&crate::workspace::tasks::FileKind>) -> String {
     use crate::workspace::tasks::FileKind;

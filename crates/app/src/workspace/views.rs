@@ -464,8 +464,8 @@ impl Workspace {
                 .editor
                 .session
                 .removed()
-                .map(|(index, component)| {
-                    presentation::workspace_text::removed_component(component.form, index)
+                .map(|(_, component)| {
+                    presentation::workspace_text::removed_component(component.form, component.id)
                 })
                 .unwrap_or_default(),
             can_restore_component: restore_component.is_ok(),

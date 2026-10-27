@@ -353,7 +353,10 @@ impl ModelView {
                 _ => unreachable!("envelope lane modulation"),
             },
         };
-        format!("Component {} · {quantity}", lane.id)
+        format!(
+            "{} · {quantity}",
+            super::acoustic_errors::voice_reference(lane.id)
+        )
     }
 }
 

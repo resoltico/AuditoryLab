@@ -215,7 +215,7 @@ fn native_cli_lifecycle_conflicts_dates_export_and_trash_are_shared_store_operat
         48000
     );
     assert_eq!(
-        json(&inspect)["entries"][0]["validation"]["components"][0]["facts"]["carrier"]["rate_hz"],
+        json(&inspect)["entries"][0]["validation"]["voices"][0]["facts"]["carrier"]["rate_hz"],
         2.0
     );
     let trash = cli(
@@ -691,7 +691,12 @@ fn inspection_serializes_expanded_identity_without_conflating_authored_owners() 
     assert!(result.status.success(), "{result:?}");
     let report = json(&result);
     assert_eq!(report["output_schema_version"], 2);
-    let voices = &report["entries"][0]["validation"]["components"];
+    assert!(
+        report["entries"][0]["validation"]
+            .get("components")
+            .is_none()
+    );
+    let voices = &report["entries"][0]["validation"]["voices"];
     assert_eq!(
         voices[0]["id"],
         serde_json::json!({"component": 1, "lane": "primary"})

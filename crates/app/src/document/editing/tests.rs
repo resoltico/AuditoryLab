@@ -481,7 +481,7 @@ fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids()
     assert_eq!(d.based_on().unwrap().id(), snapshot.id());
     let ids: Vec<_> = d.components().iter().map(|c| c.id).collect();
     let target = snapshot.sound().target(SampleRate::DEFAULT).unwrap();
-    let recipe_ids: Vec<_> = target.components().map(|(id, _)| id).collect();
+    let recipe_ids: Vec<_> = target.voices().map(|(id, _)| id).collect();
     assert_eq!(
         ids,
         snapshot
@@ -495,7 +495,7 @@ fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids()
         d.check(SampleRate::DEFAULT)
             .target()
             .unwrap()
-            .components()
+            .voices()
             .map(|(id, _)| id)
             .collect::<Vec<_>>(),
         recipe_ids
