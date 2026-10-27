@@ -16,19 +16,86 @@ use {
     crate::storage::library::LibraryStore,
 };
 
+/// One captured library configuration and its availability. Resolving a context
+/// never initializes storage; every filesystem operation still checks its locks
+/// and the current layout/content at the action boundary.
+#[derive(Debug, Clone)]
+pub struct LibraryContext {
+    source: RootSource,
+    location: Option<Location>,
+    library: Result<Library, LibraryError>,
+}
+impl LibraryContext {
+    /// Capture CLI override, environment or native default once, including failure.
+    #[must_use]
+    pub fn resolve(override_path: Option<&Path>) -> Self {
+        let (source, selected) = LibraryRoot::select(override_path);
+        let mut location = selected.as_ref().ok().map(|path| Location {
+            path: path.clone(),
+            source,
+        });
+        let library = selected
+            .and_then(|path| LibraryRoot::configured(path, source))
+            .and_then(Library::from_root);
+        if let Ok(library) = &library {
+            location = Some(Location {
+                path: library.path().to_owned(),
+                source,
+            });
+        }
+        Self {
+            source,
+            location,
+            library,
+        }
+    }
+    /// Retain an already bound capability without resolving configuration again.
+    #[must_use]
+    pub fn from_library(library: Library) -> Self {
+        let source = library.source();
+        let location = Some(Location {
+            path: library.path().to_owned(),
+            source,
+        });
+        Self {
+            source,
+            location,
+            library: Ok(library),
+        }
+    }
+    /// Configuration precedence source, even when no native path is available.
+    #[must_use]
+    pub const fn source(&self) -> RootSource {
+        self.source
+    }
+    /// Captured path/source, including an unusable explicit or environment path.
+    #[must_use]
+    pub const fn location(&self) -> Option<&Location> {
+        self.location.as_ref()
+    }
+    /// Bound service capability, or the captured configuration failure.
+    ///
+    /// # Errors
+    /// Returns the original configuration/catalog failure; never falls back.
+    pub fn library(&self) -> Result<&Library, LibraryError> {
+        self.library.as_ref().map_err(Clone::clone)
+    }
+    /// Captured configuration failure, distinct from later filesystem failures.
+    #[must_use]
+    pub fn problem(&self) -> Option<&LibraryError> {
+        self.library.as_ref().err()
+    }
+    pub(crate) fn store(&self) -> Option<&Library> {
+        self.library.as_ref().ok()
+    }
+}
+
 /// An explicitly configured library service. Construction never initializes storage.
 #[derive(Debug, Clone)]
 pub struct Library {
     store: LibraryStore,
 }
 impl Library {
-    /// Resolve the explicit override, environment or native application-data path.
-    ///
-    /// # Errors
-    /// Preserves configuration and reserved-catalog validation failures.
-    pub fn resolve(path: Option<&Path>) -> Result<Self, LibraryError> {
-        Self::from_root(LibraryRoot::resolve(path)?)
-    }
     /// Bind an absolute root without creating it or any recipe.
     ///
     /// # Errors
@@ -250,16 +317,17 @@ pub struct PathInspection {
 ///
 /// # Errors
 /// Returns configuration failures before any inspection is possible.
-pub fn path(override_path: Option<&Path>) -> Result<PathInspection, LibraryError> {
-    let root = LibraryRoot::resolve(override_path)?;
+pub fn path(context: &LibraryContext) -> Result<PathInspection, LibraryError> {
+    let library = context.library()?;
     let location = Location {
-        path: root.path().to_owned(),
-        source: root.source(),
+        path: library.path().to_owned(),
+        source: context.source(),
     };
-    let result = root.inspect();
-    let exists = result
-        .as_ref()
-        .map_or_else(|_| root.path().try_exists().ok(), |info| Some(info.exists));
+    let result = library.inspect();
+    let exists = result.as_ref().map_or_else(
+        |_| library.path().try_exists().ok(),
+        |info| Some(info.exists),
+    );
     Ok(PathInspection {
         location,
         exists,

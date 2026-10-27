@@ -3,6 +3,7 @@ mod error;
 pub use self::error::{ExportError, OperationError};
 use crate::document::origin::ObservedFile;
 pub(crate) use error::CODES as DIAGNOSTIC_CODES;
+pub use library::LibraryContext;
 pub use {
     crate::storage::error::Confirmation, crate::storage::error::FileError,
     crate::storage::error::IoCause, crate::storage::error::IoFailure,
@@ -54,7 +55,11 @@ pub fn export(
     })?;
     export_rendition(&sound, path, replace, cancel, progress)
 }
-fn export_rendition(
+/// Export this already inspected rendition without realizing its snapshot again.
+///
+/// # Errors
+/// Preserves staged publication, cancellation and encoding failures.
+pub fn export_rendition(
     sound: &Rendition,
     path: &Path,
     replace: Replace,

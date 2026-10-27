@@ -38,24 +38,20 @@ pub(crate) struct LibraryRoot {
     source: RootSource,
 }
 impl LibraryRoot {
-    /// Resolve flag, then environment, then native persistent data location.
-    ///
-    /// # Errors
-    /// Rejects relative/empty explicit roots or unavailable native data resolution.
-    pub(crate) fn resolve(explicit: Option<&Path>) -> Result<Self, Error> {
-        let (path, source) = if let Some(path) = explicit {
-            (path.to_owned(), RootSource::CommandLine)
+    /// Select configuration once, retaining precedence even if native lookup fails.
+    pub(crate) fn select(explicit: Option<&Path>) -> (RootSource, Result<PathBuf, Error>) {
+        if let Some(path) = explicit {
+            (RootSource::CommandLine, Ok(path.to_owned()))
         } else if let Some(path) = std::env::var_os("AUDITORYLAB_LIBRARY_DIR") {
-            (PathBuf::from(path), RootSource::Environment)
+            (RootSource::Environment, Ok(PathBuf::from(path)))
         } else {
-            let project = directories::ProjectDirs::from("org", "resoltico", "auditorylab")
-                .ok_or(Error::NativeRootUnavailable)?;
             (
-                project.data_local_dir().join("library"),
                 RootSource::Default,
+                directories::ProjectDirs::from("org", "resoltico", "auditorylab")
+                    .map(|project| project.data_local_dir().join("library"))
+                    .ok_or(Error::NativeRootUnavailable),
             )
-        };
-        Self::configured(path, source)
+        }
     }
     /// Select a caller-provided absolute root with explicit initialization policy.
     ///
@@ -64,7 +60,7 @@ impl LibraryRoot {
     pub(crate) fn explicit(path: PathBuf) -> Result<Self, Error> {
         Self::configured(path, RootSource::CommandLine)
     }
-    fn configured(path: PathBuf, source: RootSource) -> Result<Self, Error> {
+    pub(crate) fn configured(path: PathBuf, source: RootSource) -> Result<Self, Error> {
         if !path.is_absolute() {
             return Err(Error::RelativeRoot { path: path.clone() });
         }

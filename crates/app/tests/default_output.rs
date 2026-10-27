@@ -19,7 +19,7 @@ fn silent(
             reader: &mut recipe.as_bytes(),
             label: "silence",
         },
-        None,
+        &auditorylab_app::services::LibraryContext::resolve(None),
     )
     .unwrap();
     let snapshot = resolved.snapshot();
@@ -115,7 +115,7 @@ fn stop_before_preparation_returns_an_early_report() {
             reader: &mut recipe.as_bytes(),
             label: "silence",
         },
-        None,
+        &auditorylab_app::services::LibraryContext::resolve(None),
     )
     .unwrap();
     let session = Session::new();

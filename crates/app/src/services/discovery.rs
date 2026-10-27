@@ -1,14 +1,11 @@
 //! Complete list composition and query execution, shared by both frontends.
 use super::{
     Cancel,
-    library::{DiagnosticDetail, Library, LibraryDiagnostic},
+    library::{DiagnosticDetail, LibraryContext, LibraryDiagnostic},
 };
 use crate::core::query::Scope;
 use crate::document::origin::LibraryKey;
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, path::PathBuf};
 use {
     crate::discovery::collection::CatalogQuery, crate::discovery::collection::EntrySummary,
     crate::discovery::collection::ResultGroup, crate::discovery::query::QueryError,
@@ -77,7 +74,7 @@ impl Listing {
 /// remains a typed incomplete diagnostic while healthy Built-in rows remain available.
 pub fn list(
     mut request: ListRequest,
-    root_override: Option<&Path>,
+    context: &LibraryContext,
     cancel: &Cancel,
 ) -> Result<Listing, OperationError> {
     request.query.validate()?;
@@ -113,7 +110,7 @@ pub fn list(
     let (mut complete, mut outcome, mut diagnostics, mut stages) =
         (true, None, Vec::new(), Vec::new());
     if request.query.scope != Scope::BuiltIn {
-        match Library::resolve(root_override) {
+        match context.library() {
             Ok(library) => {
                 let inventory = library.scan(cancel);
                 entries.extend(inventory.entries);
@@ -139,7 +136,7 @@ pub fn list(
     }
     request.query.include_external = !request.files.is_empty();
     for path in request.files {
-        let resolved = super::resolve(super::Source::File(path), root_override)?;
+        let resolved = super::resolve(super::Source::File(path), context)?;
         entries.push(resolved.summary);
     }
     let result = request.query.execute(&entries)?;

@@ -1,5 +1,5 @@
 //! Source resolution captures complete provenance before rendering or device work.
-use super::library::Library;
+use super::library::{Library, LibraryContext};
 use crate::document::origin::{ExternalId, LibraryKey};
 use std::{io::Read, path::PathBuf};
 use {
@@ -49,10 +49,7 @@ impl Resolved {
 ///
 /// # Errors
 /// Preserves configuration, input, identity and portable-contract failures.
-pub fn resolve(
-    source: Source<'_>,
-    root_override: Option<&std::path::Path>,
-) -> Result<Resolved, LoadError> {
+pub fn resolve(source: Source<'_>, context: &LibraryContext) -> Result<Resolved, LoadError> {
     let snapshot = match source {
         Source::Selector(key) => match &key {
             LibraryKey::BuiltIn(id) => {
@@ -65,7 +62,7 @@ pub fn resolve(
                 });
             }
             LibraryKey::User(_) => {
-                let library = Library::resolve(root_override)?;
+                let library = context.library()?.clone();
                 let record = library.load(&key)?;
                 return Ok(Resolved {
                     summary: record.summary(),
@@ -90,16 +87,10 @@ pub fn resolve(
 ///
 /// # Errors
 /// Rejects temporary selectors and preserves managed input failures.
-pub fn portable_text(
-    key: &LibraryKey,
-    root_override: Option<&std::path::Path>,
-) -> Result<String, LoadError> {
+pub fn portable_text(key: &LibraryKey, context: &LibraryContext) -> Result<String, LoadError> {
     match key {
         LibraryKey::BuiltIn(id) => Ok(builtin_source(id.as_str())?.into()),
-        LibraryKey::User(_) => Ok(Library::resolve(root_override)?
-            .load(key)?
-            .recipe_toml
-            .to_string()),
+        LibraryKey::User(_) => Ok(context.library()?.load(key)?.recipe_toml.to_string()),
         LibraryKey::External(_) => Err(LoadError::TemporarySelector { key: key.clone() }),
     }
 }

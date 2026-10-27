@@ -333,13 +333,10 @@ fn fixture(case: Case) -> TestWorkspace {
         }
         Case::Unavailable => {
             ws.library.binding =
-                LibraryBinding::Unavailable(crate::services::library::LibraryDiagnostic {
-                    storage_id: "configured root".into(),
-
-                    detail: crate::services::library::DiagnosticDetail::Failure(Box::new(
-                        crate::storage::library::LibraryError::NativeRootUnavailable,
-                    )),
-                });
+                LibraryBinding::from_context(crate::services::LibraryContext::resolve(Some(
+                    std::path::Path::new("relative-unavailable-root"),
+                )))
+                .unwrap();
         }
         Case::NoSelection => {
             ws.set_view(View::Library);

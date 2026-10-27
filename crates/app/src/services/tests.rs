@@ -16,12 +16,16 @@ fn directory() -> tempfile::TempDir {
 #[test]
 fn unavailable_root_keeps_builtin_rows_and_its_typed_failure() {
     let unavailable = std::path::Path::new("relative-unavailable-root");
+    let context = LibraryContext::resolve(Some(unavailable));
+    assert_eq!(context.source(), library::RootSource::CommandLine);
+    assert_eq!(context.location().unwrap().path(), unavailable);
+    assert!(context.problem().is_some());
     let listing = list(
         ListRequest {
             query: CatalogQuery::default(),
             files: Vec::new(),
         },
-        Some(unavailable),
+        &context,
         &Cancel::default(),
     )
     .unwrap();
@@ -45,7 +49,7 @@ fn unavailable_root_keeps_builtin_rows_and_its_typed_failure() {
             },
             files: Vec::new(),
         },
-        Some(unavailable),
+        &context,
         &Cancel::default(),
     )
     .unwrap();
@@ -108,7 +112,8 @@ fn trash_membership_refuses_current_and_captured_playback_before_device_access()
         .unwrap()
         .record
         .unwrap();
-    let before = resolve(Source::Selector(record.key.clone()), Some(library.path())).unwrap();
+    let context = LibraryContext::from_library(library.clone());
+    let before = resolve(Source::Selector(record.key.clone()), &context).unwrap();
     library
         .trash(
             record.key.clone(),
@@ -116,7 +121,7 @@ fn trash_membership_refuses_current_and_captured_playback_before_device_access()
             &Cancel::default(),
         )
         .unwrap();
-    let trashed = resolve(Source::Selector(record.key), Some(library.path())).unwrap();
+    let trashed = resolve(Source::Selector(record.key), &context).unwrap();
     assert!(trashed.summary().trashed);
     assert_eq!(
         before.summary().version_token,
@@ -198,4 +203,95 @@ fn source_errors_keep_raw_path_data() {
         matches!(&error, crate::storage::load::LoadError::Recipe { origin: crate::document::recipe::Origin::File(original), .. } if original == &path)
     );
     assert_eq!(std::fs::read(&path).unwrap(), bytes.as_bytes());
+}
+
+#[cfg(unix)]
+#[test]
+fn library_context_keeps_its_captured_root_and_revalidates_action_state() {
+    use crate::document::editing::Draft;
+    let directory = directory();
+    let first = Library::at_path(directory.path().join("first")).unwrap();
+    let second = Library::at_path(directory.path().join("second")).unwrap();
+    for (library, title) in [(&first, "First root"), (&second, "Second root")] {
+        library.initialize().unwrap();
+        let mut draft = Draft::new().unwrap();
+        draft.set_title(title.into());
+        library
+            .apply(
+                library::Mutation::Create(std::sync::Arc::new(draft.recipe().unwrap())),
+                &Cancel::default(),
+            )
+            .unwrap();
+    }
+    let alias = directory.path().join("selected");
+    std::os::unix::fs::symlink(first.path(), &alias).unwrap();
+    let context = LibraryContext::resolve(Some(&alias));
+    assert_eq!(
+        context.location().unwrap().path(),
+        std::fs::canonicalize(first.path()).unwrap()
+    );
+    assert_eq!(context.source(), library::RootSource::CommandLine);
+    std::fs::remove_file(&alias).unwrap();
+    std::os::unix::fs::symlink(second.path(), &alias).unwrap();
+    let request = || ListRequest {
+        query: CatalogQuery {
+            scope: Scope::User,
+            ..Default::default()
+        },
+        files: Vec::new(),
+    };
+    let captured = list(request(), &context, &Cancel::default()).unwrap();
+    assert_eq!(captured.entries()[0].title, "First root");
+    let selected = LibraryContext::resolve(Some(&alias));
+    assert_eq!(
+        list(request(), &selected, &Cancel::default())
+            .unwrap()
+            .entries()[0]
+            .title,
+        "Second root"
+    );
+    std::fs::write(first.path().join("library.toml"), "layout = 999\n").unwrap();
+    assert!(
+        context.problem().is_none(),
+        "configuration availability does not authorize later filesystem state"
+    );
+    let changed = list(request(), &context, &Cancel::default()).unwrap();
+    assert!(!changed.complete());
+    assert!(
+        changed.entries().is_empty(),
+        "a failed captured root never falls back to the replacement alias"
+    );
+    assert!(changed.diagnostics().iter().any(|diagnostic|matches!(&diagnostic.detail,DiagnosticDetail::Failure(error) if matches!(error.as_ref(),LibraryError::UnsupportedLayout {found:999}))));
+}
+
+#[test]
+fn export_rendition_uses_the_capture_even_after_its_cache_entry_is_evicted() {
+    let directory = directory();
+    let snapshot = crate::document::recipe::RecipeSnapshot::new(
+        crate::document::recipe::Origin::Stream("captured silence".into()),
+        crate::core::test_support::silent(0.01, 0.0),
+    );
+    let captured = snapshot.at(SampleRate::DEFAULT).unwrap();
+    snapshot.at(SampleRate::new(96000).unwrap()).unwrap();
+    snapshot.at(SampleRate::new(192000).unwrap()).unwrap();
+    assert_eq!(snapshot.cached_rates(), 2);
+    let compilations = snapshot.realization_count();
+    assert_eq!(compilations, 3);
+    let path = directory.path().join("captured.wav");
+    let exported = export_rendition(
+        &captured,
+        &path,
+        Replace::Never,
+        &Cancel::default(),
+        &Progress::default(),
+    )
+    .unwrap();
+    assert_eq!(exported.frames, 480);
+    assert_eq!(exported.sample_rate, SampleRate::DEFAULT);
+    assert_eq!(
+        snapshot.realization_count(),
+        compilations,
+        "export must not realize the snapshot again"
+    );
+    assert!(path.is_file());
 }

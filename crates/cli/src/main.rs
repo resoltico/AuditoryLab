@@ -347,24 +347,22 @@ fn play(resolved: &lab::services::Resolved) -> Result<Ended, CliError> {
     })
 }
 fn run(cli: Cli) -> Result<Ended, CliError> {
-    match cli.command {
-        None => output(format!("{}\n", Cli::command().render_help()).as_bytes())?,
-        Some(Command::List(args)) => {
-            return Ok(Ended::Code(library_cli::list(
-                args,
-                cli.library_dir.as_deref(),
-            )?));
+    let Some(command) = cli.command else {
+        output(format!("{}\n", Cli::command().render_help()).as_bytes())?;
+        return Ok(Ended::Normally);
+    };
+    let context = lab::services::LibraryContext::resolve(cli.library_dir.as_deref());
+    match command {
+        Command::List(args) => {
+            return Ok(Ended::Code(library_cli::list(args, &context)?));
         }
-        Some(Command::Library { command }) => {
-            return Ok(Ended::Code(library_cli::library(
-                command,
-                cli.library_dir.as_deref(),
-            )?));
+        Command::Library { command } => {
+            return Ok(Ended::Code(library_cli::library(command, &context)?));
         }
-        Some(Command::Recipe {
+        Command::Recipe {
             selector,
             output: path,
-        }) => {
+        } => {
             let key: auditorylab_app::document::origin::LibraryKey = selector.parse()?;
             if matches!(
                 key,
@@ -372,7 +370,7 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             ) {
                 return Err(usage(CommandProblem::TemporaryRecipeSelector.message()));
             }
-            let text = lab::services::portable_text(&key, cli.library_dir.as_deref())?;
+            let text = lab::services::portable_text(&key, &context)?;
             if let Some(path) = path {
                 let saved = lab::services::save_recipe_text(&text, &path, Replace::Never)?;
                 for warning in saved.warnings {
@@ -388,40 +386,38 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
                 output(text.as_bytes())?;
             }
         }
-        Some(Command::Describe { source, format }) => library_cli::describe(
-            &library_cli::resolve(source, cli.library_dir.as_deref())?,
-            format,
-        )?,
-        Some(Command::Inspect {
+        Command::Describe { source, format } => {
+            library_cli::describe(&library_cli::resolve(source, &context)?, format)?
+        }
+        Command::Inspect {
             source,
             sample_rate,
             format,
-        }) => {
+        } => {
             let sample_rate =
                 SampleRate::new(sample_rate).map_err(lab::services::OperationError::from)?;
             return Ok(Ended::Code(library_cli::inspect(
-                &library_cli::resolve(source, cli.library_dir.as_deref())?,
+                &library_cli::resolve(source, &context)?,
                 sample_rate,
                 format,
             )?));
         }
-        Some(Command::Export {
+        Command::Export {
             source,
             output: path,
             sample_rate,
-        }) => {
+        } => {
             let sample_rate =
                 SampleRate::new(sample_rate).map_err(lab::services::OperationError::from)?;
-            let resolved = library_cli::resolve(source, cli.library_dir.as_deref())?;
+            let resolved = library_cli::resolve(source, &context)?;
             let inspection = lab::services::inspect(&resolved, sample_rate);
             let sound = inspection.sound().map_err(Clone::clone)?;
             let cancel = Cancel::default();
             let request = cancel.clone();
             on_interrupt(move || request.request())?;
             eprintln!("{}", prose(&sound.export_preamble(&path)));
-            let result = lab::services::export(
-                resolved.snapshot(),
-                sample_rate,
+            let result = lab::services::export_rendition(
+                sound,
                 &path,
                 Replace::Never,
                 &cancel,
@@ -437,8 +433,8 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             }
             completed(&result.description(&path));
         }
-        Some(Command::Play(source)) => {
-            let resolved = library_cli::resolve(source, cli.library_dir.as_deref())?;
+        Command::Play(source) => {
+            let resolved = library_cli::resolve(source, &context)?;
             return play(&resolved);
         }
     }

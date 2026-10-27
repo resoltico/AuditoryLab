@@ -10,48 +10,57 @@ use crate::document::origin::{LibraryKey, VersionToken};
 use crate::services::library::Library;
 use crate::storage::library::{Inventory, LoadedRecord, Mutation, MutationKind, WriteOutcome};
 
-/// A real configured library capability or a typed configuration failure.
+/// A captured library context and its immutable frontend diagnostic projection.
 #[derive(Debug)]
-pub enum LibraryBinding {
-    /// A persistent store whose filesystem work is performed by jobs.
-    Store(Library),
-    /// Invalid/unavailable configuration; Built-ins remain usable.
-    Unavailable(crate::storage::library::LibraryDiagnostic),
+pub struct LibraryBinding {
+    context: crate::services::library::LibraryContext,
+    problem: Option<crate::services::library::LibraryDiagnostic>,
 }
 impl LibraryBinding {
     /// Resolve native configuration outside the sans-IO coordinator.
     ///
     /// # Errors
-    /// Refuses invalid shipped identity metadata while retaining configuration failures as data.
-    pub fn configured() -> Result<Self, crate::storage::library::LibraryError> {
-        match crate::services::library::Library::resolve(None) {
-            Ok(library) => Ok(Self::Store(library)),
-            Err(
-                error @ (crate::storage::library::LibraryError::InvalidBuiltin { .. }
-                | crate::storage::library::LibraryError::DuplicateBuiltin { .. }),
-            ) => Err(error),
-            Err(error) => Ok(Self::Unavailable(
-                crate::storage::library::LibraryDiagnostic {
-                    storage_id: "configured root".into(),
-
-                    detail: crate::storage::library::DiagnosticDetail::Failure(Box::new(error)),
-                },
-            )),
+    /// Refuses invalid shipped metadata while retaining configuration failures.
+    pub fn configured() -> Result<Self, crate::services::library::LibraryError> {
+        Self::from_context(crate::services::library::LibraryContext::resolve(None))
+    }
+    /// Bind one resolved context, deriving its frontend failure view once.
+    ///
+    /// # Errors
+    /// Invalid shipped catalog identities remain fatal startup failures.
+    pub fn from_context(
+        context: crate::services::library::LibraryContext,
+    ) -> Result<Self, crate::services::library::LibraryError> {
+        use crate::services::library::{DiagnosticDetail, LibraryDiagnostic, LibraryError};
+        if let Some(
+            error @ (LibraryError::InvalidBuiltin { .. } | LibraryError::DuplicateBuiltin { .. }),
+        ) = context.problem()
+        {
+            return Err(error.clone());
+        }
+        let problem = context.problem().map(|error| LibraryDiagnostic {
+            storage_id: context.location().map_or_else(
+                || "configured root".into(),
+                |location| location.path().display().to_string(),
+            ),
+            detail: DiagnosticDetail::Failure(Box::new(error.clone())),
+        });
+        Ok(Self { context, problem })
+    }
+    fn from_library(library: Library) -> Self {
+        Self {
+            context: crate::services::library::LibraryContext::from_library(library),
+            problem: None,
         }
     }
     pub(super) fn store(&self) -> Option<&Library> {
-        match self {
-            Self::Store(store) => Some(store),
-            Self::Unavailable(_) => None,
-        }
+        self.context.store()
     }
-    pub(super) fn problem(&self) -> Option<&crate::storage::library::LibraryDiagnostic> {
-        match self {
-            Self::Unavailable(problem) => Some(problem),
-            Self::Store(_) => None,
-        }
+    pub(super) fn problem(&self) -> Option<&crate::services::library::LibraryDiagnostic> {
+        self.problem.as_ref()
     }
 }
+
 #[derive(Debug)]
 pub(super) struct LibraryState {
     pub(super) binding: LibraryBinding,
@@ -81,7 +90,7 @@ impl LibraryState {
         binding: LibraryBinding,
         catalog: Vec<RecipeSnapshot>,
     ) -> Result<Self, Error> {
-        let available = matches!(binding, LibraryBinding::Store(_));
+        let available = binding.store().is_some();
         let mut result = Self {
             refresh: available,
             binding,
@@ -511,7 +520,7 @@ impl Workspace {
         capabilities: Capabilities,
         store: Library,
     ) -> Result<Self, Error> {
-        Self::with_binding(catalog, capabilities, LibraryBinding::Store(store))
+        Self::with_binding(catalog, capabilities, LibraryBinding::from_library(store))
     }
     pub(super) fn reveal_retained_source(&mut self, snapshot: RecipeSnapshot) {
         let p = &mut self.library;

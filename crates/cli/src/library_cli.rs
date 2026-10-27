@@ -15,9 +15,10 @@ use auditorylab_presentation::reports::Report;
 use auditorylab_presentation::*;
 use clap::{Args, Subcommand, ValueEnum};
 use lab::core::vocabulary::Operation;
+use lab::services::LibraryContext;
 use std::{
     io::{self, IsTerminal, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 type Result<T> = std::result::Result<T, super::CliError>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -304,11 +305,11 @@ fn parse_population(text: &str) -> std::result::Result<lab::core::Population, St
 fn parse_analysis(text: &str) -> std::result::Result<lab::core::rhythm::Completeness, String> {
     parse_choice(text)
 }
-pub(super) fn open_library(path: Option<&Path>) -> Result<Library> {
-    Ok(Library::resolve(path)?)
+pub(super) fn open_library(context: &LibraryContext) -> Result<&Library> {
+    Ok(context.library()?)
 }
 use lab::services::Resolved;
-pub(super) fn resolve(source: Source, path: Option<&Path>) -> Result<Resolved> {
+pub(super) fn resolve(source: Source, context: &LibraryContext) -> Result<Resolved> {
     let request = if let Some(selector) = source.selector {
         lab::services::Source::Selector(selector.parse()?)
     } else if let Some(file) = source.file {
@@ -322,12 +323,12 @@ pub(super) fn resolve(source: Source, path: Option<&Path>) -> Result<Resolved> {
                 reader: &mut io::stdin().lock(),
                 label: crate::cli_text::Caption::StandardInput.label(),
             },
-            path,
+            context,
         )?);
     };
-    Ok(lab::services::resolve(request, path)?)
+    Ok(lab::services::resolve(request, context)?)
 }
-pub(super) fn list(args: ListArgs, path: Option<&Path>) -> Result<u8> {
+pub(super) fn list(args: ListArgs, context: &LibraryContext) -> Result<u8> {
     let (query, format) = args.query.query(args.collection.scope())?;
     if format == ListFormat::Ids && !args.files.is_empty() {
         return Err(usage(CommandProblem::TemporaryIds.message()));
@@ -337,7 +338,7 @@ pub(super) fn list(args: ListArgs, path: Option<&Path>) -> Result<u8> {
             query,
             files: args.files,
         },
-        path,
+        context,
         &Cancel::default(),
     )?;
     print_list(Operation::List, &listing, format)?;
@@ -408,11 +409,11 @@ pub(super) fn inspect(resolved: &Resolved, rate: SampleRate, format: ReadFormat)
     }
     Ok(inspection.outcome().map_or(0, super::exit_code))
 }
-pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8> {
+pub(super) fn library(command: LibraryCommand, context: &LibraryContext) -> Result<u8> {
     let operation = command.operation();
     match command {
         LibraryCommand::Path { format } => {
-            let inspection = lab::services::library::path(path)?;
+            let inspection = lab::services::library::path(context)?;
             let root = inspection.location;
             let info = match inspection.result {
                 Ok(info) => info,
@@ -444,7 +445,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
             Ok(0)
         }
         LibraryCommand::Init { format } => {
-            let initialized = open_library(path)?.initialize()?;
+            let initialized = open_library(context)?.initialize()?;
             if format == ReadFormat::Json {
                 print_mutation_json(&Report::initialized(operation, &initialized))?;
             } else {
@@ -459,14 +460,14 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                     query,
                     files: Vec::new(),
                 },
-                path,
+                context,
                 &Cancel::default(),
             )?;
             print_list(operation, &listing, format)?;
             Ok(listing.outcome().map_or(0, super::exit_code))
         }
         LibraryCommand::Check { format } => {
-            let inventory = open_library(path)?.scan(&Cancel::default());
+            let inventory = open_library(context)?.scan(&Cancel::default());
             if format == ReadFormat::Json {
                 print_json(&Report::inventory(operation, &inventory))?;
             } else {
@@ -494,7 +495,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
             let cancel = Cancel::default();
             let stop = cancel.clone();
             super::on_interrupt(move || stop.request())?;
-            let library = open_library(path)?;
+            let library = open_library(context)?;
             let (outcome, format) = match command {
                 LibraryCommand::Add {
                     file,
