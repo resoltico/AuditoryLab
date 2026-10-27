@@ -2,12 +2,13 @@
 use super::DisplayText;
 use super::core_errors::recipe_error;
 use {
-    crate::audio::PlaybackError, crate::discovery::query::QueryError,
-    crate::document::error::EditorError, crate::identity::IdentityError,
-    crate::identity::IdentityScope, crate::services::ExportError, crate::storage::error::FileError,
-    crate::storage::error::IoFailure, crate::storage::error::IoOperation,
-    crate::storage::error::SaveError, crate::storage::library::LibraryError,
-    crate::storage::load::LoadError,
+    auditorylab_app::discovery::query::QueryError, auditorylab_app::document::error::EditorError,
+    auditorylab_app::identity::IdentityError, auditorylab_app::identity::IdentityScope,
+    auditorylab_app::services::ExportError, auditorylab_app::services::FileError,
+    auditorylab_app::services::IoFailure, auditorylab_app::services::IoOperation,
+    auditorylab_app::services::LoadError, auditorylab_app::services::SaveError,
+    auditorylab_app::services::library::LibraryError,
+    auditorylab_app::services::playback::PlaybackError,
 };
 fn path_text(path: &std::path::Path) -> String {
     path.to_string_lossy().display_scalar()
@@ -78,7 +79,8 @@ fn file_text(error: &FileError) -> String {
             cause,
         } => {
             use {
-                crate::storage::error::Confirmation as C, crate::storage::error::MutationPhase as P,
+                auditorylab_app::services::Confirmation as C,
+                auditorylab_app::services::MutationPhase as P,
             };
             let explanation = match (phase, confirmation) {
                 (P::Publish, C::Unchanged) => "publication failed; previous content remains".into(),
@@ -187,7 +189,7 @@ fn library_text(error: &LibraryError) -> String {
         E::LockNotRegular => "library lock must be a regular persistent file".into(), E::Busy => "Library busy; retry after the other operation finishes".into(),
         E::LockUnavailable { error } => format!("required library locking assurance is unavailable; no unlocked fallback: {}",error.explain()),
         E::MarkerUtf8 { .. } => "layout marker is not UTF-8".into(), E::MarkerFormat { .. } => "invalid library.toml layout marker".into(),
-        E::UnsupportedLayout { found } => format!("unsupported library layout {found}; this build reads {}", crate::storage::library::LIBRARY_LAYOUT),
+        E::UnsupportedLayout { found } => format!("unsupported library layout {found}; this build reads {}", auditorylab_app::services::library::LIBRARY_LAYOUT),
         E::MembershipWithoutMarker => "nonempty membership exists without a layout marker; initialization left it intact".into(),
         E::RecipesWithoutMarker => "recipes exist without a supported marker; initialization left them unchanged".into(),
         E::UnknownRootContents => "unknown existing root contents; initialization refused without changing them".into(),
@@ -276,16 +278,22 @@ fn query_text(error: &QueryError) -> String {
     }
 }
 
-impl<E: Explain> crate::storage::library::LibraryDiagnostic<E> {
+/// Human explanation of a retained inventory diagnostic.
+pub trait LibraryDiagnosticText {
+    /// Explain the retained cause without changing its storage identifier.
+    fn message(&self) -> String;
+}
+impl<E: Explain> LibraryDiagnosticText
+    for auditorylab_app::services::library::LibraryDiagnostic<E>
+{
     /// Render the retained typed cause or inventory notice.
-    #[must_use]
-    pub fn message(&self) -> String {
+    fn message(&self) -> String {
         match &self.detail {
-            crate::storage::library::DiagnosticDetail::Failure(error) => error.explain(),
-            crate::storage::library::DiagnosticDetail::Warning(warning) => {
+            auditorylab_app::services::library::DiagnosticDetail::Failure(error) => error.explain(),
+            auditorylab_app::services::library::DiagnosticDetail::Warning(warning) => {
                 super::publication_text::warning(warning)
             }
-            crate::storage::library::DiagnosticDetail::Notice(notice) => {
+            auditorylab_app::services::library::DiagnosticDetail::Notice(notice) => {
                 super::library_text::inventory_notice(notice)
             }
         }
@@ -294,12 +302,12 @@ impl<E: Explain> crate::storage::library::LibraryDiagnostic<E> {
 
 /// Explain a canonical source-selector or exact-byte-token failure.
 #[must_use]
-pub(crate) fn origin_error(error: &crate::document::origin::OriginError) -> String {
+pub(crate) fn origin_error(error: &auditorylab_app::document::origin::OriginError) -> String {
     match error {
-        crate::document::origin::OriginError::InvalidSelector { value } => format!(
+        auditorylab_app::document::origin::OriginError::InvalidSelector { value } => format!(
             "invalid selector {value}; expected builtin:<catalog-id> or user:<canonical-uuid>"
         ),
-        crate::document::origin::OriginError::InvalidFingerprint { .. } => {
+        auditorylab_app::document::origin::OriginError::InvalidFingerprint { .. } => {
             "expected a canonical 64-digit lowercase SHA-256 fingerprint".into()
         }
     }
@@ -356,19 +364,19 @@ impl Explain for QueryError {
         query_text(self)
     }
 }
-impl Explain for crate::clock::ClockError {
+impl Explain for auditorylab_app::clock::ClockError {
     fn explain(&self) -> String {
         "observed system time is outside the supported UTC timestamp range".into()
     }
 }
-impl Explain for crate::document::origin::OriginError {
+impl Explain for auditorylab_app::document::origin::OriginError {
     fn explain(&self) -> String {
         origin_error(self)
     }
 }
-impl Explain for crate::services::OperationError {
+impl Explain for auditorylab_app::services::OperationError {
     fn explain(&self) -> String {
-        use crate::services::OperationError as E;
+        use auditorylab_app::services::OperationError as E;
         match self {
             E::Load(error) => error.explain(),
             E::Library(error) => error.explain(),
@@ -383,7 +391,7 @@ impl Explain for crate::services::OperationError {
         }
     }
 }
-impl Explain for crate::document::error::RenditionError {
+impl Explain for auditorylab_app::document::error::RenditionError {
     fn explain(&self) -> String {
         load_text(&LoadError::Sound {
             origin: self.origin.clone(),
@@ -392,13 +400,13 @@ impl Explain for crate::document::error::RenditionError {
         })
     }
 }
-impl std::fmt::Display for Human<'_, crate::audio::device::DeviceError> {
+impl std::fmt::Display for Human<'_, auditorylab_app::services::playback::DeviceError> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0 {
-            crate::audio::device::DeviceError::NoDefaultOutput => {
+            auditorylab_app::services::playback::DeviceError::NoDefaultOutput => {
                 write!(f, "no default audio output device found")
             }
-            crate::audio::device::DeviceError::Backend(error)
+            auditorylab_app::services::playback::DeviceError::Backend(error)
                 if error.kind() == cpal::ErrorKind::DeviceChanged =>
             {
                 write!(
@@ -406,99 +414,107 @@ impl std::fmt::Display for Human<'_, crate::audio::device::DeviceError> {
                     "the audio output route changed and playback stopped; select the intended output and play again"
                 )
             }
-            crate::audio::device::DeviceError::Backend(error) => {
+            auditorylab_app::services::playback::DeviceError::Backend(error) => {
                 write!(f, "audio backend: {error}")
             }
-            crate::audio::device::DeviceError::UnsupportedSampleFormat(format) => write!(
-                f,
-                "the output device's {format} sample format is not supported"
-            ),
-            crate::audio::device::DeviceError::UnsupportedSampleRate { hz } => write!(
-                f,
-                "the output device's {hz} Hz sample rate is not supported"
-            ),
-            crate::audio::device::DeviceError::TooFewChannels { channels } => write!(
-                f,
-                "the default output device has {channels} channel{}; stimuli need two, one for each ear",
-                if *channels == 1 { "" } else { "s" }
-            ),
-            crate::audio::device::DeviceError::InvalidTiming => {
+            auditorylab_app::services::playback::DeviceError::UnsupportedSampleFormat(format) => {
+                write!(
+                    f,
+                    "the output device's {format} sample format is not supported"
+                )
+            }
+            auditorylab_app::services::playback::DeviceError::UnsupportedSampleRate { hz } => {
+                write!(
+                    f,
+                    "the output device's {hz} Hz sample rate is not supported"
+                )
+            }
+            auditorylab_app::services::playback::DeviceError::TooFewChannels { channels } => {
+                write!(
+                    f,
+                    "the default output device has {channels} channel{}; stimuli need two, one for each ear",
+                    if *channels == 1 { "" } else { "s" }
+                )
+            }
+            auditorylab_app::services::playback::DeviceError::InvalidTiming => {
                 write!(f, "the audio backend supplied invalid playback timing")
             }
-            crate::audio::device::DeviceError::MisalignedBuffer => write!(
+            auditorylab_app::services::playback::DeviceError::MisalignedBuffer => write!(
                 f,
                 "the audio backend supplied a buffer holding a partial frame"
             ),
-            crate::audio::device::DeviceError::TimedOut => write!(
+            auditorylab_app::services::playback::DeviceError::TimedOut => write!(
                 f,
                 "the audio stream stopped making progress or outlasted its time limit"
             ),
-            crate::audio::device::DeviceError::Abandoned => {
+            auditorylab_app::services::playback::DeviceError::Abandoned => {
                 write!(f, "the playback session ended before its stream started")
             }
         }
     }
 }
-impl Explain for crate::audio::device::DeviceError {
+impl Explain for auditorylab_app::services::playback::DeviceError {
     fn explain(&self) -> String {
         Human(self).to_string()
     }
 }
-impl std::fmt::Display for Human<'_, crate::audio::session::LiveUpdateError> {
+impl std::fmt::Display for Human<'_, auditorylab_app::services::playback::LiveUpdateError> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0 {
-            crate::audio::session::LiveUpdateError::SessionClosed => {
+            auditorylab_app::services::playback::LiveUpdateError::SessionClosed => {
                 f.write_str("the live session no longer accepts changes")
             }
-            crate::audio::session::LiveUpdateError::RateMismatch {
+            auditorylab_app::services::playback::LiveUpdateError::RateMismatch {
                 target_hz,
                 session_hz,
             } => write!(
                 f,
                 "the change was checked at {target_hz} Hz but the live session runs at {session_hz} Hz"
             ),
-            crate::audio::session::LiveUpdateError::RevisionLimit => {
+            auditorylab_app::services::playback::LiveUpdateError::RevisionLimit => {
                 f.write_str("the live session's revision limit is reached")
             }
-            crate::audio::session::LiveUpdateError::Unavailable => {
+            auditorylab_app::services::playback::LiveUpdateError::Unavailable => {
                 f.write_str("live control is unavailable")
             }
         }
     }
 }
-impl Explain for crate::audio::session::LiveUpdateError {
+impl Explain for auditorylab_app::services::playback::LiveUpdateError {
     fn explain(&self) -> String {
         Human(self).to_string()
     }
 }
-impl std::fmt::Display for Human<'_, crate::document::recipe::Origin> {
+impl std::fmt::Display for Human<'_, auditorylab_app::document::recipe::Origin> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0 {
-            crate::document::recipe::Origin::BuiltIn(id) => write!(f, "{id}"),
-            crate::document::recipe::Origin::User { id, .. } => write!(f, "user:{id}"),
-            crate::document::recipe::Origin::File(path) => f.write_str(&path_text(path)),
-            crate::document::recipe::Origin::Stream(label)
-            | crate::document::recipe::Origin::Draft(label) => f.write_str(&label.display_scalar()),
+            auditorylab_app::document::recipe::Origin::BuiltIn(id) => write!(f, "{id}"),
+            auditorylab_app::document::recipe::Origin::User { id, .. } => write!(f, "user:{id}"),
+            auditorylab_app::document::recipe::Origin::File(path) => f.write_str(&path_text(path)),
+            auditorylab_app::document::recipe::Origin::Stream(label)
+            | auditorylab_app::document::recipe::Origin::Draft(label) => {
+                f.write_str(&label.display_scalar())
+            }
         }
     }
 }
-impl Explain for crate::document::recipe::Origin {
+impl Explain for auditorylab_app::document::recipe::Origin {
     fn explain(&self) -> String {
         Human(self).to_string()
     }
 }
 
-impl Explain for crate::services::IoCause {
+impl Explain for auditorylab_app::services::IoCause {
     fn explain(&self) -> String {
         self.error().to_string()
     }
 }
-impl Explain for crate::core::SoundError {
+impl Explain for auditorylab_core::SoundError {
     fn explain(&self) -> String {
         super::acoustic_errors::sound_error(self)
     }
 }
-impl Explain for crate::core::RecipeError {
+impl Explain for auditorylab_core::RecipeError {
     fn explain(&self) -> String {
         recipe_error(self)
     }

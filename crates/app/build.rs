@@ -34,10 +34,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("CARGO_PKG_VERSION")?,
         revision.as_deref()
     );
-    let source = format!(
-        "{source}\n/// About title derived from the product name.\npub(super) const ABOUT_TITLE: &str = {:?};\n",
-        format!("About {name}")
-    );
     std::fs::write(
         std::path::Path::new(&std::env::var("OUT_DIR")?).join("identity.rs"),
         source,

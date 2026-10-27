@@ -1,15 +1,19 @@
 //! Human explanations of portable-document rules.
-use crate::core::{
-    ContractError, PairError, Recipe, RecipeError, ReferenceOwner, Sound, StructureError,
-};
+use auditorylab_core::ContractError;
+use auditorylab_core::PairError;
+use auditorylab_core::Recipe;
+use auditorylab_core::RecipeError;
+use auditorylab_core::ReferenceOwner;
+use auditorylab_core::Sound;
+use auditorylab_core::StructureError;
 /// Explain a rejected rate using the core's supported bounds.
 #[must_use]
-pub fn sample_rate_error(error: &crate::core::SampleRateError) -> String {
+pub fn sample_rate_error(error: &auditorylab_core::SampleRateError) -> String {
     format!(
         "sample rate {} Hz must be from {} to {} Hz",
         error.hz,
-        crate::core::SampleRate::MIN_HZ,
-        crate::core::SampleRate::MAX_HZ
+        auditorylab_core::SampleRate::MIN_HZ,
+        auditorylab_core::SampleRate::MAX_HZ
     )
 }
 /// Explain a portable-document failure without losing its rule or supported version.
@@ -38,15 +42,15 @@ pub fn contract_error(error: &ContractError) -> String {
         ContractError::EmptyTitle => "description title must not be empty".into(),
         ContractError::SourceBudget { count } => format!(
             "{count} sources exceed the limit of {}",
-            crate::core::provenance::MAX_SOURCES
+            auditorylab_core::provenance::MAX_SOURCES
         ),
         ContractError::EvidenceBudget { count } => format!(
             "{count} evidence records exceed the limit of {}",
-            crate::core::provenance::MAX_EVIDENCE
+            auditorylab_core::provenance::MAX_EVIDENCE
         ),
         ContractError::LineageBudget { count } => format!(
             "{count} ancestors exceed the limit of {}",
-            crate::core::provenance::MAX_LINEAGE
+            auditorylab_core::provenance::MAX_LINEAGE
         ),
         ContractError::EmptySourceKey { index } => {
             format!("source {} requires a nonempty key", index + 1)
@@ -108,9 +112,9 @@ pub fn structure_error(error: &StructureError) -> String {
 #[must_use]
 pub fn pair_error(error: &PairError) -> String {
     let reason = match error.issue {
-        crate::core::PairIssue::Nonfinite => "pair carrier/offset arithmetic is nonfinite",
-        crate::core::PairIssue::Nonpositive => "both pair carriers must be positive",
-        crate::core::PairIssue::UnrepresentablePairDifference => {
+        auditorylab_core::PairIssue::Nonfinite => "pair carrier/offset arithmetic is nonfinite",
+        auditorylab_core::PairIssue::Nonpositive => "both pair carriers must be positive",
+        auditorylab_core::PairIssue::UnrepresentablePairDifference => {
             "nonzero offset collapses to the first carrier"
         }
     };
@@ -127,7 +131,7 @@ mod tests {
     #[test]
     fn messages_say_what_is_wrong_with_the_recipe() {
         assert_eq!(
-            sample_rate_error(&crate::core::SampleRateError { hz: 0 }),
+            sample_rate_error(&auditorylab_core::SampleRateError { hz: 0 }),
             "sample rate 0 Hz must be from 1 to 768000 Hz"
         );
         assert_eq!(
@@ -168,7 +172,8 @@ mod tests {
 #[cfg(test)]
 mod authored_tests {
     use super::*;
-    use crate::core::{ComponentId, PairIssue};
+    use auditorylab_core::ComponentId;
+    use auditorylab_core::PairIssue;
     #[test]
     fn lowering_failures_explain_the_rejected_owner_budget_or_pair() {
         let identity = structure_error(&StructureError::Identity {

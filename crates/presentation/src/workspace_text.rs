@@ -1,13 +1,18 @@
 //! Shared wording derived from interactive application values.
-use crate::audio::session::{EndReason, PlaybackReport};
-use crate::core::ParameterId;
-use crate::document::editing::{EditingField, InputProblem, MetadataField};
+use crate::presentation;
+use crate::presentation::AudioErrorText;
 use crate::presentation::Explain;
 use crate::presentation::recipe_text::SnapshotText;
 use crate::presentation::waveform_view::*;
-use crate::presentation::{self, AudioErrorText};
-use crate::storage::wav::Exported;
-use crate::workspace::Refusal;
+use crate::presentation::*;
+use auditorylab_app::document::editing::EditingField;
+use auditorylab_app::document::editing::InputProblem;
+use auditorylab_app::document::editing::MetadataField;
+use auditorylab_app::services::Exported;
+use auditorylab_app::services::playback::EndReason;
+use auditorylab_app::services::playback::PlaybackReport;
+use auditorylab_app::workspace::Refusal;
+use auditorylab_core::ParameterId;
 use std::path::Path;
 pub(crate) fn refusal_text(refusal: &Refusal) -> String {
     match refusal {
@@ -173,7 +178,7 @@ pub(crate) fn sound_diagnostic(error: &auditorylab_core::SoundError, context: &s
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParameterView {
     /// The field this row edits, bound to its document.
-    pub handle: crate::document::editing::FieldHandle,
+    pub handle: auditorylab_app::document::editing::FieldHandle,
     /// The quantity.
     pub parameter: ParameterId,
     /// Label with unit.
@@ -194,17 +199,17 @@ pub struct ParameterView {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentView {
     /// Opaque identity of this rendered component lifetime.
-    pub key: crate::document::editing::RowKey,
+    pub key: auditorylab_app::document::editing::RowKey,
     /// The authored component identity.
-    pub id: crate::core::ComponentId,
+    pub id: auditorylab_core::ComponentId,
     /// Ear routing.
-    pub ears: crate::core::Ears,
+    pub ears: auditorylab_core::Ears,
     /// False for separate-ear pairs whose routes are part of their construction.
     pub routing_editable: bool,
     /// Carrier kind.
-    pub carrier: Option<crate::core::CarrierKind>,
+    pub carrier: Option<auditorylab_core::CarrierKind>,
     /// Modulation kind, if any.
-    pub modulation: Option<crate::core::ModulationKind>,
+    pub modulation: Option<auditorylab_core::ModulationKind>,
     /// The component's role.
     pub heading: &'static str,
     /// Accessible name: role and position.
@@ -221,7 +226,7 @@ pub struct ComponentView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetadataView {
     /// The field, bound to its document.
-    pub handle: crate::document::editing::FieldHandle,
+    pub handle: auditorylab_app::document::editing::FieldHandle,
     /// Label, with unit for quantities.
     pub label: String,
     /// Staged text, or the committed value.
@@ -236,7 +241,7 @@ pub struct MetadataView {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditorView {
     /// Opaque identity of the rendered document lifetime.
-    pub key: crate::document::editing::RowKey,
+    pub key: auditorylab_app::document::editing::RowKey,
     /// Title, notes, duration and fade.
     pub metadata: [MetadataView; 4],
     /// Components in order.
@@ -259,10 +264,11 @@ pub struct EditorView {
 
 /// Render a typed editor projection without changing its admission or applicability.
 #[must_use]
-pub fn editor_view(view: &crate::workspace::EditorView) -> EditorView {
+pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorView {
+    use crate::presentation::AudioSummary;
+    use crate::presentation::ParameterText;
     use crate::presentation::vocabulary::NumberStyle;
-    use crate::presentation::{AudioSummary, ParameterText};
-    use crate::workspace::FieldDiagnostic;
+    use auditorylab_app::workspace::FieldDiagnostic;
     let rate = view.rate;
     let context = if view.live {
         format!("at the live device rate of {} Hz", rate.hz())
@@ -299,7 +305,7 @@ pub fn editor_view(view: &crate::workspace::EditorView) -> EditorView {
         let mut errors:Vec<_> = component.diagnostics.iter().map(diagnostic).collect();
         errors.retain(|e|!parameters.iter().any(|p|p.diagnostic==*e));errors.dedup();
         ComponentView {
-            key:component.key,id:component.id,ears:component.committed.route().unwrap_or(crate::core::Ears::Both),
+            key:component.key,id:component.id,ears:component.committed.route().unwrap_or(auditorylab_core::Ears::Both),
             routing_editable:component.committed.route().is_some(),carrier:component.committed.primitive_kind(),modulation:component.committed.modulation_kind(),
             heading:component.shown.heading(),name:format!("{} · Component {}",component.shown.heading(),component.id),
             context:component.shown.pair().map_or_else(||component.facts.as_ref().map(AudioSummary::summary).unwrap_or_default(),|pair| format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz+pair.offset_hz,pair.offset_hz.abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)),
@@ -442,11 +448,14 @@ pub struct TransportView {
 
 /// Render a coherent transport projection; all lifecycle decisions are captured by workspace.
 #[must_use]
-pub fn transport_view(data: &crate::workspace::TransportView) -> TransportView {
+pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> TransportView {
+    use crate::presentation::AudioDetails;
+    use crate::presentation::AudioSummary;
     use crate::presentation::vocabulary::NumberStyle;
-    use crate::presentation::waveform_view::{output_underrun_warning, phase_text};
-    use crate::presentation::{AudioDetails, AudioSummary};
-    use crate::workspace::{MotionPreference, View};
+    use crate::presentation::waveform_view::output_underrun_warning;
+    use crate::presentation::waveform_view::phase_text;
+    use auditorylab_app::workspace::MotionPreference;
+    use auditorylab_app::workspace::View;
     let output = &data.output;
     let reader = data.monitor.as_ref();
     let audio = data.task_title.is_some();
@@ -517,7 +526,7 @@ pub fn transport_view(data: &crate::workspace::TransportView) -> TransportView {
                 } else {
                     "Last accepted target"
                 },
-                crate::core::rhythm::realized(&reader.accepted).summary()
+                auditorylab_core::rhythm::realized(&reader.accepted).summary()
             )
         } else {
             status.observation.as_ref().map_or_else(
@@ -544,12 +553,14 @@ pub fn transport_view(data: &crate::workspace::TransportView) -> TransportView {
                 .unwrap_or("Default output"),
             descriptor.output.sample_rate.hz(),
             descriptor.output.channels,
-            descriptor.output.format
+            descriptor.output.format.label()
         );
         let warning = reader.warning;
         view.warning = (
             warning.map_or_else(String::new, |w| w.message().into()),
-            warning.is_some_and(crate::workspace::monitor::MonitorWarning::announces_changes),
+            warning.is_some_and(
+                auditorylab_app::workspace::monitor::MonitorWarning::announces_changes,
+            ),
         );
         view.backend_warning = output_underrun_warning(status.underruns);
         view.receipt_age = reader.age.map_or_else(
@@ -607,7 +618,7 @@ pub fn transport_view(data: &crate::workspace::TransportView) -> TransportView {
         view.caption = capture.label(held, ended);
         view.monitor_state = format!("{}\n{}", capture.caption(held, ended), view.monitor_state);
         if capture.clipped() {
-            let advisory = crate::workspace::monitor::MonitorWarning::FixedRangeExceeded;
+            let advisory = auditorylab_app::workspace::monitor::MonitorWarning::FixedRangeExceeded;
             if !view.warning.0.is_empty() {
                 view.warning.0.push('\n');
             }
@@ -688,8 +699,9 @@ pub struct LibraryView {
 
 /// Render an immutable library projection without querying or loading sources.
 #[must_use]
-pub fn library_view(data: &crate::workspace::LibraryView) -> LibraryView {
-    use crate::presentation::{AudioSummary, vocabulary::NumberStyle};
+pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryView {
+    use crate::presentation::AudioSummary;
+    use crate::presentation::vocabulary::NumberStyle;
     let rows = data
         .rows
         .iter()
@@ -725,7 +737,7 @@ pub fn library_view(data: &crate::workspace::LibraryView) -> LibraryView {
         classification: format!(
             "{}\nReference: {}. This describes the sound, not measured brain activity.",
             snapshot.nominal().summary(),
-            crate::core::rhythm::CONVENTION
+            auditorylab_core::rhythm::CONVENTION
         ),
         ownership,
         structure: snapshot
@@ -758,13 +770,15 @@ pub fn library_view(data: &crate::workspace::LibraryView) -> LibraryView {
     }
 }
 pub(crate) fn removed_component(
-    form: crate::core::ComponentForm,
-    id: crate::core::ComponentId,
+    form: auditorylab_core::ComponentForm,
+    id: auditorylab_core::ComponentId,
 ) -> String {
     format!("Removed {} · Component {id}.", form.heading())
 }
-pub(crate) fn file_activity(kind: Option<crate::workspace::status::FileAction>) -> String {
-    use crate::workspace::status::FileAction;
+pub(crate) fn file_activity(
+    kind: Option<auditorylab_app::workspace::status::FileAction>,
+) -> String {
+    use auditorylab_app::workspace::status::FileAction;
     match kind {
         Some(FileAction::RecipeExport) => {
             "Exporting a captured portable recipe; identity and history remain unchanged.".into()
@@ -878,7 +892,7 @@ pub struct ActionView {
 
 /// Render action availability and retained status without making admission decisions.
 #[must_use]
-pub fn action_view(view: &crate::workspace::ActionView) -> ActionView {
+pub fn action_view(view: &auditorylab_app::workspace::ActionView) -> ActionView {
     let refusal = view.operation_refusal.as_ref().map(refusal_text);
     let outcome_details = [
         view.file_status.description(),

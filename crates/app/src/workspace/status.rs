@@ -15,18 +15,28 @@ use {
     crate::storage::wav::Exported,
 };
 
+/// Operation occupying the file task slot.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum FileAction {
+pub enum FileAction {
+    /// Read portable input without granting managed membership.
     Import,
+    /// Read or mutate the persistent managed library.
     Library,
+    /// Publish captured portable content with unchanged identity and history.
     RecipeExport,
+    /// Render and publish a finite audio file.
     AudioExport,
 }
+/// Source and publication capability captured by a running file task.
 #[derive(Debug, Clone)]
-pub(crate) struct FileActivity {
+pub struct FileActivity {
+    /// Operation captured before worker execution.
     pub kind: FileAction,
+    /// Captured source or destination path; navigation cannot retarget it.
     pub path: PathBuf,
+    /// Source title captured at admission, when the operation has one.
     pub title: Option<String>,
+    /// Whether the admitted operation can change persistent storage.
     pub may_publish: bool,
 }
 impl FileActivity {
@@ -59,22 +69,34 @@ impl FileActivity {
         }
     }
 }
+/// Retained result of the latest bounded managed-library scan.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct InventoryStatus {
+pub struct InventoryStatus {
+    /// Every eligible managed record was examined within the scan limits.
     pub complete: bool,
+    /// The configured root lacks an initialized supported layout.
     pub not_initialized: bool,
+    /// Readable unique managed records observed in this scan.
     pub count: usize,
+    /// Typed nonfatal causes retained with their storage context.
     pub diagnostics: Vec<LibraryDiagnostic>,
+    /// Owned staging paths retained for inspection and recovery.
     pub stages: Vec<std::path::PathBuf>,
 }
 
+/// A committed publication whose editor follow-up needs attention.
 #[derive(Debug, Clone)]
-pub(crate) enum SaveFeedback {
+pub enum SaveFeedback {
+    /// Publication succeeded, but the saved sound is invalid at the diagnostic rate.
     InvalidAtRate {
+        /// Sample rate used for this validation result.
         rate: crate::core::SampleRate,
+        /// Original typed cause retained after completion.
         error: crate::document::error::RenditionError,
     },
+    /// Publication succeeded, but refreshing the editor failed.
     EditorRefresh(crate::document::error::EditorError),
+    /// Trash committed, but creating the replacement blank editor failed.
     EditorReset(crate::document::error::EditorError),
 }
 
@@ -87,65 +109,108 @@ pub struct LibraryContext {
     pub selector: Option<LibraryKey>,
 }
 
+/// Captured managed-library completion and recovery state.
 #[derive(Debug, Clone)]
-pub(crate) enum LibraryStatus {
+pub enum LibraryStatus {
+    /// Bounded scan results, including incomplete observations.
     Inventory(Arc<InventoryStatus>),
+    /// Selection reloaded without replacing the draft or playing source.
     Loaded,
+    /// A managed publication completed with confirmed mutation truth.
     Written {
+        /// Managed identity captured by the admitted operation.
         key: LibraryKey,
+        /// Confirmed publication state, independent of report output.
         status: MutationStatus,
+        /// Publication captured the editor document rather than only a library mutation.
         document: bool,
+        /// Editor follow-up failures after confirmed storage publication.
         feedback: Vec<SaveFeedback>,
+        /// Typed nonfatal causes retained with their storage context.
         diagnostics: Vec<crate::storage::warning::StorageWarning>,
     },
+    /// A captured external-file save completed.
     ExternalWritten {
+        /// Confirmed publication state, independent of report output.
         status: MutationStatus,
+        /// Typed nonfatal causes retained with their storage context.
         diagnostics: Vec<crate::storage::warning::StorageWarning>,
     },
+    /// The admitted operation returned its typed failure.
     Failed {
+        /// Original typed cause retained after completion.
         error: Error,
+        /// The admitted operation could publish persistent changes.
         publishing: bool,
+        /// Root and selector captured before worker execution.
         context: LibraryContext,
     },
+    /// The completion belongs to a different document identity.
     InvalidOwner,
 }
 
+/// Nonfatal coordinator events retained for the next projection.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum FileNotice {
+pub enum FileNotice {
+    /// The retained source remains independent of later navigation.
     RetainedSource,
+    /// Navigation changed while the worker retained its original input.
     ChangedSelection,
+    /// The saved entry is no longer present in the current inventory.
     MissingSavedEntry,
+    /// A captured version saved while later edits remain unsaved.
     SavedSnapshotStillDirty,
+    /// An audio export was cancelled before publication.
     ExportCancelled,
 }
+/// Current file-slot activity, completion or admission refusal.
 #[derive(Debug, Clone, Default)]
-pub(crate) enum FileStatus {
+pub enum FileStatus {
+    /// No operation currently contributes a status.
     #[default]
     Idle,
+    /// An admitted operation still occupies its joined task slot.
     Running(FileActivity),
+    /// Admission denied a command without starting new work.
     Refused(Refusal),
+    /// The admitted operation returned its typed failure.
     Failed(Error),
     /// An opaque native panel failure supplied by the shell, not composed status wording.
     DialogFailed {
+        /// Opaque native-panel cause supplied by the shell.
         cause: String,
     },
+    /// Worker execution failed independently of the admitted operation.
     WorkerFailed {
+        /// Source and capability captured before thread launch.
         activity: FileActivity,
+        /// Original typed cause retained after completion.
         error: WorkerFailure,
     },
+    /// Portable input was captured as a temporary source.
     Imported {
+        /// Immutable imported source retained independently of navigation.
         snapshot: RecipeSnapshot,
+        /// Current query restrictions hide the imported source.
         hidden: bool,
     },
+    /// Captured portable content was published to an external destination.
     RecipeExported {
+        /// Captured source or destination path; navigation cannot retarget it.
         path: PathBuf,
+        /// Confirmed post-publication durability, cleanup or chronology conditions.
         warnings: Vec<crate::storage::warning::StorageWarning>,
     },
+    /// A finite WAV file was published with measured encoding facts.
     Exported {
+        /// Captured source or destination path; navigation cannot retarget it.
         path: PathBuf,
+        /// Exact finite encoding and publication facts.
         exported: Exported,
     },
+    /// Read or mutate the persistent managed library.
     Library(LibraryStatus),
+    /// A nonfatal coordinator event remains visible.
     Notice(FileNotice),
 }
 impl FileStatus {
@@ -170,24 +235,36 @@ impl FileStatus {
         }
     }
 }
+/// Most recent editor admission result.
 #[derive(Debug, Clone, Default)]
-pub(crate) enum EditStatus {
+pub enum EditStatus {
+    /// No operation currently contributes a status.
     #[default]
     Idle,
+    /// Admission denied a command without starting new work.
     Refused(Refusal),
 }
 
+/// Current audio completion, admission or live-update result.
 #[derive(Debug, Clone, Default)]
-pub(crate) enum AudioStatus {
+pub enum AudioStatus {
+    /// No operation currently contributes a status.
     #[default]
     Idle,
+    /// Admission denied a command without starting new work.
     Refused(Refusal),
+    /// The bound session refused a whole-target live update.
     LiveUpdate(LiveUpdateError),
+    /// A joined audio session supplied its terminal report.
     Ended {
+        /// Terminal report from the joined audio session.
         report: PlaybackReport,
+        /// Whether this session supplied generated monitor data.
         monitored: bool,
     },
+    /// The admitted operation returned its typed failure.
     Failed(Error),
+    /// Worker execution failed independently of the admitted operation.
     WorkerFailed(WorkerFailure),
 }
 

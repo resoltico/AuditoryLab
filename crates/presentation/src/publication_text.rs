@@ -1,37 +1,37 @@
 //! Warnings emitted only after the storage adapter verifies publication truth.
 use std::path::Path;
-pub(crate) fn saved_after_io(error: &crate::storage::error::IoCause) -> String {
+pub(crate) fn saved_after_io(error: &auditorylab_app::services::IoCause) -> String {
     let error = error.error();
     format!("Saved; publication was verified after an I/O error: {error}")
 }
-pub(crate) fn saved_durability(error: &crate::storage::error::IoCause) -> String {
+pub(crate) fn saved_durability(error: &auditorylab_app::services::IoCause) -> String {
     let error = error.error();
     format!("Saved; directory durability warning: {error}")
 }
-pub(crate) fn retained_stage(stage: &Path, error: &crate::storage::error::IoCause) -> String {
+pub(crate) fn retained_stage(stage: &Path, error: &auditorylab_app::services::IoCause) -> String {
     let error = error.error();
     format!("Saved; owned stage {} remains: {error}", stage.display())
 }
-pub(crate) fn moved_after_io(error: &crate::storage::error::IoCause) -> String {
+pub(crate) fn moved_after_io(error: &auditorylab_app::services::IoCause) -> String {
     let error = error.error();
     format!("Moved; source removal verified after I/O error: {error}")
 }
-pub(crate) fn trash_link(source: &Path, error: &crate::storage::error::IoCause) -> String {
+pub(crate) fn trash_link(source: &Path, error: &auditorylab_app::services::IoCause) -> String {
     let error = error.error();
     format!(
         "Moved to Trash; redundant active link remains at {}: {error}",
         source.display()
     )
 }
-pub(crate) fn moved_durability(error: &crate::storage::error::IoCause) -> String {
+pub(crate) fn moved_durability(error: &auditorylab_app::services::IoCause) -> String {
     let error = error.error();
     format!("Moved; directory durability warning: {error}")
 }
-pub(crate) fn deleted_after_io(error: &crate::storage::error::IoCause) -> String {
+pub(crate) fn deleted_after_io(error: &auditorylab_app::services::IoCause) -> String {
     let error = error.error();
     format!("Deleted; absence verified under the exclusive lock after I/O error: {error}")
 }
-pub(crate) fn deleted_durability(error: &crate::storage::error::IoCause) -> String {
+pub(crate) fn deleted_durability(error: &auditorylab_app::services::IoCause) -> String {
     let error = error.error();
     format!("Deleted; directory durability warning: {error}")
 }
@@ -40,8 +40,8 @@ pub(crate) const CLOCK_PREDATES_EDIT: &str =
 
 /// Wording for a confirmed storage notice.
 #[must_use]
-pub fn warning(warning: &crate::services::StorageWarning) -> String {
-    use crate::services::StorageWarning as W;
+pub fn warning(warning: &auditorylab_app::services::StorageWarning) -> String {
+    use auditorylab_app::services::StorageWarning as W;
     match warning {
         W::SavedAfterIo { cause } => saved_after_io(cause),
         W::SavedDurability { cause } => saved_durability(cause),

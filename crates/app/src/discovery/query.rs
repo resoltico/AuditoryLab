@@ -228,7 +228,7 @@ pub enum QueryError {
     /// A local through date predates its from date.
     LocalOrder {
         /// Captured field.
-        field: crate::discovery::calendar::CalendarField,
+        field: crate::core::query::CalendarField,
         /// Captured from.
         from: String,
         /// Captured through.

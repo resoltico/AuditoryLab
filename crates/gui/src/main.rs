@@ -1,5 +1,6 @@
 //! Desktop interface to Auditory Lab.
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+use auditorylab_presentation::BuildIdentityText;
 mod adapter;
 #[cfg(test)]
 mod adapter_tests;
@@ -60,8 +61,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if args == ["--version"] {
         println!(
             "{}",
-            auditorylab_app::presentation::build_info::BUILD_IDENTITY
-                .version_line("auditorylab-gui")
+            auditorylab_app::identity::BUILD_IDENTITY.version_line("auditorylab-gui")
         );
         return Ok(());
     }

@@ -1,6 +1,7 @@
 //! Coordinator semantics with real persistent stores and directly executed file jobs.
 use super::*;
 use crate::presentation::recipe_text::SnapshotText;
+use crate::presentation::*;
 use crate::workspace::monitor::WaveformScale;
 use auditorylab_core::{ComponentId, ParameterId};
 use std::sync::Arc;

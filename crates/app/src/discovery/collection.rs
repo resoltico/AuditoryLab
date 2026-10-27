@@ -507,12 +507,12 @@ impl CatalogQuery {
                     }
                 }
                 GroupBy::Collection => {
-                    let label = match entry.collection() {
+                    let key = match entry.collection() {
                         Collection::BuiltIn => "Built-in",
                         Collection::User => "User",
                         Collection::External => "Open files",
                     };
-                    values.push((label.into(), GroupLabel::Collection(entry.collection())));
+                    values.push((key.into(), GroupLabel::Collection(entry.collection())));
                 }
             }
             for (key, label) in values {

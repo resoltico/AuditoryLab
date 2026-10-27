@@ -10,9 +10,9 @@ use auditorylab_app::core::ParameterId;
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::core::rhythm::Method;
 use auditorylab_app::core::rhythm::Structure;
-use auditorylab_app::presentation::vocabulary::NumberStyle;
-use auditorylab_app::presentation::waveform_view::*;
-use auditorylab_app::presentation::{AudioDetails, AudioSummary, ParameterText};
+use auditorylab_presentation::vocabulary::NumberStyle;
+use auditorylab_presentation::waveform_view::*;
+use auditorylab_presentation::{AudioDetails, AudioSummary, ParameterText};
 
 use auditorylab_app::workspace::monitor::CaptureError;
 use auditorylab_app::workspace::monitor::ModelSource;
@@ -489,7 +489,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         .clone()
         .unwrap_err();
     assert_eq!(
-        auditorylab_app::presentation::acoustic_errors::voice_error(&error),
+        auditorylab_presentation::acoustic_errors::voice_error(&error),
         "Modulation depth 150% must be from 0% to 100%"
     );
     for kind in CarrierKind::ALL {

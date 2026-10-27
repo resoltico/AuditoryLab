@@ -1,19 +1,21 @@
 //! Public loading and publication contracts.
 #![cfg(test)]
+#[path = "../../app/tests/common/mod.rs"]
 mod common;
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::document::recipe::Rendition;
+use auditorylab_app::identity::BUILD_IDENTITY;
 use auditorylab_app::job::Cancel;
 use auditorylab_app::job::Progress;
 use auditorylab_app::job::Replace;
 use auditorylab_app::outcome::Outcome;
-use auditorylab_app::presentation::build_info::BUILD_IDENTITY;
 use auditorylab_app::services::OperationError;
 use auditorylab_app::services::catalog;
 use auditorylab_app::services::export;
 use auditorylab_app::services::open_file;
 use auditorylab_app::services::read_source;
+use auditorylab_presentation::{BuildIdentityText, RecipeSnapshotText};
 use std::{fs, path::Path};
 fn dir() -> tempfile::TempDir {
     let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");

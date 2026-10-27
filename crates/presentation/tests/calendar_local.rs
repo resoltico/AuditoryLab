@@ -7,7 +7,7 @@ use std::{fs, process::Command};
 fn calendar_child() {
     let date = std::env::var("AUDITORYLAB_CALENDAR_TEST_DATE").unwrap();
     let range = auditorylab_app::discovery::calendar::local_range(
-        auditorylab_app::discovery::calendar::CalendarField::Created,
+        auditorylab_app::core::query::CalendarField::Created,
         &date,
         &date,
     )
@@ -19,9 +19,9 @@ fn calendar_child() {
         "2026-10-25T01:30:00Z",
     ]
     .into_iter()
-    .map(|s| auditorylab_app::discovery::calendar::local_timestamp(s.parse().unwrap()))
+    .map(|s| auditorylab_presentation::calendar_text::local_timestamp(s.parse().unwrap()))
     .collect();
-    fs::write(std::env::var_os("AUDITORYLAB_CALENDAR_TEST_RESULT").unwrap(),serde_json::to_vec(&serde_json::json!({"from":range.from,"before":range.before,"context":auditorylab_app::discovery::calendar::local_context(),"shown":shown})).unwrap()).unwrap();
+    fs::write(std::env::var_os("AUDITORYLAB_CALENDAR_TEST_RESULT").unwrap(),serde_json::to_vec(&serde_json::json!({"from":range.from,"before":range.before,"context":auditorylab_presentation::calendar_text::local_context(),"shown":shown})).unwrap()).unwrap();
 }
 #[test]
 fn native_calendar_uses_actual_timezone_database() {

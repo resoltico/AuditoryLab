@@ -66,6 +66,32 @@ impl std::error::Error for IdentityError {
     }
 }
 
+/// Identity shared by the command-line and desktop products.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildIdentity {
+    /// Product name from the root license metadata.
+    pub name: &'static str,
+    /// Copyright line from the root license metadata.
+    pub copyright: &'static str,
+    /// Workspace product version.
+    pub version: &'static str,
+    /// Native build counter in 1..9999.
+    pub build: u32,
+    /// Validated full ASCII hexadecimal source revision, when supplied at build time.
+    pub revision: Option<&'static str>,
+}
+mod generated {
+    use super::BuildIdentity;
+    include!(concat!(env!("OUT_DIR"), "/identity.rs"));
+}
+/// Canonical repository URL inherited from workspace package metadata.
+pub const SOURCE_URL: &str = env!("CARGO_PKG_REPOSITORY");
+/// Identity generated from workspace metadata.
+pub const BUILD_IDENTITY: BuildIdentity = generated::BUILD;
+
+#[cfg(test)]
+#[path = "../identity_input.rs"]
+mod input;
 #[cfg(test)]
 mod tests {
     use crate::presentation::Explain;

@@ -35,9 +35,9 @@ impl Shell for NativeShell {
             let choice = rfd::AsyncMessageDialog::new()
                 .set_parent(&ui.window().window_handle())
                 .set_title(crate::terms::Action::PurgeConfirmation.label())
-                .set_description(
-                    auditorylab_app::presentation::vocabulary::purge_description(&title, &key),
-                )
+                .set_description(auditorylab_presentation::vocabulary::purge_description(
+                    &title, &key,
+                ))
                 .set_buttons(rfd::MessageButtons::OkCancelCustom(
                     crate::terms::Action::PermanentlyDelete.label().into(),
                     crate::terms::Action::Cancel.label().into(),
@@ -61,9 +61,8 @@ impl Shell for NativeShell {
             adapter.respond(prompt, PromptAnswer::Cancel);
             return;
         };
-        let description = auditorylab_app::presentation::vocabulary::unsaved_description(
-            &adapter.document_title(),
-        );
+        let description =
+            auditorylab_presentation::vocabulary::unsaved_description(&adapter.document_title());
         answer(adapter, prompt, async move {
             use slint::ComponentHandle;
             let choice = rfd::AsyncMessageDialog::new()

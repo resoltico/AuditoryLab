@@ -3,7 +3,7 @@
 use crate::generated::{AudioControlsWindow, MainWindow, MonitorWindow};
 use crate::test_platform::install;
 use crate::typography;
-use auditorylab_app::presentation::waveform_view::*;
+use auditorylab_presentation::waveform_view::*;
 use slint::ComponentHandle;
 use std::{
     cell::{Cell, RefCell},
@@ -37,7 +37,7 @@ fn sync_monitor_warnings(
     ui.set_monitor_warning(text.into());
     ui.set_monitor_warning_live(live);
     ui.set_backend_warning(
-        auditorylab_app::presentation::waveform_view::output_underrun_warning(underruns).into(),
+        auditorylab_presentation::waveform_view::output_underrun_warning(underruns).into(),
     );
 }
 
@@ -1070,7 +1070,7 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.set_ui_family(typography::resolve().family.into());
     ui.set_transport_labels(slint::ModelRc::new(VecModel::from(
-        auditorylab_app::presentation::vocabulary::transport_labels()
+        auditorylab_presentation::vocabulary::transport_labels()
             .iter()
             .map(|label| slint::SharedString::from(*label))
             .collect::<Vec<_>>(),
@@ -1084,7 +1084,7 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     for size in [13.0, 26.0] {
         ui.set_ui_size(size);
         let mut reference = None;
-        for label in auditorylab_app::presentation::vocabulary::transport_labels() {
+        for label in auditorylab_presentation::vocabulary::transport_labels() {
             for (elapsed, status) in [
                 ("0:00", "Preparing output… · A"),
                 (

@@ -4,37 +4,7 @@ use crate::discovery::collection::DateRange;
 use crate::discovery::query::QueryError as Error;
 use chrono::{Local, NaiveDate, TimeZone};
 
-/// The visible calendar-date field pair being edited.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CalendarField {
-    /// Recipe creation dates.
-    Created,
-    /// Recipe modification dates.
-    Modified,
-    /// Library membership dates.
-    Added,
-}
-impl CalendarField {
-    /// Every calendar-date choice, in display order.
-    pub const ALL: [Self; 3] = [Self::Created, Self::Modified, Self::Added];
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Created => ("Created", "created"),
-            Self::Modified => ("Modified", "modified"),
-            Self::Added => ("Added here", "added here"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}
+use crate::core::query::CalendarField;
 
 /// Convert inclusive YYYY-MM-DD calendar bounds in the current native timezone.
 /// The upper bound is the next local midnight, including DST offset changes.
@@ -44,31 +14,17 @@ impl CalendarField {
 pub fn local_range(field: CalendarField, from: &str, through: &str) -> Result<DateRange, Error> {
     in_zone(&Local, field, from, through)
 }
-/// Native timezone context shown beside calendar fields; no fixed offset is cached.
+/// Current native local instant; formatting belongs to the frontend projection.
 #[must_use]
-pub fn local_context() -> String {
-    format!(
-        "Inclusive local calendar dates · {} · YYYY-MM-DD",
-        Local::now().format("%Z (%:z)")
-    )
+pub fn local_now() -> chrono::DateTime<Local> {
+    Local::now()
 }
-/// Display a stored instant in the native timezone, including its UTC offset.
-/// Canonical UTC remains available separately; this never changes the instant.
+/// Resolve a stored instant in the native timezone without changing that instant.
 #[must_use]
-pub fn local_timestamp(date: Timestamp) -> String {
+pub fn local_time(date: Timestamp) -> Option<chrono::DateTime<Local>> {
     Local
         .timestamp_opt(date.unix_seconds(), date.nanoseconds())
         .single()
-        .map_or_else(
-            || format!("Local time unavailable · UTC {date}"),
-            |value| {
-                format!(
-                    "{} UTC{}",
-                    value.format("%Y-%m-%d %H:%M:%S%.f"),
-                    value.offset()
-                )
-            },
-        )
 }
 fn in_zone<T: TimeZone>(
     zone: &T,

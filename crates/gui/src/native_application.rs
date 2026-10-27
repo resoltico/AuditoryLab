@@ -50,7 +50,7 @@ impl slint::winit_030::CustomApplicationHandler for ApplicationHandler {
     }
 
     fn application_about_title(&self) -> Option<String> {
-        Some(auditorylab_app::presentation::build_info::ABOUT_TITLE.into())
+        Some(auditorylab_presentation::build_info::about_title())
     }
 
     fn about_requested(&mut self, _: &ActiveEventLoop) {

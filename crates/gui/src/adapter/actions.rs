@@ -1,7 +1,7 @@
 //! Workspace commands and path-independent action callbacks.
 use super::*;
 use auditorylab_app::core::query::{Direction, GroupBy, RhythmState, Scope, SortBy};
-use auditorylab_app::presentation::DisplayText;
+use auditorylab_presentation::DisplayText;
 
 pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     macro_rules! on {
@@ -51,17 +51,17 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                 let ranges = (|| -> Result<_, auditorylab_app::discovery::query::QueryError> {
                     Ok([
                         auditorylab_app::discovery::calendar::local_range(
-                            auditorylab_app::discovery::calendar::CalendarField::Created,
+                            auditorylab_app::core::query::CalendarField::Created,
                             &cf,
                             &ct,
                         )?,
                         auditorylab_app::discovery::calendar::local_range(
-                            auditorylab_app::discovery::calendar::CalendarField::Modified,
+                            auditorylab_app::core::query::CalendarField::Modified,
                             &mf,
                             &mt,
                         )?,
                         auditorylab_app::discovery::calendar::local_range(
-                            auditorylab_app::discovery::calendar::CalendarField::Added,
+                            auditorylab_app::core::query::CalendarField::Added,
                             &af,
                             &at,
                         )?,
@@ -227,7 +227,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(on_about, |a| a.show_about());
     on!(on_open_study, |a| {
         let url = a.workspace.borrow_mut().as_mut().and_then(|w| {
-            auditorylab_app::presentation::workspace_text::library_view(&w.library_view())
+            auditorylab_presentation::workspace_text::library_view(&w.library_view())
                 .study_url
                 .clone()
         });
@@ -241,9 +241,11 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         }
     });
     on!(on_show_research, |a| {
-        let library = a.workspace.borrow().as_ref().map(|w| {
-            auditorylab_app::presentation::workspace_text::library_view(&w.library_view())
-        });
+        let library = a
+            .workspace
+            .borrow()
+            .as_ref()
+            .map(|w| auditorylab_presentation::workspace_text::library_view(&w.library_view()));
         if let (Some(window), Some(ui), Some(library)) =
             (a.details.upgrade(), a.main.upgrade(), library)
         {

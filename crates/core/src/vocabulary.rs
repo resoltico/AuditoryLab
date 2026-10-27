@@ -154,6 +154,6 @@ mod tests {
         population:crate::Population,condition_role:crate::ConditionRole,evidence_scope:crate::EvidenceScope,measure:crate::Measure,
         band:crate::rhythm::Band,method:crate::rhythm::Method,completeness:crate::rhythm::Completeness,
         scope:crate::query::Scope,sort:crate::query::SortBy,direction:crate::query::Direction,group:crate::query::GroupBy,rhythm_state:crate::query::RhythmState,
-        action:Action,status:Status,
+        calendar_field:crate::query::CalendarField,action:Action,status:Status,
     }
 }

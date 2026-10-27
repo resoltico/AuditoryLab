@@ -5,13 +5,14 @@ use auditorylab_app::core::SampleRate;
 use auditorylab_app::core::query::{Direction, GroupBy, Scope, SortBy};
 use auditorylab_app::document::origin::{LibraryKey, VersionToken};
 use auditorylab_app::job::Cancel;
-use auditorylab_app::presentation::DisplayText;
-use auditorylab_app::presentation::reports::Report;
 use auditorylab_app::{
     self as lab,
     discovery::collection::{CatalogQuery, DateRange},
     services::library::Library,
 };
+use auditorylab_presentation::DisplayText;
+use auditorylab_presentation::reports::Report;
+use auditorylab_presentation::*;
 use clap::{Args, Subcommand, ValueEnum};
 use std::{
     io::{self, IsTerminal, Write},
@@ -366,7 +367,10 @@ fn print_list(operation: &str, listing: &lab::services::Listing, format: ListFor
                 output(entry.list_description().as_bytes())?;
             }
             if !listing.complete() {
-                eprintln!("{}", lab::presentation::vocabulary::INVENTORY_INCOMPLETE);
+                eprintln!(
+                    "{}",
+                    auditorylab_presentation::vocabulary::INVENTORY_INCOMPLETE
+                );
             }
             for diagnostic in listing.diagnostics() {
                 eprintln!(
@@ -470,7 +474,10 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                     );
                 }
                 for stage in &inventory.stages {
-                    output(lab::presentation::retained_stage(&stage.to_string_lossy()).as_bytes())?;
+                    output(
+                        auditorylab_presentation::retained_stage(&stage.to_string_lossy())
+                            .as_bytes(),
+                    )?;
                 }
             }
             Ok(inventory.failure_kind.map_or(0, super::exit_code))
@@ -541,7 +548,7 @@ fn report_mutation(
     stderr: &mut impl Write,
 ) -> Result<u8> {
     let mut bytes = if format == ReadFormat::Json {
-        lab::presentation::reports::json_bytes(&Report::mutation(operation, outcome))?
+        auditorylab_presentation::reports::json_bytes(&Report::mutation(operation, outcome))?
     } else {
         outcome.description().display_text().into_bytes()
     };
@@ -558,13 +565,13 @@ fn report_mutation(
 }
 
 pub(super) fn print_json(value: &Report) -> Result<()> {
-    let bytes = lab::presentation::reports::json_bytes(value)?;
+    let bytes = auditorylab_presentation::reports::json_bytes(value)?;
     output(&bytes)?;
     output(b"\n")?;
     Ok(())
 }
 fn print_mutation_json(value: &Report) -> Result<()> {
-    let mut bytes = match lab::presentation::reports::json_bytes(value) {
+    let mut bytes = match auditorylab_presentation::reports::json_bytes(value) {
         Ok(bytes) => bytes,
         Err(error) => {
             eprintln!("{}", value.completion_failure(error).display_text());

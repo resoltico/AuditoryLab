@@ -1,35 +1,36 @@
 use super::*;
-use crate::core::catalog;
+use crate::presentation::RecipeSnapshotText;
 use crate::presentation::recipe_text::SnapshotText;
+use auditorylab_core::catalog;
 use std::collections::BTreeMap;
 
 #[test]
 fn display_about_uses_population_and_condition_labels_for_every_declaration() {
-    let source = crate::core::catalog::ENTRIES
+    let source = auditorylab_core::catalog::ENTRIES
         .iter()
         .find_map(|entry| {
             let recipe = Recipe::parse(entry.text).unwrap();
             recipe
                 .evidence()
                 .iter()
-                .any(|e| e.scope == crate::core::EvidenceScope::ReferenceCondition)
+                .any(|e| e.scope == auditorylab_core::EvidenceScope::ReferenceCondition)
                 .then_some(recipe)
         })
         .unwrap();
-    for population in crate::core::Population::ALL {
-        for role in crate::core::ConditionRole::ALL {
+    for population in auditorylab_core::Population::ALL {
+        for role in auditorylab_core::ConditionRole::ALL {
             let mut builder = source.clone().into_builder();
             let evidence = builder
                 .content
                 .evidence
                 .iter_mut()
-                .find(|e| e.scope == crate::core::EvidenceScope::ReferenceCondition)
+                .find(|e| e.scope == auditorylab_core::EvidenceScope::ReferenceCondition)
                 .unwrap();
             evidence.population = population;
             evidence.population_detail = None;
             evidence.condition_role = role;
-            let snapshot = crate::document::recipe::RecipeSnapshot::new(
-                crate::document::recipe::Origin::Stream("test".into()),
+            let snapshot = auditorylab_app::document::recipe::RecipeSnapshot::new(
+                auditorylab_app::document::recipe::Origin::Stream("test".into()),
                 builder.build().unwrap(),
             );
             let about = snapshot.about().unwrap();
@@ -108,8 +109,14 @@ fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
 
 #[test]
 fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
-    use crate::core::{ComponentId, DocumentIdentity, Ears, Pair, SampleRate, Sound};
-    use crate::document::recipe::{Origin, RecipeSnapshot};
+    use auditorylab_app::document::recipe::Origin;
+    use auditorylab_app::document::recipe::RecipeSnapshot;
+    use auditorylab_core::ComponentId;
+    use auditorylab_core::DocumentIdentity;
+    use auditorylab_core::Ears;
+    use auditorylab_core::Pair;
+    use auditorylab_core::SampleRate;
+    use auditorylab_core::Sound;
     let plain = ComponentForm::Tone {
         frequency_hz: finite(437.0),
         ears: Ears::Left,
@@ -224,11 +231,11 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
 
 #[test]
 fn independent_copies_store_the_attribution_and_ancestor_notes_verbatim() {
-    use crate::core::{Description, DocumentIdentity};
-    use crate::document::{
-        editing::Draft,
-        recipe::{Origin, RecipeSnapshot},
-    };
+    use auditorylab_app::document::editing::Draft;
+    use auditorylab_app::document::recipe::Origin;
+    use auditorylab_app::document::recipe::RecipeSnapshot;
+    use auditorylab_core::Description;
+    use auditorylab_core::DocumentIdentity;
     for (notes, expected) in [
         (
             None,

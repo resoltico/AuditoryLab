@@ -1,7 +1,7 @@
 //! Presentation number styles and operation wording.
 use crate::presentation::DisplayText;
 
-use crate::core::vocabulary::Action;
+use auditorylab_core::vocabulary::Action;
 /// Incomplete discovery cannot establish an empty library.
 pub const INVENTORY_INCOMPLETE: &str =
     "Incomplete inventory: valid results above do not establish an empty/complete library.";
@@ -42,10 +42,10 @@ pub fn unsaved_description(title: &str) -> String {
 }
 /// Add-component label derived from its actual default role.
 #[must_use]
-pub fn add_component(kind: crate::core::CarrierKind) -> String {
+pub fn add_component(kind: auditorylab_core::CarrierKind) -> String {
     format!(
         "Add {}",
-        crate::workspace::controls::default_component(kind)
+        auditorylab_app::workspace::controls::default_component(kind)
             .heading()
             .to_lowercase()
     )

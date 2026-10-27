@@ -117,3 +117,20 @@ crate::vocabulary::vocabulary! { RhythmState,"rhythm_state" {
     Multiple => ("multiple","Multiple rhythms","multiple rhythms"),
     NeedsReview => ("needs-review","Needs review","needs review"),
 }}
+
+/// Calendar-date field pair being edited by a native date-range control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalendarField {
+    /// Portable recipe creation instants.
+    Created,
+    /// Portable recipe modification instants.
+    Modified,
+    /// Directory-owned library membership instants.
+    Added,
+}
+crate::vocabulary::vocabulary! {CalendarField,"calendar_field" {
+    Created=>("created","Created","created"),
+    Modified=>("modified","Modified","modified"),
+    Added=>("added","Added here","added here"),
+}}

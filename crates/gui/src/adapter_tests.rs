@@ -9,12 +9,12 @@ use auditorylab_app::core::ParameterId;
 use auditorylab_app::core::query::{Direction, GroupBy, Scope, SortBy};
 use auditorylab_app::document::editing::{EditingField, MetadataField};
 use auditorylab_app::document::origin::LibraryKey;
-use auditorylab_app::presentation::LibraryPresentation;
-use auditorylab_app::presentation::ParameterText;
-use auditorylab_app::presentation::recipe_text::SnapshotText;
 use auditorylab_app::workspace::{
     Capabilities, Job, JobKind, PathPurpose, PromptAnswer, PromptId, View, Workspace,
 };
+use auditorylab_presentation::LibraryPresentation;
+use auditorylab_presentation::ParameterText;
+use auditorylab_presentation::recipe_text::SnapshotText;
 use slint::platform::{Key, WindowEvent};
 use slint::private_unstable_api::re_exports::{
     AccessibleStringProperty, FocusReason, ItemRc, TextInput, WindowInner,
@@ -976,8 +976,8 @@ fn about_and_licenses_use_production_actions_and_reopen_without_losing_terms() {
         h.windows.about.get_identity().as_str(),
         format!(
             "Version {} (Build {})",
-            auditorylab_app::presentation::build_info::BUILD_IDENTITY.version,
-            auditorylab_app::presentation::build_info::BUILD_IDENTITY.build
+            auditorylab_app::identity::BUILD_IDENTITY.version,
+            auditorylab_app::identity::BUILD_IDENTITY.build
         )
     );
     h.windows.about.invoke_open_licenses();
@@ -1176,7 +1176,7 @@ fn assert_library_play_during_file(save: bool) {
     assert!(ui.get_can_play(), "Save/Import can coexist with audio");
     assert_eq!(
         ui.get_library_play_action(),
-        auditorylab_app::presentation::vocabulary::library_play_labels()[0]
+        auditorylab_presentation::vocabulary::library_play_labels()[0]
     );
     ui.invoke_play_recipe();
     assert!(
@@ -1186,7 +1186,7 @@ fn assert_library_play_during_file(save: bool) {
     let audio = take_job(&h, JobKind::Audio);
     assert_eq!(
         ui.get_library_play_action(),
-        auditorylab_app::presentation::vocabulary::library_play_labels()[1]
+        auditorylab_presentation::vocabulary::library_play_labels()[1]
     );
     finish_stopped_audio(&h, audio);
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
@@ -1410,7 +1410,7 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
     ui.invoke_rhythm_filter(1, 1); // Delta and binaural.
     h.adapter.inspect(|w| {
         assert_eq!(
-            auditorylab_app::presentation::workspace_text::library_view(&w.library_view())
+            auditorylab_presentation::workspace_text::library_view(&w.library_view())
                 .rows
                 .iter()
                 .filter(|row| !row.key.is_empty())
@@ -2530,7 +2530,7 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
         row.contains("Edited: Unknown") && row.contains("Added here:") && row.contains("Created:")
     );
     assert!(ui.get_library_dates().contains(
-        &auditorylab_app::discovery::calendar::local_timestamp(created)
+        &auditorylab_presentation::calendar_text::local_timestamp(created)
     ));
     assert!(
         ui.get_library_dates_utc()
@@ -2722,19 +2722,19 @@ fn filter_controls_map_to_independent_typed_queries() {
         direction: Some(Direction::Desc),
         group_by: GroupBy::Study,
         created: auditorylab_app::discovery::calendar::local_range(
-            auditorylab_app::discovery::calendar::CalendarField::Created,
+            auditorylab_app::core::query::CalendarField::Created,
             "2026-01-01",
             "2026-01-02",
         )
         .unwrap(),
         modified: auditorylab_app::discovery::calendar::local_range(
-            auditorylab_app::discovery::calendar::CalendarField::Modified,
+            auditorylab_app::core::query::CalendarField::Modified,
             "2026-03-01",
             "2026-03-02",
         )
         .unwrap(),
         added: auditorylab_app::discovery::calendar::local_range(
-            auditorylab_app::discovery::calendar::CalendarField::Added,
+            auditorylab_app::core::query::CalendarField::Added,
             "2026-05-01",
             "2026-05-02",
         )
@@ -2848,8 +2848,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
         "Other writer"
     );
     let details = h.adapter.inspect(|w| {
-        auditorylab_app::presentation::workspace_text::action_view(&w.action_view())
-            .operation_details
+        auditorylab_presentation::workspace_text::action_view(&w.action_view()).operation_details
     });
     assert!(
         details.to_lowercase().contains("conflict") || details.to_lowercase().contains("changed"),
@@ -3121,7 +3120,7 @@ fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
         Capabilities::no_device_playback(),
     );
     let h = Harness::with_startup_workspace(workspace);
-    let identity = &auditorylab_app::presentation::build_info::BUILD_IDENTITY;
+    let identity = &auditorylab_app::identity::BUILD_IDENTITY;
     for terms in [
         h.windows.main.global::<crate::generated::Terms>(),
         h.windows.about.global::<crate::generated::Terms>(),
@@ -3130,7 +3129,7 @@ fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
         assert_eq!(terms.get_caption_copyright().as_str(), identity.copyright);
         assert_eq!(
             terms.get_caption_about_product().as_str(),
-            auditorylab_app::presentation::build_info::ABOUT_TITLE
+            auditorylab_presentation::build_info::about_title()
         );
     }
 

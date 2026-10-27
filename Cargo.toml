@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/app", "crates/cli", "crates/gui", "xtask"]
+members = ["crates/core", "crates/app", "crates/presentation", "crates/cli", "crates/gui", "xtask"]
 # Vendored patch sources are not members; tests needing their own dev-dependencies run from their manifests.
 exclude = ["third_party"]
 
@@ -16,6 +16,7 @@ publish = false
 build-number = 3
 
 [workspace.dependencies]
+auditorylab-presentation = { path = "crates/presentation" }
 same-file = "1"
 cap-std = "4"
 cap-fs-ext = "4"

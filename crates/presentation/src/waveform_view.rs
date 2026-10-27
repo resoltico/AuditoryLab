@@ -1,8 +1,11 @@
 //! Wording for monitor captures and model views.
 use crate::presentation::vocabulary::NumberStyle;
-use crate::workspace::monitor::{
-    ModelSource, ModelView, MonitorWarning, OutputMonitorState, WaveformCapture, WaveformScale,
-};
+use auditorylab_app::workspace::monitor::ModelSource;
+use auditorylab_app::workspace::monitor::ModelView;
+use auditorylab_app::workspace::monitor::MonitorWarning;
+use auditorylab_app::workspace::monitor::OutputMonitorState;
+use auditorylab_app::workspace::monitor::WaveformCapture;
+use auditorylab_app::workspace::monitor::WaveformScale;
 /// Wording for the captured WaveformCapture data.
 pub trait WaveformCaptureText {
     /// Concise label derived only from this captured window, never current navigation.
@@ -61,7 +64,10 @@ pub trait ModelViewText {
     /// Shared labels for physical lanes; a frontend only renders their geometry.
     fn lane_label(lane: &auditorylab_core::timing::ModelLane) -> String;
     /// Relate a model's accepted revision to actual generation without replaying live phases.
-    fn generation_note(&self, status: crate::audio::session::GeneratedStatus) -> String;
+    fn generation_note(
+        &self,
+        status: auditorylab_app::services::playback::GeneratedStatus,
+    ) -> String;
 }
 impl ModelViewText for ModelView {
     /// Explicit model rate/origin/provenance, with insufficient-cycle warning when capped.
@@ -89,7 +95,7 @@ impl ModelViewText for ModelView {
         use auditorylab_core::timing::ModelKind;
         let quantity = match lane.kind {
             ModelKind::Steady => match lane.facts.carrier {
-                crate::core::CarrierFacts::Tone(rate) => {
+                auditorylab_core::CarrierFacts::Tone(rate) => {
                     format!(
                         "{} Hz steady tone",
                         NumberStyle::Compact.format(rate.realized_hz)
@@ -98,19 +104,19 @@ impl ModelViewText for ModelView {
                 _ => "Steady carrier".into(),
             },
             ModelKind::Clicks => match lane.facts.carrier {
-                crate::core::CarrierFacts::Clicks(p) => {
+                auditorylab_core::CarrierFacts::Clicks(p) => {
                     format!("{} Hz clicks", NumberStyle::Compact.format(p.rate_hz))
                 }
                 _ => unreachable!("click lane carrier"),
             },
             ModelKind::Gate => match lane.facts.modulation {
-                Some(crate::core::ModulationFacts::Gate(p)) => {
+                Some(auditorylab_core::ModulationFacts::Gate(p)) => {
                     format!("{} Hz gate", NumberStyle::Compact.format(p.rate_hz))
                 }
                 _ => unreachable!("gate lane modulation"),
             },
             ModelKind::Envelope => match lane.facts.modulation {
-                Some(crate::core::ModulationFacts::Am { rate, depth }) => format!(
+                Some(auditorylab_core::ModulationFacts::Am { rate, depth }) => format!(
                     "{} Hz AM · {}%",
                     NumberStyle::Compact.format(rate.realized_hz),
                     NumberStyle::Compact.format(depth * 100.0)
@@ -124,7 +130,10 @@ impl ModelViewText for ModelView {
         )
     }
     /// Relate a model's accepted revision to actual generation without replaying live phases.
-    fn generation_note(&self, status: crate::audio::session::GeneratedStatus) -> String {
+    fn generation_note(
+        &self,
+        status: auditorylab_app::services::playback::GeneratedStatus,
+    ) -> String {
         let ModelSource::Accepted(revision) = self.source else {
             return String::new();
         };
@@ -221,10 +230,15 @@ impl WaveformScaleText for WaveformScale {
 
 /// Shared lifecycle wording; terminal silence never relabels a session's recipe.
 #[must_use]
-pub const fn phase_text(phase: crate::audio::session::PlaybackPhase) -> &'static str {
-    use crate::audio::session::PlaybackPhase::{
-        Completed, Draining, Failed, FrameLimit, Preparing, Running, Stopped, Stopping,
-    };
+pub const fn phase_text(phase: auditorylab_app::services::playback::PlaybackPhase) -> &'static str {
+    use auditorylab_app::services::playback::PlaybackPhase::Completed;
+    use auditorylab_app::services::playback::PlaybackPhase::Draining;
+    use auditorylab_app::services::playback::PlaybackPhase::Failed;
+    use auditorylab_app::services::playback::PlaybackPhase::FrameLimit;
+    use auditorylab_app::services::playback::PlaybackPhase::Preparing;
+    use auditorylab_app::services::playback::PlaybackPhase::Running;
+    use auditorylab_app::services::playback::PlaybackPhase::Stopped;
+    use auditorylab_app::services::playback::PlaybackPhase::Stopping;
     match phase {
         Preparing => "Preparing output…",
         Running => "Playing",

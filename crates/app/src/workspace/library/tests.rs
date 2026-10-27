@@ -4,6 +4,7 @@
 use super::*;
 use crate::core::query::{Direction, GroupBy, SortBy};
 use crate::presentation::LibraryPresentation;
+use crate::presentation::*;
 use crate::services::library::Library;
 
 fn fixture() -> (tempfile::TempDir, Library, Workspace) {
@@ -173,7 +174,7 @@ fn summary_rows_show_real_sort_date_unknown_edit_and_added_without_loading_docum
     assert_eq!(rows[0].key, unknown.key.to_string());
     assert!(rows[0].text.contains(&format!(
         "Created: {}",
-        crate::discovery::calendar::local_timestamp(unknown.created_at.unwrap())
+        crate::presentation::calendar_text::local_timestamp(unknown.created_at.unwrap())
     )));
     p.query.sort = SortBy::Added;
     p.query.direction = Some(Direction::Desc);

@@ -237,12 +237,13 @@ pub struct ActionView {
     /// Export progress from 0 to 1.
     pub progress: f64,
     /// File and general status.
-    pub(crate) file_status: super::status::FileStatus,
+    pub file_status: super::status::FileStatus,
     /// Audio status.
-    pub(crate) audio_status: super::status::AudioStatus,
+    pub audio_status: super::status::AudioStatus,
     /// What the running file task does.
-    pub(crate) file_activity: Option<super::status::FileActivity>,
-    pub(crate) edit_status: super::status::EditStatus,
+    pub file_activity: Option<super::status::FileActivity>,
+    /// Most recent editor admission result, independent of file worker activity.
+    pub edit_status: super::status::EditStatus,
 }
 
 /// Immutable generated-session facts used by the transport projection.

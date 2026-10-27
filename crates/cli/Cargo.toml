@@ -10,6 +10,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+auditorylab-presentation.workspace = true
 serde_json.workspace = true
 auditorylab-app.workspace = true
 ctrlc.workspace = true

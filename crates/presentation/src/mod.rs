@@ -18,61 +18,17 @@ pub(crate) mod status_text;
 pub mod vocabulary;
 pub mod waveform_view;
 pub mod workspace_text;
-use crate::core::vocabulary::Status;
-use crate::document::recipe::{RecipeSnapshot, Rendition};
 use crate::presentation::recipe_text::SnapshotText;
 use crate::presentation::vocabulary::NumberStyle;
 use crate::presentation::waveform_view::*;
+use auditorylab_app::document::recipe::RecipeSnapshot;
+use auditorylab_app::document::recipe::Rendition;
+use auditorylab_core::vocabulary::Status;
 use auditorylab_core::{
     CarrierFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate, PulseFacts,
     SampleRate, Sound, SoundError, VoiceFacts, VoiceObservation, rhythm::Method, rhythm::Structure,
 };
 pub use commands::{DesktopDiagnostics, recipe_exported, retained_stage};
-
-impl crate::document::editing::EditRefusal {
-    /// Explain why an editor command was refused without confusing authored components and voices.
-    #[must_use]
-    pub fn description(self) -> String {
-        use crate::document::editing::EditRefusal;
-        match self {
-            EditRefusal::BudgetExceeded {
-                components,
-                voices,
-                additional_voices,
-            } => {
-                let limit = match (
-                    components >= Sound::MAX_COMPONENTS,
-                    voices + additional_voices > Sound::MAX_VOICES,
-                ) {
-                    (true, true) => format!(
-                        "the {}-component and {}-voice limits",
-                        Sound::MAX_COMPONENTS,
-                        Sound::MAX_VOICES
-                    ),
-                    (true, false) => format!("the {}-component limit", Sound::MAX_COMPONENTS),
-                    _ => format!("the {}-voice limit", Sound::MAX_VOICES),
-                };
-                format!(
-                    "This sound has {components} authored components and {voices} expanded voices. Adding this component requires {additional_voices} more {}; it would exceed {limit}. Each pair uses two voices.",
-                    if additional_voices == 1 {
-                        "voice"
-                    } else {
-                        "voices"
-                    }
-                )
-            }
-            EditRefusal::NothingRemoved => "No removed component is waiting to be restored.".into(),
-            EditRefusal::IdentitiesExhausted => {
-                "This sound has exhausted an editing identity; start a new sound to continue."
-                    .into()
-            }
-            EditRefusal::StaleDocument
-            | EditRefusal::StaleRow
-            | EditRefusal::UnknownComponent
-            | EditRefusal::Inapplicable => "That field no longer belongs to the open sound.".into(),
-        }
-    }
-}
 
 /// Format seconds as hours, minutes and seconds; `~` marks nanosecond rounding.
 #[must_use]
@@ -522,19 +478,31 @@ pub(crate) const EXPORT_CANCELLED: &str = "Export cancelled; no file was written
 
 /// Nominal reference memberships and exact attributable rates; no EEG claim.
 #[must_use]
-fn nominal_description(analysis: &crate::core::rhythm::Analysis) -> String {
+fn nominal_description(analysis: &auditorylab_core::rhythm::Analysis) -> String {
     let mut labels: Vec<String> = analysis.bands.iter().map(ToString::to_string).collect();
     if analysis.outside_bands() {
-        labels.push(crate::core::query::RhythmState::OutsideBands.label().into());
+        labels.push(
+            auditorylab_core::query::RhythmState::OutsideBands
+                .label()
+                .into(),
+        );
     }
     if analysis.no_rhythm() {
-        labels.push(crate::core::query::RhythmState::None.label().into());
+        labels.push(auditorylab_core::query::RhythmState::None.label().into());
     }
     if analysis.multiple() {
-        labels.push(crate::core::query::RhythmState::Multiple.label().into());
+        labels.push(
+            auditorylab_core::query::RhythmState::Multiple
+                .label()
+                .into(),
+        );
     }
-    if analysis.completeness != crate::core::rhythm::Completeness::Complete {
-        labels.push(crate::core::query::RhythmState::NeedsReview.label().into());
+    if analysis.completeness != auditorylab_core::rhythm::Completeness::Complete {
+        labels.push(
+            auditorylab_core::query::RhythmState::NeedsReview
+                .label()
+                .into(),
+        );
     }
     let rates = analysis
         .rhythms
@@ -601,7 +569,7 @@ impl AudioSummary for Structure {
 }
 impl AudioSummary for Observation {
     fn summary(&self) -> String {
-        crate::core::rhythm::realized(self).summary()
+        auditorylab_core::rhythm::realized(self).summary()
     }
 }
 impl AudioDetails for Observation {
@@ -613,7 +581,7 @@ impl AudioSummary for Option<&Observation> {
     fn summary(&self) -> String {
         self.map_or_else(
             || {
-                crate::core::vocabulary::Status::WaitingForGeneratedAudio
+                auditorylab_core::vocabulary::Status::WaitingForGeneratedAudio
                     .label()
                     .into()
             },
@@ -621,7 +589,7 @@ impl AudioSummary for Option<&Observation> {
         )
     }
 }
-impl AudioSummary for crate::core::rhythm::Analysis {
+impl AudioSummary for auditorylab_core::rhythm::Analysis {
     fn summary(&self) -> String {
         nominal_description(self)
     }
@@ -640,13 +608,6 @@ impl crate::presentation::vocabulary::NumberStyle {
             Self::Milliseconds => format!("{value} ms"),
             Self::Hertz => format!("{value} Hz"),
         }
-    }
-}
-impl crate::audio::session::OutputInfo {
-    /// Estimated output frame count as a transport clock at this output's rate.
-    #[must_use]
-    pub fn elapsed(&self, frames: u64) -> String {
-        clock(self.sample_rate.seconds_in(frames))
     }
 }
 
@@ -702,281 +663,7 @@ impl AudioErrorText for SoundError {
         )
     }
 }
-impl Rendition {
-    /// A realized sound's structure in one line.
-    #[must_use]
-    pub fn brief(&self) -> String {
-        let sound = self;
-        structure_description(&crate::core::rhythm::realized(sound.signal().target()))
-    }
-    /// Facts of a realized sound at its own rate, every line at that rate.
-    /// `detail` adds the model caption and requested-versus-realized values.
-    #[must_use]
-    pub fn description(&self, detail: bool) -> String {
-        let sound = self;
-        let mut text = (sound).brief();
-        if detail {
-            let model = crate::workspace::monitor::ModelView::new(
-                *sound.signal().target(),
-                sound.snapshot().title(),
-                crate::workspace::monitor::ModelSource::Recipe,
-            );
-            text.push_str(&format!("\n{}", model.caption()));
-        }
-        for (id, facts) in sound.signal().voices() {
-            text.push_str(&format!(
-                "\n{}: {}",
-                acoustic_errors::voice_reference(id),
-                voice_description(facts, detail)
-            ));
-        }
-        text
-    }
-    /// A realized sound's facts, every one at the sound's own rate.
-    #[must_use]
-    pub fn inspection(&self) -> String {
-        let sound = self;
-        let snapshot = sound.snapshot();
-        let signal = sound.signal();
-        let mut out = format!("{}\nSource: {}\n", snapshot.title(), snapshot.origin());
-        out.push_str(&document_notes(snapshot));
-        for (label, value) in (snapshot).research() {
-            out.push_str(&format!("{label}: {value}\n"));
-        }
-        out.push_str(&format!(
-        "Sample rate: {} Hz\nFrames: {}\nDuration: {}\nFade: {} frames ({} s)\nPeak bounds: left {} dBFS, right {} dBFS\n{}",
-        signal.sample_rate().hz(),
-        signal.frames(),
-        human_duration(signal.duration_seconds()),
-        signal.fade_frames(),
-        signal.fade_seconds(),
-        format_dbfs(signal.peak_dbfs()[0]),
-        format_dbfs(signal.peak_dbfs()[1]),
-        (sound).description(true)
-    ));
-        out
-    }
-}
-impl RecipeSnapshot {
-    /// The research text of a snapshot in its shared display order.
-    #[must_use]
-    pub fn research(&self) -> Vec<(&'static str, String)> {
-        self.about()
-            .and_then(|a| a.research)
-            .map_or_else(Vec::new, |a| {
-                [
-                    ("Studied for", a.studied_for),
-                    ("Summary", a.summary),
-                    ("Citation", a.citation),
-                    ("Source", a.source_url),
-                    ("Study", a.study),
-                    ("Adaptation", a.adaptation),
-                ]
-                .into_iter()
-                .filter_map(|(label, value)| value.map(|text| (label, text)))
-                .collect()
-            })
-    }
-    /// A library row using cached nominal classification, without target compilation.
-    #[must_use]
-    pub fn library_label(&self) -> String {
-        let snapshot = self;
-        let structure = nominal_description(snapshot.nominal());
-        format!(
-            "{}{}{}\n{}\n{} · {}",
-            if matches!(snapshot.origin(), crate::document::recipe::Origin::File(_)) {
-                "Imported · "
-            } else {
-                ""
-            },
-            snapshot.title().display_scalar(),
-            if matches!(
-                snapshot.origin(),
-                crate::document::recipe::Origin::BuiltIn(_)
-            ) {
-                " · Built-in · Read only"
-            } else {
-                ""
-            },
-            structure,
-            snapshot
-                .about()
-                .and_then(|a| a.research)
-                .and_then(|a| a.studied_for)
-                .unwrap_or_else(|| "Custom recipe".into()),
-            human_duration(snapshot.sound().duration_seconds().get())
-        )
-    }
-    /// A snapshot's research text, components and validated facts at one
-    /// explicit inspection rate.
-    #[must_use]
-    pub fn details_at(&self, rate: SampleRate) -> String {
-        let snapshot = self;
-        let mut text = format!("Source: {}\n\n", snapshot.origin());
-        text.push_str(&document_notes(snapshot));
-        for (name, value) in (snapshot).research() {
-            text.push_str(&format!("{name}: {value}\n\n"));
-        }
-        for c in snapshot.sound().components() {
-            text.push_str(&format!(
-                "Component {}: {}\n",
-                c.id,
-                recipe_text::component(c)
-            ));
-        }
-        match snapshot.at(rate) {
-            Ok(sound) => {
-                let s = sound.signal();
-                text.push_str(&sound.description(true));
-                text.push_str(&format!(
-                    "\n{} Hz · {} frames · {}\nFade: {} frames\nPeak bounds: {} / {} dBFS",
-                    rate.hz(),
-                    s.frames(),
-                    human_duration(s.duration_seconds()),
-                    s.fade_frames(),
-                    format_dbfs(s.peak_dbfs()[0]),
-                    format_dbfs(s.peak_dbfs()[1])
-                ));
-            }
-            Err(e) => text.push_str(&e.explain()),
-        }
-        text
-    }
-    /// A recipe's title, source, timing, research text and description at the
-    /// default rate, labelled with that rate.
-    #[must_use]
-    pub fn description(&self) -> String {
-        self.description_with_history(&crate::services::history_warnings(self.recipe()))
-    }
-    pub(crate) fn description_with_history(
-        &self,
-        warnings: &[crate::services::StorageWarning],
-    ) -> String {
-        let snapshot = self;
-        let s = snapshot.sound();
-        let mut out = format!(
-            "{}\nSource: {}\nDuration: {}\nFade: {} at each edge\n",
-            snapshot.title(),
-            snapshot.origin().explain(),
-            human_duration(s.duration_seconds().get()),
-            human_duration(s.fade_seconds().get())
-        );
-        out.push_str(&document_notes(snapshot));
-        for warning in warnings {
-            out.push_str(&format!("{}\n", publication_text::warning(warning)));
-        }
-        for (label, value) in (snapshot).research() {
-            out.push_str(&format!("{label}: {value}\n"));
-        }
-        let rate = SampleRate::DEFAULT;
-        match snapshot.at(rate) {
-            Ok(sound) => out.push_str(&format!(
-                "Description at {} Hz:\n{}\n",
-                rate.hz(),
-                sound.description(false)
-            )),
-            Err(error) => {
-                for component in s.components() {
-                    out.push_str(&format!(
-                        "Component {}: {}\n",
-                        component.id,
-                        recipe_text::component(component)
-                    ));
-                }
-                out.push_str(&format!("{error}\n"));
-            }
-        }
-        out
-    }
-    /// What is about to play and on which output, with listening guidance.
-    #[must_use]
-    pub fn playback_preamble(
-        &self,
-        output: &crate::audio::session::OutputInfo,
-        signal: &auditorylab_core::Signal,
-    ) -> String {
-        let snapshot = self;
-        format!(
-            "Preparing {}\nSource: {}\nDuration: {}\nDevice: {}\n{} Hz, {} channels, {}\n{}",
-            snapshot.title(),
-            snapshot.origin().explain(),
-            human_duration(signal.duration_seconds()),
-            output.name.as_deref().unwrap_or("default output"),
-            output.sample_rate.hz(),
-            output.channels,
-            output.format,
-            Notice::for_sound(snapshot.sound())
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-    }
-}
-impl crate::audio::session::MonitorReader {
-    /// One status line for a playing session.
-    #[must_use]
-    pub fn status_text(&self) -> String {
-        let reader = self;
-        let status = reader.status();
-        format!(
-            "{} · {} · {} · {}",
-            NumberStyle::Clock.format(
-                (reader.descriptor().output.sample_rate).seconds_in(status.estimated_output_frames)
-            ),
-            crate::presentation::waveform_view::phase_text(status.phase),
-            match reader.freshness() {
-                crate::audio::session::ObservationFreshness::Waiting =>
-                    "waiting for generated audio",
-                crate::audio::session::ObservationFreshness::Current => "current",
-                crate::audio::session::ObservationFreshness::Stale => "stale",
-            },
-            (status.observation.as_ref()).summary()
-        )
-    }
-}
-impl crate::audio::session::PlaybackReport {
-    /// The result of a playback, for any frontend.
-    #[must_use]
-    pub fn description(&self) -> String {
-        let report = self;
-        let mut text = format!(
-            "{} {} frames generated; about {} output.",
-            match report.end {
-                crate::audio::session::EndReason::Completed => "Played to the end.",
-                crate::audio::session::EndReason::Stopped if report.drained => "Stopped.",
-                crate::audio::session::EndReason::Stopped =>
-                    "Stopped; queued output was cut off after the stop limit.",
-                crate::audio::session::EndReason::FrameLimit =>
-                    "Reached the longest supported session.",
-            },
-            report.generated_frames,
-            report.estimated_output_frames
-        );
-        if report.underruns > 0 {
-            text.push('\n');
-            text.push_str(&Notice::Underruns(report.underruns).to_string());
-        }
-        text
-    }
-}
-impl crate::workspace::monitor::CaptureError {
-    /// A monitored window that cannot be drawn truthfully.
-    #[must_use]
-    pub fn description(self) -> String {
-        let error = self;
-        match error {
-            crate::workspace::monitor::CaptureError::NonFiniteSample => {
-                "Invalid waveform capture (non-finite samples); retaining the last valid window"
-                    .into()
-            }
-            crate::workspace::monitor::CaptureError::InvalidSpan => {
-                "Invalid waveform capture (inconsistent span); retaining the last valid window"
-                    .into()
-            }
-        }
-    }
-}
+
 impl DisplayText for str {
     /// Escape controls and bidi overrides at a read-only display boundary. Ordinary
     /// Unicode text, paragraph newlines and tabs retain their meaning. Stored content
@@ -1049,16 +736,6 @@ pub fn rhythm_diagnostic(issue: &auditorylab_core::rhythm::Issue) -> String {
     }
 }
 
-impl crate::services::Description<'_> {
-    /// Human description from the same captured data used by structured output.
-    #[must_use]
-    pub fn description(&self) -> String {
-        self.source()
-            .snapshot()
-            .description_with_history(self.history_warnings())
-    }
-}
-
 #[cfg(test)]
 const fn finite(value: f64) -> auditorylab_core::Finite {
     match auditorylab_core::Finite::new(value) {
@@ -1071,7 +748,7 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
 mod tests {
     #[test]
     fn capacity_text_names_current_counts_and_the_exceeded_budget() {
-        use crate::document::editing::EditRefusal;
+        use auditorylab_app::document::editing::EditRefusal;
         for (components, voices, additional_voices, limit) in [
             (8, 16, 1, "the 16-voice limit"),
             (8, 16, 2, "the 16-voice limit"),
@@ -1101,7 +778,7 @@ mod tests {
 
     #[test]
     fn expanded_pair_structure_counts_voices_instead_of_authored_components() {
-        use crate::workspace::controls;
+        use auditorylab_app::workspace::controls;
         use auditorylab_core::{Component, ComponentId, PairKind};
         let sound = Sound::new(
             finite(1.0),
@@ -1115,7 +792,7 @@ mod tests {
         )
         .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
         let target = sound.target(SampleRate::DEFAULT).unwrap();
-        let text = structure_description(&crate::core::rhythm::realized(&target));
+        let text = structure_description(&auditorylab_core::rhythm::realized(&target));
         assert_eq!(sound.components().len(), 8);
         assert_eq!(target.len(), 16);
         assert!(text.starts_with("16 voices · "), "{text}");
@@ -1187,23 +864,26 @@ mod tests {
         // 29 % is 0.29, whose naive display is 28.999999999999996.
         assert_eq!(0.29 * 100.0, 28.999999999999996);
         assert_eq!(
-            crate::document::input::parameter_text(ParameterId::AmDepth, 0.29),
+            auditorylab_app::document::input::parameter_text(ParameterId::AmDepth, 0.29),
             "29"
         );
         assert_eq!(
-            crate::document::input::parameter_text(ParameterId::ClickWidth, 0.0011),
+            auditorylab_app::document::input::parameter_text(ParameterId::ClickWidth, 0.0011),
             "1.1"
         );
         assert_eq!(
-            crate::document::input::parameter_text(ParameterId::ToneFrequency, 39.0625123456789),
+            auditorylab_app::document::input::parameter_text(
+                ParameterId::ToneFrequency,
+                39.0625123456789
+            ),
             "39.0625123456789"
         );
         assert_eq!(
-            crate::document::input::parameter_text(ParameterId::PeakLevel, -30.0),
+            auditorylab_app::document::input::parameter_text(ParameterId::PeakLevel, -30.0),
             "-30"
         );
         assert_eq!(
-            crate::document::input::parameter_text(ParameterId::Duration, f64::NAN),
+            auditorylab_app::document::input::parameter_text(ParameterId::Duration, f64::NAN),
             "NaN"
         );
         // Every value entered as displayed text is shown so that it enters the
@@ -1220,7 +900,7 @@ mod tests {
                 "1e-9",
             ] {
                 let model = id.descriptor().unit.to_model(typed.parse().unwrap());
-                let text = crate::document::input::parameter_text(id, model);
+                let text = auditorylab_app::document::input::parameter_text(id, model);
                 let back = id.descriptor().unit.to_model(text.parse().unwrap());
                 assert_eq!(back.to_bits(), model.to_bits(), "{id:?} {typed} {text}");
             }
@@ -1240,3 +920,480 @@ mod tests {
         );
     }
 }
+
+/// Human wording for Description values.
+pub trait DescriptionText {
+    /// Human description from the same captured data used by structured output.
+    #[must_use]
+    fn description(&self) -> String;
+}
+impl DescriptionText for auditorylab_app::services::Description<'_> {
+    /// Human description from the same captured data used by structured output.
+    fn description(&self) -> String {
+        self.source()
+            .snapshot()
+            .description_with_history(self.history_warnings())
+    }
+}
+
+/// Human wording for CaptureError values.
+pub trait CaptureErrorText {
+    /// A monitored window that cannot be drawn truthfully.
+    #[must_use]
+    fn description(self) -> String;
+}
+impl CaptureErrorText for auditorylab_app::workspace::monitor::CaptureError {
+    /// A monitored window that cannot be drawn truthfully.
+    fn description(self) -> String {
+        let error = self;
+        match error {
+            auditorylab_app::workspace::monitor::CaptureError::NonFiniteSample => {
+                "Invalid waveform capture (non-finite samples); retaining the last valid window"
+                    .into()
+            }
+            auditorylab_app::workspace::monitor::CaptureError::InvalidSpan => {
+                "Invalid waveform capture (inconsistent span); retaining the last valid window"
+                    .into()
+            }
+        }
+    }
+}
+
+/// Human wording for PlaybackReport values.
+pub trait PlaybackReportText {
+    /// The result of a playback, for any frontend.
+    #[must_use]
+    fn description(&self) -> String;
+}
+impl PlaybackReportText for auditorylab_app::services::playback::PlaybackReport {
+    /// The result of a playback, for any frontend.
+    fn description(&self) -> String {
+        let report = self;
+        let mut text = format!(
+            "{} {} frames generated; about {} output.",
+            match report.end {
+                auditorylab_app::services::playback::EndReason::Completed => "Played to the end.",
+                auditorylab_app::services::playback::EndReason::Stopped if report.drained =>
+                    "Stopped.",
+                auditorylab_app::services::playback::EndReason::Stopped =>
+                    "Stopped; queued output was cut off after the stop limit.",
+                auditorylab_app::services::playback::EndReason::FrameLimit =>
+                    "Reached the longest supported session.",
+            },
+            report.generated_frames,
+            report.estimated_output_frames
+        );
+        if report.underruns > 0 {
+            text.push('\n');
+            text.push_str(&Notice::Underruns(report.underruns).to_string());
+        }
+        text
+    }
+}
+
+/// Human wording for MonitorReader values.
+pub trait MonitorReaderText {
+    /// One status line for a playing session.
+    #[must_use]
+    fn status_text(&self) -> String;
+}
+impl MonitorReaderText for auditorylab_app::services::playback::MonitorReader {
+    /// One status line for a playing session.
+    fn status_text(&self) -> String {
+        let reader = self;
+        let status = reader.status();
+        format!(
+            "{} · {} · {} · {}",
+            NumberStyle::Clock.format(
+                (reader.descriptor().output.sample_rate).seconds_in(status.estimated_output_frames)
+            ),
+            crate::presentation::waveform_view::phase_text(status.phase),
+            match reader.freshness() {
+                auditorylab_app::services::playback::ObservationFreshness::Waiting =>
+                    "waiting for generated audio",
+                auditorylab_app::services::playback::ObservationFreshness::Current => "current",
+                auditorylab_app::services::playback::ObservationFreshness::Stale => "stale",
+            },
+            (status.observation.as_ref()).summary()
+        )
+    }
+}
+
+/// Human wording for RecipeSnapshot values.
+pub trait RecipeSnapshotText {
+    /// The research text of a snapshot in its shared display order.
+    #[must_use]
+    fn research(&self) -> Vec<(&'static str, String)>;
+
+    /// A library row using cached nominal classification, without target compilation.
+    #[must_use]
+    fn library_label(&self) -> String;
+
+    /// A snapshot's research text, components and validated facts at one
+    /// explicit inspection rate.
+    #[must_use]
+    fn details_at(&self, rate: SampleRate) -> String;
+
+    /// A recipe's title, source, timing, research text and description at the
+    /// default rate, labelled with that rate.
+    #[must_use]
+    fn description(&self) -> String;
+
+    /// Explain saved content using one captured set of chronology warnings.
+    fn description_with_history(
+        &self,
+        warnings: &[auditorylab_app::services::StorageWarning],
+    ) -> String;
+
+    /// What is about to play and on which output, with listening guidance.
+    #[must_use]
+    fn playback_preamble(
+        &self,
+        output: &auditorylab_app::services::playback::OutputInfo,
+        signal: &auditorylab_core::Signal,
+    ) -> String;
+}
+impl RecipeSnapshotText for RecipeSnapshot {
+    /// The research text of a snapshot in its shared display order.
+    fn research(&self) -> Vec<(&'static str, String)> {
+        self.about()
+            .and_then(|a| a.research)
+            .map_or_else(Vec::new, |a| {
+                [
+                    ("Studied for", a.studied_for),
+                    ("Summary", a.summary),
+                    ("Citation", a.citation),
+                    ("Source", a.source_url),
+                    ("Study", a.study),
+                    ("Adaptation", a.adaptation),
+                ]
+                .into_iter()
+                .filter_map(|(label, value)| value.map(|text| (label, text)))
+                .collect()
+            })
+    }
+
+    /// A library row using cached nominal classification, without target compilation.
+    fn library_label(&self) -> String {
+        let snapshot = self;
+        let structure = nominal_description(snapshot.nominal());
+        format!(
+            "{}{}{}\n{}\n{} · {}",
+            if matches!(
+                snapshot.origin(),
+                auditorylab_app::document::recipe::Origin::File(_)
+            ) {
+                "Imported · "
+            } else {
+                ""
+            },
+            snapshot.title().display_scalar(),
+            if matches!(
+                snapshot.origin(),
+                auditorylab_app::document::recipe::Origin::BuiltIn(_)
+            ) {
+                " · Built-in · Read only"
+            } else {
+                ""
+            },
+            structure,
+            snapshot
+                .about()
+                .and_then(|a| a.research)
+                .and_then(|a| a.studied_for)
+                .unwrap_or_else(|| "Custom recipe".into()),
+            human_duration(snapshot.sound().duration_seconds().get())
+        )
+    }
+
+    /// A snapshot's research text, components and validated facts at one
+    /// explicit inspection rate.
+    fn details_at(&self, rate: SampleRate) -> String {
+        let snapshot = self;
+        let mut text = format!("Source: {}\n\n", snapshot.origin());
+        text.push_str(&document_notes(snapshot));
+        for (name, value) in (snapshot).research() {
+            text.push_str(&format!("{name}: {value}\n\n"));
+        }
+        for c in snapshot.sound().components() {
+            text.push_str(&format!(
+                "Component {}: {}\n",
+                c.id,
+                recipe_text::component(c)
+            ));
+        }
+        match snapshot.at(rate) {
+            Ok(sound) => {
+                let s = sound.signal();
+                text.push_str(&sound.description(true));
+                text.push_str(&format!(
+                    "\n{} Hz · {} frames · {}\nFade: {} frames\nPeak bounds: {} / {} dBFS",
+                    rate.hz(),
+                    s.frames(),
+                    human_duration(s.duration_seconds()),
+                    s.fade_frames(),
+                    format_dbfs(s.peak_dbfs()[0]),
+                    format_dbfs(s.peak_dbfs()[1])
+                ));
+            }
+            Err(e) => text.push_str(&e.explain()),
+        }
+        text
+    }
+
+    /// A recipe's title, source, timing, research text and description at the
+    /// default rate, labelled with that rate.
+    fn description(&self) -> String {
+        self.description_with_history(&auditorylab_app::services::history_warnings(self.recipe()))
+    }
+
+    fn description_with_history(
+        &self,
+        warnings: &[auditorylab_app::services::StorageWarning],
+    ) -> String {
+        let snapshot = self;
+        let s = snapshot.sound();
+        let mut out = format!(
+            "{}\nSource: {}\nDuration: {}\nFade: {} at each edge\n",
+            snapshot.title(),
+            snapshot.origin().explain(),
+            human_duration(s.duration_seconds().get()),
+            human_duration(s.fade_seconds().get())
+        );
+        out.push_str(&document_notes(snapshot));
+        for warning in warnings {
+            out.push_str(&format!("{}\n", publication_text::warning(warning)));
+        }
+        for (label, value) in (snapshot).research() {
+            out.push_str(&format!("{label}: {value}\n"));
+        }
+        let rate = SampleRate::DEFAULT;
+        match snapshot.at(rate) {
+            Ok(sound) => out.push_str(&format!(
+                "Description at {} Hz:\n{}\n",
+                rate.hz(),
+                sound.description(false)
+            )),
+            Err(error) => {
+                for component in s.components() {
+                    out.push_str(&format!(
+                        "Component {}: {}\n",
+                        component.id,
+                        recipe_text::component(component)
+                    ));
+                }
+                out.push_str(&format!("{error}\n"));
+            }
+        }
+        out
+    }
+
+    /// What is about to play and on which output, with listening guidance.
+    fn playback_preamble(
+        &self,
+        output: &auditorylab_app::services::playback::OutputInfo,
+        signal: &auditorylab_core::Signal,
+    ) -> String {
+        let snapshot = self;
+        format!(
+            "Preparing {}\nSource: {}\nDuration: {}\nDevice: {}\n{} Hz, {} channels, {}\n{}",
+            snapshot.title(),
+            snapshot.origin().explain(),
+            human_duration(signal.duration_seconds()),
+            output.name.as_deref().unwrap_or("default output"),
+            output.sample_rate.hz(),
+            output.channels,
+            output.format.label(),
+            Notice::for_sound(snapshot.sound())
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    }
+}
+
+/// Human wording for Rendition values.
+pub trait RenditionText {
+    /// A realized sound's structure in one line.
+    #[must_use]
+    fn brief(&self) -> String;
+
+    /// Facts of a realized sound at its own rate, every line at that rate.
+    /// `detail` adds the model caption and requested-versus-realized values.
+    #[must_use]
+    fn description(&self, detail: bool) -> String;
+
+    /// A realized sound's facts, every one at the sound's own rate.
+    #[must_use]
+    fn inspection(&self) -> String;
+
+    /// Explain the captured export and selected rate before writing.
+    #[must_use]
+    fn export_preamble(&self, path: &Path) -> String;
+}
+impl RenditionText for Rendition {
+    /// A realized sound's structure in one line.
+    fn brief(&self) -> String {
+        let sound = self;
+        structure_description(&auditorylab_core::rhythm::realized(sound.signal().target()))
+    }
+
+    /// Facts of a realized sound at its own rate, every line at that rate.
+    /// `detail` adds the model caption and requested-versus-realized values.
+    fn description(&self, detail: bool) -> String {
+        let sound = self;
+        let mut text = (sound).brief();
+        if detail {
+            let model = auditorylab_app::workspace::monitor::ModelView::new(
+                *sound.signal().target(),
+                sound.snapshot().title(),
+                auditorylab_app::workspace::monitor::ModelSource::Recipe,
+            );
+            text.push_str(&format!("\n{}", model.caption()));
+        }
+        for (id, facts) in sound.signal().voices() {
+            text.push_str(&format!(
+                "\n{}: {}",
+                acoustic_errors::voice_reference(id),
+                voice_description(facts, detail)
+            ));
+        }
+        text
+    }
+
+    /// A realized sound's facts, every one at the sound's own rate.
+    fn inspection(&self) -> String {
+        let sound = self;
+        let snapshot = sound.snapshot();
+        let signal = sound.signal();
+        let mut out = format!("{}\nSource: {}\n", snapshot.title(), snapshot.origin());
+        out.push_str(&document_notes(snapshot));
+        for (label, value) in (snapshot).research() {
+            out.push_str(&format!("{label}: {value}\n"));
+        }
+        out.push_str(&format!(
+        "Sample rate: {} Hz\nFrames: {}\nDuration: {}\nFade: {} frames ({} s)\nPeak bounds: left {} dBFS, right {} dBFS\n{}",
+        signal.sample_rate().hz(),
+        signal.frames(),
+        human_duration(signal.duration_seconds()),
+        signal.fade_frames(),
+        signal.fade_seconds(),
+        format_dbfs(signal.peak_dbfs()[0]),
+        format_dbfs(signal.peak_dbfs()[1]),
+        (sound).description(true)
+    ));
+        out
+    }
+
+    /// Explain the captured export and selected rate before writing.
+    fn export_preamble(&self, path: &Path) -> String {
+        format!(
+            "Exporting {} to {} at {} Hz. Press Ctrl-C to stop.",
+            self.snapshot().title(),
+            path.display().to_string().display_scalar(),
+            self.signal().sample_rate().hz()
+        )
+    }
+}
+
+/// Human wording for OutputInfo values.
+pub trait OutputInfoText {
+    /// Estimated output frame count as a transport clock at this output's rate.
+    #[must_use]
+    fn elapsed(&self, frames: u64) -> String;
+}
+impl OutputInfoText for auditorylab_app::services::playback::OutputInfo {
+    /// Estimated output frame count as a transport clock at this output's rate.
+    fn elapsed(&self, frames: u64) -> String {
+        clock(self.sample_rate.seconds_in(frames))
+    }
+}
+
+/// Human wording for EditRefusal values.
+pub trait EditRefusalText {
+    /// Explain why an editor command was refused without confusing authored components and voices.
+    #[must_use]
+    fn description(self) -> String;
+}
+impl EditRefusalText for auditorylab_app::document::editing::EditRefusal {
+    /// Explain why an editor command was refused without confusing authored components and voices.
+    fn description(self) -> String {
+        use auditorylab_app::document::editing::EditRefusal;
+        match self {
+            EditRefusal::BudgetExceeded {
+                components,
+                voices,
+                additional_voices,
+            } => {
+                let limit = match (
+                    components >= Sound::MAX_COMPONENTS,
+                    voices + additional_voices > Sound::MAX_VOICES,
+                ) {
+                    (true, true) => format!(
+                        "the {}-component and {}-voice limits",
+                        Sound::MAX_COMPONENTS,
+                        Sound::MAX_VOICES
+                    ),
+                    (true, false) => format!("the {}-component limit", Sound::MAX_COMPONENTS),
+                    _ => format!("the {}-voice limit", Sound::MAX_VOICES),
+                };
+                format!(
+                    "This sound has {components} authored components and {voices} expanded voices. Adding this component requires {additional_voices} more {}; it would exceed {limit}. Each pair uses two voices.",
+                    if additional_voices == 1 {
+                        "voice"
+                    } else {
+                        "voices"
+                    }
+                )
+            }
+            EditRefusal::NothingRemoved => "No removed component is waiting to be restored.".into(),
+            EditRefusal::IdentitiesExhausted => {
+                "This sound has exhausted an editing identity; start a new sound to continue."
+                    .into()
+            }
+            EditRefusal::StaleDocument
+            | EditRefusal::StaleRow
+            | EditRefusal::UnknownComponent
+            | EditRefusal::Inapplicable => "That field no longer belongs to the open sound.".into(),
+        }
+    }
+}
+
+pub use library_text::WriteOutcomeText;
+
+pub use commands::{
+    EntrySummaryText, ExportedText, InitializationText, InventoryText, LibraryLocationText,
+    RootInfoText, RootSourceText,
+};
+
+pub use build_info::BuildIdentityText;
+
+pub use status_text::{
+    AudioStatusText, EditStatusText, FileActivityText, FileStatusText, InventoryStatusText,
+    JobContextText, LibraryContextText, LibraryStatusText, OutputIssueText, PreviewIssueText,
+    SaveFeedbackText, WorkerFailureText,
+};
+
+/// Human names for the actual device sample representation.
+pub trait SampleFormatText {
+    /// Representation name with its bit depth and numeric kind.
+    fn label(self) -> &'static str;
+}
+impl SampleFormatText for auditorylab_app::services::playback::SampleFormat {
+    fn label(self) -> &'static str {
+        match self {
+            Self::F64 => "64-bit float",
+            Self::F32 => "32-bit float",
+            Self::I32 => "32-bit integer",
+            Self::I24 => "24-bit integer",
+            Self::I16 => "16-bit integer",
+        }
+    }
+}
+
+pub use errors::LibraryDiagnosticText;
+use std::path::Path;
+
+/// Native calendar context and stored-instant wording.
+pub mod calendar_text;

@@ -82,7 +82,7 @@ pub(super) fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
     });
     windows
         .about
-        .on_open_source(|| open_web(auditorylab_app::presentation::build_info::SOURCE_URL));
+        .on_open_source(|| open_web(auditorylab_app::identity::SOURCE_URL));
     let licenses = windows.licenses.as_weak();
     windows.about.on_open_licenses(move || {
         if let Some(window) = licenses.upgrade() {

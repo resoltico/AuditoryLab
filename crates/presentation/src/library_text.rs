@@ -1,18 +1,22 @@
 //! Shared collection rows, query descriptions and document-location wording.
 use super::workspace_text::{LibraryFacetView, LibraryRowView};
-use crate::core::query::Scope;
-use crate::discovery::collection::{CatalogQuery, EntrySummary};
-use crate::document::origin::LibraryKey;
-use crate::document::recipe::RecipeSnapshot;
+use crate::presentation::AudioSummary;
+use crate::presentation::DisplayText;
 use crate::presentation::Explain;
-use crate::presentation::{AudioSummary, DisplayText, vocabulary::NumberStyle};
-use crate::storage::library::LibraryDiagnostic;
+use crate::presentation::vocabulary::NumberStyle;
+use crate::presentation::*;
+use auditorylab_app::discovery::collection::CatalogQuery;
+use auditorylab_app::discovery::collection::EntrySummary;
+use auditorylab_app::document::origin::LibraryKey;
+use auditorylab_app::document::recipe::RecipeSnapshot;
+use auditorylab_app::services::library::LibraryDiagnostic;
+use auditorylab_core::query::Scope;
 /// Render a semantic row, without executing queries or selecting recipe ownership.
 pub(crate) fn row(
-    row: &crate::workspace::LibraryRowView,
-    sort: crate::core::query::SortBy,
+    row: &auditorylab_app::workspace::LibraryRowView,
+    sort: auditorylab_core::query::SortBy,
 ) -> LibraryRowView {
-    use crate::workspace::LibraryRowView as Row;
+    use auditorylab_app::workspace::LibraryRowView as Row;
     match row {
         Row::Entry {
             entry,
@@ -35,10 +39,10 @@ pub(crate) fn row(
 }
 fn entry_row(
     e: &EntrySummary,
-    sort: crate::core::query::SortBy,
+    sort: auditorylab_core::query::SortBy,
     requires_read: bool,
 ) -> LibraryRowView {
-    use crate::core::query::SortBy;
+    use auditorylab_core::query::SortBy;
     let (date_label, date) = match sort {
         SortBy::Created => ("Created", e.created_at),
         SortBy::Modified => ("Edited", e.modified_at),
@@ -48,10 +52,10 @@ fn entry_row(
         }
         _ => ("Created", e.created_at),
     };
-    let shown = |date: Option<crate::core::Timestamp>| {
+    let shown = |date: Option<auditorylab_core::Timestamp>| {
         date.map_or_else(
             || "Unknown".into(),
-            crate::discovery::calendar::local_timestamp,
+            crate::presentation::calendar_text::local_timestamp,
         )
     };
     let mut dates = format!("{date_label}: {}", shown(date));
@@ -93,7 +97,7 @@ fn entry_row(
     if e.nominal.multiple() {
         memberships.push("Multiple rhythms".into());
     }
-    if e.nominal.completeness != crate::core::rhythm::Completeness::Complete {
+    if e.nominal.completeness != auditorylab_core::rhythm::Completeness::Complete {
         memberships.push("Needs review".into());
     }
     let bands = memberships.join(" · ");
@@ -124,9 +128,11 @@ fn heading_row(text: String) -> LibraryRowView {
 }
 /// Render already-counted navigation memberships.
 #[must_use]
-pub fn facets(counts: &crate::workspace::FacetCounts) -> (Vec<LibraryFacetView>, Vec<String>) {
-    use crate::workspace::FacetKind;
-    let facet = |facet: &crate::workspace::LibraryFacetView| {
+pub fn facets(
+    counts: &auditorylab_app::workspace::FacetCounts,
+) -> (Vec<LibraryFacetView>, Vec<String>) {
+    use auditorylab_app::workspace::FacetKind;
+    let facet = |facet: &auditorylab_app::workspace::LibraryFacetView| {
         let (label, detail) = match facet.kind {
             FacetKind::AllSounds => ("All sounds".into(), ""),
             FacetKind::AllMethods => ("All methods".into(), ""),
@@ -227,7 +233,7 @@ pub(crate) fn count(query: &CatalogQuery, visible: usize, complete: bool) -> Str
                 if let Some(value) = value {
                     restrictions.push(format!(
                         "{name} {label}: {} · UTC {value}",
-                        crate::discovery::calendar::local_timestamp(value)
+                        crate::presentation::calendar_text::local_timestamp(value)
                     ));
                 }
             }
@@ -269,8 +275,8 @@ pub(crate) fn empty_message(
 }
 pub(crate) fn alert(
     problem: Option<&LibraryDiagnostic>,
-    filter_error: Option<&crate::discovery::query::QueryError>,
-    read_failure: Option<&LibraryDiagnostic<crate::workspace::status::ReadFailure>>,
+    filter_error: Option<&auditorylab_app::discovery::query::QueryError>,
+    read_failure: Option<&LibraryDiagnostic<auditorylab_app::workspace::status::ReadFailure>>,
     complete: bool,
 ) -> String {
     let mut notices = Vec::new();
@@ -298,14 +304,14 @@ pub(crate) fn dates(
     utc: bool,
 ) -> String {
     entry.map_or(String::new(), |e| {
-        let shown = |date: Option<crate::core::Timestamp>| {
+        let shown = |date: Option<auditorylab_core::Timestamp>| {
             date.map_or_else(
                 || "Unknown".into(),
                 |d| {
                     if utc {
                         d.to_string()
                     } else {
-                        crate::discovery::calendar::local_timestamp(d)
+                        crate::presentation::calendar_text::local_timestamp(d)
                     }
                 },
             )
@@ -324,7 +330,7 @@ pub(crate) fn dates(
                 shown(Some(d))
             )),
             snapshot.map_or(String::new(), |s| {
-                crate::storage::library::history_warnings(s.recipe())
+                auditorylab_app::services::history_warnings(s.recipe())
                     .iter()
                     .map(|w| format!("\n{w}"))
                     .collect::<String>()
@@ -335,8 +341,8 @@ pub(crate) fn dates(
 pub(crate) fn document_location(
     problem: Option<&LibraryDiagnostic>,
     detached: Option<&LibraryKey>,
-    external: Option<&crate::document::origin::ObservedFile>,
-    managed: Option<(&LibraryKey, crate::document::origin::VersionToken)>,
+    external: Option<&auditorylab_app::document::origin::ObservedFile>,
+    managed: Option<(&LibraryKey, auditorylab_app::document::origin::VersionToken)>,
 ) -> (&'static str, String) {
     if let Some(error) = problem {
         return (
@@ -393,46 +399,27 @@ pub(crate) const INTERRUPTED_MOVE: &str =
 pub(crate) const DUPLICATE_IDENTITY: &str =
     "different files with the same UUID exist in recipes and trash; both were retained";
 
-pub(crate) fn orphan_membership(id: crate::core::DocumentUuid) -> String {
+pub(crate) fn orphan_membership(id: auditorylab_core::DocumentUuid) -> String {
     format!("membership for {id} has no recipe; the next locked write will drop it")
 }
-pub(crate) fn unavailable_history_clock(error: &crate::clock::ClockError) -> String {
+pub(crate) fn unavailable_history_clock(error: &auditorylab_app::clock::ClockError) -> String {
     format!(
         "Cannot compare declared history with the observed clock: {}",
         error.explain()
     )
 }
 
-impl crate::storage::library::WriteOutcome {
-    /// Concise confirmed publication result with an unwrapped comparison token.
-    #[must_use]
-    pub fn description(&self) -> String {
-        let mut text = format!("{}: {}", self.status.label(), self.key);
-        if let Some(record) = &self.record {
-            text.push_str(&format!("\nVersion token: {}", record.version_token));
-        }
-        for diagnostic in &self.diagnostics {
-            text.push('\n');
-            text.push_str(&super::publication_text::warning(diagnostic));
-        }
-        text
-    }
-    /// Confirmed truth retained when completion output fails.
-    #[must_use]
-    pub fn completion_failure(&self, error: impl std::fmt::Display) -> String {
-        format!(
-            "Operation confirmed\n{}\nCompletion output failed: {error}",
-            self.description()
-        )
-    }
-}
 pub(crate) fn removed_memberships(removed: usize) -> String {
     format!("Removed {removed} orphan membership timestamp rows")
 }
-pub(crate) fn membership_update_failed(error: &crate::storage::library::LibraryError) -> String {
+pub(crate) fn membership_update_failed(
+    error: &auditorylab_app::services::library::LibraryError,
+) -> String {
     format!("Saved; membership timestamps could not be updated: {error}")
 }
-pub(crate) fn membership_read_failed(error: &crate::storage::library::LibraryError) -> String {
+pub(crate) fn membership_read_failed(
+    error: &auditorylab_app::services::library::LibraryError,
+) -> String {
     format!("Saved; membership dates are Unknown because their state could not be read: {error}")
 }
 pub(crate) fn recovered_move(name: &std::ffi::OsStr) -> String {
@@ -445,8 +432,10 @@ pub(crate) fn removed_stage(path: &std::path::Path) -> String {
     format!("Removed abandoned stage {}", path.display())
 }
 
-pub(crate) fn inventory_notice(notice: &crate::storage::library::InventoryNotice) -> String {
-    use crate::storage::library::InventoryNotice as N;
+pub(crate) fn inventory_notice(
+    notice: &auditorylab_app::services::library::InventoryNotice,
+) -> String {
+    use auditorylab_app::services::library::InventoryNotice as N;
     match notice {
         N::UnknownRootEntry => UNKNOWN_ROOT_ENTRY.into(),
         N::UnknownEntry => UNKNOWN_ENTRY.into(),
@@ -479,7 +468,7 @@ pub trait LibraryPresentation {
     /// Short badge for the current document location.
     fn document_location_label(&self) -> &'static str;
 }
-impl LibraryPresentation for crate::workspace::Workspace {
+impl LibraryPresentation for auditorylab_app::workspace::Workspace {
     fn library_status(&self) -> String {
         let d = self.library_data();
         match d.path {
@@ -540,8 +529,9 @@ impl LibraryPresentation for crate::workspace::Workspace {
 
 /// Label for a virtual group membership, independent of its result keys.
 #[must_use]
-pub fn group_label(label: &crate::discovery::collection::GroupLabel) -> String {
-    use crate::discovery::collection::{Collection, GroupLabel as L};
+pub fn group_label(label: &auditorylab_app::discovery::collection::GroupLabel) -> String {
+    use auditorylab_app::discovery::collection::Collection;
+    use auditorylab_app::discovery::collection::GroupLabel as L;
     match label {
         L::Band(band) => band.to_string(),
         L::State(state) => state.label().into(),
@@ -555,5 +545,38 @@ pub fn group_label(label: &crate::discovery::collection::GroupLabel) -> String {
             Collection::External => "Open files",
         }
         .into(),
+    }
+}
+
+/// Human wording for WriteOutcome values.
+pub trait WriteOutcomeText {
+    /// Concise confirmed publication result with an unwrapped comparison token.
+    #[must_use]
+    fn description(&self) -> String;
+
+    /// Confirmed truth retained when completion output fails.
+    #[must_use]
+    fn completion_failure(&self, error: impl std::fmt::Display) -> String;
+}
+impl WriteOutcomeText for auditorylab_app::services::library::WriteOutcome {
+    /// Concise confirmed publication result with an unwrapped comparison token.
+    fn description(&self) -> String {
+        let mut text = format!("{}: {}", self.status.label(), self.key);
+        if let Some(record) = &self.record {
+            text.push_str(&format!("\nVersion token: {}", record.version_token));
+        }
+        for diagnostic in &self.diagnostics {
+            text.push('\n');
+            text.push_str(&super::publication_text::warning(diagnostic));
+        }
+        text
+    }
+
+    /// Confirmed truth retained when completion output fails.
+    fn completion_failure(&self, error: impl std::fmt::Display) -> String {
+        format!(
+            "Operation confirmed\n{}\nCompletion output failed: {error}",
+            self.description()
+        )
     }
 }

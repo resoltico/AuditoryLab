@@ -571,6 +571,7 @@ name = "auditorylab-cli"
 version = "0.6.0"
 dependencies = [
  "auditorylab-app",
+ "auditorylab-presentation",
  "clap",
  "ctrlc",
  "serde_json",
@@ -597,6 +598,7 @@ version = "0.6.0"
 dependencies = [
  "async-io",
  "auditorylab-app",
+ "auditorylab-presentation",
  "block2 0.6.2",
  "embed-resource",
  "fontique",
@@ -612,6 +614,18 @@ dependencies = [
  "tempfile",
  "windows-sys 0.61.2",
  "zbus 6.0.0",
+]
+
+[[package]]
+name = "auditorylab-presentation"
+version = "0.6.0"
+dependencies = [
+ "auditorylab-app",
+ "auditorylab-core",
+ "cpal",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

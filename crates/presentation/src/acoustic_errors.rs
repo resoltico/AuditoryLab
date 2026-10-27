@@ -1,5 +1,10 @@
 //! Human explanations of rate-dependent acoustic failures.
-use crate::core::{Lane, ParameterId, Signal, SoundError, VoiceError, VoiceId};
+use auditorylab_core::Lane;
+use auditorylab_core::ParameterId;
+use auditorylab_core::Signal;
+use auditorylab_core::SoundError;
+use auditorylab_core::VoiceError;
+use auditorylab_core::VoiceId;
 use std::fmt::{self, Display, Formatter};
 struct SoundText<'a>(&'a SoundError);
 struct VoiceText<'a>(&'a VoiceError);
@@ -52,7 +57,7 @@ impl Display for Number {
 impl Display for Quantity {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let unit = self.0.descriptor().unit;
-        let separator = if unit == crate::core::Unit::Percent {
+        let separator = if unit == auditorylab_core::Unit::Percent {
             ""
         } else {
             " "
@@ -189,28 +194,28 @@ mod tests {
     use super::*;
     #[test]
     fn excessive_width_names_the_signal_frame_limit() {
-        let component = crate::core::ComponentForm::Clicks {
+        let component = auditorylab_core::ComponentForm::Clicks {
             rate_hz: finite(1e-12),
             width_seconds: finite(68_719_476_737.0 / 48_000.0),
-            ears: crate::core::Ears::Both,
+            ears: auditorylab_core::Ears::Both,
             peak_dbfs: finite(-30.0),
             modulation: None,
         };
         let message = sound_error(
-            &crate::core::Sound::new(
+            &auditorylab_core::Sound::new(
                 finite(1.0),
                 finite(0.0),
-                vec![crate::core::Component {
-                    id: crate::core::ComponentId::new(1).unwrap(),
+                vec![auditorylab_core::Component {
+                    id: auditorylab_core::ComponentId::new(1).unwrap(),
                     form: component,
                 }],
             )
             .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
-            .signal(crate::core::SampleRate::DEFAULT)
+            .signal(auditorylab_core::SampleRate::DEFAULT)
             .unwrap_err(),
         );
         assert!(
-            message.contains(&crate::core::Signal::MAX_FRAMES.to_string()),
+            message.contains(&auditorylab_core::Signal::MAX_FRAMES.to_string()),
             "{message}"
         );
     }
@@ -272,7 +277,7 @@ pub fn voice_reference(id: VoiceId) -> String {
 #[cfg(test)]
 mod reference_tests {
     use super::*;
-    use crate::core::ComponentId;
+    use auditorylab_core::ComponentId;
 
     #[test]
     fn acoustic_errors_name_the_authored_owner_and_secondary_tone() {

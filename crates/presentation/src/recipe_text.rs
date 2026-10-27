@@ -1,5 +1,9 @@
 //! Shared descriptions of authored content and its research context.
-use crate::core::{Component, ComponentForm, EvidenceScope, Modulation, Recipe};
+use auditorylab_core::Component;
+use auditorylab_core::ComponentForm;
+use auditorylab_core::EvidenceScope;
+use auditorylab_core::Modulation;
+use auditorylab_core::Recipe;
 
 /// Derived presentation of current title/notes and a primary current condition.
 /// This is a view, not a second persisted metadata authority.
@@ -92,7 +96,7 @@ fn voice(form: ComponentForm) -> String {
     let carrier = match form {
         ComponentForm::Tone { frequency_hz, .. } => format!(
             "{} {frequency_hz} Hz",
-            crate::core::CarrierKind::Tone.phrase()
+            auditorylab_core::CarrierKind::Tone.phrase()
         ),
         ComponentForm::Clicks {
             rate_hz,
@@ -100,13 +104,13 @@ fn voice(form: ComponentForm) -> String {
             ..
         } => format!(
             "{} {rate_hz} Hz, {width_seconds} s wide",
-            crate::core::CarrierKind::Clicks.phrase()
+            auditorylab_core::CarrierKind::Clicks.phrase()
         ),
         _ => unreachable!("primitive description"),
     };
     let mut text = format!(
         "{carrier}, peak {} dBFS, {}",
-        form.get(crate::core::ParameterId::PeakLevel)
+        form.get(auditorylab_core::ParameterId::PeakLevel)
             .unwrap_or_else(|| unreachable!("primitive level")),
         form.route()
             .unwrap_or_else(|| unreachable!("primitive route"))
@@ -139,7 +143,7 @@ pub trait SnapshotText {
     /// Research and listening description, without retaining wording in document state.
     fn about(&self) -> Option<About>;
 }
-impl SnapshotText for crate::document::recipe::RecipeSnapshot {
+impl SnapshotText for auditorylab_app::document::recipe::RecipeSnapshot {
     fn about(&self) -> Option<About> {
         about(self.recipe())
     }

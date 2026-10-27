@@ -12,15 +12,6 @@ pub struct Description<'a> {
     pub(super) history: Vec<crate::storage::warning::StorageWarning>,
 }
 impl<'a> Description<'a> {
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        &'a Resolved,
-        std::sync::Arc<str>,
-        Vec<crate::storage::warning::StorageWarning>,
-    ) {
-        (self.source, self.text, self.history)
-    }
     /// Captured source and correlated ownership.
     #[must_use]
     pub const fn source(&self) -> &'a Resolved {

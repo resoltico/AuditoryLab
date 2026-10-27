@@ -1443,20 +1443,33 @@ impl LibraryState {
 
 /// Captured library and document-location context for frontend projections.
 pub struct LibraryData<'a> {
-    pub(crate) query: &'a CatalogQuery,
-    pub(crate) entries: &'a [EntrySummary],
-    pub(crate) visible: usize,
-    pub(crate) inventory: &'a InventoryStatus,
-    pub(crate) path: Option<&'a std::path::Path>,
-    pub(crate) problem: Option<&'a crate::services::library::LibraryDiagnostic>,
-    pub(crate) filter_error: Option<&'a crate::discovery::query::QueryError>,
-    pub(crate) read_failure:
+    /// Committed query whose restrictions produced the visible selection.
+    pub query: &'a CatalogQuery,
+    /// Last observed unique index rows, independent of full source loading.
+    pub entries: &'a [EntrySummary],
+    /// Unique matching keys after the committed query.
+    pub visible: usize,
+    /// Completeness, scan bounds and retained storage causes.
+    pub inventory: &'a InventoryStatus,
+    /// Configured managed root when a usable capability exists.
+    pub path: Option<&'a std::path::Path>,
+    /// Configuration failure retained instead of silently using a fallback root.
+    pub problem: Option<&'a crate::services::library::LibraryDiagnostic>,
+    /// Refused query change; the prior valid query remains committed.
+    pub filter_error: Option<&'a crate::discovery::query::QueryError>,
+    /// Failure of the most recent admitted managed read.
+    pub read_failure:
         Option<&'a crate::services::library::LibraryDiagnostic<super::status::ReadFailure>>,
-    pub(crate) selected: Option<&'a RecipeSnapshot>,
-    pub(crate) selected_entry: Option<&'a EntrySummary>,
-    pub(crate) detached: Option<&'a LibraryKey>,
-    pub(crate) external: Option<&'a crate::document::origin::ObservedFile>,
-    pub(crate) managed: Option<(&'a LibraryKey, VersionToken)>,
+    /// Readable immutable source correlated with the current selection.
+    pub selected: Option<&'a RecipeSnapshot>,
+    /// Indexed membership and dates of the selected key.
+    pub selected_entry: Option<&'a EntrySummary>,
+    /// Managed identity from which the open draft was detached.
+    pub detached: Option<&'a LibraryKey>,
+    /// Retained external file identity and exact-byte observation.
+    pub external: Option<&'a crate::document::origin::ObservedFile>,
+    /// Managed identity and exact content token bound to the open document.
+    pub managed: Option<(&'a LibraryKey, VersionToken)>,
 }
 impl Workspace {
     /// Borrow the exact currently indexed library and captured edit location.

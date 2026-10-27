@@ -21,10 +21,7 @@ impl Caption {
     #[must_use]
     #[cfg(target_os = "windows")]
     pub(crate) fn application_error_title() -> String {
-        format!(
-            "{} error",
-            auditorylab_app::presentation::build_info::BUILD_IDENTITY.name
-        )
+        format!("{} error", auditorylab_app::identity::BUILD_IDENTITY.name)
     }
     /// A monitor's native typography values, without duplicating the diagnostic heading.
     #[must_use]
@@ -37,7 +34,7 @@ impl Caption {
         format!(
             "Bundled notices are missing or empty: {}. Obtain a complete desktop download from {}",
             path.display(),
-            auditorylab_app::presentation::build_info::SOURCE_URL
+            auditorylab_app::identity::SOURCE_URL
         )
     }
 }
@@ -90,7 +87,7 @@ impl InterfaceOperation {
             #[cfg(target_os = "windows")]
             Self::Application => format!(
                 "{} could not continue.\n\n{error}",
-                auditorylab_app::presentation::build_info::BUILD_IDENTITY.name
+                auditorylab_app::identity::BUILD_IDENTITY.name
             ),
         }
     }
@@ -109,8 +106,8 @@ impl CommandProblem {
 
 /// Populate the product metadata before a native window is shown.
 pub(crate) fn initialize_identity(terms: crate::generated::Terms<'_>) {
-    let identity = &auditorylab_app::presentation::build_info::BUILD_IDENTITY;
+    let identity = &auditorylab_app::identity::BUILD_IDENTITY;
     terms.set_caption_product_name(identity.name.into());
     terms.set_caption_copyright(identity.copyright.into());
-    terms.set_caption_about_product(auditorylab_app::presentation::build_info::ABOUT_TITLE.into());
+    terms.set_caption_about_product(auditorylab_presentation::build_info::about_title().into());
 }

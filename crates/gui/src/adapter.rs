@@ -8,14 +8,15 @@
 //! Rendered fields carry application-owned opaque row keys. The editor validates
 //! the document, component and generation, so late callbacks cannot address a
 //! replacement document or a restored component lifetime.
-use auditorylab_app::presentation::DisplayText;
-use auditorylab_app::presentation::LibraryPresentation;
-use auditorylab_app::presentation::vocabulary::NumberStyle;
-use auditorylab_app::presentation::waveform_view::*;
-use auditorylab_app::presentation::workspace_text::{
+use auditorylab_app::workspace::monitor::WaveformScale;
+use auditorylab_presentation::DisplayText;
+use auditorylab_presentation::LibraryPresentation;
+use auditorylab_presentation::vocabulary::NumberStyle;
+use auditorylab_presentation::waveform_view::*;
+use auditorylab_presentation::workspace_text::{
     ComponentView, EditorView, MetadataView, ParameterView,
 };
-use auditorylab_app::workspace::monitor::WaveformScale;
+use auditorylab_presentation::*;
 mod actions;
 mod auxiliary;
 mod editing;
@@ -242,10 +243,10 @@ impl SlintAdapter {
         ui.set_components(ModelRc::from(adapter.components.clone()));
         ui.set_catalog(ModelRc::from(adapter.catalog.clone()));
         ui.set_model_lanes(ModelRc::from(adapter.lanes.clone()));
-        ui.set_guidance(auditorylab_app::presentation::Notice::general_guidance().into());
+        ui.set_guidance(auditorylab_presentation::Notice::general_guidance().into());
         ui.set_native_mac(cfg!(target_os = "macos"));
         windows.about.set_identity(
-            auditorylab_app::presentation::build_info::BUILD_IDENTITY
+            auditorylab_app::identity::BUILD_IDENTITY
                 .about_version()
                 .into(),
         );
@@ -591,7 +592,7 @@ impl SlintAdapter {
                 };
                 runner
                     .shutdown(workspace)
-                    .map_err(|error| auditorylab_app::presentation::Explain::explain(&error))
+                    .map_err(|error| auditorylab_presentation::Explain::explain(&error))
             }
             _ => Ok(()),
         }
@@ -705,9 +706,9 @@ impl SlintAdapter {
             .set(self.counts.document_projections.get() + 1);
         let views = self.workspace.borrow_mut().as_mut().map(|w| {
             (
-                auditorylab_app::presentation::workspace_text::editor_view(&w.editor_view()),
+                auditorylab_presentation::workspace_text::editor_view(&w.editor_view()),
                 w.library_view(),
-                auditorylab_app::presentation::workspace_text::action_view(&w.action_view()),
+                auditorylab_presentation::workspace_text::action_view(&w.action_view()),
                 w.export_rate(),
                 w.rhythm_query().clone(),
             )
@@ -902,7 +903,7 @@ impl SlintAdapter {
     fn project_telemetry(&self, ui: &MainWindow) {
         let views = self.workspace.borrow().as_ref().map(|w| {
             (
-                auditorylab_app::presentation::workspace_text::transport_view(&w.transport_view()),
+                auditorylab_presentation::workspace_text::transport_view(&w.transport_view()),
                 w.output_view(),
                 w.model_view(),
                 w.export_progress(),
@@ -1127,7 +1128,7 @@ impl SlintAdapter {
         window.set_heading(crate::terms::Caption::AudioSnapshot.label().into());
         window.set_can_refresh(true);
         window.set_content(
-            auditorylab_app::presentation::DesktopDiagnostics {
+            auditorylab_presentation::DesktopDiagnostics {
                 player: &ui.get_player_title(),
                 generated: &ui.get_generated_details(),
                 monitor: &ui.get_monitor_state(),
@@ -1235,7 +1236,7 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     ui.set_add_choices(strings(
         CarrierKind::ALL
             .iter()
-            .map(|k| auditorylab_app::presentation::vocabulary::add_component(*k))
+            .map(|k| auditorylab_presentation::vocabulary::add_component(*k))
             .collect(),
     ));
     ui.set_modulation_choices(strings(
@@ -1260,7 +1261,7 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     monitor.set_span_choices(spans);
     monitor.set_scale_choices(scales);
     ui.set_transport_labels(strings(
-        auditorylab_app::presentation::vocabulary::transport_labels()
+        auditorylab_presentation::vocabulary::transport_labels()
             .iter()
             .map(|label| (*label).to_owned())
             .collect(),

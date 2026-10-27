@@ -1,5 +1,6 @@
 //! Shared search and correlated query behavior for built-in and external origins.
-use auditorylab_app::presentation::AudioSummary;
+use auditorylab_presentation::AudioSummary;
+use auditorylab_presentation::*;
 
 use auditorylab_app::document::recipe::{Origin, RecipeSnapshot};
 #[expect(

@@ -1,18 +1,26 @@
 //! Typed machine-readable application reports.
-use crate::core::query::{Direction, SortBy};
-use crate::document::origin::{LibraryKey, VersionToken};
 use crate::presentation::Explain;
+use crate::presentation::*;
+use auditorylab_app::document::origin::LibraryKey;
+use auditorylab_app::document::origin::VersionToken;
+use auditorylab_core::query::Direction;
+use auditorylab_core::query::SortBy;
 use serde::Serialize;
 use std::path::PathBuf;
 use {
-    crate::core::DocumentUuid, crate::core::Timestamp, crate::core::VoiceFacts,
-    crate::core::VoiceId, crate::core::rhythm, crate::discovery::collection::CatalogQuery,
-    crate::discovery::collection::Collection, crate::discovery::collection::EntrySummary,
-    crate::discovery::collection::EvidenceFacet, crate::discovery::collection::ResultGroup,
-    crate::outcome::Outcome, crate::storage::library::Initialization,
-    crate::storage::library::Inventory, crate::storage::library::LibraryDiagnostic,
-    crate::storage::library::MutationStatus, crate::storage::library::RootInfo,
-    crate::storage::library::RootSource, crate::storage::library::WriteOutcome,
+    auditorylab_app::discovery::collection::CatalogQuery,
+    auditorylab_app::discovery::collection::Collection,
+    auditorylab_app::discovery::collection::EntrySummary,
+    auditorylab_app::discovery::collection::EvidenceFacet,
+    auditorylab_app::discovery::collection::ResultGroup, auditorylab_app::outcome::Outcome,
+    auditorylab_app::services::library::Initialization,
+    auditorylab_app::services::library::Inventory,
+    auditorylab_app::services::library::LibraryDiagnostic,
+    auditorylab_app::services::library::MutationStatus,
+    auditorylab_app::services::library::RootInfo, auditorylab_app::services::library::RootSource,
+    auditorylab_app::services::library::WriteOutcome, auditorylab_core::DocumentUuid,
+    auditorylab_core::Timestamp, auditorylab_core::VoiceFacts, auditorylab_core::VoiceId,
+    auditorylab_core::rhythm,
 };
 
 /// Version of the command-line JSON report envelope.
@@ -36,8 +44,8 @@ pub struct DiagnosticMessage {
     /// Human explanation rendered by presentation.
     pub message: String,
 }
-impl From<&crate::services::StorageWarning> for DiagnosticMessage {
-    fn from(value: &crate::services::StorageWarning) -> Self {
+impl From<&auditorylab_app::services::StorageWarning> for DiagnosticMessage {
+    fn from(value: &auditorylab_app::services::StorageWarning) -> Self {
         Self {
             code: value.to_string(),
             message: super::publication_text::warning(value),
@@ -245,9 +253,9 @@ impl Report {
     #[must_use]
     pub fn completion_failure(&self, error: impl std::fmt::Display) -> String {
         let truth = if self.complete {
-            crate::core::vocabulary::Status::OperationConfirmed
+            auditorylab_core::vocabulary::Status::OperationConfirmed
         } else {
-            crate::core::vocabulary::Status::OperationIncomplete
+            auditorylab_core::vocabulary::Status::OperationIncomplete
         }
         .label();
         format!("{truth}; completion output failed: {error}")
@@ -279,7 +287,7 @@ impl Report {
     }
     /// Query results with the exact typed query and storage diagnostics.
     #[must_use]
-    pub fn listing(operation: &str, listing: &crate::services::Listing) -> Self {
+    pub fn listing(operation: &str, listing: &auditorylab_app::services::Listing) -> Self {
         let query = listing.query();
         let mut report = Self::new(operation, listing.complete())
             .with_entries(listing.entries().iter().map(EntryReport::from).collect());
@@ -302,8 +310,10 @@ impl Report {
         report
     }
     /// Full portable content and declared-history diagnostics.
-    pub fn describe(description: crate::services::Description<'_>) -> Self {
-        let (source, text, history) = description.into_parts();
+    pub fn describe(description: auditorylab_app::services::Description<'_>) -> Self {
+        let source = description.source();
+        let text = description.portable_text();
+        let history = description.history_warnings();
         let mut entry = EntryReport::from(source.summary());
         entry.history_warnings = Some(history.iter().map(DiagnosticMessage::from).collect());
         entry.recipe_toml = Some(text.to_string());
@@ -311,7 +321,7 @@ impl Report {
     }
     /// Render the service’s captured rate validation, including invalid-content diagnostics.
     #[must_use]
-    pub fn inspect(inspection: &crate::services::Inspection<'_>) -> Self {
+    pub fn inspect(inspection: &auditorylab_app::services::Inspection<'_>) -> Self {
         let rate = inspection.rate();
         let mut entry = EntryReport::from(inspection.source().summary());
         entry.validation = match inspection.sound() {
@@ -347,9 +357,9 @@ impl Report {
     #[must_use]
     pub fn unavailable_path(
         operation: &str,
-        root: &crate::services::library::Location,
+        root: &auditorylab_app::services::library::Location,
         exists: Option<bool>,
-        error: &crate::storage::library::LibraryError,
+        error: &auditorylab_app::services::library::LibraryError,
     ) -> Self {
         let mut report = Self::new(operation, false);
         report.root = Some(RootReport::Unavailable(UnavailableRoot {

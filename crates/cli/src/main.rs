@@ -1,7 +1,8 @@
 //! Command-line interface to Auditory Lab.
 #![forbid(unsafe_code)]
 use auditorylab_app::job::{Cancel, Progress, Replace};
-use auditorylab_app::presentation::DisplayText;
+use auditorylab_presentation::DisplayText;
+use auditorylab_presentation::*;
 mod cli_text;
 mod library_cli;
 use auditorylab_app::core::SampleRate;
@@ -17,7 +18,7 @@ use std::{
     process::ExitCode,
 };
 #[derive(Parser)]
-#[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = lab::presentation::build_info::BUILD_IDENTITY.version_text())]
+#[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = auditorylab_app::identity::BUILD_IDENTITY.version_text())]
 struct Cli {
     /// Absolute persistent User Library override (then environment, then native data).
     #[arg(long,global=true,value_name="ABSOLUTE_PATH",value_parser=absolute_path)]
@@ -85,7 +86,8 @@ fn rate(text: &str) -> Result<SampleRate, String> {
     text.parse::<u32>()
         .map_err(|e| e.to_string())
         .and_then(|n| {
-            SampleRate::new(n).map_err(|e| lab::presentation::core_errors::sample_rate_error(&e))
+            SampleRate::new(n)
+                .map_err(|e| auditorylab_presentation::core_errors::sample_rate_error(&e))
         })
 }
 fn absolute_path(text: &str) -> Result<PathBuf, String> {
@@ -136,7 +138,7 @@ impl CliError {
     fn message(&self) -> String {
         let message = match self {
             Self::Usage(error) => error.to_string(),
-            Self::Operation(error) => lab::presentation::Explain::explain(error.as_ref()),
+            Self::Operation(error) => auditorylab_presentation::Explain::explain(error.as_ref()),
             Self::Io(error) => error.to_string(),
             Self::Interrupt(error) => error.to_string(),
             Self::Json(error) => error.to_string(),
@@ -391,10 +393,12 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
                 for warning in saved.warnings {
                     eprintln!(
                         "{}",
-                        prose(&lab::presentation::publication_text::warning(&warning))
+                        prose(&auditorylab_presentation::publication_text::warning(
+                            &warning
+                        ))
                     );
                 }
-                completed(&lab::presentation::recipe_exported(&path));
+                completed(&auditorylab_presentation::recipe_exported(&path));
             } else {
                 output(text.as_bytes())?;
             }
@@ -437,7 +441,9 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             for warning in &result.warnings {
                 eprintln!(
                     "{}",
-                    prose(&lab::presentation::publication_text::warning(warning))
+                    prose(&auditorylab_presentation::publication_text::warning(
+                        warning
+                    ))
                 );
             }
             completed(&result.description(&path));

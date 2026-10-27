@@ -1,8 +1,8 @@
 //! Library model updates depend only on an immutable library projection.
 use super::*;
 use auditorylab_app::core::query::{Scope, SortBy};
-use auditorylab_app::presentation::DisplayText;
-use auditorylab_app::presentation::LibraryPresentation;
+use auditorylab_presentation::DisplayText;
+use auditorylab_presentation::LibraryPresentation;
 impl SlintAdapter {
     pub(super) fn project_library(
         &self,
@@ -18,7 +18,7 @@ impl SlintAdapter {
             return;
         }
         let source = library;
-        let library = auditorylab_app::presentation::workspace_text::library_view(&source);
+        let library = auditorylab_presentation::workspace_text::library_view(&source);
         #[cfg(test)]
         self.counts
             .library_projections
@@ -65,7 +65,7 @@ impl SlintAdapter {
                 ))
             };
             let (bands, methods) =
-                auditorylab_app::presentation::library_text::facets(&w.library_facets());
+                auditorylab_presentation::library_text::facets(&w.library_facets());
             ui.set_band_labels(strings(
                 bands.iter().map(|band| band.text.clone()).collect(),
             ));
@@ -81,7 +81,9 @@ impl SlintAdapter {
                     .collect::<Vec<_>>(),
             )));
             ui.set_method_labels(strings(methods));
-            ui.set_calendar_context(auditorylab_app::discovery::calendar::local_context().into());
+            ui.set_calendar_context(
+                auditorylab_presentation::calendar_text::local_context().into(),
+            );
             {
                 let query = w.catalog_query();
                 use auditorylab_app::core::query::RhythmState;
