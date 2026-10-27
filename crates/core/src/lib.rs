@@ -21,7 +21,8 @@ pub mod query;
 pub mod vocabulary;
 pub use contract::{ContractError, ReferenceOwner};
 mod facts;
-pub mod finite;
+#[path = "render/finite_source.rs"]
+pub mod finite_source;
 mod history;
 pub mod live;
 pub mod rhythm;

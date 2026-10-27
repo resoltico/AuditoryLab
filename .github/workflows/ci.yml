@@ -261,7 +261,7 @@ jobs:
             shard: 0/1
           - source: voice
             shard: 0/1
-          - source: finite
+          - source: render/finite_source
             shard: 0/1
           - source: waveform
             shard: 0/1
@@ -308,6 +308,6 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: ${{ matrix.source }}-${{ strategy.job-index }}-mutations
+          name: core-${{ strategy.job-index }}-mutations
           path: target/mutations/mutants.out/
           if-no-files-found: error

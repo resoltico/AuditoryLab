@@ -1,6 +1,6 @@
 //! Finite and live generators behind a stream callback.
 use super::live::LiveGenerator;
-pub(crate) use auditorylab_core::finite::FiniteSource;
+pub(crate) use auditorylab_core::finite_source::FiniteSource;
 use auditorylab_core::{Observation, SampleRate};
 
 /// The generator a stream callback owns.
