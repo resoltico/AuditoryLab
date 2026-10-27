@@ -1,6 +1,5 @@
 //! CLI contracts through the shipped executable.
 #![cfg(test)]
-#[cfg(unix)]
 use auditorylab_core::test_support as common;
 use std::time::{Duration, Instant};
 use std::{
@@ -426,10 +425,28 @@ fn nominal_list_filters_use_the_shared_band_and_method_contract() {
         "--band",
         "gamma",
         "--method",
-        "steady-tone",
+        "steady_tone",
     ]);
     assert!(out.status.success());
     assert!(String::from_utf8(out.stdout).unwrap().trim().is_empty());
+    let serialized = cli(&[
+        "list",
+        "--collection",
+        "builtin",
+        "--method",
+        "steady_tone",
+        "--format",
+        "json",
+    ]);
+    assert!(serialized.status.success());
+    let serialized: serde_json::Value = serde_json::from_slice(&serialized.stdout).unwrap();
+    let entries = serialized["entries"].as_array().unwrap();
+    assert!(!entries.is_empty());
+    assert!(
+        entries
+            .iter()
+            .all(|entry| entry["nominal"]["methods"] == serde_json::json!(["steady_tone"]))
+    );
     let search = cli(&["list", "--collection", "builtin", "--search", "202"]);
     assert!(search.status.success());
     let text = String::from_utf8(search.stdout).unwrap();
@@ -446,6 +463,7 @@ fn nominal_list_filters_use_the_shared_band_and_method_contract() {
     for args in [
         ["list", "--band", "sleep"],
         ["list", "--method", "unknown"],
+        ["list", "--method", "steady-tone"],
         ["list", "--rhythms", "unknown"],
     ] {
         assert_eq!(cli(&args).status.code(), Some(2));

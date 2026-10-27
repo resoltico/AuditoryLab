@@ -633,7 +633,7 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
             }),
             Some(C::Clicks),
             None,
-            "Click rhythm",
+            "Clicks",
             true,
         ),
         (
@@ -646,7 +646,7 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
             }),
             Some(C::Tone),
             Some(K::Am),
-            "AM envelope",
+            "AM",
             true,
         ),
         (
@@ -659,7 +659,7 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
             }),
             Some(C::Tone),
             Some(K::Gate),
-            "Gate rhythm",
+            "Gate",
             true,
         ),
         (
@@ -674,7 +674,7 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
             },
             None,
             None,
-            "Binaural pair",
+            "Binaural",
             false,
         ),
         (
@@ -690,7 +690,7 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
             },
             None,
             None,
-            "Monaural pair",
+            "Monaural",
             true,
         ),
     ] {

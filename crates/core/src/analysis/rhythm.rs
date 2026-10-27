@@ -6,7 +6,6 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
-use serde::Serialize;
 
 /// The disclosed band convention, independent of a study's own terminology.
 pub const CONVENTION: &str = "ifcn-2017-corrected-2019";
@@ -14,8 +13,7 @@ pub const CONVENTION: &str = "ifcn-2017-corrected-2019";
 pub const CLASSIFIER_REVISION: u32 = 2;
 
 /// One reference interval, with intentionally nonuniform endpoint inclusion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Band {
     /// 0.1 Hz through strictly below 4 Hz.
     Delta,
@@ -68,8 +66,7 @@ impl Display for Band {
 }
 
 /// An attributable structural method; steady tones have no rhythmic descriptor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Method {
     /// Separate-ear two-tone construction.
     Binaural,
@@ -85,6 +82,22 @@ pub enum Method {
     SteadyTone,
 }
 impl Method {
+    /// One heading for a form; rate facts may still contain several methods.
+    #[must_use]
+    pub fn primary_of(form: crate::ComponentForm) -> Self {
+        let unmodulated = match form {
+            crate::ComponentForm::BinauralPair { .. } => return Self::Binaural,
+            crate::ComponentForm::MonauralPair { .. } => return Self::Monaural,
+            crate::ComponentForm::Tone { .. } => Self::SteadyTone,
+            crate::ComponentForm::Clicks { .. } => Self::Clicks,
+        };
+        match form.modulation() {
+            Some(Modulation::Gate { .. }) => Self::Gate,
+            Some(Modulation::Am { depth, .. }) if depth.get() > 0.0 => Self::Am,
+            _ => unmodulated,
+        }
+    }
+
     pub(crate) const fn of_pair(kind: crate::PairKind) -> Self {
         match kind {
             crate::PairKind::Binaural => Self::Binaural,
@@ -94,8 +107,7 @@ impl Method {
 }
 
 /// Whether intrinsic settings satisfy the structural analysis contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Completeness {
     /// Every authored process has valid intrinsic settings.
     Complete,
@@ -497,7 +509,7 @@ crate::vocabulary::vocabulary! { Method,"method" {
     Clicks => ("clicks","Clicks","clicks"),
     Gate => ("gate","Gate","gate"),
     Am => ("am","AM","AM"),
-    SteadyTone => ("steady-tone","Steady tone","steady tone"),
+    SteadyTone => ("steady_tone","Steady tone","steady tone"),
 }}
 
 crate::vocabulary::vocabulary! { Completeness,"completeness" {
@@ -520,5 +532,76 @@ impl core::error::Error for Issue {
             Self::Value { issue, .. } => issue,
             Self::Pair(cause) => cause,
         })
+    }
+}
+
+#[cfg(test)]
+mod primary_tests {
+    use super::*;
+    use crate::{ComponentForm, Ears, test_support::finite};
+    #[test]
+    fn primary_method_keeps_modulation_precedence_and_zero_depth_carriers() {
+        for (modulation, tone, clicks) in [
+            (None, Method::SteadyTone, Method::Clicks),
+            (
+                Some(Modulation::Gate {
+                    rate_hz: finite(0.0),
+                    width_seconds: finite(0.001),
+                }),
+                Method::Gate,
+                Method::Gate,
+            ),
+            (
+                Some(Modulation::Am {
+                    rate_hz: finite(0.0),
+                    depth: finite(0.5),
+                }),
+                Method::Am,
+                Method::Am,
+            ),
+            (
+                Some(Modulation::Am {
+                    rate_hz: finite(7.0),
+                    depth: finite(0.0),
+                }),
+                Method::SteadyTone,
+                Method::Clicks,
+            ),
+        ] {
+            let form = ComponentForm::Tone {
+                ears: Ears::Both,
+                frequency_hz: finite(440.0),
+                peak_dbfs: finite(-30.0),
+                modulation,
+            };
+            assert_eq!(Method::primary_of(form), tone);
+            let form = ComponentForm::Clicks {
+                ears: Ears::Both,
+                rate_hz: finite(40.0),
+                width_seconds: finite(0.001),
+                peak_dbfs: finite(-30.0),
+                modulation,
+            };
+            assert_eq!(Method::primary_of(form), clicks);
+        }
+        assert_eq!(
+            Method::primary_of(ComponentForm::BinauralPair {
+                left_hz: finite(440.0),
+                offset_hz: finite(7.0),
+                left_peak_dbfs: finite(-30.0),
+                right_peak_dbfs: finite(-30.0)
+            }),
+            Method::Binaural
+        );
+        assert_eq!(
+            Method::primary_of(ComponentForm::MonauralPair {
+                ears: Ears::Both,
+                first_hz: finite(440.0),
+                offset_hz: finite(7.0),
+                first_peak_dbfs: finite(-30.0),
+                second_peak_dbfs: finite(-30.0)
+            }),
+            Method::Monaural
+        );
     }
 }

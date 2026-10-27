@@ -813,14 +813,7 @@ impl ComponentForm {
     /// Domain heading without target-rate inference.
     #[must_use]
     pub fn heading(self) -> &'static str {
-        match self.pair_kind() {
-            Some(kind) => kind.label(),
-            None => self
-                .primitive()
-                .unwrap_or_else(|| unreachable!("primitive form"))
-                .role()
-                .label(),
-        }
+        crate::rhythm::Method::primary_of(self).label()
     }
     /// Read an applicable authored quantity in model units.
     #[must_use]
@@ -953,8 +946,7 @@ impl ComponentForm {
     }
 }
 /// The two supported explicit pair constructions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PairKind {
     /// Separate left/right tones.
     Binaural,

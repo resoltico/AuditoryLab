@@ -71,7 +71,7 @@ pub(super) struct QueryArgs {
     /// Nominal analysis coverage: complete or invalid.
     #[arg(long,value_parser=parse_analysis)]
     analysis: Option<lab::core::rhythm::Completeness>,
-    /// Special state: none, multiple, outside-bands or needs-review.
+    /// Special state: none, multiple, outside_bands or needs_review.
     #[arg(long,value_parser=parse_choice::<lab::core::query::RhythmState>)]
     rhythms: Option<auditorylab_app::core::query::RhythmState>,
     /// Inclusive explicit-offset creation instant.
@@ -632,7 +632,7 @@ mod query_mapping_tests {
                 "--analysis",
                 "invalid",
                 "--rhythms",
-                "outside-bands",
+                "outside_bands",
                 "--created-from",
                 "2026-01-01T00:00:00Z",
                 "--created-before",

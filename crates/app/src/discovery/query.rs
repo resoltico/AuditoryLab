@@ -99,6 +99,7 @@ impl SearchIndex {
             facts.push(serde_json::to_string(&evidence.measures).unwrap_or_default());
         }
         for method in &snapshot.nominal().methods {
+            facts.push(method.key().into());
             facts.push(method_search_terms(*method).into());
         }
         for band in &snapshot.nominal().bands {
@@ -238,7 +239,7 @@ const fn method_search_terms(method: Method) -> &'static str {
         Method::Clicks => "click clicks",
         Method::Gate => "gate gated rectangular",
         Method::Am => "am amplitude modulation sinusoidal",
-        Method::SteadyTone => "steady-tone steady tone",
+        Method::SteadyTone => "steady tone",
     }
 }
 

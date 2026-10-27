@@ -9,8 +9,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ($($kind:ty),* $(,)?)=>{$(append_terms::<$kind>(&mut vocabulary,&mut properties)?;)*};
     }
     use auditorylab_core::{
-        CarrierKind, ComponentRole, ConditionRole, Ear, Ears, EvidenceScope, Measure,
-        ModulationKind, PairKind, ParameterId, Population, SlotRole,
+        CarrierKind, ConditionRole, Ear, Ears, EvidenceScope, Measure, ModulationKind, PairKind,
+        ParameterId, Population, SlotRole,
         query::{Direction, GroupBy, RhythmState, Scope, SortBy},
         rhythm::{Band, Completeness, Method},
         vocabulary::{Action, Status},
@@ -32,7 +32,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PairKind,
         CarrierKind,
         ModulationKind,
-        ComponentRole,
         ParameterId,
         SlotRole,
         Band,

@@ -1,13 +1,10 @@
 //! Shared discovery choices; query execution belongs to the application.
-use serde::Serialize;
 /// Persistent All excludes temporary entries and Trash unless explicitly selected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
     /// Active Built-in and User entries.
     All,
     /// Curated immutable entries only.
-    #[serde(rename = "builtin")]
     BuiltIn,
     /// Active managed entries only.
     User,
@@ -18,8 +15,7 @@ pub enum Scope {
 }
 
 /// Primary sort, with scope-dependent defaults only while Automatic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortBy {
     /// Rate ascending for All/Built-in; modified descending for User.
     Automatic,
@@ -40,8 +36,7 @@ pub enum SortBy {
 }
 
 /// Direction applies only to the primary value; nulls and tie-breaks stay stable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     /// Ascending primary values.
     Asc,
@@ -50,8 +45,7 @@ pub enum Direction {
 }
 
 /// Optional repeated-key grouping; the flat result is always unique by key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GroupBy {
     /// No groups.
     None,
@@ -66,8 +60,7 @@ pub enum GroupBy {
 }
 
 /// Special rhythm navigation; these properties can overlap band memberships.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RhythmState {
     /// At least one positive rate outside the reference intervals.
     OutsideBands,
@@ -83,7 +76,7 @@ crate::vocabulary::vocabulary! { Scope,"scope" {
     All => ("all","All · Built-in + User","all · Built-in + User"),
     BuiltIn => ("builtin","Built-in · Read only","built-in · Read only"),
     User => ("user","User","user"),
-    OpenFiles => ("open-files","Open files · Temporary","open files · Temporary"),
+    OpenFiles => ("open_files","Open files · Temporary","open files · Temporary"),
     Trash => ("trash","Trash","trash"),
 }}
 
@@ -112,15 +105,14 @@ crate::vocabulary::vocabulary! { GroupBy,"group_by" {
 }}
 
 crate::vocabulary::vocabulary! { RhythmState,"rhythm_state" {
-    OutsideBands => ("outside-bands","Other rates","other rates"),
+    OutsideBands => ("outside_bands","Other rates","other rates"),
     None => ("none","No rhythmic rate","no rhythmic rate"),
     Multiple => ("multiple","Multiple rhythms","multiple rhythms"),
-    NeedsReview => ("needs-review","Needs review","needs review"),
+    NeedsReview => ("needs_review","Needs review","needs review"),
 }}
 
 /// Calendar-date field pair being edited by a native date-range control.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CalendarField {
     /// Portable recipe creation instants.
     Created,

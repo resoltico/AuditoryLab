@@ -40,8 +40,7 @@ pub struct BibliographySource {
     pub url: Option<String>,
 }
 /// Which authored content an evidence declaration concerns.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EvidenceScope {
     /// Published reference condition with disclosed adaptations, not validation.
     ReferenceCondition,
@@ -49,8 +48,7 @@ pub enum EvidenceScope {
     Ancestor,
 }
 /// Population declared in one evidence record.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Population {
     /// Human participants.
     Human,
@@ -66,8 +64,7 @@ pub enum Population {
     Unspecified,
 }
 /// Experimental role declared for a single condition/evidence record.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionRole {
     /// Test condition.
     Test,
@@ -79,8 +76,7 @@ pub enum ConditionRole {
     Unspecified,
 }
 /// A measure assessed by a source, not a promised outcome.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Measure {
     /// EEG recordings.
     Eeg,

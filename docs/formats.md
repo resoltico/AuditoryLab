@@ -92,11 +92,13 @@ Back up the affected file. Correct it against the [recipe reference](#recipe-sch
 
 ## Queries and classification
 
+Vocabulary values use snake_case in CLI options and JSON. CLI flag names use kebab-case. Structural methods may overlap; component headings choose Gate, then active AM, then Clicks or Steady tone. Explicit pairs use Binaural or Monaural.
+
 | Option | Values |
 | --- | --- |
 | `--band` | `delta`, `theta`, `alpha`, `beta`, `gamma` |
-| `--method` | `binaural`, `monaural`, `clicks`, `gate`, `am`, `steady-tone` |
-| `--rhythms` | `none`, `multiple`, `outside-bands`, `needs-review` |
+| `--method` | `binaural`, `monaural`, `clicks`, `gate`, `am`, `steady_tone` |
+| `--rhythms` | `none`, `multiple`, `outside_bands`, `needs_review` |
 | `--analysis` | `complete`, `invalid` |
 | `--sort` | `rate`, `title`, `study`, `collection`, `created`, `modified`, `added` |
 | `--direction` | `asc`, `desc` |

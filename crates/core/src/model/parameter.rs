@@ -7,7 +7,9 @@
 //! states the label, the unit people read and type it in, and a short help
 //! text. Model values keep the recipe's units (seconds, hertz, a 0..1 depth);
 //! [`Unit`] converts them to and from the displayed unit.
-use crate::{Carrier, Modulation, Sound, Voice};
+#[cfg(test)]
+use crate::Voice;
+use crate::{Carrier, Modulation, Sound};
 use core::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
@@ -150,8 +152,7 @@ impl Unit {
 }
 
 /// One editable recipe quantity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ParameterId {
     /// A tone carrier's frequency.
     ToneFrequency,
@@ -245,8 +246,7 @@ impl Display for ParameterId {
 }
 
 /// The kind of periodic source a component has.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CarrierKind {
     /// A sine tone.
     Tone,
@@ -266,8 +266,7 @@ impl Carrier {
 }
 
 /// The kind of amplitude modulation a component has.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModulationKind {
     /// A sinusoidal envelope.
     Am,
@@ -287,35 +286,6 @@ impl Modulation {
         match self {
             Self::Am { .. } => ModulationKind::Am,
             Self::Gate { .. } => ModulationKind::Gate,
-        }
-    }
-}
-
-/// What a component does in the sound, from its carrier and modulation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ComponentRole {
-    /// A gated carrier: a rhythm of on and off.
-    GateRhythm,
-    /// A carrier with an active sinusoidal envelope.
-    AmEnvelope,
-    /// An unmodulated click train.
-    ClickRhythm,
-    /// An unmodulated tone, or one whose envelope has zero depth.
-    SteadyTone,
-}
-
-impl Voice {
-    /// The component's role; active modulation is never hidden.
-    #[must_use]
-    pub(crate) fn role(&self) -> ComponentRole {
-        match self.modulation {
-            Some(Modulation::Gate { .. }) => ComponentRole::GateRhythm,
-            Some(Modulation::Am { depth, .. }) if depth.get() > 0.0 => ComponentRole::AmEnvelope,
-            _ => match self.carrier {
-                Carrier::Clicks { .. } => ComponentRole::ClickRhythm,
-                Carrier::Tone { .. } => ComponentRole::SteadyTone,
-            },
         }
     }
 }
@@ -345,13 +315,6 @@ crate::vocabulary::vocabulary! { CarrierKind,"carrier_kind" {
 crate::vocabulary::vocabulary! { ModulationKind,"modulation_kind" {
     Am => ("am","AM","AM"),
     Gate => ("gate","Gate","gate"),
-}}
-
-crate::vocabulary::vocabulary! { ComponentRole,"component_role" {
-    GateRhythm => ("gate_rhythm","Gate rhythm","gate rhythm"),
-    AmEnvelope => ("am_envelope","AM envelope","AM envelope"),
-    ClickRhythm => ("click_rhythm","Click rhythm","click rhythm"),
-    SteadyTone => ("steady_tone","Steady tone","steady tone"),
 }}
 
 impl ParameterId {
@@ -477,12 +440,18 @@ mod tests {
     #[test]
     fn finite_invalid_rates_never_hide_active_modulation() {
         let mut c = every_shape()[1];
-        assert_eq!(c.role(), ComponentRole::AmEnvelope);
+        assert_eq!(
+            crate::rhythm::Method::primary_of(crate::test_support::form(c)),
+            crate::rhythm::Method::Am
+        );
         c.modulation = Some(Modulation::Am {
             rate_hz: crate::test_support::finite(0.0),
             depth: crate::test_support::finite(0.0),
         });
-        assert_eq!(c.role(), ComponentRole::SteadyTone);
+        assert_eq!(
+            crate::rhythm::Method::primary_of(crate::test_support::form(c)),
+            crate::rhythm::Method::SteadyTone
+        );
         let form = crate::test_support::form(c);
         let issues: Vec<_> = form.intrinsic_issues().collect();
         assert_eq!(issues.len(), 1);

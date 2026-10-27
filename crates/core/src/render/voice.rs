@@ -4,7 +4,6 @@
 use crate::synthesis::{self, Carrier as Generator, GeneratorVoice, Modulator, Pulse};
 use crate::{Modulation, ParameterId, SampleRate, VoiceId, conversion};
 use core::fmt::{self, Display, Formatter};
-use serde::{Deserialize, Serialize};
 
 /// One carrier routed to one or both ears.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -35,8 +34,7 @@ pub enum Carrier {
     },
 }
 /// Which ears hear a component.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Ears {
     /// The left ear only.
     Left,
@@ -47,8 +45,7 @@ pub enum Ears {
 }
 
 /// One ear.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ear {
     /// The left ear: the first channel of each frame.
     Left,

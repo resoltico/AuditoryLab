@@ -460,19 +460,19 @@ impl CatalogQuery {
                     }
                     if entry.nominal.outside_bands() {
                         values.push((
-                            "other-rates".into(),
+                            "other_rates".into(),
                             GroupLabel::State(crate::core::query::RhythmState::OutsideBands),
                         ));
                     }
                     if entry.nominal.no_rhythm() {
                         values.push((
-                            "no-rhythm".into(),
+                            "no_rhythm".into(),
                             GroupLabel::State(crate::core::query::RhythmState::None),
                         ));
                     }
                     if entry.nominal.multiple() {
                         values.push((
-                            "multiple-rhythms".into(),
+                            "multiple_rhythms".into(),
                             GroupLabel::State(crate::core::query::RhythmState::Multiple),
                         ));
                     }
@@ -480,7 +480,7 @@ impl CatalogQuery {
                         || !entry.nominal.diagnostics.is_empty()
                     {
                         values.push((
-                            "needs-review".into(),
+                            "needs_review".into(),
                             GroupLabel::State(crate::core::query::RhythmState::NeedsReview),
                         ));
                     }
@@ -534,10 +534,10 @@ impl CatalogQuery {
                 "alpha",
                 "beta",
                 "gamma",
-                "other-rates",
-                "no-rhythm",
-                "multiple-rhythms",
-                "needs-review",
+                "other_rates",
+                "no_rhythm",
+                "multiple_rhythms",
+                "needs_review",
             ];
             groups.sort_by_key(|group| {
                 order

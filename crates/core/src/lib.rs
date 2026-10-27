@@ -76,8 +76,7 @@ pub use facts::{
 };
 pub use history::{DocumentIdentity, DocumentUuid, Timestamp};
 pub use parameter::{
-    CarrierKind, ComponentId, ComponentRole, Lane, ModulationKind, ParameterDescriptor,
-    ParameterId, Unit, VoiceId,
+    CarrierKind, ComponentId, Lane, ModulationKind, ParameterDescriptor, ParameterId, Unit, VoiceId,
 };
 pub use provenance::{
     BibliographySource, ConditionRole, Description, Evidence, EvidenceScope, Lineage, Measure,

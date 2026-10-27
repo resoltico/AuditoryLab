@@ -126,7 +126,7 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
             "display-only caption {caption}"
         );
     }
-    assert!(matches_search(&snapshot, "steady-tone 200"));
+    assert!(matches_search(&snapshot, "steady_tone 200"));
 }
 
 const fn finite(value: f64) -> auditorylab_core::Finite {

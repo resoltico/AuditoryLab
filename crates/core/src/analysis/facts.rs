@@ -151,8 +151,7 @@ impl VoiceFacts {
     }
 }
 /// Attribution of a generator slot during a structural crossfade.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotRole {
     /// Same generator continues, potentially gliding.
     Continuing,

@@ -499,7 +499,7 @@ fn a_focused_field_survives_updates_to_other_rows() {
     }
     h.settle();
     let nested_before = ui.get_components().row_data(1).unwrap().parameters;
-    let input = h.field("Click rhythm · Component 2: Clicks rate (Hz)");
+    let input = h.field("Clicks · Component 2: Clicks rate (Hz)");
     let inner = WindowInner::from_pub(ui.window());
     inner.set_focus_item(&input, true, FocusReason::Programmatic);
     for _ in 0..4 {
@@ -541,7 +541,7 @@ fn a_focused_field_survives_updates_to_other_rows() {
         "the nested model object is kept"
     );
     assert_eq!(
-        field(ui, "Click rhythm · Component 2: Clicks rate (Hz)"),
+        field(ui, "Clicks · Component 2: Clicks rate (Hz)"),
         input,
         "the moved row keeps its authored identity and the same widget"
     );
@@ -3302,7 +3302,7 @@ fn library_ux_component_menu_adds_every_kind_and_retains_its_document() {
     let ui = h.ui();
     for (index, label) in [
         "Add steady tone",
-        "Add click rhythm",
+        "Add clicks",
         "Add binaural pair",
         "Add monaural pair",
     ]
