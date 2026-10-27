@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     macro_rules! terms_from {
         ($($kind:ty),* $(,)?)=>{$(append_terms::<$kind>(&mut vocabulary,&mut properties)?;)*};
     }
-    use auditorylab_app::core::{
+    use auditorylab_core::{
         CarrierKind, ComponentRole, ConditionRole, Ear, Ears, EvidenceScope, Measure,
         ModulationKind, PairKind, ParameterId, Population, SlotRole,
         query::{Direction, GroupBy, RhythmState, Scope, SortBy},
@@ -137,7 +137,7 @@ fn append_term(
     ));
     Ok(())
 }
-fn append_terms<T: auditorylab_app::core::vocabulary::Vocabulary>(
+fn append_terms<T: auditorylab_core::vocabulary::Vocabulary>(
     output: &mut String,
     properties: &mut std::collections::BTreeSet<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {

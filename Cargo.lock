@@ -598,6 +598,7 @@ version = "0.6.0"
 dependencies = [
  "async-io",
  "auditorylab-app",
+ "auditorylab-core",
  "auditorylab-presentation",
  "block2 0.6.2",
  "embed-resource",
