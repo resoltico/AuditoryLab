@@ -3,7 +3,7 @@ import { BoundButton, BoundTitleEdit } from "library-controls.slint";
 import { LibraryNavigationItem } from "library-navigation.slint";
 import { Terms } from "vocabulary.slint";
 import { Palette, ComboBox, TextEdit, LineEdit, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
-import { CatalogRow, LibraryFacet, ModelLane } from "models.slint";
+import { LibraryMutationAction, CatalogRow, LibraryFacet, ModelLane } from "models.slint";
 import { Disclosure, ExportRate } from "editor.slint";
 
 
@@ -38,7 +38,7 @@ export component LibraryPane inherits Rectangle {
     in property <string> file-activity;
     in-out property <string> focused-library-key;
     in property <bool> has-results;
-    callback library-action(string, string, string, string);
+    callback library-action(string, string, LibraryMutationAction, string);
     in property <string> library-alert;
     in property <string> library-classification;
     in property <string> library-dates;
@@ -500,9 +500,9 @@ export component LibraryPane inherits Rectangle {
                                 if root.collection-choice == 3: BoundButton {enabled:root.can-new;text:Terms.action-edit-external-file;key:root.library-key;token:"";activated(k,t)=>{root.edit-saved(k,t);}}
                                 if root.collection-choice == 3: BoundButton {enabled:root.can-add-to-library;text:Terms.action-add-to-user-library;key:root.library-key;token:"";activated(k,t)=>{root.add-to-library(k);}}
                                 if root.library-token != "": VerticalBox { vertical-stretch:0;
-                                    if !root.library-trashed: BoundTitleEdit {enabled:root.can-manage-library;key:root.library-key;token:root.library-token;placeholder-text:Terms.caption-new-title;accessible-label:Terms.action-rename-saved-recipe;rename(k,t,value)=>{root.library-action(k,t,Terms.action-rename,value);} }
-                                    BoundButton {enabled:root.library-trashed ? root.can-manage-library : root.can-request-trash;text:root.library-trashed ? Terms.action-restore-from-trash : Terms.action-move-saved-entry-to-trash;key:root.library-key;token:root.library-token;action:root.library-trashed ? Terms.action-restore : Terms.action-trash;dispatch(k,t,action)=>{root.library-action(k,t,action,"");}}
-                                    if root.library-trashed: BoundButton {enabled:root.can-manage-library;text:Terms.action-permanently-delete-dialog;key:root.library-key;token:root.library-token;activated(k,t)=>{root.library-action(k,t,Terms.action-purge,"");}}
+                                    if !root.library-trashed: BoundTitleEdit {enabled:root.can-manage-library;key:root.library-key;token:root.library-token;placeholder-text:Terms.caption-new-title;accessible-label:Terms.action-rename-saved-recipe;rename(k,t,value)=>{root.library-action(k,t,LibraryMutationAction.rename,value);} }
+                                    BoundButton {enabled:root.library-trashed ? root.can-manage-library : root.can-request-trash;text:root.library-trashed ? Terms.action-restore-from-trash : Terms.action-move-saved-entry-to-trash;key:root.library-key;token:root.library-token;action:root.library-trashed ? LibraryMutationAction.restore : LibraryMutationAction.trash;dispatch(k,t,action)=>{root.library-action(k,t,action,"");}}
+                                    if root.library-trashed: BoundButton {enabled:root.can-manage-library;text:Terms.action-permanently-delete-dialog;key:root.library-key;token:root.library-token;activated(k,t)=>{root.library-action(k,t,LibraryMutationAction.request-purge,"");}}
                                 }
                                 Disclosure {label:Terms.caption-research-citation-and-sound-adaptations;expanded <=> root.research;}
                                 if root.research && root.can-open-study: Button {text:Terms.action-open-study-source;triggered =>{root.open-study();}}

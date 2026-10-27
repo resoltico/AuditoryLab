@@ -9,8 +9,8 @@ import { WorkspaceNavigation } from "workspace-navigation.slint";
 export { Terms } from "vocabulary.slint";
 import { Terms, Choices } from "vocabulary.slint";
 import { Palette, VerticalBox, HorizontalBox, ProgressIndicator } from "std-widgets.slint";
-export { CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
-import { CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+export { LibraryMutationAction, CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import { LibraryMutationAction, CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
 import { StableButton } from "editor.slint";
 export { AboutWindow, LicenseWindow } from "about.slint";
 
@@ -253,7 +253,7 @@ export component MainWindow inherits Window {
     in property <string> library-dates-utc;
     callback add-to-library(string);
     callback show-saved();
-    callback library-action(string, string, string, string);
+    callback library-action(string, string, LibraryMutationAction, string);
     callback search(string);
     callback rhythm-filter(int, int);
     in-out property <int> band-choice: 0;

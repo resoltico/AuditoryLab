@@ -40,7 +40,6 @@ pub(crate) fn refusal_text(refusal: &Refusal) -> String {
         Refusal::SelectionChanged => "Open file selection changed; activate Add again.".into(),
         Refusal::TemporaryRequired => "Select an Open file to add; use Edit a copy for Built-in content.".into(),
         Refusal::PurgeSelectionChanged => "Select the current trashed version before permanent deletion.".into(),
-        Refusal::UnknownLibraryAction(action) => format!("Unknown library action: {action}"),
         Refusal::DetachedDraft(key) => format!("Detached draft from {key}. Edit the restored saved entry or Save independent copy; the old identity is not recreated."),
         Refusal::ExistingSavedIdentity(_) => "Detached draft belongs to an existing saved identity. Restore/edit that version or Save independent copy.".into(),
         Refusal::SavedEntryUnreadable => "Saved entry is unreadable; the retained snapshot is for inspection. Refresh or recover an independent copy before playback.".into(),

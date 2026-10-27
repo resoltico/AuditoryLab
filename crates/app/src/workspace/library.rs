@@ -734,11 +734,18 @@ impl Workspace {
         &mut self,
         key: &str,
         token: &str,
-        action: &str,
-        title: &str,
+        mutation: EntryMutation,
+    ) -> Result<(), Refusal> {
+        self.mutate_library_with_confirmation(key, token, mutation, false)
+    }
+    pub(super) fn mutate_library_with_confirmation(
+        &mut self,
+        key: &str,
+        token: &str,
+        mutation: EntryMutation,
         confirmed: bool,
     ) -> Result<(), Refusal> {
-        let result = self.mutate_library_inner(key, token, action, title, confirmed);
+        let result = self.mutate_library_inner(key, token, mutation, confirmed);
         if let Err(refusal) = &result {
             self.files.status = FileStatus::Refused((refusal).clone());
         }
@@ -749,8 +756,7 @@ impl Workspace {
         &mut self,
         key: &str,
         token: &str,
-        action: &str,
-        title: &str,
+        mutation: EntryMutation,
         confirmed: bool,
     ) -> Result<(), Refusal> {
         let key: LibraryKey = key
@@ -766,14 +772,14 @@ impl Workspace {
                 .map_err(|e: crate::document::origin::OriginError| {
                     Refusal::Document(Box::new(e.into()))
                 })?;
-        if action == "trash" {
+        if matches!(mutation, EntryMutation::Trash) {
             self.trash_request_admission(&key)?;
         }
-        if action == "trash" && self.editor.dirty_managed(&key) {
+        if matches!(mutation, EntryMutation::Trash) && self.editor.dirty_managed(&key) {
             self.request(DocumentAction::TrashSaved { key, expect });
             return Ok(());
         }
-        if action == "purge" && !confirmed {
+        if matches!(mutation, EntryMutation::RequestPurge) && !confirmed {
             self.library_job_admission()?;
             let entry = {
                 self.library.entries.iter().find(|e| {
@@ -793,26 +799,25 @@ impl Workspace {
             });
             return Ok(());
         }
-        let mutation = match action {
-            "rename" => Mutation::Rename {
+        let mutation = match mutation {
+            EntryMutation::Rename { title } => Mutation::Rename {
                 key,
                 expect: Some(expect),
-                title: title.into(),
+                title,
             },
-            "trash" => Mutation::Trash {
-                key,
-                expect: Some(expect),
-            },
-            "restore" => Mutation::Restore {
+            EntryMutation::Trash => Mutation::Trash {
                 key,
                 expect: Some(expect),
             },
-            "purge" => Mutation::Purge {
+            EntryMutation::Restore => Mutation::Restore {
+                key,
+                expect: Some(expect),
+            },
+            EntryMutation::RequestPurge => Mutation::Purge {
                 key,
                 expect: Some(expect),
                 confirmed,
             },
-            _ => return Err(Refusal::UnknownLibraryAction(action.into())),
         };
         self.managed_job(Operation::Write {
             document: None,
@@ -1433,6 +1438,19 @@ impl LibraryState {
         self.refilter();
         Ok(())
     }
+}
+
+/// A managed row mutation, independent of display wording.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EntryMutation {
+    /// Rename the captured saved entry.
+    Rename { title: String },
+    /// Move the captured active entry to Trash.
+    Trash,
+    /// Restore the captured trashed entry.
+    Restore,
+    /// Ask for confirmation before permanently deleting the captured Trash entry.
+    RequestPurge,
 }
 
 /// Captured library and document-location context for frontend projections.

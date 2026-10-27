@@ -32,7 +32,7 @@ pub mod status;
 pub(crate) mod tasks;
 mod views;
 
-pub use library::{LibraryBinding, LibraryData, LibraryOutcome, SelectionBinding};
+pub use library::{EntryMutation, LibraryBinding, LibraryData, LibraryOutcome, SelectionBinding};
 pub use output::{MotionPreference, OutputView};
 pub use tasks::{
     Executor, FileOutcome, Job, JobContext, JobKind, JobOutcome, LibraryFailure, Runner,
@@ -237,8 +237,6 @@ pub enum Refusal {
     TemporaryRequired,
     /// Permanent deletion requires the current Trash version.
     PurgeSelectionChanged,
-    /// A request named no supported managed action.
-    UnknownLibraryAction(String),
     /// A detached draft must not recreate its old saved identity.
     DetachedDraft(crate::document::origin::LibraryKey),
     /// A draft UUID already belongs to a saved entry.
@@ -580,8 +578,12 @@ impl Workspace {
         }
         match (state, response) {
             (PromptState::Purge { key, expect }, PromptAnswer::Confirm) => {
-                let result =
-                    self.mutate_library(&key.to_string(), &expect.to_string(), "purge", "", true);
+                let result = self.mutate_library_with_confirmation(
+                    &key.to_string(),
+                    &expect.to_string(),
+                    EntryMutation::RequestPurge,
+                    true,
+                );
                 if let Err(refusal) = result {
                     self.files.status = FileStatus::Refused(refusal.clone());
                 }
@@ -1039,7 +1041,6 @@ impl std::fmt::Display for Refusal {
             Self::SelectionChanged => "workspace.selection_changed",
             Self::TemporaryRequired => "workspace.temporary_required",
             Self::PurgeSelectionChanged => "workspace.purge_selection_changed",
-            Self::UnknownLibraryAction(..) => "workspace.unknown_library_action",
             Self::DetachedDraft(..) => "workspace.detached_draft",
             Self::ExistingSavedIdentity(..) => "workspace.existing_saved_identity",
             Self::SavedEntryUnreadable => "workspace.saved_entry_unreadable",

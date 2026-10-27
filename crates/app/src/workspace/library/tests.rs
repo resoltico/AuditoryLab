@@ -205,8 +205,14 @@ fn two_editors_conflict_even_for_noop_and_refresh_preserves_draft() {
     user(&mut other);
     other.edit_selected();
     let (key, token, _) = binding(w.library_binding());
-    w.mutate_library(&key, &token, "rename", "renamed elsewhere", false)
-        .unwrap();
+    w.mutate_library(
+        &key,
+        &token,
+        EntryMutation::Rename {
+            title: "renamed elsewhere".into(),
+        },
+    )
+    .unwrap();
     idle(&mut w);
     other.save().unwrap();
     idle(&mut other);
@@ -237,7 +243,8 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     idle(&mut w);
     user(&mut w);
     let (key, token, _) = binding(w.library_binding());
-    w.mutate_library(&key, &token, "trash", "", false).unwrap();
+    w.mutate_library(&key, &token, EntryMutation::Trash)
+        .unwrap();
     idle(&mut w);
     assert!(w.library_view().rows.is_empty());
     w.set_catalog_query(CatalogQuery {
@@ -249,12 +256,12 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     let (_, trash_token, trashed) = binding(w.library_binding());
     assert!(trashed);
     assert!(w.prepare_audio().is_err());
-    w.mutate_library(&key, &trash_token, "restore", "", false)
+    w.mutate_library(&key, &trash_token, EntryMutation::Restore)
         .unwrap();
     idle(&mut w);
     user(&mut w);
     let (_, restored, _) = binding(w.library_binding());
-    w.mutate_library(&key, &restored, "trash", "", false)
+    w.mutate_library(&key, &restored, EntryMutation::Trash)
         .unwrap();
     idle(&mut w);
     w.set_catalog_query(CatalogQuery {
@@ -264,7 +271,7 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     .unwrap();
     idle(&mut w);
     let (_, current, _) = binding(w.library_binding());
-    w.mutate_library(&key, &current, "purge", "", false)
+    w.mutate_library(&key, &current, EntryMutation::RequestPurge)
         .unwrap();
     let prompt = w
         .take_effects()
@@ -351,7 +358,8 @@ fn save_before_trash_uses_confirmed_new_token_and_preserves_published_edit() {
     w.edit_selected();
     title(&mut w, "save before trash");
     let (key, token, _) = binding(w.library_binding());
-    w.mutate_library(&key, &token, "trash", "", false).unwrap();
+    w.mutate_library(&key, &token, EntryMutation::Trash)
+        .unwrap();
     let prompt = w
         .take_effects()
         .into_iter()
@@ -384,7 +392,8 @@ fn discard_before_trash_preserves_edits_made_after_the_job_was_captured() {
     title(&mut w, "before request");
     let (key, token, _) = binding(w.library_binding());
     let document = w.editor().document();
-    w.mutate_library(&key, &token, "trash", "", false).unwrap();
+    w.mutate_library(&key, &token, EntryMutation::Trash)
+        .unwrap();
     let prompt = w
         .take_effects()
         .into_iter()

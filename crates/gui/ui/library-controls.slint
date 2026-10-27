@@ -1,10 +1,11 @@
+import { LibraryMutationAction } from "models.slint";
 import { Button } from "button.slint";
 import { LineEdit } from "std-widgets.slint";
 // refresh while a pointer or keyboard press is held cannot retarget the action.
 export component BoundButton inherits Button {
-    in property <string> action;
-    private property <string> captured-action;
-    callback dispatch(string,string,string);
+    in property <LibraryMutationAction> action;
+    private property <LibraryMutationAction> captured-action;
+    callback dispatch(string,string,LibraryMutationAction);
     in property <string> key;
     in property <string> token;
     private property <string> captured-key;

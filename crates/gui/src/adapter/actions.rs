@@ -142,9 +142,18 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             reset_filter_inputs(&ui);
         }
     });
-    on!(on_library_action, |a, key, token, action, title| a.command(
-        |w| w.mutate_library(&key, &token, &action, &title, false)
-    ));
+    on!(on_library_action, |a, key, token, action, title| {
+        use auditorylab_app::workspace::EntryMutation;
+        let mutation = match action {
+            crate::generated::LibraryMutationAction::Rename => EntryMutation::Rename {
+                title: title.into(),
+            },
+            crate::generated::LibraryMutationAction::Trash => EntryMutation::Trash,
+            crate::generated::LibraryMutationAction::Restore => EntryMutation::Restore,
+            crate::generated::LibraryMutationAction::RequestPurge => EntryMutation::RequestPurge,
+        };
+        a.command(|w| w.mutate_library(&key, &token, mutation));
+    });
     on!(on_navigate_library, |a, direction| a
         .command(|w| w.navigate_library(direction)));
     on!(on_search, |a, query| a.command(|w| w.set_query(&query)));

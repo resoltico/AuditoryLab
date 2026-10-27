@@ -1671,7 +1671,12 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
     let key = ui.get_library_key();
     let token = ui.get_library_token();
-    ui.invoke_library_action(key.clone(), token, "trash".into(), "".into());
+    ui.invoke_library_action(
+        key.clone(),
+        token,
+        crate::generated::LibraryMutationAction::Trash,
+        "".into(),
+    );
     h.wait_for_files();
     ui.invoke_collection_filter(4, 0);
     h.wait_for_files();
@@ -1680,7 +1685,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     ui.invoke_library_action(
         key.clone(),
         ui.get_library_token(),
-        "restore".into(),
+        crate::generated::LibraryMutationAction::Restore,
         "".into(),
     );
     h.wait_for_files();
@@ -1689,7 +1694,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     ui.invoke_library_action(
         key.clone(),
         ui.get_library_token(),
-        "trash".into(),
+        crate::generated::LibraryMutationAction::Trash,
         "".into(),
     );
     h.wait_for_files();
@@ -1698,7 +1703,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     ui.invoke_library_action(
         key.clone(),
         ui.get_library_token(),
-        "purge".into(),
+        crate::generated::LibraryMutationAction::RequestPurge,
         "".into(),
     );
     let [Request::Purge(prompt, ref prompted, ref title)] = h.take()[..] else {
@@ -1815,12 +1820,14 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
 
 slint::slint! {
     import { BoundButton } from "ui/library-controls.slint";
+    export { LibraryMutationAction } from "ui/models.slint";
+    import { LibraryMutationAction } from "ui/models.slint";
     export component LibraryGestureProbe inherits Window {
         width:240px;height:100px;
         in-out property <string> entry-key;
         in-out property <string> version;
-        in-out property <string> operation;
-        callback delivered(string,string,string);
+        in-out property <LibraryMutationAction> operation;
+        callback delivered(string,string,LibraryMutationAction);
         BoundButton {x:10px;y:10px;width:220px;height:50px;text:"Bound library action";key:root.entry-key;token:root.version;action:root.operation;dispatch(k,t,a)=>{root.delivered(k,t,a);}}
     }
 }
@@ -1830,11 +1837,11 @@ fn native_library_pointer_gesture_keeps_key_token_and_action_through_rebind() {
     let probe = LibraryGestureProbe::new().unwrap();
     probe.set_entry_key("user:first".into());
     probe.set_version("observed-first".into());
-    probe.set_operation("trash".into());
+    probe.set_operation(LibraryMutationAction::Trash);
     let received = Rc::new(RefCell::new(None));
     let result = received.clone();
     probe.on_delivered(move |k, t, a| {
-        *result.borrow_mut() = Some((k.to_string(), t.to_string(), a.to_string()))
+        *result.borrow_mut() = Some((k.to_string(), t.to_string(), a))
     });
     probe.show().unwrap();
     settle(probe.window());
@@ -1845,7 +1852,7 @@ fn native_library_pointer_gesture_keeps_key_token_and_action_through_rebind() {
     });
     probe.set_entry_key("user:replacement".into());
     probe.set_version("replacement-token".into());
-    probe.set_operation("restore".into());
+    probe.set_operation(LibraryMutationAction::Restore);
     settle(probe.window());
     probe.window().dispatch_event(WindowEvent::PointerReleased {
         position,
@@ -1853,7 +1860,11 @@ fn native_library_pointer_gesture_keeps_key_token_and_action_through_rebind() {
     });
     assert_eq!(
         *received.borrow(),
-        Some(("user:first".into(), "observed-first".into(), "trash".into()))
+        Some((
+            "user:first".into(),
+            "observed-first".into(),
+            LibraryMutationAction::Trash
+        ))
     );
 }
 #[test]
