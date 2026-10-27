@@ -15,10 +15,10 @@ const fn rate() -> SampleRate {
 
 fn clicks(rate_hz: f64, width_seconds: f64) -> ComponentForm {
     ComponentForm::Clicks {
-        rate_hz,
-        width_seconds,
+        rate_hz: finite(rate_hz),
+        width_seconds: finite(width_seconds),
         ears: Ears::Both,
-        peak_dbfs: -20.0,
+        peak_dbfs: finite(-20.0),
         modulation: None,
     }
 }
@@ -28,14 +28,15 @@ fn clicks(rate_hz: f64, width_seconds: f64) -> ComponentForm {
     reason = "Fixture helper panics if its fixed component stops validating, failing the calling test"
 )]
 fn target(component: ComponentForm) -> Target {
-    Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: vec![Component {
+    Sound::new(
+        finite(1.0),
+        finite(0.0),
+        vec![Component {
             id: ComponentId::new(1).unwrap(),
             form: component,
         }],
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .target(rate())
     .unwrap()
 }
@@ -58,7 +59,7 @@ fn c() -> Target {
     target({
         let base = clicks(1.0, 0.1);
         ComponentForm::Tone {
-            frequency_hz: 120.0,
+            frequency_hz: finite(120.0),
             ears: base
                 .route()
                 .unwrap_or_else(|| panic!("primitive fixture route")),
@@ -261,4 +262,11 @@ fn stop_dominates_an_accepted_target_that_never_rendered() {
         last.active_revision, 1,
         "the waiting target never generated"
     );
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

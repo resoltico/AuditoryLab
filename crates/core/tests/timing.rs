@@ -12,25 +12,26 @@ fn id(n: u32) -> ComponentId {
     ComponentId::new(n).unwrap()
 }
 fn target(rate: SampleRate, voices: &[(ComponentId, ComponentForm)]) -> Result<Target, SoundError> {
-    Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: voices
+    Sound::new(
+        finite(1.0),
+        finite(0.0),
+        voices
             .iter()
             .map(|(id, voice)| Component {
                 id: *id,
                 form: *voice,
             })
             .collect(),
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .target(rate)
 }
 fn clicks(hz: f64, width: f64) -> ComponentForm {
     ComponentForm::Clicks {
-        rate_hz: hz,
-        width_seconds: width,
+        rate_hz: finite(hz),
+        width_seconds: finite(width),
         ears: Ears::Both,
-        peak_dbfs: -30.0,
+        peak_dbfs: finite(-30.0),
         modulation: None,
     }
 }
@@ -83,12 +84,12 @@ fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
     let component = {
         let base = clicks(40.0, 0.001);
         ComponentForm::Tone {
-            frequency_hz: 1000.0,
+            frequency_hz: finite(1000.0),
             ears: base.route().unwrap(),
             peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
             modulation: Some(Modulation::Gate {
-                rate_hz: 40.0,
-                width_seconds: 1.0 / 48000.0,
+                rate_hz: finite(40.0),
+                width_seconds: finite(1.0 / 48000.0),
             }),
         }
     };
@@ -99,10 +100,10 @@ fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
     // Negative control: the single point at a selected point just after the midpoint misses every one-frame pulse.
     let point = model.frames / 2 + 1;
     assert_ne!(point % 1200, 0);
-    let signal = auditorylab_core::Sound {
-        duration_seconds: 0.25,
-        fade_seconds: 0.0,
-        components: (vec![component])
+    let signal = auditorylab_core::Sound::new(
+        finite(0.25),
+        finite(0.0),
+        (vec![component])
             .into_iter()
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
@@ -110,7 +111,8 @@ fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
                 form: voice,
             })
             .collect(),
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .signal(rate)
     .unwrap();
     let mut out = [[0.0; 2]; 1201];
@@ -129,7 +131,7 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
         rate,
         &[(id(1), {
             let mut form = c;
-            form.set(auditorylab_core::ParameterId::PeakLevel, -10000.0);
+            form.set(auditorylab_core::ParameterId::PeakLevel, finite(-10000.0));
             form
         })],
     )
@@ -147,8 +149,8 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
     let c = {
         let mut form = clicks(40.0, 0.001);
         form.set_modulation(Some(Modulation::Am {
-            rate_hz: 39.0625,
-            depth: 1.0,
+            rate_hz: finite(39.0625),
+            depth: finite(1.0),
         }));
         form
     };
@@ -189,12 +191,12 @@ fn am_bounds_contain_independent_sine_samples_and_depth_zero_is_steady() {
             let c = {
                 let base = clicks(40.0, 0.001);
                 ComponentForm::Tone {
-                    frequency_hz: 1000.0,
+                    frequency_hz: finite(1000.0),
                     ears: base.route().unwrap(),
                     peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
                     modulation: Some(Modulation::Am {
-                        rate_hz: 39.0625,
-                        depth,
+                        rate_hz: finite(39.0625),
+                        depth: finite(depth),
                     }),
                 }
             };
@@ -224,8 +226,8 @@ fn maximum_rate_projection_has_fixed_storage_and_measured_cost() {
     let c = {
         let mut form = clicks(383999.0, 1.0 / 768000.0);
         form.set_modulation(Some(Modulation::Am {
-            rate_hz: 383999.0,
-            depth: 1.0,
+            rate_hz: finite(383999.0),
+            depth: finite(1.0),
         }));
         form
     };
@@ -251,7 +253,7 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
     let tone = {
         let base = clicks(40.0, 0.001);
         ComponentForm::Tone {
-            frequency_hz: 1000.0,
+            frequency_hz: finite(1000.0),
             ears: base.route().unwrap(),
             peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
             modulation: base.modulation(),
@@ -259,12 +261,12 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
     };
     for modulation in [
         Modulation::Gate {
-            rate_hz: 2.0,
-            width_seconds: 0.001,
+            rate_hz: finite(2.0),
+            width_seconds: finite(0.001),
         },
         Modulation::Am {
-            rate_hz: 2.0,
-            depth: 0.5,
+            rate_hz: finite(2.0),
+            depth: finite(0.5),
         },
     ] {
         let model = target(
@@ -293,8 +295,8 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
         &[(id(1), {
             let mut form = tone;
             form.set_modulation(Some(Modulation::Am {
-                rate_hz: 0.1,
-                depth: 0.0,
+                rate_hz: finite(0.1),
+                depth: finite(0.0),
             }));
             form
         })],
@@ -316,8 +318,8 @@ fn envelope_bounds_match_endpoints_and_quarter_cycle_extrema() {
         let component = {
             let mut form = clicks(40.0, 0.001);
             form.set_modulation(Some(Modulation::Am {
-                rate_hz: 8.0,
-                depth,
+                rate_hz: finite(8.0),
+                depth: finite(depth),
             }));
             form
         };
@@ -356,5 +358,12 @@ fn envelope_bounds_match_endpoints_and_quarter_cycle_extrema() {
                 "max {depth} {i}: {extent:?}/{high}"
             );
         }
+    }
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
     }
 }

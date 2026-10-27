@@ -7,10 +7,17 @@ pub(crate) fn silent(seconds: f64, fade: f64) -> Recipe {
         created_at: None,
         modified_at: None,
     });
-    recipe.sound.duration_seconds = seconds;
-    recipe.sound.fade_seconds = fade;
+    recipe.content.sound.set_duration(finite(seconds));
+    recipe.content.sound.set_fade(finite(fade));
     match recipe.build() {
         Ok(recipe) => recipe,
         Err(error) => panic!("invalid test recipe: {error}"),
+    }
+}
+
+const fn finite(value: f64) -> auditorylab_app::core::Finite {
+    match auditorylab_app::core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
     }
 }

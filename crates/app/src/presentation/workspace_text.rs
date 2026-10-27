@@ -265,7 +265,7 @@ pub(crate) fn editor_view(
                         staged: editor.staged(field).is_some(),
                         slider: committed
                             .get(parameter)
-                            .and_then(|v| controls::slider_position(parameter, rate, v)),
+                            .and_then(|v| controls::slider_position(parameter, rate, v.get())),
                         diagnostic,
                     }
                 })
@@ -629,8 +629,8 @@ pub(crate) fn library_view(
             .unwrap_or_default(),
         timing: format!(
             "Duration {} · fade {} at each edge",
-            NumberStyle::Duration.format(snapshot.sound().duration_seconds),
-            NumberStyle::Duration.format(snapshot.sound().fade_seconds)
+            NumberStyle::Duration.format(snapshot.sound().duration_seconds().get()),
+            NumberStyle::Duration.format(snapshot.sound().fade_seconds().get())
         ),
         summary: about
             .and_then(|a| {

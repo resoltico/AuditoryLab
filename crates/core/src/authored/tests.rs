@@ -44,19 +44,19 @@ fn pair_parameters_read_exact_values_and_write_only_the_requested_field() {
                 {
                     ComponentForm::MonauralPair {
                         ears: Ears::Right,
-                        first_hz: pair.first_hz,
-                        offset_hz: pair.offset_hz,
-                        first_peak_dbfs: pair.first_peak_dbfs,
-                        second_peak_dbfs: pair.second_peak_dbfs,
+                        first_hz: crate::test_support::finite(pair.first_hz),
+                        offset_hz: crate::test_support::finite(pair.offset_hz),
+                        first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                        second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                     }
                 }
             } else {
                 {
                     ComponentForm::BinauralPair {
-                        left_hz: pair.first_hz,
-                        offset_hz: pair.offset_hz,
-                        left_peak_dbfs: pair.first_peak_dbfs,
-                        right_peak_dbfs: pair.second_peak_dbfs,
+                        left_hz: crate::test_support::finite(pair.first_hz),
+                        offset_hz: crate::test_support::finite(pair.offset_hz),
+                        left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                        right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                     }
                 }
             }
@@ -96,10 +96,16 @@ fn pair_parameters_read_exact_values_and_write_only_the_requested_field() {
             ),
         ] {
             let mut actual = make(original);
-            assert_eq!(actual.get(parameter), Some(before));
-            assert!(actual.set(parameter, 317.0));
+            assert_eq!(
+                actual.get(parameter),
+                Some(crate::test_support::finite(before))
+            );
+            assert!(actual.set(parameter, crate::test_support::finite(317.0)));
             assert_eq!(actual, make(after));
-            assert_eq!(actual.get(parameter), Some(317.0));
+            assert_eq!(
+                actual.get(parameter),
+                Some(crate::test_support::finite(317.0))
+            );
         }
         for parameter in [
             P::ToneFrequency,
@@ -115,19 +121,25 @@ fn pair_parameters_read_exact_values_and_write_only_the_requested_field() {
         ] {
             let mut actual = make(original);
             assert_eq!(actual.get(parameter), None);
-            assert!(!actual.set(parameter, 999.0));
+            assert!(!actual.set(parameter, crate::test_support::finite(999.0)));
             assert_eq!(actual, make(original));
         }
     }
     let mut primitive = crate::test_support::form(tone(437.0, -24.0, Ears::Left));
-    assert_eq!(primitive.get(P::ToneFrequency), Some(437.0));
-    assert_eq!(primitive.get(P::PeakLevel), Some(-24.0));
-    assert!(primitive.set(P::ToneFrequency, 509.0));
+    assert_eq!(
+        primitive.get(P::ToneFrequency),
+        Some(crate::test_support::finite(437.0))
+    );
+    assert_eq!(
+        primitive.get(P::PeakLevel),
+        Some(crate::test_support::finite(-24.0))
+    );
+    assert!(primitive.set(P::ToneFrequency, crate::test_support::finite(509.0)));
     assert_eq!(
         primitive,
         crate::test_support::form(tone(509.0, -24.0, Ears::Left))
     );
-    assert!(!primitive.set(P::PairOffset, 6.0));
+    assert!(!primitive.set(P::PairOffset, crate::test_support::finite(6.0)));
     assert_eq!(primitive.get(P::PairOffset), None);
     assert_eq!(
         primitive,
@@ -148,15 +160,15 @@ fn node_content_comparison_preserves_shape_routes_and_each_requested_value() {
     };
     let am = Voice {
         modulation: Some(M::Am {
-            rate_hz: 7.0,
-            depth: 0.5,
+            rate_hz: crate::test_support::finite(7.0),
+            depth: crate::test_support::finite(0.5),
         }),
         ..plain
     };
     let gate = Voice {
         modulation: Some(M::Gate {
-            rate_hz: 7.0,
-            width_seconds: 0.01,
+            rate_hz: crate::test_support::finite(7.0),
+            width_seconds: crate::test_support::finite(0.01),
         }),
         ..plain
     };
@@ -217,8 +229,8 @@ fn node_content_comparison_preserves_shape_routes_and_each_requested_value() {
             crate::test_support::form(am),
             crate::test_support::form(Voice {
                 modulation: Some(M::Am {
-                    rate_hz: 8.0,
-                    depth: 0.5,
+                    rate_hz: crate::test_support::finite(8.0),
+                    depth: crate::test_support::finite(0.5),
                 }),
                 ..am
             }),
@@ -227,8 +239,8 @@ fn node_content_comparison_preserves_shape_routes_and_each_requested_value() {
             crate::test_support::form(am),
             crate::test_support::form(Voice {
                 modulation: Some(M::Am {
-                    rate_hz: 7.0,
-                    depth: 0.6,
+                    rate_hz: crate::test_support::finite(7.0),
+                    depth: crate::test_support::finite(0.6),
                 }),
                 ..am
             }),
@@ -237,8 +249,8 @@ fn node_content_comparison_preserves_shape_routes_and_each_requested_value() {
             crate::test_support::form(gate),
             crate::test_support::form(Voice {
                 modulation: Some(M::Gate {
-                    rate_hz: 8.0,
-                    width_seconds: 0.01,
+                    rate_hz: crate::test_support::finite(8.0),
+                    width_seconds: crate::test_support::finite(0.01),
                 }),
                 ..gate
             }),
@@ -247,8 +259,8 @@ fn node_content_comparison_preserves_shape_routes_and_each_requested_value() {
             crate::test_support::form(gate),
             crate::test_support::form(Voice {
                 modulation: Some(M::Gate {
-                    rate_hz: 7.0,
-                    width_seconds: 0.02,
+                    rate_hz: crate::test_support::finite(7.0),
+                    width_seconds: crate::test_support::finite(0.02),
                 }),
                 ..gate
             }),
@@ -257,30 +269,30 @@ fn node_content_comparison_preserves_shape_routes_and_each_requested_value() {
             {
                 let pair = p;
                 ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
+                    left_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             },
             {
                 let pair = p;
                 ComponentForm::MonauralPair {
                     ears: Ears::Left,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
+                    first_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             },
         ),
         (crate::test_support::form(plain), {
             let pair = p;
             ComponentForm::BinauralPair {
-                left_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                left_peak_dbfs: pair.first_peak_dbfs,
-                right_peak_dbfs: pair.second_peak_dbfs,
+                left_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
         }),
         (
@@ -288,20 +300,20 @@ fn node_content_comparison_preserves_shape_routes_and_each_requested_value() {
                 let pair = p;
                 ComponentForm::MonauralPair {
                     ears: Ears::Left,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
+                    first_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             },
             {
                 let pair = p;
                 ComponentForm::MonauralPair {
                     ears: Ears::Right,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
+                    first_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             },
         ),
@@ -328,19 +340,19 @@ fn node_content_comparison_preserves_shape_routes_and_each_requested_value() {
             {
                 let pair = p;
                 ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
+                    left_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             },
             {
                 let pair = changed;
                 ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
+                    left_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             },
         ));
@@ -349,27 +361,27 @@ fn node_content_comparison_preserves_shape_routes_and_each_requested_value() {
                 let pair = p;
                 ComponentForm::MonauralPair {
                     ears: Ears::Both,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
+                    first_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             },
             {
                 let pair = changed;
                 ComponentForm::MonauralPair {
                     ears: Ears::Both,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
+                    first_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             },
         ));
     }
     for (left, right) in unequal {
-        assert!(!left.same_content(right), "{left:?} versus {right:?}");
-        assert!(!right.same_content(left));
+        assert!(!(left == right), "{left:?} versus {right:?}");
+        assert!(!(right == left));
     }
     for value in [
         crate::test_support::form(plain),
@@ -379,33 +391,38 @@ fn node_content_comparison_preserves_shape_routes_and_each_requested_value() {
         {
             let pair = p;
             ComponentForm::BinauralPair {
-                left_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                left_peak_dbfs: pair.first_peak_dbfs,
-                right_peak_dbfs: pair.second_peak_dbfs,
+                left_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
         },
         {
             let pair = p;
             ComponentForm::MonauralPair {
                 ears: Ears::Both,
-                first_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                first_peak_dbfs: pair.first_peak_dbfs,
-                second_peak_dbfs: pair.second_peak_dbfs,
+                first_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
         },
     ] {
-        assert!(value.same_content(value), "{value:?}");
+        assert!((value == value), "{value:?}");
     }
 }
 
 #[test]
-fn node_content_comparison_uses_bits_for_nan_payloads_and_signed_zero() {
+fn content_equality_preserves_signed_zero_and_nan_payloads_are_rejected() {
     let nan = f64::from_bits(0x7ff8_0000_0000_0042);
     let other_nan = f64::from_bits(0x7ff8_0000_0000_0043);
     for value in [0.0, nan] {
         let changed = if value.is_nan() { other_nan } else { -0.0 };
+        if !value.is_finite() {
+            assert!(crate::Finite::new(value).is_none());
+            assert!(crate::Finite::new(changed).is_none());
+            continue;
+        }
         for (left, right) in [
             (
                 crate::test_support::form(tone(value, -20.0, Ears::Both)),
@@ -415,19 +432,19 @@ fn node_content_comparison_uses_bits_for_nan_payloads_and_signed_zero() {
                 {
                     let pair = pair(value);
                     ComponentForm::BinauralPair {
-                        left_hz: pair.first_hz,
-                        offset_hz: pair.offset_hz,
-                        left_peak_dbfs: pair.first_peak_dbfs,
-                        right_peak_dbfs: pair.second_peak_dbfs,
+                        left_hz: crate::test_support::finite(pair.first_hz),
+                        offset_hz: crate::test_support::finite(pair.offset_hz),
+                        left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                        right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                     }
                 },
                 {
                     let pair = pair(changed);
                     ComponentForm::BinauralPair {
-                        left_hz: pair.first_hz,
-                        offset_hz: pair.offset_hz,
-                        left_peak_dbfs: pair.first_peak_dbfs,
-                        right_peak_dbfs: pair.second_peak_dbfs,
+                        left_hz: crate::test_support::finite(pair.first_hz),
+                        offset_hz: crate::test_support::finite(pair.offset_hz),
+                        left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                        right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                     }
                 },
             ),
@@ -436,58 +453,69 @@ fn node_content_comparison_uses_bits_for_nan_payloads_and_signed_zero() {
                     let pair = pair(value);
                     ComponentForm::MonauralPair {
                         ears: Ears::Both,
-                        first_hz: pair.first_hz,
-                        offset_hz: pair.offset_hz,
-                        first_peak_dbfs: pair.first_peak_dbfs,
-                        second_peak_dbfs: pair.second_peak_dbfs,
+                        first_hz: crate::test_support::finite(pair.first_hz),
+                        offset_hz: crate::test_support::finite(pair.offset_hz),
+                        first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                        second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                     }
                 },
                 {
                     let pair = pair(changed);
                     ComponentForm::MonauralPair {
                         ears: Ears::Both,
-                        first_hz: pair.first_hz,
-                        offset_hz: pair.offset_hz,
-                        first_peak_dbfs: pair.first_peak_dbfs,
-                        second_peak_dbfs: pair.second_peak_dbfs,
+                        first_hz: crate::test_support::finite(pair.first_hz),
+                        offset_hz: crate::test_support::finite(pair.offset_hz),
+                        first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                        second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                     }
                 },
             ),
         ] {
-            assert!(left.same_content(left));
-            assert!(!left.same_content(right));
-            assert!(!right.same_content(left));
+            assert!((left == left));
+            assert!(!(left == right));
+            assert!(!(right == left));
         }
     }
 }
 
 #[test]
 fn sound_content_comparison_keeps_envelope_owner_order_and_component_identity() {
-    let original = Sound {
-        duration_seconds: 2.0,
-        fade_seconds: 0.125,
-        components: vec![
+    let original = Sound::new(
+        crate::test_support::finite(2.0),
+        crate::test_support::finite(0.125),
+        vec![
             form(7, crate::test_support::form(tone(437.0, -24.0, Ears::Left))),
             form(19, {
                 let pair = pair(-6.0);
                 ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
+                    left_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             }),
         ],
-    };
-    assert!(original.same_content(&original.clone()));
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+    assert!((original == original.clone()));
     let mut changed = vec![
-        Sound {
-            duration_seconds: 3.0,
-            ..original.clone()
+        {
+            let base = original.clone();
+            Sound::new(
+                crate::test_support::finite(3.0),
+                base.fade_seconds(),
+                base.components().to_vec(),
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         },
-        Sound {
-            fade_seconds: 0.25,
-            ..original.clone()
+        {
+            let base = original.clone();
+            Sound::new(
+                base.duration_seconds(),
+                crate::test_support::finite(0.25),
+                base.components().to_vec(),
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         },
     ];
     let mut shorter = original.clone();
@@ -503,10 +531,10 @@ fn sound_content_comparison_keeps_envelope_owner_order_and_component_identity() 
     parameter.components[1].form = {
         let pair = pair(-7.0);
         ComponentForm::BinauralPair {
-            left_hz: pair.first_hz,
-            offset_hz: pair.offset_hz,
-            left_peak_dbfs: pair.first_peak_dbfs,
-            right_peak_dbfs: pair.second_peak_dbfs,
+            left_hz: crate::test_support::finite(pair.first_hz),
+            offset_hz: crate::test_support::finite(pair.offset_hz),
+            left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+            right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
         }
     };
     changed.push(parameter);
@@ -514,16 +542,16 @@ fn sound_content_comparison_keeps_envelope_owner_order_and_component_identity() 
     shape.components[0].form = {
         let pair = pair(-6.0);
         ComponentForm::BinauralPair {
-            left_hz: pair.first_hz,
-            offset_hz: pair.offset_hz,
-            left_peak_dbfs: pair.first_peak_dbfs,
-            right_peak_dbfs: pair.second_peak_dbfs,
+            left_hz: crate::test_support::finite(pair.first_hz),
+            offset_hz: crate::test_support::finite(pair.offset_hz),
+            left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+            right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
         }
     };
     changed.push(shape);
     for candidate in changed {
-        assert!(!original.same_content(&candidate), "{candidate:?}");
-        assert!(!candidate.same_content(&original));
+        assert!(!(original == candidate), "{candidate:?}");
+        assert!(!(candidate == original));
     }
     // Envelope comparisons retain bits too, including invalid-but-editable values.
     for (first, second) in [
@@ -533,24 +561,53 @@ fn sound_content_comparison_keeps_envelope_owner_order_and_component_identity() 
             f64::from_bits(0x7ff8_0000_0000_0043),
         ),
     ] {
-        let duration = Sound {
-            duration_seconds: first,
-            ..original.clone()
+        if !first.is_finite() {
+            assert!(crate::Finite::new(first).is_none());
+            assert!(crate::Finite::new(second).is_none());
+            continue;
+        }
+        let duration = {
+            let base = original.clone();
+            Sound::new(
+                crate::test_support::finite(first),
+                base.fade_seconds(),
+                base.components().to_vec(),
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         };
-        assert!(duration.same_content(&duration.clone()));
-        assert!(!duration.same_content(&Sound {
-            duration_seconds: second,
-            ..duration.clone()
-        }));
-        let fade = Sound {
-            fade_seconds: first,
-            ..original.clone()
+        assert!((duration == duration.clone()));
+        assert!(
+            !(duration == {
+                let base = duration.clone();
+                Sound::new(
+                    crate::test_support::finite(second),
+                    base.fade_seconds(),
+                    base.components().to_vec(),
+                )
+                .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
+            })
+        );
+        let fade = {
+            let base = original.clone();
+            Sound::new(
+                base.duration_seconds(),
+                crate::test_support::finite(first),
+                base.components().to_vec(),
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         };
-        assert!(fade.same_content(&fade.clone()));
-        assert!(!fade.same_content(&Sound {
-            fade_seconds: second,
-            ..fade.clone()
-        }));
+        assert!((fade == fade.clone()));
+        assert!(
+            !(fade == {
+                let base = fade.clone();
+                Sound::new(
+                    base.duration_seconds(),
+                    crate::test_support::finite(second),
+                    base.components().to_vec(),
+                )
+                .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
+            })
+        );
     }
 }
 
@@ -582,8 +639,8 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
         (
             crate::test_support::form(Voice {
                 modulation: Some(M::Am {
-                    rate_hz: 7.0,
-                    depth: 0.5,
+                    rate_hz: crate::test_support::finite(7.0),
+                    depth: crate::test_support::finite(0.5),
                 }),
                 ..plain
             }),
@@ -595,8 +652,8 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
         (
             crate::test_support::form(Voice {
                 modulation: Some(M::Gate {
-                    rate_hz: 7.0,
-                    width_seconds: 0.01,
+                    rate_hz: crate::test_support::finite(7.0),
+                    width_seconds: crate::test_support::finite(0.01),
                 }),
                 ..plain
             }),
@@ -609,10 +666,10 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
             {
                 let pair = pair(-6.0);
                 ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
+                    left_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             },
             None,
@@ -625,10 +682,10 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
                 let pair = pair(-6.0);
                 ComponentForm::MonauralPair {
                     ears: Ears::Right,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
+                    first_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             },
             None,
@@ -651,20 +708,20 @@ fn component_deserialization_rejects_zero_and_preserves_positive_owners() {
         {
             let pair = pair(-6.0);
             ComponentForm::BinauralPair {
-                left_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                left_peak_dbfs: pair.first_peak_dbfs,
-                right_peak_dbfs: pair.second_peak_dbfs,
+                left_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
         },
         {
             let pair = pair(6.0);
             ComponentForm::MonauralPair {
                 ears: Ears::Right,
-                first_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                first_peak_dbfs: pair.first_peak_dbfs,
-                second_peak_dbfs: pair.second_peak_dbfs,
+                first_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
         },
     ] {
@@ -685,10 +742,10 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
                 {
                     let pair = pair(offset);
                     ComponentForm::BinauralPair {
-                        left_hz: pair.first_hz,
-                        offset_hz: pair.offset_hz,
-                        left_peak_dbfs: pair.first_peak_dbfs,
-                        right_peak_dbfs: pair.second_peak_dbfs,
+                        left_hz: crate::test_support::finite(pair.first_hz),
+                        offset_hz: crate::test_support::finite(pair.offset_hz),
+                        left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                        right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                     }
                 },
                 [Ears::Left, Ears::Right],
@@ -698,10 +755,10 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
                     let pair = pair(offset);
                     ComponentForm::MonauralPair {
                         ears: Ears::Both,
-                        first_hz: pair.first_hz,
-                        offset_hz: pair.offset_hz,
-                        first_peak_dbfs: pair.first_peak_dbfs,
-                        second_peak_dbfs: pair.second_peak_dbfs,
+                        first_hz: crate::test_support::finite(pair.first_hz),
+                        offset_hz: crate::test_support::finite(pair.offset_hz),
+                        first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                        second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                     }
                 },
                 [Ears::Both, Ears::Both],
@@ -726,14 +783,17 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
             assert_ne!(lowered[0].0, lowered[1].0);
             for hz in [44_100, 48_000, 96_000] {
                 let rate = SampleRate::new(hz).unwrap();
-                let target = TargetCheck::authored(rate, &[form(u32::MAX, node_kind)])
-                    .into_result()
-                    .unwrap();
+                let target = TargetCheck::authored(
+                    rate,
+                    &crate::test_support::authored(&[form(u32::MAX, node_kind)]),
+                )
+                .into_result()
+                .unwrap();
                 let actual = target.signal(1.0, 0.1).unwrap();
-                let expected = Sound {
-                    duration_seconds: 1.0,
-                    fade_seconds: 0.1,
-                    components: (vec![
+                let expected = Sound::new(
+                    crate::test_support::finite(1.0),
+                    crate::test_support::finite(0.1),
+                    (vec![
                         tone(200.0, -20.0, routes[0]),
                         tone(second, -30.0, routes[1]),
                     ])
@@ -744,7 +804,8 @@ fn signed_pairs_lower_into_exact_ordered_raw_oracles_and_stable_lanes() {
                         form: crate::test_support::form(voice),
                     })
                     .collect(),
-                }
+                )
+                .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
                 .signal(rate)
                 .unwrap();
                 for frame in [0, 1, 199, 4799, 9999, 44098] {
@@ -765,10 +826,10 @@ fn raw_order_is_never_regrouped_and_both_budgets_are_enforced() {
         form(2, {
             let pair = pair(6.0);
             ComponentForm::BinauralPair {
-                left_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                left_peak_dbfs: pair.first_peak_dbfs,
-                right_peak_dbfs: pair.second_peak_dbfs,
+                left_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
         }),
         form(9, crate::test_support::form(raw)),
@@ -785,10 +846,10 @@ fn raw_order_is_never_regrouped_and_both_budgets_are_enforced() {
             form(id, {
                 let pair = pair(6.0);
                 ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
+                    left_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                 }
             })
         })
@@ -797,18 +858,30 @@ fn raw_order_is_never_regrouped_and_both_budgets_are_enforced() {
     let mut nine = eight;
     nine.push(form(9, crate::test_support::form(raw)));
     assert_eq!(
-        Sound::check_structure(&nine),
+        Sound::new(
+            crate::test_support::finite(1.0),
+            crate::test_support::finite(0.0),
+            nine.to_vec()
+        ),
         Err(StructureError::VoiceBudget { count: 17 })
     );
     let raw17 = (1..=17)
         .map(|id| form(id, crate::test_support::form(raw)))
         .collect::<Vec<_>>();
     assert_eq!(
-        Sound::check_structure(&raw17),
+        Sound::new(
+            crate::test_support::finite(1.0),
+            crate::test_support::finite(0.0),
+            raw17.to_vec()
+        ),
         Err(StructureError::ComponentBudget { count: 17 })
     );
     assert_eq!(
-        Sound::check_structure(&[values[0], values[0]]),
+        Sound::new(
+            crate::test_support::finite(1.0),
+            crate::test_support::finite(0.0),
+            [values[0], values[0]].to_vec()
+        ),
         Err(StructureError::Identity {
             id: ComponentId::new(7).unwrap()
         })
@@ -831,7 +904,7 @@ fn coupled_pair_failures_are_not_clamped_or_rounded_into_valid_audio() {
             ..pair(0.0)
         };
         assert!(
-            matches!(crate::authored::lower(&form(1,{ let pair = p; ComponentForm::BinauralPair { left_hz: pair.first_hz, offset_hz: pair.offset_hz, left_peak_dbfs: pair.first_peak_dbfs, right_peak_dbfs: pair.second_peak_dbfs } })),Err(PairError {issue:found,..}) if found==issue)
+            matches!(crate::authored::lower(&form(1,{ let pair = p; ComponentForm::BinauralPair { left_hz: crate::test_support::finite(pair.first_hz), offset_hz: crate::test_support::finite(pair.offset_hz), left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs), right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs) } })),Err(PairError {issue:found,..}) if found==issue)
         );
     }
 }
@@ -844,10 +917,10 @@ fn authored_wire_shape_has_one_carrier_authority_and_preserves_ids() {
         [form(u32::MAX, {
             let pair = pair(-2.0);
             ComponentForm::BinauralPair {
-                left_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                left_peak_dbfs: pair.first_peak_dbfs,
-                right_peak_dbfs: pair.second_peak_dbfs,
+                left_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
         })]
     );
@@ -874,42 +947,48 @@ fn requested_pair_intent_survives_identical_realized_audio_without_a_new_live_ra
     let rate = SampleRate::new(768_000).unwrap();
     let mut p = pair(13.0);
     p.first_hz = 200_000.0;
-    let a = Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: vec![form(1, {
+    let a = Sound::new(
+        crate::test_support::finite(1.0),
+        crate::test_support::finite(0.0),
+        vec![form(1, {
             let pair = p;
             ComponentForm::BinauralPair {
-                left_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                left_peak_dbfs: pair.first_peak_dbfs,
-                right_peak_dbfs: pair.second_peak_dbfs,
+                left_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
         })],
-    };
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
     p.offset_hz = 13.0_f64.next_up();
-    let b = Sound {
-        components: vec![form(1, {
-            let pair = p;
-            ComponentForm::BinauralPair {
-                left_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                left_peak_dbfs: pair.first_peak_dbfs,
-                right_peak_dbfs: pair.second_peak_dbfs,
-            }
-        })],
-        ..a.clone()
+    let b = {
+        let base = a.clone();
+        Sound::new(
+            base.duration_seconds(),
+            base.fade_seconds(),
+            vec![form(1, {
+                let pair = p;
+                ComponentForm::BinauralPair {
+                    left_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
+                }
+            })],
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     };
     let first = a.target(rate).unwrap();
     let second = b.target(rate).unwrap();
     assert!(first.same_audio(&second));
     assert_ne!(first, second);
     assert_eq!(
-        auditorylab_core::rhythm::nominal(&a.components).bands,
+        auditorylab_core::rhythm::nominal(&crate::test_support::authored(&a.components)).bands,
         [auditorylab_core::rhythm::Band::Alpha]
     );
     assert_eq!(
-        auditorylab_core::rhythm::nominal(&b.components).bands,
+        auditorylab_core::rhythm::nominal(&crate::test_support::authored(&b.components)).bands,
         [auditorylab_core::rhythm::Band::Beta]
     );
     assert_eq!(
@@ -932,21 +1011,26 @@ fn requested_pair_intent_survives_identical_realized_audio_without_a_new_live_ra
             .all(|v| v.facts.pair.unwrap().offset_hz == 13.0_f64.next_up())
     );
     // Both coupled fields are attributed when the second requested carrier fails.
-    let bad = Sound {
-        components: vec![form(1, {
-            let pair = Pair {
-                first_hz: 23_999.0,
-                offset_hz: 6.0,
-                ..pair(0.0)
-            };
-            ComponentForm::BinauralPair {
-                left_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                left_peak_dbfs: pair.first_peak_dbfs,
-                right_peak_dbfs: pair.second_peak_dbfs,
-            }
-        })],
-        ..a.clone()
+    let bad = {
+        let base = a.clone();
+        Sound::new(
+            base.duration_seconds(),
+            base.fade_seconds(),
+            vec![form(1, {
+                let pair = Pair {
+                    first_hz: 23_999.0,
+                    offset_hz: 6.0,
+                    ..pair(0.0)
+                };
+                ComponentForm::BinauralPair {
+                    left_hz: crate::test_support::finite(pair.first_hz),
+                    offset_hz: crate::test_support::finite(pair.offset_hz),
+                    left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                    right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
+                }
+            })],
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     };
     let error = bad.target(SampleRate::DEFAULT).unwrap_err();
     assert!(matches!(error, SoundError::PairCarrier { .. }));
@@ -955,7 +1039,7 @@ fn requested_pair_intent_survives_identical_realized_audio_without_a_new_live_ra
         [ParameterId::PairFirstFrequency, ParameterId::PairOffset]
     );
     let mut both_bad = bad;
-    both_bad.duration_seconds = -1.0;
+    both_bad.set_duration(crate::test_support::finite(-1.0));
     assert!(
         matches!(
             both_bad.signal(SampleRate::DEFAULT),
@@ -978,21 +1062,27 @@ fn live_pair_replacements_and_stop_keep_the_expanded_slot_bound() {
                         ..pair(offset)
                     };
                     ComponentForm::BinauralPair {
-                        left_hz: pair.first_hz,
-                        offset_hz: pair.offset_hz,
-                        left_peak_dbfs: pair.first_peak_dbfs,
-                        right_peak_dbfs: pair.second_peak_dbfs,
+                        left_hz: crate::test_support::finite(pair.first_hz),
+                        offset_hz: crate::test_support::finite(pair.offset_hz),
+                        left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                        right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                     }
                 })
             })
             .collect::<Vec<_>>()
     };
-    let a = auditorylab_core::TargetCheck::authored(rate, &make(1, 6.0))
-        .into_result()
-        .unwrap();
-    let b = auditorylab_core::TargetCheck::authored(rate, &make(101, 40.0))
-        .into_result()
-        .unwrap();
+    let a = auditorylab_core::TargetCheck::authored(
+        rate,
+        &crate::test_support::authored(&make(1, 6.0)),
+    )
+    .into_result()
+    .unwrap();
+    let b = auditorylab_core::TargetCheck::authored(
+        rate,
+        &crate::test_support::authored(&make(101, 40.0)),
+    )
+    .into_result()
+    .unwrap();
     let mut engine = auditorylab_core::live::Engine::new(rate);
     engine.set(&a);
     let mut frames = [[0.0; 2]; 256];
@@ -1032,15 +1122,18 @@ fn pair_timing_extends_only_the_bounded_model_not_the_audio_history() {
     let nodes = [form(1, {
         let pair = pair(2.0);
         ComponentForm::BinauralPair {
-            left_hz: pair.first_hz,
-            offset_hz: pair.offset_hz,
-            left_peak_dbfs: pair.first_peak_dbfs,
-            right_peak_dbfs: pair.second_peak_dbfs,
+            left_hz: crate::test_support::finite(pair.first_hz),
+            offset_hz: crate::test_support::finite(pair.offset_hz),
+            left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+            right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
         }
     })];
-    let target = auditorylab_core::TargetCheck::authored(SampleRate::DEFAULT, &nodes)
-        .into_result()
-        .unwrap();
+    let target = auditorylab_core::TargetCheck::authored(
+        SampleRate::DEFAULT,
+        &crate::test_support::authored(&nodes),
+    )
+    .into_result()
+    .unwrap();
     let model = target.timing_model(512);
     assert!(
         (96_000..=96_001).contains(&model.frames),
@@ -1055,15 +1148,15 @@ fn pair_timing_extends_only_the_bounded_model_not_the_audio_history() {
     );
     let slow = auditorylab_core::TargetCheck::authored(
         SampleRate::DEFAULT,
-        &[form(1, {
+        &crate::test_support::authored(&[form(1, {
             let pair = pair(0.1);
             ComponentForm::BinauralPair {
-                left_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                left_peak_dbfs: pair.first_peak_dbfs,
-                right_peak_dbfs: pair.second_peak_dbfs,
+                left_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
-        })],
+        })]),
     )
     .into_result()
     .unwrap()
@@ -1083,13 +1176,21 @@ fn raw_component_budget_and_duplicate_owners_are_checked_at_the_authored_boundar
     let mut seventeen = sixteen;
     seventeen.push(form(17, crate::test_support::form(raw)));
     assert_eq!(
-        Sound::check_structure(&seventeen),
+        Sound::new(
+            crate::test_support::finite(1.0),
+            crate::test_support::finite(0.0),
+            seventeen.to_vec()
+        ),
         Err(StructureError::ComponentBudget { count: 17 })
     );
     assert!(ComponentId::new(0).is_none());
     let duplicate = [form(1, crate::test_support::form(raw)); 2];
     assert_eq!(
-        Sound::check_structure(&duplicate),
+        Sound::new(
+            crate::test_support::finite(1.0),
+            crate::test_support::finite(0.0),
+            duplicate.to_vec()
+        ),
         Err(StructureError::Identity {
             id: ComponentId::new(1).unwrap()
         })
@@ -1104,10 +1205,10 @@ fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
         form(
             11,
             ComponentForm::BinauralPair {
-                left_hz: 200.0,
-                offset_hz: -6.0,
-                left_peak_dbfs: -30.0,
-                right_peak_dbfs: -30.0,
+                left_hz: crate::test_support::finite(200.0),
+                offset_hz: crate::test_support::finite(-6.0),
+                left_peak_dbfs: crate::test_support::finite(-30.0),
+                right_peak_dbfs: crate::test_support::finite(-30.0),
             },
         ),
         form(29, {
@@ -1119,10 +1220,10 @@ fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
             };
             ComponentForm::MonauralPair {
                 ears: Ears::Both,
-                first_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                first_peak_dbfs: pair.first_peak_dbfs,
-                second_peak_dbfs: pair.second_peak_dbfs,
+                first_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                first_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                second_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
         }),
     ];
@@ -1142,7 +1243,10 @@ fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
             second_hz: 216.0,
         },
     ];
-    let check = TargetCheck::authored(SampleRate::DEFAULT, &authored);
+    let check = TargetCheck::authored(
+        SampleRate::DEFAULT,
+        &crate::test_support::authored(&authored),
+    );
     let target = check.target().unwrap();
     assert_eq!(check.voices().len(), 5);
     assert_eq!(target.len(), 5);
@@ -1205,24 +1309,25 @@ fn authored_callback_workloads_preserve_distinct_owner_lanes() {
                             peak_dbfs: -30.0,
                             carrier,
                             modulation: Some(crate::Modulation::Am {
-                                rate_hz: 23.0 + f64::from(n) * 0.75,
-                                depth: 1.0,
+                                rate_hz: crate::test_support::finite(23.0 + f64::from(n) * 0.75),
+                                depth: crate::test_support::finite(1.0),
                             }),
                         },
                     )
                 })
                 .collect();
-            let authored = Sound {
-                duration_seconds: 1.0,
-                fade_seconds: 0.0,
-                components: voices
+            let authored = Sound::new(
+                crate::test_support::finite(1.0),
+                crate::test_support::finite(0.0),
+                voices
                     .iter()
                     .map(|(id, voice)| Component {
                         id: *id,
                         form: crate::test_support::form(*voice),
                     })
                     .collect(),
-            };
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
             let target = authored.target(rate).unwrap();
             assert_eq!(target.len(), 16);
             assert_eq!(target.sample_rate(), rate);
@@ -1259,10 +1364,10 @@ fn structural_failures_are_single_and_distinguish_both_budgets() {
                     form(id, {
                         let pair = pair(6.0);
                         ComponentForm::BinauralPair {
-                            left_hz: pair.first_hz,
-                            offset_hz: pair.offset_hz,
-                            left_peak_dbfs: pair.first_peak_dbfs,
-                            right_peak_dbfs: pair.second_peak_dbfs,
+                            left_hz: crate::test_support::finite(pair.first_hz),
+                            offset_hz: crate::test_support::finite(pair.offset_hz),
+                            left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                            right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
                         }
                     })
                 })
@@ -1270,10 +1375,14 @@ fn structural_failures_are_single_and_distinguish_both_budgets() {
             StructureError::VoiceBudget { count: 18 },
         ),
     ] {
-        assert_eq!(Sound::check_structure(&components), Err(expected));
-        let check = TargetCheck::authored(SampleRate::DEFAULT, &components);
-        assert!(check.voices().is_empty());
-        assert_eq!(check.result(), Err(&crate::SoundError::Structure(expected)));
+        assert_eq!(
+            Sound::new(
+                crate::test_support::finite(1.0),
+                crate::test_support::finite(0.0),
+                components
+            ),
+            Err(expected)
+        );
     }
 }
 
@@ -1292,13 +1401,16 @@ fn direct_pair_compilation_reports_the_failing_lane_and_requested_carrier() {
                 ..pair(0.0)
             };
             ComponentForm::BinauralPair {
-                left_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                left_peak_dbfs: pair.first_peak_dbfs,
-                right_peak_dbfs: pair.second_peak_dbfs,
+                left_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
         })];
-        let check = TargetCheck::authored(SampleRate::DEFAULT, &components);
+        let check = TargetCheck::authored(
+            SampleRate::DEFAULT,
+            &crate::test_support::authored(&components),
+        );
         assert_eq!(
             check.result(),
             Err(&SoundError::PairCarrier {
@@ -1330,6 +1442,10 @@ fn direct_pair_arithmetic_failures_retain_their_independent_reason() {
             PairIssue::UnrepresentablePairDifference,
         ),
     ] {
+        if !first.is_finite() || !offset.is_finite() {
+            assert!(crate::Finite::new(first).is_none() || crate::Finite::new(offset).is_none());
+            continue;
+        }
         let components = [form(7, {
             let pair = Pair {
                 first_hz: first,
@@ -1337,13 +1453,16 @@ fn direct_pair_arithmetic_failures_retain_their_independent_reason() {
                 ..pair(0.0)
             };
             ComponentForm::BinauralPair {
-                left_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                left_peak_dbfs: pair.first_peak_dbfs,
-                right_peak_dbfs: pair.second_peak_dbfs,
+                left_hz: crate::test_support::finite(pair.first_hz),
+                offset_hz: crate::test_support::finite(pair.offset_hz),
+                left_peak_dbfs: crate::test_support::finite(pair.first_peak_dbfs),
+                right_peak_dbfs: crate::test_support::finite(pair.second_peak_dbfs),
             }
         })];
-        let check = TargetCheck::authored(SampleRate::DEFAULT, &components);
+        let check = TargetCheck::authored(
+            SampleRate::DEFAULT,
+            &crate::test_support::authored(&components),
+        );
         let Err(crate::SoundError::Pair(PairError {
             issue,
             id,

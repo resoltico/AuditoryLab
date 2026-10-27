@@ -823,7 +823,7 @@ impl RecipeSnapshot {
                 .and_then(|a| a.research.as_ref())
                 .and_then(|a| a.studied_for.as_deref())
                 .unwrap_or("Custom recipe"),
-            human_duration(snapshot.sound().duration_seconds)
+            human_duration(snapshot.sound().duration_seconds().get())
         )
     }
     /// A snapshot's research text, components and validated facts at one
@@ -836,7 +836,7 @@ impl RecipeSnapshot {
         for (name, value) in (snapshot).research() {
             text.push_str(&format!("{name}: {value}\n\n"));
         }
-        for c in &snapshot.sound().components {
+        for c in snapshot.sound().components() {
             text.push_str(&format!(
                 "Component {}: {}\n",
                 c.id,
@@ -874,8 +874,8 @@ impl RecipeSnapshot {
             "{}\nSource: {}\nDuration: {}\nFade: {} at each edge\n",
             snapshot.title(),
             snapshot.origin(),
-            human_duration(s.duration_seconds),
-            human_duration(s.fade_seconds)
+            human_duration(s.duration_seconds().get()),
+            human_duration(s.fade_seconds().get())
         );
         out.push_str(&document_notes(snapshot));
         for warning in warnings {
@@ -892,7 +892,7 @@ impl RecipeSnapshot {
                 sound.description(false)
             )),
             Err(error) => {
-                for component in &s.components {
+                for component in s.components() {
                     out.push_str(&format!(
                         "Component {}: {}\n",
                         component.id,
@@ -1046,7 +1046,6 @@ impl Notice {
 pub fn rhythm_diagnostic(issue: &auditorylab_core::rhythm::Issue) -> String {
     use auditorylab_core::{ValueRule, rhythm::Issue};
     match issue {
-        Issue::Structure(error) => core_errors::structure_error(error),
         Issue::Pair(error) => core_errors::pair_error(error),
         Issue::Value { owner, issue } => {
             let parameter = issue.parameter.descriptor();
@@ -1057,7 +1056,6 @@ pub fn rhythm_diagnostic(issue: &auditorylab_core::rhythm::Issue) -> String {
                 compact_number(parameter.unit.to_display(issue.value)),
                 parameter.unit.symbol(),
                 match issue.rule {
-                    ValueRule::Finite => "finite",
                     ValueRule::Positive => "finite and positive",
                     ValueRule::Peak => "at most 0 dBFS",
                     ValueRule::Depth => "between 0% and 100%",
@@ -1080,6 +1078,14 @@ impl crate::services::Description<'_> {
 pub(crate) const UNTITLED_SOUND: &str = "Untitled sound";
 pub(crate) fn edited_title(title: &str) -> String {
     format!("{title} (edited)")
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }
 
 #[cfg(test)]
@@ -1118,19 +1124,20 @@ mod tests {
     fn expanded_pair_structure_counts_voices_instead_of_authored_components() {
         use crate::document::controls;
         use auditorylab_core::{Component, ComponentId, PairKind};
-        let sound = Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: (1..=8)
+        let sound = Sound::new(
+            finite(1.0),
+            finite(0.0),
+            (1..=8)
                 .map(|id| Component {
                     id: ComponentId::new(id).unwrap(),
                     form: controls::default_pair(PairKind::Binaural),
                 })
                 .collect(),
-        };
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
         let target = sound.target(SampleRate::DEFAULT).unwrap();
         let text = structure_description(&crate::core::rhythm::realized(&target));
-        assert_eq!(sound.components.len(), 8);
+        assert_eq!(sound.components().len(), 8);
         assert_eq!(target.len(), 16);
         assert!(text.starts_with("16 voices · "), "{text}");
         assert!(!text.contains("16 components"), "{text}");

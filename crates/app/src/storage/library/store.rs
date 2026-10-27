@@ -704,7 +704,7 @@ impl LibraryStore {
         {
             if let Mutation::Add(recipe) = &mutation
                 && !old.trashed
-                && old.snapshot.recipe().same_document(recipe)
+                && old.snapshot.recipe() == recipe.as_ref()
             {
                 return Ok(unchanged(key, kind, old.clone(), diagnostics));
             }
@@ -768,7 +768,7 @@ impl LibraryStore {
                     .snapshot
                     .recipe()
                     .clone();
-                let notes = recipe.description().as_ref().and_then(|d| d.notes.clone());
+                let notes = recipe.description().and_then(|d| d.notes.clone());
                 recipe
                     .with_description(Some(crate::core::Description { title, notes }))
                     .map_err(|e| Error::Recipe { error: e })?
@@ -789,15 +789,15 @@ impl LibraryStore {
             if previous.document().created_at != recipe.document().created_at {
                 return Err(Error::HistoryReplacement { id });
             }
-            if previous.same_editable_content(&recipe) {
+            if previous.content() == recipe.content() {
                 return Ok(unchanged(key, kind, old.clone(), diagnostics));
             }
         }
         let mut proposal = recipe.into_builder();
         if let Some(old) = &old
-            && !old.snapshot.recipe().sound().same_content(&proposal.sound)
+            && old.snapshot.recipe().sound() != &proposal.content.sound
         {
-            for evidence in &mut proposal.evidence {
+            for evidence in &mut proposal.content.evidence {
                 evidence.scope = crate::core::EvidenceScope::Ancestor;
             }
         }

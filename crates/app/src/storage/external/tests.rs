@@ -30,7 +30,7 @@ fn unchanged_save_preserves_exact_bytes_and_changed_save_keeps_identity_and_crea
     assert_eq!(same.status, MutationStatus::Unchanged);
     assert_eq!(fs::read(&path).unwrap(), original);
     let mut recipe = snapshot.recipe().clone().into_builder();
-    recipe.description = Some(crate::core::Description {
+    recipe.content.description = Some(crate::core::Description {
         title: "Edited external".into(),
         notes: Some("own notes".into()),
     });

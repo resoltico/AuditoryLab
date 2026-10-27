@@ -214,7 +214,7 @@ fn thousand_plain_files_rebuild_without_retaining_full_recipe_snapshots() {
         let mut value = recipe.clone().into_builder();
         let id = format!("00000000-0000-4000-8000-{n:012}");
         value.document.id = id.parse().unwrap();
-        value.description = Some(crate::core::Description {
+        value.content.description = Some(crate::core::Description {
             title: format!("Entry {n}"),
             notes: None,
         });

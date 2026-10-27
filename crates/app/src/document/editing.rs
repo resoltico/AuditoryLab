@@ -14,8 +14,8 @@ use crate::document::recipe::{Origin, RecipeSnapshot};
 use crate::error::{EditorError as Error, IdentityError, IdentityScope};
 use crate::presentation::ParameterText;
 use auditorylab_core::{
-    CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, Recipe, RecipeBuilder, SampleRate,
-    Signal, Sound, SoundError, Target, TargetCheck,
+    CarrierKind, ComponentId, Ears, Finite, ModulationKind, ParameterId, Recipe, RecipeBuilder,
+    SampleRate, Signal, Sound, SoundError, StructureError, Target, TargetCheck,
 };
 use std::{
     collections::BTreeMap,
@@ -220,7 +220,7 @@ pub struct CommitRefusal {
 /// Committed settings may be finite but acoustically invalid and remain repairable.
 #[derive(Clone, Debug)]
 pub struct Draft {
-    content: RecipeBuilder,
+    recipe: RecipeBuilder,
     next_id: Option<u32>,
     based_on: Option<RecipeSnapshot>,
 }
@@ -234,12 +234,12 @@ impl Draft {
     }
     fn empty(document: auditorylab_core::DocumentIdentity) -> Self {
         let mut content = Recipe::builder(document);
-        content.description = Some(auditorylab_core::Description {
+        content.content.description = Some(auditorylab_core::Description {
             title: crate::presentation::UNTITLED_SOUND.into(),
             notes: Some(String::new()),
         });
         Self {
-            content,
+            recipe: content,
             next_id: Some(1),
             based_on: None,
         }
@@ -249,15 +249,16 @@ impl Draft {
     pub fn from_recipe(content: Recipe) -> Self {
         let content = content.into_builder();
         let next_id = content
+            .content
             .sound
-            .components
+            .components()
             .iter()
             .map(|c| c.id.get())
             .max()
             .unwrap_or(0)
             .checked_add(1);
         Self {
-            content,
+            recipe: content,
             next_id,
             based_on: None,
         }
@@ -292,26 +293,14 @@ impl Draft {
     /// Authored components in source order, including stable owner identities.
     #[must_use]
     pub fn components(&self) -> &[auditorylab_core::Component] {
-        &self.content.sound.components
+        self.recipe.content.sound.components()
     }
     /// One authored form by its primary owner identity.
     #[must_use]
     pub fn component(&self, id: ComponentId) -> Option<&auditorylab_core::ComponentForm> {
-        self.content
-            .sound
-            .components
-            .iter()
-            .find(|c| c.id == id)
-            .map(|c| &c.form)
+        self.recipe.content.sound.component(id).map(|c| &c.form)
     }
-    fn component_mut(&mut self, id: ComponentId) -> Option<&mut auditorylab_core::ComponentForm> {
-        self.content
-            .sound
-            .components
-            .iter_mut()
-            .find(|c| c.id == id)
-            .map(|c| &mut c.form)
-    }
+
     /// Add one default primitive, checking authored and expanded budgets.
     ///
     /// # Errors
@@ -324,21 +313,24 @@ impl Draft {
     /// # Errors
     /// Reports current counts and the requested voice cost if either limit is exceeded.
     pub fn check_addition(&self, form: auditorylab_core::ComponentForm) -> Result<(), EditRefusal> {
-        let components = self.components().len();
-        let voices = self
-            .components()
-            .iter()
-            .map(|c| c.form.voices())
-            .sum::<usize>();
-        let additional_voices = form.voices();
-        if components >= Sound::MAX_COMPONENTS || voices + additional_voices > Sound::MAX_VOICES {
-            Err(EditRefusal::BudgetExceeded {
-                components,
-                voices,
-                additional_voices,
-            })
-        } else {
-            Ok(())
+        self.recipe
+            .content
+            .sound
+            .check_addition(form)
+            .map_err(|error| self.structure_refusal(error, form.voices()))
+    }
+    fn structure_refusal(&self, error: StructureError, additional_voices: usize) -> EditRefusal {
+        match error {
+            StructureError::ComponentBudget { .. } | StructureError::VoiceBudget { .. } => {
+                EditRefusal::BudgetExceeded {
+                    components: self.components().len(),
+                    voices: self.components().iter().map(|c| c.form.voices()).sum(),
+                    additional_voices,
+                }
+            }
+            StructureError::Identity { .. } => unreachable!(
+                "checked sounds, monotonic new ids and removed owners preserve uniqueness"
+            ),
         }
     }
     pub(crate) fn admit_new_component(
@@ -359,57 +351,76 @@ impl Draft {
         form: auditorylab_core::ComponentForm,
     ) -> Result<ComponentId, EditRefusal> {
         let id = self.admit_new_component(form)?;
-        let components = &mut self.content.sound.components;
+        self.recipe
+            .content
+            .sound
+            .push(auditorylab_core::Component { id, form })
+            .map_err(|error| self.structure_refusal(error, form.voices()))?;
         self.next_id = id.get().checked_add(1);
-        components.push(auditorylab_core::Component { id, form });
         self.demote_evidence();
         Ok(id)
     }
-    /// Replace one primitive while preserving its authored owner.
-    pub fn replace(&mut self, id: ComponentId, form: auditorylab_core::ComponentForm) -> bool {
+    /// Replace an authored form while preserving its owner.
+    ///
+    /// # Errors
+    /// Refuses a replacement that exceeds either sound budget.
+    pub fn replace(
+        &mut self,
+        id: ComponentId,
+        form: auditorylab_core::ComponentForm,
+    ) -> Result<bool, EditRefusal> {
         let Some(before) = self.component(id).copied() else {
-            return false;
+            return Ok(false);
         };
-        if !before.same_content(form) {
+        if before == form {
+            return Ok(true);
+        }
+        let replaced = self
+            .recipe
+            .content
+            .sound
+            .replace(id, form)
+            .map_err(|error| {
+                self.structure_refusal(error, form.voices().saturating_sub(before.voices()))
+            })?;
+        if replaced {
             self.demote_evidence();
         }
-        if let Some(value) = self.component_mut(id) {
-            *value = form;
-            true
-        } else {
-            false
-        }
+        Ok(replaced)
     }
     /// Remove one authored form without reusing its owner identity.
     pub fn remove(&mut self, id: ComponentId) -> Option<(usize, auditorylab_core::Component)> {
-        let components = &mut self.content.sound.components;
-        let index = components.iter().position(|c| c.id == id)?;
-        let removed = components.remove(index);
+        let removed = self.recipe.content.sound.remove(id)?;
         self.demote_evidence();
-        Some((index, removed))
+        Some(removed)
     }
     fn restore(
         &mut self,
         index: usize,
         component: auditorylab_core::Component,
     ) -> Result<(), EditRefusal> {
-        self.check_addition(component.form)?;
-        let components = &mut self.content.sound.components;
-        components.insert(index.min(components.len()), component);
+        let index = index.min(self.components().len());
+        self.recipe
+            .content
+            .sound
+            .insert(index, component)
+            .map_err(|error| self.structure_refusal(error, component.form.voices()))?;
         self.demote_evidence();
         Ok(())
     }
     /// Current user-visible title; missing imported descriptions remain unmodified.
     #[must_use]
     pub fn title(&self) -> &str {
-        self.content
+        self.recipe
+            .content
             .description
             .as_ref()
             .map_or(crate::presentation::UNTITLED_SOUND, |d| d.title.as_str())
     }
     /// Set current title; a title edit does not change research scope.
     pub fn set_title(&mut self, title: String) {
-        self.content
+        self.recipe
+            .content
             .description
             .get_or_insert_with(|| auditorylab_core::Description {
                 title: String::new(),
@@ -420,7 +431,8 @@ impl Draft {
     /// Own notes, independent of attributed source findings.
     #[must_use]
     pub fn summary(&self) -> &str {
-        self.content
+        self.recipe
+            .content
             .description
             .as_ref()
             .and_then(|d| d.notes.as_deref())
@@ -432,7 +444,8 @@ impl Draft {
             return;
         }
         let title = self.title().into();
-        self.content
+        self.recipe
+            .content
             .description
             .get_or_insert(auditorylab_core::Description { title, notes: None })
             .notes = Some(summary);
@@ -440,47 +453,49 @@ impl Draft {
     /// Requested finite duration.
     #[must_use]
     pub const fn duration_seconds(&self) -> f64 {
-        self.content.sound.duration_seconds
+        self.recipe.content.sound.duration_seconds().get()
     }
     /// Set finite duration; invalid finite values remain editable for repair.
-    pub fn set_duration_seconds(&mut self, value: f64) {
-        if self.content.sound.duration_seconds.to_bits() != value.to_bits() {
+    pub fn set_duration_seconds(&mut self, value: Finite) {
+        if self.recipe.content.sound.duration_seconds() != value {
             self.demote_evidence();
         }
-        self.content.sound.duration_seconds = value;
+        self.recipe.content.sound.set_duration(value);
     }
     /// Requested endpoint fade.
     #[must_use]
     pub const fn fade_seconds(&self) -> f64 {
-        self.content.sound.fade_seconds
+        self.recipe.content.sound.fade_seconds().get()
     }
     /// Set endpoint fade.
-    pub fn set_fade_seconds(&mut self, value: f64) {
-        if self.content.sound.fade_seconds.to_bits() != value.to_bits() {
+    pub fn set_fade_seconds(&mut self, value: Finite) {
+        if self.recipe.content.sound.fade_seconds() != value {
             self.demote_evidence();
         }
-        self.content.sound.fade_seconds = value;
+        self.recipe.content.sound.set_fade(value);
     }
     /// Applicable semantic quantity, preserving exact binary64 values.
     #[must_use]
     pub fn value(&self, field: EditingField) -> Option<f64> {
         match field {
-            EditingField::Parameter(id, p) => self.component(id)?.get(p),
+            EditingField::Parameter(id, p) => self.component(id)?.get(p).map(Finite::get),
             EditingField::Metadata(MetadataField::Duration) => Some(self.duration_seconds()),
             EditingField::Metadata(MetadataField::Fade) => Some(self.fade_seconds()),
             _ => None,
         }
     }
-    fn set_value(&mut self, field: EditingField, value: f64) -> bool {
+    fn set_value(&mut self, field: EditingField, value: Finite) -> bool {
         match field {
             EditingField::Parameter(id, p) => {
-                let Some(before) = self.component(id).and_then(|c| c.get(p)) else {
+                let Some(mut form) = self.component(id).copied() else {
                     return false;
                 };
-                if before.to_bits() != value.to_bits() {
-                    self.demote_evidence();
+                if !form.set(p, value) {
+                    return false;
                 }
-                self.component_mut(id).is_some_and(|c| c.set(p, value))
+                self.replace(id, form).unwrap_or_else(|_| {
+                    unreachable!("a quantity edit retains identity and lane count")
+                })
             }
             EditingField::Metadata(MetadataField::Duration) => {
                 self.set_duration_seconds(value);
@@ -507,17 +522,17 @@ impl Draft {
     /// Complete authored sound, with pair intent and stable owners retained.
     #[must_use]
     pub fn sound(&self) -> auditorylab_core::Sound {
-        self.content.sound.clone()
+        self.recipe.content.sound.clone()
     }
     /// Immutable full portable candidate. Rendition edits demote current-condition evidence.
     ///
     /// # Errors
     /// Returns the portable-contract failure for an incomplete editable candidate.
     pub fn recipe(&self) -> Result<Recipe, Error> {
-        self.content.clone().build().map_err(Error::Recipe)
+        self.recipe.clone().build().map_err(Error::Recipe)
     }
     fn demote_evidence(&mut self) {
-        for evidence in &mut self.content.evidence {
+        for evidence in &mut self.recipe.content.evidence {
             evidence.scope = auditorylab_core::EvidenceScope::Ancestor;
         }
     }
@@ -534,15 +549,12 @@ impl Draft {
     /// Exact editable content equality, excluding portable history.
     #[must_use]
     pub fn content_matches(&self, recipe: &Recipe) -> bool {
-        self.content.document.id == recipe.document().id
-            && self
-                .content
-                .same_editable_content(&recipe.clone().into_builder())
+        self.recipe.document.id == recipe.document().id && self.recipe.content() == recipe.content()
     }
     /// Compile all expanded pair lanes as one atomic target candidate.
     #[must_use]
     pub fn check(&self, rate: SampleRate) -> TargetCheck {
-        self.content.sound.check(rate)
+        self.recipe.content.sound.check(rate)
     }
     /// Serialize a complete finite candidate without I/O.
     ///
@@ -666,39 +678,19 @@ impl Analysis {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct AnalysisKey {
-    duration: u64,
-    fade: u64,
-    components: Vec<auditorylab_core::Component>,
+    sound: Sound,
     rate: SampleRate,
 }
-
 impl AnalysisKey {
     fn new(draft: &Draft, rate: SampleRate) -> Self {
         Self {
-            duration: draft.duration_seconds().to_bits(),
-            fade: draft.fade_seconds().to_bits(),
-            components: draft.components().to_vec(),
+            sound: draft.sound(),
             rate,
         }
     }
 }
-
-impl PartialEq for AnalysisKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.duration == other.duration
-            && self.fade == other.fade
-            && self.rate == other.rate
-            && self.components.len() == other.components.len()
-            && self
-                .components
-                .iter()
-                .zip(&other.components)
-                .all(|(a, b)| a.id == b.id && a.form.same_content(b.form))
-    }
-}
-impl Eq for AnalysisKey {}
 
 /// Bounded memo of evaluations: the selected export rate, the live device
 /// rate and their candidate and committed forms.
@@ -744,10 +736,10 @@ impl EditorSession {
     /// dirty until saved.
     ///
     /// # Errors
-    /// Refuses invalid component owner identities or exhausted document identities.
+    /// Refuses exhausted document identities.
     pub fn new(draft: Draft) -> Result<Self, Error> {
-        let saved = Draft::empty(draft.content.document.clone()).recipe()?;
-        auditorylab_core::Sound::check_structure(draft.components()).map_err(Error::Structure)?;
+        let saved = Draft::empty(draft.recipe.document.clone()).recipe()?;
+
         let row_generations = draft
             .components()
             .iter()
@@ -781,7 +773,7 @@ impl EditorSession {
         {
             return analysis.clone();
         }
-        let analysis = Arc::new(crate::core::rhythm::nominal(self.draft.components()));
+        let analysis = Arc::new(crate::core::rhythm::nominal(&self.draft.sound()));
         self.nominal = Some((self.draft_revision, analysis.clone()));
         analysis
     }
@@ -973,18 +965,6 @@ impl EditorSession {
                 }
             }
         }
-        for (index, parameter) in draft.sound().nonfinite() {
-            let field = match index {
-                None if parameter == ParameterId::Duration => {
-                    EditingField::Metadata(MetadataField::Duration)
-                }
-                None => EditingField::Metadata(MetadataField::Fade),
-                Some(index) => EditingField::Parameter(draft.components()[index].id, parameter),
-            };
-            if !problems.iter().any(|(other, _)| *other == field) {
-                problems.push((field, InputProblem::Nonfinite));
-            }
-        }
         Candidate { draft, problems }
     }
 
@@ -1048,20 +1028,20 @@ impl EditorSession {
         change: impl FnOnce(&mut auditorylab_core::ComponentForm),
     ) -> Result<(), EditRefusal> {
         let id = self.admit_component(row)?;
-        let component = self
+        let before = self
             .draft
-            .component_mut(id)
+            .component(id)
+            .copied()
             .ok_or(EditRefusal::UnknownComponent)?;
-        let before = *component;
-        change(component);
-        if !component.same_content(before) {
-            let after = *component;
-            self.draft.demote_evidence();
+        let mut after = before;
+        change(&mut after);
+        if after != before {
+            if !self.draft.replace(id, after)? {
+                return Err(EditRefusal::UnknownComponent);
+            }
             let staged = self.staged.len();
             self.staged.retain(|field, _| match field {
-                EditingField::Parameter(owner, parameter) if *owner == id => {
-                    after.get(*parameter).is_some()
-                }
+                EditingField::Parameter(owner, p) if *owner == id => after.get(*p).is_some(),
                 _ => true,
             });
             if staged != self.staged.len() {
@@ -1192,9 +1172,9 @@ impl EditorSession {
             .generation
             .checked_add(1)
             .ok_or(EditRefusal::IdentitiesExhausted)?;
-        let before = self.draft.content.clone();
+        let before = self.draft.recipe.clone();
         let (index, component) = self.draft.remove(id).ok_or(EditRefusal::UnknownComponent)?;
-        let after = self.draft.content.clone();
+        let after = self.draft.recipe.clone();
         let owned = |field: &EditingField| matches!(field, EditingField::Parameter(owner, _) if *owner == id);
         let staged: Vec<_> = self
             .staged
@@ -1252,16 +1232,16 @@ impl EditorSession {
             .take()
             .unwrap_or_else(|| unreachable!("restore admission keeps the removed component"));
         let complete_undo = Arc::ptr_eq(&removed.saved, &self.saved)
-            && self.draft.content.same_editable_content(&removed.after);
+            && self.draft.recipe.content() == removed.after.content();
         if let Err(refusal) = self.draft.restore(removed.index, removed.component) {
             self.removed = Some(removed);
             return Err(refusal);
         }
         self.row_generations.insert(removed.id, generation);
         if complete_undo {
-            let document = self.draft.content.document.clone();
-            self.draft.content = removed.before;
-            self.draft.content.document = document;
+            let document = self.draft.recipe.document.clone();
+            self.draft.recipe = removed.before;
+            self.draft.recipe.document = document;
         }
         if !removed.staged.is_empty() {
             self.staged.extend(removed.staged);
@@ -1280,16 +1260,16 @@ impl EditorSession {
     /// Record successfully published content as this document's saved
     /// baseline. Returns `false`, changing nothing, for another document.
     pub fn record_saved(&mut self, document: DocumentId, content: &Recipe) -> bool {
-        if document != self.document || content.document().id != self.draft.content.document.id {
+        if document != self.document || content.document().id != self.draft.recipe.document.id {
             return false;
         }
-        self.saved_nominal = Some(crate::core::rhythm::nominal(&content.sound().components));
-        if &self.draft.content.document != content.document() {
-            self.draft.content.document = content.document().clone();
+        self.saved_nominal = Some(crate::core::rhythm::nominal(content.sound()));
+        if &self.draft.recipe.document != content.document() {
+            self.draft.recipe.document = content.document().clone();
             self.candidate = None;
             self.save_check = None;
         }
-        if !self.saved.same_document(content) {
+        if self.saved.as_ref() != content {
             self.saved = Arc::new(content.clone());
         }
         true
@@ -1403,8 +1383,9 @@ fn apply_number(
     match text.trim().parse::<f64>() {
         Ok(display) => {
             let value = parameter.descriptor().unit.to_model(display);
-            draft.set_value(field, value);
-            if !value.is_finite() {
+            if let Some(value) = Finite::new(value) {
+                draft.set_value(field, value);
+            } else {
                 problems.push((field, InputProblem::Nonfinite));
             }
         }

@@ -6,7 +6,7 @@ use crate::ContractError;
 use crate::{
     Carrier, Component, ComponentForm, ComponentId, Description, DocumentIdentity, Sound, Voice,
 };
-use alloc::{format, vec, vec::Vec};
+use alloc::{format, string::ToString, vec, vec::Vec};
 const PAIR: &str = r#"# Two raw tones retain their source order and authored identities.
 schema_version = 4
 [sound]
@@ -147,19 +147,20 @@ fn raw_nodes_keep_ids_source_order_and_optional_description_is_not_audio() {
     let plain = Recipe::parse(PAIR).unwrap();
     assert_eq!(
         plain
+            .content
             .sound
-            .components
+            .components()
             .iter()
             .map(|c| c.id.get())
             .collect::<Vec<_>>(),
         [7, 19]
     );
-    assert_eq!(plain.description, None);
+    assert_eq!(plain.content.description, None);
     let with = Recipe::parse(&format!(
         "{PAIR}\n[description]\ntitle='Rīga'\nnotes='own notes'\n"
     ))
     .unwrap();
-    assert_eq!(plain.sound, with.sound);
+    assert_eq!(plain.content.sound, with.content.sound);
     for extra in [
         "[description]\nnotes='missing title'",
         "[description]\ntitle=''",
@@ -181,7 +182,13 @@ fn raw_nodes_keep_ids_source_order_and_optional_description_is_not_audio() {
         finite.to_toml().is_ok(),
         "finite acoustically invalid content remains serializable"
     );
-    assert!(finite.sound.signal(crate::SampleRate::DEFAULT).is_err());
+    assert!(
+        finite
+            .content
+            .sound
+            .signal(crate::SampleRate::DEFAULT)
+            .is_err()
+    );
 }
 #[test]
 fn all_owned_proposed_examples_roundtrip_and_all_rejection_examples_fail() {
@@ -221,8 +228,11 @@ fn copies_keep_scoped_sources_and_refuse_capacity_without_dropping_ancestry() {
     let copy = original
         .fork(document.clone(), None, "Explicit attribution".into())
         .unwrap();
-    assert_eq!(copy.sources, original.sources);
-    assert_eq!(copy.lineage.last().unwrap().note, "Explicit attribution");
+    assert_eq!(copy.content.sources, original.content.sources);
+    assert_eq!(
+        copy.content.lineage.last().unwrap().note,
+        "Explicit attribution"
+    );
     assert!(matches!(
         original.fork(document.clone(), None, " ".into()),
         Err(RecipeError::Contract(
@@ -230,19 +240,25 @@ fn copies_keep_scoped_sources_and_refuse_capacity_without_dropping_ancestry() {
         ))
     ));
     assert!(
-        copy.evidence
+        copy.content
+            .evidence
             .iter()
             .all(|e| e.scope == crate::EvidenceScope::Ancestor)
     );
-    assert_eq!(copy.lineage.len(), original.lineage.len() + 1);
+    assert_eq!(
+        copy.content.lineage.len(),
+        original.content.lineage.len() + 1
+    );
     assert_ne!(copy.document.id, original.document.id);
     let mut full = original;
-    full.lineage.resize(16, full.lineage[0].clone());
+    full.content
+        .lineage
+        .resize(16, full.content.lineage[0].clone());
     assert!(
         full.fork(document, None, "Explicit attribution".into())
             .is_err()
     );
-    assert_eq!(full.lineage.len(), 16);
+    assert_eq!(full.content.lineage.len(), 16);
 }
 #[test]
 fn bibliography_graph_has_strict_scopes_unique_keys_and_no_recursive_sources() {
@@ -305,21 +321,21 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                     modified_at: None,
                 };
                 let mut recipe = Recipe::builder(document);
-                recipe.description = Some(Description {
+                recipe.content.description = Some(Description {
                     title: format!("Title {title}"),
                     notes: Some("quote \" slash \\ newline\n é 🎧".into()),
                 });
-                recipe.sound = Sound {
-                    duration_seconds: duration,
-                    fade_seconds: fade,
-                    components: vec![Component {
+                recipe.content.sound = Sound::new(
+                    crate::test_support::finite(duration),
+                    crate::test_support::finite(fade),
+                    vec![Component {
                         id: ComponentId::new(91).unwrap(),
                         form: if compound {
                             ComponentForm::BinauralPair {
-                                left_hz: base,
-                                offset_hz: offset,
-                                left_peak_dbfs: left,
-                                right_peak_dbfs: right,
+                                left_hz: crate::test_support::finite(base),
+                                offset_hz: crate::test_support::finite(offset),
+                                left_peak_dbfs: crate::test_support::finite(left),
+                                right_peak_dbfs: crate::test_support::finite(right),
                             }
                         } else {
                             crate::test_support::form(Voice {
@@ -330,19 +346,23 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                                     width_seconds: offset,
                                 },
                                 modulation: Some(crate::Modulation::Am {
-                                    rate_hz: right,
-                                    depth: 0.0,
+                                    rate_hz: crate::test_support::finite(right),
+                                    depth: crate::test_support::finite(0.0),
                                 }),
                             })
                         },
                     }],
-                };
+                )
+                .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
                 let recipe = recipe.build().unwrap();
                 let back = Recipe::parse(&recipe.to_toml().unwrap()).unwrap();
                 let bits = |recipe: &Recipe| {
-                    let s = &recipe.sound;
-                    let mut values = vec![s.duration_seconds.to_bits(), s.fade_seconds.to_bits()];
-                    match s.components[0].form {
+                    let s = &recipe.content.sound;
+                    let mut values = vec![
+                        s.duration_seconds().get().to_bits(),
+                        s.fade_seconds().get().to_bits(),
+                    ];
+                    match s.components()[0].form {
                         form @ ComponentForm::BinauralPair { .. } => {
                             let p = form.pair().unwrap();
                             values.extend(
@@ -366,7 +386,7 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                                 values.extend([rate_hz.to_bits(), width_seconds.to_bits()]);
                             }
                             if let Some(crate::Modulation::Am { rate_hz, depth }) = c.modulation {
-                                values.extend([rate_hz.to_bits(), depth.to_bits()]);
+                                values.extend([rate_hz.get().to_bits(), depth.get().to_bits()]);
                             }
                         }
                         _ => panic!("fixture has exactly two alternatives"),
@@ -394,7 +414,11 @@ fn documented_toml_examples_are_actual_supported_inputs() {
     {
         let text = block.split("```").next().unwrap();
         let recipe = Recipe::parse(text).unwrap();
-        recipe.sound.signal(crate::SampleRate::DEFAULT).unwrap();
+        recipe
+            .content
+            .sound
+            .signal(crate::SampleRate::DEFAULT)
+            .unwrap();
         count += 1;
     }
     assert_eq!(
@@ -410,15 +434,15 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
     ))
     .unwrap();
     let mut sources = original.clone().into_builder();
-    sources.sources = (0..16)
+    sources.content.sources = (0..16)
         .map(|i| {
-            let mut source = original.sources[0].clone();
+            let mut source = original.content.sources[0].clone();
             source.key = format!("source-{i}");
             source
         })
         .collect();
-    sources.evidence[0].source = "source-0".into();
-    sources.lineage[0].source_keys = vec!["source-0".into()];
+    sources.content.evidence[0].source = "source-0".into();
+    sources.content.lineage[0].source_keys = vec!["source-0".into()];
     assert!(
         sources
             .clone()
@@ -426,9 +450,9 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
             .and_then(|recipe| recipe.to_toml())
             .is_ok()
     );
-    let mut extra = original.sources[0].clone();
+    let mut extra = original.content.sources[0].clone();
     extra.key = "source-16".into();
-    sources.sources.push(extra);
+    sources.content.sources.push(extra);
     assert!(
         sources
             .clone()
@@ -436,9 +460,9 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
             .and_then(|recipe| recipe.to_toml())
             .is_err()
     );
-    assert_eq!(sources.sources.len(), 17);
+    assert_eq!(sources.content.sources.len(), 17);
     let mut evidence = original.clone().into_builder();
-    evidence.evidence = vec![original.evidence[0].clone(); 32];
+    evidence.content.evidence = vec![original.content.evidence[0].clone(); 32];
     assert!(
         evidence
             .clone()
@@ -446,7 +470,10 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
             .and_then(|recipe| recipe.to_toml())
             .is_ok()
     );
-    evidence.evidence.push(original.evidence[0].clone());
+    evidence
+        .content
+        .evidence
+        .push(original.content.evidence[0].clone());
     assert!(
         evidence
             .clone()
@@ -454,9 +481,9 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
             .and_then(|recipe| recipe.to_toml())
             .is_err()
     );
-    assert_eq!(evidence.evidence.len(), 33);
+    assert_eq!(evidence.content.evidence.len(), 33);
     let mut lineage = original.clone().into_builder();
-    lineage.lineage = vec![original.lineage[0].clone(); 16];
+    lineage.content.lineage = vec![original.content.lineage[0].clone(); 16];
     assert!(
         lineage
             .clone()
@@ -464,7 +491,10 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
             .and_then(|recipe| recipe.to_toml())
             .is_ok()
     );
-    lineage.lineage.push(original.lineage[0].clone());
+    lineage
+        .content
+        .lineage
+        .push(original.content.lineage[0].clone());
     assert!(
         lineage
             .clone()
@@ -472,7 +502,7 @@ fn metadata_capacity_checks_are_independent_and_never_drop_records() {
             .and_then(|recipe| recipe.to_toml())
             .is_err()
     );
-    assert_eq!(lineage.lineage.len(), 17);
+    assert_eq!(lineage.content.lineage.len(), 17);
 }
 
 #[test]
@@ -480,7 +510,14 @@ fn sound_is_required_for_silence_and_root_envelopes_are_rejected() {
     let silent = "schema_version = 4\n[document]\nid='00000000-0000-4000-8000-000000000001'\n";
     assert!(matches!(Recipe::parse(silent), Err(RecipeError::Format(_))));
     let valid = format!("{silent}[sound]\nduration_seconds=1\nfade_seconds=0\n");
-    assert!(Recipe::parse(&valid).unwrap().sound.components.is_empty());
+    assert!(
+        Recipe::parse(&valid)
+            .unwrap()
+            .content
+            .sound
+            .components()
+            .is_empty()
+    );
     let root_envelope = "schema_version = 4\nduration_seconds=1\nfade_seconds=0\n[document]\nid='00000000-0000-4000-8000-000000000001'\n[sound]\nduration_seconds=1\nfade_seconds=0\n";
     assert!(matches!(
         Recipe::parse(root_envelope),
@@ -514,19 +551,55 @@ fn canonical_tables_follow_document_description_sound_and_attribution_order() {
 fn the_builder_separates_portable_contracts_from_acoustic_validity() {
     let original = Recipe::parse(PAIR).unwrap();
     let mut builder = original.clone().into_builder();
-    builder.sound.duration_seconds = -1.0;
+    builder
+        .content
+        .sound
+        .set_duration(crate::test_support::finite(-1.0));
     let finite = builder.clone().build().unwrap();
     assert!(finite.to_toml().is_ok());
     assert!(finite.sound().signal(crate::SampleRate::DEFAULT).is_err());
-    builder.sound.duration_seconds = f64::NAN;
-    assert!(matches!(builder.build(), Err(RecipeError::Contract(_))));
+    assert!(matches!(
+        Recipe::parse(&PAIR.replace("duration_seconds = 10.0", "duration_seconds = nan")),
+        Err(RecipeError::Format(_))
+    ));
     let mut builder = original.clone().into_builder();
-    builder.description = Some(Description {
+    builder.content.description = Some(Description {
         title: " ".into(),
         notes: None,
     });
     assert!(matches!(builder.build(), Err(RecipeError::Contract(_))));
     let mut builder = original.into_builder();
-    builder.sound.components.push(builder.sound.components[0]);
-    assert!(matches!(builder.build(), Err(RecipeError::Contract(_))));
+    let duplicate = builder.content.sound.components()[0];
+    assert_eq!(
+        builder.content.sound.push(duplicate),
+        Err(crate::StructureError::Identity { id: duplicate.id })
+    );
+}
+
+#[test]
+fn nonfinite_format_errors_locate_the_actual_component_and_modulation_fields() {
+    let offset = include_str!("../../tests/fixtures/invalid/nonfinite-offset.toml");
+    let tone = PAIR.replace("frequency_hz = 250.0", "frequency_hz = nan");
+    let am = format!("{PAIR}\n[sound.component.modulation]\nkind='am'\nrate_hz=4.0\ndepth=nan\n");
+    let gate = format!(
+        "{PAIR}\n[sound.component.modulation]\nkind='gate'\nrate_hz=4.0\nwidth_seconds=inf\n"
+    );
+    for (text, token, key) in [
+        (offset, "nan", "offset_hz"),
+        (tone.as_str(), "nan", "frequency_hz"),
+        (am.as_str(), "nan", "depth"),
+        (gate.as_str(), "inf", "width_seconds"),
+    ] {
+        let RecipeError::Format(error) = Recipe::parse(text).unwrap_err() else {
+            panic!("nonfinite input must be a format error");
+        };
+        let start = text.find(token).unwrap();
+        assert_eq!(error.span(), Some(start..start + token.len()), "{key}");
+        assert!(error.message().contains("expected a finite number"));
+        assert!(error.to_string().contains(key), "{error}");
+    }
+    let RecipeError::Format(error) = Recipe::parse(offset).unwrap_err() else {
+        panic!()
+    };
+    assert!(error.to_string().contains("line 20, column 13"));
 }

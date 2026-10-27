@@ -4,19 +4,23 @@ use crate::{
     Voice,
 };
 use alloc::vec::Vec;
-pub(crate) fn check(rate: SampleRate, voices: &[(ComponentId, Voice)]) -> TargetCheck {
-    let sound = Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: voices
+pub(crate) fn sound(voices: &[(ComponentId, Voice)]) -> Result<Sound, crate::StructureError> {
+    Sound::new(
+        finite(1.0),
+        finite(0.0),
+        voices
             .iter()
             .map(|(id, voice)| Component {
                 id: *id,
-                form: crate::test_support::form(*voice),
+                form: form(*voice),
             })
-            .collect::<Vec<_>>(),
-    };
-    sound.check(rate)
+            .collect(),
+    )
+}
+pub(crate) fn check(rate: SampleRate, voices: &[(ComponentId, Voice)]) -> TargetCheck {
+    sound(voices)
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
+        .check(rate)
 }
 pub(crate) fn target(
     rate: SampleRate,
@@ -28,7 +32,6 @@ pub(crate) fn target(
 pub(crate) fn lower(
     components: &[Component],
 ) -> Result<Vec<(crate::VoiceId, Voice)>, crate::SoundError> {
-    Sound::check_structure(components).map_err(SoundError::Structure)?;
     let mut voices = Vec::new();
     for component in components {
         voices.extend(crate::authored::lower(component).map_err(SoundError::Pair)?);
@@ -46,8 +49,8 @@ pub(crate) fn form(voice: Voice) -> ComponentForm {
     match carrier {
         crate::Carrier::Tone { frequency_hz } => ComponentForm::Tone {
             ears,
-            frequency_hz,
-            peak_dbfs,
+            frequency_hz: crate::test_support::finite(frequency_hz),
+            peak_dbfs: crate::test_support::finite(peak_dbfs),
             modulation,
         },
         crate::Carrier::Clicks {
@@ -55,10 +58,22 @@ pub(crate) fn form(voice: Voice) -> ComponentForm {
             width_seconds,
         } => ComponentForm::Clicks {
             ears,
-            rate_hz,
-            width_seconds,
-            peak_dbfs,
+            rate_hz: crate::test_support::finite(rate_hz),
+            width_seconds: crate::test_support::finite(width_seconds),
+            peak_dbfs: crate::test_support::finite(peak_dbfs),
             modulation,
         },
     }
+}
+
+pub(crate) const fn finite(value: f64) -> crate::Finite {
+    match crate::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
+}
+
+pub(crate) fn authored(components: &[Component]) -> Sound {
+    Sound::new(finite(1.0), finite(0.0), components.to_vec())
+        .unwrap_or_else(|error| panic!("invalid authored fixture: {error}"))
 }

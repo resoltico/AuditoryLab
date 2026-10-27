@@ -47,15 +47,15 @@ const CASES: [(&str, &[ComponentForm]); 5] = [
         "separate-ear tones",
         &[
             ComponentForm::Tone {
-                frequency_hz: 250.0,
+                frequency_hz: finite(250.0),
                 ears: Ears::Left,
-                peak_dbfs: -20.0,
+                peak_dbfs: finite(-20.0),
                 modulation: None,
             },
             ComponentForm::Tone {
-                frequency_hz: 256.0,
+                frequency_hz: finite(256.0),
                 ears: Ears::Right,
-                peak_dbfs: -20.0,
+                peak_dbfs: finite(-20.0),
                 modulation: None,
             },
         ],
@@ -64,15 +64,15 @@ const CASES: [(&str, &[ComponentForm]); 5] = [
         "summed tones",
         &[
             ComponentForm::Tone {
-                frequency_hz: 396.5,
+                frequency_hz: finite(396.5),
                 ears: Ears::Both,
-                peak_dbfs: -23.0103,
+                peak_dbfs: finite(-23.0103),
                 modulation: None,
             },
             ComponentForm::Tone {
-                frequency_hz: 403.5,
+                frequency_hz: finite(403.5),
                 ears: Ears::Both,
-                peak_dbfs: -23.0103,
+                peak_dbfs: finite(-23.0103),
                 modulation: None,
             },
         ],
@@ -80,34 +80,34 @@ const CASES: [(&str, &[ComponentForm]); 5] = [
     (
         "modulated tone",
         &[ComponentForm::Tone {
-            frequency_hz: 1000.0,
+            frequency_hz: finite(1000.0),
             ears: Ears::Left,
-            peak_dbfs: -20.0,
+            peak_dbfs: finite(-20.0),
             modulation: Some(Modulation::Am {
-                rate_hz: 39.0625,
-                depth: 1.0,
+                rate_hz: finite(39.0625),
+                depth: finite(1.0),
             }),
         }],
     ),
     (
         "gated tone",
         &[ComponentForm::Tone {
-            frequency_hz: 5000.0,
+            frequency_hz: finite(5000.0),
             ears: Ears::Both,
-            peak_dbfs: -20.0,
+            peak_dbfs: finite(-20.0),
             modulation: Some(Modulation::Gate {
-                rate_hz: 40.0,
-                width_seconds: 0.001,
+                rate_hz: finite(40.0),
+                width_seconds: finite(0.001),
             }),
         }],
     ),
     (
         "clicks",
         &[ComponentForm::Clicks {
-            rate_hz: 40.0,
-            width_seconds: 0.001,
+            rate_hz: finite(40.0),
+            width_seconds: finite(0.001),
             ears: Ears::Both,
-            peak_dbfs: -20.0,
+            peak_dbfs: finite(-20.0),
             modulation: None,
         }],
     ),
@@ -137,4 +137,11 @@ fn the_digest_tells_apart_samples_that_differ_in_their_last_bit() {
     altered[0][1] = f64::from_bits(altered[0][1].to_bits() + 1);
     assert_ne!(digest(&frames), digest(&altered));
     assert_eq!(digest(&[]), 0xcbf2_9ce4_8422_2325);
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

@@ -2,9 +2,9 @@
 use auditorylab_core::{ComponentForm, Ears, Modulation, Sound, rhythm::*};
 fn tone(hz: f64, ears: Ears) -> ComponentForm {
     ComponentForm::Tone {
-        frequency_hz: hz,
+        frequency_hz: finite(hz),
         ears,
-        peak_dbfs: -20.0,
+        peak_dbfs: finite(-20.0),
         modulation: None,
     }
 }
@@ -12,11 +12,11 @@ fn tone(hz: f64, ears: Ears) -> ComponentForm {
     clippy::unwrap_used,
     reason = "Fixture identities must fit the finite test component list"
 )]
-fn sound(components: Vec<ComponentForm>) -> Vec<auditorylab_core::Component> {
-    Sound {
-        duration_seconds: 60.0,
-        fade_seconds: 0.1,
-        components: components
+fn sound(components: Vec<ComponentForm>) -> Sound {
+    Sound::new(
+        finite(60.0),
+        finite(0.1),
+        components
             .into_iter()
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
@@ -24,8 +24,8 @@ fn sound(components: Vec<ComponentForm>) -> Vec<auditorylab_core::Component> {
                 form: voice,
             })
             .collect(),
-    }
-    .components
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
 }
 #[test]
 fn exact_boundaries_and_adjacent_binary64_values_follow_the_disclosed_policy() {
@@ -55,24 +55,27 @@ fn carrier_is_not_a_band_and_nominal_am_survives_target_invalidity() {
     }
     let mut c = tone(1_000.0, Ears::Both);
     c.set_modulation(Some(Modulation::Am {
-        rate_hz: 40.0,
-        depth: 1.0,
+        rate_hz: finite(40.0),
+        depth: finite(1.0),
     }));
     let a = nominal(&sound(vec![c]));
     assert_eq!(a.bands, [Band::Gamma]);
-    c.set(auditorylab_core::ParameterId::ToneFrequency, 100_000.0);
+    c.set(
+        auditorylab_core::ParameterId::ToneFrequency,
+        finite(100_000.0),
+    );
     assert_eq!(nominal(&sound(vec![c])), a);
     c.set_modulation(Some(Modulation::Am {
-        rate_hz: 40.0,
-        depth: 0.0,
+        rate_hz: finite(40.0),
+        depth: finite(0.0),
     }));
     assert!(nominal(&sound(vec![c])).no_rhythm());
     c.set_modulation(Some(Modulation::Am {
-        rate_hz: 40.0,
-        depth: f64::from_bits(1),
+        rate_hz: finite(40.0),
+        depth: finite(f64::from_bits(1)),
     }));
     assert_eq!(nominal(&sound(vec![c])).bands, [Band::Gamma]);
-    c.set(auditorylab_core::ParameterId::PeakLevel, -10_000.0);
+    c.set(auditorylab_core::ParameterId::PeakLevel, finite(-10_000.0));
     assert_eq!(nominal(&sound(vec![c])).bands, [Band::Gamma]);
 }
 #[test]
@@ -81,26 +84,30 @@ fn independent_processes_deduplicate_bands_but_never_rates() {
         let base = tone(240.0, Ears::Both);
         ComponentForm::Clicks {
             rate_hz: hz,
-            width_seconds: 0.001,
+            width_seconds: finite(0.001),
             ears: base.route().unwrap(),
             peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
             modulation: base.modulation(),
         }
     };
-    let a = nominal(&sound(vec![click(2.0), click(3.0)]));
+    let a = nominal(&sound(vec![click(finite(2.0)), click(finite(3.0))]));
     assert_eq!(a.rhythms.len(), 2);
     assert_eq!(a.bands, [Band::Delta]);
     assert!(a.multiple());
-    let a = nominal(&sound(vec![click(6.0), click(40.0)]));
+    let a = nominal(&sound(vec![click(finite(6.0)), click(finite(40.0))]));
     assert_eq!(a.bands, [Band::Theta, Band::Gamma]);
     assert_eq!(a.matching_rate(&[Band::Gamma], &[]), Some(40.0));
     for hz in [0.05, 100.0] {
-        let a = nominal(&sound(vec![click(hz)]));
+        let a = nominal(&sound(vec![click(finite(hz))]));
         assert!(a.outside_bands());
         assert!(!a.no_rhythm());
     }
     for hz in [-40.0, 0.0, f64::INFINITY, f64::NAN] {
-        let a = nominal(&sound(vec![click(hz)]));
+        if !hz.is_finite() {
+            assert!(auditorylab_core::Finite::new(hz).is_none());
+            continue;
+        }
+        let a = nominal(&sound(vec![click(finite(hz))]));
         assert_eq!(a.completeness, Completeness::Invalid);
         assert!(a.rhythms.is_empty());
         assert!(!a.no_rhythm());
@@ -164,10 +171,10 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
     let pair = |id, offset_hz| Component {
         id: ComponentId::new(id).unwrap(),
         form: ComponentForm::BinauralPair {
-            left_hz: 200.0,
+            left_hz: finite(200.0),
             offset_hz,
-            left_peak_dbfs: -30.0,
-            right_peak_dbfs: -30.0,
+            left_peak_dbfs: finite(-30.0),
+            right_peak_dbfs: finite(-30.0),
         },
     };
     let am = Component {
@@ -175,13 +182,13 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
         form: {
             let mut form = tone(1000.0, Ears::Both);
             form.set_modulation(Some(Modulation::Am {
-                rate_hz: 40.0,
-                depth: 1.0,
+                rate_hz: finite(40.0),
+                depth: finite(1.0),
             }));
             form
         },
     };
-    let a = nominal(&[pair(7, 6.0), am]);
+    let a = nominal(&authored(&[pair(7, finite(6.0)), am]));
     assert_eq!(a.bands, [Band::Theta, Band::Gamma]);
     assert_eq!(a.completeness, Completeness::Complete);
     assert_eq!(
@@ -190,17 +197,23 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
     );
     assert!(!a.matches(&[Band::Gamma], &[Method::Binaural]));
     assert!(a.matches(&[Band::Gamma], &[Method::Am]));
-    assert_eq!(nominal(&[pair(1, 2.0), pair(2, 3.0)]).bands, [Band::Delta]);
-    assert!(nominal(&[pair(1, 2.0), pair(2, 3.0)]).multiple());
+    assert_eq!(
+        nominal(&authored(&[pair(1, finite(2.0)), pair(2, finite(3.0))])).bands,
+        [Band::Delta]
+    );
+    assert!(nominal(&authored(&[pair(1, finite(2.0)), pair(2, finite(3.0))])).multiple());
     for offset in [-6.0, 6.0] {
-        assert_eq!(nominal(&[pair(1, offset)]).bands, [Band::Theta]);
+        assert_eq!(
+            nominal(&authored(&[pair(1, finite(offset))])).bands,
+            [Band::Theta]
+        );
     }
-    assert!(nominal(&[pair(1, 0.0)]).no_rhythm());
-    let collapsed = nominal(&[pair(1, f64::from_bits(1))]);
+    assert!(nominal(&authored(&[pair(1, finite(0.0))])).no_rhythm());
+    let collapsed = nominal(&authored(&[pair(1, finite(f64::from_bits(1)))]));
     assert_eq!(collapsed.rhythms[0].hz, f64::from_bits(1));
     assert!(collapsed.outside_bands());
     assert_eq!(collapsed.completeness, Completeness::Invalid);
-    let mut raw = vec![pair(1, 6.0), am];
+    let mut raw = vec![pair(1, finite(6.0)), am];
     raw.extend([
         Component {
             id: ComponentId::new(5).unwrap(),
@@ -211,7 +224,7 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
             form: tone(206.0, Ears::Right),
         },
     ]);
-    let a = nominal(&raw);
+    let a = nominal(&authored(&raw));
     assert_eq!(a.completeness, Completeness::Complete);
     assert_eq!(
         a.rhythms.len(),
@@ -254,7 +267,7 @@ fn catalog_bands_and_methods_match_independently_listed_expectations() {
     for (id, method, band) in expected {
         let entry = catalog::find(id).unwrap();
         let recipe = Recipe::parse(entry.text).unwrap();
-        let analysis = nominal(&recipe.sound().components);
+        let analysis = nominal(&authored(recipe.sound().components()));
         assert_eq!(analysis.methods, [method], "{id}");
         assert_eq!(analysis.bands, band.into_iter().collect::<Vec<_>>(), "{id}");
         for hz in [44_100, 48_000] {
@@ -272,4 +285,16 @@ fn catalog_bands_and_methods_match_independently_listed_expectations() {
             );
         }
     }
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
+}
+
+fn authored(components: &[auditorylab_core::Component]) -> Sound {
+    Sound::new(finite(60.0), finite(0.1), components.to_vec())
+        .unwrap_or_else(|error| panic!("invalid authored fixture: {error}"))
 }

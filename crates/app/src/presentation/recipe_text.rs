@@ -31,7 +31,7 @@ pub struct Research {
 /// Derive concise presentation while leaving full records on the recipe.
 #[must_use]
 pub fn about(recipe: &Recipe) -> Option<About> {
-    let description = recipe.description().as_ref()?;
+    let description = recipe.description()?;
     let research = recipe
         .evidence()
         .iter()
@@ -69,7 +69,7 @@ pub fn about(recipe: &Recipe) -> Option<About> {
 /// Attribution text stored on a newly independent copy.
 #[must_use]
 pub fn copy_note(recipe: &Recipe) -> String {
-    recipe.description().as_ref().and_then(|d| d.notes.as_deref()).filter(|s| !s.is_empty()).map_or_else(
+    recipe.description().and_then(|d| d.notes.as_deref()).filter(|s| !s.is_empty()).map_or_else(
         || "Attributed copy; source findings concern the ancestor, not this sound.".into(),
         |notes| format!("Attributed copy; source findings concern the ancestor, not this sound. Ancestor notes: {notes}"),
     )

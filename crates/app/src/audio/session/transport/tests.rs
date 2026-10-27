@@ -13,13 +13,13 @@ fn rate(hz: u32) -> SampleRate {
 }
 
 fn signal(frames: u64, hz: u32) -> Signal {
-    Sound {
-        duration_seconds: f64::from(u32::try_from(frames).unwrap()) / f64::from(hz),
-        fade_seconds: 0.0,
-        components: (vec![ComponentForm::Tone {
-            frequency_hz: 100.0,
+    Sound::new(
+        finite(f64::from(u32::try_from(frames).unwrap()) / f64::from(hz)),
+        finite(0.0),
+        (vec![ComponentForm::Tone {
+            frequency_hz: finite(100.0),
             ears: Ears::Both,
-            peak_dbfs: -20.0,
+            peak_dbfs: finite(-20.0),
             modulation: None,
         }])
         .into_iter()
@@ -29,15 +29,16 @@ fn signal(frames: u64, hz: u32) -> Signal {
             form: voice,
         })
         .collect(),
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .signal(rate(hz))
     .unwrap()
 }
-fn finite(signal: Signal) -> Source {
+fn finite_source(signal: Signal) -> Source {
     Source::Finite(FiniteSource::new(Arc::new(signal)))
 }
 fn callback(frames: u64, hz: u32) -> Transport {
-    Transport::new(finite(signal(frames, hz)), 2, SessionState::new())
+    Transport::new(finite_source(signal(frames, hz)), 2, SessionState::new())
 }
 
 fn time(callback: u64, playback: u64) -> BufferTime {
@@ -97,7 +98,7 @@ fn fractional_latency_never_reports_a_frame_before_it_is_audible() {
 #[test]
 fn a_stereo_signal_ending_in_the_second_scratch_block_drains_without_rounding_early() {
     let signal = signal(1_537, 44_100);
-    let mut callback = Transport::new(finite(signal), 2, SessionState::new());
+    let mut callback = Transport::new(finite_source(signal), 2, SessionState::new());
     let output = fill(&mut callback, 2_048, nanos(0, 10_000_000));
     assert_eq!(callback.end, Some(1_537));
     // 10 ms + ceil(1537 * 1e9 / 44100), independently calculated.
@@ -340,7 +341,7 @@ fn a_terminal_publication_during_a_buffer_silences_it_and_rendering_never_resume
         Outcome::StreamSetupFailed,
     ] {
         let shared = SessionState::new();
-        let mut c = Transport::new(finite(signal(8_000, 8_000)), 2, Arc::clone(&shared));
+        let mut c = Transport::new(finite_source(signal(8_000, 8_000)), 2, Arc::clone(&shared));
         let calls = std::cell::Cell::new(0);
         let mut output = vec![1.0; 8_192];
         c.fill(&mut output, time(0, 0), &|value| {
@@ -383,7 +384,7 @@ fn a_failure_while_the_last_silence_is_written_precedes_completion() {
 #[test]
 fn a_buffer_holding_a_partial_frame_is_silenced_and_ends_playback() {
     let signal = signal(8, 8_000);
-    let mut c = Transport::new(finite(signal), 2, SessionState::new());
+    let mut c = Transport::new(finite_source(signal), 2, SessionState::new());
     let mut partial = [1.0; 3];
     c.fill(&mut partial, time(0, 0), &|sample| sample);
     assert_eq!(partial, [0.0; 3]);
@@ -464,19 +465,20 @@ fn live_callback() -> (Transport, crate::audio::session::live::Mailbox) {
 #[test]
 fn mailbox_is_polled_once_per_buffer_and_updates_wait_for_the_next_buffer() {
     let (mut c, mailbox) = live_callback();
-    let target = Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: vec![crate::core::Component {
+    let target = Sound::new(
+        finite(1.0),
+        finite(0.0),
+        vec![crate::core::Component {
             id: ComponentId::new(1).unwrap(),
             form: ComponentForm::Tone {
-                frequency_hz: 440.0,
+                frequency_hz: finite(440.0),
                 ears: Ears::Both,
-                peak_dbfs: -30.0,
+                peak_dbfs: finite(-30.0),
                 modulation: None,
             },
         }],
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .target(rate(8_000))
     .unwrap();
     let mut output = [1.0; 4_096];
@@ -539,21 +541,21 @@ fn live_callbacks_do_not_allocate_or_wait_for_a_busy_or_poisoned_mailbox() {
 }
 
 fn routed(frames: u32) -> Signal {
-    Sound {
-        duration_seconds: f64::from(frames) / 8_000.0,
-        fade_seconds: 0.0,
-        components: (vec![
+    Sound::new(
+        finite(f64::from(frames) / 8_000.0),
+        finite(0.0),
+        (vec![
             ComponentForm::Tone {
-                frequency_hz: 257.3,
+                frequency_hz: finite(257.3),
                 ears: Ears::Left,
-                peak_dbfs: -20.0,
+                peak_dbfs: finite(-20.0),
                 modulation: None,
             },
             ComponentForm::Clicks {
-                rate_hz: 37.0,
-                width_seconds: 0.001,
+                rate_hz: finite(37.0),
+                width_seconds: finite(0.001),
                 ears: Ears::Right,
-                peak_dbfs: -14.0,
+                peak_dbfs: finite(-14.0),
                 modulation: None,
             },
         ])
@@ -564,7 +566,8 @@ fn routed(frames: u32) -> Signal {
             form: voice,
         })
         .collect(),
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .signal(rate(8_000))
     .unwrap()
 }
@@ -573,7 +576,7 @@ fn stereo_routes_are_placed_and_timed_by_frames_on_wide_devices() {
     let mut expected = vec![[0.0; 2]; 3_000];
     routed(3_000).render(0, &mut expected);
     for channels in [2, 3, 5] {
-        let mut c = Transport::new(finite(routed(3_000)), channels, SessionState::new());
+        let mut c = Transport::new(finite_source(routed(3_000)), channels, SessionState::new());
         let mut output = fill(&mut c, 2_500, time(0, 10));
         assert_eq!(c.submitted(), 2_500);
         assert_eq!(c.end(), None);
@@ -653,7 +656,11 @@ fn any_sequence_of_buffers_plays_the_signal_once_and_completes_only_after_its_en
 fn callback_paths_allocate_nothing_including_terminal_buffers() {
     for channels in [2, 3, 5] {
         for hz in [44_100, 48_000] {
-            let mut c = Transport::new(finite(signal(2053, hz)), channels, SessionState::new());
+            let mut c = Transport::new(
+                finite_source(signal(2053, hz)),
+                channels,
+                SessionState::new(),
+            );
             let mut buffer = vec![1.0; usize::from(channels) * 4099];
             let count = allocation_counter::measure(|| {
                 c.fill(&mut [], time(0, 10), &|x| x);
@@ -935,4 +942,12 @@ fn a_stalled_monitor_reader_cannot_postpone_generation_end_or_admission_closure(
         .is_none()
     );
     assert!(reader.status().generated_frames > 512);
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

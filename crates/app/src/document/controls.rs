@@ -2,7 +2,9 @@
 //!
 //! This is control convenience, not validation: typed values outside a
 //! slider's span are kept exactly and validated by the core.
-use auditorylab_core::{CarrierKind, Ears, Modulation, ModulationKind, ParameterId, SampleRate};
+use auditorylab_core::{
+    CarrierKind, Ears, Finite, Modulation, ModulationKind, ParameterId, SampleRate,
+};
 
 /// Waveform spans offered by application monitors, in milliseconds.
 pub const MONITOR_SPANS_MS: [u32; 4] = [2, 10, 40, 100];
@@ -118,30 +120,36 @@ pub fn default_component(kind: CarrierKind) -> auditorylab_core::ComponentForm {
 pub fn default_pair(kind: auditorylab_core::PairKind) -> auditorylab_core::ComponentForm {
     match kind {
         auditorylab_core::PairKind::Binaural => auditorylab_core::ComponentForm::BinauralPair {
-            left_hz: 200.0,
-            offset_hz: 6.0,
-            left_peak_dbfs: -30.0,
-            right_peak_dbfs: -30.0,
+            left_hz: finite_default(200.0),
+            offset_hz: finite_default(6.0),
+            left_peak_dbfs: finite_default(-30.0),
+            right_peak_dbfs: finite_default(-30.0),
         },
         auditorylab_core::PairKind::Monaural => auditorylab_core::ComponentForm::MonauralPair {
             ears: Ears::Both,
-            first_hz: 200.0,
-            offset_hz: 6.0,
-            first_peak_dbfs: -30.0,
-            second_peak_dbfs: -30.0,
+            first_hz: finite_default(200.0),
+            offset_hz: finite_default(6.0),
+            first_peak_dbfs: finite_default(-30.0),
+            second_peak_dbfs: finite_default(-30.0),
         },
     }
 }
 
-fn model_default(id: ParameterId) -> f64 {
-    range(id, SampleRate::DEFAULT).map_or(0.0, |r| id.descriptor().unit.to_model(r.default))
+fn finite_default(value: f64) -> Finite {
+    Finite::new(value).unwrap_or_else(|| unreachable!("finite control defaults"))
+}
+fn model_default(id: ParameterId) -> Finite {
+    finite_default(
+        range(id, SampleRate::DEFAULT).map_or(0.0, |r| id.descriptor().unit.to_model(r.default)),
+    )
 }
 
 /// Default parameters for a modulation kind, in model units.
 #[must_use]
 pub fn default_modulation(kind: ModulationKind, rate: SampleRate) -> Modulation {
-    let model =
-        |id: ParameterId| range(id, rate).map_or(0.0, |r| id.descriptor().unit.to_model(r.default));
+    let model = |id: ParameterId| {
+        finite_default(range(id, rate).map_or(0.0, |r| id.descriptor().unit.to_model(r.default)))
+    };
     match kind {
         ModulationKind::Am => Modulation::Am {
             rate_hz: model(ParameterId::AmRate),
@@ -206,23 +214,32 @@ pub fn slider_position(id: ParameterId, rate: SampleRate, model: f64) -> Option<
 }
 
 #[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use auditorylab_core::ComponentForm;
     use auditorylab_core::ComponentId;
 
     fn valid(component: ComponentForm, rate: SampleRate) -> bool {
-        auditorylab_core::Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: ([(ComponentId::new(1).unwrap(), component)])
+        auditorylab_core::Sound::new(
+            finite(1.0),
+            finite(0.0),
+            ([(ComponentId::new(1).unwrap(), component)])
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
                     form: *voice,
                 })
                 .collect(),
-        }
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .check(rate)
         .target()
         .is_some()
@@ -322,17 +339,18 @@ mod tests {
                         auditorylab_core::PairKind::Monaural,
                     ] {
                         let mut form = default_pair(kind);
-                        assert!(form.set(id, id.descriptor().unit.to_model(r.default)));
+                        assert!(form.set(id, finite(id.descriptor().unit.to_model(r.default))));
                         let authored = [auditorylab_core::Component {
                             id: ComponentId::new(1).unwrap(),
                             form,
                         }];
                         assert!(
-                            auditorylab_core::Sound {
-                                duration_seconds: 1.0,
-                                fade_seconds: 0.0,
-                                components: authored.to_vec()
-                            }
+                            auditorylab_core::Sound::new(
+                                finite(1.0),
+                                finite(0.0),
+                                authored.to_vec()
+                            )
+                            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
                             .check(rate)
                             .target()
                             .is_some()
@@ -350,7 +368,7 @@ mod tests {
                 if matches!(id, ParameterId::GateRate | ParameterId::GateWidth) {
                     component.set_modulation(Some(default_modulation(ModulationKind::Gate, rate)));
                 }
-                assert!(component.set(id, id.descriptor().unit.to_model(r.default)));
+                assert!(component.set(id, finite(id.descriptor().unit.to_model(r.default))));
                 assert!(valid(component, rate), "{id:?} default at {hz}");
             }
         }
@@ -361,7 +379,7 @@ mod tests {
             let component = {
                 let base = default_component(CarrierKind::Tone);
                 ComponentForm::Tone {
-                    frequency_hz: r.default,
+                    frequency_hz: finite(r.default),
                     ears: base.route().unwrap(),
                     peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
                     modulation: base.modulation(),

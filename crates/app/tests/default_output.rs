@@ -23,7 +23,7 @@ fn silent(
     )
     .unwrap();
     let snapshot = resolved.snapshot();
-    assert!(snapshot.sound().components.is_empty());
+    assert!(snapshot.sound().components().is_empty());
     let session = Session::new();
     let control = session.control();
     let Preparation::Ready(playback) = prepare_playback(session, &resolved).unwrap() else {

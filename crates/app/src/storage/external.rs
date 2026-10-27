@@ -130,7 +130,7 @@ impl ExternalWriter {
         {
             return Err(Error::HistoryReplacement);
         }
-        if original.same_editable_content(&recipe) {
+        if original.content() == recipe.content() {
             return Ok(ExternalOutcome {
                 status: MutationStatus::Unchanged,
                 previous: expected.clone(),

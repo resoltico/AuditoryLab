@@ -70,9 +70,6 @@ impl Display for Quantity {
 impl Display for SoundText<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0 {
-            SoundError::Structure(error) => {
-                f.write_str(&super::core_errors::structure_error(error))
-            }
             SoundError::Pair(error) => f.write_str(&super::core_errors::pair_error(error)),
             SoundError::PairCarrier {
                 id,
@@ -193,21 +190,22 @@ mod tests {
     #[test]
     fn excessive_width_names_the_signal_frame_limit() {
         let component = crate::core::ComponentForm::Clicks {
-            rate_hz: 1e-12,
-            width_seconds: 68_719_476_737.0 / 48_000.0,
+            rate_hz: finite(1e-12),
+            width_seconds: finite(68_719_476_737.0 / 48_000.0),
             ears: crate::core::Ears::Both,
-            peak_dbfs: -30.0,
+            peak_dbfs: finite(-30.0),
             modulation: None,
         };
         let message = sound_error(
-            &crate::core::Sound {
-                components: vec![crate::core::Component {
+            &crate::core::Sound::new(
+                finite(1.0),
+                finite(0.0),
+                vec![crate::core::Component {
                     id: crate::core::ComponentId::new(1).unwrap(),
                     form: component,
                 }],
-                duration_seconds: 1.0,
-                fade_seconds: 0.0,
-            }
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
             .signal(crate::core::SampleRate::DEFAULT)
             .unwrap_err(),
         );
@@ -294,5 +292,13 @@ mod reference_tests {
             error,
         };
         assert!(sound_error(&secondary).starts_with("Component 9 · second tone: "));
+    }
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
     }
 }

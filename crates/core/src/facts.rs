@@ -124,8 +124,8 @@ impl VoiceFacts {
                 Some(Modulation::Am { rate_hz, depth }),
                 Some(crate::synthesis::Modulator::Am { step, .. }),
             ) => Some(ModulationFacts::Am {
-                rate: PhaseRate::from_step(rate_hz, step, rate),
-                depth,
+                rate: PhaseRate::from_step(rate_hz.get(), step, rate),
+                depth: depth.get(),
             }),
             (
                 Some(Modulation::Gate {
@@ -134,8 +134,8 @@ impl VoiceFacts {
                 }),
                 Some(crate::synthesis::Modulator::Gate(p)),
             ) => Some(ModulationFacts::Gate(pulse(
-                rate_hz,
-                width_seconds,
+                rate_hz.get(),
+                width_seconds.get(),
                 p.frames(),
             ))),
             (None, None) => None,

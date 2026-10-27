@@ -538,8 +538,8 @@ mod tests {
             for depth in [0.0, 0.3, 1.0] {
                 let voice = Voice {
                     modulation: Some(Modulation::Am {
-                        rate_hz: 39.0625,
-                        depth,
+                        rate_hz: crate::test_support::finite(39.0625),
+                        depth: crate::test_support::finite(depth),
                     }),
                     ..clicks(40.0, 0.0)
                 };
@@ -577,11 +577,11 @@ mod tests {
                 let components: Vec<_> = (0..16)
                     .map(|n| Voice {
                         modulation: Some(Modulation::Am {
-                            rate_hz: 39.0625,
+                            rate_hz: crate::test_support::finite(39.0625),
                             depth: if shared_depth {
-                                1.0
+                                crate::test_support::finite(1.0)
                             } else {
-                                f64::from(n) / 15.0
+                                crate::test_support::finite(f64::from(n) / 15.0)
                             },
                         }),
                         ..tone(200.0 + f64::from(n) * 20.0, -30.0, Ears::Both)
@@ -644,25 +644,28 @@ mod tests {
             .iter()
             .map(|entry| Recipe::parse(entry.text).unwrap().sound().clone())
             .collect();
-        stimuli.push(Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: (vec![
-                tone(250.0, -20.0, Ears::Left),
-                tone(256.0, -20.0, Ears::Right),
-                clicks(40.0, -20.0),
-            ])
-            .into_iter()
-            .enumerate()
-            .map(|(index, voice)| crate::Component {
-                id: crate::ComponentId::numbered(index).unwrap(),
-                form: crate::test_support::form(voice),
-            })
-            .collect(),
-        });
+        stimuli.push(
+            Sound::new(
+                crate::test_support::finite(1.0),
+                crate::test_support::finite(0.0),
+                (vec![
+                    tone(250.0, -20.0, Ears::Left),
+                    tone(256.0, -20.0, Ears::Right),
+                    clicks(40.0, -20.0),
+                ])
+                .into_iter()
+                .enumerate()
+                .map(|(index, voice)| crate::Component {
+                    id: crate::ComponentId::numbered(index).unwrap(),
+                    form: crate::test_support::form(voice),
+                })
+                .collect(),
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}")),
+        );
         for mut sound in stimuli {
-            sound.duration_seconds = 1.0;
-            sound.fade_seconds = 0.0;
+            sound.set_duration(crate::test_support::finite(1.0));
+            sound.set_fade(crate::test_support::finite(0.0));
             let signal = sound.signal(rate()).unwrap();
             let target = sound.target(rate()).unwrap();
             let mut engine = Engine::new(rate());
@@ -687,10 +690,10 @@ mod tests {
     #[test]
     fn targets_reject_what_signals_reject_with_the_same_errors() {
         let too_high = tone(30_000.0, -20.0, Ears::Both);
-        let sound = Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: (vec![tone(440.0, -20.0, Ears::Both), too_high])
+        let sound = Sound::new(
+            crate::test_support::finite(1.0),
+            crate::test_support::finite(0.0),
+            (vec![tone(440.0, -20.0, Ears::Both), too_high])
                 .into_iter()
                 .enumerate()
                 .map(|(index, voice)| crate::Component {
@@ -698,7 +701,8 @@ mod tests {
                     form: crate::test_support::form(voice),
                 })
                 .collect(),
-        };
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
         assert_eq!(
             sound.check(rate()).into_result().unwrap_err(),
             sound.signal(rate()).unwrap_err()
@@ -709,12 +713,10 @@ mod tests {
             Err(SoundError::Peak { ear: Ear::Left, .. })
         ));
         let many = vec![tone(440.0, -40.0, Ears::Both); 17];
-        assert!(matches!(
-            crate::test_support::target(rate(), &numbered(&many)),
-            Err(SoundError::Structure(
-                crate::StructureError::ComponentBudget { count: 17 }
-            ))
-        ));
+        assert_eq!(
+            crate::test_support::sound(&numbered(&many)),
+            Err(crate::StructureError::ComponentBudget { count: 17 })
+        );
         let other = SampleRate::new(44_100).unwrap();
         let mut engine = Engine::new(rate());
         assert!(!engine.set(&Target::silence(other)));
@@ -914,12 +916,12 @@ mod tests {
                 };
                 let modulation = match kind {
                     1 => Some(Modulation::Am {
-                        rate_hz: 40.0,
-                        depth: level,
+                        rate_hz: crate::test_support::finite(40.0),
+                        depth: crate::test_support::finite(level),
                     }),
                     2 => Some(Modulation::Gate {
-                        rate_hz: 40.0,
-                        width_seconds: 0.001,
+                        rate_hz: crate::test_support::finite(40.0),
+                        width_seconds: crate::test_support::finite(0.001),
                     }),
                     _ => None,
                 };
@@ -1010,8 +1012,8 @@ mod tests {
     fn gated(hz: f64, peak_dbfs: f64, width_seconds: f64) -> Voice {
         Voice {
             modulation: Some(Modulation::Gate {
-                rate_hz: 40.0,
-                width_seconds,
+                rate_hz: crate::test_support::finite(40.0),
+                width_seconds: crate::test_support::finite(width_seconds),
             }),
             ..tone(hz, peak_dbfs, Ears::Both)
         }
@@ -1042,7 +1044,10 @@ mod tests {
     )]
     fn frequencies_glide_through_intermediate_steps_during_a_ramp() {
         let am = |hz: f64, rate_hz: f64, depth: f64| Voice {
-            modulation: Some(Modulation::Am { rate_hz, depth }),
+            modulation: Some(Modulation::Am {
+                rate_hz: crate::test_support::finite(rate_hz),
+                depth: crate::test_support::finite(depth),
+            }),
             ..tone(hz, -20.0, Ears::Both)
         };
         let mut engine = Engine::new(rate());

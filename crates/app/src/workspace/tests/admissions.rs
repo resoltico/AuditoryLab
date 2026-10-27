@@ -282,30 +282,35 @@ fn fixture(case: Case) -> TestWorkspace {
             } else {
                 1
             };
-            recipe.sound.components = (0..count)
-                .map(|index| crate::core::Component {
-                    id: ComponentId::new(
-                        if matches!(case, Case::Exhausted | Case::RestorableExhausted) {
-                            u32::MAX
-                        } else {
-                            index + 1
+            recipe.content.sound = auditorylab_core::Sound::new(
+                recipe.content.sound.duration_seconds(),
+                recipe.content.sound.fade_seconds(),
+                (0..count)
+                    .map(|index| crate::core::Component {
+                        id: ComponentId::new(
+                            if matches!(case, Case::Exhausted | Case::RestorableExhausted) {
+                                u32::MAX
+                            } else {
+                                index + 1
+                            },
+                        )
+                        .unwrap(),
+                        form: crate::core::ComponentForm::Tone {
+                            frequency_hz: if matches!(case, Case::AcousticInvalid) {
+                                finite(30000.0)
+                            } else {
+                                finite(440.0)
+                            },
+                            ears: crate::core::Ears::Both,
+                            peak_dbfs: finite(-40.0),
+                            modulation: None,
                         },
-                    )
-                    .unwrap(),
-                    form: crate::core::ComponentForm::Tone {
-                        frequency_hz: if matches!(case, Case::AcousticInvalid) {
-                            30000.0
-                        } else {
-                            440.0
-                        },
-                        ears: crate::core::Ears::Both,
-                        peak_dbfs: -40.0,
-                        modulation: None,
-                    },
-                })
-                .collect();
+                    })
+                    .collect(),
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
             if matches!(case, Case::FullLineage) {
-                recipe.lineage = (0..16)
+                recipe.content.lineage = (0..16)
                     .map(|index| crate::core::Lineage {
                         title: format!("Ancestor {index}"),
                         note: "Retained relationship".into(),
@@ -565,3 +570,11 @@ action_matrix!(
     |ws: &mut Workspace| ws.prepare_add_to_library().map(|_| ()),
     |ws: &mut Workspace| ws.add_selected_to_library()
 );
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
+}

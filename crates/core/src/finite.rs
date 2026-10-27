@@ -130,10 +130,10 @@ mod tests {
 
     fn signal(frames: u32) -> Arc<Signal> {
         Arc::new(
-            Sound {
-                duration_seconds: f64::from(frames) / 8_000.0,
-                fade_seconds: 0.0,
-                components: (vec![Voice {
+            Sound::new(
+                crate::test_support::finite(f64::from(frames) / 8_000.0),
+                crate::test_support::finite(0.0),
+                (vec![Voice {
                     ears: Ears::Both,
                     peak_dbfs: -20.0,
                     carrier: Carrier::Tone {
@@ -148,7 +148,8 @@ mod tests {
                     form: crate::test_support::form(voice),
                 })
                 .collect(),
-            }
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
             .signal(SampleRate::new(8_000).unwrap())
             .unwrap(),
         )

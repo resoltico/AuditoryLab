@@ -3,7 +3,7 @@
 
 use crate::{
     BibliographySource, Component, ContractError, Description, DocumentIdentity, Evidence,
-    EvidenceScope, Lineage, Sound,
+    EvidenceScope, Finite, Lineage, Sound, StructureError,
 };
 use alloc::{
     string::{String, ToString},
@@ -19,23 +19,27 @@ use serde::{Deserialize, Serialize};
 /// Recipe content is immutable outside core; edits must pass a checked builder.
 /// ```compile_fail
 /// use auditorylab_core::{Recipe, catalog};
-/// let mut recipe = Recipe::parse(catalog::ENTRIES[0].text).unwrap();
-/// recipe.sound.duration_seconds = 1.0;
+/// let recipe = Recipe::parse(catalog::ENTRIES[0].text).unwrap();
+/// let _ = recipe.content;
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Recipe {
-    /// Stable identity and optional declared history, never filesystem dates.
     document: DocumentIdentity,
-    /// Ordered authored sound; pairs retain their signed nominal offset.
-    sound: Sound,
-    /// Current title and notes, independent of source evidence.
-    description: Option<Description>,
-    /// Bounded bibliography referenced by evidence and lineage.
-    sources: Vec<BibliographySource>,
-    /// Full scoped evidence declarations, never a trust flag.
-    evidence: Vec<Evidence>,
-    /// Flat ancestor descriptors, not recursively embedded documents.
-    lineage: Vec<Lineage>,
+    content: RecipeContent,
+}
+/// Authored content independent of document identity and declared dates.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecipeContent {
+    /// Ordered authored sound.
+    pub sound: Sound,
+    /// Current title and notes.
+    pub description: Option<Description>,
+    /// Bounded bibliography.
+    pub sources: Vec<BibliographySource>,
+    /// Scoped evidence declarations.
+    pub evidence: Vec<Evidence>,
+    /// Flat ancestor descriptors.
+    pub lineage: Vec<Lineage>,
 }
 
 /// Why a byte sequence does not satisfy the one supported portable contract.
@@ -49,8 +53,10 @@ pub enum RecipeError {
     Utf16,
     /// Strict TOML shape/type error.
     Format(toml::de::Error),
-    /// Identity, reference, budget or finite-number contract failed.
+    /// Metadata, reference or attribution-budget contract failed.
     Contract(ContractError),
+    /// Authored identities or capacity violate the sound structure.
+    Structure(StructureError),
     /// TOML serialization failed.
     Write(toml::ser::Error),
     /// A different schema is not read or converted.
@@ -68,6 +74,7 @@ impl Display for RecipeError {
             Self::Format(_) => f.write_str("recipe.format"),
             Self::Contract(error) => write!(f, "recipe.contract.{error}"),
             Self::Write(_) => f.write_str("recipe.write"),
+            Self::Structure(error) => write!(f, "recipe.{error}"),
             Self::UnsupportedVersion { found } => write!(f, "recipe.schema_version.{found}"),
         }
     }
@@ -78,6 +85,7 @@ impl core::error::Error for RecipeError {
             Self::Format(e) => Some(e),
             Self::Contract(e) => Some(e),
             Self::Write(e) => Some(e),
+            Self::Structure(e) => Some(e),
             _ => None,
         }
     }
@@ -104,8 +112,8 @@ struct Document {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct DocumentSound {
-    duration_seconds: f64,
-    fade_seconds: f64,
+    duration_seconds: Finite,
+    fade_seconds: Finite,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     component: Vec<Component>,
 }
@@ -120,11 +128,7 @@ impl Recipe {
     pub fn into_builder(self) -> RecipeBuilder {
         RecipeBuilder {
             document: self.document,
-            sound: self.sound,
-            description: self.description,
-            sources: self.sources,
-            evidence: self.evidence,
-            lineage: self.lineage,
+            content: self.content,
         }
     }
     /// The document's document.
@@ -135,7 +139,7 @@ impl Recipe {
     /// Replace document while enforcing the portable contract.
     ///
     /// # Errors
-    /// Rejects invalid structure, references or nonfinite authored numbers.
+    /// Propagates metadata or bibliography-reference validation errors.
     pub fn with_document(self, value: DocumentIdentity) -> Result<Self, RecipeError> {
         let mut builder = self.into_builder();
         builder.document = value;
@@ -144,71 +148,71 @@ impl Recipe {
     /// The document's sound.
     #[must_use]
     pub const fn sound(&self) -> &Sound {
-        &self.sound
+        &self.content.sound
     }
     /// Replace sound while enforcing the portable contract.
     ///
     /// # Errors
-    /// Rejects invalid structure, references or nonfinite authored numbers.
+    /// Propagates metadata or bibliography-reference validation errors.
     pub fn with_sound(self, value: Sound) -> Result<Self, RecipeError> {
         let mut builder = self.into_builder();
-        builder.sound = value;
+        builder.content.sound = value;
         builder.build()
     }
     /// The document's description.
     #[must_use]
-    pub const fn description(&self) -> &Option<Description> {
-        &self.description
+    pub const fn description(&self) -> Option<&Description> {
+        self.content.description.as_ref()
     }
     /// Replace description while enforcing the portable contract.
     ///
     /// # Errors
-    /// Rejects invalid structure, references or nonfinite authored numbers.
+    /// Propagates metadata or bibliography-reference validation errors.
     pub fn with_description(self, value: Option<Description>) -> Result<Self, RecipeError> {
         let mut builder = self.into_builder();
-        builder.description = value;
+        builder.content.description = value;
         builder.build()
     }
     /// The document's sources.
     #[must_use]
-    pub const fn sources(&self) -> &Vec<BibliographySource> {
-        &self.sources
+    pub fn sources(&self) -> &[BibliographySource] {
+        &self.content.sources
     }
     /// Replace sources while enforcing the portable contract.
     ///
     /// # Errors
-    /// Rejects invalid structure, references or nonfinite authored numbers.
+    /// Propagates metadata or bibliography-reference validation errors.
     pub fn with_sources(self, value: Vec<BibliographySource>) -> Result<Self, RecipeError> {
         let mut builder = self.into_builder();
-        builder.sources = value;
+        builder.content.sources = value;
         builder.build()
     }
     /// The document's evidence.
     #[must_use]
-    pub const fn evidence(&self) -> &Vec<Evidence> {
-        &self.evidence
+    pub fn evidence(&self) -> &[Evidence] {
+        &self.content.evidence
     }
     /// Replace evidence while enforcing the portable contract.
     ///
     /// # Errors
-    /// Rejects invalid structure, references or nonfinite authored numbers.
+    /// Propagates metadata or bibliography-reference validation errors.
     pub fn with_evidence(self, value: Vec<Evidence>) -> Result<Self, RecipeError> {
         let mut builder = self.into_builder();
-        builder.evidence = value;
+        builder.content.evidence = value;
         builder.build()
     }
     /// The document's lineage.
     #[must_use]
-    pub const fn lineage(&self) -> &Vec<Lineage> {
-        &self.lineage
+    pub fn lineage(&self) -> &[Lineage] {
+        &self.content.lineage
     }
     /// Replace lineage while enforcing the portable contract.
     ///
     /// # Errors
-    /// Rejects invalid structure, references or nonfinite authored numbers.
+    /// Propagates metadata or bibliography-reference validation errors.
     pub fn with_lineage(self, value: Vec<Lineage>) -> Result<Self, RecipeError> {
         let mut builder = self.into_builder();
-        builder.lineage = value;
+        builder.content.lineage = value;
         builder.build()
     }
     /// Version of the portable UTF-8 TOML recipe format.
@@ -220,15 +224,18 @@ impl Recipe {
     pub fn silent(document: DocumentIdentity) -> Self {
         Self {
             document,
-            sound: Sound {
-                duration_seconds: 60.0,
-                fade_seconds: 0.1,
-                components: Vec::new(),
+            content: RecipeContent {
+                sound: Sound::new(
+                    Finite::new(60.0).unwrap_or_else(|| unreachable!("finite default duration")),
+                    Finite::new(0.1).unwrap_or_else(|| unreachable!("finite default fade")),
+                    Vec::new(),
+                )
+                .unwrap_or_else(|_| unreachable!("empty sound")),
+                description: None,
+                sources: Vec::new(),
+                evidence: Vec::new(),
+                lineage: Vec::new(),
             },
-            description: None,
-            sources: Vec::new(),
-            evidence: Vec::new(),
-            lineage: Vec::new(),
         }
     }
     /// Read bounded portable UTF-8 bytes; no migration or identity invention.
@@ -266,22 +273,25 @@ impl Recipe {
         let d: Document = toml::from_str(text).map_err(RecipeError::Format)?;
         let mut value = Self {
             document: d.document,
-            sound: Sound {
-                duration_seconds: d.sound.duration_seconds,
-                fade_seconds: d.sound.fade_seconds,
-                components: d.sound.component,
+            content: RecipeContent {
+                sound: Sound::new(
+                    d.sound.duration_seconds,
+                    d.sound.fade_seconds,
+                    d.sound.component,
+                )
+                .map_err(RecipeError::Structure)?,
+                description: d.description,
+                sources: d.source,
+                evidence: d.evidence,
+                lineage: d.lineage,
             },
-            description: d.description,
-            sources: d.source,
-            evidence: d.evidence,
-            lineage: d.lineage,
         };
         value.normalize_sources();
         value.validate()?;
         Ok(value)
     }
     fn normalize_sources(&mut self) {
-        for source in &mut self.sources {
+        for source in &mut self.content.sources {
             if let Some(doi) = source
                 .doi
                 .as_deref()
@@ -294,44 +304,22 @@ impl Recipe {
     /// Check portable structure without target compilation, rendering or I/O.
     ///
     /// # Errors
-    /// Returns the first nonfinite, identity, capacity or metadata reference error.
+    /// Returns the first metadata, bibliography-reference or attribution-budget error.
     fn validate(&self) -> Result<(), RecipeError> {
-        if let Some((index, parameter)) = self.sound.nonfinite().next() {
-            let (component, value) = match index {
-                Some(index) => {
-                    let component = &self.sound.components[index];
-                    (
-                        Some(component.id),
-                        component
-                            .form
-                            .get(parameter)
-                            .unwrap_or_else(|| unreachable!("enumerated quantity")),
-                    )
-                }
-                None => (
-                    None,
-                    parameter
-                        .read_envelope(&self.sound)
-                        .unwrap_or_else(|| unreachable!("envelope quantity")),
-                ),
-            };
-            return Err(RecipeError::Contract(ContractError::Nonfinite {
-                component,
-                parameter,
-                value,
-            }));
-        }
-        Sound::check_structure(&self.sound.components)
-            .map_err(|error| RecipeError::Contract(ContractError::Structure(error)))?;
         if self
+            .content
             .description
             .as_ref()
             .is_some_and(|d| d.title.trim().is_empty())
         {
             return Err(RecipeError::Contract(ContractError::EmptyTitle));
         }
-        crate::provenance::validate(&self.sources, &self.evidence, &self.lineage)
-            .map_err(RecipeError::Contract)
+        crate::provenance::validate(
+            &self.content.sources,
+            &self.content.evidence,
+            &self.content.lineage,
+        )
+        .map_err(RecipeError::Contract)
     }
     /// Canonical bounded TOML, preserving every authored field and source scope.
     ///
@@ -341,15 +329,15 @@ impl Recipe {
         let text = toml::to_string(&Document {
             schema_version: Self::SCHEMA_VERSION,
             document: self.document.clone(),
-            description: self.description.clone(),
+            description: self.content.description.clone(),
             sound: DocumentSound {
-                duration_seconds: self.sound.duration_seconds,
-                fade_seconds: self.sound.fade_seconds,
-                component: self.sound.components.clone(),
+                duration_seconds: self.content.sound.duration_seconds(),
+                fade_seconds: self.content.sound.fade_seconds(),
+                component: self.content.sound.components().to_vec(),
             },
-            source: self.sources.clone(),
-            evidence: self.evidence.clone(),
-            lineage: self.lineage.clone(),
+            source: self.content.sources.clone(),
+            evidence: self.content.evidence.clone(),
+            lineage: self.content.lineage.clone(),
         })
         .map_err(RecipeError::Write)?;
         if text.len() > Self::MAX_BYTES {
@@ -357,18 +345,10 @@ impl Recipe {
         }
         Ok(text)
     }
-    /// Editable semantic content equality, excluding declared dates and identity.
-    /// Exact sound bits/order/owners are preserved; normalized DOI identity is used.
+    /// Content independent of identity and declared dates.
     #[must_use]
-    pub fn same_editable_content(&self, other: &Self) -> bool {
-        self.clone()
-            .into_builder()
-            .same_editable_content(&other.clone().into_builder())
-    }
-    /// Identity, normalized declared history and full editable content equality.
-    #[must_use]
-    pub fn same_document(&self, other: &Self) -> bool {
-        self.document == other.document && self.same_editable_content(other)
+    pub const fn content(&self) -> &RecipeContent {
+        &self.content
     }
 
     /// Whether the flat ancestry has room for an independent copy.
@@ -376,9 +356,9 @@ impl Recipe {
     /// # Errors
     /// Returns the exact capacity failure before a caller allocates a new identity.
     pub fn copy_readiness(&self) -> Result<(), ContractError> {
-        if self.lineage.len() >= crate::provenance::MAX_LINEAGE {
+        if self.content.lineage.len() >= crate::provenance::MAX_LINEAGE {
             return Err(ContractError::CopyLineageFull {
-                count: self.lineage.len(),
+                count: self.content.lineage.len(),
             });
         }
         Ok(())
@@ -403,77 +383,54 @@ impl Recipe {
         self.copy_readiness().map_err(RecipeError::Contract)?;
         if note.trim().is_empty() {
             return Err(RecipeError::Contract(ContractError::EmptyLineageNote {
-                index: self.lineage.len(),
+                index: self.content.lineage.len(),
             }));
         }
         let mut copy = self.clone();
         copy.document = document;
-        copy.lineage.push(Lineage {
+        copy.content.lineage.push(Lineage {
             title: self
+                .content
                 .description
                 .as_ref()
                 .map_or_else(|| self.document.id.to_string(), |d| d.title.clone()),
             note,
             document_id: Some(self.document.id),
             catalog_id,
-            source_keys: self.sources.iter().map(|s| s.key.clone()).collect(),
+            source_keys: self.content.sources.iter().map(|s| s.key.clone()).collect(),
         });
-        for e in &mut copy.evidence {
+        for e in &mut copy.content.evidence {
             e.scope = EvidenceScope::Ancestor;
         }
         Ok(copy)
     }
 }
 /// Editable portable content; only `build` produces a validated recipe.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecipeBuilder {
-    /// Stable identity and optional declared history, never filesystem dates.
+    /// Provisional document identity and history.
     pub document: DocumentIdentity,
-    /// Ordered authored sound; pairs retain their signed nominal offset.
-    pub sound: Sound,
-    /// Current title and notes, independent of source evidence.
-    pub description: Option<Description>,
-    /// Bounded bibliography referenced by evidence and lineage.
-    pub sources: Vec<BibliographySource>,
-    /// Full scoped evidence declarations, never a trust flag.
-    pub evidence: Vec<Evidence>,
-    /// Flat ancestor descriptors, not recursively embedded documents.
-    pub lineage: Vec<Lineage>,
+    /// Editable content, validated when built.
+    pub content: RecipeContent,
 }
 impl RecipeBuilder {
     /// Validate portable structure without acoustic validation at a sample rate.
     ///
     /// # Errors
-    /// Rejects nonfinite numbers, duplicate identities, capacity and metadata errors.
+    /// Rejects metadata, bibliography-reference or attribution-budget errors.
     pub fn build(self) -> Result<Recipe, RecipeError> {
         let mut recipe = Recipe {
             document: self.document,
-            sound: self.sound,
-            description: self.description,
-            sources: self.sources,
-            evidence: self.evidence,
-            lineage: self.lineage,
+            content: self.content,
         };
         recipe.normalize_sources();
         recipe.validate()?;
         Ok(recipe)
     }
-    /// Exact editable content comparison, excluding identity and declared history.
+    /// Content independent of provisional identity and dates.
     #[must_use]
-    pub fn same_editable_content(&self, other: &Self) -> bool {
-        self.sound.same_content(&other.sound)
-            && self.description == other.description
-            && self.sources.len() == other.sources.len()
-            && self.sources.iter().zip(&other.sources).all(|(a, b)| {
-                a.key == b.key
-                    && a.label == b.label
-                    && a.citation == b.citation
-                    && a.url == b.url
-                    && a.doi.as_deref().and_then(crate::provenance::normalize_doi)
-                        == b.doi.as_deref().and_then(crate::provenance::normalize_doi)
-            })
-            && self.evidence == other.evidence
-            && self.lineage == other.lineage
+    pub const fn content(&self) -> &RecipeContent {
+        &self.content
     }
 }
 #[cfg(test)]

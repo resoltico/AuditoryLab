@@ -36,22 +36,25 @@ fn every_builtin_matches_bit_for_bit_after_both_startup_envelopes() {
 #[test]
 fn a_different_carrier_is_detected_by_the_same_bit_comparison() {
     let rate = SampleRate::DEFAULT;
-    let sound = |frequency_hz| Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: vec![Component {
-            id: ComponentId::new(1).unwrap(),
-            form: ComponentForm::Tone {
-                frequency_hz,
-                ears: Ears::Both,
-                peak_dbfs: -20.0,
-                modulation: None,
-            },
-        }],
+    let sound = |frequency_hz| {
+        Sound::new(
+            finite(1.0),
+            finite(0.0),
+            vec![Component {
+                id: ComponentId::new(1).unwrap(),
+                form: ComponentForm::Tone {
+                    frequency_hz,
+                    ears: Ears::Both,
+                    peak_dbfs: finite(-20.0),
+                    modulation: None,
+                },
+            }],
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     };
-    let signal = sound(200.0).signal(rate).unwrap();
+    let signal = sound(finite(200.0)).signal(rate).unwrap();
     let mut engine = Engine::new(rate);
-    assert!(engine.set(&sound(201.0).target(rate).unwrap()));
+    assert!(engine.set(&sound(finite(201.0)).target(rate).unwrap()));
     let start = engine.ramp_frames() + 1;
     let end = start + 480;
     let mut frames = vec![[0.0; 2]; usize::try_from(end).unwrap()];
@@ -60,4 +63,11 @@ fn a_different_carrier_is_detected_by_the_same_bit_comparison() {
         (start..end).any(|n| frames[usize::try_from(n).unwrap()].map(f64::to_bits)
             != signal.frame(n).map(f64::to_bits))
     );
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

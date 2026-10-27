@@ -262,7 +262,7 @@ fn process_child() {
         },
         _ => {
             let mut recipe = record.snapshot.recipe().clone().into_builder();
-            recipe.description.as_mut().unwrap().title = "Complete candidate".into();
+            recipe.content.description.as_mut().unwrap().title = "Complete candidate".into();
             Mutation::Update {
                 key: record.key,
                 expect: Some(record.version_token),

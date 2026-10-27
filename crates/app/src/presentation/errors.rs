@@ -1,6 +1,6 @@
 //! Human sentences for typed operation failures.
 use super::DisplayText;
-use super::core_errors::{recipe_error, structure_error};
+use super::core_errors::recipe_error;
 use crate::error::{
     EditorError, ExportError, FileError, IdentityError, IdentityScope, IoFailure, IoOperation,
     LibraryError, LoadError, PlaybackError, QueryError, SaveError,
@@ -187,7 +187,6 @@ fn editor_text(error: &EditorError) -> String {
     match error {
         EditorError::Identity(error) => identity_text(error),
         EditorError::Recipe(error) => recipe_error(error),
-        EditorError::Structure(error) => structure_error(error),
     }
 }
 fn save_text(error: &SaveError) -> String {
@@ -298,7 +297,6 @@ impl StdError for EditorError {
         match self {
             Self::Identity(error) => Some(error),
             Self::Recipe(error) => Some(error),
-            Self::Structure(error) => Some(error),
         }
     }
 }

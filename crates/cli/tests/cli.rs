@@ -207,18 +207,18 @@ fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
     use auditorylab_app::core::{Component, ComponentForm, ComponentId, Ears, Pair};
     let d = dir();
     let file = d.path().join("meaning.toml");
-    let tone = |frequency_hz, ears, peak_dbfs| ComponentForm::Tone {
-        frequency_hz,
+    let tone = |frequency_hz: f64, ears, peak_dbfs: f64| ComponentForm::Tone {
+        frequency_hz: finite(frequency_hz),
         ears,
-        peak_dbfs,
+        peak_dbfs: finite(peak_dbfs),
         modulation: None,
     };
     let forms = |voices: Vec<ComponentForm>| voices.into_iter().collect::<Vec<_>>();
     let click = ComponentForm::Clicks {
-        rate_hz: 40.0,
-        width_seconds: 0.001,
+        rate_hz: finite(40.0),
+        width_seconds: finite(0.001),
         ears: Ears::Both,
-        peak_dbfs: -40.0,
+        peak_dbfs: finite(-40.0),
         modulation: None,
     };
     let pair = Pair {
@@ -260,10 +260,10 @@ fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
         (
             vec![{
                 ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
+                    left_hz: finite(pair.first_hz),
+                    offset_hz: finite(pair.offset_hz),
+                    left_peak_dbfs: finite(pair.first_peak_dbfs),
+                    right_peak_dbfs: finite(pair.second_peak_dbfs),
                 }
             }],
             "40 Hz interaural difference",
@@ -273,10 +273,10 @@ fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
             vec![{
                 ComponentForm::MonauralPair {
                     ears: Ears::Both,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
+                    first_hz: finite(pair.first_hz),
+                    offset_hz: finite(pair.offset_hz),
+                    first_peak_dbfs: finite(pair.first_peak_dbfs),
+                    second_peak_dbfs: finite(pair.second_peak_dbfs),
                 }
             }],
             "40 Hz monaural",
@@ -284,14 +284,19 @@ fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
         ),
     ] {
         let mut recipe = common::silent(1.0, 0.0).into_builder();
-        recipe.sound.components = components
-            .into_iter()
-            .enumerate()
-            .map(|(index, form)| Component {
-                id: ComponentId::numbered(index).unwrap(),
-                form,
-            })
-            .collect();
+        recipe.content.sound = auditorylab_app::core::Sound::new(
+            recipe.content.sound.duration_seconds(),
+            recipe.content.sound.fade_seconds(),
+            components
+                .into_iter()
+                .enumerate()
+                .map(|(index, form)| Component {
+                    id: ComponentId::numbered(index).unwrap(),
+                    form,
+                })
+                .collect(),
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
         fs::write(&file, recipe.build().unwrap().to_toml().unwrap()).unwrap();
         for command in ["describe", "inspect"] {
             let out = cli(&[command, "--file", file.to_str().unwrap()]);
@@ -318,18 +323,19 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
     let path = dir.path().join("pulse.toml");
     let mut recipe = common::silent(0.05, 0.0).into_builder();
     recipe
+        .content
         .sound
-        .components
         .push(auditorylab_app::core::Component {
             id: auditorylab_app::core::ComponentId::new(1).unwrap(),
             form: auditorylab_app::core::ComponentForm::Clicks {
-                rate_hz: 40.0,
-                width_seconds: 0.0001,
+                rate_hz: finite(40.0),
+                width_seconds: finite(0.0001),
                 ears: auditorylab_app::core::Ears::Both,
-                peak_dbfs: -30.0,
+                peak_dbfs: finite(-30.0),
                 modulation: None,
             },
-        });
+        })
+        .unwrap();
     fs::write(&path, recipe.build().unwrap().to_toml().unwrap()).unwrap();
     let out = cli(&[
         "inspect",
@@ -374,7 +380,7 @@ fn unicode_notes_roundtrip_and_terminal_controls_are_escaped_at_display_boundary
         auditorylab_app::core::Recipe::parse(std::str::from_utf8(silence().as_bytes()).unwrap())
             .unwrap()
             .into_builder();
-    recipe.description = Some(auditorylab_app::core::Description {
+    recipe.content.description = Some(auditorylab_app::core::Description {
         title: "Rīga \"🎧\"".into(),
         notes: Some("Line one\nLine two \u{1b}[31m \u{202e}reverse".into()),
     });
@@ -444,4 +450,29 @@ fn nominal_list_filters_use_the_shared_band_and_method_contract() {
     ] {
         assert_eq!(cli(&args).status.code(), Some(2));
     }
+}
+
+const fn finite(value: f64) -> auditorylab_app::core::Finite {
+    match auditorylab_app::core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
+}
+
+#[test]
+fn nonfinite_recipe_diagnostic_names_the_key_line_and_column() {
+    let directory = dir();
+    let path = directory.path().join("nonfinite.toml");
+    fs::write(
+        &path,
+        include_bytes!("../../core/tests/fixtures/invalid/nonfinite-offset.toml"),
+    )
+    .unwrap();
+    let output = cli(&["inspect", "--file", path.to_str().unwrap()]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let message = String::from_utf8(output.stderr).unwrap();
+    assert!(message.contains("line 20, column 13"), "{message}");
+    assert!(message.contains("offset_hz = nan"), "{message}");
+    assert!(message.contains("expected a finite number"), "{message}");
 }

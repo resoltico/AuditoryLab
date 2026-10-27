@@ -87,6 +87,14 @@ const fn nearest_f32(sample: f64) -> f32 {
 }
 
 #[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
+}
+
+#[cfg(test)]
 mod quantization {
     use super::*;
     #[test]
@@ -145,13 +153,13 @@ mod quantization {
     #[test]
     fn actual_encoded_peaks_can_round_above_the_binary64_generation_bound() {
         use auditorylab_core::{ComponentForm, Ears, Sound};
-        let session = Sound {
-            duration_seconds: 4.0 / 8_000.0,
-            fade_seconds: 0.0,
-            components: (vec![ComponentForm::Tone {
-                frequency_hz: 2_000.0,
+        let session = Sound::new(
+            finite(4.0 / 8_000.0),
+            finite(0.0),
+            (vec![ComponentForm::Tone {
+                frequency_hz: finite(2_000.0),
                 ears: Ears::Left,
-                peak_dbfs: -20.0,
+                peak_dbfs: finite(-20.0),
                 modulation: None,
             }])
             .into_iter()
@@ -161,7 +169,8 @@ mod quantization {
                 form: voice,
             })
             .collect(),
-        }
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .signal(SampleRate::new(8_000).unwrap())
         .unwrap();
         let mut expected = [[0.0; 2]; 4];
@@ -180,13 +189,13 @@ mod quantization {
         for frame in bytes[58..].as_chunks::<8>().0 {
             assert_eq!(&frame[4..], &[0; 4]);
         }
-        let session = Sound {
-            duration_seconds: 4.0 / 8_000.0,
-            fade_seconds: 0.0,
-            components: (vec![ComponentForm::Tone {
-                frequency_hz: 2_000.0,
+        let session = Sound::new(
+            finite(4.0 / 8_000.0),
+            finite(0.0),
+            (vec![ComponentForm::Tone {
+                frequency_hz: finite(2_000.0),
                 ears: Ears::Both,
-                peak_dbfs: -1_000.0,
+                peak_dbfs: finite(-1_000.0),
                 modulation: None,
             }])
             .into_iter()
@@ -196,7 +205,8 @@ mod quantization {
                 form: voice,
             })
             .collect(),
-        }
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .signal(SampleRate::new(8_000).unwrap())
         .unwrap();
         let mut bytes = Vec::new();

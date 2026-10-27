@@ -21,15 +21,12 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
         modified_at: modified.map(|s| s.parse().unwrap()),
     };
     let mut recipe = Recipe::builder(document);
-    recipe.description = Some(auditorylab_app::core::Description {
+    recipe.content.description = Some(auditorylab_app::core::Description {
         title: title.into(),
         notes: None,
     });
-    recipe.sound = Sound {
-        duration_seconds: 60.0,
-        fade_seconds: 0.1,
-        components: nodes,
-    };
+    recipe.content.sound = Sound::new(finite(60.0), finite(0.1), nodes)
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
     let key = LibraryKey::User(recipe.document.id);
     let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe.build().unwrap());
     EntrySummary::from_snapshot(key, &snapshot, None)
@@ -42,10 +39,10 @@ fn pair(offset_hz: f64) -> Component {
     Component {
         id: ComponentId::new(7).unwrap(),
         form: ComponentForm::BinauralPair {
-            left_hz: 200.0,
-            offset_hz,
-            left_peak_dbfs: -30.0,
-            right_peak_dbfs: -30.0,
+            left_hz: finite(200.0),
+            offset_hz: finite(offset_hz),
+            left_peak_dbfs: finite(-30.0),
+            right_peak_dbfs: finite(-30.0),
         },
     }
 }
@@ -57,12 +54,12 @@ fn am(rate_hz: f64) -> Component {
     Component {
         id: ComponentId::new(90).unwrap(),
         form: ComponentForm::Tone {
-            frequency_hz: 1000.0,
+            frequency_hz: finite(1000.0),
             ears: Ears::Both,
-            peak_dbfs: -30.0,
+            peak_dbfs: finite(-30.0),
             modulation: Some(auditorylab_app::core::Modulation::Am {
-                rate_hz,
-                depth: 1.0,
+                rate_hz: finite(rate_hz),
+                depth: finite(1.0),
             }),
         },
     }
@@ -132,7 +129,7 @@ fn evidence_filters_cannot_borrow_population_or_role_and_ancestors_never_assert_
         .recipe()
         .unwrap()
         .into_builder();
-    recipe.sources = (0..3)
+    recipe.content.sources = (0..3)
         .map(|i| BibliographySource {
             key: format!("study-{i}"),
             label: format!("Study {i}"),
@@ -141,7 +138,7 @@ fn evidence_filters_cannot_borrow_population_or_role_and_ancestors_never_assert_
             url: None,
         })
         .collect();
-    recipe.evidence = [
+    recipe.content.evidence = [
         (0, S::ReferenceCondition, P::Human, R::Test),
         (1, S::ReferenceCondition, P::Mouse, R::Comparison),
         (2, S::Ancestor, P::Human, R::Test),
@@ -252,4 +249,11 @@ fn automatic_defaults_follow_scope_but_explicit_sort_is_retained() {
     assert_eq!(all.execute(&input).unwrap().unique_count(), 2);
     all.scope = Scope::Trash;
     assert_eq!(all.execute(&input).unwrap().unique_count(), 1);
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

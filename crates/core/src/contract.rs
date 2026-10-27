@@ -1,5 +1,5 @@
 //! Typed portable-document contract failures, independent of presentation.
-use crate::{ComponentId, DocumentUuid, ParameterId, StructureError};
+use crate::DocumentUuid;
 use alloc::string::String;
 use core::fmt;
 /// The metadata record owning a bibliography reference.
@@ -13,17 +13,6 @@ pub enum ReferenceOwner {
 /// Why authored content cannot become a portable recipe.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ContractError {
-    /// An authored number is not finite.
-    Nonfinite {
-        /// Authored owner, absent for the finite envelope.
-        component: Option<ComponentId>,
-        /// The quantity.
-        parameter: ParameterId,
-        /// The exact invalid value.
-        value: f64,
-    },
-    /// Authored identity or capacity is invalid.
-    Structure(StructureError),
     /// A present description has an empty title.
     EmptyTitle,
     /// Bibliography capacity exceeded.
@@ -120,8 +109,6 @@ impl fmt::Display for ContractError {
         // Core's Error implementation exposes technical rule identifiers.
         // Human sentences are owned by application presentation.
         let code = match self {
-            Self::Nonfinite { .. } => "nonfinite_value",
-            Self::Structure(_) => "sound_structure",
             Self::EmptyTitle => "empty_title",
             Self::SourceBudget { .. } => "source_budget",
             Self::EvidenceBudget { .. } => "evidence_budget",
@@ -143,11 +130,4 @@ impl fmt::Display for ContractError {
         f.write_str(code)
     }
 }
-impl core::error::Error for ContractError {
-    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-        match self {
-            Self::Structure(error) => Some(error),
-            _ => None,
-        }
-    }
-}
+impl core::error::Error for ContractError {}

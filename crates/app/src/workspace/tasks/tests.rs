@@ -638,7 +638,7 @@ fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
     let record = store.scan(&Cancel::default()).entries[0].key.clone();
     let original = workspace.editor().document();
     let location = workspace.document_location();
-    let mut candidate = store
+    let candidate = store
         .load(&record)
         .unwrap()
         .snapshot
@@ -649,8 +649,14 @@ fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
         id: crate::core::ComponentId::new(1).unwrap(),
         form: crate::document::controls::default_component(CarrierKind::Tone),
     };
-    candidate.sound.components = vec![component; 2];
-    assert!(candidate.build().is_err());
+    assert!(
+        crate::core::Sound::new(
+            candidate.content.sound.duration_seconds(),
+            candidate.content.sound.fade_seconds(),
+            vec![component; 2]
+        )
+        .is_err()
+    );
     assert_eq!(workspace.editor().document(), original);
     assert_eq!(workspace.document_location(), location);
 }
@@ -750,7 +756,7 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
                 workspace.editor().draft().components()[0]
                     .form
                     .get(ParameterId::ToneFrequency),
-                Some(880.0)
+                Some(finite(880.0))
             );
             assert!(closed(&mut workspace, false));
             workspace.action_view().operation_details
@@ -888,5 +894,12 @@ fn captured_error(outcome: crate::error::Outcome) -> crate::error::OperationErro
         Outcome::InvalidArgument => LibraryError::PurgeUnconfirmed.into(),
         Outcome::Identity => IdentityError::Exhausted(IdentityScope::ExternalEntry).into(),
         _ => panic!("category not used by this notice matrix"),
+    }
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
     }
 }

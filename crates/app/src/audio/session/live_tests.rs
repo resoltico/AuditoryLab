@@ -10,9 +10,9 @@ use auditorylab_app::presentation::{AudioDetails, AudioSummary};
 
 fn component(frequency_hz: f64, ears: Ears) -> ComponentForm {
     ComponentForm::Tone {
-        frequency_hz,
+        frequency_hz: finite(frequency_hz),
         ears,
-        peak_dbfs: -30.0,
+        peak_dbfs: finite(-30.0),
         modulation: None,
     }
 }
@@ -45,8 +45,8 @@ fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarg
     let mut draft = Draft::new().unwrap();
     let left = draft.add(CarrierKind::Tone).unwrap();
     let right = draft.add(CarrierKind::Tone).unwrap();
-    draft.replace(left, component(380.0, Ears::Left));
-    draft.replace(right, component(420.0, Ears::Right));
+    draft.replace(left, component(380.0, Ears::Left)).unwrap();
+    draft.replace(right, component(420.0, Ears::Right)).unwrap();
     let mut generator = LiveGenerator::new(target(&draft));
     let control = generator.control();
     assert_eq!(control.update(&target(&draft)).unwrap(), 1);
@@ -60,21 +60,23 @@ fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarg
         1,
         "metadata is not part of the target"
     );
-    draft.replace(right, component(428.0, Ears::Right));
+    draft.replace(right, component(428.0, Ears::Right)).unwrap();
     assert_eq!(control.update(&target(&draft)).unwrap(), 2);
     generator.render(&mut [[0.0; 2]; 720]);
     let mid = difference(&generator);
     assert!(mid > 40.0 && mid < 48.0);
-    draft.replace(right, component(439.0, Ears::Right));
+    draft.replace(right, component(439.0, Ears::Right)).unwrap();
     assert_eq!(control.update(&target(&draft)).unwrap(), 3);
-    draft.replace(right, component(448.0, Ears::Right));
+    draft.replace(right, component(448.0, Ears::Right)).unwrap();
     assert_eq!(control.update(&target(&draft)).unwrap(), 4);
     generator.render(&mut [[0.0; 2]; 4000]);
     let settled = generator.observation().unwrap();
     assert_eq!((settled.active_revision, settled.settled_revision), (4, 4));
     assert_eq!(difference(&generator), 68.0);
     // An invalid edit never becomes a target, so nothing changes.
-    draft.replace(right, component(f64::NAN, Ears::Right));
+    draft
+        .replace(right, component(30_000.0, Ears::Right))
+        .unwrap();
     assert!(draft.check(SampleRate::DEFAULT).target().is_none());
     assert_eq!(generator.observation().unwrap(), settled);
     generator.stop();
@@ -101,14 +103,19 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
         ),
     ] {
         let mut recipe = common::silent(1.0, 0.0).into_builder();
-        recipe.sound.components = voices
-            .into_iter()
-            .enumerate()
-            .map(|(index, voice)| auditorylab_app::core::Component {
-                id: auditorylab_app::core::ComponentId::numbered(index).unwrap(),
-                form: voice,
-            })
-            .collect();
+        recipe.content.sound = auditorylab_core::Sound::new(
+            recipe.content.sound.duration_seconds(),
+            recipe.content.sound.fade_seconds(),
+            voices
+                .into_iter()
+                .enumerate()
+                .map(|(index, voice)| auditorylab_app::core::Component {
+                    id: auditorylab_app::core::ComponentId::numbered(index).unwrap(),
+                    form: voice,
+                })
+                .collect(),
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
         let snapshot = auditorylab_app::services::read_source(
             recipe.build().unwrap().to_toml().unwrap().as_bytes(),
             "called binaural even if not a pair",
@@ -129,17 +136,18 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
 fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint() {
     use auditorylab_app::core::{Observation, SlotRole, VoiceObservation};
 
-    let check = auditorylab_core::Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: ([(ComponentId::new(1).unwrap(), component(440.0, Ears::Right))])
+    let check = auditorylab_core::Sound::new(
+        finite(1.0),
+        finite(0.0),
+        ([(ComponentId::new(1).unwrap(), component(440.0, Ears::Right))])
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,
                 form: *voice,
             })
             .collect(),
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .check(SampleRate::DEFAULT);
     let facts = *check.target().unwrap().voices().next().unwrap().1;
     let mut voices = [None; Observation::MAX_VOICES];
@@ -233,4 +241,12 @@ fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarg
     generator.render(&mut output);
     assert!(generator.is_finished());
     assert!(output[2880..].iter().all(|frame| *frame == [0.0; 2]));
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

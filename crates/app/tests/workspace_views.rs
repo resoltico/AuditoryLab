@@ -20,9 +20,9 @@ use auditorylab_app::presentation::waveform_view::WaveformCapture;
 use auditorylab_app::presentation::waveform_view::WaveformScale;
 fn tone(hz: f64, ears: Ears) -> ComponentForm {
     ComponentForm::Tone {
-        frequency_hz: hz,
+        frequency_hz: finite(hz),
         ears,
-        peak_dbfs: -40.0,
+        peak_dbfs: finite(-40.0),
         modulation: None,
     }
 }
@@ -40,13 +40,10 @@ fn summary(components: &[ComponentForm]) -> Structure {
         })
         .collect();
     auditorylab_app::core::rhythm::realized(
-        &auditorylab_app::core::Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components,
-        }
-        .target(SampleRate::DEFAULT)
-        .unwrap(),
+        &auditorylab_app::core::Sound::new(finite(1.0), finite(0.0), components)
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
+            .target(SampleRate::DEFAULT)
+            .unwrap(),
     )
 }
 #[test]
@@ -54,8 +51,8 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     let click = {
         let base = tone(440.0, Ears::Both);
         ComponentForm::Clicks {
-            rate_hz: 40.0,
-            width_seconds: 0.001,
+            rate_hz: finite(40.0),
+            width_seconds: finite(0.001),
             ears: base.route().unwrap(),
             peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
             modulation: base.modulation(),
@@ -98,31 +95,32 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
         let form = if binaural {
             {
                 auditorylab_app::core::ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
+                    left_hz: finite(pair.first_hz),
+                    offset_hz: finite(pair.offset_hz),
+                    left_peak_dbfs: finite(pair.first_peak_dbfs),
+                    right_peak_dbfs: finite(pair.second_peak_dbfs),
                 }
             }
         } else {
             {
                 auditorylab_app::core::ComponentForm::MonauralPair {
                     ears: Ears::Both,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
+                    first_hz: finite(pair.first_hz),
+                    offset_hz: finite(pair.offset_hz),
+                    first_peak_dbfs: finite(pair.first_peak_dbfs),
+                    second_peak_dbfs: finite(pair.second_peak_dbfs),
                 }
             }
         };
-        let target = auditorylab_app::core::Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: vec![auditorylab_app::core::Component {
+        let target = auditorylab_app::core::Sound::new(
+            finite(1.0),
+            finite(0.0),
+            vec![auditorylab_app::core::Component {
                 id: ComponentId::new(1).unwrap(),
                 form,
             }],
-        }
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .target(SampleRate::DEFAULT)
         .unwrap();
         let structure = auditorylab_app::core::rhythm::realized(&target);
@@ -136,8 +134,8 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     let gate = {
         let mut form = tone(10000.0, Ears::Both);
         form.set_modulation(Some(Modulation::Gate {
-            rate_hz: 8.0,
-            width_seconds: 0.001,
+            rate_hz: finite(8.0),
+            width_seconds: finite(0.001),
         }));
         form
     };
@@ -147,8 +145,8 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     let active = {
         let mut form = a;
         form.set_modulation(Some(Modulation::Am {
-            rate_hz: 39.0625,
-            depth: 0.5,
+            rate_hz: finite(39.0625),
+            depth: finite(0.5),
         }));
         form
     };
@@ -159,8 +157,8 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     let inactive = {
         let mut form = a;
         form.set_modulation(Some(Modulation::Am {
-            rate_hz: 39.0625,
-            depth: 0.0,
+            rate_hz: finite(39.0625),
+            depth: finite(0.0),
         }));
         form
     };
@@ -269,21 +267,22 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
     let c = {
         let base = tone(440.0, Ears::Both);
         ComponentForm::Clicks {
-            rate_hz: 40.0,
-            width_seconds: 0.001,
+            rate_hz: finite(40.0),
+            width_seconds: finite(0.001),
             ears: base.route().unwrap(),
             peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
             modulation: base.modulation(),
         }
     };
-    let t = auditorylab_app::core::Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: vec![auditorylab_app::core::Component {
+    let t = auditorylab_app::core::Sound::new(
+        finite(1.0),
+        finite(0.0),
+        vec![auditorylab_app::core::Component {
             id: ComponentId::new(9).unwrap(),
             form: c,
         }],
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .target(SampleRate::new(44100).unwrap())
     .unwrap();
     let m = ModelView::new(t, "draft".into(), ModelSource::Draft);
@@ -297,17 +296,18 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
 #[test]
 fn a_carrier_is_named_in_sentence_case() {
     let describe = |component: ComponentForm| {
-        let check = auditorylab_core::Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: ([(ComponentId::new(1).unwrap(), component)])
+        let check = auditorylab_core::Sound::new(
+            finite(1.0),
+            finite(0.0),
+            ([(ComponentId::new(1).unwrap(), component)])
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
                     form: *voice,
                 })
                 .collect(),
-        }
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .check(SampleRate::DEFAULT);
         check.voices()[0].1.clone().unwrap().summary()
     };
@@ -319,8 +319,8 @@ fn a_carrier_is_named_in_sentence_case() {
     let clicks = {
         let base = tone(440.0, Ears::Both);
         ComponentForm::Clicks {
-            rate_hz: 40.0,
-            width_seconds: 0.001,
+            rate_hz: finite(40.0),
+            width_seconds: finite(0.001),
             ears: base.route().unwrap(),
             peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
             modulation: base.modulation(),
@@ -331,13 +331,13 @@ fn a_carrier_is_named_in_sentence_case() {
     let pulses = describe(clicks);
     assert!(pulses.starts_with("Pulse rate 40 "), "{pulses}");
     let am = describe(modulated(Modulation::Am {
-        rate_hz: 8.0,
-        depth: 0.5,
+        rate_hz: finite(8.0),
+        depth: finite(0.5),
     }));
     assert!(am.contains("· carrier tone 440 Hz"), "{am}");
     let gate = describe(modulated(Modulation::Gate {
-        rate_hz: 8.0,
-        width_seconds: 0.001,
+        rate_hz: finite(8.0),
+        width_seconds: finite(0.001),
     }));
     assert!(gate.contains("· carrier tone 440 Hz"), "{gate}");
 }
@@ -353,24 +353,25 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
         let component = {
             let base = tone(440.0, Ears::Both);
             ComponentForm::Clicks {
-                rate_hz: 40.0,
-                width_seconds: requested,
+                rate_hz: finite(40.0),
+                width_seconds: finite(requested),
                 ears: base.route().unwrap(),
                 peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
                 modulation: base.modulation(),
             }
         };
-        let check = auditorylab_core::Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: ([(ComponentId::new(1).unwrap(), component)])
+        let check = auditorylab_core::Sound::new(
+            finite(1.0),
+            finite(0.0),
+            ([(ComponentId::new(1).unwrap(), component)])
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
                     form: *voice,
                 })
                 .collect(),
-        }
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .check(rate);
         let facts = check.voices()[0].1.clone().unwrap();
         let brief = facts.summary();
@@ -403,17 +404,18 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         );
     }
     let check = |c: ComponentForm| {
-        auditorylab_core::Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: ([(ComponentId::new(1).unwrap(), c)])
+        auditorylab_core::Sound::new(
+            finite(1.0),
+            finite(0.0),
+            ([(ComponentId::new(1).unwrap(), c)])
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
                     form: *voice,
                 })
                 .collect(),
-        }
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .check(rate)
         .voices()[0]
             .1
@@ -429,8 +431,8 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
     let clicks = {
         let base = tone(440.0, Ears::Both);
         ComponentForm::Clicks {
-            rate_hz: 160.0,
-            width_seconds: 0.010,
+            rate_hz: finite(160.0),
+            width_seconds: finite(0.010),
             ears: base.route().unwrap(),
             peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
             modulation: base.modulation(),
@@ -443,8 +445,8 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
     let sideband = {
         let mut form = tone(16000.0, Ears::Both);
         form.set_modulation(Some(Modulation::Am {
-            rate_hz: 10000.0,
-            depth: 0.5,
+            rate_hz: finite(10000.0),
+            depth: finite(0.5),
         }));
         form
     };
@@ -455,7 +457,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
     assert_eq!(
         check({
             let mut form = tone(440.0, Ears::Both);
-            form.set(auditorylab_core::ParameterId::PeakLevel, 1.0);
+            form.set(auditorylab_core::ParameterId::PeakLevel, finite(1.0));
             form
         }),
         [ParameterId::PeakLevel]
@@ -463,22 +465,23 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
     let depth = {
         let mut form = tone(440.0, Ears::Both);
         form.set_modulation(Some(Modulation::Am {
-            rate_hz: 40.0,
-            depth: 1.5,
+            rate_hz: finite(40.0),
+            depth: finite(1.5),
         }));
         form
     };
-    let error = auditorylab_core::Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: ([(ComponentId::new(1).unwrap(), depth)])
+    let error = auditorylab_core::Sound::new(
+        finite(1.0),
+        finite(0.0),
+        ([(ComponentId::new(1).unwrap(), depth)])
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,
                 form: *voice,
             })
             .collect(),
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .check(rate)
     .voices()[0]
         .1
@@ -504,21 +507,28 @@ fn raw_tone_timing_uses_only_explicit_active_modulation() {
     for (ears, interaural) in [(Ears::Both, false), (Ears::Left, true)] {
         let a = tone(200.0, ears);
         let mut b = tone(202.0, if interaural { Ears::Right } else { ears });
-        b.set(ParameterId::PeakLevel, -41.0);
+        b.set(ParameterId::PeakLevel, finite(-41.0));
         b.set_modulation(Some(Modulation::Am {
-            rate_hz: 40.0,
-            depth: 0.0,
+            rate_hz: finite(40.0),
+            depth: finite(0.0),
         }));
         let s = summary(&[a, b]);
         assert_eq!(s.slowest_rate(), None);
         assert!(s.rhythms.is_empty());
         assert!(s.interaural().is_none());
         b.set_modulation(Some(Modulation::Am {
-            rate_hz: 40.0,
-            depth: 0.001,
+            rate_hz: finite(40.0),
+            depth: finite(0.001),
         }));
         assert!(summary(&[a, b]).pairs.is_empty());
         assert!((summary(&[a, b]).slowest_rate().unwrap() - 40.0).abs() < 1e-10);
         assert_eq!(summary(&[a, a]).slowest_rate(), None);
+    }
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
     }
 }

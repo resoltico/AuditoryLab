@@ -1,7 +1,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 //! Ordered authored components and lossless lowering into primitive generator lanes.
-use crate::{Carrier, ComponentId, Ears, Lane, Modulation, Voice, VoiceId};
+use crate::{Carrier, ComponentId, Ears, Finite, Lane, Modulation, Voice, VoiceId};
 use alloc::vec::Vec;
 use core::fmt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -19,7 +19,7 @@ pub struct Pair {
     pub second_peak_dbfs: f64,
 }
 /// One authored primitive or explicit two-tone construction, without an identity.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ComponentForm {
     /// Authored tone quantities.
@@ -27,9 +27,9 @@ pub enum ComponentForm {
         /// The requested ears.
         ears: Ears,
         /// The requested frequency hz.
-        frequency_hz: f64,
+        frequency_hz: Finite,
         /// The requested peak dbfs.
-        peak_dbfs: f64,
+        peak_dbfs: Finite,
         /// The requested modulation.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         modulation: Option<Modulation>,
@@ -39,11 +39,11 @@ pub enum ComponentForm {
         /// The requested ears.
         ears: Ears,
         /// The requested rate hz.
-        rate_hz: f64,
+        rate_hz: Finite,
         /// The requested width seconds.
-        width_seconds: f64,
+        width_seconds: Finite,
         /// The requested peak dbfs.
-        peak_dbfs: f64,
+        peak_dbfs: Finite,
         /// The requested modulation.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         modulation: Option<Modulation>,
@@ -51,30 +51,30 @@ pub enum ComponentForm {
     /// Authored binaural_pair quantities.
     BinauralPair {
         /// The requested left hz.
-        left_hz: f64,
+        left_hz: Finite,
         /// The requested offset hz.
-        offset_hz: f64,
+        offset_hz: Finite,
         /// The requested left peak dbfs.
-        left_peak_dbfs: f64,
+        left_peak_dbfs: Finite,
         /// The requested right peak dbfs.
-        right_peak_dbfs: f64,
+        right_peak_dbfs: Finite,
     },
     /// Authored monaural_pair quantities.
     MonauralPair {
         /// The requested ears.
         ears: Ears,
         /// The requested first hz.
-        first_hz: f64,
+        first_hz: Finite,
         /// The requested offset hz.
-        offset_hz: f64,
+        offset_hz: Finite,
         /// The requested first peak dbfs.
-        first_peak_dbfs: f64,
+        first_peak_dbfs: Finite,
         /// The requested second peak dbfs.
-        second_peak_dbfs: f64,
+        second_peak_dbfs: Finite,
     },
 }
 /// An authored form and its positive stable owner identity.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Component {
     /// Authored owner, independent of generator lanes.
     pub id: ComponentId,
@@ -293,18 +293,18 @@ impl<'de> Deserialize<'de> for Component {
                 let mut id: Option<ComponentId> = None;
                 let mut kind: Option<alloc::string::String> = None;
                 let mut ears: Option<Ears> = None;
-                let mut frequency_hz: Option<f64> = None;
-                let mut peak_dbfs: Option<f64> = None;
+                let mut frequency_hz: Option<Finite> = None;
+                let mut peak_dbfs: Option<Finite> = None;
                 let mut modulation: Option<Option<Modulation>> = None;
-                let mut rate_hz: Option<f64> = None;
-                let mut width_seconds: Option<f64> = None;
-                let mut left_hz: Option<f64> = None;
-                let mut offset_hz: Option<f64> = None;
-                let mut left_peak_dbfs: Option<f64> = None;
-                let mut right_peak_dbfs: Option<f64> = None;
-                let mut first_hz: Option<f64> = None;
-                let mut first_peak_dbfs: Option<f64> = None;
-                let mut second_peak_dbfs: Option<f64> = None;
+                let mut rate_hz: Option<Finite> = None;
+                let mut width_seconds: Option<Finite> = None;
+                let mut left_hz: Option<Finite> = None;
+                let mut offset_hz: Option<Finite> = None;
+                let mut left_peak_dbfs: Option<Finite> = None;
+                let mut right_peak_dbfs: Option<Finite> = None;
+                let mut first_hz: Option<Finite> = None;
+                let mut first_peak_dbfs: Option<Finite> = None;
+                let mut second_peak_dbfs: Option<Finite> = None;
                 while let Some(key) = map.next_key::<alloc::string::String>()? {
                     match key.as_str() {
                         "id" => {
@@ -502,31 +502,48 @@ impl<'de> Deserialize<'de> for Component {
         deserializer.deserialize_map(Visitor)
     }
 }
-/// The authored sound definition; pairs remain explicit until target compilation.
-#[derive(Debug, Clone, PartialEq)]
+/// Ordered authored sound with unique identities and bounded generator capacity.
+/// Fields can only be set through checked construction and mutation.
+/// ```compile_fail
+/// use auditorylab_core::{Finite, Sound};
+/// let _ = Sound {
+///     duration_seconds: Finite::ZERO,
+///     fade_seconds: Finite::ZERO,
+///     components: Vec::new(),
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sound {
-    /// Finite audio duration requested in seconds.
-    pub duration_seconds: f64,
-    /// Requested endpoint fade in seconds.
-    pub fade_seconds: f64,
-    /// Authored nodes summed in this order after stable-lane lowering.
-    pub components: Vec<Component>,
+    duration_seconds: Finite,
+    fade_seconds: Finite,
+    components: Vec<Component>,
 }
 impl Sound {
-    /// Enforce authored uniqueness and both independent structural budgets.
+    /// Maximum number of authored components.
+    pub const MAX_COMPONENTS: usize = 16;
+    /// Maximum number of expanded generator lanes.
+    pub const MAX_VOICES: usize = 16;
+    /// Construct a sound while checking owner uniqueness and both budgets.
     ///
     /// # Errors
-    /// Returns one identity or capacity diagnostic before any acoustic compilation.
-    pub fn check_structure(components: &[Component]) -> Result<(), StructureError> {
-        if components.len() > Self::MAX_COMPONENTS {
-            return Err(StructureError::ComponentBudget {
-                count: components.len(),
-            });
-        }
-        let count = components.iter().map(|c| c.form.voices()).sum::<usize>();
-        if count > Self::MAX_VOICES {
-            return Err(StructureError::VoiceBudget { count });
-        }
+    /// Returns the first identity or capacity violation.
+    pub fn new(
+        duration_seconds: Finite,
+        fade_seconds: Finite,
+        components: Vec<Component>,
+    ) -> Result<Self, StructureError> {
+        Self::check_structure(&components)?;
+        Ok(Self {
+            duration_seconds,
+            fade_seconds,
+            components,
+        })
+    }
+    fn check_structure(components: &[Component]) -> Result<(), StructureError> {
+        Self::check_capacity(
+            components.len(),
+            components.iter().map(|c| c.form.voices()).sum(),
+        )?;
         for (index, component) in components.iter().enumerate() {
             if components[..index]
                 .iter()
@@ -537,72 +554,131 @@ impl Sound {
         }
         Ok(())
     }
-    /// Maximum number of authored components.
-    pub const MAX_COMPONENTS: usize = 16;
-    /// Maximum number of expanded generator voices.
-    pub const MAX_VOICES: usize = 16;
-
-    /// Check a whole authored candidate and its expanded generator budget.
-    #[must_use]
-    pub fn check(&self, rate: crate::SampleRate) -> crate::TargetCheck {
-        crate::TargetCheck::authored(rate, &self.components)
+    fn check_capacity(components: usize, voices: usize) -> Result<(), StructureError> {
+        if components > Self::MAX_COMPONENTS {
+            return Err(StructureError::ComponentBudget { count: components });
+        }
+        if voices > Self::MAX_VOICES {
+            return Err(StructureError::VoiceBudget { count: voices });
+        }
+        Ok(())
     }
-    /// Compile the complete atomic authored target.
+    /// Check capacity for one additional form. Insertion checks identity again.
     ///
     /// # Errors
-    /// Rejects pair arithmetic, budgets and all existing target-specific rules.
+    /// Returns the exceeded authored or expanded budget.
+    pub fn check_addition(&self, form: ComponentForm) -> Result<(), StructureError> {
+        Self::check_capacity(
+            self.components.len() + 1,
+            self.components
+                .iter()
+                .map(|c| c.form.voices())
+                .sum::<usize>()
+                + form.voices(),
+        )
+    }
+    /// Duration in seconds; target-rate envelope constraints are checked separately.
+    #[must_use]
+    pub const fn duration_seconds(&self) -> Finite {
+        self.duration_seconds
+    }
+    /// Requested edge fade in seconds.
+    #[must_use]
+    pub const fn fade_seconds(&self) -> Finite {
+        self.fade_seconds
+    }
+    /// Authored components in summation order.
+    #[must_use]
+    pub fn components(&self) -> &[Component] {
+        &self.components
+    }
+    /// One authored component by its stable identity.
+    #[must_use]
+    pub fn component(&self, id: ComponentId) -> Option<&Component> {
+        self.components.iter().find(|c| c.id == id)
+    }
+    /// Replace the requested duration without changing other content.
+    pub const fn set_duration(&mut self, value: Finite) {
+        self.duration_seconds = value;
+    }
+    /// Replace the requested edge fade without changing other content.
+    pub const fn set_fade(&mut self, value: Finite) {
+        self.fade_seconds = value;
+    }
+    /// Append a component, leaving the sound unchanged on refusal.
+    ///
+    /// # Errors
+    /// Returns an identity or capacity violation.
+    pub fn push(&mut self, component: Component) -> Result<(), StructureError> {
+        self.insert(self.components.len(), component)
+    }
+    /// Insert at an authored position, leaving the sound unchanged on refusal.
+    ///
+    /// # Errors
+    /// Returns an identity or capacity violation.
+    /// # Panics
+    /// Panics when the index exceeds the component count, like `Vec::insert`.
+    pub fn insert(&mut self, index: usize, component: Component) -> Result<(), StructureError> {
+        let mut candidate = self.components.clone();
+        candidate.insert(index, component);
+        Self::check_structure(&candidate)?;
+        self.components = candidate;
+        Ok(())
+    }
+    /// Remove an owner, returning its position and complete authored form.
+    pub fn remove(&mut self, id: ComponentId) -> Option<(usize, Component)> {
+        let index = self.components.iter().position(|c| c.id == id)?;
+        Some((index, self.components.remove(index)))
+    }
+    /// Replace an existing owner's form. Unknown owners return `Ok(false)`.
+    ///
+    /// # Errors
+    /// Returns a capacity violation and retains the original sound.
+    pub fn replace(
+        &mut self,
+        id: ComponentId,
+        form: ComponentForm,
+    ) -> Result<bool, StructureError> {
+        let Some(index) = self.components.iter().position(|c| c.id == id) else {
+            return Ok(false);
+        };
+        let mut candidate = self.components.clone();
+        candidate[index].form = form;
+        Self::check_structure(&candidate)?;
+        self.components = candidate;
+        Ok(true)
+    }
+    /// Compile every generator lane at the chosen rate.
+    #[must_use]
+    pub fn check(&self, rate: crate::SampleRate) -> crate::TargetCheck {
+        crate::TargetCheck::authored(rate, self)
+    }
+    /// Compile the complete authored target.
+    ///
+    /// # Errors
+    /// Returns pair arithmetic or target-rate validation errors.
     pub fn target(&self, rate: crate::SampleRate) -> Result<crate::Target, crate::SoundError> {
         self.check(rate).into_result()
     }
-    /// Give the authored target a finite envelope using the existing generators.
+    /// Give the authored target a finite envelope.
     ///
     /// # Errors
-    /// Returns authored/target validation or finite-envelope errors.
+    /// Returns target or finite-envelope validation errors.
     pub fn signal(&self, rate: crate::SampleRate) -> Result<crate::Signal, crate::SoundError> {
-        let envelope =
-            crate::signal::Envelope::resolve(rate, self.duration_seconds, self.fade_seconds)?;
+        let envelope = crate::signal::Envelope::resolve(
+            rate,
+            self.duration_seconds.get(),
+            self.fade_seconds.get(),
+        )?;
         Ok(crate::Signal::new(self.target(rate)?, envelope))
     }
-    /// Whether exact ear separation matters, independent of playback validity.
+    /// Whether any authored form needs separate ear channels.
     #[must_use]
     pub fn uses_separate_ears(&self) -> bool {
         self.components.iter().any(|c| c.form.separates_ears())
     }
-    /// Nonfinite authored values, without inferring or realizing derived carriers.
-    pub fn nonfinite(&self) -> impl Iterator<Item = (Option<usize>, crate::ParameterId)> + '_ {
-        [
-            (crate::ParameterId::Duration, self.duration_seconds),
-            (crate::ParameterId::Fade, self.fade_seconds),
-        ]
-        .into_iter()
-        .filter(|(p, v)| {
-            matches!(
-                crate::validity::check_value(*p, *v),
-                Err(crate::ValueIssue {
-                    rule: crate::ValueRule::Finite,
-                    ..
-                })
-            )
-        })
-        .map(|(p, _)| (None, p))
-        .chain(self.components.iter().enumerate().flat_map(|(i, c)| {
-            crate::ParameterId::COMPONENT
-                .into_iter()
-                .filter(move |p| {
-                    c.form.get(*p).is_some_and(|v| {
-                        matches!(
-                            crate::validity::check_value(*p, v),
-                            Err(crate::ValueIssue {
-                                rule: crate::ValueRule::Finite,
-                                ..
-                            })
-                        )
-                    })
-                })
-                .map(move |p| (Some(i), p))
-        }))
-    }
 }
+
 impl ComponentForm {
     /// Number of generator lanes before live transitions.
     #[must_use]
@@ -631,10 +707,10 @@ impl ComponentForm {
                 left_peak_dbfs,
                 right_peak_dbfs,
             } => Some(Pair {
-                first_hz: left_hz,
-                offset_hz,
-                first_peak_dbfs: left_peak_dbfs,
-                second_peak_dbfs: right_peak_dbfs,
+                first_hz: left_hz.get(),
+                offset_hz: offset_hz.get(),
+                first_peak_dbfs: left_peak_dbfs.get(),
+                second_peak_dbfs: right_peak_dbfs.get(),
             }),
             Self::MonauralPair {
                 first_hz,
@@ -643,10 +719,10 @@ impl ComponentForm {
                 second_peak_dbfs,
                 ..
             } => Some(Pair {
-                first_hz,
-                offset_hz,
-                first_peak_dbfs,
-                second_peak_dbfs,
+                first_hz: first_hz.get(),
+                offset_hz: offset_hz.get(),
+                first_peak_dbfs: first_peak_dbfs.get(),
+                second_peak_dbfs: second_peak_dbfs.get(),
             }),
             _ => None,
         }
@@ -675,8 +751,10 @@ impl ComponentForm {
                 modulation,
             } => Some(Voice {
                 ears,
-                carrier: Carrier::Tone { frequency_hz },
-                peak_dbfs,
+                carrier: Carrier::Tone {
+                    frequency_hz: frequency_hz.get(),
+                },
+                peak_dbfs: peak_dbfs.get(),
                 modulation,
             }),
             Self::Clicks {
@@ -688,10 +766,10 @@ impl ComponentForm {
             } => Some(Voice {
                 ears,
                 carrier: Carrier::Clicks {
-                    rate_hz,
-                    width_seconds,
+                    rate_hz: rate_hz.get(),
+                    width_seconds: width_seconds.get(),
                 },
-                peak_dbfs,
+                peak_dbfs: peak_dbfs.get(),
                 modulation,
             }),
             _ => None,
@@ -746,7 +824,7 @@ impl ComponentForm {
     }
     /// Read an applicable authored quantity in model units.
     #[must_use]
-    pub fn get(self, parameter: crate::ParameterId) -> Option<f64> {
+    pub fn get(self, parameter: crate::ParameterId) -> Option<Finite> {
         use crate::ParameterId as P;
         match (parameter, self) {
             (P::ToneFrequency, Self::Tone { frequency_hz, .. }) => Some(frequency_hz),
@@ -787,7 +865,7 @@ impl ComponentForm {
         }
     }
     /// Change one applicable authored quantity, leaving all others unchanged.
-    pub fn set(&mut self, parameter: crate::ParameterId, value: f64) -> bool {
+    pub fn set(&mut self, parameter: crate::ParameterId, value: Finite) -> bool {
         use crate::ParameterId as P;
         let slot = match (parameter, self) {
             (P::ToneFrequency, Self::Tone { frequency_hz, .. }) => frequency_hz,
@@ -867,20 +945,10 @@ impl ComponentForm {
         *slot = value;
         true
     }
-    /// Exact authored comparison, including signed zeros.
-    #[must_use]
-    pub fn same_content(self, other: Self) -> bool {
-        core::mem::discriminant(&self) == core::mem::discriminant(&other)
-            && self.route() == other.route()
-            && self.modulation_kind() == other.modulation_kind()
-            && crate::ParameterId::COMPONENT
-                .into_iter()
-                .all(|p| self.get(p).map(f64::to_bits) == other.get(p).map(f64::to_bits))
-    }
     pub(crate) fn intrinsic_issues(&self) -> impl Iterator<Item = crate::ValueIssue> + '_ {
         crate::ParameterId::COMPONENT.into_iter().filter_map(|p| {
             self.get(p)
-                .and_then(|v| crate::validity::check_value(p, v).err())
+                .and_then(|v| crate::validity::check_value(p, v.get()).err())
         })
     }
 }
@@ -893,21 +961,6 @@ pub enum PairKind {
     /// Two tones on one identical route.
     Monaural,
 }
-impl Sound {
-    /// Exact authored sound equality, including owner/order and signed-zero bits.
-    #[must_use]
-    pub fn same_content(&self, other: &Self) -> bool {
-        self.duration_seconds.to_bits() == other.duration_seconds.to_bits()
-            && self.fade_seconds.to_bits() == other.fade_seconds.to_bits()
-            && self.components.len() == other.components.len()
-            && self
-                .components
-                .iter()
-                .zip(&other.components)
-                .all(|(a, b)| a.id == b.id && a.form.same_content(b.form))
-    }
-}
-
 #[cfg(test)]
 mod tests;
 

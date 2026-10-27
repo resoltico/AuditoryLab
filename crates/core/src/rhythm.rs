@@ -1,7 +1,7 @@
 //! Shared structural rhythm rules for authored content and realized generators.
 use crate::{
-    Carrier, CarrierFacts, Component, Lane, Modulation, ModulationFacts, Observation, PairError,
-    PairKind, ParameterId, SlotRole, StructureError, Target, VoiceId, VoiceObservation,
+    Carrier, CarrierFacts, Lane, Modulation, ModulationFacts, Observation, PairError, PairKind,
+    ParameterId, SlotRole, Target, VoiceId, VoiceObservation,
     validity::{self, ValueIssue},
 };
 use alloc::vec::Vec;
@@ -224,8 +224,6 @@ pub enum Issue {
         /// The typed quantity and its failed rule.
         issue: ValueIssue,
     },
-    /// Authored structure or coupled pair arithmetic is invalid.
-    Structure(StructureError),
     /// Coupled pair arithmetic cannot retain its authored intent.
     Pair(PairError),
 }
@@ -289,11 +287,29 @@ impl Analysis {
 }
 
 #[derive(Clone, Copy)]
+enum Periodic {
+    Am { rate_hz: f64, depth: f64 },
+    Gate { rate_hz: f64 },
+}
+impl From<Modulation> for Periodic {
+    fn from(value: Modulation) -> Self {
+        match value {
+            Modulation::Am { rate_hz, depth } => Self::Am {
+                rate_hz: rate_hz.get(),
+                depth: depth.get(),
+            },
+            Modulation::Gate { rate_hz, .. } => Self::Gate {
+                rate_hz: rate_hz.get(),
+            },
+        }
+    }
+}
+#[derive(Clone, Copy)]
 struct Input {
     owner: VoiceId,
     role: SlotRole,
     carrier: Carrier,
-    modulation: Option<Modulation>,
+    modulation: Option<Periodic>,
     pair: Option<(PairKind, Option<f64>)>,
 }
 // Both public entry points normalize to this function. Carrier frequencies
@@ -320,7 +336,7 @@ fn describe(input: Input, rhythms: &mut Vec<Descriptor>, methods: &mut Vec<Metho
         Carrier::Tone { .. }
             if matches!(
                 input.modulation,
-                None | Some(Modulation::Am { depth: 0.0, .. })
+                None | Some(Periodic::Am { depth: 0.0, .. })
             ) =>
         {
             add(Method::SteadyTone, None)
@@ -328,8 +344,8 @@ fn describe(input: Input, rhythms: &mut Vec<Descriptor>, methods: &mut Vec<Metho
         Carrier::Tone { .. } => {}
     }
     match input.modulation {
-        Some(Modulation::Am { rate_hz, depth }) if depth > 0.0 => add(Method::Am, Some(rate_hz)),
-        Some(Modulation::Gate { rate_hz, .. }) => add(Method::Gate, Some(rate_hz)),
+        Some(Periodic::Am { rate_hz, depth }) if depth > 0.0 => add(Method::Am, Some(rate_hz)),
+        Some(Periodic::Gate { rate_hz }) => add(Method::Gate, Some(rate_hz)),
         _ => {}
     }
 }
@@ -339,7 +355,8 @@ fn finish_methods(methods: &mut Vec<Method>) {
 }
 /// Classify authored sound without choosing a rendering sample rate.
 #[must_use]
-pub fn nominal(components: &[Component]) -> Analysis {
+pub fn nominal(sound: &crate::Sound) -> Analysis {
+    let components = sound.components();
     let mut result = Analysis {
         rhythms: Vec::new(),
         methods: Vec::new(),
@@ -357,7 +374,7 @@ pub fn nominal(components: &[Component]) -> Analysis {
                         .intrinsic_issues()
                         .map(|issue| Issue::Value { owner, issue }),
                 );
-                (voice.carrier, voice.modulation, None)
+                (voice.carrier, voice.modulation.map(Periodic::from), None)
             }
             None => {
                 let form = component.form;
@@ -407,9 +424,6 @@ pub fn nominal(components: &[Component]) -> Analysis {
             &mut result.rhythms,
             &mut result.methods,
         );
-    }
-    if let Err(error) = crate::Sound::check_structure(components) {
-        result.diagnostics.push(Issue::Structure(error));
     }
     if !result.diagnostics.is_empty() {
         result.completeness = Completeness::Invalid;
@@ -522,13 +536,12 @@ pub(crate) fn classify(
             },
         };
         let modulation = value.facts.modulation.map(|modulation| match modulation {
-            ModulationFacts::Am { rate, depth } => Modulation::Am {
+            ModulationFacts::Am { rate, depth } => Periodic::Am {
                 rate_hz: rate.realized_hz,
                 depth,
             },
-            ModulationFacts::Gate(pulse) => Modulation::Gate {
+            ModulationFacts::Gate(pulse) => Periodic::Gate {
                 rate_hz: pulse.rate_hz,
-                width_seconds: pulse.realized_width_seconds(),
             },
         });
         let pair = value.facts.pair.map(|pair| {

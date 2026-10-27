@@ -106,7 +106,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
     );
     assert_eq!(fs::read(&record_path).unwrap(), original_bytes);
     let mut collision = original.clone().into_builder();
-    collision.description.as_mut().unwrap().title = "same UUID different title".into();
+    collision.content.description.as_mut().unwrap().title = "same UUID different title".into();
     assert_eq!(
         store
             .apply(

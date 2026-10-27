@@ -9,16 +9,16 @@ fn editor_with(components: &[ComponentForm]) -> EditorSession {
     let mut draft = Draft::new().unwrap();
     for component in components {
         let id = draft.add(CarrierKind::Tone).unwrap();
-        draft.replace(id, *component);
+        assert!(draft.replace(id, *component).unwrap());
     }
     EditorSession::new(draft).unwrap()
 }
 
 fn tone(frequency_hz: f64) -> ComponentForm {
     ComponentForm::Tone {
-        frequency_hz,
+        frequency_hz: finite(frequency_hz),
         ears: Ears::Both,
-        peak_dbfs: -30.0,
+        peak_dbfs: finite(-30.0),
         modulation: None,
     }
 }
@@ -115,7 +115,7 @@ fn commit_is_atomic_over_the_whole_candidate() {
 }
 
 #[test]
-fn inherited_nonfinite_values_block_commit_save_until_repaired() {
+fn staged_nonfinite_values_block_commit_save_until_repaired() {
     let text = "schema_version=4\n[sound]\nduration_seconds=nan\nfade_seconds=0\n[[sound.component]]\nid=1\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=inf\n[[sound.component]]\nid=2\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=440\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
     assert!(
         crate::storage::load::load_reader(text.as_bytes(), "nonfinite import").is_err(),
@@ -124,20 +124,17 @@ fn inherited_nonfinite_values_block_commit_save_until_repaired() {
     let mut draft = Draft::new().unwrap();
     draft.add(CarrierKind::Tone).unwrap();
     draft.add(CarrierKind::Tone).unwrap();
-    let first = draft.components()[0].id;
-    draft.set_duration_seconds(f64::NAN);
-    draft.set_value(
-        EditingField::Parameter(first, ParameterId::ToneFrequency),
-        f64::INFINITY,
-    );
     let mut editor = EditorSession::new(draft).unwrap();
-    assert!(
-        editor.draft().duration_seconds().is_nan(),
-        "kept for repair"
-    );
     let other = field(&editor, 1, ParameterId::PeakLevel);
     let broken = field(&editor, 0, ParameterId::ToneFrequency);
     let duration = metadata(&editor, MetadataField::Duration);
+    editor.stage(duration, "nan").unwrap();
+    editor.stage(broken, "inf").unwrap();
+    assert_eq!(
+        editor.draft().duration_seconds(),
+        60.0,
+        "invalid text remains staged"
+    );
     editor.stage(other, "-20").unwrap();
     let problems = editor.commit().unwrap_err().problems;
     assert!(problems.contains(&(broken.field, InputProblem::Nonfinite)));
@@ -154,23 +151,15 @@ fn inherited_nonfinite_values_block_commit_save_until_repaired() {
     assert_eq!(editor.draft().value(other.field), Some(-20.0));
     assert!(
         editor.save_readiness().is_ok(),
-        "repairing all inherited programmatic values makes the whole document serializable"
+        "correcting all staged values makes the document serializable"
     );
-    // Programmatic nonfinite values are diagnosed the same way.
-    let mut draft = Draft::new().unwrap();
-    let id = draft.add(CarrierKind::Tone).unwrap();
-    draft.replace(id, {
-        let mut form = tone(440.0);
-        form.set(auditorylab_core::ParameterId::PeakLevel, f64::NEG_INFINITY);
-        form
-    });
-    let mut editor = EditorSession::new(draft).unwrap();
+    assert!(crate::core::Finite::new(f64::NEG_INFINITY).is_none());
+    let mut editor = editor_with(&[tone(440.0)]);
+    let level = field(&editor, 0, ParameterId::PeakLevel);
+    editor.stage(level, "-inf").unwrap();
     assert_eq!(
         editor.candidate().problems(),
-        [(
-            EditingField::Parameter(id, ParameterId::PeakLevel),
-            InputProblem::Nonfinite
-        )]
+        [(level.field, InputProblem::Nonfinite)]
     );
 }
 
@@ -201,7 +190,7 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
             .component(first)
             .unwrap()
             .get(ParameterId::ClickRate),
-        Some(40.0)
+        Some(finite(40.0))
     );
     assert_eq!(
         editor.stage(frequency, "440"),
@@ -441,12 +430,18 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
     assert!(d.remove(a).is_some());
     let c = d.add(CarrierKind::Tone).unwrap();
     assert_ne!(a, c);
-    assert!(d.replace(b, {
-        let mut form = controls::default_component(CarrierKind::Tone);
-        form.set(auditorylab_core::ParameterId::PeakLevel, -50.0);
-        form
-    }));
-    assert!(!d.replace(a, controls::default_component(CarrierKind::Clicks)));
+    assert!(
+        d.replace(b, {
+            let mut form = controls::default_component(CarrierKind::Tone);
+            form.set(auditorylab_core::ParameterId::PeakLevel, finite(-50.0));
+            form
+        })
+        .unwrap()
+    );
+    assert!(
+        !d.replace(a, controls::default_component(CarrierKind::Clicks))
+            .unwrap()
+    );
     while d.components().len() < Sound::MAX_COMPONENTS {
         d.add(CarrierKind::Tone).unwrap();
     }
@@ -479,7 +474,7 @@ fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids()
         ids,
         snapshot
             .sound()
-            .components
+            .components()
             .iter()
             .map(|c| c.id)
             .collect::<Vec<_>>()
@@ -529,9 +524,12 @@ fn save_round_trips_and_keeps_existing_destinations() {
         crate::error::Outcome::InvalidRecipe
     );
     d.set_title("Small".into());
-    d.set_duration_seconds(f64::NAN);
+    let nonfinite = d
+        .to_toml()
+        .unwrap()
+        .replace("duration_seconds = 60.0", "duration_seconds = nan");
     assert!(
-        d.recipe()
+        Recipe::parse(&nonfinite)
             .map_err(crate::error::OperationError::from)
             .and_then(
                 |recipe| save_content(&recipe, &path, crate::services::Replace::Allowed)
@@ -548,7 +546,7 @@ fn derivatives_reopen_with_full_scoped_graph_and_bounded_flat_ancestry() {
     let original = source.recipe().clone();
     let mut draft = Draft::from_snapshot(&source).unwrap();
     draft.set_summary("Rīga \"quoted\" 🎧\nsecond line".into());
-    draft.set_duration_seconds(2.0);
+    draft.set_duration_seconds(finite(2.0));
     let mut bytes = draft.to_toml().unwrap();
     for expected in 1..=16 {
         let reopened =
@@ -614,15 +612,18 @@ fn the_entire_document_including_unicode_anchor_has_exact_byte_neighbours() {
 }
 
 #[test]
-fn finite_invalid_current_content_saves_and_nonfinite_content_never_touches_a_destination() {
+fn finite_invalid_content_serializes_and_nonfinite_input_is_rejected() {
     let mut builder = Draft::new().unwrap().recipe().unwrap().into_builder();
-    builder.sound.duration_seconds = -1.0;
-    builder.sound.fade_seconds = 9.0;
+    builder.content.sound.set_duration(finite(-1.0));
+    builder.content.sound.set_fade(finite(9.0));
     let recipe = builder.clone().build().unwrap();
     let text = serialize(&recipe).unwrap();
     assert_eq!(Recipe::parse(&text).unwrap(), recipe);
-    builder.sound.duration_seconds = f64::NAN;
-    assert!(builder.build().is_err());
+    assert!(crate::core::Finite::new(f64::NAN).is_none());
+    assert!(matches!(
+        Recipe::parse(&text.replace("duration_seconds = -1.0", "duration_seconds = nan")),
+        Err(crate::core::RecipeError::Format(_))
+    ));
     let mut editor = EditorSession::new(Draft::from_recipe(Recipe::parse(&text).unwrap())).unwrap();
     assert!(editor.save_readiness().is_ok());
     let document = editor.document();
@@ -660,8 +661,8 @@ fn nominal_cache_and_saved_memberships_follow_distinct_committed_snapshots() {
         ears: c.route().unwrap(),
         peak_dbfs: c.get(ParameterId::PeakLevel).unwrap(),
         modulation: c.modulation(),
-        rate_hz: 2.0,
-        width_seconds: 0.001,
+        rate_hz: finite(2.0),
+        width_seconds: finite(0.001),
     };
     let mut editor = editor_with(&[c]);
     let first = editor.nominal();
@@ -867,7 +868,7 @@ fn the_application_rejects_retired_field_and_structural_callbacks_after_undo() {
             .component(id)
             .unwrap()
             .get(ParameterId::ToneFrequency),
-        Some(660.0)
+        Some(finite(660.0))
     );
 }
 
@@ -929,13 +930,7 @@ fn row_generation_storage_is_bounded_and_exhaustion_never_wraps_or_drops_undo() 
         editor.remove_component(key),
         Err(EditRefusal::IdentitiesExhausted)
     );
-    assert!(
-        editor
-            .draft()
-            .recipe()
-            .unwrap()
-            .same_editable_content(&before)
-    );
+    assert!(editor.draft().recipe().unwrap().content() == before.content());
     assert!(editor.removed().is_none());
     editor.row_generations.insert(id, u64::MAX - 1);
     editor
@@ -957,15 +952,12 @@ fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_a
     let recipe = draft.recipe().unwrap();
     assert!(ComponentId::new(0).is_none());
     let mut duplicate = recipe.clone().into_builder();
-    duplicate
-        .sound
-        .components
-        .push(duplicate.sound.components[0]);
-    assert!(duplicate.build().is_err());
+    let component = duplicate.content.sound.components()[0];
+    assert!(duplicate.content.sound.push(component).is_err());
     let mut acoustic = recipe.into_builder();
-    acoustic.sound.components[0]
-        .form
-        .set(ParameterId::ToneFrequency, -1.0);
+    let mut form = acoustic.content.sound.components()[0].form;
+    form.set(ParameterId::ToneFrequency, finite(-1.0));
+    acoustic.content.sound.replace(component.id, form).unwrap();
     let editor = EditorSession::new(Draft::from_recipe(acoustic.build().unwrap())).unwrap();
     assert!(editor.component_key(ComponentId::new(1).unwrap()).is_some());
     assert!(
@@ -1059,4 +1051,12 @@ fn authored_and_expanded_addition_boundaries_report_current_counts() {
     }
     draft.add_node(primitive).unwrap();
     assert_eq!(draft.components().len(), 16);
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

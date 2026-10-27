@@ -28,16 +28,16 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         .recipe()
         .unwrap()
         .into_builder();
-    recipe.sound = auditorylab_app::core::Sound {
-        duration_seconds: 60.0,
-        fade_seconds: 0.1,
-        components: (vec![auditorylab_app::core::ComponentForm::Tone {
-            frequency_hz: 200.0,
+    recipe.content.sound = auditorylab_app::core::Sound::new(
+        finite(60.0),
+        finite(0.1),
+        (vec![auditorylab_app::core::ComponentForm::Tone {
+            frequency_hz: finite(200.0),
             ears: auditorylab_app::core::Ears::Both,
-            peak_dbfs: -30.0,
+            peak_dbfs: finite(-30.0),
             modulation: Some(auditorylab_app::core::Modulation::Am {
-                rate_hz: 20.0,
-                depth: 1.0,
+                rate_hz: finite(20.0),
+                depth: finite(1.0),
             }),
         }])
         .into_iter()
@@ -47,8 +47,9 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
             form: voice,
         })
         .collect(),
-    };
-    recipe.description = Some(auditorylab_app::core::Description {
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+    recipe.content.description = Some(auditorylab_app::core::Description {
         title: "Rīga reference 2015".into(),
         notes: Some("two words".into()),
     });
@@ -73,7 +74,10 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         assert!(!matches_search(&snapshot, search), "{search}");
     }
     let mut steady = snapshot.recipe().clone().into_builder();
-    steady.sound.components[0].form.set_modulation(None);
+    let component = steady.content.sound.components()[0];
+    let mut form = component.form;
+    form.set_modulation(None);
+    steady.content.sound.replace(component.id, form).unwrap();
     let steady = RecipeSnapshot::new(Origin::Stream("steady".into()), steady.build().unwrap());
     assert!(
         !matches_search(&steady, "20"),
@@ -91,19 +95,24 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
         .into_builder();
     recipe.document.created_at = None;
     recipe.document.modified_at = None;
-    recipe.description = Some(Description {
+    recipe.content.description = Some(Description {
         title: "Reference".into(),
         notes: None,
     });
-    recipe.sound.components = vec![Component {
-        id: ComponentId::new(1).unwrap(),
-        form: ComponentForm::Tone {
-            frequency_hz: 200.0,
-            ears: Ears::Both,
-            peak_dbfs: -30.0,
-            modulation: None,
-        },
-    }];
+    recipe.content.sound = auditorylab_core::Sound::new(
+        recipe.content.sound.duration_seconds(),
+        recipe.content.sound.fade_seconds(),
+        vec![Component {
+            id: ComponentId::new(1).unwrap(),
+            form: ComponentForm::Tone {
+                frequency_hz: finite(200.0),
+                ears: Ears::Both,
+                peak_dbfs: finite(-30.0),
+                modulation: None,
+            },
+        }],
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
     let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe.build().unwrap());
     // These captions are deliberately present in display output, not authored facts.
     assert!(snapshot.description().contains("Unknown"));
@@ -115,4 +124,11 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
         );
     }
     assert!(matches_search(&snapshot, "steady-tone 200"));
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

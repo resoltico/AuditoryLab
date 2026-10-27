@@ -719,7 +719,7 @@ fn an_imported_recipe_is_scrolled_into_view() {
     let path = directory.path().join("imported.toml");
     std::fs::write(&path, {
         let mut recipe = crate::test_recipes::silent(1.0, 0.01).into_builder();
-        recipe.description = Some(auditorylab_app::core::Description {
+        recipe.content.description = Some(auditorylab_app::core::Description {
             title: "Imported probe".into(),
             notes: None,
         });
@@ -1037,7 +1037,7 @@ fn retired_component_callbacks_stay_retired_after_undo() {
                 .component(identity)
                 .unwrap()
                 .get(ParameterId::ToneFrequency)),
-            Some(440.0)
+            Some(finite(440.0))
         );
         previous = current;
     }
@@ -1076,8 +1076,8 @@ fn tick_until(h: &Harness, condition: impl Fn() -> bool) {
 
 fn controlled_harness() -> (Harness, tempfile::TempDir) {
     let mut draft = auditorylab_app::document::editing::Draft::new().unwrap();
-    draft.set_duration_seconds(0.01);
-    draft.set_fade_seconds(0.0);
+    draft.set_duration_seconds(finite(0.01));
+    draft.set_fade_seconds(finite(0.0));
     let h = Harness::with_catalog(vec![draft.snapshot().unwrap()], Capabilities::available());
     // This is a real temporary input in the one persistent workspace query path.
     h.ui().invoke_collection_filter(3, 0);
@@ -1517,7 +1517,7 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
             .unwrap()
     });
     assert_eq!(
-        value.to_bits(),
+        value.get().to_bits(),
         200.00000000000003_f64.to_bits(),
         "text never passes through a Slint f32 property"
     );
@@ -1543,23 +1543,28 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
         .recipe()
         .unwrap()
         .into_builder();
-    recipe.sound.components = vec![
-        auditorylab_app::core::Component {
-            id: auditorylab_app::core::ComponentId::new(u32::MAX).unwrap(),
-            form: auditorylab_app::core::ComponentForm::BinauralPair {
-                left_hz: 200.0,
-                offset_hz: 2.0,
-                left_peak_dbfs: -30.0,
-                right_peak_dbfs: -30.0,
+    recipe.content.sound = auditorylab_app::core::Sound::new(
+        recipe.content.sound.duration_seconds(),
+        recipe.content.sound.fade_seconds(),
+        vec![
+            auditorylab_app::core::Component {
+                id: auditorylab_app::core::ComponentId::new(u32::MAX).unwrap(),
+                form: auditorylab_app::core::ComponentForm::BinauralPair {
+                    left_hz: finite(200.0),
+                    offset_hz: finite(2.0),
+                    left_peak_dbfs: finite(-30.0),
+                    right_peak_dbfs: finite(-30.0),
+                },
             },
-        },
-        auditorylab_app::core::Component {
-            id: auditorylab_app::core::ComponentId::new(u32::MAX - 1).unwrap(),
-            form: auditorylab_app::document::controls::default_component(
-                auditorylab_app::core::CarrierKind::Clicks,
-            ),
-        },
-    ];
+            auditorylab_app::core::Component {
+                id: auditorylab_app::core::ComponentId::new(u32::MAX - 1).unwrap(),
+                form: auditorylab_app::document::controls::default_component(
+                    auditorylab_app::core::CarrierKind::Clicks,
+                ),
+            },
+        ],
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
     let snapshot = auditorylab_app::document::recipe::RecipeSnapshot::new(
         auditorylab_app::document::recipe::Origin::Stream("large owners".into()),
         recipe.build().unwrap(),
@@ -1581,7 +1586,7 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
         h.adapter.inspect(|w| w.editor().draft().components()[1]
             .form
             .get(ParameterId::ClickRate)),
-        Some(40.0)
+        Some(finite(40.0))
     );
 }
 
@@ -1971,7 +1976,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
         .recipe()
         .clone()
         .into_builder();
-    other.description.as_mut().unwrap().title = "Other application".into();
+    other.content.description.as_mut().unwrap().title = "Other application".into();
     std::fs::write(&file, other.build().unwrap().to_toml().unwrap()).unwrap();
     ui.invoke_commit_metadata(
         ui.get_document(),
@@ -2058,7 +2063,6 @@ fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_co
             .snapshot
             .recipe()
             .description()
-            .as_ref()
             .unwrap()
             .title,
         raw
@@ -3444,4 +3448,12 @@ fn workspace_navigation_owns_real_panels_and_supports_keyboard_switching() {
     );
     h.key(Key::LeftArrow);
     assert_eq!(h.adapter.inspect(|w| w.view()), View::Library);
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_app::core::Finite {
+    match auditorylab_app::core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

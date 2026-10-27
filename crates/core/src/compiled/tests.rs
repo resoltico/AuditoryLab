@@ -38,8 +38,8 @@ fn clicks(rate_hz: f64, width_seconds: f64) -> Voice {
 fn gate(width_seconds: f64) -> Voice {
     Voice {
         modulation: Some(Modulation::Gate {
-            rate_hz: 40.0,
-            width_seconds,
+            rate_hz: crate::test_support::finite(40.0),
+            width_seconds: crate::test_support::finite(width_seconds),
         }),
         ..tone(1000.0, -30.0)
     }
@@ -112,15 +112,15 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
     // Coupled and modulation constraints name every participating quantity.
     let sideband = Voice {
         modulation: Some(Modulation::Am {
-            rate_hz: 10_000.0,
-            depth: 0.5,
+            rate_hz: crate::test_support::finite(10_000.0),
+            depth: crate::test_support::finite(0.5),
         }),
         ..tone(16_000.0, -30.0)
     };
     let depth = Voice {
         modulation: Some(Modulation::Am {
-            rate_hz: 40.0,
-            depth: 1.5,
+            rate_hz: crate::test_support::finite(40.0),
+            depth: crate::test_support::finite(1.5),
         }),
         ..tone(440.0, -30.0)
     };
@@ -146,18 +146,9 @@ fn one_pass_reports_every_row_and_keeps_the_first_whole_target_error() {
 #[test]
 fn identity_count_and_mix_errors_stay_global_with_their_established_precedence() {
     // A duplicate identity precedes that entry's own compilation error.
-    let check = crate::test_support::check(
-        rate(48_000),
-        &[(id(1), tone(440.0, -30.0)), (id(1), tone(30_000.0, -30.0))],
-    );
     assert_eq!(
-        check.result().unwrap_err(),
-        &SoundError::Structure(crate::StructureError::Identity { id: id(1) })
-    );
-    assert!(check.result().unwrap_err().parameters().is_empty());
-    assert!(
-        check.voices().is_empty(),
-        "invalid structure is refused before compiling any row"
+        crate::test_support::sound(&[(id(1), tone(440.0, -30.0)), (id(1), tone(30_000.0, -30.0))]),
+        Err(crate::StructureError::Identity { id: id(1) })
     );
     // Left precedes right; neither is attributed to a field.
     let loud = [
@@ -202,25 +193,28 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
         let rows: Vec<_> = (0..count)
             .map(|n| (id(u32::try_from(n).unwrap() + 1), tone(30_000.0, -60.0)))
             .collect();
-        let check = crate::test_support::check(rate(48_000), &rows);
         if count > Sound::MAX_COMPONENTS {
             assert_eq!(
-                check.result().unwrap_err(),
-                &SoundError::Structure(crate::StructureError::ComponentBudget { count })
+                crate::test_support::sound(&rows),
+                Err(crate::StructureError::ComponentBudget { count })
             );
-            assert!(check.voices().is_empty());
         } else {
-            assert_eq!(check.voices().len(), count);
+            assert_eq!(
+                crate::test_support::check(rate(48_000), &rows)
+                    .voices()
+                    .len(),
+                count
+            );
         }
     }
 }
 
 #[test]
 fn finite_entry_points_select_envelope_errors_before_voice_errors() {
-    let sound = Sound {
-        duration_seconds: 0.0,
-        fade_seconds: 0.0,
-        components: (vec![tone(30_000.0, -30.0)])
+    let sound = Sound::new(
+        crate::test_support::finite(0.0),
+        crate::test_support::finite(0.0),
+        (vec![tone(30_000.0, -30.0)])
             .into_iter()
             .enumerate()
             .map(|(index, voice)| crate::Component {
@@ -228,7 +222,8 @@ fn finite_entry_points_select_envelope_errors_before_voice_errors() {
                 form: crate::test_support::form(voice),
             })
             .collect(),
-    };
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
     assert!(matches!(
         sound.signal(rate(48_000)),
         Err(SoundError::Duration { .. })
@@ -238,16 +233,21 @@ fn finite_entry_points_select_envelope_errors_before_voice_errors() {
         Err(SoundError::Voice { id: voice_id, .. }) if voice_id == id(1).into()
     ));
     // An already valid target checks only its envelope.
-    let target = Sound {
-        components: (vec![tone(440.0, -30.0)])
-            .into_iter()
-            .enumerate()
-            .map(|(index, voice)| crate::Component {
-                id: crate::ComponentId::numbered(index).unwrap(),
-                form: crate::test_support::form(voice),
-            })
-            .collect(),
-        ..sound.clone()
+    let target = {
+        let base = sound.clone();
+        Sound::new(
+            base.duration_seconds(),
+            base.fade_seconds(),
+            (vec![tone(440.0, -30.0)])
+                .into_iter()
+                .enumerate()
+                .map(|(index, voice)| crate::Component {
+                    id: crate::ComponentId::numbered(index).unwrap(),
+                    form: crate::test_support::form(voice),
+                })
+                .collect(),
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     }
     .target(rate(48_000))
     .unwrap();
@@ -276,10 +276,10 @@ fn finite_entry_points_select_envelope_errors_before_voice_errors() {
 
 #[test]
 fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
-    let sound = Sound {
-        duration_seconds: 0.0,
-        fade_seconds: 0.0,
-        components: (vec![tone(440.0, -30.0), clicks(40.0, 0.001)])
+    let sound = Sound::new(
+        crate::test_support::finite(0.0),
+        crate::test_support::finite(0.0),
+        (vec![tone(440.0, -30.0), clicks(40.0, 0.001)])
             .into_iter()
             .enumerate()
             .map(|(index, voice)| crate::Component {
@@ -287,7 +287,8 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
                 form: crate::test_support::form(voice),
             })
             .collect(),
-    };
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
     let target = sound.target(rate(48_000)).unwrap();
     assert_eq!(target.len(), 2);
     assert!(target.signal(0.0, 0.0).is_err());
@@ -298,10 +299,14 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
     assert!(signal.voices().eq(target.voices()));
     let ids: Vec<_> = signal.voices().map(|(id, _)| id).collect();
     assert_eq!(ids, [id(1).into(), id(2).into()]);
-    let via_sound = Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.1,
-        ..sound.clone()
+    let via_sound = {
+        let base = sound.clone();
+        Sound::new(
+            crate::test_support::finite(1.0),
+            crate::test_support::finite(0.1),
+            base.components().to_vec(),
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     }
     .signal(rate(48_000))
     .unwrap();
@@ -373,18 +378,19 @@ fn voice_error_retains_the_owner_after_pair_expansion_and_without_a_pair() {
     let pair = Component {
         id: id(7),
         form: ComponentForm::BinauralPair {
-            left_hz: 200.0,
-            offset_hz: 10.0,
-            left_peak_dbfs: -20.0,
-            right_peak_dbfs: -20.0,
+            left_hz: crate::test_support::finite(200.0),
+            offset_hz: crate::test_support::finite(10.0),
+            left_peak_dbfs: crate::test_support::finite(-20.0),
+            right_peak_dbfs: crate::test_support::finite(-20.0),
         },
     };
     for components in [vec![pair, bad], vec![bad]] {
-        let sound = Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
+        let sound = Sound::new(
+            crate::test_support::finite(1.0),
+            crate::test_support::finite(0.0),
             components,
-        };
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
         assert_eq!(
             sound.target(rate(48_000)).unwrap_err(),
             SoundError::Voice {

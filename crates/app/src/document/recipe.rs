@@ -83,9 +83,7 @@ impl RecipeSnapshot {
     /// Capture content under a new identity.
     #[must_use]
     pub fn new(origin: Origin, recipe: Recipe) -> Self {
-        let nominal = Arc::new(auditorylab_core::rhythm::nominal(
-            &recipe.sound().components,
-        ));
+        let nominal = Arc::new(auditorylab_core::rhythm::nominal(recipe.sound()));
         let about = Arc::new(crate::presentation::recipe_text::about(&recipe));
         Self {
             nominal,

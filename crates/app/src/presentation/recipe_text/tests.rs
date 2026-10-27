@@ -19,6 +19,7 @@ fn display_about_uses_population_and_condition_labels_for_every_declaration() {
         for role in crate::core::ConditionRole::ALL {
             let mut builder = source.clone().into_builder();
             let evidence = builder
+                .content
                 .evidence
                 .iter_mut()
                 .find(|e| e.scope == crate::core::EvidenceScope::ReferenceCondition)
@@ -110,9 +111,9 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
     use crate::core::{ComponentId, DocumentIdentity, Ears, Pair, SampleRate, Sound};
     use crate::document::recipe::{Origin, RecipeSnapshot};
     let plain = ComponentForm::Tone {
-        frequency_hz: 437.0,
+        frequency_hz: finite(437.0),
         ears: Ears::Left,
-        peak_dbfs: -24.0,
+        peak_dbfs: finite(-24.0),
         modulation: None,
     };
     let pair = Pair {
@@ -127,8 +128,8 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
             {
                 let mut form = plain;
                 form.set_modulation(Some(Modulation::Am {
-                    rate_hz: 7.0,
-                    depth: 0.5,
+                    rate_hz: finite(7.0),
+                    depth: finite(0.5),
                 }));
                 form
             },
@@ -138,8 +139,8 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
             {
                 let mut form = plain;
                 form.set_modulation(Some(Modulation::Gate {
-                    rate_hz: 7.0,
-                    width_seconds: 0.01,
+                    rate_hz: finite(7.0),
+                    width_seconds: finite(0.01),
                 }));
                 form
             },
@@ -149,8 +150,8 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
             {
                 let base = plain;
                 ComponentForm::Clicks {
-                    rate_hz: 7.0,
-                    width_seconds: 0.01,
+                    rate_hz: finite(7.0),
+                    width_seconds: finite(0.01),
                     ears: base.route().unwrap(),
                     peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
                     modulation: base.modulation(),
@@ -161,10 +162,10 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
         (
             {
                 ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
+                    left_hz: finite(pair.first_hz),
+                    offset_hz: finite(pair.offset_hz),
+                    left_peak_dbfs: finite(pair.first_peak_dbfs),
+                    right_peak_dbfs: finite(pair.second_peak_dbfs),
                 }
             },
             "binaural pair, first 200 Hz, signed offset -6 Hz, second 194 Hz, peaks -20 / -30 dBFS",
@@ -177,10 +178,10 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
                 };
                 ComponentForm::MonauralPair {
                     ears: Ears::Right,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
+                    first_hz: finite(pair.first_hz),
+                    offset_hz: finite(pair.offset_hz),
+                    first_peak_dbfs: finite(pair.first_peak_dbfs),
+                    second_peak_dbfs: finite(pair.second_peak_dbfs),
                 }
             },
             "monaural pair, first 200 Hz, signed offset 6 Hz, second 206 Hz, peaks -20 / -30 dBFS",
@@ -189,7 +190,7 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
             {
                 let base = plain;
                 ComponentForm::Tone {
-                    frequency_hz: -437.0,
+                    frequency_hz: finite(-437.0),
                     ears: base.route().unwrap(),
                     peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
                     modulation: base.modulation(),
@@ -208,11 +209,10 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
             created_at: None,
             modified_at: None,
         })
-        .with_sound(Sound {
-            duration_seconds: 2.0,
-            fade_seconds: 0.1,
-            components: vec![c],
-        })
+        .with_sound(
+            Sound::new(finite(2.0), finite(0.1), vec![c])
+                .unwrap_or_else(|error| panic!("invalid sound fixture: {error}")),
+        )
         .unwrap();
         let snapshot = RecipeSnapshot::new(Origin::Stream("test".into()), recipe);
         assert!(snapshot.details_at(SampleRate::DEFAULT).contains(expected));
@@ -260,5 +260,13 @@ fn independent_copies_store_the_attribution_and_ancestor_notes_verbatim() {
             copy.lineage().last().unwrap().document_id,
             Some(snapshot.recipe().document().id)
         );
+    }
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
     }
 }

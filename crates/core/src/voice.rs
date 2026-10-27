@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::synthesis::{self, Carrier as Generator, GeneratorVoice, Modulator, Pulse};
-use crate::{ParameterId, SampleRate, VoiceId, numeric};
+use crate::{Modulation, ParameterId, SampleRate, VoiceId, numeric};
 use core::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
@@ -35,7 +35,7 @@ pub enum Carrier {
     },
 }
 /// Which ears hear a component.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Ears {
     /// The left ear only.
@@ -53,31 +53,6 @@ pub enum Ear {
     Left,
     /// The right ear: the second channel of each frame.
     Right,
-}
-
-/// A periodic change of a voice's amplitude. Every modulation's gain
-/// lies within `[0, 1]`, so it never raises the voice's peak.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Modulation {
-    /// Nominal gain follows `(1 + depth * sin(2π rate_hz t)) / (1 + depth)`,
-    /// starting at phase zero. Validated gain is bounded by one; sampled
-    /// values need not attain that bound.
-    Am {
-        /// Modulation frequency in hertz.
-        rate_hz: f64,
-        /// Modulation depth from 0 (none) to 1 (full).
-        depth: f64,
-    },
-    /// Gain 1 during the first `width_seconds` of each `1 / rate_hz` period
-    /// and 0 otherwise, the first period starting at time zero: the same
-    /// pulse train as a click, gating the carrier on and off.
-    Gate {
-        /// Gates per second.
-        rate_hz: f64,
-        /// Length of each open gate in seconds.
-        width_seconds: f64,
-    },
 }
 
 impl Ears {
@@ -113,6 +88,7 @@ impl Voice {
         let modulation = match self.modulation {
             None => None,
             Some(Modulation::Am { rate_hz, depth }) => {
+                let (rate_hz, depth) = (rate_hz.get(), depth.get());
                 let step = frequency_step(ParameterId::AmRate, rate_hz, rate)?;
                 if crate::validity::check_value(ParameterId::AmDepth, depth).is_err() {
                     return Err(VoiceError::Depth { depth });
@@ -134,8 +110,8 @@ impl Voice {
                 width_seconds,
             }) => Some(Modulator::Gate(pulse_train(
                 (ParameterId::GateRate, ParameterId::GateWidth),
-                rate_hz,
-                width_seconds,
+                rate_hz.get(),
+                width_seconds.get(),
                 rate,
             )?)),
         };
@@ -181,8 +157,6 @@ fn pulse_train(
 /// Why a sound cannot be rendered at a sample rate.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SoundError {
-    /// Authored identity, voice-budget or coupled pair arithmetic failure.
-    Structure(crate::StructureError),
     /// A coupled pair arithmetic failure.
     Pair(crate::PairError),
     /// A pair carrier is invalid at this rate; both coupled inputs are named.
@@ -246,7 +220,7 @@ impl SoundError {
             Self::PairCarrier { .. } | Self::Pair(_) => {
                 &[ParameterId::PairFirstFrequency, ParameterId::PairOffset]
             }
-            Self::Structure(_) => &[],
+
             Self::Duration { .. } => &[ParameterId::Duration],
             Self::Fade { .. } => &[ParameterId::Fade],
             Self::FadesOverlap { .. } => &[ParameterId::Duration, ParameterId::Fade],
@@ -326,7 +300,6 @@ impl VoiceError {
 impl Display for SoundError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::Structure(_) => "sound.structure",
             Self::Pair(_) => "sound.pair",
             Self::PairCarrier { .. } => "sound.pair_carrier",
             Self::Duration { .. } => "sound.duration",
@@ -352,7 +325,6 @@ impl Display for VoiceError {
 impl core::error::Error for SoundError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
-            Self::Structure(error) => Some(error),
             Self::Pair(error) => Some(error),
             Self::PairCarrier { error, .. } => Some(error),
             Self::Voice { error, .. } => Some(error),

@@ -23,7 +23,11 @@ pub mod live;
 pub mod rhythm;
 mod validity;
 pub use validity::{ValueIssue, ValueRule};
+mod modulation;
+mod number;
+pub use modulation::Modulation;
 mod numeric;
+pub use number::Finite;
 mod parameter;
 pub mod provenance;
 mod rate;
@@ -51,9 +55,9 @@ pub use provenance::{
     Population,
 };
 pub use rate::{SampleRate, SampleRateError};
-pub use recipe::{Recipe, RecipeBuilder, RecipeError};
+pub use recipe::{Recipe, RecipeBuilder, RecipeContent, RecipeError};
 pub use signal::Signal;
-pub use voice::{Carrier, Ear, Ears, Modulation, SoundError, VoiceError};
+pub use voice::{Carrier, Ear, Ears, SoundError, VoiceError};
 pub use waveform::Extent;
 
 #[cfg(test)]

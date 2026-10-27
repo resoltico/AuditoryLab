@@ -20,19 +20,20 @@ const TERMINALS: [Outcome; 11] = [
 ];
 
 fn tone(frequency_hz: f64) -> Target {
-    crate::core::Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: vec![crate::core::Component {
+    crate::core::Sound::new(
+        finite(1.0),
+        finite(0.0),
+        vec![crate::core::Component {
             id: ComponentId::new(1).unwrap(),
             form: ComponentForm::Tone {
-                frequency_hz,
+                frequency_hz: finite(frequency_hz),
                 ears: Ears::Both,
-                peak_dbfs: -30.0,
+                peak_dbfs: finite(-30.0),
                 modulation: None,
             },
         }],
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .target(SampleRate::new(8_000).unwrap())
     .unwrap()
 }
@@ -248,4 +249,12 @@ fn standalone_generation_has_no_transport_and_publishes_its_end() {
         control.update(&tone(440.0)),
         Err(LiveUpdateError::SessionClosed)
     );
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

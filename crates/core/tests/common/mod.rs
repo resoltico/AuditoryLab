@@ -4,10 +4,10 @@ use auditorylab_core::{
 };
 
 pub(crate) fn recipe(duration_seconds: f64, fade_seconds: f64, voices: &[ComponentForm]) -> Recipe {
-    let sound = Sound {
-        duration_seconds,
-        fade_seconds,
-        components: voices
+    let sound = Sound::new(
+        finite(duration_seconds),
+        finite(fade_seconds),
+        voices
             .iter()
             .enumerate()
             .map(|(index, voice)| Component {
@@ -18,7 +18,8 @@ pub(crate) fn recipe(duration_seconds: f64, fade_seconds: f64, voices: &[Compone
                 form: *voice,
             })
             .collect(),
-    };
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
     match Recipe::silent(DocumentIdentity {
         id: DocumentUuid::from_random_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]),
         created_at: None,
@@ -28,5 +29,12 @@ pub(crate) fn recipe(duration_seconds: f64, fade_seconds: f64, voices: &[Compone
     {
         Ok(recipe) => recipe,
         Err(error) => panic!("invalid behavioral fixture: {error}"),
+    }
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
     }
 }

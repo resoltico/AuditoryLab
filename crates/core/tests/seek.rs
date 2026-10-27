@@ -7,7 +7,7 @@ proptest! {
     #[test]
     fn arbitrary_windows_equal_a_full_render(start in 0_usize..5000, len in 0_usize..1000, entry in 0_usize..catalog::ENTRIES.len()) {
         let mut sound = Recipe::parse(catalog::ENTRIES[entry].text).unwrap().sound().clone();
-        sound.duration_seconds = 0.1; sound.fade_seconds = 0.01;
+        sound.set_duration(finite(0.1)); sound.set_fade(finite(0.01));
         let signal = sound.signal(SampleRate::DEFAULT).unwrap();
         let mut all = vec![[0.0; 2]; 6000]; signal.render(0, &mut all);
         let mut window = vec![[9.0; 2]; len]; signal.render(start as u64, &mut window);
@@ -21,10 +21,10 @@ fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
         1.25,
         0.0,
         &[ComponentForm::Clicks {
-            rate_hz: 3.0,
-            width_seconds: 0.000125,
+            rate_hz: finite(3.0),
+            width_seconds: finite(0.000125),
             ears: Ears::Left,
-            peak_dbfs: -20.0,
+            peak_dbfs: finite(-20.0),
             modulation: None,
         }],
     )
@@ -72,7 +72,7 @@ fn fades_and_late_tones_follow_independent_sine_formulas() {
         .unwrap()
         .sound()
         .clone();
-    sound.duration_seconds = 68_719_476_736.0 / 48_000.0;
+    sound.set_duration(finite(68_719_476_736.0 / 48_000.0));
     let signal = sound.signal(SampleRate::DEFAULT).unwrap();
     for n in [0, 1, 4799, 4800, 4801, (1 << 36) - 4801, (1 << 36) - 1] {
         let depth = n.min(signal.frames() - 1 - n);
@@ -94,12 +94,12 @@ fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
         1431655.7653333333,
         0.0,
         &[ComponentForm::Tone {
-            frequency_hz: 8000.0,
+            frequency_hz: finite(8000.0),
             ears: Ears::Both,
-            peak_dbfs: -20.0,
+            peak_dbfs: finite(-20.0),
             modulation: Some(Modulation::Am {
-                rate_hz: 39.0625,
-                depth: 0.7,
+                rate_hz: finite(39.0625),
+                depth: finite(0.7),
             }),
         }],
     )
@@ -129,10 +129,10 @@ fn raised_cosine_is_symmetric_and_matches_sine_squared() {
         0.125125,
         0.008,
         &[ComponentForm::Clicks {
-            rate_hz: 0.5,
-            width_seconds: 0.25,
+            rate_hz: finite(0.5),
+            width_seconds: finite(0.25),
             ears: Ears::Both,
-            peak_dbfs: 0.0,
+            peak_dbfs: finite(0.0),
             modulation: None,
         }],
     )
@@ -164,15 +164,15 @@ fn raised_cosine_is_symmetric_and_matches_sine_squared() {
 }
 #[test]
 fn public_signals_preserve_slow_onsets_and_widths_longer_than_a_second() {
-    let recipe = |rate, width| {
+    let recipe = |rate: f64, width: f64| {
         common::recipe(
             3.0,
             0.0,
             &[ComponentForm::Clicks {
-                rate_hz: rate,
-                width_seconds: width,
+                rate_hz: finite(rate),
+                width_seconds: finite(width),
                 ears: Ears::Both,
-                peak_dbfs: -20.0,
+                peak_dbfs: finite(-20.0),
                 modulation: None,
             }],
         )
@@ -195,4 +195,11 @@ fn public_signals_preserve_slow_onsets_and_widths_longer_than_a_second() {
         .unwrap();
     assert_eq!(signal.frame(95999), [0.1; 2]);
     assert_eq!(signal.frame(96000), [0.0; 2]);
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

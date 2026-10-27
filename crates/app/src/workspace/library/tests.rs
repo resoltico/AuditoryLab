@@ -600,16 +600,11 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
         let result = workspace.accept_managed_outcome(None, outcome);
         let retained = workspace.editor().document();
         let replacement = if invalid_editor {
-            let mut recipe = workspace.editor().draft().recipe().unwrap().into_builder();
-            recipe.sound.components = vec![crate::core::Component {
-                id: crate::core::ComponentId::new(1).unwrap(),
-                form: crate::document::controls::default_component(crate::core::CarrierKind::Tone),
-            }];
-            recipe.sound.components.push(recipe.sound.components[0]);
-            recipe
-                .build()
-                .map_err(crate::error::EditorError::Recipe)
-                .and_then(|recipe| EditorSession::new(Draft::from_recipe(recipe)))
+            Recipe::parse(include_str!(
+                "../../../../core/tests/fixtures/invalid/duplicate-id.toml"
+            ))
+            .map_err(crate::error::EditorError::Recipe)
+            .and_then(|recipe| EditorSession::new(Draft::from_recipe(recipe)))
         } else {
             Err(crate::error::EditorError::Identity(
                 crate::error::IdentityError::Entropy(getrandom::Error::UNSUPPORTED),
@@ -858,10 +853,6 @@ fn retained_user_source_exports_its_captured_portable_text_without_reloading_use
     let PromptState::ExportRecipe(text) = &prompt.state else {
         panic!("captured portable text");
     };
-    assert!(
-        crate::core::Recipe::parse(text)
-            .unwrap()
-            .same_document(original.recipe())
-    );
+    assert!(crate::core::Recipe::parse(text).unwrap() == *original.recipe());
     assert!(!text.contains("Current saved version"));
 }

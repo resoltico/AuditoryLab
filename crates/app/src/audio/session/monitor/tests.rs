@@ -32,25 +32,22 @@ fn numbered(rate: SampleRate, components: &[ComponentForm]) -> Target {
             form: *c,
         })
         .collect();
-    Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components,
-    }
-    .target(rate)
-    .unwrap()
+    Sound::new(finite(1.0), finite(0.0), components)
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
+        .target(rate)
+        .unwrap()
 }
-fn finite(signal: crate::core::Signal) -> Source {
+fn finite_source(signal: crate::core::Signal) -> Source {
     Source::Finite(FiniteSource::new(Arc::new(signal)))
 }
 fn signal(hz: u32) -> crate::core::Signal {
-    Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: (vec![ComponentForm::Tone {
-            frequency_hz: 100.0,
+    Sound::new(
+        finite(1.0),
+        finite(0.0),
+        (vec![ComponentForm::Tone {
+            frequency_hz: finite(100.0),
             ears: Ears::Left,
-            peak_dbfs: -20.0,
+            peak_dbfs: finite(-20.0),
             modulation: None,
         }])
         .into_iter()
@@ -60,7 +57,8 @@ fn signal(hz: u32) -> crate::core::Signal {
             form: voice,
         })
         .collect(),
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .signal(SampleRate::new(hz).unwrap())
     .unwrap()
 }
@@ -93,10 +91,10 @@ fn real_callback_samples_match_history_and_finite_stop() {
         None,
     );
     let mut reader = monitor.reader().unwrap();
-    let mut a = Transport::new(finite(signal(8000)), 2, monitor.session())
+    let mut a = Transport::new(finite_source(signal(8000)), 2, monitor.session())
         .with_monitor(Some(monitor.clone()));
     let other = SessionState::new();
-    let mut b = Transport::new(finite(signal(8000)), 2, other.clone());
+    let mut b = Transport::new(finite_source(signal(8000)), 2, other.clone());
     let mut x = [0.0; 1024];
     let mut y = x;
     a.fill(&mut x, time(0), &|v| v);
@@ -231,7 +229,8 @@ fn callbacks_and_preallocated_reads_allocate_nothing() {
         None,
     );
     let mut reader = m.reader().unwrap();
-    let mut callback = Transport::new(finite(signal(8000)), 2, m.session()).with_monitor(Some(m));
+    let mut callback =
+        Transport::new(finite_source(signal(8000)), 2, m.session()).with_monitor(Some(m));
     let mut out = [0.0; 4096];
     let measured = allocation_counter::measure(|| {
         callback.fill(&mut out, time(0), &|v| v);
@@ -266,9 +265,9 @@ fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
     let rate = SampleRate::DEFAULT;
     let tones: Vec<ComponentForm> = (0..16)
         .map(|n| ComponentForm::Tone {
-            frequency_hz: 200.0 + f64::from(n) * 20.0,
+            frequency_hz: finite(200.0 + f64::from(n) * 20.0),
             ears: Ears::Both,
-            peak_dbfs: -30.0,
+            peak_dbfs: finite(-30.0),
             modulation: None,
         })
         .collect();
@@ -277,8 +276,8 @@ fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
         .map(|c| {
             let base = *c;
             ComponentForm::Clicks {
-                rate_hz: 40.0,
-                width_seconds: 0.001,
+                rate_hz: finite(40.0),
+                width_seconds: finite(0.001),
                 ears: base.route().unwrap(),
                 peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
                 modulation: base.modulation(),
@@ -348,7 +347,7 @@ fn a_real_stalled_reader_never_blocks_callback_completion() {
         reader
     });
     ready_rx.recv().unwrap();
-    let mut callback = Transport::new(finite(signal(8000)), 2, monitor.session())
+    let mut callback = Transport::new(finite_source(signal(8000)), 2, monitor.session())
         .with_monitor(Some(monitor.clone()));
     let mut output = [0.0; 1024];
     for n in 0..10 {
@@ -440,12 +439,12 @@ fn callback_cost() {
                 let rate = SampleRate::new(hz).unwrap();
                 let components: Vec<ComponentForm> = (0..16)
                     .map(|n| ComponentForm::Tone {
-                        frequency_hz: 200.0 + f64::from(n) * 20.0,
+                        frequency_hz: finite(200.0 + f64::from(n) * 20.0),
                         ears: Ears::Both,
-                        peak_dbfs: -30.0,
+                        peak_dbfs: finite(-30.0),
                         modulation: Some(crate::core::Modulation::Am {
-                            rate_hz: 23.0 + f64::from(n) * 0.75,
-                            depth: 1.0,
+                            rate_hz: finite(23.0 + f64::from(n) * 0.75),
+                            depth: finite(1.0),
                         }),
                     })
                     .collect();
@@ -458,8 +457,8 @@ fn callback_cost() {
                         .map(|(n, c)| {
                             let base = *c;
                             ComponentForm::Clicks {
-                                rate_hz: 40.0 + f64::from(u32::try_from(n).unwrap()),
-                                width_seconds: 0.001,
+                                rate_hz: finite(40.0 + f64::from(u32::try_from(n).unwrap())),
+                                width_seconds: finite(0.001),
                                 ears: base.route().unwrap(),
                                 peak_dbfs: base
                                     .get(auditorylab_core::ParameterId::PeakLevel)
@@ -725,13 +724,13 @@ fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
 #[test]
 fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
     for hz in [3750.0, 3751.0] {
-        let signal = Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: (vec![ComponentForm::Tone {
-                frequency_hz: hz,
+        let signal = Sound::new(
+            finite(1.0),
+            finite(0.0),
+            (vec![ComponentForm::Tone {
+                frequency_hz: finite(hz),
                 ears: Ears::Both,
-                peak_dbfs: -15.3,
+                peak_dbfs: finite(-15.3),
                 modulation: None,
             }])
             .into_iter()
@@ -741,7 +740,8 @@ fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
                 form: voice,
             })
             .collect(),
-        }
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .signal(SampleRate::DEFAULT)
         .unwrap();
         assert_eq!(SampleRate::DEFAULT.hz(), 48000);
@@ -799,12 +799,12 @@ fn maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots() {
     let rate = SampleRate::new(768_000).unwrap();
     let voices: Vec<_> = (0..16)
         .map(|n| ComponentForm::Tone {
-            frequency_hz: 200.0 + f64::from(n) * 20.0,
+            frequency_hz: finite(200.0 + f64::from(n) * 20.0),
             ears: Ears::Both,
-            peak_dbfs: -30.0,
+            peak_dbfs: finite(-30.0),
             modulation: Some(crate::core::Modulation::Am {
-                rate_hz: 23.0 + f64::from(n) * 0.75,
-                depth: 1.0,
+                rate_hz: finite(23.0 + f64::from(n) * 0.75),
+                depth: finite(1.0),
             }),
         })
         .collect();
@@ -816,8 +816,8 @@ fn maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots() {
             .map(|voice| {
                 let base = *voice;
                 ComponentForm::Clicks {
-                    rate_hz: 40.0,
-                    width_seconds: 0.001,
+                    rate_hz: finite(40.0),
+                    width_seconds: finite(0.001),
                     ears: base.route().unwrap(),
                     peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
                     modulation: base.modulation(),
@@ -968,4 +968,12 @@ fn allocation_counter_detects_freeing_prepared_storage() {
     let measured = allocation_counter::measure(|| drop(prepared));
     assert_eq!(measured.count_total, 0);
     assert_eq!(measured.count_current, -1);
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

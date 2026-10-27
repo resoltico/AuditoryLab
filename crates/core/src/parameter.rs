@@ -284,10 +284,10 @@ impl ParameterId {
 
     /// The sound's value of [`ParameterId::Duration`] or [`ParameterId::Fade`].
     #[must_use]
-    pub const fn read_envelope(self, sound: &Sound) -> Option<f64> {
+    pub const fn read_envelope(self, sound: &Sound) -> Option<crate::Finite> {
         match self {
-            Self::Duration => Some(sound.duration_seconds),
-            Self::Fade => Some(sound.fade_seconds),
+            Self::Duration => Some(sound.duration_seconds()),
+            Self::Fade => Some(sound.fade_seconds()),
             _ => None,
         }
     }
@@ -431,7 +431,7 @@ impl Voice {
     pub(crate) fn role(&self) -> ComponentRole {
         match self.modulation {
             Some(Modulation::Gate { .. }) => ComponentRole::GateRhythm,
-            Some(Modulation::Am { depth, .. }) if depth > 0.0 => ComponentRole::AmEnvelope,
+            Some(Modulation::Am { depth, .. }) if depth.get() > 0.0 => ComponentRole::AmEnvelope,
             _ => match self.carrier {
                 Carrier::Clicks { .. } => ComponentRole::ClickRhythm,
                 Carrier::Tone { .. } => ComponentRole::SteadyTone,
@@ -459,12 +459,12 @@ mod tests {
             for modulation in [
                 None,
                 Some(Modulation::Am {
-                    rate_hz: 8.0,
-                    depth: 0.5,
+                    rate_hz: crate::test_support::finite(8.0),
+                    depth: crate::test_support::finite(0.5),
                 }),
                 Some(Modulation::Gate {
-                    rate_hz: 8.0,
-                    width_seconds: 0.002,
+                    rate_hz: crate::test_support::finite(8.0),
+                    width_seconds: crate::test_support::finite(0.002),
                 }),
             ] {
                 shapes.push(Voice {
@@ -484,9 +484,13 @@ mod tests {
             for id in ParameterId::COMPONENT {
                 let mut changed = shape;
                 let applies = shape.get(id).is_some();
-                assert_eq!(changed.set(id, 0.25), applies, "{id:?}");
+                assert_eq!(
+                    changed.set(id, crate::test_support::finite(0.25)),
+                    applies,
+                    "{id:?}"
+                );
                 if applies {
-                    assert_eq!(changed.get(id), Some(0.25));
+                    assert_eq!(changed.get(id), Some(crate::test_support::finite(0.25)));
                     for other in ParameterId::COMPONENT {
                         if other != id {
                             assert_eq!(changed.get(other), shape.get(other));
@@ -535,24 +539,19 @@ mod tests {
     }
 
     #[test]
-    fn nonfinite_quantities_are_named_and_roles_never_hide_active_modulation() {
+    fn finite_invalid_rates_never_hide_active_modulation() {
         let mut c = every_shape()[1];
         assert_eq!(c.role(), ComponentRole::AmEnvelope);
         c.modulation = Some(Modulation::Am {
-            rate_hz: f64::INFINITY,
-            depth: 0.0,
+            rate_hz: crate::test_support::finite(0.0),
+            depth: crate::test_support::finite(0.0),
         });
         assert_eq!(c.role(), ComponentRole::SteadyTone);
-        c.peak_dbfs = f64::NAN;
-        assert_eq!(
-            crate::ParameterId::COMPONENT
-                .into_iter()
-                .filter(|p| crate::test_support::form(c)
-                    .get(*p)
-                    .is_some_and(|v| !v.is_finite()))
-                .collect::<Vec<_>>(),
-            [ParameterId::PeakLevel, ParameterId::AmRate]
-        );
+        let form = crate::test_support::form(c);
+        let issues: Vec<_> = form.intrinsic_issues().collect();
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].parameter, ParameterId::AmRate);
+        assert_eq!(issues[0].rule, crate::ValueRule::Positive);
         assert_eq!(ComponentId::numbered(0), ComponentId::new(1));
         assert_eq!(ComponentId::numbered(usize::MAX), None);
     }

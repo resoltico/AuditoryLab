@@ -20,8 +20,9 @@ pub fn recipe_error(error: &RecipeError) -> String {
         RecipeError::NotUtf8 => "recipe is not UTF-8 text".into(),
         RecipeError::Utf16 => "recipe is UTF-16 text; save it as UTF-8".into(),
         RecipeError::Format(error) => {
-            format!("recipe does not match the format: {}", error.message())
+            format!("recipe does not match the format: {error}")
         }
+        RecipeError::Structure(error) => structure_error(error),
         RecipeError::Contract(error) => format!("recipe contract: {}", contract_error(error)),
         RecipeError::Write(error) => format!("cannot serialize recipe: {error}"),
         RecipeError::UnsupportedVersion { found } => format!(
@@ -34,16 +35,6 @@ pub fn recipe_error(error: &RecipeError) -> String {
 #[must_use]
 pub fn contract_error(error: &ContractError) -> String {
     match error {
-        ContractError::Nonfinite {
-            component,
-            parameter,
-            value,
-        } => format!(
-            "{}{} {value} must be finite",
-            component.map_or_else(String::new, |id| format!("Component {id}: ")),
-            parameter.descriptor().label
-        ),
-        ContractError::Structure(error) => structure_error(error),
         ContractError::EmptyTitle => "description title must not be empty".into(),
         ContractError::SourceBudget { count } => format!(
             "{count} sources exceed the limit of {}",

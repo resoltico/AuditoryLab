@@ -1185,9 +1185,6 @@ impl LibraryState {
             return Err(Refusal::RestoreBeforePlayback);
         }
         let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
-        if snapshot.sound().nonfinite().next().is_some() {
-            return Err(Refusal::NotFinite);
-        }
         Ok(AudioRequest::Finite {
             snapshot: Box::new(snapshot.clone()),
             store: self.selected_user().then(|| self.store_clone()).flatten(),

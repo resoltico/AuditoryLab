@@ -176,19 +176,16 @@ pub struct TargetCheck {
 impl TargetCheck {
     /// Compile each admitted authored component with its pair intent in scope.
     #[must_use]
-    pub(crate) fn authored(rate: SampleRate, components: &[crate::Component]) -> Self {
+    pub(crate) fn authored(rate: SampleRate, sound: &Sound) -> Self {
         let refused = |error| Self {
             rate,
             voices: Vec::new(),
             result: Err(error),
         };
-        if let Err(error) = Sound::check_structure(components) {
-            return refused(SoundError::Structure(error));
-        }
         let mut mix = CompiledMix::empty(rate);
         let mut first = None;
         let mut results = Vec::new();
-        for component in components {
+        for component in sound.components() {
             let pair = component
                 .form
                 .pair()

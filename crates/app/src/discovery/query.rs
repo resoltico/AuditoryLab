@@ -155,8 +155,11 @@ impl SearchIndex {
         for band in &snapshot.nominal().bands {
             facts.push(band.key().into());
         }
-        let mut numbers = vec![recipe.sound().duration_seconds, recipe.sound().fade_seconds];
-        for component in &recipe.sound().components {
+        let mut numbers = vec![
+            recipe.sound().duration_seconds().get(),
+            recipe.sound().fade_seconds().get(),
+        ];
+        for component in recipe.sound().components() {
             let form = component.form;
             if let Some(kind) = form.primitive_kind() {
                 facts.push(
@@ -199,6 +202,7 @@ impl SearchIndex {
             }
             for parameter in ParameterId::COMPONENT {
                 if let Some(value) = component.form.get(parameter) {
+                    let value = value.get();
                     numbers.extend([value, parameter.descriptor().unit.to_display(value)]);
                 }
             }

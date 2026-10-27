@@ -1,6 +1,6 @@
 //! Operation-specific failure data. Presentation supplies human sentences.
 use super::{FileError, IoCause, IoFailure, Outcome};
-use crate::core::{DocumentUuid, RecipeError, SampleRate, SoundError, StructureError};
+use crate::core::{DocumentUuid, RecipeError, SampleRate, SoundError};
 use std::path::PathBuf;
 macro_rules! error_data {
     ($(#[$meta:meta])* $name:ident { $($(#[$variant_meta:meta])* $variant:ident $( { $($field:ident: $ty:ty),* $(,)? } )?),* $(,)? }) => {
@@ -44,8 +44,6 @@ pub enum EditorError {
     Identity(IdentityError),
     /// Portable copy construction failed.
     Recipe(RecipeError),
-    /// An editable candidate has invalid owners or capacity.
-    Structure(StructureError),
 }
 impl EditorError {
     /// Failure category.
@@ -67,11 +65,7 @@ impl From<RecipeError> for EditorError {
         Self::Recipe(error)
     }
 }
-impl From<StructureError> for EditorError {
-    fn from(error: StructureError) -> Self {
-        Self::Structure(error)
-    }
-}
+
 error_data! {
     /// A persistent library operation failed.
     LibraryError {

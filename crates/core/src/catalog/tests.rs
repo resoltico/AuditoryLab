@@ -273,10 +273,10 @@ fn every_entry_has_its_independently_written_recipe() {
     );
     for (entry, (name, seconds, parts)) in catalog::ENTRIES.iter().zip(RECIPES) {
         let authored = recipe(entry).sound().clone();
-        let sound = auditorylab_core::Sound {
-            duration_seconds: authored.duration_seconds,
-            fade_seconds: authored.fade_seconds,
-            components: (crate::test_support::lower(&authored.components)
+        let sound = auditorylab_core::Sound::new(
+            crate::test_support::finite(authored.duration_seconds().get()),
+            crate::test_support::finite(authored.fade_seconds().get()),
+            (crate::test_support::lower(authored.components())
                 .unwrap()
                 .into_iter()
                 .map(|(_, c)| c)
@@ -288,11 +288,13 @@ fn every_entry_has_its_independently_written_recipe() {
                 form: crate::test_support::form(voice),
             })
             .collect(),
-        };
-        assert_eq!(sound.duration_seconds, *seconds, "{name}");
-        assert_eq!(sound.fade_seconds, 0.1, "{name}");
-        assert_eq!(sound.components.len(), parts.len(), "{name}");
-        for (component, (ears, kind, hz, level, modulation)) in sound.components.iter().zip(*parts)
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+        assert_eq!(sound.duration_seconds().get(), *seconds, "{name}");
+        assert_eq!(sound.fade_seconds().get(), 0.1, "{name}");
+        assert_eq!(sound.components().len(), parts.len(), "{name}");
+        for (component, (ears, kind, hz, level, modulation)) in
+            sound.components().iter().zip(*parts)
         {
             let component = component.form.primitive().unwrap();
             assert_eq!(component.ears, *ears, "{name}");
@@ -301,12 +303,12 @@ fn every_entry_has_its_independently_written_recipe() {
                 component.modulation,
                 modulation.map(|modulation| match modulation {
                     Mod::Sam(rate_hz) => Modulation::Am {
-                        rate_hz,
-                        depth: 1.0,
+                        rate_hz: crate::test_support::finite(rate_hz),
+                        depth: crate::test_support::finite(1.0),
                     },
                     Mod::Gate(rate_hz) => Modulation::Gate {
-                        rate_hz,
-                        width_seconds: 0.001,
+                        rate_hz: crate::test_support::finite(rate_hz),
+                        width_seconds: crate::test_support::finite(0.001),
                     },
                 }),
                 "{name}"
@@ -342,10 +344,10 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
     for entry in catalog::ENTRIES {
         for hz in [44_100, 48_000, 96_000] {
             let authored = recipe(entry).sound().clone();
-            let mut sound = auditorylab_core::Sound {
-                duration_seconds: authored.duration_seconds,
-                fade_seconds: authored.fade_seconds,
-                components: (crate::test_support::lower(&authored.components)
+            let mut sound = auditorylab_core::Sound::new(
+                crate::test_support::finite(authored.duration_seconds().get()),
+                crate::test_support::finite(authored.fade_seconds().get()),
+                (crate::test_support::lower(authored.components())
                     .unwrap()
                     .into_iter()
                     .map(|(_, c)| c)
@@ -357,17 +359,18 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
                     form: crate::test_support::form(voice),
                 })
                 .collect(),
-            };
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
             let signal = sound.signal(SampleRate::new(hz).unwrap()).unwrap();
-            assert_eq!(signal.duration_seconds(), sound.duration_seconds);
-            sound.fade_seconds = 0.0;
+            assert_eq!(signal.duration_seconds(), sound.duration_seconds().get());
+            sound.set_fade(crate::test_support::finite(0.0));
             let signal = sound.signal(SampleRate::new(hz).unwrap()).unwrap();
-            if let [part] = &sound.components[..] {
+            if let [part] = sound.components() {
                 let part = part.form.primitive().unwrap();
                 let pulse_rate = match part.carrier {
                     Carrier::Clicks { rate_hz, .. } => Some(rate_hz),
                     _ => match part.modulation {
-                        Some(Modulation::Gate { rate_hz, .. }) => Some(rate_hz),
+                        Some(Modulation::Gate { rate_hz, .. }) => Some(rate_hz.get()),
                         _ => None,
                     },
                 };

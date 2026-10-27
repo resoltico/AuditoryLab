@@ -26,13 +26,13 @@ fn rate() -> SampleRate {
 }
 
 fn tone_session(frames: u32, sample_rate: SampleRate) -> Signal {
-    Sound {
-        duration_seconds: f64::from(frames) / f64::from(sample_rate.hz()),
-        fade_seconds: 0.001,
-        components: (vec![ComponentForm::Tone {
-            frequency_hz: 500.0,
+    Sound::new(
+        finite(f64::from(frames) / f64::from(sample_rate.hz())),
+        finite(0.001),
+        (vec![ComponentForm::Tone {
+            frequency_hz: finite(500.0),
             ears: Ears::Both,
-            peak_dbfs: -20.0,
+            peak_dbfs: finite(-20.0),
             modulation: None,
         }])
         .into_iter()
@@ -42,7 +42,8 @@ fn tone_session(frames: u32, sample_rate: SampleRate) -> Signal {
             form: voice,
         })
         .collect(),
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .signal(sample_rate)
     .unwrap()
 }
@@ -121,10 +122,10 @@ fn an_independent_decoder_reads_the_format_length_and_nearest_f32_samples() {
 fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("silence.wav");
-    let silence = Sound {
-        duration_seconds: 5.0 / 8_000.0,
-        fade_seconds: 0.0,
-        components: (vec![])
+    let silence = Sound::new(
+        finite(5.0 / 8_000.0),
+        finite(0.0),
+        (vec![])
             .into_iter()
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
@@ -132,7 +133,8 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
                 form: voice,
             })
             .collect(),
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .signal(rate())
     .unwrap();
     export(silence, &path, &never()).unwrap();
@@ -160,8 +162,8 @@ fn short_catalog_session(name: &str) -> Signal {
         .unwrap()
         .sound()
         .clone();
-    sound.duration_seconds = 0.125;
-    sound.fade_seconds = 0.01;
+    sound.set_duration(finite(0.125));
+    sound.set_fade(finite(0.01));
     sound.signal(rate()).unwrap()
 }
 
@@ -313,5 +315,13 @@ fn writer_failures_in_the_header_and_payload_keep_the_original_error() {
             matches!(error,crate::storage::wav::ExportError::Io(ref e) if e.to_string()=="injected writer failure")
         );
         assert_eq!(writer.calls, fail_on);
+    }
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
     }
 }

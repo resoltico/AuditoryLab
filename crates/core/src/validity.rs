@@ -3,8 +3,6 @@ use crate::ParameterId;
 /// The intrinsic rule a quantity must satisfy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueRule {
-    /// The value is a finite number.
-    Finite,
     /// The value is finite and strictly positive.
     Positive,
     /// A peak is at most zero dBFS.
@@ -27,27 +25,25 @@ pub(crate) fn positive(value: f64) -> bool {
 }
 pub(crate) fn check_value(parameter: ParameterId, value: f64) -> Result<(), ValueIssue> {
     use ParameterId as P;
-    let rule = if !value.is_finite() {
-        Some(ValueRule::Finite)
-    } else {
-        match parameter {
-            P::ToneFrequency
-            | P::ClickRate
-            | P::ClickWidth
-            | P::AmRate
-            | P::GateRate
-            | P::GateWidth
-            | P::PairFirstFrequency
-                if !positive(value) =>
-            {
-                Some(ValueRule::Positive)
-            }
-            P::PeakLevel | P::PairFirstLevel | P::PairSecondLevel if value > 0.0 => {
-                Some(ValueRule::Peak)
-            }
-            P::AmDepth if !(0.0..=1.0).contains(&value) => Some(ValueRule::Depth),
-            _ => None,
+    let rule = match parameter {
+        P::ToneFrequency
+        | P::ClickRate
+        | P::ClickWidth
+        | P::AmRate
+        | P::GateRate
+        | P::GateWidth
+        | P::PairFirstFrequency
+            if !positive(value) =>
+        {
+            Some(ValueRule::Positive)
         }
+        P::PeakLevel | P::PairFirstLevel | P::PairSecondLevel
+            if !value.is_finite() || value > 0.0 =>
+        {
+            Some(ValueRule::Peak)
+        }
+        P::AmDepth if !(0.0..=1.0).contains(&value) => Some(ValueRule::Depth),
+        _ => None,
     };
     match rule {
         Some(rule) => Err(ValueIssue {

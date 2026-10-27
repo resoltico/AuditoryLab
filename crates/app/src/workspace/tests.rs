@@ -439,7 +439,7 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     ws.action_view();
     assert_eq!(selected.realization_count(), count + 1);
     let mut invalid = Draft::new().unwrap();
-    invalid.set_duration_seconds(-1.0);
+    invalid.set_duration_seconds(finite(-1.0));
     let snapshot = invalid.snapshot().unwrap();
     let mut bad =
         TestWorkspace::new(vec![snapshot.clone()], Capabilities::no_device_playback()).unwrap();
@@ -501,7 +501,7 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
     assert_eq!(ws.visible_count(), 1);
     let initial = first.realization_count();
     let mut changed = recipe.into_builder();
-    changed.lineage[0].note = "reimport-source-marker".into();
+    changed.content.lineage[0].note = "reimport-source-marker".into();
     let replacement = RecipeSnapshot::new(
         crate::document::recipe::Origin::File("same.toml".into()),
         changed.build().unwrap(),
@@ -519,43 +519,43 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
 
 #[test]
 fn over_budget_copy_content_is_refused_before_becoming_a_snapshot() {
-    let mut candidate = Draft::new().unwrap().recipe().unwrap().into_builder();
-    candidate.sound.components = (0..17)
+    let candidate = Draft::new().unwrap().recipe().unwrap();
+    let components = (0..17)
         .map(|i| crate::core::Component {
             id: ComponentId::numbered(i).unwrap(),
             form: crate::document::controls::default_component(CarrierKind::Tone),
         })
         .collect();
-    assert!(candidate.build().is_err());
+    assert!(
+        crate::core::Sound::new(
+            candidate.sound().duration_seconds(),
+            candidate.sound().fade_seconds(),
+            components
+        )
+        .is_err()
+    );
 }
 
 #[test]
 fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
+    assert!(crate::core::Finite::new(f64::NAN).is_none());
     let mut source = Draft::new().unwrap().recipe().unwrap().into_builder();
-    source.sound.components.push(crate::core::Component {
-        id: ComponentId::new(1).unwrap(),
-        form: {
-            let base = crate::document::controls::default_component(CarrierKind::Tone);
-            crate::core::ComponentForm::Tone {
-                frequency_hz: f64::NAN,
-                ears: base.route().unwrap(),
-                peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
-                modulation: base.modulation(),
-            }
-        },
-    });
-    assert!(source.clone().build().is_err());
-    source.sound.components[0]
-        .form
-        .set(auditorylab_core::ParameterId::ToneFrequency, 440.0);
-    source.sound.duration_seconds = -1.0;
+    source
+        .content
+        .sound
+        .push(crate::core::Component {
+            id: ComponentId::new(1).unwrap(),
+            form: crate::document::controls::default_component(CarrierKind::Tone),
+        })
+        .unwrap();
+    source.content.sound.set_duration(finite(-1.0));
     let finite = RecipeSnapshot::new(
         crate::document::recipe::Origin::Stream("finite invalid".into()),
         source.build().unwrap(),
     );
     assert!(Workspace::copy_content_admission(&finite).is_ok());
     let mut full = finite.recipe().clone().into_builder();
-    full.lineage = vec![
+    full.content.lineage = vec![
         crate::core::Lineage {
             title: "ancestor".into(),
             note: "attributed".into(),
@@ -660,7 +660,7 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
     let path = dir.path().join("same.toml");
     let text = |duration, title: &str| {
         let mut recipe = crate::test_recipes::silent(duration, 0.0).into_builder();
-        recipe.description = Some(crate::core::Description {
+        recipe.content.description = Some(crate::core::Description {
             title: title.into(),
             notes: None,
         });
@@ -786,8 +786,8 @@ fn temporary_directory() -> tempfile::TempDir {
 
 fn short_silent_source() -> RecipeSnapshot {
     let mut draft = Draft::new().unwrap();
-    draft.set_duration_seconds(0.01);
-    draft.set_fade_seconds(0.0);
+    draft.set_duration_seconds(finite(0.01));
+    draft.set_fade_seconds(finite(0.0));
     draft.snapshot().unwrap()
 }
 
@@ -817,10 +817,10 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
     let key = crate::storage::library::LibraryKey::User(captured.document().id);
     let saved = workspace.store.load(&key).unwrap();
     assert_eq!(
-        saved.snapshot.sound().components[0]
+        saved.snapshot.sound().components()[0]
             .form
             .get(ParameterId::ToneFrequency),
-        Some(440.0)
+        Some(finite(440.0))
     );
     assert!(
         workspace.file_busy(),
@@ -838,7 +838,7 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
         workspace.editor().draft().components()[0]
             .form
             .get(ParameterId::ToneFrequency),
-        Some(880.0)
+        Some(finite(880.0))
     );
     assert_eq!(
         workspace
@@ -884,10 +884,10 @@ fn captured_save_completion_never_replaces_a_different_editor_document() {
         ))
         .unwrap();
     assert_eq!(
-        saved.snapshot.sound().components[0]
+        saved.snapshot.sound().components()[0]
             .form
             .get(ParameterId::ToneFrequency),
-        Some(440.0)
+        Some(finite(440.0))
     );
 }
 
@@ -1120,10 +1120,10 @@ fn portable_export_keeps_the_prompt_capture_and_does_not_advance_the_save_baseli
     let saved = crate::storage::load::load_file(&path).unwrap();
     assert_eq!(saved.recipe().document().id, identity);
     assert_eq!(
-        saved.sound().components[0]
+        saved.sound().components()[0]
             .form
             .get(ParameterId::ToneFrequency),
-        Some(440.0)
+        Some(finite(440.0))
     );
     assert!(workspace.file_busy());
     assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
@@ -1363,3 +1363,11 @@ fn staged_envelope_failures_render_quantities_and_rate_in_metadata() {
 
 #[path = "tests/admissions.rs"]
 mod admissions;
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
+}

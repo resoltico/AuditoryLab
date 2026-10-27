@@ -8,31 +8,38 @@ const RATE: u32 = 48_000;
 const FRAMES: u32 = RATE * 20;
 fn measure(components: Vec<ComponentForm>) -> Result<[f64; 3], Box<dyn Error>> {
     let rate = SampleRate::new(RATE)?;
-    let sound = Sound {
-        duration_seconds: f64::from(FRAMES) / f64::from(RATE),
-        fade_seconds: 0.0,
-        components: components
-            .into_iter()
-            .enumerate()
-            .map(|(index, voice)| {
-                Ok(Component {
-                    id: ComponentId::numbered(index).ok_or("too many component identities")?,
-                    form: voice,
-                })
+    let components = components
+        .into_iter()
+        .enumerate()
+        .map(|(index, form)| {
+            Ok(Component {
+                id: ComponentId::numbered(index).ok_or("too many component identities")?,
+                form,
             })
-            .collect::<Result<_, &str>>()?,
-    };
+        })
+        .collect::<Result<Vec<_>, &str>>()?;
+    let sound = Sound::new(
+        finite(f64::from(FRAMES) / f64::from(RATE)),
+        finite(0.0),
+        components,
+    )?;
     let signal = sound.signal(rate)?;
-    let mut alternate = sound.clone();
     let offset = u32::try_from(Sound::MAX_COMPONENTS)?;
-    for component in &mut alternate.components {
-        component.id = component
-            .id
-            .get()
-            .checked_add(offset)
-            .and_then(ComponentId::new)
-            .ok_or("component identity exhausted")?;
-    }
+    let components = sound
+        .components()
+        .iter()
+        .copied()
+        .map(|mut component| {
+            component.id = component
+                .id
+                .get()
+                .checked_add(offset)
+                .and_then(ComponentId::new)
+                .ok_or("component identity exhausted")?;
+            Ok(component)
+        })
+        .collect::<Result<Vec<_>, &str>>()?;
+    let alternate = Sound::new(sound.duration_seconds(), sound.fade_seconds(), components)?;
     let targets = [sound.target(rate)?, alternate.target(rate)?];
     let mut engine = Engine::new(rate);
     let batch = usize::try_from(engine.ramp_frames())?;
@@ -74,20 +81,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         .into_iter()
         .zip([250.0, 256.0])
         .map(|(ears, frequency_hz)| ComponentForm::Tone {
-            frequency_hz,
+            frequency_hz: finite(frequency_hz),
             ears,
-            peak_dbfs: -20.0,
+            peak_dbfs: finite(-20.0),
             modulation: None,
         })
         .collect();
     let am = (0..16)
         .map(|i| ComponentForm::Tone {
-            frequency_hz: 200.0 + 50.0 * f64::from(i),
+            frequency_hz: finite(200.0 + 50.0 * f64::from(i)),
             ears: Ears::Both,
-            peak_dbfs: -30.0,
+            peak_dbfs: finite(-30.0),
             modulation: Some(Modulation::Am {
-                rate_hz: 40.0,
-                depth: 1.0,
+                rate_hz: finite(40.0),
+                depth: finite(1.0),
             }),
         })
         .collect();
@@ -98,4 +105,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("{name},{signal:.2},{steady:.2},{crossfading:.2}");
     }
     Ok(())
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }

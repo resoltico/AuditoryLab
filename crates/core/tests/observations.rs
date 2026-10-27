@@ -1,13 +1,13 @@
 //! Independent generated-state, attribution and revision oracles.
 use auditorylab_core::{
     CarrierFacts, Component, ComponentForm, ComponentId, Ears, Modulation, ModulationFacts,
-    SampleRate, SlotRole, Sound, SoundError, StructureError, Target, VoiceFacts, live::Engine,
+    SampleRate, SlotRole, Sound, StructureError, Target, VoiceFacts, live::Engine,
 };
 fn tone(hz: f64, ears: Ears) -> ComponentForm {
     ComponentForm::Tone {
-        frequency_hz: hz,
+        frequency_hz: finite(hz),
         ears,
-        peak_dbfs: -30.0,
+        peak_dbfs: finite(-30.0),
         modulation: None,
     }
 }
@@ -16,14 +16,15 @@ fn tone(hz: f64, ears: Ears) -> ComponentForm {
     reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
 )]
 fn target(rate: SampleRate, component: ComponentForm) -> Target {
-    Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: vec![Component {
+    Sound::new(
+        finite(1.0),
+        finite(0.0),
+        vec![Component {
             id: ComponentId::new(7).unwrap(),
             form: component,
         }],
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .target(rate)
     .unwrap()
 }
@@ -32,17 +33,18 @@ fn target(rate: SampleRate, component: ComponentForm) -> Target {
     reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
 )]
 fn facts(component: ComponentForm, rate: SampleRate) -> VoiceFacts {
-    let check = auditorylab_core::Sound {
-        duration_seconds: 1.0,
-        fade_seconds: 0.0,
-        components: ([(ComponentId::new(1).unwrap(), component)])
+    let check = auditorylab_core::Sound::new(
+        finite(1.0),
+        finite(0.0),
+        ([(ComponentId::new(1).unwrap(), component)])
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,
                 form: *voice,
             })
             .collect(),
-    }
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .check(rate);
     *check.target().unwrap().voices().next().unwrap().1
 }
@@ -112,16 +114,16 @@ fn changed_pulses_preserve_both_real_rates_and_roles() {
         let base = tone(440.0, Ears::Both);
         ComponentForm::Clicks {
             rate_hz: hz,
-            width_seconds: 0.001,
+            width_seconds: finite(0.001),
             ears: base.route().unwrap(),
             peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
             modulation: base.modulation(),
         }
     };
     let mut e = Engine::new(rate);
-    e.set(&target(rate, clicks(40.0)));
+    e.set(&target(rate, clicks(finite(40.0))));
     e.render(&mut [[0.0; 2]; 2000]);
-    e.set(&target(rate, clicks(80.0)));
+    e.set(&target(rate, clicks(finite(80.0))));
     e.render(&mut [[0.0; 2]; 1]);
     let obs = e.observation().unwrap();
     let voices: Vec<_> = obs.voices.into_iter().flatten().collect();
@@ -141,22 +143,21 @@ fn changed_pulses_preserve_both_real_rates_and_roles() {
     assert_eq!(rates, [40.0, 80.0]);
     assert_eq!(voices[0].id, voices[1].id);
     assert!(matches!(
-        Sound {
-            duration_seconds: 1.0,
-            fade_seconds: 0.0,
-            components: vec![
+        Sound::new(
+            finite(1.0),
+            finite(0.0),
+            vec![
                 Component {
                     id: ComponentId::new(1).unwrap(),
-                    form: clicks(40.0)
+                    form: clicks(finite(40.0))
                 },
                 Component {
                     id: ComponentId::new(1).unwrap(),
-                    form: clicks(80.0)
+                    form: clicks(finite(80.0))
                 },
-            ],
-        }
-        .target(rate),
-        Err(SoundError::Structure(StructureError::Identity { .. }))
+            ]
+        ),
+        Err(StructureError::Identity { .. })
     ));
 }
 #[test]
@@ -191,8 +192,8 @@ fn realized_rates_widths_depth_and_tiny_frequencies_are_explicit() {
         let c = {
             let mut form = tone(1000.0, Ears::Both);
             form.set_modulation(Some(Modulation::Am {
-                rate_hz: 39.0625,
-                depth: 0.0,
+                rate_hz: finite(39.0625),
+                depth: finite(0.0),
             }));
             form
         };
@@ -238,4 +239,11 @@ fn slot_roles_have_their_own_names() {
     assert_eq!(SlotRole::Continuing.label(), "Continuing");
     assert_eq!(SlotRole::Outgoing.label(), "Outgoing");
     assert_eq!(SlotRole::Incoming.label(), "Incoming");
+}
+
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
 }
