@@ -5,6 +5,7 @@ use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::document::origin::VersionToken;
 use auditorylab_core::query::Direction;
 use auditorylab_core::query::SortBy;
+use auditorylab_core::vocabulary::Operation;
 use serde::Serialize;
 use std::path::PathBuf;
 use {
@@ -237,7 +238,7 @@ pub enum ReportStatus {
     Failure(FailureStatus),
 }
 report_struct!(Report {
-    output_schema_version: u32, operation: String, complete: bool, convention: &'static str,
+    output_schema_version: u32, operation: Operation, complete: bool, convention: &'static str,
     query: Option<CatalogQuery>, unique_count: usize, entries: Vec<EntryReport>, groups: Vec<GroupReport>,
     diagnostics: Vec<Diagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")] classifier_revision: Option<u32>,
@@ -260,10 +261,10 @@ impl Report {
         .label();
         format!("{truth}; completion output failed: {error}")
     }
-    fn new(operation: &str, complete: bool) -> Self {
+    fn new(operation: Operation, complete: bool) -> Self {
         Self {
             output_schema_version: OUTPUT_SCHEMA_VERSION,
-            operation: operation.into(),
+            operation,
             complete,
             convention: rhythm::CONVENTION,
             query: None,
@@ -287,7 +288,7 @@ impl Report {
     }
     /// Query results with the exact typed query and storage diagnostics.
     #[must_use]
-    pub fn listing(operation: &str, listing: &auditorylab_app::services::Listing) -> Self {
+    pub fn listing(operation: Operation, listing: &auditorylab_app::services::Listing) -> Self {
         let query = listing.query();
         let mut report = Self::new(operation, listing.complete())
             .with_entries(listing.entries().iter().map(EntryReport::from).collect());
@@ -317,7 +318,7 @@ impl Report {
         let mut entry = EntryReport::from(source.summary());
         entry.history_warnings = Some(history.iter().map(DiagnosticMessage::from).collect());
         entry.recipe_toml = Some(text.to_string());
-        Self::new("describe", true).with_entries(vec![entry])
+        Self::new(Operation::Describe, true).with_entries(vec![entry])
     }
     /// Render the service’s captured rate validation, including invalid-content diagnostics.
     #[must_use]
@@ -344,11 +345,11 @@ impl Report {
                 }],
             },
         };
-        Self::new("inspect", true).with_entries(vec![entry])
+        Self::new(Operation::Inspect, true).with_entries(vec![entry])
     }
     /// A successful root inspection.
     #[must_use]
-    pub fn path(operation: &str, info: RootInfo) -> Self {
+    pub fn path(operation: Operation, info: RootInfo) -> Self {
         let mut report = Self::new(operation, true);
         report.root = Some(RootReport::Inspected(info));
         report
@@ -356,7 +357,7 @@ impl Report {
     /// A root inspection failure without claiming the directory's state is known.
     #[must_use]
     pub fn unavailable_path(
-        operation: &str,
+        operation: Operation,
         root: &auditorylab_app::services::library::Location,
         exists: Option<bool>,
         error: &auditorylab_app::services::library::LibraryError,
@@ -377,7 +378,7 @@ impl Report {
     }
     /// Explicit library initialization.
     #[must_use]
-    pub fn initialized(operation: &str, initialized: &Initialization) -> Self {
+    pub fn initialized(operation: Operation, initialized: &Initialization) -> Self {
         let mut report = Self::new(operation, true);
         report.status = Some(ReportStatus::Mutation(if initialized.created {
             MutationStatus::Published
@@ -402,7 +403,7 @@ impl Report {
     }
     /// Bounded inventory and storage diagnostics.
     #[must_use]
-    pub fn inventory(operation: &str, inventory: &Inventory) -> Self {
+    pub fn inventory(operation: Operation, inventory: &Inventory) -> Self {
         let mut report = Self::new(operation, inventory.complete)
             .with_entries(inventory.entries.iter().map(EntryReport::from).collect());
         report.diagnostics = inventory
@@ -421,7 +422,7 @@ impl Report {
     }
     /// The library's authoritative publication outcome.
     #[must_use]
-    pub fn mutation(operation: &str, outcome: &WriteOutcome) -> Self {
+    pub fn mutation(operation: Operation, outcome: &WriteOutcome) -> Self {
         let entries = outcome
             .record
             .as_ref()
@@ -442,7 +443,7 @@ impl Report {
     /// A failure classified by its public exit outcome.
     #[must_use]
     pub fn error(
-        operation: &str,
+        operation: Operation,
         code: impl Into<String>,
         message: impl Into<String>,
         outcome: Outcome,

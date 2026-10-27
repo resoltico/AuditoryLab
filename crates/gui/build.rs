@@ -13,10 +13,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ParameterId, Population, SlotRole,
         query::{Direction, GroupBy, RhythmState, Scope, SortBy},
         rhythm::{Band, Completeness, Method},
-        vocabulary::{Action, Status},
+        vocabulary::{Operation, Status},
     };
     terms_from!(
-        Action,
+        Operation,
         Status,
         Scope,
         SortBy,

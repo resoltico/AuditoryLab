@@ -265,7 +265,7 @@ crate::vocabulary::vocabulary! { Population,"population" {
     Mouse => ("mouse","Mouse","mouse"),
     OtherAnimal => ("other_animal","Other animal","other animal"),
     Mixed => ("mixed","Mixed population","mixed population"),
-    NotApplicable => ("not_applicable","Not applicable","not applicable"),
+    NotApplicable => ("not_applicable",crate::vocabulary::NOT_APPLICABLE.label,crate::vocabulary::NOT_APPLICABLE.phrase),
     Unspecified => ("unspecified","Unspecified population","unspecified population"),
 }}
 

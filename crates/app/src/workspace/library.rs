@@ -129,7 +129,7 @@ impl LibraryState {
         };
         if let Some(message) = cause {
             let storage_id = match &job.operation {
-                Operation::Load(key) => {
+                LibraryRequest::Load(key) => {
                     self.unreadable.insert(key.clone());
                     key.to_string()
                 }
@@ -289,10 +289,10 @@ impl LibraryState {
 #[derive(Debug, Clone)]
 pub(crate) struct LibraryJob {
     pub(super) store: Library,
-    operation: Operation,
+    operation: LibraryRequest,
 }
 #[derive(Debug, Clone)]
-enum Operation {
+enum LibraryRequest {
     Scan,
     DiscardTrash {
         key: LibraryKey,
@@ -327,10 +327,35 @@ pub enum LibraryOutcome {
     Written(Box<WriteOutcome>),
 }
 impl LibraryJob {
+    pub(super) fn operation_term(&self) -> crate::core::vocabulary::Operation {
+        use crate::core::vocabulary::Operation as Term;
+        match &self.operation {
+            LibraryRequest::Scan => Term::LibraryRefresh,
+            LibraryRequest::Initialize => Term::LibraryInit,
+            LibraryRequest::Load(_) => Term::LibraryRead,
+            LibraryRequest::DiscardTrash { .. } => Term::LibraryTrash,
+            LibraryRequest::ExternalSave { .. } => Term::Save,
+            LibraryRequest::Write {
+                document: Some(_), ..
+            } => Term::Save,
+            LibraryRequest::Write { mutation, .. } => match mutation {
+                Mutation::Create(_) => Term::SaveCopy,
+                Mutation::Add(_) => Term::LibraryAdd,
+                Mutation::Update { .. } => Term::LibraryUpdate,
+                Mutation::Rename { .. } => Term::LibraryRename,
+                Mutation::Trash { .. } => Term::LibraryTrash,
+                Mutation::Restore { .. } => Term::LibraryRestore,
+                Mutation::Purge { .. } => Term::LibraryPurge,
+            },
+        }
+    }
+
     pub(super) fn context(&self) -> status::LibraryContext {
         let selector = match &self.operation {
-            Operation::Load(key) | Operation::DiscardTrash { key, .. } => Some(key.clone()),
-            Operation::Write { mutation, .. } => Some(match mutation {
+            LibraryRequest::Load(key) | LibraryRequest::DiscardTrash { key, .. } => {
+                Some(key.clone())
+            }
+            LibraryRequest::Write { mutation, .. } => Some(match mutation {
                 Mutation::Create(recipe) | Mutation::Add(recipe) => {
                     LibraryKey::User(recipe.document().id)
                 }
@@ -340,23 +365,28 @@ impl LibraryJob {
                 | Mutation::Restore { key, .. }
                 | Mutation::Purge { key, .. } => key.clone(),
             }),
-            Operation::Scan | Operation::Initialize | Operation::ExternalSave { .. } => None,
+            LibraryRequest::Scan
+            | LibraryRequest::Initialize
+            | LibraryRequest::ExternalSave { .. } => None,
         };
         let path = match &self.operation {
-            Operation::ExternalSave { expected, .. } => expected.path().to_owned(),
+            LibraryRequest::ExternalSave { expected, .. } => expected.path().to_owned(),
             _ => self.store.path().to_owned(),
         };
         status::LibraryContext { path, selector }
     }
     pub(super) fn background_read(&self) -> bool {
-        matches!(self.operation, Operation::Scan | Operation::Load(_))
+        matches!(
+            self.operation,
+            LibraryRequest::Scan | LibraryRequest::Load(_)
+        )
     }
     pub(super) fn may_publish(&self) -> bool {
         matches!(
             self.operation,
-            Operation::Write { .. }
-                | Operation::ExternalSave { .. }
-                | Operation::DiscardTrash { .. }
+            LibraryRequest::Write { .. }
+                | LibraryRequest::ExternalSave { .. }
+                | LibraryRequest::DiscardTrash { .. }
         )
     }
 
@@ -383,12 +413,16 @@ impl LibraryJob {
                 }
         };
         match (&self.operation, outcome) {
-            (Operation::Scan | Operation::Initialize, LibraryOutcome::Inventory(_)) => true,
-            (Operation::Load(key), LibraryOutcome::Loaded(record)) => record_matches(record, key),
-            (Operation::DiscardTrash { key, .. }, LibraryOutcome::Written(outcome)) => {
+            (LibraryRequest::Scan | LibraryRequest::Initialize, LibraryOutcome::Inventory(_)) => {
+                true
+            }
+            (LibraryRequest::Load(key), LibraryOutcome::Loaded(record)) => {
+                record_matches(record, key)
+            }
+            (LibraryRequest::DiscardTrash { key, .. }, LibraryOutcome::Written(outcome)) => {
                 written_matches(outcome, key, MutationKind::Trash)
             }
-            (Operation::Write { mutation, .. }, LibraryOutcome::Written(outcome)) => {
+            (LibraryRequest::Write { mutation, .. }, LibraryOutcome::Written(outcome)) => {
                 let (key, kind) = match mutation {
                     Mutation::Create(recipe) => {
                         (LibraryKey::User(recipe.document().id), MutationKind::Create)
@@ -405,7 +439,7 @@ impl LibraryJob {
                 written_matches(outcome, &key, kind)
             }
             (
-                Operation::ExternalSave {
+                LibraryRequest::ExternalSave {
                     expected, recipe, ..
                 },
                 LibraryOutcome::ExternalWritten(outcome),
@@ -419,7 +453,7 @@ impl LibraryJob {
     }
     pub(super) fn execute(self) -> Result<LibraryOutcome, Error> {
         match self.operation {
-            Operation::DiscardTrash { key, expect, .. } => self
+            LibraryRequest::DiscardTrash { key, expect, .. } => self
                 .store
                 .apply(
                     Mutation::Trash {
@@ -430,15 +464,15 @@ impl LibraryJob {
                 )
                 .map(|r| LibraryOutcome::Written(Box::new(r)))
                 .map_err(Error::from),
-            Operation::ExternalSave {
+            LibraryRequest::ExternalSave {
                 expected, recipe, ..
             } => crate::services::save_external(&expected, recipe, &Cancel::default())
                 .map(|r| LibraryOutcome::ExternalWritten(Box::new(r)))
                 .map_err(Error::from),
-            Operation::Scan => Ok(LibraryOutcome::Inventory(
+            LibraryRequest::Scan => Ok(LibraryOutcome::Inventory(
                 self.store.scan(&Cancel::default()),
             )),
-            Operation::Initialize => {
+            LibraryRequest::Initialize => {
                 let initialized = self.store.initialize()?;
                 let mut inventory = self.store.scan(&Cancel::default());
                 inventory
@@ -452,12 +486,12 @@ impl LibraryJob {
                     }));
                 Ok(LibraryOutcome::Inventory(inventory))
             }
-            Operation::Load(key) => self
+            LibraryRequest::Load(key) => self
                 .store
                 .load(&key)
                 .map(|r| LibraryOutcome::Loaded(Box::new(r)))
                 .map_err(Error::from),
-            Operation::Write { mutation, .. } => self
+            LibraryRequest::Write { mutation, .. } => self
                 .store
                 .apply(mutation, &Cancel::default())
                 .map(|r| LibraryOutcome::Written(Box::new(r)))
@@ -598,7 +632,7 @@ impl Workspace {
     }
     /// Explicitly initialize an override root. No scan initializes storage.
     pub fn initialize_library(&mut self) -> Result<(), Refusal> {
-        self.managed_job(Operation::Initialize)?;
+        self.managed_job(LibraryRequest::Initialize)?;
         Ok(())
     }
     /// Open the captured User version in the editor, retaining its identity.
@@ -707,14 +741,14 @@ impl Workspace {
     /// Refuses non-temporary selections or occupied task slots.
     pub fn add_selected_to_library(&mut self) -> Result<(), Refusal> {
         let recipe = self.prepare_add_to_library()?;
-        self.managed_job(Operation::Write {
+        self.managed_job(LibraryRequest::Write {
             document: None,
             mutation: Mutation::Add(recipe),
         })?;
         Ok(())
     }
     pub(super) fn discard_then_trash(&mut self, key: LibraryKey, expect: VersionToken) {
-        let operation = Operation::DiscardTrash {
+        let operation = LibraryRequest::DiscardTrash {
             key,
             expect,
             document: self.editor.session.document(),
@@ -819,7 +853,7 @@ impl Workspace {
                 confirmed,
             },
         };
-        self.managed_job(Operation::Write {
+        self.managed_job(LibraryRequest::Write {
             document: None,
             mutation,
         })?;
@@ -898,7 +932,7 @@ impl Workspace {
                 trashed: entry.trashed,
             })
     }
-    fn managed_job(&mut self, operation: Operation) -> Result<TaskId, Refusal> {
+    fn managed_job(&mut self, operation: LibraryRequest) -> Result<TaskId, Refusal> {
         self.library_job_admission()?;
         let job = self.library.job(operation)?;
         let id = self.start_file(FileKind::Managed(job));
@@ -915,7 +949,7 @@ impl Workspace {
             return Err(Refusal::DetachedDraft(key.clone()));
         }
         if let Some(expected) = self.editor.location.external().cloned() {
-            return self.managed_job(Operation::ExternalSave {
+            return self.managed_job(LibraryRequest::ExternalSave {
                 document,
                 expected,
                 recipe,
@@ -936,7 +970,7 @@ impl Workspace {
                 recipe: recipe.clone(),
             },
         );
-        self.managed_job(Operation::Write {
+        self.managed_job(LibraryRequest::Write {
             document: Some(document),
             mutation,
         })
@@ -950,7 +984,7 @@ impl Workspace {
         }
         if self.library.refresh {
             self.library.refresh = false;
-            let _ = self.managed_job(Operation::Scan);
+            let _ = self.managed_job(LibraryRequest::Scan);
             return;
         }
         self.load_library_selection();
@@ -981,7 +1015,7 @@ impl Workspace {
             return;
         }
         p.load_attempted = Some(key.clone());
-        let _ = self.managed_job(Operation::Load(key));
+        let _ = self.managed_job(LibraryRequest::Load(key));
     }
 
     pub(super) fn finish_managed(
@@ -990,8 +1024,8 @@ impl Workspace {
         result: Result<LibraryOutcome, Error>,
     ) -> (FileStatus, Option<bool>) {
         let document = match job.operation {
-            Operation::Write { document, .. } => document,
-            Operation::ExternalSave { document, .. } => Some(document),
+            LibraryRequest::Write { document, .. } => document,
+            LibraryRequest::ExternalSave { document, .. } => Some(document),
             _ => None,
         };
         let result = match result {
@@ -1025,7 +1059,7 @@ impl Workspace {
             }
             LibraryOutcome::Written(outcome) => {
                 let mut result = self.accept_managed_outcome(document, *outcome);
-                if let Operation::DiscardTrash {
+                if let LibraryRequest::DiscardTrash {
                     document,
                     draft,
                     input,
@@ -1338,7 +1372,7 @@ impl LibraryState {
         self.select(self.snapshots.last().map(|(key, _)| key.clone()));
         Ok(())
     }
-    fn job(&self, operation: Operation) -> Result<LibraryJob, Refusal> {
+    fn job(&self, operation: LibraryRequest) -> Result<LibraryJob, Refusal> {
         self.save_destination_admission()?;
         let store = self
             .store_clone()

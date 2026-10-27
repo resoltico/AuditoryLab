@@ -1419,3 +1419,23 @@ fn diagnostic_codes_retain_typed_field_context_and_original_worker_causes() {
         "capture.invalid_span"
     );
 }
+
+#[test]
+fn file_activity_captures_the_operation_before_workers_run() {
+    use crate::core::vocabulary::Operation;
+    let mut ws = workspace();
+    ws.refresh_library();
+    assert_eq!(
+        ws.action_view().file_activity.unwrap().kind.operation(),
+        Operation::LibraryRefresh
+    );
+    ws.poll();
+    assert!(!ws.file_busy());
+    ws.save().unwrap();
+    assert_eq!(
+        ws.action_view().file_activity.unwrap().kind.operation(),
+        Operation::Save
+    );
+    ws.poll();
+    assert!(!ws.file_busy());
+}

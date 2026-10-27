@@ -1172,6 +1172,14 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
             .map(|k| auditorylab_presentation::vocabulary::add_component(*k))
             .collect(),
     ));
+    ui.set_add_binaural_label(
+        auditorylab_presentation::vocabulary::add_pair(auditorylab_app::core::PairKind::Binaural)
+            .into(),
+    );
+    ui.set_add_monaural_label(
+        auditorylab_presentation::vocabulary::add_pair(auditorylab_app::core::PairKind::Monaural)
+            .into(),
+    );
     ui.set_modulation_choices(strings(
         std::iter::once(ModulationKind::NONE_LABEL.to_owned())
             .chain(ModulationKind::ALL.iter().map(|k| k.label().into()))

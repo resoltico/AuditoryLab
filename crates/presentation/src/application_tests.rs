@@ -878,7 +878,7 @@ fn operation_and_shutdown_failures_keep_recovery_context() {
     );
     let status = FileStatus::WorkerFailed {
         activity: FileActivity {
-            kind: FileAction::Library,
+            kind: FileAction::Library(auditorylab_core::vocabulary::Operation::LibraryRefresh),
             path: path.clone(),
             title: None,
             may_publish: true,
@@ -973,4 +973,44 @@ fn preview_and_audio_failures_name_the_captured_rate() {
             .description()
             .contains("8000")
     );
+}
+
+#[test]
+fn file_activity_uses_the_captured_shared_operation_term() {
+    use auditorylab_app::workspace::status::{FileAction, FileActivity};
+    use auditorylab_core::vocabulary::Operation;
+    for (kind, operation, label) in [
+        (FileAction::Import, Operation::OpenRecipe, "Open Recipe"),
+        (
+            FileAction::RecipeExport,
+            Operation::ExportRecipe,
+            "Export portable recipe",
+        ),
+        (FileAction::AudioExport, Operation::Export, "Export WAV"),
+        (
+            FileAction::Library(Operation::LibraryRead),
+            Operation::LibraryRead,
+            "Read saved recipe",
+        ),
+        (
+            FileAction::Library(Operation::Save),
+            Operation::Save,
+            "Save sound",
+        ),
+        (
+            FileAction::Library(Operation::LibraryTrash),
+            Operation::LibraryTrash,
+            "Move saved entry to Trash",
+        ),
+    ] {
+        let activity = FileActivity {
+            kind,
+            path: PathBuf::from("captured"),
+            title: Some("sound".into()),
+            may_publish: false,
+        };
+        assert_eq!(kind.operation(), operation);
+        assert!(activity.description().starts_with(label));
+        assert!(workspace_text::file_activity(Some(kind)).starts_with(label));
+    }
 }

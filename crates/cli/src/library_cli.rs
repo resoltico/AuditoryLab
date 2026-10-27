@@ -14,6 +14,7 @@ use auditorylab_presentation::DisplayText;
 use auditorylab_presentation::reports::Report;
 use auditorylab_presentation::*;
 use clap::{Args, Subcommand, ValueEnum};
+use lab::core::vocabulary::Operation;
 use std::{
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
@@ -249,18 +250,18 @@ impl LibraryCommand {
             | Self::Check { format } => *format == ReadFormat::Json,
         }
     }
-    pub(super) fn operation(&self) -> &'static str {
+    pub(super) fn operation(&self) -> Operation {
         match self {
-            Self::Path { .. } => "library_path",
-            Self::Init { .. } => "library_init",
-            Self::Add { .. } => "library_add",
-            Self::Update { .. } => "library_update",
-            Self::Rename { .. } => "library_rename",
-            Self::Trash { .. } => "library_trash",
-            Self::Restore { .. } => "library_restore",
-            Self::Purge { .. } => "library_purge",
-            Self::ListTrash(_) => "list_trash",
-            Self::Check { .. } => "library_check",
+            Self::Path { .. } => Operation::LibraryPath,
+            Self::Init { .. } => Operation::LibraryInit,
+            Self::Add { .. } => Operation::LibraryAdd,
+            Self::Update { .. } => Operation::LibraryUpdate,
+            Self::Rename { .. } => Operation::LibraryRename,
+            Self::Trash { .. } => Operation::LibraryTrash,
+            Self::Restore { .. } => Operation::LibraryRestore,
+            Self::Purge { .. } => Operation::LibraryPurge,
+            Self::ListTrash(_) => Operation::ListTrash,
+            Self::Check { .. } => Operation::LibraryCheck,
         }
     }
 }
@@ -339,10 +340,14 @@ pub(super) fn list(args: ListArgs, path: Option<&Path>) -> Result<u8> {
         path,
         &Cancel::default(),
     )?;
-    print_list("list", &listing, format)?;
+    print_list(Operation::List, &listing, format)?;
     Ok(listing.outcome().map_or(0, super::exit_code))
 }
-fn print_list(operation: &str, listing: &lab::services::Listing, format: ListFormat) -> Result<()> {
+fn print_list(
+    operation: Operation,
+    listing: &lab::services::Listing,
+    format: ListFormat,
+) -> Result<()> {
     match format {
         ListFormat::Ids => {
             if listing.complete() {
@@ -542,7 +547,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
 // The service establishes publication truth before any fallible terminal output.
 fn report_mutation(
     outcome: &lab::services::library::WriteOutcome,
-    operation: &str,
+    operation: Operation,
     format: ReadFormat,
     stdout: &mut impl Write,
     stderr: &mut impl Write,
@@ -588,7 +593,7 @@ fn print_mutation_json(value: &Report) -> Result<()> {
     }
     Ok(())
 }
-pub(super) fn error_json(operation: &str, error: &super::CliError) -> Result<()> {
+pub(super) fn error_json(operation: Operation, error: &super::CliError) -> Result<()> {
     print_json(&Report::error(
         operation,
         error.code(),

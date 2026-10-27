@@ -55,7 +55,9 @@ pub(crate) fn refusal_text(refusal: &Refusal) -> String {
 pub(crate) fn field_label(field: EditingField) -> String {
     match field {
         EditingField::Parameter(_, parameter) => parameter.descriptor().label.to_owned(),
-        EditingField::Metadata(MetadataField::Title) => "Title".into(),
+        EditingField::Metadata(MetadataField::Title) => {
+            auditorylab_core::vocabulary::TITLE.label.into()
+        }
         EditingField::Metadata(MetadataField::Summary) => "Notes".into(),
         EditingField::Metadata(MetadataField::Duration) => {
             ParameterId::Duration.descriptor().label.into()
@@ -773,19 +775,18 @@ pub(crate) fn file_activity(
     kind: Option<auditorylab_app::workspace::status::FileAction>,
 ) -> String {
     use auditorylab_app::workspace::status::FileAction;
-    match kind {
-        Some(FileAction::RecipeExport) => {
-            "Exporting a captured portable recipe; identity and history remain unchanged.".into()
+    let Some(kind) = kind else {
+        return String::new();
+    };
+    let context = match kind {
+        FileAction::RecipeExport => "Captured portable content keeps its identity and history.",
+        FileAction::Library(_) => {
+            "Later edits remain independent of the captured library operation."
         }
-        Some(FileAction::Library) => {
-            "Reading or publishing the persistent library; later edits remain independent.".into()
-        }
-        Some(FileAction::AudioExport) => {
-            "Exporting WAV. Cancel export is separate from Stop audio.".into()
-        }
-        Some(FileAction::Import) => "Opening sound; the playing source remains unchanged.".into(),
-        None => String::new(),
-    }
+        FileAction::AudioExport => "Cancel export is separate from Stop audio.",
+        FileAction::Import => "The playing source remains unchanged.",
+    };
+    format!("{} · {context}", kind.operation().label())
 }
 #[cfg(test)]
 mod diagnostic_tests {

@@ -189,7 +189,11 @@ fn generator_description(facts: &VoiceFacts, detail: bool) -> String {
     };
     // The carrier's name opens the text alone and is lowercase after "carrier".
     let (opening, inner, value) = match facts.carrier {
-        CarrierFacts::Tone(rate) => ("Tone", "tone", phase(rate)),
+        CarrierFacts::Tone(rate) => (
+            auditorylab_core::CarrierKind::Tone.label(),
+            auditorylab_core::CarrierKind::Tone.phrase(),
+            phase(rate),
+        ),
         CarrierFacts::Clicks(p) => ("Pulse rate", "pulse rate", pulse(p)),
     };
     match facts.modulation {

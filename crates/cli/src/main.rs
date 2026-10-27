@@ -6,6 +6,7 @@ use auditorylab_presentation::*;
 mod cli_text;
 mod library_cli;
 use auditorylab_app::core::SampleRate;
+use auditorylab_app::core::vocabulary::Operation;
 use auditorylab_app::outcome::Outcome;
 
 use auditorylab_app::services::playback::{EndReason, PlaybackControl, Preparation, Session};
@@ -455,19 +456,23 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
     }
     Ok(Ended::Normally)
 }
-fn command_output(command: &Option<Command>) -> (bool, &'static str) {
-    match command {
-        Some(Command::List(args)) => (args.json(), "list"),
-        Some(Command::Library { command }) => (command.json(), command.operation()),
-        Some(Command::Describe { format, .. }) => {
-            (*format == library_cli::ReadFormat::Json, "describe")
+fn command_output(command: &Option<Command>) -> Option<(bool, Operation)> {
+    Some(match command.as_ref()? {
+        Command::List(args) => (args.json(), Operation::List),
+        Command::Library { command } => (command.json(), command.operation()),
+        Command::Describe { format, .. } => (
+            *format == library_cli::ReadFormat::Json,
+            Operation::Describe,
+        ),
+        Command::Inspect { format, .. } => {
+            (*format == library_cli::ReadFormat::Json, Operation::Inspect)
         }
-        Some(Command::Inspect { format, .. }) => {
-            (*format == library_cli::ReadFormat::Json, "inspect")
-        }
-        _ => (false, "command"),
-    }
+        Command::Recipe { .. } => (false, Operation::Recipe),
+        Command::Export { .. } => (false, Operation::Export),
+        Command::Play(_) => (false, Operation::Play),
+    })
 }
+
 fn main() -> ExitCode {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
@@ -485,7 +490,7 @@ fn main() -> ExitCode {
         }
         Err(e) => e.exit(),
     };
-    let (json, operation) = command_output(&cli.command);
+    let selected_output = command_output(&cli.command);
     match run(cli) {
         Ok(Ended::Normally) => ExitCode::SUCCESS,
         Ok(Ended::Stopped) => ExitCode::from(130),
@@ -493,7 +498,7 @@ fn main() -> ExitCode {
         Err(e) => {
             let message = e.message();
             let code = exit_code(e.outcome());
-            if json {
+            if let Some((true, operation)) = selected_output {
                 if let Err(output_error) = library_cli::error_json(operation, &e) {
                     eprintln!(
                         "{}",
@@ -505,5 +510,88 @@ fn main() -> ExitCode {
             }
             ExitCode::from(code)
         }
+    }
+}
+
+#[cfg(test)]
+mod operation_tests {
+    use super::*;
+    #[test]
+    fn every_cli_leaf_maps_to_its_own_report_operation() {
+        use std::collections::BTreeSet;
+        let id = "user:00000000-0000-4000-8000-000000000001";
+        let cases: &[(&[&str], Operation)] = &[
+            (&["list"], Operation::List),
+            (&["describe", id], Operation::Describe),
+            (&["inspect", id], Operation::Inspect),
+            (&["recipe", id], Operation::Recipe),
+            (&["play", id], Operation::Play),
+            (&["export", id, "--output", "out.wav"], Operation::Export),
+            (&["library", "path"], Operation::LibraryPath),
+            (&["library", "init"], Operation::LibraryInit),
+            (
+                &["library", "add", "--file", "in.toml"],
+                Operation::LibraryAdd,
+            ),
+            (
+                &["library", "update", id, "--file", "in.toml"],
+                Operation::LibraryUpdate,
+            ),
+            (
+                &["library", "rename", id, "--title", "title"],
+                Operation::LibraryRename,
+            ),
+            (&["library", "trash", id], Operation::LibraryTrash),
+            (&["library", "restore", id], Operation::LibraryRestore),
+            (&["library", "purge", id, "--yes"], Operation::LibraryPurge),
+            (&["library", "list-trash"], Operation::ListTrash),
+            (&["library", "check"], Operation::LibraryCheck),
+        ];
+        let mut operations = BTreeSet::new();
+        let mut names = BTreeSet::new();
+        for (args, expected) in cases {
+            let parsed =
+                Cli::try_parse_from(std::iter::once("auditorylab").chain(args.iter().copied()))
+                    .unwrap();
+            let (_, actual) = command_output(&parsed.command).unwrap();
+            assert_eq!(actual, *expected);
+            assert!(
+                operations.insert(actual),
+                "two CLI leaves name the same operation"
+            );
+            names.insert(if args[0] == "library" {
+                format!("library {}", args[1])
+            } else {
+                args[0].to_owned()
+            });
+            let report = auditorylab_presentation::reports::Report::error(
+                actual,
+                "cli.argument",
+                "fixture",
+                Outcome::InvalidArgument,
+            );
+            assert_eq!(
+                serde_json::to_value(report).unwrap()["operation"],
+                expected.key()
+            );
+        }
+        let mut grammar = BTreeSet::new();
+        for command in Cli::command()
+            .get_subcommands()
+            .filter(|c| c.get_name() != "help")
+        {
+            if command.has_subcommands() {
+                for child in command.get_subcommands().filter(|c| c.get_name() != "help") {
+                    grammar.insert(format!("{} {}", command.get_name(), child.get_name()));
+                }
+            } else {
+                grammar.insert(command.get_name().to_owned());
+            }
+        }
+        assert_eq!(
+            names, grammar,
+            "every offered CLI command needs an independent operation expectation"
+        );
+        assert!(command_output(&None).is_none());
     }
 }

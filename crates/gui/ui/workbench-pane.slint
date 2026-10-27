@@ -104,10 +104,10 @@ export component WorkbenchPane inherits Rectangle {
                             text:root.dirty ? Terms.status-unsaved-changes : Terms.status-unmodified-draft;
                             wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;
                         }
-                        Button {text:Terms.action-add-component;enabled:root.can-edit;triggered =>{root.open-component-menu();}}
+                        Button {text:(Terms.operation-add-component + "…");enabled:root.can-edit;triggered =>{root.open-component-menu();}}
                         Button {
                             horizontal-stretch:0;
-                            text:Terms.action-new;
+                            text:Terms.operation-new-sound;
                             enabled:root.can-new;
                             triggered => {
                                 root.new-draft();
@@ -122,7 +122,7 @@ export component WorkbenchPane inherits Rectangle {
                         padding: 0px;
                         vertical-stretch: 0;
                         Button {
-                            text: Terms.action-undo-remove;
+                            text: Terms.operation-undo-remove;
                             horizontal-stretch: 0;
                             enabled: root.can-restore-component;
                             accessible-description: root.removed-component + " " + root.add-reason;
@@ -201,7 +201,7 @@ export component WorkbenchPane inherits Rectangle {
                                 if row.carrier >= 0: Text { text: Terms.caption-modulation; vertical-alignment: center; }
                                 if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.modulation-choices; current-index: row.modulation; accessible-label: row.name + Terms.caption-modulation-suffix; selected(value) => { root.set-modulation(row.key, self.current-index); } }
                             }
-                            Row { Button { col:1; text: Terms.action-remove; enabled: root.can-edit; accessible-label: Terms.action-remove-prefix + row.name; triggered => { root.remove-component(row.key); } } }
+                            Row { Button { col:1; text: Terms.operation-remove-component; enabled: root.can-edit; accessible-label: (Terms.operation-remove-component + " ") + row.name; triggered => { root.remove-component(row.key); } } }
                         }
                         for parameter in row.parameters: ParameterControl {
                             parameter: parameter;
@@ -234,12 +234,12 @@ export component WorkbenchPane inherits Rectangle {
                         vertical-stretch:0;
                         Text {text:root.draft-location-details;min-width:0px;wrap:word-wrap;vertical-stretch:0;}
 
-                        Button {text:Terms.action-export-portable-draft-recipe-dialog;enabled:root.can-export-recipe;triggered =>{root.export-recipe();}}
+                        Button {text:(Terms.operation-export-recipe + "…");enabled:root.can-export-recipe;triggered =>{root.export-recipe();}}
 
                         HorizontalLayout {
                             Button {
                                 horizontal-stretch:0;
-                                text:Terms.action-export-wav-dialog;
+                                text:(Terms.operation-export + "…");
                                 enabled:root.can-export;
                                 accessible-description:root.export-reason;
                                 triggered => {

@@ -194,7 +194,7 @@ export component AudioControlsWindow inherits Window {
         padding:16px;spacing:8px;
         Text {min-width:0px;text:root.source;overflow:elide;accessible-label:root.source;}
         Text {text:root.elapsed;}
-        Button {text:Terms.action-stop-audio;enabled:root.active;triggered =>{root.stop();}}
+        Button {text:Terms.operation-stop;enabled:root.active;triggered =>{root.stop();}}
     }
 }
 

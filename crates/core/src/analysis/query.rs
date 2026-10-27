@@ -83,10 +83,10 @@ crate::vocabulary::vocabulary! { Scope,"scope" {
 crate::vocabulary::vocabulary! { SortBy,"sort_by" {
     Automatic => ("automatic","Automatic order","automatic order"),
     Rate => ("rate","Nominal rate","nominal rate"),
-    Title => ("title","Title","title"),
-    Created => ("created","Created","created"),
+    Title => ("title",crate::vocabulary::TITLE.label,crate::vocabulary::TITLE.phrase),
+    Created => ("created",CalendarField::Created.label(),CalendarField::Created.phrase()),
     Modified => ("modified","Modified","modified"),
-    Added => ("added","Added here","added here"),
+    Added => ("added",CalendarField::Added.label(),CalendarField::Added.phrase()),
     Study => ("study","Study","study"),
     Collection => ("collection","Collection","collection"),
 }}

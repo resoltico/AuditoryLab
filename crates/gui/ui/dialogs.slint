@@ -5,6 +5,8 @@ import { Disclosure } from "editor.slint";
 
 export component Dialogs inherits Rectangle {
     in property <[string]> add-choices;
+    in property <string> add-binaural-label;
+    in property <string> add-monaural-label;
     callback add-component(string, int);
     in property <string> add-reason;
     in-out property <string> added-from;
@@ -148,14 +150,14 @@ export component Dialogs inherits Rectangle {
                 width:options-scroll.visible-width;
                 Text {text:Terms.caption-library-options;font-weight:600;vertical-stretch:0;}
                 if root.compact: ComboBox {model:root.sort-labels;current-index <=> root.sort-choice;accessible-label:Terms.facet-sort-library;selected(value)=>{root.collection-filter(root.collection-choice,root.sort-choice);}}
-                Button {text:Terms.action-open-recipe-dialog;enabled:root.can-import;triggered =>{root.open-recipe();library-options.close();}}
-                Button {text:Terms.action-refresh;triggered =>{root.refresh-library();}}
-                Button {text:Terms.action-show-saved;triggered =>{root.show-saved();library-options.close();}}
+                Button {text:(Terms.operation-open-recipe + "…");enabled:root.can-import;triggered =>{root.open-recipe();library-options.close();}}
+                Button {text:Terms.operation-library-refresh;triggered =>{root.refresh-library();}}
+                Button {text:Terms.operation-show-saved;triggered =>{root.show-saved();library-options.close();}}
                 Button {text:Terms.action-reset-sort;triggered =>{root.reset-library-sort();root.direction-choice=0;}}
                 Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
                 Disclosure {label:Terms.caption-library-storage-and-recovery;expanded <=> root.storage-open;}
                 if root.storage-open: Text {text:root.library-status;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                if root.storage-open: Button {enabled:root.can-manage-library;text:Terms.action-initialize-configured-library;triggered =>{root.initialize-library();}}
+                if root.storage-open: Button {enabled:root.can-manage-library;text:Terms.operation-library-init;triggered =>{root.initialize-library();}}
                 Button {text:Terms.action-close;triggered =>{library-options.close();}}
             }}
         }
@@ -169,8 +171,8 @@ export component Dialogs inherits Rectangle {
             key-pressed(event)=>{if event.text==Key.Escape {component-menu.close();return accept;}return reject;}
             VerticalBox {
                 for label[index] in root.add-choices: Button {text:label;enabled:root.can-add-component;accessible-description:root.add-reason;triggered =>{root.add-component(root.component-menu-document,index);component-menu.close();}}
-                Button {text:Terms.action-add-binaural-pair;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,2);component-menu.close();}}
-                Button {text:Terms.action-add-monaural-pair;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,3);component-menu.close();}}
+                Button {text:root.add-binaural-label;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,2);component-menu.close();}}
+                Button {text:root.add-monaural-label;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,3);component-menu.close();}}
                 Button {text:Terms.action-close;triggered =>{component-menu.close();}}
             }
         }

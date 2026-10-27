@@ -1,7 +1,7 @@
 //! Presentation number styles and operation wording.
 use crate::DisplayText;
 
-use auditorylab_core::vocabulary::Action;
+use auditorylab_core::vocabulary::Operation;
 /// Incomplete discovery cannot establish an empty library.
 pub const INVENTORY_INCOMPLETE: &str =
     "Incomplete inventory: valid results above do not establish an empty/complete library.";
@@ -13,17 +13,17 @@ pub const EMPTY_FILTERED_LIBRARY: &str =
 #[must_use]
 pub const fn library_play_labels() -> [&'static str; 2] {
     [
-        Action::PlaySelectedSound.label(),
-        Action::StopCurrentAndPlayRecipe.label(),
+        Operation::PlaySelectedSound.label(),
+        Operation::StopCurrentAndPlayRecipe.label(),
     ]
 }
 /// Labels needed to size the transport across its states.
 #[must_use]
 pub const fn transport_labels() -> [&'static str; 3] {
     [
-        Action::PlaySelectedSound.label(),
-        Action::PlayLive.label(),
-        Action::StopAudio.label(),
+        Operation::PlaySelectedSound.label(),
+        Operation::PlayLive.label(),
+        Operation::Stop.label(),
     ]
 }
 
@@ -49,6 +49,12 @@ pub fn add_component(kind: auditorylab_core::CarrierKind) -> String {
             .heading()
             .to_lowercase()
     )
+}
+
+/// Add-pair wording rendered from the owning construction term.
+#[must_use]
+pub fn add_pair(kind: auditorylab_core::PairKind) -> String {
+    format!("Add {}", kind.phrase())
 }
 
 /// Numeric display policy, separate from exact model values and input text.

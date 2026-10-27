@@ -230,7 +230,7 @@ pub struct ActionView {
     /// The transport button is enabled.
     pub transport_enabled: bool,
     /// The transport button's label.
-    pub transport_action: auditorylab_core::vocabulary::Action,
+    pub transport_action: auditorylab_core::vocabulary::Operation,
     /// What the next Play would play.
     pub play_target: String,
     /// Export progress from 0 to 1.
@@ -558,11 +558,11 @@ impl Workspace {
             exporting,
             transport_enabled: self.audio.stop_admission().is_ok() || play.is_ok(),
             transport_action: if playing {
-                crate::core::vocabulary::Action::StopAudio
+                crate::core::vocabulary::Operation::Stop
             } else if self.view == View::Workbench {
-                crate::core::vocabulary::Action::PlayLive
+                crate::core::vocabulary::Operation::PlayLive
             } else {
-                crate::core::vocabulary::Action::PlaySelectedSound
+                crate::core::vocabulary::Operation::PlaySelectedSound
             },
             play_target: match self.view {
                 View::Workbench => self.editor.session.draft().title().to_owned(),

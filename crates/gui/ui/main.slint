@@ -38,6 +38,8 @@ export component MainWindow inherits Window {
     in property <[string]> ears-choices;
     in property <[string]> carrier-choices;
     in property <[string]> add-choices;
+    in property <string> add-binaural-label;
+    in property <string> add-monaural-label;
     in property <[string]> modulation-choices;
     in property <[string]> span-choices;
     in property <[string]> scale-choices;
@@ -278,6 +280,8 @@ export component MainWindow inherits Window {
     dialogs := Dialogs {
         window-width:root.width;window-height:root.height;toolbar-height:toolbar.height;
         add-choices: root.add-choices;
+        add-binaural-label:root.add-binaural-label;
+        add-monaural-label:root.add-monaural-label;
         add-component(arg0, arg1) => {root.add-component(arg0, arg1);}
         add-reason: root.add-reason;
         added-from <=> root.added-from;
@@ -331,37 +335,37 @@ export component MainWindow inherits Window {
         Menu {
             title: Terms.caption-file;
             MenuItem {
-                title: Terms.action-new-sound;
+                title: Terms.operation-new-sound;
                 enabled: root.can-new;
                 activated => {
                     root.new-draft();
                 }
             }
             MenuItem {
-                title: Terms.action-open-recipe-dialog;
+                title: (Terms.operation-open-recipe + "…");
                 enabled: root.can-import;
                 activated => {
                     root.open-recipe();
                 }
             }
             MenuItem {
-                title: Terms.action-save-sound-dialog;
+                title: Terms.operation-save;
                 enabled: root.can-save && root.tab-index == 1;
                 activated => {
                     root.save-recipe();
                 }
             }
-            MenuItem {title:Terms.action-save-independent-copy;enabled:root.can-save-copy && root.tab-index==1;activated=>{root.save-copy();}}
-            MenuItem {title:Terms.action-export-portable-recipe-dialog;enabled:root.can-export-recipe;activated=>{root.export-recipe();}}
+            MenuItem {title:Terms.operation-save-copy;enabled:root.can-save-copy && root.tab-index==1;activated=>{root.save-copy();}}
+            MenuItem {title:(Terms.operation-export-recipe + "…");enabled:root.can-export-recipe;activated=>{root.export-recipe();}}
             MenuItem {
-                title: Terms.action-export-wav-dialog;
+                title: (Terms.operation-export + "…");
                 enabled: root.can-export;
                 activated => {
                     root.export-wav();
                 }
             }
             MenuItem {title:root.library-play-action;enabled:root.tab-index==0 && root.can-play;activated=>{root.play-recipe();}}
-            MenuItem {title:Terms.action-stop-audio;enabled:root.playback-busy;activated=>{root.stop-audio();}}
+            MenuItem {title:Terms.operation-stop;enabled:root.playback-busy;activated=>{root.stop-audio();}}
             MenuItem {
                 title: Terms.action-quit;
                 activated => {
@@ -398,9 +402,9 @@ export component MainWindow inherits Window {
             // Left of the lasting controls, so a late press on Cancel export
             // lands in the space it leaves rather than on another control.
             if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:Terms.caption-wav-export-progress;max-width:120px;}
-            if root.exporting: Button {text:Terms.action-cancel-export;triggered =>{root.cancel-file();}}
+            if root.exporting: Button {text:Terms.operation-cancel-export;triggered =>{root.cancel-file();}}
             if root.status != "" || root.auxiliary-error != "": Button {text:Terms.caption-task-details-dialog;triggered =>{root.show-diagnostics();}}
-            if root.tab-index==1: Button {text:Terms.action-save-sound;enabled:root.can-save;accessible-description:root.save-reason;triggered =>{root.save-recipe();}}
+            if root.tab-index==1: Button {text:Terms.operation-save;enabled:root.can-save;accessible-description:root.save-reason;triggered =>{root.save-recipe();}}
             monitor-opener := StableButton {
                 text:root.monitor-open ? Terms.action-hide-monitor : Terms.action-show-monitor;
                 labels:[Terms.action-hide-monitor,Terms.action-show-monitor];

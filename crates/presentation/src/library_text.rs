@@ -10,7 +10,8 @@ use auditorylab_app::discovery::collection::EntrySummary;
 use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::services::library::LibraryDiagnostic;
-use auditorylab_core::query::Scope;
+use auditorylab_core::query::{CalendarField, RhythmState, Scope};
+use auditorylab_core::vocabulary::Status;
 /// Render a semantic row, without executing queries or selecting recipe ownership.
 pub(crate) fn row(
     row: &auditorylab_app::workspace::LibraryRowView,
@@ -44,32 +45,43 @@ fn entry_row(
 ) -> LibraryRowView {
     use auditorylab_core::query::SortBy;
     let (date_label, date) = match sort {
-        SortBy::Created => ("Created", e.created_at),
-        SortBy::Modified => ("Edited", e.modified_at),
-        SortBy::Added => ("Added here", e.added_at),
+        SortBy::Created => (CalendarField::Created.label(), e.created_at),
+        SortBy::Modified => (auditorylab_core::vocabulary::EDITED.label, e.modified_at),
+        SortBy::Added => (CalendarField::Added.label(), e.added_at),
         _ if matches!(e.key, LibraryKey::User(_) | LibraryKey::External(_)) => {
-            ("Edited", e.modified_at)
+            (auditorylab_core::vocabulary::EDITED.label, e.modified_at)
         }
-        _ => ("Created", e.created_at),
+        _ => (CalendarField::Created.label(), e.created_at),
     };
     let shown = |date: Option<auditorylab_core::Timestamp>| {
-        date.map_or_else(|| "Unknown".into(), crate::calendar_text::local_timestamp)
+        date.map_or_else(
+            || Status::Unknown.label().into(),
+            crate::calendar_text::local_timestamp,
+        )
     };
     let mut dates = format!("{date_label}: {}", shown(date));
     if matches!(e.key, LibraryKey::User(_)) {
-        if date_label != "Edited" {
-            dates.push_str(&format!("\nEdited: {}", shown(e.modified_at)));
+        if date_label != auditorylab_core::vocabulary::EDITED.label {
+            dates.push_str(&format!(
+                "\n{}: {}",
+                auditorylab_core::vocabulary::EDITED.label,
+                shown(e.modified_at)
+            ));
         }
-        if e.modified_at.is_none() && date_label != "Added here" {
-            dates.push_str(&format!("\nAdded here: {}", shown(e.added_at)));
+        if e.modified_at.is_none() && date_label != CalendarField::Added.label() {
+            dates.push_str(&format!(
+                "\n{}: {}",
+                CalendarField::Added.label(),
+                shown(e.added_at)
+            ));
         }
     }
     let collection = format!(
         "{}{}",
         match e.key {
-            LibraryKey::BuiltIn(_) => "Built-in · Read only",
-            LibraryKey::User(_) if e.trashed => "Trash",
-            LibraryKey::User(_) => "User",
+            LibraryKey::BuiltIn(_) => Scope::BuiltIn.label(),
+            LibraryKey::User(_) if e.trashed => Scope::Trash.label(),
+            LibraryKey::User(_) => Scope::User.label(),
             LibraryKey::External(_) => "Open file · Temporary",
         },
         if requires_read {
@@ -86,16 +98,16 @@ fn entry_row(
     );
     let mut memberships: Vec<String> = e.nominal.bands.iter().map(ToString::to_string).collect();
     if e.nominal.outside_bands() {
-        memberships.push("Other rates".into());
+        memberships.push(RhythmState::OutsideBands.label().into());
     }
     if e.nominal.no_rhythm() {
-        memberships.push("No rhythmic rate".into());
+        memberships.push(RhythmState::None.label().into());
     }
     if e.nominal.multiple() {
-        memberships.push("Multiple rhythms".into());
+        memberships.push(RhythmState::Multiple.label().into());
     }
     if e.nominal.completeness != auditorylab_core::rhythm::Completeness::Complete {
-        memberships.push("Needs review".into());
+        memberships.push(RhythmState::NeedsReview.label().into());
     }
     let bands = memberships.join(" · ");
     LibraryRowView {
@@ -219,9 +231,9 @@ pub(crate) fn count(query: &CatalogQuery, visible: usize, complete: bool) -> Str
             restrictions.push(format!("Analysis: {}", analysis.label()));
         }
         for (name, range) in [
-            ("Created", &q.created),
-            ("Edited", &q.modified),
-            ("Added here", &q.added),
+            (CalendarField::Created.label(), &q.created),
+            (auditorylab_core::vocabulary::EDITED.label, &q.modified),
+            (CalendarField::Added.label(), &q.added),
         ] {
             for (label, value) in [
                 ("from inclusive", range.from),
@@ -303,7 +315,7 @@ pub(crate) fn dates(
     entry.map_or(String::new(), |e| {
         let shown = |date: Option<auditorylab_core::Timestamp>| {
             date.map_or_else(
-                || "Unknown".into(),
+                || Status::Unknown.label().into(),
                 |d| {
                     if utc {
                         d.to_string()
@@ -320,7 +332,7 @@ pub(crate) fn dates(
             if matches!(e.key, LibraryKey::User(_)) {
                 shown(e.added_at)
             } else {
-                "Not applicable".into()
+                auditorylab_core::vocabulary::NOT_APPLICABLE.label.into()
             },
             e.trashed_at.map_or(String::new(), |d| format!(
                 "\nTrashed here: {}",
@@ -538,7 +550,7 @@ pub fn group_label(label: &auditorylab_app::discovery::collection::GroupLabel) -
         L::NoStudy => "No current study declaration".into(),
         L::Collection(collection) => match collection {
             Collection::BuiltIn => "Built-in",
-            Collection::User => "User",
+            Collection::User => Scope::User.label(),
             Collection::External => "Open files",
         }
         .into(),

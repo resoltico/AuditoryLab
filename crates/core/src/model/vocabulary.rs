@@ -8,6 +8,21 @@ pub struct Term {
     /// Wording used within a sentence.
     pub phrase: &'static str,
 }
+/// Document title, including query/control labels for the same field.
+pub const TITLE: Term = Term {
+    label: "Title",
+    phrase: "title",
+};
+/// A document modification date in compact history displays.
+pub const EDITED: Term = Term {
+    label: "Edited",
+    phrase: "edited",
+};
+/// Applicability wording shared by document dates and evidence declarations.
+pub const NOT_APPLICABLE: Term = Term {
+    label: "Not applicable",
+    phrase: "not applicable",
+};
 /// One finite vocabulary with stable keys and owned labels.
 pub trait Vocabulary: Copy + 'static {
     /// Every supported value in display order.
@@ -75,23 +90,122 @@ macro_rules! vocabulary {
 }
 pub(crate) use vocabulary;
 
-/// Shared action labels used by both frontends.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action {
+/// Shared operation keys and terms for commands, reports and controls.
+///
+/// Transport-specific choices live here as operations to avoid another enum
+/// that would duplicate these labels in the application view layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Operation {
+    /// List.
+    List,
+    /// List Trash.
+    ListTrash,
+    /// Describe.
+    Describe,
+    /// Inspect.
+    Inspect,
+    /// Portable recipe.
+    Recipe,
+    /// Export WAV.
+    Export,
+    /// Play.
+    Play,
+    /// Stop audio.
+    Stop,
+    /// Library location.
+    LibraryPath,
+    /// Initialize configured library.
+    LibraryInit,
+    /// Add to User Library.
+    LibraryAdd,
+    /// Update saved recipe.
+    LibraryUpdate,
+    /// Rename saved recipe.
+    LibraryRename,
+    /// Move saved entry to Trash.
+    LibraryTrash,
+    /// Restore from Trash.
+    LibraryRestore,
+    /// Permanently delete.
+    LibraryPurge,
+    /// Check library.
+    LibraryCheck,
+    /// Refresh.
+    LibraryRefresh,
+    /// Read saved recipe.
+    LibraryRead,
+    /// New Sound.
+    NewSound,
+    /// Edit a copy.
+    EditCopy,
+    /// Save sound.
+    Save,
+    /// Save independent copy.
+    SaveCopy,
+    /// Open Recipe.
+    OpenRecipe,
+    /// Export portable recipe.
+    ExportRecipe,
     /// Stop current & play recipe.
     StopCurrentAndPlayRecipe,
     /// Play selected sound.
     PlaySelectedSound,
     /// Play live.
     PlayLive,
-    /// Stop audio.
-    StopAudio,
+    /// Edit saved User recipe.
+    EditSavedRecipe,
+    /// Edit external file.
+    EditExternalFile,
+    /// Close open file.
+    CloseOpenFile,
+    /// Show saved.
+    ShowSaved,
+    /// Cancel export.
+    CancelExport,
+    /// Add component.
+    AddComponent,
+    /// Undo remove.
+    UndoRemove,
+    /// Remove.
+    RemoveComponent,
 }
-vocabulary! { Action,"action" {
+vocabulary! {Operation,"operation" {
+    List => ("list","List","list"),
+    ListTrash => ("list_trash","List Trash","list Trash"),
+    Describe => ("describe","Describe","describe"),
+    Inspect => ("inspect","Inspect","inspect"),
+    Recipe => ("recipe","Portable recipe","portable recipe"),
+    Export => ("export","Export WAV","export WAV"),
+    Play => ("play","Play","play"),
+    Stop => ("stop","Stop audio","stop audio"),
+    LibraryPath => ("library_path","Library location","library location"),
+    LibraryInit => ("library_init","Initialize configured library","initialize configured library"),
+    LibraryAdd => ("library_add","Add to User Library","add to User Library"),
+    LibraryUpdate => ("library_update","Update saved recipe","update saved recipe"),
+    LibraryRename => ("library_rename","Rename saved recipe","rename saved recipe"),
+    LibraryTrash => ("library_trash","Move saved entry to Trash","move saved entry to Trash"),
+    LibraryRestore => ("library_restore","Restore from Trash","restore from Trash"),
+    LibraryPurge => ("library_purge","Permanently delete","permanently delete"),
+    LibraryCheck => ("library_check","Check library","check library"),
+    LibraryRefresh => ("library_refresh","Refresh","refresh"),
+    LibraryRead => ("library_read","Read saved recipe","read saved recipe"),
+    NewSound => ("new_sound","New Sound","new Sound"),
+    EditCopy => ("edit_copy","Edit a copy","edit a copy"),
+    Save => ("save","Save sound","save sound"),
+    SaveCopy => ("save_copy","Save independent copy","save independent copy"),
+    OpenRecipe => ("open_recipe","Open Recipe","open Recipe"),
+    ExportRecipe => ("export_recipe","Export portable recipe","export portable recipe"),
     StopCurrentAndPlayRecipe => ("stop_current_and_play_recipe","Stop current & play recipe","stop current & play recipe"),
     PlaySelectedSound => ("play_selected_sound","Play selected sound","play selected sound"),
     PlayLive => ("play_live","Play live","play live"),
-    StopAudio => ("stop_audio","Stop audio","stop audio"),
+    EditSavedRecipe => ("edit_saved_recipe","Edit saved User recipe","edit saved User recipe"),
+    EditExternalFile => ("edit_external_file","Edit external file","edit external file"),
+    CloseOpenFile => ("close_open_file","Close open file","close open file"),
+    ShowSaved => ("show_saved","Show saved","show saved"),
+    CancelExport => ("cancel_export","Cancel export","cancel export"),
+    AddComponent => ("add_component","Add component","add component"),
+    UndoRemove => ("undo_remove","Undo remove","undo remove"),
+    RemoveComponent => ("remove_component","Remove","remove"),
 }}
 
 /// Shared status labels used by both frontends.
@@ -184,6 +298,6 @@ mod tests {
         population:crate::Population,condition_role:crate::ConditionRole,evidence_scope:crate::EvidenceScope,measure:crate::Measure,
         band:crate::rhythm::Band,method:crate::rhythm::Method,completeness:crate::rhythm::Completeness,
         scope:crate::query::Scope,sort:crate::query::SortBy,direction:crate::query::Direction,group:crate::query::GroupBy,rhythm_state:crate::query::RhythmState,
-        calendar_field:crate::query::CalendarField,action:Action,status:Status,
+        calendar_field:crate::query::CalendarField,operation:Operation,status:Status,
     }
 }

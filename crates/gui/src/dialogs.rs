@@ -39,7 +39,9 @@ impl Shell for NativeShell {
                     &title, &key,
                 ))
                 .set_buttons(rfd::MessageButtons::OkCancelCustom(
-                    crate::terms::Action::PermanentlyDelete.label().into(),
+                    auditorylab_app::core::vocabulary::Operation::LibraryPurge
+                        .label()
+                        .into(),
                     crate::terms::Action::Cancel.label().into(),
                 ))
                 .show()
@@ -47,7 +49,8 @@ impl Shell for NativeShell {
             match choice {
                 rfd::MessageDialogResult::Ok => PromptAnswer::Confirm,
                 rfd::MessageDialogResult::Custom(label)
-                    if label == crate::terms::Action::PermanentlyDelete.label() =>
+                    if label
+                        == auditorylab_app::core::vocabulary::Operation::LibraryPurge.label() =>
                 {
                     PromptAnswer::Confirm
                 }

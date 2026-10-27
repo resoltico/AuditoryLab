@@ -350,14 +350,14 @@ pub trait FileActivityText {
 }
 impl FileActivityText for FileActivity {
     fn description(&self) -> String {
+        let operation = self.kind.operation().label();
         match self.kind {
-            FileAction::Import => format!("Opening {}.", self.path.display()),
-            FileAction::Library => "Updating the persistent library.".into(),
-            FileAction::RecipeExport => {
-                format!("Exporting portable recipe to {}.", self.path.display())
+            FileAction::Import | FileAction::RecipeExport => {
+                format!("{operation}: {}.", self.path.display())
             }
+            FileAction::Library(_) => format!("{operation} · persistent library."),
             FileAction::AudioExport => format!(
-                "Exporting {} to {}.",
+                "{operation}: {} to {}.",
                 self.title.as_deref().unwrap_or("sound"),
                 self.path.display()
             ),
