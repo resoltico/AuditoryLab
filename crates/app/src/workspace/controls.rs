@@ -115,22 +115,22 @@ pub fn default_component(kind: CarrierKind) -> auditorylab_core::ComponentForm {
     }
 }
 
-/// Default explicit pair: 200 Hz first carrier, +6 Hz offset and quiet levels.
+/// Quiet explicit pair with numeric defaults from the parameter control ranges.
 #[must_use]
 pub fn default_pair(kind: auditorylab_core::PairKind) -> auditorylab_core::ComponentForm {
     match kind {
         auditorylab_core::PairKind::Binaural => auditorylab_core::ComponentForm::BinauralPair {
-            left_hz: finite_default(200.0),
-            offset_hz: finite_default(6.0),
-            left_peak_dbfs: finite_default(-30.0),
-            right_peak_dbfs: finite_default(-30.0),
+            left_hz: model_default(ParameterId::PairFirstFrequency),
+            offset_hz: model_default(ParameterId::PairOffset),
+            left_peak_dbfs: model_default(ParameterId::PairFirstLevel),
+            right_peak_dbfs: model_default(ParameterId::PairSecondLevel),
         },
         auditorylab_core::PairKind::Monaural => auditorylab_core::ComponentForm::MonauralPair {
             ears: Ears::Both,
-            first_hz: finite_default(200.0),
-            offset_hz: finite_default(6.0),
-            first_peak_dbfs: finite_default(-30.0),
-            second_peak_dbfs: finite_default(-30.0),
+            first_hz: model_default(ParameterId::PairFirstFrequency),
+            offset_hz: model_default(ParameterId::PairOffset),
+            first_peak_dbfs: model_default(ParameterId::PairFirstLevel),
+            second_peak_dbfs: model_default(ParameterId::PairSecondLevel),
         },
     }
 }
