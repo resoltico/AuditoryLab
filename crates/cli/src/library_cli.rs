@@ -1,10 +1,11 @@
 //! Ordinary CLI discovery, selectors, structured output and managed lifecycle grammar.
 use super::{Source, output, prose, usage};
+use crate::cli_text::CommandProblem;
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::presentation::DisplayText;
 use auditorylab_app::presentation::reports::Report;
-use auditorylab_app::presentation::vocabulary::{Caption, CommandProblem, Status};
+use auditorylab_app::presentation::vocabulary::{Caption, Status};
 use auditorylab_app::services::Cancel;
 use auditorylab_app::{
     self as lab,
@@ -311,9 +312,12 @@ pub(super) fn resolve(source: Source, path: Option<&Path>) -> Result<Resolved> {
             lab::storage::load::load_file(&file)?
         } else {
             if io::stdin().is_terminal() {
-                eprintln!("{}", Caption::PasteRecipe.label());
+                eprintln!("{}", crate::cli_text::Caption::PasteRecipe.label());
             }
-            lab::storage::load::load_reader(io::stdin().lock(), Caption::StandardInput.label())?
+            lab::storage::load::load_reader(
+                io::stdin().lock(),
+                crate::cli_text::Caption::StandardInput.label(),
+            )?
         };
         let key = LibraryKey::External(lab::storage::library::ExternalId::allocate()?);
         let summary = EntrySummary::from_snapshot(key, &snapshot, None);
@@ -364,7 +368,7 @@ pub(super) fn list(args: ListArgs, path: Option<&Path>) -> Result<u8> {
                     complete: false,
                     failure_kind: Some(lab::error::Outcome::IncompleteInventory),
                     diagnostics: vec![lab::storage::library::LibraryDiagnostic {
-                        storage_id: Caption::ConfiguredRoot.label().into(),
+                        storage_id: crate::cli_text::Caption::ConfiguredRoot.label().into(),
                         code: "root_resolution".into(),
                         detail: lab::storage::library::DiagnosticDetail::Notice(error.to_string()),
                     }],

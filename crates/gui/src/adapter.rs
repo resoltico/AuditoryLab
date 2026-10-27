@@ -10,6 +10,7 @@
 //! replacement document or a restored component lifetime.
 use auditorylab_app::presentation::DisplayText;
 use auditorylab_app::presentation::vocabulary::NumberStyle;
+use auditorylab_app::presentation::waveform_view::WaveformScale;
 mod actions;
 mod auxiliary;
 mod editing;
@@ -40,7 +41,7 @@ use std::{
     time::Duration,
 };
 
-use auditorylab_app::document::controls::{MONITOR_SCALES as SCALES, MONITOR_SPANS_MS as SPANS_MS};
+use auditorylab_app::document::controls::MONITOR_SPANS_MS as SPANS_MS;
 /// Tick intervals while work is running and while idle.
 const ACTIVE_TICK: Duration = Duration::from_millis(50);
 const IDLE_TICK: Duration = Duration::from_millis(200);
@@ -220,7 +221,7 @@ impl SlintAdapter {
             &auditorylab_app::document::controls::DEFAULT_MONITOR_SPAN_MS,
         ));
         ui.set_scale_index(index_of(
-            &SCALES.map(|(scale, _)| scale),
+            &WaveformScale::ALL,
             &auditorylab_app::document::controls::DEFAULT_MONITOR_SCALE,
         ));
         ui.set_components(ModelRc::from(adapter.components.clone()));
@@ -539,11 +540,7 @@ impl SlintAdapter {
         }
         if let Some(about) = self.about.upgrade() {
             if let Err(error) = about.show() {
-                eprintln!(
-                    "{}",
-                    auditorylab_app::presentation::vocabulary::InterfaceOperation::About
-                        .failure(error)
-                );
+                eprintln!("{}", crate::terms::InterfaceOperation::About.failure(error));
             }
             about.invoke_focus_website();
         }
@@ -599,11 +596,7 @@ impl SlintAdapter {
         {
             eprintln!(
                 "{}",
-                auditorylab_app::presentation::vocabulary::Caption::typography(
-                    &font.family,
-                    font.size,
-                    &font.origin
-                )
+                crate::terms::Caption::typography(&font.family, font.size, &font.origin)
             );
             preferences.font = font;
             if let (
@@ -973,7 +966,7 @@ impl SlintAdapter {
                 .borrow()
                 .as_ref()
                 .map_or_else(String::new, |p| {
-                    auditorylab_app::presentation::vocabulary::Caption::typography_values(
+                    crate::terms::Caption::typography_values(
                         &p.font.family,
                         p.font.size,
                         &p.font.origin,
@@ -1018,7 +1011,7 @@ impl SlintAdapter {
                     Err(error) => {
                         self.monitor_window_visible.set(false);
                         *self.monitor_error.borrow_mut() =
-                            auditorylab_app::presentation::vocabulary::InterfaceOperation::ShowMonitor.failure(error);
+                            crate::terms::InterfaceOperation::ShowMonitor.failure(error);
                     }
                 }
             } else if !focused_monitor
@@ -1041,7 +1034,7 @@ impl SlintAdapter {
                     }
                     Err(error) => {
                         *self.monitor_error.borrow_mut() =
-                            auditorylab_app::presentation::vocabulary::InterfaceOperation::HideMonitor.failure(error);
+                            crate::terms::InterfaceOperation::HideMonitor.failure(error);
                     }
                 }
             }
@@ -1075,8 +1068,7 @@ impl SlintAdapter {
                     }
                     Err(error) => {
                         *self.controls_error.borrow_mut() =
-                            auditorylab_app::presentation::vocabulary::InterfaceOperation::AudioControls
-                                .failure(error);
+                            crate::terms::InterfaceOperation::AudioControls.failure(error);
                     }
                 }
             }
@@ -1105,11 +1097,7 @@ impl SlintAdapter {
         let (Some(ui), Some(window)) = (self.main.upgrade(), self.details.upgrade()) else {
             return;
         };
-        window.set_heading(
-            auditorylab_app::presentation::vocabulary::Caption::AudioSnapshot
-                .label()
-                .into(),
-        );
+        window.set_heading(crate::terms::Caption::AudioSnapshot.label().into());
         window.set_can_refresh(true);
         window.set_content(
             auditorylab_app::presentation::DesktopDiagnostics {
@@ -1235,9 +1223,9 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
             .collect(),
     );
     let scales = strings(
-        SCALES
+        WaveformScale::ALL
             .iter()
-            .map(|(_, label)| (*label).to_owned())
+            .map(|scale| scale.label().to_owned())
             .collect(),
     );
     ui.set_span_choices(spans.clone());
@@ -1381,7 +1369,7 @@ impl SlintAdapter {
             return;
         };
         let span = choice(&SPANS_MS, ui.get_window_index());
-        let scale = choice(&SCALES, ui.get_scale_index()).map(|(scale, _)| scale);
+        let scale = choice(&WaveformScale::ALL, ui.get_scale_index());
         if let (Some(span), Some(scale)) = (span, scale) {
             self.command(|w| w.set_waveform(span, scale));
         } else {
@@ -1409,7 +1397,7 @@ fn present_details<C: ComponentHandle + 'static>(window: &DetailsWindow, parent:
     if let Err(error) = window.show() {
         eprintln!(
             "{}",
-            auditorylab_app::presentation::vocabulary::InterfaceOperation::Details.failure(error)
+            crate::terms::InterfaceOperation::Details.failure(error)
         );
         return;
     }
@@ -1449,7 +1437,7 @@ fn open_web(url: &str) {
     if let Err(error) = command.arg(url).spawn() {
         eprintln!(
             "{}",
-            auditorylab_app::presentation::vocabulary::InterfaceOperation::OpenLink.failure(error)
+            crate::terms::InterfaceOperation::OpenLink.failure(error)
         );
     }
 }

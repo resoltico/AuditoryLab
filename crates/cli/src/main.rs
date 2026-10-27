@@ -1,17 +1,17 @@
 //! Command-line interface to Auditory Lab.
 #![forbid(unsafe_code)]
 use auditorylab_app::presentation::DisplayText;
+mod cli_text;
 mod library_cli;
 use auditorylab_app::audio::session::{EndReason, PlaybackControl, Preparation, Session};
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::error::Outcome;
-use auditorylab_app::presentation::vocabulary::{
-    Caption, CommandProblem, InterfaceOperation, Status,
-};
+use auditorylab_app::presentation::vocabulary::Caption;
 use auditorylab_app::services::{Cancel, Progress, Replace};
 use auditorylab_app::{self as lab};
 use clap::{Args, CommandFactory, Parser, Subcommand};
+use cli_text::{CommandProblem, InterfaceOperation};
 use std::{
     io::{self, IsTerminal, Write},
     path::PathBuf,
@@ -237,7 +237,7 @@ fn say(text: &str) -> io::Result<()> {
 }
 fn completed(text: &str) {
     if let Err(e) = say(text) {
-        eprintln!("{}", Status::completion_reporting_failed(e));
+        eprintln!("{}", crate::cli_text::completion_reporting_failed(e));
     }
 }
 /// The first interrupt runs `request`; a second one exits at once.
@@ -296,7 +296,7 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, CliError> {
     eprintln!(
         "{}\n{}",
         prose(&(snapshot).playback_preamble(playback.output(), playback.signal())),
-        Caption::StopKeyboardHint.label()
+        crate::cli_text::Caption::StopKeyboardHint.label()
     );
     let sound = snapshot.at(playback.output().sample_rate)?;
     eprintln!("{}", prose(&sound.description(false)));
@@ -305,9 +305,7 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, CliError> {
             .monitor(lab::audio::session::MonitorDetail::Quantities)
             .reader()
             .ok_or_else(|| {
-                std::io::Error::other(
-                    auditorylab_app::presentation::vocabulary::Caption::MonitorAlreadyInUse.label(),
-                )
+                std::io::Error::other(crate::cli_text::Caption::MonitorAlreadyInUse.label())
             })?;
         let done = std::sync::atomic::AtomicBool::new(false);
         std::thread::scope(

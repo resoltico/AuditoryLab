@@ -5,8 +5,6 @@
 //! is retained in full; index rows are disposable summaries.
 use super::*;
 use crate::discovery::collection::{CatalogQuery, EntrySummary, Scope};
-use crate::presentation::vocabulary::{NumberStyle, Term};
-use crate::presentation::{AudioSummary, DisplayText};
 use crate::storage::library::{
     Inventory, LibraryKey, LibraryStore, LoadedRecord, Mutation, MutationKind, VersionToken,
     WriteOutcome,
@@ -209,142 +207,15 @@ impl LibraryState {
         self.catalog.iter().find(|s| s.id() == *id)
     }
     pub(super) fn rows(&self) -> (Vec<LibraryRowView>, Option<usize>) {
-        let label = |e: &EntrySummary| {
-            use crate::discovery::collection::SortBy;
-            let sort = self.query.effective_sort().0;
-            let (date_label, date) = match sort {
-                SortBy::Created => ("Created", e.created_at),
-                SortBy::Modified => ("Edited", e.modified_at),
-                SortBy::Added => ("Added here", e.added_at),
-                _ if matches!(e.key, LibraryKey::User(_) | LibraryKey::External(_)) => {
-                    ("Edited", e.modified_at)
-                }
-                _ => ("Created", e.created_at),
-            };
-            let shown = |date: Option<crate::core::Timestamp>| {
-                date.map_or_else(
-                    || "Unknown".into(),
-                    crate::discovery::calendar::local_timestamp,
-                )
-            };
-            let mut dates = format!("{date_label}: {}", shown(date));
-            if matches!(e.key, LibraryKey::User(_)) {
-                if date_label != "Edited" {
-                    dates.push_str(&format!("\nEdited: {}", shown(e.modified_at)));
-                }
-                if e.modified_at.is_none() && date_label != "Added here" {
-                    dates.push_str(&format!("\nAdded here: {}", shown(e.added_at)));
-                }
-            }
-            let collection = format!(
-                "{}{}",
-                match e.key {
-                    LibraryKey::BuiltIn(_) => "Built-in · Read only",
-                    LibraryKey::User(_) if e.trashed => "Trash",
-                    LibraryKey::User(_) => "User",
-                    LibraryKey::External(_) => "Open file · Temporary",
-                },
-                if self.requires_read(&e.key) {
-                    " · Last observed · Needs review"
-                } else {
-                    ""
-                }
-            );
-            let title = e.title.display_scalar();
-            let summary = e.nominal.summary();
-            let duration = format!(
-                "Duration {}",
-                NumberStyle::Duration.format(e.duration_seconds)
-            );
-            let mut memberships: Vec<String> =
-                e.nominal.bands.iter().map(ToString::to_string).collect();
-            if e.nominal.outside_bands() {
-                memberships.push("Other rates".into());
-            }
-            if e.nominal.no_rhythm() {
-                memberships.push("No rhythmic rate".into());
-            }
-            if e.nominal.multiple() {
-                memberships.push("Multiple rhythms".into());
-            }
-            if e.nominal.completeness != crate::core::rhythm::Completeness::Complete {
-                memberships.push("Needs review".into());
-            }
-            let bands = memberships.join(" · ");
-            LibraryRowView {
-                built_in: matches!(e.key, LibraryKey::BuiltIn(_)),
-                key: e.key.to_string(),
-                text: format!("{title} · {collection}\n{summary}\n{bands}\n{duration}\n{dates}"),
-                title,
-                collection,
-                summary,
-                bands,
-                duration,
-                dates,
-            }
-        };
-        let mut rows = Vec::new();
-        if let Ok(result) = self.query.execute(&self.entries) {
-            if result.groups.is_empty() {
-                for e in result.entries {
-                    rows.push(label(e));
-                }
-            } else {
-                for group in result.groups {
-                    rows.push(Self::heading_row(format!(
-                        "{} · {} unique sounds",
-                        group.label,
-                        group.keys.len()
-                    )));
-                    for key in group.keys {
-                        if let Some(e) = self.entries.iter().find(|e| e.key == key) {
-                            rows.push(label(e));
-                        }
-                    }
-                }
-            }
-        }
-        let diagnostics: Vec<_> = self
-            .inventory
-            .diagnostics
-            .iter()
-            .filter(|problem| problem.storage_id.ends_with(".toml"))
-            .collect();
-        if !matches!(
-            self.query.scope,
-            Scope::BuiltIn | Scope::OpenFiles | Scope::Trash
-        ) && !diagnostics.is_empty()
-        {
-            rows.push(Self::heading_row(
-                "Unreadable storage entries · not included in sound counts".into(),
-            ));
-            for problem in diagnostics {
-                rows.push(Self::heading_row(format!(
-                    "Needs review · {}\n{}",
-                    problem.storage_id,
-                    problem.message()
-                )));
-            }
-        }
-        let selected = self
-            .selection
-            .as_ref()
-            .and_then(|key| rows.iter().position(|row| row.key == key.to_string()));
-        (rows, selected)
+        crate::presentation::library_text::rows(
+            &self.query,
+            &self.entries,
+            &self.inventory.diagnostics,
+            self.selection.as_ref(),
+            |key| self.requires_read(key),
+        )
     }
-    fn heading_row(text: String) -> LibraryRowView {
-        LibraryRowView {
-            built_in: false,
-            key: String::new(),
-            title: text.clone(),
-            text,
-            collection: String::new(),
-            summary: String::new(),
-            bands: String::new(),
-            duration: String::new(),
-            dates: String::new(),
-        }
-    }
+
     fn accept_record(&mut self, record: LoadedRecord) {
         self.unreadable.remove(&record.key);
         self.stale.remove(&record.key);
@@ -542,24 +413,12 @@ impl Workspace {
     /// Incomplete storage state remains visible outside the storage disclosure.
     #[must_use]
     pub fn library_alert(&self) -> String {
-        let mut notices = Vec::new();
-        if let Some(problem) = self.library.binding.problem() {
-            notices.push(format!("User Library unavailable: {}. Configure an absolute AUDITORYLAB_LIBRARY_DIR and restart; drafts are retained.",problem.message()));
-        }
-        if let Some(error) = &self.library.filter_error {
-            notices.push(error.to_string());
-        }
-        if let Some(problem) = &self.library.read_failure {
-            notices.push(format!(
-                "Library read failed · {}: {}",
-                problem.storage_id,
-                problem.message()
-            ));
-        }
-        if !self.library.inventory.complete {
-            notices.push("Library inventory incomplete · previous unseen rows are last observed snapshots. Refresh before acting; no empty-library claim is implied.".into());
-        }
-        notices.join("\n")
+        crate::presentation::library_text::alert(
+            self.library.binding.problem(),
+            self.library.filter_error.as_ref(),
+            self.library.read_failure.as_ref(),
+            self.library.inventory.complete,
+        )
     }
     /// Create a desktop workspace connected to the configured persistent root.
     /// Filesystem reads run on the existing file worker; initialization is explicit
@@ -619,181 +478,39 @@ impl Workspace {
     /// Disjunctive unique counts from the shared query, with reference intervals.
     #[must_use]
     pub fn library_facets(&self) -> (Vec<LibraryFacetView>, Vec<String>) {
-        use crate::core::rhythm::{Band, Method};
-        use crate::discovery::query::RhythmState;
-        let facet = |query: &CatalogQuery, label: String, detail: &str| {
-            let count = query.count(&self.library.entries).unwrap_or(0);
-            let count = if self.library.inventory.complete {
-                count.to_string()
-            } else {
-                format!("{count} observed")
-            };
-            let text = if detail.is_empty() {
-                format!("{label} · {count}")
-            } else {
-                format!("{label} · {detail} · {count}")
-            };
-            LibraryFacetView {
-                label,
-                detail: detail.into(),
-                count,
-                text,
-            }
-        };
-        let base = self.catalog_query().clone();
-        let mut unrestricted = base.clone();
-        unrestricted.rhythm.bands.clear();
-        unrestricted.rhythm.state = None;
-        let mut bands = vec![facet(&unrestricted, "All sounds".into(), "")];
-        for band in Band::ALL {
-            let mut query = unrestricted.clone();
-            query.rhythm.bands = vec![band];
-            bands.push(facet(&query, band.to_string(), band.interval()));
-        }
-        for state in [
-            RhythmState::OutsideBands,
-            RhythmState::None,
-            RhythmState::Multiple,
-            RhythmState::NeedsReview,
-        ] {
-            let mut query = unrestricted.clone();
-            query.rhythm.state = Some(state);
-            bands.push(facet(&query, state.label().into(), ""));
-        }
-        let mut unrestricted = base;
-        unrestricted.rhythm.methods.clear();
-        let mut methods = vec![facet(&unrestricted, "All methods".into(), "").text];
-        for method in Method::ALL {
-            let mut query = unrestricted.clone();
-            query.rhythm.methods = vec![method];
-            methods.push(facet(&query, method.key().into(), "").text);
-        }
-        (bands, methods)
+        crate::presentation::library_text::facets(
+            &self.library.query,
+            &self.library.entries,
+            self.library.inventory.complete,
+        )
     }
     /// Concise authoritative query summary for the results header.
     #[must_use]
     pub fn library_overview(&self) -> String {
-        let q = &self.library.query;
-        let sounds = if self.library.visible.len() == 1 {
-            "unique sound"
-        } else {
-            "unique sounds"
-        };
-        let count = if self.library.inventory.complete {
-            format!("{} {sounds}", self.library.visible.len())
-        } else {
-            format!(
-                "{} observed {sounds} · Inventory incomplete",
-                self.library.visible.len()
-            )
-        };
-        if *q != q.cleared_filters() {
-            format!("{count} · Filters active")
-        } else {
-            count
-        }
+        crate::presentation::library_text::overview(
+            &self.library.query,
+            self.library.visible.len(),
+            self.library.inventory.complete,
+        )
     }
     /// Unique counts and active restrictions; group repeats are never counted as sounds.
     #[must_use]
     pub fn library_count(&self) -> String {
-        {
-            let q = &self.library.query;
-            let (sort, direction) = q.effective_sort();
-            let mut lines = vec![format!(
-                "{} · {} · Sort {} {} · Group {}",
-                self.library_overview(),
-                q.scope.label(),
-                sort.label(),
-                direction.label(),
-                q.group_by.label()
-            )];
-            let mut restrictions = Vec::new();
-            if !q.search.is_empty() {
-                restrictions.push(format!("Search: {}", q.search.display_scalar()));
-            }
-            if q.include_external {
-                restrictions.push("Include temporary Open files".into());
-            }
-            for band in &q.rhythm.bands {
-                restrictions.push(format!("Band: {band} · {}", band.interval()));
-            }
-            for method in &q.rhythm.methods {
-                restrictions.push(format!("Method: {}", method.key()));
-            }
-            if let Some(state) = q.rhythm.state {
-                let label = state.label();
-                restrictions.push(format!("Rhythm state: {label}"));
-            }
-            for study in &q.studies {
-                restrictions.push(format!("Study: {}", (study).display_scalar()));
-            }
-            for population in &q.populations {
-                restrictions.push(format!("Population: {}", population.label()));
-            }
-            for role in &q.roles {
-                restrictions.push(format!("Condition role: {}", role.label()));
-            }
-            if let Some(analysis) = q.analysis {
-                restrictions.push(format!("Analysis: {}", analysis.label()));
-            }
-            for (name, range) in [
-                ("Created", &q.created),
-                ("Edited", &q.modified),
-                ("Added here", &q.added),
-            ] {
-                for (label, value) in [
-                    ("from inclusive", range.from),
-                    ("before exclusive", range.before),
-                ] {
-                    if let Some(value) = value {
-                        restrictions.push(format!(
-                            "{name} {label}: {} · UTC {value}",
-                            crate::discovery::calendar::local_timestamp(value)
-                        ));
-                    }
-                }
-            }
-            if restrictions.is_empty() {
-                lines.push("Applied filters: None".into());
-            } else {
-                lines.push("Applied filters (committed query):".into());
-                lines.extend(restrictions);
-            }
-            lines.join("\n")
-        }
+        crate::presentation::library_text::count(
+            &self.library.query,
+            self.library.visible.len(),
+            self.library.inventory.complete,
+        )
     }
     /// Explain an empty result without treating an incomplete scan as an empty collection.
     #[must_use]
     pub fn library_empty_message(&self) -> &'static str {
-        use crate::presentation::vocabulary::Status;
-        if !self.library.visible.is_empty() {
-            return "";
-        }
-        if !matches!(self.library.query.scope, Scope::BuiltIn | Scope::OpenFiles)
-            && !self.library.inventory.complete
-        {
-            return Status::InventoryIncomplete.label();
-        }
-        if self
-            .library
-            .query
-            .cleared_filters()
-            .count(&self.library.entries)
-            .unwrap_or(0)
-            > 0
-        {
-            return Status::EmptyFilteredLibrary.label();
-        }
-        match self.library.query.scope {
-            Scope::User => {
-                "Your User Library is empty. Create a sound or edit a Built-in copy to start your collection."
-            }
-            Scope::OpenFiles => "No open files. Open a portable recipe to use it for this session.",
-            Scope::Trash => "Trash is empty. Deleted User sounds appear here.",
-            Scope::All | Scope::BuiltIn => {
-                "No sounds in this collection. Open a recipe or create a sound."
-            }
-        }
+        crate::presentation::library_text::empty_message(
+            &self.library.query,
+            &self.library.entries,
+            self.library.visible.len(),
+            self.library.inventory.complete,
+        )
     }
 
     /// Current persistent query; native filters and the CLI use the same contract.
@@ -1185,46 +902,12 @@ impl Workspace {
         self.library_dates_shown(true)
     }
     fn library_dates_shown(&self, utc: bool) -> String {
-        {
-            self.library
-                .selection
-                .as_ref()
-                .and_then(|key| self.library.entries.iter().find(|e| &e.key == key))
-        }
-        .map_or(String::new(), |e| {
-            let shown = |date: Option<crate::core::Timestamp>| {
-                date.map_or_else(
-                    || "Unknown".into(),
-                    |d| {
-                        if utc {
-                            d.to_string()
-                        } else {
-                            crate::discovery::calendar::local_timestamp(d)
-                        }
-                    },
-                )
-            };
-            format!(
-                "Created: {}\nModified: {}\nAdded here: {}{}{}",
-                shown(e.created_at),
-                shown(e.modified_at),
-                if matches!(e.key, LibraryKey::User(_)) {
-                    shown(e.added_at)
-                } else {
-                    "Not applicable".into()
-                },
-                e.trashed_at.map_or(String::new(), |d| format!(
-                    "\nTrashed here: {}",
-                    shown(Some(d))
-                )),
-                self.selected().map_or(String::new(), |s| {
-                    crate::storage::library::history_warnings(s.recipe())
-                        .iter()
-                        .map(|w| format!("\n{w}"))
-                        .collect::<String>()
-                })
-            )
-        })
+        let entry = self
+            .library
+            .selection
+            .as_ref()
+            .and_then(|key| self.library.entries.iter().find(|entry| &entry.key == key));
+        crate::presentation::library_text::dates(entry, self.selected(), utc)
     }
     /// Captured selected managed key/token for action binding, or empty values.
     #[must_use]
@@ -1568,36 +1251,11 @@ impl Workspace {
         self.location_projection().0
     }
     fn location_projection(&self) -> (&'static str, String) {
-        if let Some(error) = self.library.binding.problem() {
-            return (
-                "User Library unavailable",
-                format!("Unsaved · User Library unavailable: {}", error.message()),
-            );
-        }
-        if let Some(key) = self.editor.location.detached() {
-            return (
-                "Detached draft · save an independent copy or restore/edit saved entry",
-                format!(
-                    "Detached draft · {key} · restore/edit the saved version or Save independent copy"
-                ),
-            );
-        }
-        if let Some(external) = self.editor.location.external() {
-            return (
-                "External file",
-                format!(
-                    "External file · {} · observed {}",
-                    external.path().display(),
-                    external.fingerprint()
-                ),
-            );
-        }
-        if let Some((key, token)) = self.editor.location.managed() {
-            return ("User Library", format!("User Library · {key} · {token}"));
-        }
-        (
-            "Unsaved · Save to User Library",
-            "Unsaved · Save to User Library".into(),
+        crate::presentation::library_text::document_location(
+            self.library.binding.problem(),
+            self.editor.location.detached(),
+            self.editor.location.external(),
+            self.editor.location.managed(),
         )
     }
     fn accept_managed_outcome(

@@ -1,9 +1,9 @@
 //! Human-facing operation descriptions owned by their application data.
 use super::{AudioSummary, DisplayText};
 use crate::core::Timestamp;
-use crate::discovery::collection::{EntrySummary, Scope};
+use crate::discovery::collection::EntrySummary;
 use crate::document::recipe::Rendition;
-use crate::presentation::vocabulary::{Caption, Collection, NumberStyle, Status};
+use crate::presentation::vocabulary::{Caption, NumberStyle, Status};
 use crate::storage::library::{Initialization, Inventory, LibraryRoot, RootInfo};
 use crate::storage::wav::Exported;
 use std::path::Path;
@@ -12,30 +12,6 @@ fn date(value: Option<Timestamp>) -> String {
     value.map_or_else(|| Status::Unknown.label().into(), |value| value.to_string())
 }
 
-impl Scope {
-    /// Stable command-line collection value, independent of presentation wording.
-    #[must_use]
-    pub const fn cli_key(self) -> &'static str {
-        match self {
-            Self::All => "all",
-            Self::BuiltIn => "builtin",
-            Self::User => "user",
-            Self::OpenFiles => "open-files",
-            Self::Trash => "trash",
-        }
-    }
-    /// Shared collection name used by controls and value help.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::All => Collection::AllBuiltInUser.label(),
-            Self::BuiltIn => Collection::BuiltInReadOnly.label(),
-            Self::User => Collection::User.label(),
-            Self::OpenFiles => Collection::OpenFilesTemporary.label(),
-            Self::Trash => Collection::Trash.label(),
-        }
-    }
-}
 impl EntrySummary {
     /// One complete discovery row, including explicit declared and membership dates.
     #[must_use]
@@ -223,47 +199,5 @@ impl crate::storage::library::RootSource {
 impl std::fmt::Display for crate::storage::library::RootSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.label())
-    }
-}
-
-impl crate::discovery::collection::SortBy {
-    /// Shared name of the primary sort field.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        use crate::presentation::vocabulary::Facet;
-        match self {
-            Self::Automatic => Caption::AutomaticOrder.label(),
-            Self::Rate => Caption::NominalRate.label(),
-            Self::Title => Caption::Title.label(),
-            Self::Created => Caption::Created.label(),
-            Self::Modified => Caption::Modified.label(),
-            Self::Added => Facet::AddedHere.label(),
-            Self::Study => Caption::Study.label(),
-            Self::Collection => Caption::Collection.label(),
-        }
-    }
-}
-impl crate::discovery::collection::Direction {
-    /// Shared name of a primary sort direction.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Asc => Caption::Ascending.label(),
-            Self::Desc => Caption::Descending.label(),
-        }
-    }
-}
-impl crate::discovery::collection::GroupBy {
-    /// Shared name of the result grouping.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        use crate::presentation::vocabulary::Facet;
-        match self {
-            Self::None => Facet::NoGrouping.label(),
-            Self::Band => Caption::BandGroups.label(),
-            Self::Method => Caption::MethodGroups.label(),
-            Self::Study => Caption::StudyGroups.label(),
-            Self::Collection => Caption::CollectionGroups.label(),
-        }
     }
 }

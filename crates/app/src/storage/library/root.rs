@@ -389,9 +389,8 @@ pub(super) fn cleanup_stages(
         {
             dir.remove_file(&name)
                 .map_err(|e| io(IoOperation::Remove, e))?;
-            warnings.push(format!(
-                "Removed abandoned stage {}",
-                path.join(name).display()
+            warnings.push(crate::presentation::library_text::removed_stage(
+                &path.join(name),
             ));
         }
     }

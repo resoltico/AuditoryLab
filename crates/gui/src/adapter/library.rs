@@ -105,23 +105,20 @@ impl SlintAdapter {
                         .and_then(|index| i32::try_from(index + 1).ok())
                         .unwrap_or(0),
                 );
-                ui.set_collection_choice(match query.scope {
-                    Scope::All => 0,
-                    Scope::BuiltIn => 1,
-                    Scope::User => 2,
-                    Scope::OpenFiles => 3,
-                    Scope::Trash => 4,
-                });
-                ui.set_sort_choice(match query.sort {
-                    SortBy::Automatic => 0,
-                    SortBy::Rate => 1,
-                    SortBy::Title => 2,
-                    SortBy::Created => 3,
-                    SortBy::Modified => 4,
-                    SortBy::Added => 5,
-                    SortBy::Study => 6,
-                    SortBy::Collection => 7,
-                });
+                ui.set_collection_choice(
+                    Scope::ALL
+                        .iter()
+                        .position(|value| *value == query.scope)
+                        .and_then(|index| i32::try_from(index).ok())
+                        .unwrap_or(0),
+                );
+                ui.set_sort_choice(
+                    SortBy::ALL
+                        .iter()
+                        .position(|value| *value == query.sort)
+                        .and_then(|index| i32::try_from(index).ok())
+                        .unwrap_or(0),
+                );
             }
         }
         // Virtual group/diagnostic rows do not create a selectable sound.

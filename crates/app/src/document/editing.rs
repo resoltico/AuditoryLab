@@ -235,7 +235,7 @@ impl Draft {
     fn empty(document: auditorylab_core::DocumentIdentity) -> Self {
         let mut content = Recipe::builder(document);
         content.description = Some(auditorylab_core::Description {
-            title: "Untitled sound".into(),
+            title: crate::presentation::UNTITLED_SOUND.into(),
             notes: Some(String::new()),
         });
         Self {
@@ -276,7 +276,7 @@ impl Draft {
             .fork(crate::identity::fresh_document()?, catalog)
             .map_err(Error::Recipe)?;
         let mut draft = Self::from_recipe(content);
-        draft.set_title(format!("{} (edited)", snapshot.title()));
+        draft.set_title(crate::presentation::edited_title(&snapshot.title()));
         draft.based_on = Some(snapshot.clone());
         Ok(draft)
     }
@@ -397,7 +397,7 @@ impl Draft {
         self.content
             .description
             .as_ref()
-            .map_or("Untitled sound", |d| d.title.as_str())
+            .map_or(crate::presentation::UNTITLED_SOUND, |d| d.title.as_str())
     }
     /// Set current title; a title edit does not change research scope.
     pub fn set_title(&mut self, title: String) {

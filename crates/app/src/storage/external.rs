@@ -147,7 +147,7 @@ impl ExternalWriter {
             .modified_at
             .is_some_and(|prior| now < prior)
         {
-            diagnostics.push("Observed clock predates the prior declared edit time; no artificial timestamp was fabricated.".into());
+            diagnostics.push(crate::presentation::publication_text::CLOCK_PREDATES_EDIT.into());
         }
         document.modified_at = Some(now);
         let recipe = (*recipe)

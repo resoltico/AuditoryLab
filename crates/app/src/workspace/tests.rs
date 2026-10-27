@@ -203,7 +203,7 @@ fn receipt_age_reads_in_human_units() {
         (7_300_000, true, "Current session received samples 2 h ago"),
     ] {
         assert_eq!(
-            super::views::received_text(Duration::from_millis(millis), held),
+            crate::presentation::workspace_text::received_text(Duration::from_millis(millis), held),
             text
         );
     }

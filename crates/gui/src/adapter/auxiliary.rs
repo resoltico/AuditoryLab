@@ -90,8 +90,7 @@ pub(super) fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
                 Ok(()) => window.invoke_focus_start(),
                 Err(error) => eprintln!(
                     "{}",
-                    auditorylab_app::presentation::vocabulary::InterfaceOperation::Licenses
-                        .failure(error)
+                    crate::terms::InterfaceOperation::Licenses.failure(error)
                 ),
             }
         }
@@ -108,18 +107,12 @@ pub(super) fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
             match crate::licenses::notices_directory() {
                 Ok(path) => match path.to_str() {
                     Some(path) => {
-                        window.set_notice(
-                            auditorylab_app::presentation::vocabulary::Caption::BundledNoticesHelp
-                                .label()
-                                .into(),
-                        );
+                        window.set_notice(crate::terms::Caption::BundledNoticesHelp.label().into());
                         open_web(path);
                     }
-                    None => window.set_notice(
-                        auditorylab_app::presentation::vocabulary::Caption::NoticesPathError
-                            .label()
-                            .into(),
-                    ),
+                    None => {
+                        window.set_notice(crate::terms::Caption::NoticesPathError.label().into())
+                    }
                 },
                 Err(error) => window.set_notice(error.into()),
             }

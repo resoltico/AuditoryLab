@@ -660,3 +660,112 @@ fn study(entry: &EntrySummary) -> Option<String> {
         .map(|e| e.doi.as_deref().unwrap_or(&e.source).to_owned())
         .min()
 }
+
+impl SortBy {
+    /// Shared name of the primary sort field.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Automatic => "Automatic order",
+            Self::Rate => "Nominal rate",
+            Self::Title => "Title",
+            Self::Created => "Created",
+            Self::Modified => "Modified",
+            Self::Added => "Added here",
+            Self::Study => "Study",
+            Self::Collection => "Collection",
+        }
+    }
+}
+impl Direction {
+    /// Shared name of a primary sort direction.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Asc => "Ascending",
+            Self::Desc => "Descending",
+        }
+    }
+}
+impl GroupBy {
+    /// Shared name of the result grouping.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::None => "No grouping",
+            Self::Band => "Band groups",
+            Self::Method => "Method groups",
+            Self::Study => "Study groups",
+            Self::Collection => "Collection groups",
+        }
+    }
+}
+
+impl Scope {
+    /// Available choices in display order.
+    pub const ALL: [Self; 5] = [
+        Self::All,
+        Self::BuiltIn,
+        Self::User,
+        Self::OpenFiles,
+        Self::Trash,
+    ];
+}
+
+impl SortBy {
+    /// Available choices in display order.
+    pub const ALL: [Self; 8] = [
+        Self::Automatic,
+        Self::Rate,
+        Self::Title,
+        Self::Created,
+        Self::Modified,
+        Self::Added,
+        Self::Study,
+        Self::Collection,
+    ];
+}
+
+impl Direction {
+    /// Available choices in display order.
+    pub const ALL: [Self; 2] = [Self::Asc, Self::Desc];
+}
+
+impl GroupBy {
+    /// Available choices in display order.
+    pub const ALL: [Self; 5] = [
+        Self::None,
+        Self::Band,
+        Self::Method,
+        Self::Study,
+        Self::Collection,
+    ];
+}
+
+impl Scope {
+    /// Human-readable collection choice.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::All => "All · Built-in + User",
+            Self::BuiltIn => "Built-in · Read only",
+            Self::User => "User",
+            Self::OpenFiles => "Open files · Temporary",
+            Self::Trash => "Trash",
+        }
+    }
+}
+
+impl Scope {
+    /// Stable command-line collection value, independent of presentation wording.
+    #[must_use]
+    pub const fn cli_key(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::BuiltIn => "builtin",
+            Self::User => "user",
+            Self::OpenFiles => "open-files",
+            Self::Trash => "trash",
+        }
+    }
+}

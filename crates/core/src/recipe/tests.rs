@@ -508,3 +508,45 @@ fn the_builder_separates_portable_contracts_from_acoustic_validity() {
     builder.sound.components.push(builder.sound.components[0]);
     assert!(matches!(builder.build(), Err(RecipeError::Contract(_))));
 }
+
+#[test]
+fn display_about_uses_population_and_condition_labels_for_every_declaration() {
+    let source = crate::catalog::ENTRIES
+        .iter()
+        .find_map(|entry| {
+            let recipe = Recipe::parse(entry.text).unwrap();
+            recipe
+                .evidence()
+                .iter()
+                .any(|e| e.scope == crate::EvidenceScope::ReferenceCondition)
+                .then_some(recipe)
+        })
+        .unwrap();
+    for population in crate::Population::ALL {
+        for role in crate::ConditionRole::ALL {
+            let mut builder = source.clone().into_builder();
+            let evidence = builder
+                .evidence
+                .iter_mut()
+                .find(|e| e.scope == crate::EvidenceScope::ReferenceCondition)
+                .unwrap();
+            evidence.population = population;
+            evidence.population_detail = None;
+            evidence.condition_role = role;
+            let text = builder
+                .build()
+                .unwrap()
+                .display_about()
+                .unwrap()
+                .research
+                .unwrap()
+                .studied_for
+                .unwrap();
+            assert_eq!(
+                text,
+                format!("{} study · {}", population.label(), role.label())
+            );
+            assert!(!text.contains("OtherAnimal") && !text.contains("NotApplicable"));
+        }
+    }
+}

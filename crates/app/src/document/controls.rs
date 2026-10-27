@@ -8,17 +8,6 @@ use auditorylab_core::{
 
 /// Waveform spans offered by application monitors, in milliseconds.
 pub const MONITOR_SPANS_MS: [u32; 4] = [2, 10, 40, 100];
-/// Application monitor scales and labels.
-pub const MONITOR_SCALES: [(crate::presentation::waveform_view::WaveformScale, &str); 2] = [
-    (
-        crate::presentation::waveform_view::WaveformScale::Fixed,
-        "Fixed ±1",
-    ),
-    (
-        crate::presentation::waveform_view::WaveformScale::Fit,
-        "Fit signal",
-    ),
-];
 /// Initial waveform span.
 pub const DEFAULT_MONITOR_SPAN_MS: u32 = 40;
 /// Initial waveform scale.

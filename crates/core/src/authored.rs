@@ -591,8 +591,8 @@ impl ComponentForm {
     pub fn heading(self) -> &'static str {
         match self {
             Self::Voice(c) => c.role().label(),
-            Self::BinauralPair(_) => "Binaural pair",
-            Self::MonauralPair { .. } => "Monaural pair",
+            Self::BinauralPair(_) => PairKind::Binaural.label(),
+            Self::MonauralPair { .. } => PairKind::Monaural.label(),
         }
     }
 }
@@ -631,3 +631,16 @@ impl Sound {
 
 #[cfg(test)]
 mod tests;
+
+impl PairKind {
+    /// Every explicit pair construction, in display order.
+    pub const ALL: [Self; 2] = [Self::Binaural, Self::Monaural];
+    /// Human-readable pair construction.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Binaural => "Binaural pair",
+            Self::Monaural => "Monaural pair",
+        }
+    }
+}

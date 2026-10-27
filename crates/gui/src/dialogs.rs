@@ -34,30 +34,22 @@ impl Shell for NativeShell {
             use slint::ComponentHandle;
             let choice = rfd::AsyncMessageDialog::new()
                 .set_parent(&ui.window().window_handle())
-                .set_title(
-                    auditorylab_app::presentation::vocabulary::Action::PurgeConfirmation.label(),
-                )
+                .set_title(crate::terms::Action::PurgeConfirmation.label())
                 .set_description(
                     auditorylab_app::presentation::vocabulary::Action::purge_description(
                         &title, &key,
                     ),
                 )
                 .set_buttons(rfd::MessageButtons::OkCancelCustom(
-                    auditorylab_app::presentation::vocabulary::Action::PermanentlyDelete
-                        .label()
-                        .into(),
-                    auditorylab_app::presentation::vocabulary::Action::Cancel
-                        .label()
-                        .into(),
+                    crate::terms::Action::PermanentlyDelete.label().into(),
+                    crate::terms::Action::Cancel.label().into(),
                 ))
                 .show()
                 .await;
             match choice {
                 rfd::MessageDialogResult::Ok => PromptAnswer::Confirm,
                 rfd::MessageDialogResult::Custom(label)
-                    if label
-                        == auditorylab_app::presentation::vocabulary::Action::PermanentlyDelete
-                            .label() =>
+                    if label == crate::terms::Action::PermanentlyDelete.label() =>
                 {
                     PromptAnswer::Confirm
                 }
@@ -78,18 +70,12 @@ impl Shell for NativeShell {
             use slint::ComponentHandle;
             let choice = rfd::AsyncMessageDialog::new()
                 .set_parent(&ui.window().window_handle())
-                .set_title(auditorylab_app::presentation::vocabulary::Status::UnsavedSound.label())
+                .set_title(crate::terms::Status::UnsavedSound.label())
                 .set_description(description)
                 .set_buttons(rfd::MessageButtons::YesNoCancelCustom(
-                    auditorylab_app::presentation::vocabulary::Action::Save
-                        .label()
-                        .into(),
-                    auditorylab_app::presentation::vocabulary::Action::Discard
-                        .label()
-                        .into(),
-                    auditorylab_app::presentation::vocabulary::Action::Cancel
-                        .label()
-                        .into(),
+                    crate::terms::Action::Save.label().into(),
+                    crate::terms::Action::Discard.label().into(),
+                    crate::terms::Action::Cancel.label().into(),
                 ))
                 .show()
                 .await;
@@ -97,13 +83,12 @@ impl Shell for NativeShell {
                 rfd::MessageDialogResult::Yes => PromptAnswer::Save,
                 rfd::MessageDialogResult::No => PromptAnswer::Discard,
                 rfd::MessageDialogResult::Custom(label)
-                    if label == auditorylab_app::presentation::vocabulary::Action::Save.label() =>
+                    if label == crate::terms::Action::Save.label() =>
                 {
                     PromptAnswer::Save
                 }
                 rfd::MessageDialogResult::Custom(label)
-                    if label
-                        == auditorylab_app::presentation::vocabulary::Action::Discard.label() =>
+                    if label == crate::terms::Action::Discard.label() =>
                 {
                     PromptAnswer::Discard
                 }
@@ -129,13 +114,10 @@ impl Shell for NativeShell {
         };
         let destination = match purpose {
             PathPurpose::OpenRecipe => None,
-            PathPurpose::ExportRecipe | PathPurpose::ExportWav => {
-                Some(suggested_name.unwrap_or_else(|| {
-                    auditorylab_app::presentation::vocabulary::Caption::suggested_filename(
-                        extension,
-                    )
-                }))
-            }
+            PathPurpose::ExportRecipe | PathPurpose::ExportWav => Some(
+                suggested_name
+                    .unwrap_or_else(|| crate::terms::Caption::suggested_filename(extension)),
+            ),
         };
         // A native Stop control in the panel stops exactly the audio playing now.
         let control = adapter.audio_control();
@@ -156,10 +138,7 @@ impl Shell for NativeShell {
         #[cfg(not(target_os = "macos"))]
         let _ = adapter;
         if approved && let Err(error) = slint::quit_event_loop() {
-            eprintln!(
-                "{}",
-                auditorylab_app::presentation::vocabulary::InterfaceOperation::Quit.failure(error)
-            );
+            eprintln!("{}", crate::terms::InterfaceOperation::Quit.failure(error));
         }
     }
 }
@@ -184,9 +163,9 @@ async fn file_path(
             .set_parent(&ui.window().window_handle())
             .add_filter(
                 if extension == "wav" {
-                    auditorylab_app::presentation::vocabulary::Caption::WavAudio.label()
+                    crate::terms::Caption::WavAudio.label()
                 } else {
-                    auditorylab_app::presentation::vocabulary::Caption::TomlSound.label()
+                    crate::terms::Caption::TomlSound.label()
                 },
                 &[extension],
             );

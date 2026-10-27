@@ -437,3 +437,30 @@ impl fmt::Display for crate::audio::device::DeviceError {
         }
     }
 }
+
+impl std::fmt::Display for crate::audio::session::LiveUpdateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SessionClosed => f.write_str("the live session no longer accepts changes"),
+            Self::RateMismatch {
+                target_hz,
+                session_hz,
+            } => write!(
+                f,
+                "the change was checked at {target_hz} Hz but the live session runs at {session_hz} Hz"
+            ),
+            Self::RevisionLimit => f.write_str("the live session's revision limit is reached"),
+            Self::Unavailable => f.write_str("live control is unavailable"),
+        }
+    }
+}
+impl std::fmt::Display for crate::document::recipe::Origin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BuiltIn(id) => write!(f, "{id}"),
+            Self::User { id, .. } => write!(f, "user:{id}"),
+            Self::File(path) => write!(f, "{}", path.display()),
+            Self::Stream(label) | Self::Draft(label) => write!(f, "{label}"),
+        }
+    }
+}

@@ -15,7 +15,6 @@ use crate::audio::session::MonitorReader;
 use crate::audio::session::SessionId;
 use crate::document::editing::EditorSession;
 use crate::document::recipe::{RecipeSnapshot, SnapshotId};
-use crate::presentation::AudioErrorText;
 use crate::presentation::waveform_view::{
     CaptureError, ModelSource, ModelView, WaveformCapture, WaveformScale,
 };
@@ -74,7 +73,7 @@ pub struct OutputView {
     pub held: bool,
 }
 
-enum PreviewIssue {
+pub(crate) enum PreviewIssue {
     Snapshot(crate::error::LoadError),
     Acoustic {
         title: String,
@@ -82,23 +81,7 @@ enum PreviewIssue {
         error: Option<crate::core::SoundError>,
     },
 }
-impl PreviewIssue {
-    fn description(&self) -> String {
-        match self {
-            Self::Snapshot(error) => error.to_string(),
-            Self::Acoustic {
-                title,
-                rate,
-                error: Some(error),
-            } => error.at_rate(title, *rate),
-            Self::Acoustic {
-                title,
-                rate,
-                error: None,
-            } => format!("Cannot generate a preview of {title} at {} Hz.", rate.hz()),
-        }
-    }
-}
+
 #[derive(Default)]
 pub(crate) struct OutputState {
     motion: MotionPreference,

@@ -14,6 +14,11 @@ mod motion;
 #[cfg(target_os = "macos")]
 mod native_application;
 mod scope;
+#[expect(
+    dead_code,
+    reason = "the shared build-time table constructs Slint-only terms in build.rs; native menus use a subset"
+)]
+mod terms;
 #[cfg(test)]
 mod test_platform;
 #[cfg(test)]
@@ -30,8 +35,8 @@ mod window_tests;
 mod generated {
     slint::include_modules!();
 }
+use crate::terms::{CommandProblem, InterfaceOperation};
 use adapter::{Preferences, SlintAdapter, Windows};
-use auditorylab_app::presentation::vocabulary::{CommandProblem, InterfaceOperation};
 use auditorylab_app::workspace::{Capabilities, Workspace};
 use generated::{DetailsWindow, MainWindow};
 
@@ -40,9 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "windows")]
     if let Err(error) = &result {
         let _ = rfd::MessageDialog::new()
-            .set_title(
-                auditorylab_app::presentation::vocabulary::Caption::application_error_title(),
-            )
+            .set_title(crate::terms::Caption::application_error_title())
             .set_description(InterfaceOperation::Application.failure(error))
             .set_level(rfd::MessageLevel::Error)
             .set_buttons(rfd::MessageButtons::Ok)

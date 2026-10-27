@@ -517,3 +517,16 @@ pub fn output_underrun_warning(underruns: u64) -> String {
         format!("Backend-reported output underruns: {underruns} · see details.")
     }
 }
+
+impl WaveformScale {
+    /// Every visual scaling choice, in display order.
+    pub const ALL: [Self; 2] = [Self::Fixed, Self::Fit];
+    /// Display label; this never changes the captured samples.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Fixed => "Fixed ±1",
+            Self::Fit => "Fit signal",
+        }
+    }
+}

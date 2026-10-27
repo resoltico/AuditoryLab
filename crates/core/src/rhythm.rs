@@ -80,15 +80,22 @@ impl Band {
         }
     }
 }
-impl Display for Band {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+impl Band {
+    /// Human-readable reference band name.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
             Self::Delta => "Delta",
             Self::Theta => "Theta",
             Self::Alpha => "Alpha",
             Self::Beta => "Beta",
             Self::Gamma => "Gamma",
-        })
+        }
+    }
+}
+impl Display for Band {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.label())
     }
 }
 impl core::str::FromStr for Band {
@@ -548,4 +555,17 @@ pub(crate) fn classify(
     }
     finish_methods(&mut result.methods);
     result
+}
+
+impl Completeness {
+    /// Every analysis coverage state, in display order.
+    pub const ALL: [Self; 2] = [Self::Complete, Self::Invalid];
+    /// Human-readable analysis coverage.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Complete => "Complete",
+            Self::Invalid => "Invalid",
+        }
+    }
 }

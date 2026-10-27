@@ -8,11 +8,15 @@ pub mod build_info;
 mod commands;
 pub mod core_errors;
 mod errors;
+pub(crate) mod library_text;
+pub(crate) mod publication_text;
 pub mod reports;
+pub(crate) mod status_text;
 pub mod vocabulary;
 pub mod waveform_view;
+pub(crate) mod workspace_text;
 use crate::document::recipe::{RecipeSnapshot, Rendition};
-use crate::presentation::vocabulary::{NumberStyle, Status, Term};
+use crate::presentation::vocabulary::{NumberStyle, Status};
 use auditorylab_core::{
     CarrierFacts, ComponentFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate,
     PulseFacts, SampleRate, Sound, SoundError, VoiceObservation, rhythm::Method, rhythm::Structure,
@@ -469,7 +473,7 @@ fn document_notes(snapshot: &RecipeSnapshot) -> String {
             evidence
                 .measures
                 .iter()
-                .map(Term::label)
+                .map(|measure| measure.label())
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
@@ -1012,6 +1016,11 @@ pub fn rhythm_diagnostic(issue: &auditorylab_core::rhythm::Issue) -> String {
             )
         }
     }
+}
+
+pub(crate) const UNTITLED_SOUND: &str = "Untitled sound";
+pub(crate) fn edited_title(title: &str) -> String {
+    format!("{title} (edited)")
 }
 
 #[cfg(test)]

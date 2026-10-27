@@ -18,9 +18,9 @@
 //! only after that join.
 mod library;
 mod operations;
-mod output;
-mod status;
-mod tasks;
+pub(crate) mod output;
+pub(crate) mod status;
+pub(crate) mod tasks;
 mod views;
 
 pub use library::{LibraryBinding, LibraryOutcome};

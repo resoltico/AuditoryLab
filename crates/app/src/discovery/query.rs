@@ -16,15 +16,21 @@ pub enum RhythmState {
     NeedsReview,
 }
 impl RhythmState {
+    /// All special rhythm states, in navigation order.
+    pub const ALL: [Self; 4] = [
+        Self::OutsideBands,
+        Self::None,
+        Self::Multiple,
+        Self::NeedsReview,
+    ];
     /// Shared name of the navigation state.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        use crate::presentation::vocabulary::Status;
         match self {
-            Self::OutsideBands => Status::OtherRates.label(),
-            Self::None => Status::NoRhythmicRate.label(),
-            Self::Multiple => Status::MultipleRhythms.label(),
-            Self::NeedsReview => Status::NeedsReview.label(),
+            Self::OutsideBands => "Other rates",
+            Self::None => "No rhythmic rate",
+            Self::Multiple => "Multiple rhythms",
+            Self::NeedsReview => "Needs review",
         }
     }
 }

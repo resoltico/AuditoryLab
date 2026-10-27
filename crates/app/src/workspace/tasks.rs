@@ -194,15 +194,7 @@ pub enum WorkerFailure {
     /// A completion did not match its admitted operation.
     InvalidOutcome,
 }
-impl WorkerFailure {
-    pub(crate) fn description(&self) -> String {
-        match self {
-            Self::Launch(error) => format!("Cannot start worker: {error}"),
-            Self::Panicked => crate::presentation::WORKER_FAILED.into(),
-            Self::InvalidOutcome => "The worker returned a result for another operation.".into(),
-        }
-    }
-}
+
 /// Typed final result of a joined operation.
 pub enum JobOutcome {
     /// Completed filesystem operation.
@@ -491,8 +483,8 @@ impl Runner {
                     );
                 }
                 if active_file && let Some(error) = workspace.files.status.editor_reset_error() {
-                    errors.push(format!(
-                        "Trash confirmed; editor reset failed: {error}{context}"
+                    errors.push(crate::presentation::status_text::shutdown_reset_failure(
+                        error, &context,
                     ));
                 }
                 if disposition == super::ResponseDisposition::Rejected {

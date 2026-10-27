@@ -29,17 +29,6 @@ pub enum Origin {
     Draft(String),
 }
 
-impl std::fmt::Display for Origin {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::BuiltIn(id) => write!(f, "{id}"),
-            Self::User { id, .. } => write!(f, "user:{id}"),
-            Self::File(path) => write!(f, "{}", path.display()),
-            Self::Stream(label) | Self::Draft(label) => write!(f, "{label}"),
-        }
-    }
-}
-
 /// The process-local identity of one snapshot. Loading the same path twice
 /// gives two identities, because the file's content may have changed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

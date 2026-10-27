@@ -21,23 +21,8 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             use auditorylab_app::discovery::collection::{Scope, SortBy};
             {
                 let mut query = w.catalog_query().clone();
-                query.scope = match scope {
-                    1 => Scope::BuiltIn,
-                    2 => Scope::User,
-                    3 => Scope::OpenFiles,
-                    4 => Scope::Trash,
-                    _ => Scope::All,
-                };
-                query.sort = match sort {
-                    1 => SortBy::Rate,
-                    2 => SortBy::Title,
-                    3 => SortBy::Created,
-                    4 => SortBy::Modified,
-                    5 => SortBy::Added,
-                    6 => SortBy::Study,
-                    7 => SortBy::Collection,
-                    _ => SortBy::Automatic,
-                };
+                query.scope = choice(&Scope::ALL, scope).unwrap_or(Scope::All);
+                query.sort = choice(&SortBy::ALL, sort).unwrap_or(SortBy::Automatic);
                 if let Err(error) = w.set_catalog_query(query) {
                     return Err(auditorylab_app::workspace::Refusal::Document(Box::new(
                         error.into(),
@@ -99,49 +84,16 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                 } else {
                     vec![study.to_string()]
                 };
-                query.populations = choice(
-                    &[
-                        Population::Human,
-                        Population::Mouse,
-                        Population::OtherAnimal,
-                        Population::Mixed,
-                        Population::NotApplicable,
-                        Population::Unspecified,
-                    ],
-                    population - 1,
-                )
-                .into_iter()
-                .collect();
-                query.roles = choice(
-                    &[
-                        ConditionRole::Test,
-                        ConditionRole::Comparison,
-                        ConditionRole::Mixed,
-                        ConditionRole::Unspecified,
-                    ],
-                    role - 1,
-                )
-                .into_iter()
-                .collect();
+                query.populations = choice(&Population::ALL, population - 1)
+                    .into_iter()
+                    .collect();
+                query.roles = choice(&ConditionRole::ALL, role - 1).into_iter().collect();
                 query.analysis = choice(
-                    &[
-                        auditorylab_app::core::rhythm::Completeness::Complete,
-                        auditorylab_app::core::rhythm::Completeness::Invalid,
-                    ],
+                    &auditorylab_app::core::rhythm::Completeness::ALL,
                     analysis - 1,
                 );
-                query.direction = choice(&[Direction::Asc, Direction::Desc], direction - 1);
-                query.group_by = choice(
-                    &[
-                        GroupBy::None,
-                        GroupBy::Band,
-                        GroupBy::Method,
-                        GroupBy::Study,
-                        GroupBy::Collection,
-                    ],
-                    group,
-                )
-                .unwrap_or(GroupBy::None);
+                query.direction = choice(&Direction::ALL, direction - 1);
+                query.group_by = choice(&GroupBy::ALL, group).unwrap_or(GroupBy::None);
                 match w.set_catalog_query(query) {
                     Ok(()) => true,
                     Err(error) => {
@@ -295,10 +247,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             (a.details.upgrade(), a.main.upgrade(), library)
         {
             window.set_heading(
-                auditorylab_app::presentation::vocabulary::Caption::sound_details(
-                    &library.title.display_scalar(),
-                )
-                .into(),
+                crate::terms::Caption::sound_details(&library.title.display_scalar()).into(),
             );
             window.set_can_refresh(false);
             window.set_content(read_only(&library.details));

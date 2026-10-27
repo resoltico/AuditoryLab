@@ -2,7 +2,7 @@ import { BoundButton, BoundTitleEdit } from "library-controls.slint";
 import { LibraryNavigationItem } from "library-navigation.slint";
 import { WorkspaceNavigation } from "workspace-navigation.slint";
 export { Terms } from "vocabulary.slint";
-import { Terms } from "vocabulary.slint";
+import { Terms, Choices } from "vocabulary.slint";
 import {
     Palette, Button, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, ProgressIndicator
 }
@@ -236,8 +236,14 @@ export component MainWindow inherits Window {
     in-out property <string> added-through;
     function apply-filters() { root.more-filters(root.study-query,root.population-choice,root.role-choice,root.analysis-choice,root.direction-choice,root.group-choice,root.created-from,root.created-through,root.modified-from,root.modified-through,root.added-from,root.added-through); }
 
-    private property <[string]> collection-labels: [Terms.collection-all-built-in-user, Terms.collection-built-in-read-only, Terms.collection-user, Terms.collection-open-files-temporary, Terms.collection-trash];
-    private property <[string]> sort-labels: [Terms.caption-automatic-order, Terms.caption-nominal-rate, Terms.caption-title, Terms.caption-created, Terms.caption-modified, Terms.facet-added-here, Terms.caption-study, Terms.caption-collection];
+    private property <[string]> collection-labels: Choices.collection-labels;
+    private property <[string]> sort-labels: Choices.sort-labels;
+    private property <[string]> population-labels: Choices.population-labels;
+    private property <[string]> role-labels: Choices.role-labels;
+    private property <[string]> analysis-labels: Choices.analysis-labels;
+    private property <[string]> direction-labels: Choices.direction-labels;
+    private property <[string]> group-labels: Choices.group-labels;
+
     in-out property <int> collection-choice: 0;
     in-out property <int> sort-choice: 0;
     callback refresh-library();
@@ -365,11 +371,11 @@ export component MainWindow inherits Window {
 
                             Text {text:root.calendar-context;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
                             LineEdit {text <=> root.study-query;placeholder-text:Terms.caption-study-doi-or-key-source;accessible-label:Terms.facet-study-evidence-filter;}
-                            ComboBox {model:[Terms.facet-any-population,Terms.caption-human,Terms.caption-mouse,Terms.caption-other-animal,Terms.facet-mixed-population,Terms.caption-not-applicable,Terms.facet-unspecified-population];current-index <=> root.population-choice;accessible-label:Terms.facet-population-evidence-filter;}
-                            ComboBox {model:[Terms.facet-any-condition-role,Terms.caption-test-condition,Terms.caption-comparison-condition,Terms.caption-mixed-roles,Terms.caption-unspecified-role];current-index <=> root.role-choice;accessible-label:Terms.facet-condition-role-evidence-filter;}
-                            ComboBox {model:[Terms.facet-any-analysis-coverage,Terms.status-complete,Terms.status-invalid];current-index <=> root.analysis-choice;accessible-label:Terms.facet-nominal-analysis-coverage;}
-                            ComboBox {model:[Terms.caption-automatic-direction,Terms.caption-ascending,Terms.caption-descending];current-index <=> root.direction-choice;accessible-label:Terms.facet-sort-direction;}
-                            ComboBox {model:[Terms.facet-no-grouping,Terms.caption-band-groups,Terms.caption-method-groups,Terms.caption-study-groups,Terms.caption-collection-groups];current-index <=> root.group-choice;accessible-label:Terms.facet-library-result-grouping;}
+                            ComboBox {model:root.population-labels;current-index <=> root.population-choice;accessible-label:Terms.facet-population-evidence-filter;}
+                            ComboBox {model:root.role-labels;current-index <=> root.role-choice;accessible-label:Terms.facet-condition-role-evidence-filter;}
+                            ComboBox {model:root.analysis-labels;current-index <=> root.analysis-choice;accessible-label:Terms.facet-nominal-analysis-coverage;}
+                            ComboBox {model:root.direction-labels;current-index <=> root.direction-choice;accessible-label:Terms.facet-sort-direction;}
+                            ComboBox {model:root.group-labels;current-index <=> root.group-choice;accessible-label:Terms.facet-library-result-grouping;}
                             LineEdit {text <=> root.created-from;placeholder-text:Terms.caption-created-from-yyyy-mm-dd;accessible-label:Terms.facet-created-from-local-calendar-date;}
                             LineEdit {text <=> root.created-through;placeholder-text:Terms.caption-created-through-yyyy-mm-dd;accessible-label:Terms.facet-created-through-inclusive-local-calendar-date;}
                             LineEdit {text <=> root.modified-from;placeholder-text:Terms.caption-modified-from-yyyy-mm-dd;accessible-label:Terms.facet-modified-from-local-calendar-date;}

@@ -301,3 +301,40 @@ impl ConditionRole {
         }
     }
 }
+
+impl EvidenceScope {
+    /// All supported declarations, in display order.
+    pub const ALL: [Self; 2] = [Self::ReferenceCondition, Self::Ancestor];
+    /// Human-readable declaration name.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ReferenceCondition => "Reference condition",
+            Self::Ancestor => "Ancestor",
+        }
+    }
+}
+
+impl Measure {
+    /// All supported declarations, in display order.
+    pub const ALL: [Self; 6] = [
+        Self::Eeg,
+        Self::Behavior,
+        Self::Subjective,
+        Self::Sleep,
+        Self::Hearing,
+        Self::Other,
+    ];
+    /// Human-readable declaration name.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Eeg => "EEG",
+            Self::Behavior => "Behavior",
+            Self::Subjective => "Subjective report",
+            Self::Sleep => "Sleep",
+            Self::Hearing => "Hearing",
+            Self::Other => "Other",
+        }
+    }
+}

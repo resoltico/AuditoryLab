@@ -295,29 +295,7 @@ pub struct WriteOutcome {
     /// Durability, cleanup, chronology and metadata warnings.
     pub diagnostics: Vec<String>,
 }
-impl WriteOutcome {
-    /// Concise confirmed publication result with an unwrapped comparison token.
-    #[must_use]
-    pub fn description(&self) -> String {
-        let mut text = format!("{}: {}", self.status.label(), self.key);
-        if let Some(record) = &self.record {
-            text.push_str(&format!("\nVersion token: {}", record.version_token));
-        }
-        for diagnostic in &self.diagnostics {
-            text.push('\n');
-            text.push_str(diagnostic);
-        }
-        text
-    }
-    /// Confirmed truth retained when completion output fails.
-    #[must_use]
-    pub fn completion_failure(&self, error: impl std::fmt::Display) -> String {
-        format!(
-            "Operation confirmed\n{}\nCompletion output failed: {error}",
-            self.description()
-        )
-    }
-}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Membership {
@@ -491,7 +469,7 @@ impl LibraryStore {
                 result.note(
                     name.to_string_lossy(),
                     "unrecognized_artifact",
-                    "unknown root entry retained",
+                    crate::presentation::library_text::UNKNOWN_ROOT_ENTRY,
                 );
             }
         }
@@ -514,7 +492,11 @@ impl LibraryStore {
                     continue;
                 }
                 let Some(stem) = name.to_str().and_then(|n| n.strip_suffix(".toml")) else {
-                    result.note(relative, "unrecognized_artifact", "unknown entry retained");
+                    result.note(
+                        relative,
+                        "unrecognized_artifact",
+                        crate::presentation::library_text::UNKNOWN_ENTRY,
+                    );
                     continue;
                 };
                 let id = match stem.parse::<DocumentUuid>() {
@@ -523,7 +505,7 @@ impl LibraryStore {
                         result.error(
                             relative,
                             "filename",
-                            "expected a canonical UUID.toml filename",
+                            crate::presentation::library_text::UUID_FILENAME_REQUIRED,
                             Outcome::IncompleteInventory,
                         );
                         continue;
@@ -536,7 +518,7 @@ impl LibraryStore {
                     result.error(
                         relative,
                         "reserved_identity",
-                        "managed file uses a reserved built-in UUID",
+                        crate::presentation::library_text::RESERVED_BUILTIN_IDENTITY,
                         Outcome::IncompleteInventory,
                     );
                     continue;
@@ -586,19 +568,28 @@ impl LibraryStore {
                 result
                     .entries
                     .retain(|entry| entry.key != LibraryKey::User(id) || entry.trashed);
-                result.note(name,"interrupted_move","same-file links in both directories; Trash is authoritative until relocation completes");
+                result.note(
+                    name,
+                    "interrupted_move",
+                    crate::presentation::library_text::INTERRUPTED_MOVE,
+                );
             } else {
                 result
                     .entries
                     .retain(|entry| entry.key != LibraryKey::User(id));
-                result.error(name,"duplicate_identity","different files with the same UUID exist in recipes and trash; both were retained",Outcome::IncompleteInventory);
+                result.error(
+                    name,
+                    "duplicate_identity",
+                    crate::presentation::library_text::DUPLICATE_IDENTITY,
+                    Outcome::IncompleteInventory,
+                );
             }
         }
         for id in memberships.entries.keys().filter(|id| !seen.contains(id)) {
             result.note(
                 MEMBERSHIP,
                 "orphan_membership",
-                format!("membership for {id} has no recipe; the next locked write will drop it"),
+                crate::presentation::library_text::orphan_membership(*id),
             );
         }
         let stages = lease.directory(".stage")?;
@@ -703,8 +694,8 @@ impl LibraryStore {
         }
         let removed = prune_memberships(&lease, &mut memberships)?;
         if removed > 0 {
-            diagnostics.push(format!(
-                "Removed {removed} orphan membership timestamp rows"
+            diagnostics.push(crate::presentation::library_text::removed_memberships(
+                removed,
             ));
             persist_memberships(&lease, &memberships, cancel, &mut diagnostics);
         }
@@ -916,8 +907,8 @@ fn persist_memberships(
             true
         }
         Err(error) => {
-            warnings.push(format!(
-                "Saved; membership timestamps could not be updated: {error}"
+            warnings.push(crate::presentation::library_text::membership_update_failed(
+                &error,
             ));
             false
         }
@@ -941,8 +932,8 @@ fn refresh_membership(lease: &root::Lease, record: &mut LoadedRecord, warnings: 
         Err(error) => {
             record.added_at = None;
             record.trashed_at = None;
-            warnings.push(format!(
-                "Saved; membership dates are Unknown because their state could not be read: {error}"
+            warnings.push(crate::presentation::library_text::membership_read_failed(
+                &error,
             ));
         }
     }
@@ -1026,10 +1017,7 @@ fn reconcile_moves(lease: &root::Lease, warnings: &mut Vec<String>) -> Result<()
             recipes
                 .remove_file(&name)
                 .map_err(|e| root::io(IoOperation::Remove, e))?;
-            warnings.push(format!(
-                "Recovered interrupted move for {}; Trash remains authoritative",
-                name.to_string_lossy()
-            ));
+            warnings.push(crate::presentation::library_text::recovered_move(&name));
         }
     }
     Ok(())
@@ -1081,18 +1069,18 @@ fn chronology(recipe: &Recipe, previous: Option<&Recipe>, now: Timestamp) -> Vec
         .zip(recipe.document().modified_at)
         .is_some_and(|(created, modified)| modified < created)
     {
-        warnings.push("declared modification precedes creation; history was not clamped.".into());
+        warnings.push(crate::presentation::library_text::MODIFICATION_PRECEDES_CREATION.into());
     }
     if previous
         .and_then(|p| p.document().modified_at.or(p.document().created_at))
         .is_some_and(|prior| now < prior)
     {
-        warnings.push("observed clock is earlier than prior history; exact bytes remain the conflict authority.".into());
+        warnings.push(crate::presentation::library_text::CLOCK_PREDATES_HISTORY.into());
     }
     if recipe.document().created_at.is_some_and(|date| date > now)
         || recipe.document().modified_at.is_some_and(|date| date > now)
     {
-        warnings.push("declared history lies in the future; it was preserved.".into());
+        warnings.push(crate::presentation::library_text::FUTURE_HISTORY.into());
     }
     warnings
 }
@@ -1101,11 +1089,7 @@ fn chronology(recipe: &Recipe, previous: Option<&Recipe>, now: Timestamp) -> Vec
 #[must_use]
 pub fn history_warnings(recipe: &Recipe) -> Vec<String> {
     observed_now().map_or_else(
-        |error| {
-            vec![format!(
-                "Cannot compare declared history with the observed clock: {error}"
-            )]
-        },
+        |error| vec![crate::presentation::library_text::unavailable_history_clock(&error)],
         |now| chronology(recipe, None, now),
     )
 }

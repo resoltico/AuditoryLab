@@ -269,9 +269,9 @@ pub(crate) fn publish_in<T>(
             .map_err(|e| io(path, IoOperation::Inspect, e))
             .and_then(|()| observed(dir, name, None));
         match found {
-            Ok(Some(fingerprint)) if fingerprint == candidate => warnings.push(format!(
-                "Saved; publication was verified after an I/O error: {error}"
-            )),
+            Ok(Some(fingerprint)) if fingerprint == candidate => warnings.push(
+                crate::presentation::publication_text::saved_after_io(&error),
+            ),
             Ok(found) if found == previous => {
                 return Err(cleanup(
                     dir,
@@ -306,9 +306,9 @@ pub(crate) fn publish_in<T>(
     drop(file);
     if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
         match observed(dir, name, None) {
-            Ok(Some(found)) if found == candidate => {
-                warnings.push(format!("Saved; directory durability warning: {error}"))
-            }
+            Ok(Some(found)) if found == candidate => warnings.push(
+                crate::presentation::publication_text::saved_durability(&error),
+            ),
             Ok(found) if found == previous => {
                 return Err(cleanup(
                     dir,
@@ -339,9 +339,8 @@ pub(crate) fn publish_in<T>(
     if matches!(policy, Policy::CreateNew)
         && let Err(error) = fault(FaultPoint::Cleanup).and_then(|()| dir.remove_file(&stage))
     {
-        warnings.push(format!(
-            "Saved; owned stage {} remains: {error}",
-            stage.display()
+        warnings.push(crate::presentation::publication_text::retained_stage(
+            &stage, &error,
         ));
     }
     Ok(Published { value, warnings })
@@ -498,17 +497,16 @@ pub(crate) fn relocate(
     let mut warnings = Vec::new();
     if let Err(error) = removal {
         match fault(FaultPoint::Verify).and_then(|()| from.symlink_metadata(name)) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(format!(
-                "Moved; source removal verified after I/O error: {error}"
-            )),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(
+                crate::presentation::publication_text::moved_after_io(&error),
+            ),
             Ok(_)
                 if destination.parent().and_then(Path::file_name)
                     == Some(std::ffi::OsStr::new("trash"))
                     && same_file(from, name, to, name)? =>
             {
-                warnings.push(format!(
-                    "Moved to Trash; redundant active link remains at {}: {error}",
-                    source.display()
+                warnings.push(crate::presentation::publication_text::trash_link(
+                    source, &error,
                 ))
             }
             Ok(_) => {
@@ -551,7 +549,9 @@ pub(crate) fn relocate(
                     ));
                 }
             }
-            warnings.push(format!("Moved; directory durability warning: {error}"));
+            warnings.push(crate::presentation::publication_text::moved_durability(
+                &error,
+            ));
         }
     }
     Ok(warnings)
@@ -564,9 +564,9 @@ pub(crate) fn remove(dir: &Dir, name: &Path, path: &Path) -> Result<Vec<String>,
     let mut warnings = Vec::new();
     if let Err(error) = result {
         match fault(FaultPoint::Verify).and_then(|()| dir.symlink_metadata(name)) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(format!(
-                "Deleted; absence verified under the exclusive lock after I/O error: {error}"
-            )),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(
+                crate::presentation::publication_text::deleted_after_io(&error),
+            ),
             Ok(_) => {
                 return Err(failed(
                     path,
@@ -588,9 +588,9 @@ pub(crate) fn remove(dir: &Dir, name: &Path, path: &Path) -> Result<Vec<String>,
     }
     if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
         match dir.symlink_metadata(name) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                warnings.push(format!("Deleted; directory durability warning: {error}"))
-            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(
+                crate::presentation::publication_text::deleted_durability(&error),
+            ),
             found => {
                 let confirmation = match found {
                     Ok(_) => Confirmation::Different,
