@@ -10,6 +10,8 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 extern crate alloc;
+pub mod diagnostic;
+pub use diagnostic::{Code, ParamValue, Params};
 #[cfg(test)]
 extern crate std;
 #[path = "model/authored.rs"]

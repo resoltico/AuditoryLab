@@ -91,13 +91,9 @@ pub enum PairIssue {
     /// A nonzero authored offset disappears during floating-point addition.
     UnrepresentablePairDifference,
 }
-impl fmt::Display for PairIssue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Nonfinite => "pair.nonfinite",
-            Self::Nonpositive => "pair.nonpositive",
-            Self::UnrepresentablePairDifference => "pair.unrepresentable_difference",
-        })
+impl core::fmt::Display for PairIssue {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(crate::Code::code(self))
     }
 }
 /// Why authored owners or generator capacity violate the sound structure.
@@ -131,18 +127,14 @@ pub struct PairError {
     /// Requested signed offset.
     pub offset_hz: f64,
 }
-impl fmt::Display for StructureError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Identity { id } => write!(f, "structure.identity.{id}"),
-            Self::ComponentBudget { count } => write!(f, "structure.component_budget.{count}"),
-            Self::VoiceBudget { count } => write!(f, "structure.voice_budget.{count}"),
-        }
+impl core::fmt::Display for StructureError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(crate::Code::code(self))
     }
 }
-impl fmt::Display for PairError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}.{}", self.issue, self.id)
+impl core::fmt::Display for PairError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(crate::Code::code(self))
     }
 }
 impl core::error::Error for StructureError {}
@@ -962,3 +954,33 @@ crate::vocabulary::vocabulary! { PairKind,"pair_kind" {
 #[cfg(test)]
 #[path = "authored/tests.rs"]
 mod tests;
+
+crate::diagnostic_codes! {
+    pub(crate) const CODES;
+    PairIssue {
+        codes {
+            Self::Nonfinite=>"pair.nonfinite",
+            Self::Nonpositive=>"pair.nonpositive",
+            Self::UnrepresentablePairDifference=>"pair.unrepresentable_difference",
+        }
+        delegates {}
+    }
+    StructureError {
+        codes {
+            Self::Identity {..}=>"structure.identity",
+            Self::ComponentBudget {..}=>"structure.component_budget",
+            Self::VoiceBudget {..}=>"structure.voice_budget",
+        }
+        delegates {}
+        params(this) {match this {
+            Self::Identity {id}=>crate::diagnostic_params! {"component_id"=>id.get()},
+            Self::ComponentBudget {count}=>crate::diagnostic_params! {"count"=>*count,"limit"=>Sound::MAX_COMPONENTS},
+            Self::VoiceBudget {count}=>crate::diagnostic_params! {"count"=>*count,"limit"=>Sound::MAX_VOICES},
+        }}
+    }
+    PairError {
+        codes {}
+        delegates {Self {issue,..}=>issue,}
+        params(this) {crate::diagnostic_params! {"component_id"=>this.id.get(),"first_hz"=>this.first_hz,"offset_hz"=>this.offset_hz}}
+    }
+}

@@ -1,5 +1,4 @@
 //! Shared terms and their stable serialized or command-line keys.
-use core::fmt;
 /// A heading label and the corresponding wording inside a sentence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Term {
@@ -40,15 +39,16 @@ impl VocabularyError {
         Self(code)
     }
 }
-impl fmt::Display for VocabularyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.0)
+impl core::fmt::Display for VocabularyError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(crate::Code::code(self))
     }
 }
 impl core::error::Error for VocabularyError {}
 macro_rules! vocabulary {
     ($name:ident,$kind:literal { $($variant:ident => ($key:expr,$label:expr,$phrase:expr)),+ $(,)? }) => {
         impl $name {
+            pub(crate) const INVALID_CODE:&'static str=concat!("vocabulary.",$kind);
             /// Every supported value in display order.
             pub const ALL:[Self;[$(stringify!($variant)),+].len()]=[$(Self::$variant),+];
             /// Heading and sentence wording owned by this vocabulary.
@@ -83,7 +83,7 @@ macro_rules! vocabulary {
         impl core::str::FromStr for $name {
             type Err=$crate::vocabulary::VocabularyError;
             fn from_str(text:&str)->Result<Self,Self::Err> {
-                Self::ALL.into_iter().find(|value|value.key()==text).ok_or($crate::vocabulary::VocabularyError::new(concat!("vocabulary.",$kind)))
+                Self::ALL.into_iter().find(|value|value.key()==text).ok_or($crate::vocabulary::VocabularyError::new(Self::INVALID_CODE))
             }
         }
     };
@@ -239,6 +239,22 @@ vocabulary! { Status,"status" {
     WaitingForGeneratedAudio => ("waiting_for_generated_audio","Waiting for generated audio","waiting for generated audio"),
 }}
 
+impl crate::Code for VocabularyError {
+    fn code(&self) -> &'static str {
+        self.0
+    }
+}
+macro_rules! vocabularies {($consumer:ident)=>{$consumer! {
+        ears:crate::Ears,ear:crate::Ear,pair_kind:crate::PairKind,slot_role:crate::SlotRole,
+        parameters:crate::ParameterId,carrier_kind:crate::CarrierKind,modulation_kind:crate::ModulationKind,
+        population:crate::Population,condition_role:crate::ConditionRole,evidence_scope:crate::EvidenceScope,measure:crate::Measure,
+        band:crate::rhythm::Band,method:crate::rhythm::Method,completeness:crate::rhythm::Completeness,
+        scope:crate::query::Scope,sort:crate::query::SortBy,direction:crate::query::Direction,group:crate::query::GroupBy,rhythm_state:crate::query::RhythmState,
+        calendar_field:crate::query::CalendarField,operation:Operation,status:Status,
+}};}
+macro_rules! registry {($($name:ident:$kind:ty),* $(,)?)=>{pub(crate) const CODES:&[&str]=&[$(<$kind>::INVALID_CODE),*];};}
+vocabularies!(registry);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,12 +308,5 @@ mod tests {
         );
     }
     macro_rules! checks {($($test:ident:$kind:ty),* $(,)?)=>{$(#[test] fn $test(){check::<$kind>();})*};}
-    checks! {
-        ears:crate::Ears,ear:crate::Ear,pair_kind:crate::PairKind,slot_role:crate::SlotRole,
-        parameters:crate::ParameterId,carrier_kind:crate::CarrierKind,modulation_kind:crate::ModulationKind,
-        population:crate::Population,condition_role:crate::ConditionRole,evidence_scope:crate::EvidenceScope,measure:crate::Measure,
-        band:crate::rhythm::Band,method:crate::rhythm::Method,completeness:crate::rhythm::Completeness,
-        scope:crate::query::Scope,sort:crate::query::SortBy,direction:crate::query::Direction,group:crate::query::GroupBy,rhythm_state:crate::query::RhythmState,
-        calendar_field:crate::query::CalendarField,operation:Operation,status:Status,
-    }
+    vocabularies!(checks);
 }

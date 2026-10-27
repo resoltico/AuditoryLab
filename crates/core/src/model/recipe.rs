@@ -10,7 +10,6 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use core::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 /// One portable authored document, independent of local ownership and membership.
@@ -66,18 +65,9 @@ pub enum RecipeError {
         found: u32,
     },
 }
-impl Display for RecipeError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::TooLarge => f.write_str("recipe.size"),
-            Self::NotUtf8 => f.write_str("recipe.utf8"),
-            Self::Utf16 => f.write_str("recipe.utf16"),
-            Self::Format(_) => f.write_str("recipe.format"),
-            Self::Contract(error) => write!(f, "recipe.contract.{error}"),
-            Self::Write(_) => f.write_str("recipe.write"),
-            Self::Structure(error) => write!(f, "recipe.{error}"),
-            Self::UnsupportedVersion { found } => write!(f, "recipe.schema_version.{found}"),
-        }
+impl core::fmt::Display for RecipeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(crate::Code::code(self))
     }
 }
 impl core::error::Error for RecipeError {
@@ -453,5 +443,24 @@ impl Recipe {
         || "Attributed copy; source findings concern the ancestor, not this sound.".into(),
         |notes| format!("Attributed copy; source findings concern the ancestor, not this sound. Ancestor notes: {notes}"),
     )
+    }
+}
+
+crate::diagnostic_codes! {
+    pub(crate) const CODES;
+    RecipeError {
+        codes {
+            Self::TooLarge=>"recipe.size",
+            Self::NotUtf8=>"recipe.utf8",
+            Self::Utf16=>"recipe.utf16",
+            Self::Format(_)=>"recipe.format",
+            Self::Write(_)=>"recipe.write",
+            Self::UnsupportedVersion {..}=>"recipe.schema_version",
+        }
+        delegates {Self::Contract(error)=>error,Self::Structure(error)=>error,}
+        params(this) {match this {
+            Self::UnsupportedVersion {found}=>crate::diagnostic_params! {"found"=>*found,"supported"=>Recipe::SCHEMA_VERSION},
+            _=>crate::Params::new(),
+        }}
     }
 }

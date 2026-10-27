@@ -519,10 +519,7 @@ crate::vocabulary::vocabulary! { Completeness,"completeness" {
 
 impl core::fmt::Display for Issue {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(match self {
-            Self::Value { .. } => "rhythm.value",
-            Self::Pair(_) => "rhythm.pair",
-        })
+        f.write_str(crate::Code::code(self))
     }
 }
 
@@ -603,5 +600,17 @@ mod primary_tests {
             }),
             Method::Monaural
         );
+    }
+}
+
+crate::diagnostic_codes! {
+    pub(crate) const CODES;
+    Issue {
+        codes {}
+        delegates {Self::Value {issue,..}=>issue,Self::Pair(error)=>error,}
+        params(this) {match this {
+            Self::Value {owner,..}=>crate::diagnostic_params! {"owner"=>alloc::string::ToString::to_string(owner)},
+            Self::Pair(_)=>crate::Params::new(),
+        }}
     }
 }

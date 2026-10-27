@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::{Signal, conversion};
-use core::fmt::{self, Display, Formatter};
 
 /// Frames per second, from [`SampleRate::MIN_HZ`] to [`SampleRate::MAX_HZ`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -15,9 +14,9 @@ pub struct SampleRateError {
     pub hz: u32,
 }
 
-impl Display for SampleRateError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "sample_rate.range.{}", self.hz)
+impl core::fmt::Display for SampleRateError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(crate::Code::code(self))
     }
 }
 
@@ -110,5 +109,14 @@ mod tests {
         assert_eq!(unit.frames_in(68_719_476_736.0), Some(Signal::MAX_FRAMES));
         assert_eq!(unit.frames_in(68_719_476_736.5), None);
         assert_eq!(rate(48_000).seconds_in(72_000), 1.5);
+    }
+}
+
+crate::diagnostic_codes! {
+    pub(crate) const CODES;
+    SampleRateError {
+        codes {Self {..}=>"sample_rate.range",}
+        delegates {}
+        params(this) {crate::diagnostic_params! {"hz"=>this.hz,"min_hz"=>SampleRate::MIN_HZ,"max_hz"=>SampleRate::MAX_HZ}}
     }
 }

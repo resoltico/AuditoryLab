@@ -57,11 +57,7 @@ pub(crate) fn check_value(parameter: ParameterId, value: f64) -> Result<(), Valu
 
 impl core::fmt::Display for ValueIssue {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(match self.rule {
-            ValueRule::Positive => "value.positive",
-            ValueRule::Peak => "value.peak",
-            ValueRule::Depth => "value.depth",
-        })
+        f.write_str(crate::Code::code(self))
     }
 }
 impl core::error::Error for ValueIssue {}
@@ -82,5 +78,18 @@ mod tests {
             assert_eq!(failure.parameter, parameter);
             assert_eq!(failure.value.to_bits(), value.to_bits());
         }
+    }
+}
+
+crate::diagnostic_codes! {
+    pub(crate) const CODES;
+    ValueIssue {
+        codes {
+            Self {rule:ValueRule::Positive,..}=>"value.positive",
+            Self {rule:ValueRule::Peak,..}=>"value.peak",
+            Self {rule:ValueRule::Depth,..}=>"value.depth",
+        }
+        delegates {}
+        params(this) {crate::diagnostic_params! {"parameter"=>this.parameter.key(),"value"=>this.value}}
     }
 }

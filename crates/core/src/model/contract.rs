@@ -1,7 +1,6 @@
 //! Typed portable-document contract failures, independent of presentation.
 use crate::DocumentUuid;
-use alloc::string::String;
-use core::fmt;
+use alloc::string::{String, ToString};
 /// The metadata record owning a bibliography reference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReferenceOwner {
@@ -104,30 +103,48 @@ pub enum ContractError {
         count: usize,
     },
 }
-impl fmt::Display for ContractError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Core's Error implementation exposes technical rule identifiers.
-        // Human sentences are owned by application presentation.
-        let code = match self {
-            Self::EmptyTitle => "empty_title",
-            Self::SourceBudget { .. } => "source_budget",
-            Self::EvidenceBudget { .. } => "evidence_budget",
-            Self::LineageBudget { .. } => "lineage_budget",
-            Self::EmptySourceKey { .. } => "empty_source_key",
-            Self::DuplicateSourceKey { .. } => "duplicate_source_key",
-            Self::EmptySourceLabel { .. } => "empty_source_label",
-            Self::EmptySourceCitation { .. } => "empty_source_citation",
-            Self::MissingLocator { .. } => "missing_source_locator",
-            Self::UrlScheme { .. } => "source_url_scheme",
-            Self::InvalidUrl { .. } => "invalid_source_url",
-            Self::InvalidDoi { .. } => "invalid_doi",
-            Self::DanglingReference { .. } => "dangling_bibliography_reference",
-            Self::EmptyLineageTitle { .. } => "empty_lineage_title",
-            Self::EmptyLineageNote { .. } => "empty_lineage_note",
-            Self::ReusedCopyIdentity { .. } => "reused_copy_identity",
-            Self::CopyLineageFull { .. } => "copy_lineage_full",
-        };
-        f.write_str(code)
+impl core::fmt::Display for ContractError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(crate::Code::code(self))
     }
 }
 impl core::error::Error for ContractError {}
+
+crate::diagnostic_codes! {
+    pub(crate) const CODES;
+    ContractError {
+        codes {
+            Self::EmptyTitle => "contract.empty_title",
+            Self::SourceBudget { .. } => "contract.source_budget",
+            Self::EvidenceBudget { .. } => "contract.evidence_budget",
+            Self::LineageBudget { .. } => "contract.lineage_budget",
+            Self::EmptySourceKey { .. } => "contract.empty_source_key",
+            Self::DuplicateSourceKey { .. } => "contract.duplicate_source_key",
+            Self::EmptySourceLabel { .. } => "contract.empty_source_label",
+            Self::EmptySourceCitation { .. } => "contract.empty_source_citation",
+            Self::MissingLocator { .. } => "contract.missing_source_locator",
+            Self::UrlScheme { .. } => "contract.source_url_scheme",
+            Self::InvalidUrl { .. } => "contract.invalid_source_url",
+            Self::InvalidDoi { .. } => "contract.invalid_doi",
+            Self::DanglingReference { .. } => "contract.dangling_bibliography_reference",
+            Self::EmptyLineageTitle { .. } => "contract.empty_lineage_title",
+            Self::EmptyLineageNote { .. } => "contract.empty_lineage_note",
+            Self::ReusedCopyIdentity { .. } => "contract.reused_copy_identity",
+            Self::CopyLineageFull { .. } => "contract.copy_lineage_full",
+}
+        delegates {}
+        params(this) {match this {
+            Self::EmptyTitle=>crate::Params::new(),
+            Self::SourceBudget {count}|Self::EvidenceBudget {count}|Self::LineageBudget {count}|Self::CopyLineageFull {count}=>crate::diagnostic_params! {"count"=>*count},
+            Self::EmptySourceKey {index}|Self::EmptyLineageTitle {index}|Self::EmptyLineageNote {index}=>crate::diagnostic_params! {"index"=>*index},
+            Self::DuplicateSourceKey {key}|Self::EmptySourceLabel {key}|Self::EmptySourceCitation {key}|Self::MissingLocator {key}=>crate::diagnostic_params! {"source_key"=>key.clone()},
+            Self::UrlScheme {key,url}|Self::InvalidUrl {key,url}=>crate::diagnostic_params! {"source_key"=>key.clone(),"url"=>url.clone()},
+            Self::InvalidDoi {key,doi}=>crate::diagnostic_params! {"source_key"=>key.clone(),"doi"=>doi.clone()},
+            Self::DanglingReference {owner,key}=>{
+                let (kind,index)=match owner {ReferenceOwner::Evidence(index)=>("evidence",*index),ReferenceOwner::Lineage(index)=>("lineage",*index)};
+                crate::diagnostic_params! {"record_kind"=>kind,"record_index"=>index,"source_key"=>key.clone()}
+            },
+            Self::ReusedCopyIdentity {id}=>crate::diagnostic_params! {"document_id"=>id.to_string()},
+        }}
+    }
+}
