@@ -335,7 +335,7 @@ fn fixture(case: Case) -> TestWorkspace {
             ws.library.binding =
                 LibraryBinding::Unavailable(crate::services::library::LibraryDiagnostic {
                     storage_id: "configured root".into(),
-                    code: "configuration".into(),
+
                     detail: crate::services::library::DiagnosticDetail::Failure(Box::new(
                         crate::storage::library::LibraryError::NativeRootUnavailable,
                     )),

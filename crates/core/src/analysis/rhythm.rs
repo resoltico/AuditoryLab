@@ -607,10 +607,17 @@ crate::diagnostic_codes! {
     pub(crate) const CODES;
     Issue {
         codes {}
-        delegates {Self::Value {issue,..}=>issue,Self::Pair(error)=>error,}
-        params(this) {match this {
-            Self::Value {owner,..}=>crate::diagnostic_params! {"owner"=>alloc::string::ToString::to_string(owner)},
-            Self::Pair(_)=>crate::Params::new(),
-        }}
+        delegates {
+            Self::Value { issue, .. } => issue,
+            Self::Pair(error) => error,
+        }
+        params(this) {
+            match this {
+                Self::Value { owner, .. } => {
+                    crate::diagnostic_params! {"owner"=>alloc::string::ToString::to_string(owner)}
+                }
+                Self::Pair(_) => crate::Params::new(),
+            }
+        }
     }
 }

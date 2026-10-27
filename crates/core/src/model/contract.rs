@@ -131,20 +131,39 @@ crate::diagnostic_codes! {
             Self::EmptyLineageNote { .. } => "contract.empty_lineage_note",
             Self::ReusedCopyIdentity { .. } => "contract.reused_copy_identity",
             Self::CopyLineageFull { .. } => "contract.copy_lineage_full",
-}
+        }
         delegates {}
-        params(this) {match this {
-            Self::EmptyTitle=>crate::Params::new(),
-            Self::SourceBudget {count}|Self::EvidenceBudget {count}|Self::LineageBudget {count}|Self::CopyLineageFull {count}=>crate::diagnostic_params! {"count"=>*count},
-            Self::EmptySourceKey {index}|Self::EmptyLineageTitle {index}|Self::EmptyLineageNote {index}=>crate::diagnostic_params! {"index"=>*index},
-            Self::DuplicateSourceKey {key}|Self::EmptySourceLabel {key}|Self::EmptySourceCitation {key}|Self::MissingLocator {key}=>crate::diagnostic_params! {"source_key"=>key.clone()},
-            Self::UrlScheme {key,url}|Self::InvalidUrl {key,url}=>crate::diagnostic_params! {"source_key"=>key.clone(),"url"=>url.clone()},
-            Self::InvalidDoi {key,doi}=>crate::diagnostic_params! {"source_key"=>key.clone(),"doi"=>doi.clone()},
-            Self::DanglingReference {owner,key}=>{
-                let (kind,index)=match owner {ReferenceOwner::Evidence(index)=>("evidence",*index),ReferenceOwner::Lineage(index)=>("lineage",*index)};
-                crate::diagnostic_params! {"record_kind"=>kind,"record_index"=>index,"source_key"=>key.clone()}
-            },
-            Self::ReusedCopyIdentity {id}=>crate::diagnostic_params! {"document_id"=>id.to_string()},
-        }}
+        params(this) {
+            match this {
+                Self::EmptyTitle => crate::Params::new(),
+                Self::SourceBudget { count }
+                | Self::EvidenceBudget { count }
+                | Self::LineageBudget { count }
+                | Self::CopyLineageFull { count } => crate::diagnostic_params! {"count"=>*count},
+                Self::EmptySourceKey { index }
+                | Self::EmptyLineageTitle { index }
+                | Self::EmptyLineageNote { index } => crate::diagnostic_params! {"index"=>*index},
+                Self::DuplicateSourceKey { key }
+                | Self::EmptySourceLabel { key }
+                | Self::EmptySourceCitation { key }
+                | Self::MissingLocator { key } => crate::diagnostic_params! {"source_key"=>key.clone()},
+                Self::UrlScheme { key, url } | Self::InvalidUrl { key, url } => {
+                    crate::diagnostic_params! {"source_key"=>key.clone(),"url"=>url.clone()}
+                }
+                Self::InvalidDoi { key, doi } => {
+                    crate::diagnostic_params! {"source_key"=>key.clone(),"doi"=>doi.clone()}
+                }
+                Self::DanglingReference { owner, key } => {
+                    let (kind, index) = match owner {
+                        ReferenceOwner::Evidence(index) => ("evidence", *index),
+                        ReferenceOwner::Lineage(index) => ("lineage", *index),
+                    };
+                    crate::diagnostic_params! {"record_kind"=>kind,"record_index"=>index,"source_key"=>key.clone()}
+                }
+                Self::ReusedCopyIdentity { id } => {
+                    crate::diagnostic_params! {"document_id"=>id.to_string()}
+                }
+            }
+        }
     }
 }

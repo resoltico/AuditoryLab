@@ -17,6 +17,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 mod audio;
+pub(crate) use views::CODES as VIEW_CODES;
 mod editor;
 mod file;
 mod library;
@@ -1025,30 +1026,7 @@ pub mod controls;
 
 impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::LibraryUnavailable(..) => "workspace.library_unavailable",
-            Self::DevicePlaybackUnavailable => "workspace.device_playback_unavailable",
-            Self::PromptOpen => "workspace.prompt_open",
-            Self::ActionPending => "workspace.action_pending",
-            Self::FileBusy => "workspace.file_busy",
-            Self::AudioPlaying => "workspace.audio_playing",
-            Self::Exporting => "workspace.exporting",
-            Self::NoAudio => "workspace.no_audio",
-            Self::NoExport => "workspace.no_export",
-            Self::Input(..) => "workspace.input",
-            Self::NotFinite => "workspace.not_finite",
-            Self::Document(..) => "workspace.document",
-            Self::SelectionChanged => "workspace.selection_changed",
-            Self::TemporaryRequired => "workspace.temporary_required",
-            Self::PurgeSelectionChanged => "workspace.purge_selection_changed",
-            Self::DetachedDraft(..) => "workspace.detached_draft",
-            Self::ExistingSavedIdentity(..) => "workspace.existing_saved_identity",
-            Self::SavedEntryUnreadable => "workspace.saved_entry_unreadable",
-            Self::RestoreBeforePlayback => "workspace.restore_before_playback",
-            Self::Invalid { .. } => "workspace.invalid",
-            Self::NoSelection => "workspace.no_selection",
-            Self::Edit(..) => "workspace.edit",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 
@@ -1068,6 +1046,58 @@ impl std::error::Error for Refusal {
                 _ => None,
             },
             _ => None,
+        }
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    Refusal {
+        codes {
+            Self::DevicePlaybackUnavailable => "workspace.device_playback_unavailable",
+            Self::PromptOpen => "workspace.prompt_open",
+            Self::ActionPending => "workspace.action_pending",
+            Self::FileBusy => "workspace.file_busy",
+            Self::AudioPlaying => "workspace.audio_playing",
+            Self::Exporting => "workspace.exporting",
+            Self::NoAudio => "workspace.no_audio",
+            Self::NoExport => "workspace.no_export",
+            Self::Input(..) => "workspace.input",
+            Self::NotFinite => "workspace.not_finite",
+            Self::SelectionChanged => "workspace.selection_changed",
+            Self::TemporaryRequired => "workspace.temporary_required",
+            Self::PurgeSelectionChanged => "workspace.purge_selection_changed",
+            Self::DetachedDraft(..) => "workspace.detached_draft",
+            Self::ExistingSavedIdentity(..) => "workspace.existing_saved_identity",
+            Self::SavedEntryUnreadable => "workspace.saved_entry_unreadable",
+            Self::RestoreBeforePlayback => "workspace.restore_before_playback",
+            Self::Invalid { error: None, .. } => "workspace.invalid",
+            Self::NoSelection => "workspace.no_selection",
+        }
+        delegates {
+            Self::LibraryUnavailable(problem) => problem,
+            Self::Document(error) => error,
+            Self::Edit(error) => error,
+            Self::Invalid {
+                error: Some(error), ..
+            } => error,
+        }
+        params(this) {
+            match this {
+                Self::Input(problems) => {
+                    crate::core::diagnostic_params! {"problem_count"=>problems.len()}
+                }
+                Self::DetachedDraft(key) => {
+                    crate::core::diagnostic_params! {"selector"=>key.to_string()}
+                }
+                Self::ExistingSavedIdentity(id) => {
+                    crate::core::diagnostic_params! {"document_id"=>id.to_string()}
+                }
+                Self::Invalid { title, rate, .. } => {
+                    crate::core::diagnostic_params! {"title"=>title.clone(),"diagnostic_rate_hz"=>rate.hz()}
+                }
+                _ => crate::core::Params::new(),
+            }
         }
     }
 }

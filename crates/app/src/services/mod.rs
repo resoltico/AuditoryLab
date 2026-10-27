@@ -2,6 +2,7 @@
 mod error;
 pub use self::error::{ExportError, OperationError};
 use crate::document::origin::ObservedFile;
+pub(crate) use error::CODES as DIAGNOSTIC_CODES;
 pub use {
     crate::storage::error::Confirmation, crate::storage::error::FileError,
     crate::storage::error::IoCause, crate::storage::error::IoFailure,

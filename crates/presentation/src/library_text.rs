@@ -630,7 +630,7 @@ mod tests {
         use auditorylab_app::workspace::{TaskFailure, WorkerFailure};
         let problem = LibraryDiagnostic {
             storage_id: "captured entry".into(),
-            code: "worker.invalid_outcome".into(),
+
             detail: DiagnosticDetail::Failure(Box::new(TaskFailure::Worker(
                 WorkerFailure::InvalidOutcome,
             ))),

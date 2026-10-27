@@ -596,7 +596,7 @@ fn print_mutation_json(value: &Report) -> Result<()> {
 pub(super) fn error_json(operation: Operation, error: &super::CliError) -> Result<()> {
     print_json(&Report::error(
         operation,
-        error.code(),
+        error,
         error.message(),
         error.outcome(),
     ))

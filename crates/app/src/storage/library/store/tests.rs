@@ -182,11 +182,10 @@ fn orphan_timestamps_and_owned_stages_are_reported_then_cleaned_only_under_write
     fs::write(&foreign, b"foreign").unwrap();
     let scan = store.scan(&Cancel::default());
     assert!(scan.complete);
-    assert!(
-        scan.diagnostics
-            .iter()
-            .any(|d| d.code == "orphan_membership")
-    );
+    assert!(scan.diagnostics.iter().any(|d| matches!(
+        &d.detail,
+        DiagnosticDetail::Notice(InventoryNotice::OrphanMembership(_))
+    )));
     assert_eq!(scan.stages.len(), 1);
     assert!(owned.exists());
     store
@@ -247,12 +246,10 @@ fn bounded_scan_retains_healthy_rows_and_unknown_files_are_never_deleted() {
     let complete = store.scan(&Cancel::default());
     assert!(complete.complete);
     assert_eq!(complete.entries.len(), 1);
-    assert!(
-        complete
-            .diagnostics
-            .iter()
-            .any(|d| d.code == "unrecognized_artifact")
-    );
+    assert!(complete.diagnostics.iter().any(|d| matches!(
+        &d.detail,
+        DiagnosticDetail::Notice(InventoryNotice::UnknownEntry)
+    )));
     let limited = store.scan_limited(
         &Cancel::default(),
         ScanLimits {
@@ -286,4 +283,26 @@ fn private_stage_entries_are_bounded_by_the_same_inventory_budget() {
     assert_eq!(result.stages.len(), 1);
     assert!(path.join(".stage/first").exists());
     assert!(path.join(".stage/second").exists());
+}
+
+#[test]
+fn aborted_scans_remain_distinct_from_record_level_diagnostics() {
+    let (_temp, path, store) = fixture();
+    let id = Draft::new().unwrap().recipe().unwrap().document().id;
+    let record = path.join("recipes").join(format!("{id}.toml"));
+    fs::write(&record, b"invalid portable record").unwrap();
+    let partial = store.scan(&Cancel::default());
+    assert!(!partial.complete && !partial.aborted);
+    assert!(!partial.diagnostics.is_empty());
+    assert_eq!(fs::read(&record).unwrap(), b"invalid portable record");
+    fs::remove_file(path.join("library.toml")).unwrap();
+    let aborted = store.scan(&Cancel::default());
+    assert!(!aborted.complete && aborted.aborted);
+    assert!(
+        aborted
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.storage_id == path.display().to_string())
+    );
+    assert_eq!(fs::read(record).unwrap(), b"invalid portable record");
 }

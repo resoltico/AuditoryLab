@@ -7,6 +7,7 @@
 pub use auditorylab_core as core;
 pub(crate) mod audio;
 pub mod clock;
+pub mod diagnostic;
 pub mod discovery;
 pub mod document;
 pub mod identity;

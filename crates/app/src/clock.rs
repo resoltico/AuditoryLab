@@ -32,7 +32,7 @@ pub struct ClockError {
 
 impl std::fmt::Display for ClockError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("clock.range")
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for ClockError {}
@@ -51,5 +51,22 @@ mod tests {
         );
         let beyond = SystemTime::UNIX_EPOCH + Duration::from_secs(253_402_300_800);
         assert_eq!(from_system_time(beyond).unwrap_err().observed, beyond);
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    ClockError {
+        codes {
+            Self { .. } => "clock.range",
+        }
+        delegates {}
+        params(this) {
+            let (before, duration) = match this.observed.duration_since(std::time::UNIX_EPOCH) {
+                Ok(duration) => (false, duration),
+                Err(error) => (true, error.duration()),
+            };
+            crate::core::diagnostic_params! {"observed_before_epoch"=>before,"observed_seconds"=>duration.as_secs(),"observed_nanoseconds"=>duration.subsec_nanos()}
+        }
     }
 }

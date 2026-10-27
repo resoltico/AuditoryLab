@@ -500,7 +500,7 @@ fn failed_report_completion_never_claims_a_failed_operation_was_confirmed() {
     let error = std::io::Error::other("rejected operation");
     let report = auditorylab_presentation::reports::Report::error(
         auditorylab_core::vocabulary::Operation::LibraryInit,
-        "cli.argument",
+        &auditorylab_core::SampleRateError { hz: 0 },
         error.to_string(),
         Outcome::InvalidArgument,
     );

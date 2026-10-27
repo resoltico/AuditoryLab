@@ -48,10 +48,7 @@ impl RenditionError {
 
 impl std::fmt::Display for EditorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Identity(..) => "editor.identity",
-            Self::Recipe(..) => "editor.recipe",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for EditorError {
@@ -65,11 +62,31 @@ impl std::error::Error for EditorError {
 
 impl std::fmt::Display for RenditionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.error, f)
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for crate::document::error::RenditionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&self.error)
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    EditorError {
+        codes {}
+        delegates {
+            Self::Identity(error) => error,
+            Self::Recipe(error) => error,
+        }
+    }
+    RenditionError {
+        codes {}
+        delegates {
+            Self { error, .. } => error,
+        }
+        params(this) {
+            crate::core::diagnostic_params! {"origin"=>this.origin.to_string(),"diagnostic_rate_hz"=>this.rate.hz()}
+        }
     }
 }

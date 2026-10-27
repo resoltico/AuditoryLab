@@ -55,8 +55,8 @@ enum Command {
         format: library_cli::ReadFormat,
         #[command(flatten)]
         source: Source,
-        #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(), value_parser=rate, value_name="HZ")]
-        sample_rate: SampleRate,
+        #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(), value_parser=clap::value_parser!(u32), value_name="HZ")]
+        sample_rate: u32,
     },
     /// Play on the default audio output device.
     Play(Source),
@@ -66,8 +66,8 @@ enum Command {
         source: Source,
         #[arg(long, value_name = "PATH")]
         output: PathBuf,
-        #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(), value_parser=rate, value_name="HZ")]
-        sample_rate: SampleRate,
+        #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(), value_parser=clap::value_parser!(u32), value_name="HZ")]
+        sample_rate: u32,
     },
 }
 #[derive(Args)]
@@ -83,14 +83,7 @@ struct Source {
     #[arg(long)]
     stdin: bool,
 }
-fn rate(text: &str) -> Result<SampleRate, String> {
-    text.parse::<u32>()
-        .map_err(|e| e.to_string())
-        .and_then(|n| {
-            SampleRate::new(n)
-                .map_err(|e| auditorylab_presentation::core_errors::sample_rate_error(&e))
-        })
-}
+
 fn absolute_path(text: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(text);
     if path.is_absolute() {
@@ -126,16 +119,7 @@ impl CliError {
             }
         }
     }
-    fn code(&self) -> String {
-        match self {
-            Self::Operation(error) => error.to_string(),
-            Self::Usage(_) => "cli.argument".into(),
-            Self::Io(_) => "cli.output".into(),
-            Self::Interrupt(_) => "cli.interrupt".into(),
-            Self::Json(_) => "cli.json".into(),
-            Self::Formatting(_) => "cli.format".into(),
-        }
-    }
+
     fn message(&self) -> String {
         let message = match self {
             Self::Usage(error) => error.to_string(),
@@ -413,6 +397,8 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             sample_rate,
             format,
         }) => {
+            let sample_rate =
+                SampleRate::new(sample_rate).map_err(lab::services::OperationError::from)?;
             return Ok(Ended::Code(library_cli::inspect(
                 &library_cli::resolve(source, cli.library_dir.as_deref())?,
                 sample_rate,
@@ -424,6 +410,8 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             output: path,
             sample_rate,
         }) => {
+            let sample_rate =
+                SampleRate::new(sample_rate).map_err(lab::services::OperationError::from)?;
             let resolved = library_cli::resolve(source, cli.library_dir.as_deref())?;
             let inspection = lab::services::inspect(&resolved, sample_rate);
             let sound = inspection.sound().map_err(Clone::clone)?;
@@ -566,7 +554,7 @@ mod operation_tests {
             });
             let report = auditorylab_presentation::reports::Report::error(
                 actual,
-                "cli.argument",
+                &CliError::Usage(Usage("fixture".into())),
                 "fixture",
                 Outcome::InvalidArgument,
             );
@@ -593,5 +581,63 @@ mod operation_tests {
             "every offered CLI command needs an independent operation expectation"
         );
         assert!(command_output(&None).is_none());
+    }
+}
+
+// diagnostic-codes:begin
+// The presentation reference test reads this declaration because CLI is a binary.
+auditorylab_app::core::diagnostic_codes! {
+    #[cfg(test)]
+    pub(crate) const CODES;
+    CliError {
+        codes {
+            Self::Usage(_)=>"cli.argument",
+            Self::Io(_)=>"cli.output",
+            Self::Interrupt(_)=>"cli.interrupt",
+            Self::Json(_)=>"cli.json",
+            Self::Formatting(_)=>"cli.format",
+        }
+        delegates {Self::Operation(error)=>error,}
+    }
+}
+// diagnostic-codes:end
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+    use auditorylab_app::core::{Code, ParamValue};
+    #[test]
+    fn owned_cli_codes_cover_their_variants_and_domain_errors_delegate() {
+        let cases = [
+            (
+                CliError::Usage(Usage("invalid argument".into())),
+                "cli.argument",
+            ),
+            (
+                CliError::Io(io::Error::other("output failure")),
+                "cli.output",
+            ),
+            (
+                CliError::Interrupt(ctrlc::Error::MultipleHandlers),
+                "cli.interrupt",
+            ),
+            (
+                CliError::Json(serde_json::from_str::<serde_json::Value>("{").unwrap_err()),
+                "cli.json",
+            ),
+            (CliError::Formatting(std::fmt::Error), "cli.format"),
+        ];
+        let mut actual = std::collections::BTreeSet::new();
+        for (error, expected) in cases {
+            assert_eq!(error.code(), expected);
+            actual.insert(error.code());
+        }
+        assert_eq!(actual, CODES.iter().copied().collect());
+        let error = CliError::from(lab::services::OperationError::from(
+            SampleRate::new(0).unwrap_err(),
+        ));
+        assert_eq!(error.code(), "sample_rate.range");
+        assert_eq!(error.params()["hz"], ParamValue::Unsigned(0));
+        assert_eq!(error.outcome(), Outcome::InvalidArgument);
     }
 }

@@ -959,28 +959,38 @@ crate::diagnostic_codes! {
     pub(crate) const CODES;
     PairIssue {
         codes {
-            Self::Nonfinite=>"pair.nonfinite",
-            Self::Nonpositive=>"pair.nonpositive",
-            Self::UnrepresentablePairDifference=>"pair.unrepresentable_difference",
+            Self::Nonfinite => "pair.nonfinite",
+            Self::Nonpositive => "pair.nonpositive",
+            Self::UnrepresentablePairDifference => "pair.unrepresentable_difference",
         }
         delegates {}
     }
     StructureError {
         codes {
-            Self::Identity {..}=>"structure.identity",
-            Self::ComponentBudget {..}=>"structure.component_budget",
-            Self::VoiceBudget {..}=>"structure.voice_budget",
+            Self::Identity { .. } => "structure.identity",
+            Self::ComponentBudget { .. } => "structure.component_budget",
+            Self::VoiceBudget { .. } => "structure.voice_budget",
         }
         delegates {}
-        params(this) {match this {
-            Self::Identity {id}=>crate::diagnostic_params! {"component_id"=>id.get()},
-            Self::ComponentBudget {count}=>crate::diagnostic_params! {"count"=>*count,"limit"=>Sound::MAX_COMPONENTS},
-            Self::VoiceBudget {count}=>crate::diagnostic_params! {"count"=>*count,"limit"=>Sound::MAX_VOICES},
-        }}
+        params(this) {
+            match this {
+                Self::Identity { id } => crate::diagnostic_params! {"component_id"=>id.get()},
+                Self::ComponentBudget { count } => {
+                    crate::diagnostic_params! {"count"=>*count,"limit"=>Sound::MAX_COMPONENTS}
+                }
+                Self::VoiceBudget { count } => {
+                    crate::diagnostic_params! {"count"=>*count,"limit"=>Sound::MAX_VOICES}
+                }
+            }
+        }
     }
     PairError {
         codes {}
-        delegates {Self {issue,..}=>issue,}
-        params(this) {crate::diagnostic_params! {"component_id"=>this.id.get(),"first_hz"=>this.first_hz,"offset_hz"=>this.offset_hz}}
+        delegates {
+            Self { issue, .. } => issue,
+        }
+        params(this) {
+            crate::diagnostic_params! {"component_id"=>this.id.get(),"first_hz"=>this.first_hz,"offset_hz"=>this.offset_hz}
+        }
     }
 }

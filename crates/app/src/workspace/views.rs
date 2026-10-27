@@ -652,11 +652,7 @@ impl Workspace {
 
 impl std::fmt::Display for FieldDiagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Input(_, cause) => cause.fmt(f),
-            Self::Voice(cause) => cause.fmt(f),
-            Self::Sound(cause) => cause.fmt(f),
-        }
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for FieldDiagnostic {
@@ -666,5 +662,17 @@ impl std::error::Error for FieldDiagnostic {
             Self::Voice(cause) => cause,
             Self::Sound(cause) => cause,
         })
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    FieldDiagnostic {
+        codes {}
+        delegates {
+            Self::Input(_, cause) => cause,
+            Self::Voice(cause) => cause,
+            Self::Sound(cause) => cause,
+        }
     }
 }

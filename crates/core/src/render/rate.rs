@@ -115,8 +115,12 @@ mod tests {
 crate::diagnostic_codes! {
     pub(crate) const CODES;
     SampleRateError {
-        codes {Self {..}=>"sample_rate.range",}
+        codes {
+            Self { .. } => "sample_rate.range",
+        }
         delegates {}
-        params(this) {crate::diagnostic_params! {"hz"=>this.hz,"min_hz"=>SampleRate::MIN_HZ,"max_hz"=>SampleRate::MAX_HZ}}
+        params(this) {
+            crate::diagnostic_params! {"hz"=>this.hz,"min_hz"=>SampleRate::MIN_HZ,"max_hz"=>SampleRate::MAX_HZ}
+        }
     }
 }

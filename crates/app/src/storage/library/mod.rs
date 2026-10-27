@@ -4,6 +4,7 @@
 //! separate from local membership. No library operation belongs on an audio callback.
 mod error;
 pub use self::error::LibraryError;
+pub(crate) use error::CODES as ERROR_CODES;
 mod root;
 pub(crate) mod store;
 use crate::core::DocumentUuid;

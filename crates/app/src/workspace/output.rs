@@ -480,13 +480,7 @@ pub enum OutputIssue {
 
 impl std::fmt::Display for PreviewIssue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Snapshot(cause) => cause.fmt(f),
-            Self::Acoustic {
-                error: Some(cause), ..
-            } => cause.fmt(f),
-            Self::Acoustic { error: None, .. } => f.write_str("preview.unavailable"),
-        }
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for PreviewIssue {
@@ -502,10 +496,7 @@ impl std::error::Error for PreviewIssue {
 }
 impl std::fmt::Display for OutputIssue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Capture(cause) => cause.fmt(f),
-            Self::Preview(cause) => cause.fmt(f),
-        }
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for OutputIssue {
@@ -514,5 +505,35 @@ impl std::error::Error for OutputIssue {
             Self::Capture(cause) => cause,
             Self::Preview(cause) => cause,
         })
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    PreviewIssue {
+        codes {
+            Self::Acoustic { error: None, .. } => "preview.unavailable",
+        }
+        delegates {
+            Self::Snapshot(cause) => cause,
+            Self::Acoustic {
+                error: Some(cause), ..
+            } => cause,
+        }
+        params(this) {
+            match this {
+                Self::Acoustic { title, rate, .. } => {
+                    crate::core::diagnostic_params! {"title"=>title.clone(),"diagnostic_rate_hz"=>rate.hz()}
+                }
+                _ => crate::core::Params::new(),
+            }
+        }
+    }
+    OutputIssue {
+        codes {}
+        delegates {
+            Self::Capture(cause) => cause,
+            Self::Preview(cause) => cause,
+        }
     }
 }

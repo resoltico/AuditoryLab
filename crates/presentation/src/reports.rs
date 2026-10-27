@@ -6,6 +6,7 @@ use auditorylab_app::document::origin::VersionToken;
 use auditorylab_core::query::Direction;
 use auditorylab_core::query::SortBy;
 use auditorylab_core::vocabulary::Operation;
+use auditorylab_core::{Code, Params};
 use serde::Serialize;
 use std::path::PathBuf;
 use {
@@ -37,39 +38,36 @@ macro_rules! report_struct {
         }
     }
 }
-/// A stable diagnostic code and its human explanation.
+/// A fixed machine identifier, human explanation and captured values.
 #[derive(Debug, Clone, Serialize)]
 pub struct DiagnosticMessage {
-    /// Stable machine identifier.
-    pub code: String,
+    /// Fixed identifier owned by the typed cause.
+    pub code: &'static str,
     /// Human explanation rendered by presentation.
     pub message: String,
+    /// Captured values, omitted when the rule needs no parameters.
+    #[serde(skip_serializing_if = "Params::is_empty")]
+    pub params: Params,
 }
-impl From<&auditorylab_app::services::StorageWarning> for DiagnosticMessage {
-    fn from(value: &auditorylab_app::services::StorageWarning) -> Self {
+impl DiagnosticMessage {
+    /// Render one typed cause without parsing its Display output.
+    #[must_use]
+    pub fn new(cause: &impl Code, message: impl Into<String>) -> Self {
         Self {
-            code: value.to_string(),
-            message: super::publication_text::warning(value),
+            code: cause.code(),
+            message: message.into(),
+            params: cause.params(),
         }
     }
 }
-/// Inventory context paired with its rendered diagnostic.
-#[derive(Debug, Clone, Serialize)]
-pub struct LibraryDiagnosticReport {
-    /// Relative storage name or configured root.
-    pub storage_id: String,
-    /// Stable inventory diagnostic category.
-    pub code: String,
-    /// Human explanation from the retained typed cause.
-    pub message: String,
+impl From<&auditorylab_app::services::StorageWarning> for DiagnosticMessage {
+    fn from(value: &auditorylab_app::services::StorageWarning) -> Self {
+        Self::new(value, super::publication_text::warning(value))
+    }
 }
-impl<E: super::Explain> From<&LibraryDiagnostic<E>> for LibraryDiagnosticReport {
+impl<E: Code + super::Explain> From<&LibraryDiagnostic<E>> for DiagnosticMessage {
     fn from(value: &LibraryDiagnostic<E>) -> Self {
-        Self {
-            storage_id: value.storage_id.clone(),
-            code: value.code.clone(),
-            message: value.message(),
-        }
+        Self::new(value, value.message())
     }
 }
 report_struct!(InitializationReport { created: bool, path: PathBuf, warnings: Vec<DiagnosticMessage> });
@@ -114,10 +112,7 @@ impl From<&rhythm::Analysis> for NominalReport {
             diagnostics: value
                 .diagnostics
                 .iter()
-                .map(|cause| DiagnosticMessage {
-                    code: cause.to_string(),
-                    message: crate::rhythm_diagnostic(cause),
-                })
+                .map(|cause| DiagnosticMessage::new(cause, crate::rhythm_diagnostic(cause)))
                 .collect(),
         }
     }
@@ -181,22 +176,6 @@ impl From<&EntrySummary> for EntryReport {
         }
     }
 }
-/// A report diagnostic retains either storage context or a direct operation message.
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
-pub enum Diagnostic {
-    /// A bounded inventory diagnostic.
-    Library(LibraryDiagnosticReport),
-    /// A root inspection error.
-    Root {
-        /// Stable diagnostic class.
-        code: &'static str,
-        /// User-facing explanation.
-        message: String,
-    },
-    /// A direct operation diagnostic.
-    Message(DiagnosticMessage),
-}
 report_struct!(UnavailableRoot {
     path: PathBuf, source: RootSource, exists: Option<bool>, layout: Option<u32>, initialized: bool,
 });
@@ -240,7 +219,7 @@ pub enum ReportStatus {
 report_struct!(Report {
     output_schema_version: u32, operation: Operation, complete: bool, convention: &'static str,
     query: Option<CatalogQuery>, unique_count: usize, entries: Vec<EntryReport>, groups: Vec<GroupReport>,
-    diagnostics: Vec<Diagnostic>,
+    diagnostics: Vec<DiagnosticMessage>,
     #[serde(skip_serializing_if = "Option::is_none")] classifier_revision: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")] effective_sort: Option<(SortBy, Direction)>,
     #[serde(skip_serializing_if = "Option::is_none")] stages: Option<Vec<String>>,
@@ -299,7 +278,7 @@ impl Report {
         report.diagnostics = listing
             .diagnostics()
             .iter()
-            .map(|diagnostic| Diagnostic::Library(diagnostic.into()))
+            .map(DiagnosticMessage::from)
             .collect();
         report.stages = Some(
             listing
@@ -339,10 +318,7 @@ impl Report {
             },
             Err(error) => Validation::Invalid {
                 sample_rate_hz: rate.hz(),
-                diagnostics: vec![DiagnosticMessage {
-                    code: error.to_string(),
-                    message: error.explain(),
-                }],
+                diagnostics: vec![DiagnosticMessage::new(error, error.explain())],
             },
         };
         Self::new(Operation::Inspect, true).with_entries(vec![entry])
@@ -370,10 +346,9 @@ impl Report {
             layout: None,
             initialized: false,
         }));
-        report.diagnostics.push(Diagnostic::Root {
-            code: "root_inspection",
-            message: error.explain(),
-        });
+        report
+            .diagnostics
+            .push(DiagnosticMessage::new(error, error.explain()));
         report
     }
     /// Explicit library initialization.
@@ -397,7 +372,7 @@ impl Report {
         report.diagnostics = initialized
             .warnings
             .iter()
-            .map(|warning| Diagnostic::Message(warning.into()))
+            .map(DiagnosticMessage::from)
             .collect();
         report
     }
@@ -409,7 +384,7 @@ impl Report {
         report.diagnostics = inventory
             .diagnostics
             .iter()
-            .map(|diagnostic| Diagnostic::Library(diagnostic.into()))
+            .map(DiagnosticMessage::from)
             .collect();
         report.stages = Some(
             inventory
@@ -436,7 +411,7 @@ impl Report {
         report.diagnostics = outcome
             .diagnostics
             .iter()
-            .map(|warning| Diagnostic::Message(warning.into()))
+            .map(DiagnosticMessage::from)
             .collect();
         report
     }
@@ -444,7 +419,7 @@ impl Report {
     #[must_use]
     pub fn error(
         operation: Operation,
-        code: impl Into<String>,
+        error: &impl Code,
         message: impl Into<String>,
         outcome: Outcome,
     ) -> Self {
@@ -467,10 +442,7 @@ impl Report {
         }));
         report
             .diagnostics
-            .push(Diagnostic::Message(DiagnosticMessage {
-                code: code.into(),
-                message: message.into(),
-            }));
+            .push(DiagnosticMessage::new(error, message));
         report
     }
 }
@@ -493,4 +465,40 @@ pub fn json_bytes(value: &Report) -> Result<Vec<u8>, serde_json::Error> {
         }
     }
     Ok(output.into_bytes())
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+    #[test]
+    fn diagnostic_values_serialize_explicitly_and_empty_params_are_omitted() {
+        let issue = auditorylab_core::ValueIssue {
+            parameter: auditorylab_core::ParameterId::ToneFrequency,
+            value: f64::INFINITY,
+            rule: auditorylab_core::ValueRule::Positive,
+        };
+        let value =
+            serde_json::to_value(DiagnosticMessage::new(&issue, "invalid frequency")).unwrap();
+        assert_eq!(value["code"], "value.positive");
+        assert_eq!(value["params"]["value"], "inf");
+        assert_eq!(value["params"]["parameter"], "tone_frequency");
+        assert_eq!(value.as_object().unwrap().len(), 3);
+        let empty = serde_json::to_value(DiagnosticMessage::new(
+            &auditorylab_app::document::editing::InputProblem::Unparseable,
+            "invalid input",
+        ))
+        .unwrap();
+        assert!(empty.get("params").is_none());
+        let negative_zero = auditorylab_core::ValueIssue {
+            value: -0.0,
+            ..issue
+        };
+        let value =
+            serde_json::to_value(DiagnosticMessage::new(&negative_zero, "invalid frequency"))
+                .unwrap();
+        assert_eq!(
+            value["params"]["value"].as_f64().unwrap().to_bits(),
+            (-0.0_f64).to_bits()
+        );
+    }
 }

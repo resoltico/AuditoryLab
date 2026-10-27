@@ -36,6 +36,8 @@ impl From<FileError> for ExportError {
 /// A typed completion failure for code coordinating several operation families.
 #[derive(Debug, Clone)]
 pub enum OperationError {
+    /// A requested sample rate is outside the supported range.
+    SampleRate(crate::core::SampleRateError),
     /// Portable input or rendition loading failed.
     Load(LoadError),
     /// Managed library operation failed.
@@ -62,6 +64,7 @@ impl OperationError {
     #[must_use]
     pub fn outcome(&self) -> Outcome {
         match self {
+            Self::SampleRate(_) => Outcome::InvalidArgument,
             Self::Load(error) => error.outcome(),
             Self::Library(error) => error.outcome(),
             Self::Export(error) => error.outcome(),
@@ -89,7 +92,7 @@ impl OperationError {
 macro_rules! operation_from {
     ($($ty:ty => $variant:ident),* $(,)?) => { $(impl From<$ty> for OperationError { fn from(error: $ty) -> Self { Self::$variant(error) } })* };
 }
-operation_from! { LoadError => Load, LibraryError => Library, ExportError => Export, PlaybackError => Playback, SaveError => Save, EditorError => Editor, IdentityError => Identity, QueryError => Query, FileError => File, crate::core::RecipeError => Recipe }
+operation_from! { LoadError => Load, LibraryError => Library, ExportError => Export, PlaybackError => Playback, SaveError => Save, EditorError => Editor, IdentityError => Identity, QueryError => Query, FileError => File, crate::core::RecipeError => Recipe, crate::core::SampleRateError => SampleRate }
 
 impl From<crate::document::origin::OriginError> for OperationError {
     fn from(error: crate::document::origin::OriginError) -> Self {
@@ -99,10 +102,7 @@ impl From<crate::document::origin::OriginError> for OperationError {
 
 impl std::fmt::Display for ExportError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::File { .. } => "export.file",
-            Self::Sound { .. } => "export.sound",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for ExportError {
@@ -114,21 +114,9 @@ impl std::error::Error for ExportError {
     }
 }
 
-impl std::fmt::Display for crate::services::OperationError {
+impl std::fmt::Display for OperationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use crate::services::OperationError as E;
-        match self {
-            E::Load(error) => error.fmt(f),
-            E::Library(error) => error.fmt(f),
-            E::Export(error) => error.fmt(f),
-            E::Playback(error) => error.fmt(f),
-            E::Save(error) => error.fmt(f),
-            E::Editor(error) => error.fmt(f),
-            E::Identity(error) => error.fmt(f),
-            E::Query(error) => error.fmt(f),
-            E::File(error) => error.fmt(f),
-            E::Recipe(error) => error.fmt(f),
-        }
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for crate::services::OperationError {
@@ -145,6 +133,42 @@ impl std::error::Error for crate::services::OperationError {
             E::Query(error) => error,
             E::File(error) => error,
             E::Recipe(error) => error,
+            E::SampleRate(error) => error,
         })
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    ExportError {
+        codes {}
+        delegates {
+            Self::File { error } => error,
+            Self::Sound { error, .. } => error,
+        }
+        params(this) {
+            match this {
+                Self::Sound { origin, rate, .. } => {
+                    crate::core::diagnostic_params! {"origin"=>origin.to_string(),"diagnostic_rate_hz"=>rate.hz()}
+                }
+                _ => crate::core::Params::new(),
+            }
+        }
+    }
+    OperationError {
+        codes {}
+        delegates {
+            Self::SampleRate(error) => error,
+            Self::Load(error) => error,
+            Self::Library(error) => error,
+            Self::Export(error) => error,
+            Self::Playback(error) => error,
+            Self::Save(error) => error,
+            Self::Editor(error) => error,
+            Self::Identity(error) => error,
+            Self::Query(error) => error,
+            Self::File(error) => error,
+            Self::Recipe(error) => error,
+        }
     }
 }

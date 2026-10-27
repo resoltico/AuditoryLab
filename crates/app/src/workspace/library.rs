@@ -33,7 +33,7 @@ impl LibraryBinding {
             Err(error) => Ok(Self::Unavailable(
                 crate::storage::library::LibraryDiagnostic {
                     storage_id: "configured root".into(),
-                    code: "configuration".into(),
+
                     detail: crate::storage::library::DiagnosticDetail::Failure(Box::new(error)),
                 },
             )),
@@ -137,7 +137,7 @@ impl LibraryState {
             };
             self.read_failure = Some(crate::storage::library::LibraryDiagnostic {
                 storage_id,
-                code: "read_failure".into(),
+
                 detail: message,
             });
             Arc::make_mut(&mut self.inventory).complete = false;
@@ -480,7 +480,7 @@ impl LibraryJob {
                     .extend(initialized.warnings.into_iter().map(|message| {
                         crate::storage::library::LibraryDiagnostic {
                             storage_id: "library.toml".into(),
-                            code: "initialization_warning".into(),
+
                             detail: crate::storage::library::DiagnosticDetail::Warning(message),
                         }
                     }));
@@ -1302,7 +1302,7 @@ impl LibraryState {
             diagnostics: inventory.diagnostics.clone(),
             stages: inventory.stages.clone(),
         });
-        self.root_unavailable = inventory.diagnostics.iter().any(|d| d.code == "root");
+        self.root_unavailable = inventory.aborted;
         self.unreadable = inventory
             .diagnostics
             .iter()

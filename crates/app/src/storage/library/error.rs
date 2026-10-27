@@ -194,17 +194,35 @@ impl From<crate::document::origin::OriginError> for LibraryError {
 
 impl std::fmt::Display for LibraryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Origin { .. } => "library.origin",
-            Self::File { .. } => "library.file",
-            Self::Read { .. } => "library.read",
-            Self::RecordRead { .. } => "library.record_read",
-            Self::IncompleteRead { .. } => "library.incomplete_read",
-            Self::RecipeUtf8 { .. } => "library.recipe_utf8",
-            Self::RecipeFile { .. } => "library.recipe_file",
+        f.write_str(crate::core::Code::code(self))
+    }
+}
+impl std::error::Error for LibraryError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Origin { error } => Some(error),
+            Self::File { error } | Self::RecordRead { error, .. } => Some(error),
+            Self::Read { error } => Some(error.cause.error()),
+            Self::IncompleteRead { error } => Some(error.as_ref()),
+            Self::RecipeUtf8 { error, .. } => Some(error),
+            Self::RecipeFile { error, .. }
+            | Self::Recipe { error }
+            | Self::InvalidBuiltin { error } => Some(error),
+            Self::MembershipUtf8 { error } | Self::MarkerUtf8 { error } => Some(error),
+            Self::MembershipFormat { error } | Self::MarkerFormat { error } => Some(error),
+            Self::MembershipEncode { error } => Some(error),
+            Self::Clock { error } => Some(error),
+            Self::LockUnavailable { error } => Some(error.error()),
+            _ => None,
+        }
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    LibraryError {
+        codes {
             Self::RecordIdentity { .. } => "library.record_identity",
-            Self::Recipe { .. } => "library.recipe",
-            Self::InvalidBuiltin { .. } => "library.invalid_builtin",
             Self::DuplicateBuiltin { .. } => "library.duplicate_builtin",
             Self::ReservedBuiltin { .. } => "library.reserved_builtin",
             Self::NotInitialized => "library.not_initialized",
@@ -228,7 +246,6 @@ impl std::fmt::Display for LibraryError {
             Self::AmbiguousRecord { .. } => "library.ambiguous_record",
             Self::Cancelled => "library.cancelled",
             Self::ScanBudget => "library.scan_budget",
-            Self::Clock { .. } => "library.clock",
             Self::ReadOnlyBuiltin { .. } => "library.read_only_builtin",
             Self::TemporarySelection => "library.temporary_selection",
             Self::NativeRootUnavailable => "library.native_root_unavailable",
@@ -244,26 +261,64 @@ impl std::fmt::Display for LibraryError {
             Self::UnknownRootContents => "library.unknown_root_contents",
             Self::ExpectedUser => "library.expected_user",
             Self::StalePlayback => "library.stale_playback",
-        })
-    }
-}
-impl std::error::Error for LibraryError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Origin { error } => Some(error),
-            Self::File { error } | Self::RecordRead { error, .. } => Some(error),
-            Self::Read { error } => Some(error.cause.error()),
-            Self::IncompleteRead { error } => Some(error.as_ref()),
-            Self::RecipeUtf8 { error, .. } => Some(error),
-            Self::RecipeFile { error, .. }
-            | Self::Recipe { error }
-            | Self::InvalidBuiltin { error } => Some(error),
-            Self::MembershipUtf8 { error } | Self::MarkerUtf8 { error } => Some(error),
-            Self::MembershipFormat { error } | Self::MarkerFormat { error } => Some(error),
-            Self::MembershipEncode { error } => Some(error),
-            Self::Clock { error } => Some(error),
-            Self::LockUnavailable { error } => Some(error.error()),
-            _ => None,
+        }
+        delegates {
+            Self::Origin { error } => error,
+            Self::File { error } => error,
+            Self::Read { error } => error,
+            Self::RecordRead { error, .. } => error,
+            Self::IncompleteRead { error } => error,
+            Self::RecipeUtf8 { .. } => &crate::core::RecipeError::NotUtf8,
+            Self::RecipeFile { error, .. } => error,
+            Self::Recipe { error } => error,
+            Self::InvalidBuiltin { error } => error,
+            Self::Clock { error } => error,
+        }
+        params(this) {
+            match this {
+                Self::RecordRead { path, .. } | Self::RecipeFile { path, .. } => {
+                    crate::core::diagnostic_params! {"record_path"=>path.to_string_lossy().into_owned()}
+                }
+                Self::RecipeUtf8 { path, error } => {
+                    crate::core::diagnostic_params! {"record_path"=>path.to_string_lossy().into_owned(),"valid_up_to"=>error.utf8_error().valid_up_to()}
+                }
+                Self::RecordIdentity {
+                    path,
+                    expected,
+                    found,
+                } => {
+                    crate::core::diagnostic_params! {"record_path"=>path.to_string_lossy().into_owned(),"expected"=>expected.to_string(),"found"=>found.to_string()}
+                }
+                Self::DuplicateBuiltin { id }
+                | Self::ReservedBuiltin { id }
+                | Self::UnknownManaged { id }
+                | Self::StaleContent { id }
+                | Self::EntryDisappeared { id }
+                | Self::IdentityExists { id }
+                | Self::MustRestore { id }
+                | Self::PurgeRequiresTrash { id }
+                | Self::HistoryReplacement { id }
+                | Self::AmbiguousRecord { id } => {
+                    crate::core::diagnostic_params! {"document_id"=>id.to_string()}
+                }
+                Self::ProposedIdentity { expected, found } => {
+                    crate::core::diagnostic_params! {"expected"=>expected.to_string(),"found"=>found.to_string()}
+                }
+                Self::MembershipSize { bytes, limit } => {
+                    crate::core::diagnostic_params! {"bytes"=>*bytes,"limit"=>*limit}
+                }
+                Self::ReadOnlyBuiltin { id } => {
+                    crate::core::diagnostic_params! {"catalog_id"=>id.clone()}
+                }
+                Self::RelativeRoot { path } => {
+                    crate::core::diagnostic_params! {"path"=>path.to_string_lossy().into_owned()}
+                }
+                Self::UnsupportedLayout { found } => crate::core::diagnostic_params! {"found"=>*found},
+                Self::LockUnavailable { error } => {
+                    crate::core::diagnostic_params! {"cause"=>error.error().to_string()}
+                }
+                _ => crate::core::Params::new(),
+            }
         }
     }
 }

@@ -271,7 +271,7 @@ fn calendar_order_errors_name_visible_fields_and_same_day_is_inclusive() {
         (CalendarField::Added, "Added here"),
     ] {
         let error = local_range(field, "2026-10-26", "2026-10-25").unwrap_err();
-        assert_eq!(error.to_string(), "query.local_order");
+        assert_eq!(auditorylab_core::Code::code(&error), "query.local_order");
         let error = error.explain();
         assert_eq!(
             error,
@@ -288,7 +288,7 @@ fn calendar_order_errors_name_visible_fields_and_same_day_is_inclusive() {
 #[test]
 fn a_route_change_says_what_happened_and_what_to_do() {
     let changed = DeviceError::from(cpal::Error::new(ErrorKind::DeviceChanged));
-    assert_eq!(changed.to_string(), "device.backend");
+    assert_eq!(auditorylab_core::Code::code(&changed), "device.backend");
     assert_eq!(
         changed.explain(),
         "the audio output route changed and playback stopped; select the intended output and play again"

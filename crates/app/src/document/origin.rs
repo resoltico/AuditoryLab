@@ -32,12 +32,9 @@ impl OriginError {
         crate::outcome::Outcome::InvalidArgument
     }
 }
-impl fmt::Display for OriginError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::InvalidSelector { .. } => "origin.selector",
-            Self::InvalidFingerprint { .. } => "origin.fingerprint",
-        })
+impl std::fmt::Display for OriginError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for OriginError {}
@@ -193,5 +190,23 @@ impl ObservedFile {
         self.path == other.path
             && self.fingerprint == other.fingerprint
             && self.handle == other.handle
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    OriginError {
+        codes {
+            Self::InvalidSelector { .. } => "origin.selector",
+            Self::InvalidFingerprint { .. } => "origin.fingerprint",
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::InvalidSelector { value } | Self::InvalidFingerprint { value } => {
+                    crate::core::diagnostic_params! {"value"=>value.clone()}
+                }
+            }
+        }
     }
 }

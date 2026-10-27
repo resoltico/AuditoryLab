@@ -245,13 +245,41 @@ const fn method_search_terms(method: Method) -> &'static str {
 
 impl std::fmt::Display for QueryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
+        f.write_str(crate::core::Code::code(self))
+    }
+}
+impl std::error::Error for QueryError {}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    QueryError {
+        codes {
             Self::TemporaryFilesScope { .. } => "query.temporary_files_scope",
             Self::RangeOrder { .. } => "query.range_order",
             Self::Study { .. } => "query.study",
             Self::LocalDate { .. } => "query.local_date",
             Self::LocalOrder { .. } => "query.local_order",
-        })
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::TemporaryFilesScope { scope } => {
+                    crate::core::diagnostic_params! {"scope"=>scope.key()}
+                }
+                Self::RangeOrder { from, before } => {
+                    crate::core::diagnostic_params! {"from"=>from.to_string(),"before"=>before.to_string()}
+                }
+                Self::Study { value } | Self::LocalDate { value } => {
+                    crate::core::diagnostic_params! {"value"=>value.clone()}
+                }
+                Self::LocalOrder {
+                    field,
+                    from,
+                    through,
+                } => {
+                    crate::core::diagnostic_params! {"field"=>field.key(),"from"=>from.clone(),"through"=>through.clone()}
+                }
+            }
+        }
     }
 }
-impl std::error::Error for QueryError {}

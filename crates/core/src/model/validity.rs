@@ -65,7 +65,6 @@ impl core::error::Error for ValueIssue {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::string::ToString;
     #[test]
     fn intrinsic_failures_expose_stable_codes_and_exact_requested_values() {
         for (parameter, value, code) in [
@@ -74,7 +73,7 @@ mod tests {
             (ParameterId::AmDepth, 1.25, "value.depth"),
         ] {
             let failure = check_value(parameter, value).unwrap_err();
-            assert_eq!(failure.to_string(), code);
+            assert_eq!(crate::Code::code(&failure), code);
             assert_eq!(failure.parameter, parameter);
             assert_eq!(failure.value.to_bits(), value.to_bits());
         }
@@ -85,11 +84,22 @@ crate::diagnostic_codes! {
     pub(crate) const CODES;
     ValueIssue {
         codes {
-            Self {rule:ValueRule::Positive,..}=>"value.positive",
-            Self {rule:ValueRule::Peak,..}=>"value.peak",
-            Self {rule:ValueRule::Depth,..}=>"value.depth",
+            Self {
+                rule: ValueRule::Positive,
+                ..
+            } => "value.positive",
+            Self {
+                rule: ValueRule::Peak,
+                ..
+            } => "value.peak",
+            Self {
+                rule: ValueRule::Depth,
+                ..
+            } => "value.depth",
         }
         delegates {}
-        params(this) {crate::diagnostic_params! {"parameter"=>this.parameter.key(),"value"=>this.value}}
+        params(this) {
+            crate::diagnostic_params! {"parameter"=>this.parameter.key(),"value"=>this.value}
+        }
     }
 }

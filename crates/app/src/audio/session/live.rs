@@ -232,11 +232,30 @@ impl Drop for LiveGenerator {
 
 impl std::fmt::Display for LiveUpdateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
+        f.write_str(crate::core::Code::code(self))
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    LiveUpdateError {
+        codes {
             Self::SessionClosed => "live_update.session_closed",
             Self::RateMismatch { .. } => "live_update.rate_mismatch",
             Self::RevisionLimit => "live_update.revision_limit",
             Self::Unavailable => "live_update.unavailable",
-        })
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::RateMismatch {
+                    target_hz,
+                    session_hz,
+                } => {
+                    crate::core::diagnostic_params! {"target_hz"=>*target_hz,"session_hz"=>*session_hz}
+                }
+                _ => crate::core::Params::new(),
+            }
+        }
     }
 }

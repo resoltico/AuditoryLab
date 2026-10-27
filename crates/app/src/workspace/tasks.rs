@@ -530,11 +530,7 @@ mod tests;
 
 impl std::fmt::Display for WorkerFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Launch(..) => "worker.launch",
-            Self::Panicked => "worker.panicked",
-            Self::InvalidOutcome => "worker.invalid_outcome",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 
@@ -596,7 +592,7 @@ pub struct ShutdownError {
 }
 impl std::fmt::Display for ShutdownError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("shutdown.failed")
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for ShutdownError {}
@@ -615,10 +611,7 @@ impl Executor for Runner {
 
 impl std::fmt::Display for TaskFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Operation(error) => error.fmt(f),
-            Self::Worker(error) => error.fmt(f),
-        }
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for TaskFailure {
@@ -634,6 +627,42 @@ impl std::error::Error for WorkerFailure {
         match self {
             Self::Launch(cause) => Some(cause.error()),
             Self::Panicked | Self::InvalidOutcome => None,
+        }
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    WorkerFailure {
+        codes {
+            Self::Launch(..) => "worker.launch",
+            Self::Panicked => "worker.panicked",
+            Self::InvalidOutcome => "worker.invalid_outcome",
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::Launch(cause) => {
+                    crate::core::diagnostic_params! {"cause"=>cause.error().to_string()}
+                }
+                _ => crate::core::Params::new(),
+            }
+        }
+    }
+    ShutdownError {
+        codes {
+            Self { .. } => "shutdown.failed",
+        }
+        delegates {}
+        params(this) {
+            crate::core::diagnostic_params! {"issue_count"=>this.issues.len()}
+        }
+    }
+    TaskFailure {
+        codes {}
+        delegates {
+            Self::Operation(error) => error,
+            Self::Worker(error) => error,
         }
     }
 }

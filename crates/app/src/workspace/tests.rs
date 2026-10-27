@@ -1399,20 +1399,32 @@ fn diagnostic_codes_retain_typed_field_context_and_original_worker_causes() {
     use std::error::Error as _;
     let cause = crate::services::IoCause::new(std::io::Error::other("launch marker"));
     let failure = TaskFailure::Worker(WorkerFailure::Launch(cause));
-    assert_eq!(failure.to_string(), "worker.launch");
+    assert_eq!(crate::core::Code::code(&failure), "worker.launch");
     assert_eq!(
         failure.source().unwrap().source().unwrap().to_string(),
         "launch marker"
     );
     let field = EditingField::Metadata(crate::document::editing::MetadataField::Duration);
     let diagnostic = FieldDiagnostic::Input(field, InputProblem::Unparseable);
-    assert_eq!(diagnostic.to_string(), "input.unparseable");
+    assert_eq!(crate::core::Code::code(&diagnostic), "input.unparseable");
     assert!(matches!(diagnostic,FieldDiagnostic::Input(retained,_) if retained==field));
     let refusal = Refusal::Input(vec![(field, InputProblem::Unparseable)]);
-    assert_eq!(refusal.to_string(), "workspace.input");
-    assert_eq!(refusal.source().unwrap().to_string(), "input.unparseable");
+    assert_eq!(crate::core::Code::code(&refusal), "workspace.input");
+    assert_eq!(
+        crate::core::Code::code(
+            refusal
+                .source()
+                .unwrap()
+                .downcast_ref::<InputProblem>()
+                .unwrap()
+        ),
+        "input.unparseable"
+    );
     let warning = monitor::MonitorWarning::FixedRangeExceeded;
-    assert_eq!(warning.to_string(), "monitor.fixed_range_exceeded");
+    assert_eq!(
+        crate::core::Code::code(&warning),
+        "monitor.fixed_range_exceeded"
+    );
     assert!(!warning.announces_changes());
     assert_eq!(
         output::OutputIssue::Capture(monitor::CaptureError::InvalidSpan).to_string(),

@@ -450,17 +450,24 @@ crate::diagnostic_codes! {
     pub(crate) const CODES;
     RecipeError {
         codes {
-            Self::TooLarge=>"recipe.size",
-            Self::NotUtf8=>"recipe.utf8",
-            Self::Utf16=>"recipe.utf16",
-            Self::Format(_)=>"recipe.format",
-            Self::Write(_)=>"recipe.write",
-            Self::UnsupportedVersion {..}=>"recipe.schema_version",
+            Self::TooLarge => "recipe.size",
+            Self::NotUtf8 => "recipe.utf8",
+            Self::Utf16 => "recipe.utf16",
+            Self::Format(_) => "recipe.format",
+            Self::Write(_) => "recipe.write",
+            Self::UnsupportedVersion { .. } => "recipe.schema_version",
         }
-        delegates {Self::Contract(error)=>error,Self::Structure(error)=>error,}
-        params(this) {match this {
-            Self::UnsupportedVersion {found}=>crate::diagnostic_params! {"found"=>*found,"supported"=>Recipe::SCHEMA_VERSION},
-            _=>crate::Params::new(),
-        }}
+        delegates {
+            Self::Contract(error) => error,
+            Self::Structure(error) => error,
+        }
+        params(this) {
+            match this {
+                Self::UnsupportedVersion { found } => {
+                    crate::diagnostic_params! {"found"=>*found,"supported"=>Recipe::SCHEMA_VERSION}
+                }
+                _ => crate::Params::new(),
+            }
+        }
     }
 }

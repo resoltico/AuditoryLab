@@ -146,16 +146,7 @@ impl From<crate::document::error::RenditionError> for LoadError {
 
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::TemporarySelector { .. } => "load.temporary_selector",
-            Self::Identity(..) => "load.identity",
-            Self::UnknownBuiltin { .. } => "load.unknown_builtin",
-            Self::Recipe { .. } => "load.recipe",
-            Self::Read { .. } => "load.read",
-            Self::File(..) => "load.file",
-            Self::Library(..) => "load.library",
-            Self::Sound { .. } => "load.sound",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for LoadError {
@@ -168,6 +159,44 @@ impl std::error::Error for LoadError {
             Self::Sound { error, .. } => Some(error),
             Self::UnknownBuiltin { .. } | Self::TemporarySelector { .. } => None,
             Self::Identity(error) => Some(error),
+        }
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    LoadError {
+        codes {
+            Self::TemporarySelector { .. } => "load.temporary_selector",
+            Self::UnknownBuiltin { .. } => "load.unknown_builtin",
+            Self::Read { .. } => "load.read",
+        }
+        delegates {
+            Self::Identity(error) => error,
+            Self::Recipe { error, .. } => error,
+            Self::File(error) => error,
+            Self::Library(error) => error,
+            Self::Sound { error, .. } => error,
+        }
+        params(this) {
+            match this {
+                Self::TemporarySelector { key } => {
+                    crate::core::diagnostic_params! {"selector"=>key.to_string()}
+                }
+                Self::UnknownBuiltin { id } => {
+                    crate::core::diagnostic_params! {"catalog_id"=>id.clone()}
+                }
+                Self::Recipe { origin, .. }
+                | Self::Read { origin, .. }
+                | Self::Sound { origin, .. } => {
+                    let mut params = crate::core::diagnostic_params! {"origin"=>origin.to_string()};
+                    if let Self::Sound { rate, .. } = this {
+                        params.insert("diagnostic_rate_hz", rate.hz().into());
+                    }
+                    params
+                }
+                _ => crate::core::Params::new(),
+            }
         }
     }
 }

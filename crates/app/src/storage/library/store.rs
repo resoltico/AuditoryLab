@@ -72,8 +72,6 @@ impl From<FileError> for DiagnosticDetail {
 pub struct LibraryDiagnostic<E = Error> {
     /// Root or relative storage identifier.
     pub storage_id: String,
-    /// Inventory diagnostic category.
-    pub code: String,
     /// Exact notice or operation failure.
     pub detail: DiagnosticDetail<E>,
 }
@@ -90,6 +88,8 @@ pub struct Inventory {
     pub complete: bool,
     /// Missing root has not been initialized.
     pub not_initialized: bool,
+    /// The complete scan stopped early, independently of record-level diagnostics.
+    pub aborted: bool,
     /// Failure class for CLI exit policy.
     pub failure_kind: Option<Outcome>,
 }
@@ -100,6 +100,7 @@ impl Default for Inventory {
             diagnostics: Vec::new(),
             stages: Vec::new(),
             complete: true,
+            aborted: false,
             not_initialized: false,
             failure_kind: None,
         }
@@ -109,18 +110,16 @@ impl Inventory {
     fn error(
         &mut self,
         path: impl Into<String>,
-        code: &str,
         error: impl Into<DiagnosticDetail>,
         kind: Outcome,
     ) {
         self.complete = false;
         self.failure_kind = Some(kind);
-        self.note(path, code, error);
+        self.note(path, error);
     }
-    fn note(&mut self, path: impl Into<String>, code: &str, message: impl Into<DiagnosticDetail>) {
+    fn note(&mut self, path: impl Into<String>, message: impl Into<DiagnosticDetail>) {
         self.diagnostics.push(LibraryDiagnostic {
             storage_id: path.into(),
-            code: code.into(),
             detail: message.into(),
         });
     }
@@ -403,11 +402,12 @@ impl LibraryStore {
     fn scan_limited(&self, cancel: &Cancel, limits: ScanLimits) -> Inventory {
         let mut result = Inventory::default();
         if let Err(error) = self.scan_into(cancel, &mut result, limits) {
+            result.aborted = true;
             let kind = match error.outcome() {
                 Outcome::Busy | Outcome::LockUnavailable | Outcome::Cancelled => error.outcome(),
                 _ => Outcome::IncompleteInventory,
             };
-            result.error(self.root.path().display().to_string(), "root", error, kind);
+            result.error(self.root.path().display().to_string(), error, kind);
         }
         result
     }
@@ -432,12 +432,7 @@ impl LibraryStore {
         let memberships = match read_memberships(&lease.dir) {
             Ok(value) => value,
             Err(error) => {
-                result.error(
-                    MEMBERSHIP,
-                    "membership",
-                    error,
-                    Outcome::IncompleteInventory,
-                );
+                result.error(MEMBERSHIP, error, Outcome::IncompleteInventory);
                 Memberships::default()
             }
         };
@@ -474,11 +469,7 @@ impl LibraryStore {
             if root::owned_stage(&name) {
                 result.stages.push(name.into());
             } else {
-                result.note(
-                    name.to_string_lossy(),
-                    "unrecognized_artifact",
-                    InventoryNotice::UnknownRootEntry,
-                );
+                result.note(name.to_string_lossy(), InventoryNotice::UnknownRootEntry);
             }
         }
         let mut duplicates = BTreeSet::new();
@@ -500,11 +491,7 @@ impl LibraryStore {
                     continue;
                 }
                 let Some(stem) = name.to_str().and_then(|n| n.strip_suffix(".toml")) else {
-                    result.note(
-                        relative,
-                        "unrecognized_artifact",
-                        InventoryNotice::UnknownEntry,
-                    );
+                    result.note(relative, InventoryNotice::UnknownEntry);
                     continue;
                 };
                 let id = match stem.parse::<DocumentUuid>() {
@@ -512,7 +499,6 @@ impl LibraryStore {
                     Err(_) => {
                         result.error(
                             relative,
-                            "filename",
                             InventoryNotice::UuidFilenameRequired,
                             Outcome::IncompleteInventory,
                         );
@@ -525,7 +511,6 @@ impl LibraryStore {
                 if self.reserved(id).is_err() {
                     result.error(
                         relative,
-                        "reserved_identity",
                         InventoryNotice::ReservedBuiltinIdentity,
                         Outcome::IncompleteInventory,
                     );
@@ -545,7 +530,7 @@ impl LibraryStore {
                 ) {
                     Ok(bytes) => bytes,
                     Err(error) => {
-                        result.error(relative, "recipe_read", error, Outcome::IncompleteInventory);
+                        result.error(relative, error, Outcome::IncompleteInventory);
                         continue;
                     }
                 };
@@ -557,12 +542,7 @@ impl LibraryStore {
                     memberships.entries.get(&id),
                 ) {
                     Ok(record) => result.entries.push(record.summary()),
-                    Err(error) => result.error(
-                        relative,
-                        "recipe_contract",
-                        error,
-                        Outcome::IncompleteInventory,
-                    ),
+                    Err(error) => result.error(relative, error, Outcome::IncompleteInventory),
                 }
             }
         }
@@ -576,25 +556,20 @@ impl LibraryStore {
                 result
                     .entries
                     .retain(|entry| entry.key != LibraryKey::User(id) || entry.trashed);
-                result.note(name, "interrupted_move", InventoryNotice::InterruptedMove);
+                result.note(name, InventoryNotice::InterruptedMove);
             } else {
                 result
                     .entries
                     .retain(|entry| entry.key != LibraryKey::User(id));
                 result.error(
                     name,
-                    "duplicate_identity",
                     InventoryNotice::DuplicateIdentity,
                     Outcome::IncompleteInventory,
                 );
             }
         }
         for id in memberships.entries.keys().filter(|id| !seen.contains(id)) {
-            result.note(
-                MEMBERSHIP,
-                "orphan_membership",
-                InventoryNotice::OrphanMembership(*id),
-            );
+            result.note(MEMBERSHIP, InventoryNotice::OrphanMembership(*id));
         }
         let stages = lease.directory(".stage")?;
         for entry in stages
@@ -1117,3 +1092,53 @@ pub fn history_warnings(recipe: &Recipe) -> Vec<crate::storage::warning::Storage
 
 #[cfg(test)]
 mod tests;
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    InventoryNotice {
+        codes {
+            Self::UnknownRootEntry => "inventory.unknown_root_entry",
+            Self::UnknownEntry => "inventory.unknown_entry",
+            Self::UuidFilenameRequired => "inventory.uuid_filename_required",
+            Self::ReservedBuiltinIdentity => "inventory.reserved_builtin_identity",
+            Self::InterruptedMove => "inventory.interrupted_move",
+            Self::DuplicateIdentity => "inventory.duplicate_identity",
+            Self::OrphanMembership(_) => "inventory.orphan_membership",
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::OrphanMembership(id) => {
+                    crate::core::diagnostic_params! {"document_id"=>id.to_string()}
+                }
+                _ => crate::core::Params::new(),
+            }
+        }
+    }
+}
+impl<E: crate::core::Code> crate::core::Code for DiagnosticDetail<E> {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::Notice(cause) => cause.code(),
+            Self::Warning(cause) => cause.code(),
+            Self::Failure(cause) => cause.code(),
+        }
+    }
+    fn params(&self) -> crate::core::Params {
+        match self {
+            Self::Notice(cause) => cause.params(),
+            Self::Warning(cause) => cause.params(),
+            Self::Failure(cause) => cause.params(),
+        }
+    }
+}
+impl<E: crate::core::Code> crate::core::Code for LibraryDiagnostic<E> {
+    fn code(&self) -> &'static str {
+        self.detail.code()
+    }
+    fn params(&self) -> crate::core::Params {
+        let mut params = self.detail.params();
+        params.insert("storage_id", self.storage_id.clone().into());
+        params
+    }
+}

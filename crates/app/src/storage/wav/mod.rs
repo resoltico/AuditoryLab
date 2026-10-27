@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 mod error;
+pub(crate) use error::CODES as ERROR_CODES;
 mod export;
 mod header;
 

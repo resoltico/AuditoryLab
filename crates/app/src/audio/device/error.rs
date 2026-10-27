@@ -116,7 +116,14 @@ impl Diagnostics {
 
 impl std::fmt::Display for DeviceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
+        f.write_str(crate::core::Code::code(self))
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    DeviceError {
+        codes {
             Self::NoDefaultOutput => "device.no_default_output",
             Self::Backend(..) => "device.backend",
             Self::UnsupportedSampleFormat(..) => "device.unsupported_sample_format",
@@ -126,6 +133,20 @@ impl std::fmt::Display for DeviceError {
             Self::MisalignedBuffer => "device.misaligned_buffer",
             Self::TimedOut => "device.timed_out",
             Self::Abandoned => "device.abandoned",
-        })
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::Backend(error) => crate::core::diagnostic_params! {"cause"=>error.to_string()},
+                Self::UnsupportedSampleFormat(format) => {
+                    crate::core::diagnostic_params! {"sample_format"=>format.to_string()}
+                }
+                Self::UnsupportedSampleRate { hz } => crate::core::diagnostic_params! {"hz"=>*hz},
+                Self::TooFewChannels { channels } => {
+                    crate::core::diagnostic_params! {"channels"=>*channels}
+                }
+                _ => crate::core::Params::new(),
+            }
+        }
     }
 }

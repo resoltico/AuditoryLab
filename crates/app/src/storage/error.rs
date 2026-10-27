@@ -199,7 +199,7 @@ impl From<crate::identity::IdentityError> for FileError {
     }
 }
 
-use std::{error::Error, fmt, io, sync::Arc};
+use std::{error::Error, io, sync::Arc};
 /// A captured I/O cause. Clones retain the same cause identity.
 #[derive(Debug, Clone)]
 pub struct IoCause(Arc<io::Error>);
@@ -218,9 +218,9 @@ impl PartialEq for IoCause {
     }
 }
 impl Eq for IoCause {}
-impl fmt::Display for IoCause {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("io.cause")
+impl std::fmt::Display for IoCause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl Error for IoCause {
@@ -277,20 +277,7 @@ impl From<crate::clock::ClockError> for SaveError {
 
 impl std::fmt::Display for FileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Io(..) => "file.io",
-            Self::Identity(..) => "file.identity",
-            Self::NotRegular { .. } => "file.not_regular",
-            Self::ReadLimit { .. } => "file.read_limit",
-            Self::Cancelled { .. } => "file.cancelled",
-            Self::DestinationExists { .. } => "file.destination_exists",
-            Self::Changed { .. } => "file.changed",
-            Self::MissingFilename => "file.missing_filename",
-            Self::MissingParent => "file.missing_parent",
-            Self::RelocationExists { .. } => "file.relocation_exists",
-            Self::AfterMutation { .. } => "file.after_mutation",
-            Self::Cleanup { .. } => "file.cleanup",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for FileError {
@@ -310,13 +297,7 @@ impl std::error::Error for FileError {
 
 impl std::fmt::Display for SaveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Load { .. } => "save.load",
-            Self::Clock { .. } => "save.clock",
-            Self::File { .. } => "save.file",
-            Self::Recipe { .. } => "save.recipe",
-            Self::HistoryReplacement => "save.history_replacement",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for SaveError {
@@ -333,11 +314,133 @@ impl std::error::Error for SaveError {
 
 impl std::fmt::Display for IoFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("io.failure")
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for IoFailure {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(self.cause.error())
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    IoCause {
+        codes {
+            Self(..) => "io.cause",
+        }
+        delegates {}
+        params(this) {
+            crate::core::diagnostic_params! {"cause"=>this.error().to_string()}
+        }
+    }
+    IoFailure {
+        codes {
+            Self { .. } => "io.failure",
+        }
+        delegates {}
+        params(this) {
+            let action = match this.action {
+                IoOperation::Open => "open",
+                IoOperation::Read => "read",
+                IoOperation::Seek => "seek",
+                IoOperation::Write => "write",
+                IoOperation::Inspect => "inspect",
+                IoOperation::CreateDirectory => "create_directory",
+                IoOperation::OpenDirectory => "open_directory",
+                IoOperation::CreateStage => "create_stage",
+                IoOperation::SyncFile => "sync_file",
+                IoOperation::SyncDirectory => "sync_directory",
+                IoOperation::Remove => "remove",
+                IoOperation::Publish => "publish",
+                IoOperation::Relocate => "relocate",
+                IoOperation::ResolvePath => "resolve_path",
+                IoOperation::RetainIdentity => "retain_identity",
+                IoOperation::CheckIdentity => "check_identity",
+                IoOperation::SetPermissions => "set_permissions",
+            };
+            let mut params = crate::core::diagnostic_params! {"action"=>action,"cause"=>this.cause.error().to_string()};
+            if let Some(path) = &this.path {
+                params.insert("path", path.to_string_lossy().into_owned().into());
+            }
+            params
+        }
+    }
+    FileError {
+        codes {
+            Self::NotRegular { .. } => "file.not_regular",
+            Self::ReadLimit { .. } => "file.read_limit",
+            Self::Cancelled { .. } => "file.cancelled",
+            Self::DestinationExists { .. } => "file.destination_exists",
+            Self::Changed { .. } => "file.changed",
+            Self::MissingFilename => "file.missing_filename",
+            Self::MissingParent => "file.missing_parent",
+            Self::RelocationExists { .. } => "file.relocation_exists",
+            Self::AfterMutation { .. } => "file.after_mutation",
+        }
+        delegates {
+            Self::Io(error) => error,
+            Self::Identity(error) => error,
+            Self::Cleanup { primary, .. } => primary,
+        }
+        params(this) {
+            match this {
+                Self::NotRegular { path }
+                | Self::DestinationExists { path, .. }
+                | Self::Changed { path }
+                | Self::RelocationExists { path } => {
+                    crate::core::diagnostic_params! {"path"=>path.to_string_lossy().into_owned()}
+                }
+                Self::ReadLimit { path, grew } => {
+                    crate::core::diagnostic_params! {"path"=>path.to_string_lossy().into_owned(),"grew"=>*grew}
+                }
+                Self::Cancelled { path: Some(path) } => {
+                    crate::core::diagnostic_params! {"path"=>path.to_string_lossy().into_owned()}
+                }
+                Self::AfterMutation {
+                    phase,
+                    path,
+                    confirmation,
+                    cause,
+                } => {
+                    let phase_key = match phase {
+                        MutationPhase::Publish => "publish",
+                        MutationPhase::SyncPublication => "sync_publication",
+                        MutationPhase::Relocate { .. } => "relocate",
+                        MutationPhase::SyncRelocation => "sync_relocation",
+                        MutationPhase::Remove => "remove",
+                        MutationPhase::SyncRemoval => "sync_removal",
+                    };
+                    let confirmation_key = match confirmation {
+                        Confirmation::Unchanged => "unchanged",
+                        Confirmation::Different => "different",
+                        Confirmation::Unavailable(_) => "unavailable",
+                    };
+                    let mut params = crate::core::diagnostic_params! {"phase"=>phase_key,"path"=>path.to_string_lossy().into_owned(),"confirmation"=>confirmation_key,"cause"=>cause.error().to_string()};
+                    if let MutationPhase::Relocate { source } = phase {
+                        params.insert("source_path", source.to_string_lossy().into_owned().into());
+                    }
+                    if let Confirmation::Unavailable(error) = confirmation {
+                        params.insert("verification_code", crate::core::Code::code(error).into());
+                    }
+                    params
+                }
+                Self::Cleanup { path, cause, .. } => {
+                    crate::core::diagnostic_params! {"leftover_path"=>path.to_string_lossy().into_owned(),"cleanup_cause"=>cause.error().to_string()}
+                }
+                _ => crate::core::Params::new(),
+            }
+        }
+    }
+    SaveError {
+        codes {
+            Self::HistoryReplacement => "save.history_replacement",
+        }
+        delegates {
+            Self::Load { error } => error,
+            Self::Clock { error } => error,
+            Self::File { error } => error,
+            Self::Recipe { error } => error,
+        }
     }
 }

@@ -131,7 +131,7 @@ pub fn list(
                 outcome = Some(Outcome::IncompleteInventory);
                 diagnostics.push(LibraryDiagnostic {
                     storage_id: "configured root".into(),
-                    code: "root_resolution".into(),
+
                     detail: DiagnosticDetail::Failure(Box::new(error)),
                 });
             }

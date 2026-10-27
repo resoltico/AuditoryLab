@@ -68,16 +68,7 @@ impl From<crate::document::error::RenditionError> for PlaybackError {
 
 impl std::fmt::Display for PlaybackError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Trashed { .. } => "playback.trashed",
-            Self::Device(..) => "playback.device",
-            Self::Sound { .. } => "playback.sound",
-            Self::Load(..) => "playback.load",
-            Self::Library(..) => "playback.library",
-            Self::MissingTerminalOutcome => "playback.missing_terminal_outcome",
-            Self::MonitorInUse => "playback.monitor_in_use",
-            Self::MissingDocument => "playback.missing_document",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for PlaybackError {
@@ -88,6 +79,33 @@ impl std::error::Error for PlaybackError {
             Self::Library(error) => Some(error),
             Self::Load(error) => Some(error),
             _ => None,
+        }
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    PlaybackError {
+        codes {
+            Self::Trashed { .. } => "playback.trashed",
+            Self::MissingTerminalOutcome => "playback.missing_terminal_outcome",
+            Self::MonitorInUse => "playback.monitor_in_use",
+            Self::MissingDocument => "playback.missing_document",
+        }
+        delegates {
+            Self::Device(error) => error,
+            Self::Load(error) => error,
+            Self::Library(error) => error,
+            Self::Sound { error, .. } => error,
+        }
+        params(this) {
+            match this {
+                Self::Trashed { key } => crate::core::diagnostic_params! {"selector"=>key.to_string()},
+                Self::Sound { title, rate, .. } => {
+                    crate::core::diagnostic_params! {"title"=>title.clone(),"diagnostic_rate_hz"=>rate.hz()}
+                }
+                _ => crate::core::Params::new(),
+            }
         }
     }
 }

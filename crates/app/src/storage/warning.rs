@@ -66,7 +66,14 @@ pub enum StorageWarning {
 }
 impl std::fmt::Display for StorageWarning {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
+        f.write_str(crate::core::Code::code(self))
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    StorageWarning {
+        codes {
             Self::SavedAfterIo { .. } => "storage.saved_after_io",
             Self::SavedDurability { .. } => "storage.saved_durability",
             Self::RetainedStage { .. } => "storage.retained_stage",
@@ -85,6 +92,40 @@ impl std::fmt::Display for StorageWarning {
             Self::ClockPredatesHistory => "storage.clock_predates_history",
             Self::FutureHistory => "storage.future_history",
             Self::UnavailableHistoryClock { .. } => "storage.unavailable_history_clock",
-        })
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::SavedAfterIo { cause }
+                | Self::SavedDurability { cause }
+                | Self::MovedAfterIo { cause }
+                | Self::MovedDurability { cause }
+                | Self::DeletedAfterIo { cause }
+                | Self::DeletedDurability { cause } => {
+                    crate::core::diagnostic_params! {"cause"=>cause.error().to_string()}
+                }
+                Self::RetainedStage { path, cause } | Self::TrashLink { path, cause } => {
+                    crate::core::diagnostic_params! {"path"=>path.to_string_lossy().into_owned(),"cause"=>cause.error().to_string()}
+                }
+                Self::RemovedStage { path } => {
+                    crate::core::diagnostic_params! {"path"=>path.to_string_lossy().into_owned()}
+                }
+                Self::RemovedMemberships { count } => crate::core::diagnostic_params! {"count"=>*count},
+                Self::RecoveredMove { name } => {
+                    crate::core::diagnostic_params! {"name"=>name.to_string_lossy().into_owned()}
+                }
+                Self::MembershipUpdateFailed { cause } | Self::MembershipReadFailed { cause } => {
+                    let mut params = crate::core::Code::params(cause);
+                    params.insert("cause_code", crate::core::Code::code(cause).into());
+                    params
+                }
+                Self::UnavailableHistoryClock { cause } => {
+                    let mut params = crate::core::Code::params(cause);
+                    params.insert("cause_code", crate::core::Code::code(cause).into());
+                    params
+                }
+                _ => crate::core::Params::new(),
+            }
+        }
     }
 }

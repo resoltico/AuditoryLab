@@ -151,7 +151,7 @@ mod order_tests {
     fn calendar_order_errors_retain_fields_and_same_day_is_inclusive() {
         for field in CalendarField::ALL {
             let error = local_range(field, "2026-10-26", "2026-10-25").unwrap_err();
-            assert_eq!(error.to_string(), "query.local_order");
+            assert_eq!(crate::core::Code::code(&error), "query.local_order");
             assert!(
                 matches!(error,Error::LocalOrder {field:retained, ref from, ref through} if retained==field && from=="2026-10-26" && through=="2026-10-25")
             );

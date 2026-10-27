@@ -337,36 +337,87 @@ crate::diagnostic_codes! {
     pub(crate) const CODES;
     SoundError {
         codes {
-            Self::Duration {..}=>"sound.duration",
-            Self::Fade {..}=>"sound.fade",
-            Self::FadesOverlap {..}=>"sound.fades_overlap",
-            Self::Peak {..}=>"sound.peak",
+            Self::Duration { .. } => "sound.duration",
+            Self::Fade { .. } => "sound.fade",
+            Self::FadesOverlap { .. } => "sound.fades_overlap",
+            Self::Peak { .. } => "sound.peak",
         }
-        delegates {Self::Pair(error)=>error,Self::PairCarrier {error,..}=>error,Self::Voice {error,..}=>error,}
-        params(this) {match this {
-            Self::Duration {seconds,sample_rate_hz}|Self::Fade {seconds,sample_rate_hz}=>crate::diagnostic_params! {"seconds"=>*seconds,"sample_rate_hz"=>*sample_rate_hz},
-            Self::FadesOverlap {fade_frames,frames,sample_rate_hz}=>crate::diagnostic_params! {"fade_frames"=>*fade_frames,"frames"=>*frames,"sample_rate_hz"=>*sample_rate_hz},
-            Self::Peak {ear,amplitude}=>crate::diagnostic_params! {"ear"=>ear.key(),"amplitude"=>*amplitude},
-            Self::Voice {id,..}=>crate::diagnostic_params! {"owner"=>alloc::string::ToString::to_string(id)},
-            Self::PairCarrier {id,first_hz,offset_hz,..}=>crate::diagnostic_params! {"owner"=>alloc::string::ToString::to_string(id),"first_hz"=>*first_hz,"offset_hz"=>*offset_hz},
-            Self::Pair(_)=>crate::Params::new(),
-        }}
+        delegates {
+            Self::Pair(error) => error,
+            Self::PairCarrier { error, .. } => error,
+            Self::Voice { error, .. } => error,
+        }
+        params(this) {
+            match this {
+                Self::Duration {
+                    seconds,
+                    sample_rate_hz,
+                }
+                | Self::Fade {
+                    seconds,
+                    sample_rate_hz,
+                } => crate::diagnostic_params! {"seconds"=>*seconds,"sample_rate_hz"=>*sample_rate_hz},
+                Self::FadesOverlap {
+                    fade_frames,
+                    frames,
+                    sample_rate_hz,
+                } => {
+                    crate::diagnostic_params! {"fade_frames"=>*fade_frames,"frames"=>*frames,"sample_rate_hz"=>*sample_rate_hz}
+                }
+                Self::Peak { ear, amplitude } => {
+                    crate::diagnostic_params! {"ear"=>ear.key(),"amplitude"=>*amplitude}
+                }
+                Self::Voice { id, .. } => {
+                    crate::diagnostic_params! {"owner"=>alloc::string::ToString::to_string(id)}
+                }
+                Self::PairCarrier {
+                    id,
+                    first_hz,
+                    offset_hz,
+                    ..
+                } => {
+                    crate::diagnostic_params! {"owner"=>alloc::string::ToString::to_string(id),"first_hz"=>*first_hz,"offset_hz"=>*offset_hz}
+                }
+                Self::Pair(_) => crate::Params::new(),
+            }
+        }
     }
     VoiceError {
         codes {
-            Self::Frequency {..}=>"voice.frequency",
-            Self::Sideband {..}=>"voice.sideband",
-            Self::PulseWidth {..}=>"voice.pulse_width",
-            Self::PeakDbfs {..}=>"voice.peak_dbfs",
-            Self::Depth {..}=>"voice.depth",
+            Self::Frequency { .. } => "voice.frequency",
+            Self::Sideband { .. } => "voice.sideband",
+            Self::PulseWidth { .. } => "voice.pulse_width",
+            Self::PeakDbfs { .. } => "voice.peak_dbfs",
+            Self::Depth { .. } => "voice.depth",
         }
         delegates {}
-        params(this) {match this {
-            Self::Frequency {parameter,hz,sample_rate_hz}=>crate::diagnostic_params! {"parameter"=>parameter.key(),"hz"=>*hz,"sample_rate_hz"=>*sample_rate_hz},
-            Self::Sideband {frequency_hz,rate_hz,sample_rate_hz}=>crate::diagnostic_params! {"frequency_hz"=>*frequency_hz,"rate_hz"=>*rate_hz,"sample_rate_hz"=>*sample_rate_hz},
-            Self::PulseWidth {parameter,width_seconds,rate_hz,sample_rate_hz}=>crate::diagnostic_params! {"parameter"=>parameter.key(),"width_seconds"=>*width_seconds,"rate_hz"=>*rate_hz,"sample_rate_hz"=>*sample_rate_hz},
-            Self::PeakDbfs {peak_dbfs}=>crate::diagnostic_params! {"peak_dbfs"=>*peak_dbfs},
-            Self::Depth {depth}=>crate::diagnostic_params! {"depth"=>*depth},
-        }}
+        params(this) {
+            match this {
+                Self::Frequency {
+                    parameter,
+                    hz,
+                    sample_rate_hz,
+                } => {
+                    crate::diagnostic_params! {"parameter"=>parameter.key(),"hz"=>*hz,"sample_rate_hz"=>*sample_rate_hz}
+                }
+                Self::Sideband {
+                    frequency_hz,
+                    rate_hz,
+                    sample_rate_hz,
+                } => {
+                    crate::diagnostic_params! {"frequency_hz"=>*frequency_hz,"rate_hz"=>*rate_hz,"sample_rate_hz"=>*sample_rate_hz}
+                }
+                Self::PulseWidth {
+                    parameter,
+                    width_seconds,
+                    rate_hz,
+                    sample_rate_hz,
+                } => {
+                    crate::diagnostic_params! {"parameter"=>parameter.key(),"width_seconds"=>*width_seconds,"rate_hz"=>*rate_hz,"sample_rate_hz"=>*sample_rate_hz}
+                }
+                Self::PeakDbfs { peak_dbfs } => crate::diagnostic_params! {"peak_dbfs"=>*peak_dbfs},
+                Self::Depth { depth } => crate::diagnostic_params! {"depth"=>*depth},
+            }
+        }
     }
 }

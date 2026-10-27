@@ -9,6 +9,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 mod error;
+pub(crate) use error::CODES as DIAGNOSTIC_CODES;
 
 use crate::audio::PlaybackError as Error;
 use crate::audio::session::supervisor::{POLL_INTERVAL, STALL_LIMIT, Supervision, time_limit};

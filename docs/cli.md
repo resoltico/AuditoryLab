@@ -34,7 +34,7 @@ Search requires every Unicode-normalized term. A bare number matches a whole num
 
 Use `--created-from`, `--created-before`, `--modified-from`, `--modified-before`, `--added-from` and `--added-before` for inclusive/exclusive timestamp ranges. Supply an explicit offset, such as `2026-10-24T00:00:00+03:00`. Unknown dates fail bounded ranges and sort last. Automatic ordering is rate ascending for All/Built-in and modified descending for User/Trash; explicit sort choices survive collection changes.
 
-`--format json` returns structured entries, groups and diagnostics. Each diagnostic/warning has `code` and `message`; inspect exposes expanded lanes under `voices`. `--format ids` emits reusable selectors, requires complete discovery, and rejects grouping and temporary inputs. An incomplete IDs query emits no stdout IDs. [JSON and exit codes](formats.md#cli-json-output) define the scripting contract.
+`--format json` returns structured entries, groups and diagnostics. Each diagnostic/warning has a fixed `code`, human `message` and optional structured `params`; inspect exposes expanded lanes under `voices`. `--format ids` emits reusable selectors, requires complete discovery, and rejects grouping and temporary inputs. An incomplete IDs query emits no stdout IDs. [JSON and exit codes](formats.md#cli-json-output) define the scripting contract.
 
 ## Inspect, save portable text and export WAV
 

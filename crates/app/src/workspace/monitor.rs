@@ -350,10 +350,7 @@ impl WaveformScale {
 
 impl std::fmt::Display for CaptureError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::NonFiniteSample => "capture.non_finite_sample",
-            Self::InvalidSpan => "capture.invalid_span",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 
@@ -361,10 +358,25 @@ impl std::error::Error for CaptureError {}
 
 impl std::fmt::Display for MonitorWarning {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
+        f.write_str(crate::core::Code::code(self))
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    CaptureError {
+        codes {
+            Self::NonFiniteSample => "capture.non_finite_sample",
+            Self::InvalidSpan => "capture.invalid_span",
+        }
+        delegates {}
+    }
+    MonitorWarning {
+        codes {
             Self::Stale => "monitor.stale",
             Self::IncompleteCoverage => "monitor.incomplete_coverage",
             Self::FixedRangeExceeded => "monitor.fixed_range_exceeded",
-        })
+        }
+        delegates {}
     }
 }

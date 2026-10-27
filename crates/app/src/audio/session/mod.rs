@@ -11,6 +11,7 @@
 //! wins. Generation ending is a separate fact that closes live-update
 //! admission even while the device drains.
 pub(crate) mod live;
+pub(crate) use live::CODES as DIAGNOSTIC_CODES;
 mod monitor;
 mod output;
 pub(crate) mod source;

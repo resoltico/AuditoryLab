@@ -51,10 +51,7 @@ impl IdentityError {
 
 impl std::fmt::Display for IdentityError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Entropy(..) => "identity.entropy",
-            Self::Exhausted(..) => "identity.exhausted",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for IdentityError {
@@ -98,7 +95,26 @@ mod tests {
     fn random_failure_does_not_fall_back_to_clock_or_counter() {
         let error = super::generate_uuid(|_| Err(getrandom::Error::UNSUPPORTED)).unwrap_err();
         assert_eq!(error.outcome(), crate::outcome::Outcome::Identity);
-        assert_eq!(error.to_string(), "identity.entropy");
+        assert_eq!(crate::core::Code::code(&error), "identity.entropy");
         assert!(std::error::Error::source(&error).is_some());
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    IdentityError {
+        codes {
+            Self::Entropy(..) => "identity.entropy",
+            Self::Exhausted(..) => "identity.exhausted",
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::Entropy(error) => crate::core::diagnostic_params! {"cause"=>error.to_string()},
+                Self::Exhausted(scope) => {
+                    crate::core::diagnostic_params! {"scope"=>match scope {IdentityScope::Document=>"document",IdentityScope::ExternalEntry=>"external_entry"}}
+                }
+            }
+        }
     }
 }

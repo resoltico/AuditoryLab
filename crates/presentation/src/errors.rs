@@ -378,6 +378,7 @@ impl Explain for auditorylab_app::services::OperationError {
     fn explain(&self) -> String {
         use auditorylab_app::services::OperationError as E;
         match self {
+            E::SampleRate(error) => super::core_errors::sample_rate_error(error),
             E::Load(error) => error.explain(),
             E::Library(error) => error.explain(),
             E::Export(error) => error.explain(),

@@ -506,3 +506,68 @@ fn explicit_sort_values_follow_the_cli_contract() {
     let explicit = cli(&["list", "--collection", "builtin", "--sort", "modified"]);
     assert!(explicit.status.success(), "{explicit:?}");
 }
+
+#[test]
+fn json_failures_keep_fixed_codes_and_structured_values() {
+    let root = dir();
+    let missing = root.path().join("must-not-read.toml");
+    let range = cli(&[
+        "inspect",
+        "--file",
+        missing.to_str().unwrap(),
+        "--sample-rate",
+        "0",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(range.status.code(), Some(2));
+    let value: serde_json::Value = serde_json::from_slice(&range.stdout).unwrap();
+    assert_eq!(value["output_schema_version"], 2);
+    assert_eq!(value["operation"], "inspect");
+    assert_eq!(value["diagnostics"][0]["code"], "sample_rate.range");
+    assert_eq!(
+        value["diagnostics"][0]["params"],
+        serde_json::json!({"hz":0,"min_hz":1,"max_hz":768000})
+    );
+    assert!(!missing.exists(), "range refusal precedes source access");
+
+    let component = "\n[[sound.component]]\nid = 7\nkind = \"tone\"\nears = \"both\"\nfrequency_hz = 440.0\npeak_dbfs = -40.0\n";
+    let duplicate = format!("{}{}{}", silence(), component, component);
+    let unsupported = silence().replacen("schema_version = 4", "schema_version = 3", 1);
+    for (name, text, code, parameter, expected) in [
+        (
+            "duplicate.toml",
+            duplicate,
+            "structure.identity",
+            "component_id",
+            7,
+        ),
+        (
+            "version.toml",
+            unsupported,
+            "recipe.schema_version",
+            "found",
+            3,
+        ),
+    ] {
+        let file = root.path().join(name);
+        fs::write(&file, &text).unwrap();
+        let result = cli(&[
+            "inspect",
+            "--file",
+            file.to_str().unwrap(),
+            "--format",
+            "json",
+        ]);
+        assert_eq!(result.status.code(), Some(2), "{result:?}");
+        let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        let diagnostic = &report["diagnostics"][0];
+        assert_eq!(diagnostic["code"], code);
+        assert_eq!(diagnostic["params"][parameter], expected);
+        assert_eq!(diagnostic["params"]["origin"], file.to_str().unwrap());
+        if name == "version.toml" {
+            assert_eq!(diagnostic["params"]["supported"], 4);
+        }
+        assert_eq!(fs::read(&file).unwrap(), text.as_bytes());
+    }
+}

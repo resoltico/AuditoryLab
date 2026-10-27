@@ -1389,39 +1389,25 @@ mod tests;
 
 impl std::fmt::Display for EditRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::StaleDocument => "edit.stale_document",
-            Self::StaleRow => "edit.stale_row",
-            Self::UnknownComponent => "edit.unknown_component",
-            Self::Inapplicable => "edit.inapplicable",
-            Self::BudgetExceeded { .. } => "edit.budget_exceeded",
-            Self::IdentitiesExhausted => "edit.identities_exhausted",
-            Self::NothingRemoved => "edit.nothing_removed",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 
 impl std::fmt::Display for SaveRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Input(..) => "save_refusal.input",
-            Self::Document(..) => "save_refusal.document",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 
 impl std::fmt::Display for InputProblem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Unparseable => "input.unparseable",
-            Self::Nonfinite => "input.nonfinite",
-        })
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for InputProblem {}
 impl std::fmt::Display for CommitRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("edit.commit")
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl std::error::Error for CommitRefusal {
@@ -1439,6 +1425,66 @@ impl std::error::Error for SaveRefusal {
             Self::Input(problems) => problems
                 .first()
                 .map(|(_, cause)| cause as &(dyn std::error::Error + 'static)),
+        }
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    EditRefusal {
+        codes {
+            Self::StaleDocument => "edit.stale_document",
+            Self::StaleRow => "edit.stale_row",
+            Self::UnknownComponent => "edit.unknown_component",
+            Self::Inapplicable => "edit.inapplicable",
+            Self::BudgetExceeded { .. } => "edit.budget_exceeded",
+            Self::IdentitiesExhausted => "edit.identities_exhausted",
+            Self::NothingRemoved => "edit.nothing_removed",
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::BudgetExceeded {
+                    components,
+                    voices,
+                    additional_voices,
+                } => {
+                    crate::core::diagnostic_params! {"components"=>*components,"voices"=>*voices,"additional_voices"=>*additional_voices}
+                }
+                _ => crate::core::Params::new(),
+            }
+        }
+    }
+    SaveRefusal {
+        codes {
+            Self::Input(..) => "save_refusal.input",
+        }
+        delegates {
+            Self::Document(error) => error,
+        }
+        params(this) {
+            match this {
+                Self::Input(problems) => {
+                    crate::core::diagnostic_params! {"problem_count"=>problems.len()}
+                }
+                _ => crate::core::Params::new(),
+            }
+        }
+    }
+    InputProblem {
+        codes {
+            Self::Unparseable => "input.unparseable",
+            Self::Nonfinite => "input.nonfinite",
+        }
+        delegates {}
+    }
+    CommitRefusal {
+        codes {
+            Self { .. } => "edit.commit",
+        }
+        delegates {}
+        params(this) {
+            crate::core::diagnostic_params! {"problem_count"=>this.problems.len()}
         }
     }
 }

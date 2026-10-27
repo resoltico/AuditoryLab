@@ -15,7 +15,7 @@ pub enum ParamValue {
     /// Exact signed integer.
     Signed(i128),
     /// Finite floating-point quantity.
-    Number(f64),
+    Number(crate::Finite),
     /// Captured text, identifier or explicit nonfinite quantity.
     Text(String),
     /// A captured condition.
@@ -46,13 +46,13 @@ unsigned!(u8, u16, u32, u64, usize);
 signed!(i8, i16, i32, i64, isize);
 impl From<f64> for ParamValue {
     fn from(value: f64) -> Self {
-        if value.is_finite() {
-            Self::Number(value)
-        } else {
-            Self::Text(value.to_string())
+        match crate::Finite::new(value) {
+            Some(finite) => Self::Number(finite),
+            None => Self::Text(value.to_string()),
         }
     }
 }
+
 impl From<bool> for ParamValue {
     fn from(value: bool) -> Self {
         Self::Bool(value)
@@ -75,11 +75,12 @@ impl From<&str> for ParamValue {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! diagnostic_codes {
-    ($visibility:vis const $registry:ident; $( $ty:ty {
+    ($(#[$registry_attr:meta])* $visibility:vis const $registry:ident; $( $ty:ty {
         codes {$( $pattern:pat => $code:literal, )*}
         delegates {$( $delegate:pat => $cause:expr, )*}
         $(params($this:ident) $extra:block)?
     })*)=>{
+        $(#[$registry_attr])*
         $visibility const $registry:&[&str]=&[$($($code,)*)*];
         $(impl $crate::Code for $ty {
             fn code(&self)->&'static str {

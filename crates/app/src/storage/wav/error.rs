@@ -1,9 +1,5 @@
 //! Stream encoder failures.
-use std::{
-    error::Error,
-    fmt::{Display, Formatter},
-    io,
-};
+use std::{error::Error, io};
 /// Why stream encoding stopped.
 #[derive(Debug)]
 pub(crate) enum ExportError {
@@ -12,12 +8,9 @@ pub(crate) enum ExportError {
     /// Cooperative cancellation.
     Cancelled,
 }
-impl Display for ExportError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Io(_) => f.write_str("wav.io"),
-            Self::Cancelled => f.write_str("wav.cancelled"),
-        }
+impl std::fmt::Display for ExportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(crate::core::Code::code(self))
     }
 }
 impl Error for ExportError {
@@ -31,5 +24,22 @@ impl Error for ExportError {
 impl From<io::Error> for ExportError {
     fn from(e: io::Error) -> Self {
         Self::Io(e)
+    }
+}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    ExportError {
+        codes {
+            Self::Io(_) => "wav.io",
+            Self::Cancelled => "wav.cancelled",
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::Io(error) => crate::core::diagnostic_params! {"cause"=>error.to_string()},
+                Self::Cancelled => crate::core::Params::new(),
+            }
+        }
     }
 }
