@@ -66,7 +66,7 @@ The drawer can be resized by pointer, keyboard or accessibility slider actions. 
 
 macOS requires version 15 or later and the matching CPU archive. Packages are ad-hoc signed. Keep the app’s Contents intact when moving it.
 
-Linux downloads require glibc 2.35 or later, ALSA, X11 or Wayland, fonts, fontconfig, xkbcommon, OpenGL and an xdg-desktop-portal backend. X11 also needs `libxkbcommon-x11-0` on Debian/Ubuntu. GNOME Wayland text scaling uses GLib’s `gsettings`. Keep executable and legal files together; the supplied desktop entry and hicolor icons support launcher installation.
+Linux downloads require glibc 2.35 or later, ALSA, X11 or Wayland, fonts, fontconfig, xkbcommon, OpenGL and an xdg-desktop-portal backend. X11 also needs `libxkbcommon-x11-0` on Debian/Ubuntu. GNOME Wayland text scaling uses GLib’s `gsettings`. Keep the extracted executable and legal files together and add that directory to PATH. For a per-user launcher, install `auditorylab-gui.desktop` in `~/.local/share/applications/` and merge the packaged `hicolor/` contents into `~/.local/share/icons/hicolor/`. Keep the `org.resoltico.auditorylab` icon names unchanged.
 
 Windows requires Windows 10 on x86_64 or Windows 11 on ARM64 and an OpenGL 2.0 or newer driver. x86_64 requires SSE3, CMPXCHG16B and LAHF/SAHF. Fatal graphics/application failures use a native dialog.
 

@@ -129,7 +129,7 @@ Diagnostics and warnings are objects with a stable lowercase `code` and a human-
 
 Entries identify key, collection, title, portable document identity, duration, dates, content token, directory-owned Trash state, nominal facts, evidence and validation. Unknown dates/values use null. Discovery validation is `not_checked`.
 
-Descriptors contain `owner`, `role`, `method`, `hz` and optional band membership. Expanded owners use `{"component":N,"lane":"primary"}` or `secondary`. Each descriptor identifies its own generator lane and structural method. Display labels are separate from serialized keys; method group captions use the same owning vocabulary labels as the other views.
+Nominal descriptors contain `owner`, `method`, `hz` and optional `band` membership. Expanded owners use `{"component":N,"lane":"primary"}` or `secondary`. Each nominal descriptor identifies its generator lane and structural method. Transition roles belong to generated observations, not nominal JSON descriptors. Display labels are separate from serialized keys; method group captions use the same owning vocabulary labels as the other views.
 
 Read-only partial inventories return healthy entries with `complete:false`. IDs output emits no stdout selectors for incomplete discovery and rejects grouping or temporary inputs. Prose escapes controls/bidi overrides; raw portable output retains its bytes. JSON escaping preserves decoded string data.
 

@@ -4,7 +4,7 @@ Auditory Lab's “Woven” icon shows two sine waves woven across each other. Th
 
 ## Sources and attribution
 
-[`auditorylab-icon/source/make_icon.py`](auditorylab-icon/source/make_icon.py) and its [palette](auditorylab-icon/source/palette.json) define the drawing. [Attribution and geometry](auditorylab-icon/ATTRIBUTION.md) describes the credits, drawing inputs and their limits. Editable Icon Composer layers, platform exports and a preview are retained beside them. The [asset guide](auditorylab-icon/README.md) describes the files and construction tools. Its checksum manifest checks the listed current files; hashes do not certify originality or ownership.
+[`auditorylab-icon/source/make_icon.py`](auditorylab-icon/source/make_icon.py) and its [palette](auditorylab-icon/source/palette.json) define the drawing. [Icon geometry and use](auditorylab-icon/GEOMETRY.md) describes the drawing inputs and their limits. Editable Icon Composer layers, platform exports and a preview are retained beside them. The [asset guide](auditorylab-icon/README.md) describes the files and construction tools. Its checksum manifest checks the listed current files; hashes do not certify originality or ownership.
 
 ## Runtime and packaging
 

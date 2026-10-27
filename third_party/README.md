@@ -12,7 +12,7 @@ The verifier authenticates archives before extraction, compares every source byt
 
 ## Patched behavior
 
-| Patch | Behavior and retirement condition |
+| Patch | Required behavior and coverage |
 | --- | --- |
 | AccessKit Unix | Cache add/remove signals encode one structured D-Bus argument, as specified by [AT-SPI Cache](https://github.com/GNOME/at-spi2-core/blob/main/xml/Cache.xml). An upstream replacement must pass the production signal-serialization tests and refresh removed/reinserted accessible controls. |
 | Slint core | Preserve aggregate macOS modifiers, full multiline shaped extents, shaped cursor height, semantic focus reveal and clipped editor focus. An upstream replacement must pass keyboard, caret, scroll, reflow and removed-row focus tests. |
@@ -26,15 +26,9 @@ The standard Slint application About item opens the toolkit's predefined native 
 
 The AccessKit Unix patch must satisfy the pinned `accesskit_winit` dependency range as well as the cache-signal contract. The exact patched version is recorded in [patches.toml](patches.toml) and resolved in [Cargo.lock](../Cargo.lock).
 
-## Released APIs
+## Dependency boundaries
 
-| Package | Released behavior and compatibility | Upstream source |
-| --- | --- | --- |
-| `accesskit_unix` | 0.24.1 preserves Cache structure arguments. `accesskit_winit` 0.33.2 requires Unix ^0.22.1, whose compatible release still needs the backport; Unix 0.24.1 cannot replace it independently. | [0.24.1 release](https://github.com/AccessKit/accesskit/releases/tag/accesskit_unix-v0.24.1), [structure-argument fix](https://github.com/AccessKit/accesskit/commit/bffadacde348b0b73d3d7201bfb0b7f69a54b0bf), [0.33.2 dependency](https://docs.rs/crate/accesskit_winit/0.33.2/source/Cargo.toml) |
-| `i-slint-core` | The published 1.18.1 source requires the aggregate-modifier, shaped-geometry and focus-lifecycle changes described above. | [1.18.1 release](https://github.com/slint-ui/slint/releases/tag/v1.18.1), [core source](https://github.com/slint-ui/slint/tree/372cf0ee5577c3dfec309a45e7b778ba4e81b734/internal/core) |
-| `i-slint-compiler` | The 1.18.1 TextEdit scroll policy needs the shaped cursor height produced by the core patch; compiler and core remain paired. | [widget source](https://github.com/slint-ui/slint/blob/372cf0ee5577c3dfec309a45e7b778ba4e81b734/internal/compiler/widgets/common/textedit-base.slint) |
-| `i-slint-backend-winit` | The 1.18.1 backend needs modifier forwarding, deferred Wayland redraw and custom macOS application-menu routing. | [backend source](https://github.com/slint-ui/slint/tree/372cf0ee5577c3dfec309a45e7b778ba4e81b734/internal/backends/winit) |
-| `winit` | Slint 1.18.1 uses the 0.30 API. Stable 0.30.13 needs deferred/coalesced AppKit termination and Wayland modeless parenting; 0.31.0-beta.4 is outside that API line. | [0.30.13 source](https://github.com/rust-windowing/winit/tree/e9809ef54b18499bb4f2cac945719ecc2a61061b), [published versions](https://crates.io/crates/winit/versions) |
+[Cargo.toml](../Cargo.toml), [Cargo.lock](../Cargo.lock) and [patches.toml](patches.toml) define the current dependency graph. Slint core, compiler and backend share one version; the compiler's cursor-height input is paired with the core's shaped geometry. The backend uses Slint's Winit 0.30 API. AccessKit Unix must satisfy `accesskit_winit`'s dependency range and use compatible AccessKit data types throughout that graph.
 
 Modeless parent-request retention belongs to the [Details binding](../crates/gui/src/details_parent.rs): it reacquires native handles after recreation and never retains a retired Wayland surface. Winit exposes the parent request; the backend's deferred-show redraw does not own this application binding.
 

@@ -1,6 +1,6 @@
-# Artwork attribution and geometry
+# Icon geometry and use
 
-The Auditory Lab “Woven” icon is credited to Claude (Anthropic), under Ervins Strauhmanis's art direction and selection. Its drawing source uses explicit coordinates and sine formulas, with no external artwork, icon libraries, fonts or system symbols as drawing inputs. This attribution does not certify originality, ownership or trademark clearance.
+The Woven icon is defined by explicit coordinates, sine formulas and the tracked palette. Its drawing uses no external artwork, icon libraries, fonts or system symbols. The [root LICENSE](../../LICENSE) governs software and artwork permissions.
 
 [`source/make_icon.py`](source/make_icon.py) and [`source/palette.json`](source/palette.json) define the drawing:
 
@@ -10,4 +10,4 @@ The Auditory Lab “Woven” icon is credited to Claude (Anthropic), under Ervin
 - Flat exports use an 824 × 824 tile with corner radius 185 on a 1024 canvas. Icon Composer foreground layers scale the drawing by `1024 / 824`; system tooling supplies the enclosure.
 - The palette file specifies light/dark colors and tinted back-wave opacity.
 
-Sine waves and rounded app tiles are generic motifs. Attribution and checksums do not establish exclusive rights. The governing software/artwork permissions are in the [root LICENSE](../../LICENSE).
+Sine waves and rounded app tiles are generic motifs. The geometry and checksum manifest do not establish exclusive rights.
