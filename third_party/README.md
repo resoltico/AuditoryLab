@@ -12,17 +12,19 @@ The verifier authenticates archives before extraction, compares every source byt
 
 ## Patched behavior
 
-| Patch | Required behavior and coverage |
-| --- | --- |
-| AccessKit Unix | Cache add/remove signals encode one structured D-Bus argument, as specified by [AT-SPI Cache](https://github.com/GNOME/at-spi2-core/blob/main/xml/Cache.xml). An upstream replacement must pass the production signal-serialization tests and refresh removed/reinserted accessible controls. |
-| Slint core | Preserve aggregate macOS modifiers, full multiline shaped extents, shaped cursor height, semantic focus reveal and clipped editor focus. An upstream replacement must pass keyboard, caret, scroll, reflow and removed-row focus tests. |
-| Slint compiler | TextEdit reveals the shaped cursor rectangle. An upstream replacement must pass `text_edit_cursor_scrolls_into_view` at the supported text sizes. |
-| Slint Winit backend | Wayland show requests a redraw. macOS aggregate modifiers, termination and application About route to their owning core/application handlers. An upstream replacement must preserve those native boundaries and the unsaved-change Save/Discard/Cancel flow. |
-| Winit | Expose Wayland modeless parenting and deferred/coalesced macOS termination requests. An upstream replacement must preserve parent ownership, main-thread replies, stale-request rejection and one pending Quit request. |
+| Patch | Retirement condition | Proof required on the replacement |
+| --- | --- | --- |
+| AccessKit Unix | A compatible Slint/AccessKit graph resolves `accesskit_unix` 0.24.1 or newer and emits each cache payload as one structured D-Bus argument. | Linux `cache_add_carries_one_complete_struct_argument` and `cache_remove_carries_one_object_reference_struct` in [bus.rs](accesskit_unix/src/atspi/bus.rs); removed/reinserted accessible controls refresh correctly. |
+| Slint core | Upstream provides equivalent aggregate modifier synchronization, complete shaped multiline extents/cursor height, semantic focus reveal and active-row focus validation. Retire individual hunks only when their behavior is covered. | `platform_modifiers_drive_text_shortcuts`, `text_edit_cursor_scrolls_into_view` and `control_focus_scrolls_into_view` in [window tests](../crates/gui/src/window_tests.rs), plus both [focus/reflow tests](../crates/gui/src/focus_reflow_tests.rs) and retired-row callback tests in [adapter tests](../crates/gui/src/adapter_tests.rs). |
+| Slint compiler | TextEdit reveals the shaped cursor rectangle and its height; the paired core property exists in the same resolved Slint version. | `text_edit_cursor_scrolls_into_view` at supported text sizes, with the [compiler binding](i-slint-compiler/widgets/common/textedit-base.slint) and [core geometry](i-slint-core/items/text.rs) exercised together. |
+| Slint Winit backend | Upstream supplies first-show redraw, normalized aggregate macOS modifiers, deferred termination routing and application-owned About actions through supported public APIs. | Wayland first-show/details recreation; macOS modifier test, native About action and Quit Save/Discard/Cancel smoke; [adapter workflows](../crates/gui/src/adapter_tests.rs) must retain captures and one pending prompt. |
+| Winit | Public APIs support remappable Wayland modeless parents and application-owned deferred/coalesced AppKit termination without replacing a toolkit-owned delegate. | Linux parent recreation and invalid-parent checks through [Details binding](../crates/gui/src/details_parent.rs); macOS `requests_coalesce_and_each_epoch_is_answered_once` and `undeliverable_and_abandoned_requests_are_settled` in [termination state](winit/src/platform_impl/macos/app_state.rs), plus native Quit/Cancel. |
 
 Application buttons use [the app-owned component](../crates/gui/ui/button.slint). It retains toolkit rendering, sizing and focus, exposes one accessible button, and forwards its `triggered` application callback only while enabled. `accessibility_presses_respect_disabled_buttons` exercises this component through the production accessibility action.
 
 The standard Slint application About item opens the toolkit's predefined native panel. The custom About event routes to the application's window containing its project and license actions. AppKit termination is intercepted through Winit's own application delegate; the delegate is not replaced. Repeated Quit joins one pending request; unavailable or abandoned handlers deny it.
+
+The cache-signal fix is included in `accesskit_unix` 0.24.1; 0.24.0 still passes the struct fields as the message body. The fixed release requires AccessKit 0.25.2, while the pinned adapter uses AccessKit 0.24.1 and `accesskit_unix` 0.22.1. Removal therefore requires a compatible toolkit graph, not a standalone package substitution.
 
 The AccessKit Unix patch must satisfy the pinned `accesskit_winit` dependency range as well as the cache-signal contract. The exact patched version is recorded in [patches.toml](patches.toml) and resolved in [Cargo.lock](../Cargo.lock).
 
