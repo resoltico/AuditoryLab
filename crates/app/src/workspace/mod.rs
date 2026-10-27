@@ -17,6 +17,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 mod audio;
+mod commands;
+pub use commands::{
+    AudioCommand, Command, EditorCommand, FileCommand, LibraryCommand, Navigation, OutputCommand,
+};
 pub(crate) use views::CODES as VIEW_CODES;
 mod editor;
 mod file;
@@ -33,7 +37,9 @@ pub mod status;
 pub(crate) mod tasks;
 mod views;
 
-pub use library::{EntryMutation, LibraryBinding, LibraryData, LibraryOutcome, SelectionBinding};
+pub use library::{
+    EntryHandle, EntryMutation, LibraryBinding, LibraryData, LibraryOutcome, SelectionBinding,
+};
 pub use output::{MotionPreference, OutputView};
 pub use tasks::{
     Executor, FileOutcome, Job, JobContext, JobKind, JobOutcome, LibraryFailure, Runner,
@@ -144,6 +150,8 @@ pub enum Effect {
         /// Whether the application may close now.
         approved: bool,
     },
+    /// Discard staged filter inputs after an explicit app-owned query reset.
+    ResetLibraryInputs,
     /// Show another view.
     ShowView(View),
 }
@@ -412,7 +420,7 @@ impl Workspace {
     // ---- library ----
 
     /// Switch between the library and the open document.
-    pub fn set_view(&mut self, view: View) {
+    fn set_view(&mut self, view: View) {
         if self.view != view {
             self.view = view;
             self.changed();
@@ -443,48 +451,48 @@ impl Workspace {
     }
 
     /// Start a new blank document, asking about unsaved changes first.
-    pub fn new_document(&mut self) {
-        self.request(DocumentAction::New);
+    fn new_document(&mut self) -> Result<(), Refusal> {
+        self.request(DocumentAction::New)
     }
 
     /// Open an editable copy of the selected recipe.
-    pub fn copy_selected(&mut self) {
+    fn copy_selected(&mut self) -> Result<(), Refusal> {
         if let Err(refusal) = self.copy_admission() {
-            self.files.status = FileStatus::Refused(refusal);
+            self.files.status = FileStatus::Refused(refusal.clone());
             self.changed();
-            return;
+            return Err(refusal);
         }
         let snapshot = self
             .selected()
             .cloned()
             .unwrap_or_else(|| unreachable!("copy admission retains the selected snapshot"));
-        self.request(DocumentAction::Copy(snapshot));
+        self.request(DocumentAction::Copy(snapshot))
     }
 
     /// Request closing the application. Every close entry point uses this
     /// same decision; repeated requests while one is pending coalesce. The
     /// answer arrives as [`Effect::CloseResolved`] after the tasks that
     /// closing depends on have been joined.
-    pub fn close(&mut self) {
+    fn close(&mut self) -> Result<(), Refusal> {
         if self.closing {
-            return;
+            return Ok(());
         }
         self.closing = true;
-        self.request(DocumentAction::Close);
+        self.request(DocumentAction::Close)
     }
 
-    fn request(&mut self, action: DocumentAction) {
+    fn request(&mut self, action: DocumentAction) -> Result<(), Refusal> {
         let closes = matches!(action, DocumentAction::Close);
         if let Err(refusal) = self.start_allowed() {
-            self.files.status = FileStatus::Refused(refusal);
+            self.files.status = FileStatus::Refused(refusal.clone());
             self.deny(closes);
             self.changed();
-            return;
+            return Err(refusal);
         }
         if self.files.slot.is_some() {
             self.schedule(Action::Retry(action));
             self.changed();
-            return;
+            return Ok(());
         }
         // Commit staged text when it can be; anything left staged is unsaved.
         let _ = self.editor.commit();
@@ -496,6 +504,7 @@ impl Workspace {
             self.schedule(Action::Document(action));
         }
         self.changed();
+        Ok(())
     }
 
     /// Answer a prompt. Answers to prompts that are no longer open change nothing.
@@ -579,12 +588,7 @@ impl Workspace {
         }
         match (state, response) {
             (PromptState::Purge { key, expect }, PromptAnswer::Confirm) => {
-                let result = self.mutate_library_with_confirmation(
-                    &key.to_string(),
-                    &expect.to_string(),
-                    EntryMutation::RequestPurge,
-                    true,
-                );
+                let result = self.purge_confirmed(key, expect);
                 if let Err(refusal) = result {
                     self.files.status = FileStatus::Refused(refusal.clone());
                 }
@@ -756,7 +760,9 @@ impl Workspace {
                     };
                 }
             }
-            Action::Retry(action) => self.request(action),
+            Action::Retry(action) => {
+                let _ = self.request(action);
+            }
             Action::StartAudio(request) => self.start_audio(request),
             Action::AfterSave {
                 action, document, ..

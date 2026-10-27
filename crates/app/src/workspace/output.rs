@@ -431,30 +431,30 @@ impl OutputState {
 
 impl Workspace {
     /// Record the platform's reduced-motion preference.
-    pub fn set_motion_preference(&mut self, preference: MotionPreference) {
+    pub(super) fn set_motion_preference(&mut self, preference: MotionPreference) {
         if self.audio.output.set_motion(preference) {
             self.changed();
         }
     }
     /// Hold or release the displayed capture, overriding the platform
     /// preference until [`Workspace::follow_motion`].
-    pub fn set_hold(&mut self, held: bool) {
+    pub(super) fn set_hold(&mut self, held: bool) {
         self.audio.output.set_override(Some(held));
         self.changed();
     }
     /// Follow the platform's motion preference again.
-    pub fn follow_motion(&mut self) {
+    pub(super) fn follow_motion(&mut self) {
         self.audio.output.set_override(None);
         self.changed();
     }
     /// Choose the waveform span in milliseconds and its display scale.
-    pub fn set_waveform(&mut self, span_ms: u32, scale: WaveformScale) {
+    pub(super) fn set_waveform(&mut self, span_ms: u32, scale: WaveformScale) {
         if self.audio.output.set_waveform(span_ms, scale) {
             self.changed();
         }
     }
     /// Stop showing the last session's output and preview the current source.
-    pub fn preview_current(&mut self) {
+    pub(super) fn preview_current(&mut self) {
         if self.preview_admission().is_ok() {
             self.audio.output.unbind();
             self.changed();

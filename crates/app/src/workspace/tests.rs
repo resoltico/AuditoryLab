@@ -37,10 +37,14 @@ impl TestWorkspace {
         let mut inner = Workspace::with_library(catalog, capabilities, store.clone())?;
         drain_files(&mut inner);
         if open_files {
-            inner.set_catalog_query(crate::discovery::collection::CatalogQuery {
-                scope: crate::core::query::Scope::OpenFiles,
-                ..Default::default()
-            })?;
+            inner
+                .apply(Command::Library(LibraryCommand::SetQuery(Box::new(
+                    crate::discovery::collection::CatalogQuery {
+                        scope: crate::core::query::Scope::OpenFiles,
+                        ..Default::default()
+                    },
+                ))))
+                .expect("valid open-file query");
             drain_files(&mut inner);
         }
         Ok(Self {
@@ -57,8 +61,9 @@ impl TestWorkspace {
         let LibraryRowView::Entry { entry, .. } = &self.inner.library_view().rows[position] else {
             panic!("entry row")
         };
-        let key = entry.key.to_string();
-        self.select_library_key(&key);
+        let handle = self.entry_handle(&entry.key).unwrap();
+        self.apply(Command::Library(LibraryCommand::Select(handle)))
+            .unwrap();
     }
     fn visible_count(&self) -> usize {
         self.inner
@@ -98,16 +103,24 @@ fn workspace() -> TestWorkspace {
     .unwrap()
 }
 fn document(ws: &mut Workspace, frequency: f64) -> (DocumentId, FieldHandle) {
-    ws.set_view(View::Workbench);
+    let _ = ws.apply(Command::SetView(View::Workbench));
     let document = ws.editor().document();
     let document_key = ws.editor().document_key();
-    ws.add_component(document_key, CarrierKind::Tone).unwrap();
+    ws.apply(Command::Editor(EditorCommand::AddComponent {
+        row: document_key,
+        kind: CarrierKind::Tone,
+    }))
+    .unwrap();
     let id = ws.editor().draft().components()[0].id;
     let handle = ws
         .editor()
         .handle(EditingField::Parameter(id, ParameterId::ToneFrequency))
         .unwrap();
-    ws.commit_field(handle, &frequency.to_string()).unwrap();
+    ws.apply(Command::Editor(EditorCommand::CommitField {
+        field: handle,
+        text: frequency.to_string(),
+    }))
+    .unwrap();
     (document, handle)
 }
 #[test]
@@ -148,11 +161,17 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
         "views reuse cached evaluations"
     );
     // A scale change reuses the preview's samples.
-    ws.set_waveform(40, WaveformScale::Fit);
+    let _ = ws.apply(Command::Output(OutputCommand::SetWaveform {
+        span_ms: 40,
+        scale: WaveformScale::Fit,
+    }));
     ws.poll();
     assert_eq!(ws.audio.output.previews, previews);
     // A relevant change recomputes once.
-    ws.set_waveform(10, WaveformScale::Fit);
+    let _ = ws.apply(Command::Output(OutputCommand::SetWaveform {
+        span_ms: 10,
+        scale: WaveformScale::Fit,
+    }));
     ws.poll();
     ws.poll();
     assert_eq!(ws.audio.output.previews, previews + 1);
@@ -164,14 +183,18 @@ fn invalid_commits_clear_unheld_previews_and_held_captures_stay_frozen() {
     let (_, frequency) = document(&mut ws, 440.0);
     ws.poll();
     let valid = ws.output_view().capture.unwrap();
-    ws.stage(frequency, "30000").unwrap();
+    ws.apply(Command::Editor(EditorCommand::Stage {
+        field: frequency,
+        text: ("30000").to_string(),
+    }))
+    .unwrap();
     ws.poll();
     assert!(
         Arc::ptr_eq(&valid, &ws.output_view().capture.unwrap()),
         "staging keeps the committed preview"
     );
-    ws.set_hold(true);
-    ws.commit().unwrap();
+    let _ = ws.apply(Command::Output(OutputCommand::SetHold(true)));
+    ws.apply(Command::Editor(EditorCommand::Commit)).unwrap();
     ws.poll();
     let held = ws.output_view();
     assert!(held.held);
@@ -179,7 +202,7 @@ fn invalid_commits_clear_unheld_previews_and_held_captures_stay_frozen() {
         Arc::ptr_eq(&valid, &held.capture.unwrap()),
         "held capture keeps its content"
     );
-    ws.set_hold(false);
+    let _ = ws.apply(Command::Output(OutputCommand::SetHold(false)));
     ws.poll();
     let current = ws.output_view();
     assert!(
@@ -202,10 +225,18 @@ fn invalid_commits_clear_unheld_previews_and_held_captures_stay_frozen() {
 fn a_search_that_hides_every_recipe_leaves_nothing_to_play_or_export() {
     let mut ws = workspace();
     let chosen = ws.selected().unwrap().id();
-    ws.set_query("no recipe has this text");
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(
+        ("no recipe has this text").to_string(),
+    )));
     assert!(ws.selected().is_none());
-    assert!(matches!(ws.play(), Err(Refusal::NoSelection)));
-    assert!(matches!(ws.export(), Err(Refusal::NoSelection)));
+    assert!(matches!(
+        ws.apply(Command::Audio(AudioCommand::Play)),
+        Err(Refusal::NoSelection)
+    ));
+    assert!(matches!(
+        ws.apply(Command::File(FileCommand::ExportWav)),
+        Err(Refusal::NoSelection)
+    ));
     assert!(
         ws.take_effects()
             .iter()
@@ -214,9 +245,12 @@ fn a_search_that_hides_every_recipe_leaves_nothing_to_play_or_export() {
     );
     assert!(!ws.action_view().can_play);
     assert!(ws.library_view().selected.is_none());
-    ws.copy_selected();
+    assert!(matches!(
+        ws.apply(Command::Editor(EditorCommand::CopySelected)),
+        Err(Refusal::NoSelection)
+    ));
     assert_eq!(ws.view(), View::Library, "nothing to copy");
-    ws.set_query("");
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(("").to_string())));
     assert_eq!(
         ws.selected().unwrap().id(),
         chosen,
@@ -241,7 +275,11 @@ fn suggested_file_names_come_from_titles() {
 fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
     let mut ws = workspace();
     let (_, frequency) = document(&mut ws, 440.0);
-    ws.stage(frequency, "30000").unwrap();
+    ws.apply(Command::Editor(EditorCommand::Stage {
+        field: frequency,
+        text: ("30000").to_string(),
+    }))
+    .unwrap();
     let revision = ws.revision();
     let committed = ws.editor.session.draft_revision();
     let input = ws.editor.session.input_revision();
@@ -258,7 +296,7 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
     assert_eq!(ws.editor.session.input_revision(), input);
     assert!(ws.take_effects().is_empty());
     assert!(!ws.audio_busy() && !ws.file_busy());
-    assert!(ws.export().is_err());
+    assert!(ws.apply(Command::File(FileCommand::ExportWav)).is_err());
     assert_eq!(ws.editor.session.staged(frequency.field), Some("30000"));
     assert_eq!(ws.editor.session.draft_revision(), committed);
     drop(effects);
@@ -269,8 +307,12 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
             crate::document::editing::MetadataField::Summary,
         ))
         .unwrap();
-    ws.stage(notes, &"🎧".repeat(Recipe::MAX_BYTES)).unwrap();
-    assert!(ws.save().is_err());
+    ws.apply(Command::Editor(EditorCommand::Stage {
+        field: notes,
+        text: "🎧".repeat(Recipe::MAX_BYTES),
+    }))
+    .unwrap();
+    assert!(ws.apply(Command::File(FileCommand::Save)).is_err());
     assert!(ws.editor.session.staged(notes.field).is_some());
     assert_eq!(ws.editor.session.draft_revision(), committed);
 }
@@ -281,7 +323,11 @@ fn library_dependencies_exclude_editor_and_telemetry_but_include_selection_query
     let initial = ws.library_view();
     let evaluations = ws.library.evaluations.get();
     let (_, field) = document(&mut ws, 440.0);
-    ws.stage(field, "880").unwrap();
+    ws.apply(Command::Editor(EditorCommand::Stage {
+        field,
+        text: ("880").to_string(),
+    }))
+    .unwrap();
     let _ = ws.action_view();
     let _ = ws.editor_view();
     ws.poll();
@@ -296,11 +342,15 @@ fn library_dependencies_exclude_editor_and_telemetry_but_include_selection_query
         initial.snapshot.as_ref().unwrap().id()
     );
     assert_eq!(ws.library.evaluations.get(), evaluations + 1);
-    ws.set_query("no matching result");
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(
+        ("no matching result").to_string(),
+    )));
     let empty = ws.library_view();
     assert!(empty.rows.is_empty() && empty.snapshot.is_none());
-    ws.set_query("");
-    ws.set_export_rate(SampleRate::new(96000).unwrap());
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(("").to_string())));
+    let _ = ws.apply(Command::Editor(EditorCommand::SetExportRate(
+        SampleRate::new(96000).unwrap(),
+    )));
     assert!(!ws.library_view().rows.is_empty());
     assert_eq!(ws.library.evaluations.get(), evaluations + 3);
 }
@@ -328,7 +378,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
     let reopened = crate::storage::load::load_file(&derivative).unwrap();
     let mut ws = workspace();
     ws.replace_document(Draft::from_snapshot(&reopened).unwrap());
-    ws.show_based_on_source();
+    let _ = ws.apply(Command::Editor(EditorCommand::ShowBasedOnSource));
     assert_eq!(
         ws.selected().unwrap().recipe(),
         reopened.recipe(),
@@ -364,7 +414,9 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
         crate::storage::load::load_reader(bytes.as_bytes(), "reopened derivative").unwrap();
     let mut ws = TestWorkspace::new(vec![reopened], Capabilities::no_device_playback()).unwrap();
     for query in ["unique-own-notes-marker", &citation] {
-        ws.set_query(query);
+        let _ = ws.apply(Command::Library(LibraryCommand::Search(
+            (query).to_string(),
+        )));
         assert_eq!(ws.visible_count(), 1, "{query}");
         assert!(
             ws.selected()
@@ -383,21 +435,29 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
                 .all(|e| e.scope == crate::core::EvidenceScope::Ancestor)
         );
     }
-    ws.set_query("not-present-anywhere-marker");
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(
+        ("not-present-anywhere-marker").to_string(),
+    )));
     assert!((ws.visible_count() == 0));
     let mut custom = Draft::new().unwrap();
     custom.set_summary("custom-notes-marker".into());
     ws.add_import(custom.snapshot().unwrap()).unwrap();
-    ws.set_query("custom-notes-marker");
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(
+        ("custom-notes-marker").to_string(),
+    )));
     assert_eq!(ws.visible_count(), 1);
-    ws.set_query("unique-own-notes-marker");
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(
+        ("unique-own-notes-marker").to_string(),
+    )));
     assert_eq!(ws.visible_count(), 1);
     ws.add_import(crate::document::recipe::RecipeSnapshot::new(
         crate::document::recipe::Origin::Stream("reopened derivative".into()),
         custom.recipe().unwrap(),
     ))
     .unwrap();
-    ws.set_query("unique-own-notes-marker");
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(
+        ("unique-own-notes-marker").to_string(),
+    )));
     // A reimport under the same origin must remove stale search text.
     assert_eq!(ws.visible_count(), 0);
     let mut direct = TestWorkspace::new(vec![source], Capabilities::no_device_playback()).unwrap();
@@ -422,21 +482,25 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     for _ in 0..10 {
         let _ = ws.action_view();
         let _ = ws.library_view();
-        ws.set_hold(true);
-        ws.set_hold(false);
+        let _ = ws.apply(Command::Output(OutputCommand::SetHold(true)));
+        let _ = ws.apply(Command::Output(OutputCommand::SetHold(false)));
     }
     assert_eq!(selected.realization_count(), count);
-    ws.export().unwrap();
+    ws.apply(Command::File(FileCommand::ExportWav)).unwrap();
     let prompt = ws.prompts.current.as_ref().unwrap().id;
     ws.respond(Response::Prompt {
         prompt,
         answer: PromptAnswer::Path(None),
     });
     assert_eq!(selected.realization_count(), count);
-    ws.set_export_rate(SampleRate::new(96000).unwrap());
+    let _ = ws.apply(Command::Editor(EditorCommand::SetExportRate(
+        SampleRate::new(96000).unwrap(),
+    )));
     let _ = ws.action_view();
     assert_eq!(selected.realization_count(), count + 1);
-    ws.set_export_rate(SampleRate::DEFAULT);
+    let _ = ws.apply(Command::Editor(EditorCommand::SetExportRate(
+        SampleRate::DEFAULT,
+    )));
     let _ = ws.action_view();
     assert_eq!(selected.realization_count(), count + 1);
     let mut invalid = Draft::new().unwrap();
@@ -498,7 +562,9 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
     );
     let mut ws =
         TestWorkspace::new(vec![first.clone()], Capabilities::no_device_playback()).unwrap();
-    ws.set_query("original-custom-note-marker");
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(
+        ("original-custom-note-marker").to_string(),
+    )));
     assert_eq!(ws.visible_count(), 1);
     let initial = first.realization_count();
     let mut changed = recipe.into_builder();
@@ -508,9 +574,13 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
         changed.build().unwrap(),
     );
     ws.add_import(replacement.clone()).unwrap();
-    ws.set_query("original-custom-note-marker");
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(
+        ("original-custom-note-marker").to_string(),
+    )));
     assert!(ws.library_view().rows.is_empty());
-    ws.set_query("reimport-source-marker");
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(
+        ("reimport-source-marker").to_string(),
+    )));
     assert_eq!(ws.visible_count(), 1);
     assert!(
         ws.selected()
@@ -583,7 +653,7 @@ fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
 #[test]
 fn save_refusal_and_file_outcome_remain_independent() {
     let mut ws = workspace();
-    ws.set_view(View::Workbench);
+    let _ = ws.apply(Command::SetView(View::Workbench));
     let notes = ws
         .editor
         .session
@@ -591,7 +661,11 @@ fn save_refusal_and_file_outcome_remain_independent() {
             crate::document::editing::MetadataField::Summary,
         ))
         .unwrap();
-    ws.stage(notes, &"Z".repeat(66000)).unwrap();
+    ws.apply(Command::Editor(EditorCommand::Stage {
+        field: notes,
+        text: "Z".repeat(66000),
+    }))
+    .unwrap();
     let actions = ws.action_view();
     assert!(!actions.can_save);
     assert!(actions.save_reason.is_some());
@@ -636,10 +710,12 @@ fn nominal_listing_a_thousand_rows_does_not_compile_every_sound() {
         })
         .collect::<Vec<_>>();
     let mut ws = TestWorkspace::new(snapshots.clone(), Capabilities::no_device_playback()).unwrap();
-    ws.set_rhythm_query(crate::discovery::query::RhythmQuery {
-        bands: vec![crate::core::rhythm::Band::Delta],
-        ..Default::default()
-    });
+    let _ = ws.apply(Command::Library(LibraryCommand::SetRhythm(
+        crate::discovery::query::RhythmQuery {
+            bands: vec![crate::core::rhythm::Band::Delta],
+            ..Default::default()
+        },
+    )));
     assert_eq!(ws.library_view().rows.len(), 1000);
     ws.selected().unwrap().at(ws.export_rate()).unwrap();
     assert_eq!(
@@ -650,7 +726,9 @@ fn nominal_listing_a_thousand_rows_does_not_compile_every_sound() {
         1,
         "only the selected detail is compiled"
     );
-    ws.set_export_rate(SampleRate::new(96_000).unwrap());
+    let _ = ws.apply(Command::Editor(EditorCommand::SetExportRate(
+        SampleRate::new(96_000).unwrap(),
+    )));
     assert_eq!(ws.library_view().rows.len(), 1000);
     ws.selected().unwrap().at(ws.export_rate()).unwrap();
     assert_eq!(
@@ -682,7 +760,7 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
     let mut ws = workspace();
     for text in [&first_text, &second_text] {
         std::fs::write(&path, text).unwrap();
-        ws.import().unwrap();
+        ws.apply(Command::File(FileCommand::Import)).unwrap();
         let Effect::ChoosePath { prompt, .. } = ws.take_effects()[0] else {
             panic!()
         };
@@ -692,7 +770,8 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
         });
         drain_files(&mut ws);
         if text == &first_text {
-            ws.copy_selected();
+            ws.apply(Command::Editor(EditorCommand::CopySelected))
+                .unwrap();
             assert!(matches!(
                 ws.take_effects().as_slice(),
                 [Effect::ShowView(View::Workbench)]
@@ -709,7 +788,7 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
         crate::services::catalog().unwrap().len() + 1,
         "row replaced in place"
     );
-    ws.show_based_on_source();
+    let _ = ws.apply(Command::Editor(EditorCommand::ShowBasedOnSource));
     assert_eq!(
         ws.selected().unwrap().id(),
         first_copy.id(),
@@ -806,7 +885,7 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
     let mut workspace = workspace();
     let (_, field) = document(&mut workspace, 440.0);
     let captured = workspace.editor().draft().recipe().unwrap();
-    workspace.save().unwrap();
+    workspace.apply(Command::File(FileCommand::Save)).unwrap();
     let job = take_file_job(&mut workspace);
     let identity = job.id();
     assert!(workspace.file_busy());
@@ -814,10 +893,24 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
         workspace.store.scan(&Cancel::default()).entries.is_empty(),
         "admission itself performs no disk IO"
     );
-    assert!(matches!(workspace.import(), Err(Refusal::FileBusy)));
-    assert!(matches!(workspace.save(), Err(Refusal::FileBusy)));
-    assert!(matches!(workspace.export(), Err(Refusal::FileBusy)));
-    workspace.commit_field(field, "880").unwrap();
+    assert!(matches!(
+        workspace.apply(Command::File(FileCommand::Import)),
+        Err(Refusal::FileBusy)
+    ));
+    assert!(matches!(
+        workspace.apply(Command::File(FileCommand::Save)),
+        Err(Refusal::FileBusy)
+    ));
+    assert!(matches!(
+        workspace.apply(Command::File(FileCommand::ExportWav)),
+        Err(Refusal::FileBusy)
+    ));
+    workspace
+        .apply(Command::Editor(EditorCommand::CommitField {
+            field,
+            text: ("880").to_string(),
+        }))
+        .unwrap();
     for _ in 0..10 {
         workspace.inner.poll();
     }
@@ -867,7 +960,7 @@ fn captured_save_completion_never_replaces_a_different_editor_document() {
     let mut workspace = workspace();
     document(&mut workspace, 440.0);
     let captured = workspace.editor().draft().recipe().unwrap();
-    workspace.save().unwrap();
+    workspace.apply(Command::File(FileCommand::Save)).unwrap();
     let job = take_file_job(&mut workspace);
     // The identity guard must also protect an independently replaced embedding/editor session.
     let mut replacement = Draft::new().unwrap();
@@ -906,8 +999,8 @@ fn save_before_close_waits_for_the_captured_job_completion() {
     let mut workspace = workspace();
     document(&mut workspace, 440.0);
     let captured = workspace.editor().draft().recipe().unwrap();
-    workspace.close();
-    workspace.close();
+    let _ = workspace.apply(Command::Close);
+    let _ = workspace.apply(Command::Close);
     let prompt = take_unsaved_prompt(&mut workspace);
     assert_eq!(
         workspace.respond(Response::Prompt {
@@ -918,7 +1011,10 @@ fn save_before_close_waits_for_the_captured_job_completion() {
     );
     let job = take_file_job(&mut workspace);
     assert!(workspace.action_pending());
-    assert!(matches!(workspace.import(), Err(Refusal::ActionPending)));
+    assert!(matches!(
+        workspace.apply(Command::File(FileCommand::Import)),
+        Err(Refusal::ActionPending)
+    ));
     let response = execute_file(job);
     assert!(
         workspace
@@ -950,7 +1046,7 @@ fn failed_captured_save_denies_close_and_preserves_foreign_storage() {
     let mut workspace = workspace();
     document(&mut workspace, 440.0);
     let captured = workspace.editor().draft().recipe().unwrap();
-    workspace.close();
+    let _ = workspace.apply(Command::Close);
     let prompt = take_unsaved_prompt(&mut workspace);
     workspace.respond(Response::Prompt {
         prompt,
@@ -987,20 +1083,23 @@ fn failed_captured_save_denies_close_and_preserves_foreign_storage() {
 #[test]
 fn one_prompt_coalesces_quit_and_ignores_an_older_real_panel_answer() {
     let mut workspace = workspace();
-    workspace.import().unwrap();
+    workspace.apply(Command::File(FileCommand::Import)).unwrap();
     let stale = answer_path(&mut workspace, PathPurpose::OpenRecipe, None);
     document(&mut workspace, 440.0);
-    workspace.close();
-    workspace.close();
+    let _ = workspace.apply(Command::Close);
+    let _ = workspace.apply(Command::Close);
     let prompt = take_unsaved_prompt(&mut workspace);
-    workspace.new_document();
+    let _ = workspace.apply(Command::Editor(EditorCommand::New));
     assert!(workspace.take_effects().is_empty());
     assert!(matches!(
         &workspace.files.status,
         FileStatus::Refused(Refusal::PromptOpen)
     ));
     assert!(
-        matches!(workspace.stop(), Err(Refusal::NoAudio)),
+        matches!(
+            workspace.apply(Command::Audio(AudioCommand::Stop)),
+            Err(Refusal::NoAudio)
+        ),
         "Stop admission is independent of a native panel"
     );
     assert_eq!(
@@ -1035,8 +1134,13 @@ fn one_prompt_coalesces_quit_and_ignores_an_older_real_panel_answer() {
 fn invalid_staged_input_denies_save_before_close_without_starting_a_job() {
     let mut workspace = workspace();
     let (_, field) = document(&mut workspace, 440.0);
-    workspace.stage(field, "not a frequency").unwrap();
-    workspace.close();
+    workspace
+        .apply(Command::Editor(EditorCommand::Stage {
+            field,
+            text: ("not a frequency").to_string(),
+        }))
+        .unwrap();
+    let _ = workspace.apply(Command::Close);
     let prompt = take_unsaved_prompt(&mut workspace);
     assert_eq!(
         workspace.respond(Response::Prompt {
@@ -1053,7 +1157,7 @@ fn invalid_staged_input_denies_save_before_close_without_starting_a_job() {
     assert!(!workspace.file_busy());
     assert!(workspace.store.scan(&Cancel::default()).entries.is_empty());
     assert_close_resolution(&mut workspace, false);
-    workspace.close();
+    let _ = workspace.apply(Command::Close);
     let prompt = take_unsaved_prompt(&mut workspace);
     workspace.respond(Response::Prompt {
         prompt,
@@ -1077,16 +1181,22 @@ fn actual_import_completion_controls_dependent_close_and_never_runs_on_poll() {
             .unwrap();
         }
         let count = workspace.catalog().len();
-        workspace.import().unwrap();
-        assert!(matches!(workspace.save(), Err(Refusal::PromptOpen)));
+        workspace.apply(Command::File(FileCommand::Import)).unwrap();
+        assert!(matches!(
+            workspace.apply(Command::File(FileCommand::Save)),
+            Err(Refusal::PromptOpen)
+        ));
         answer_path(&mut workspace, PathPurpose::OpenRecipe, Some(path.clone()));
         let job = take_file_job(&mut workspace);
         assert!(
             !workspace.can_edit(),
             "admitted import excludes editor changes"
         );
-        assert!(matches!(workspace.import(), Err(Refusal::FileBusy)));
-        workspace.close();
+        assert!(matches!(
+            workspace.apply(Command::File(FileCommand::Import)),
+            Err(Refusal::FileBusy)
+        ));
+        let _ = workspace.apply(Command::Close);
         assert!(workspace.action_pending());
         for _ in 0..10 {
             workspace.inner.poll();
@@ -1114,9 +1224,14 @@ fn portable_export_keeps_the_prompt_capture_and_does_not_advance_the_save_baseli
     let identity = workspace.editor().draft().recipe().unwrap().document().id;
     let directory = temporary_directory();
     let path = directory.path().join("portable.toml");
-    workspace.export_recipe().unwrap();
+    workspace
+        .apply(Command::File(FileCommand::ExportRecipe))
+        .unwrap();
     assert!(matches!(
-        workspace.commit_field(field, "880"),
+        workspace.apply(Command::Editor(EditorCommand::CommitField {
+            field,
+            text: ("880").to_string()
+        })),
         Err(Refusal::PromptOpen)
     ));
     answer_path(
@@ -1125,7 +1240,12 @@ fn portable_export_keeps_the_prompt_capture_and_does_not_advance_the_save_baseli
         Some(path.clone()),
     );
     let job = take_file_job(&mut workspace);
-    workspace.commit_field(field, "880").unwrap();
+    workspace
+        .apply(Command::Editor(EditorCommand::CommitField {
+            field,
+            text: ("880").to_string(),
+        }))
+        .unwrap();
     let response = execute_file(job);
     let saved = crate::storage::load::load_file(&path).unwrap();
     assert_eq!(saved.recipe().document().id, identity);
@@ -1155,16 +1275,29 @@ fn canceled_real_exports_cleanup_and_close_treats_requested_cancellation_as_expe
             TestWorkspace::new(vec![short_silent_source()], Capabilities::available()).unwrap();
         let directory = temporary_directory();
         let path = directory.path().join("cancelled.wav");
-        workspace.export().unwrap();
-        assert!(matches!(workspace.play(), Err(Refusal::PromptOpen)));
+        workspace
+            .apply(Command::File(FileCommand::ExportWav))
+            .unwrap();
+        assert!(matches!(
+            workspace.apply(Command::Audio(AudioCommand::Play)),
+            Err(Refusal::PromptOpen)
+        ));
         answer_path(&mut workspace, PathPurpose::ExportWav, Some(path.clone()));
         let job = take_file_job(&mut workspace);
-        assert!(matches!(workspace.play(), Err(Refusal::Exporting)));
-        assert!(matches!(workspace.import(), Err(Refusal::FileBusy)));
+        assert!(matches!(
+            workspace.apply(Command::Audio(AudioCommand::Play)),
+            Err(Refusal::Exporting)
+        ));
+        assert!(matches!(
+            workspace.apply(Command::File(FileCommand::Import)),
+            Err(Refusal::FileBusy)
+        ));
         if close {
-            workspace.close();
+            let _ = workspace.apply(Command::Close);
         } else {
-            workspace.cancel_export().unwrap();
+            workspace
+                .apply(Command::File(FileCommand::CancelExport))
+                .unwrap();
         }
         let response = execute_file(job);
         assert!(!path.exists());
@@ -1181,7 +1314,10 @@ fn canceled_real_exports_cleanup_and_close_treats_requested_cancellation_as_expe
         } else {
             assert!(workspace.take_effects().is_empty());
         }
-        assert!(matches!(workspace.cancel_export(), Err(Refusal::NoExport)));
+        assert!(matches!(
+            workspace.apply(Command::File(FileCommand::CancelExport)),
+            Err(Refusal::NoExport)
+        ));
     }
 }
 
@@ -1191,7 +1327,9 @@ fn a_close_request_after_export_publication_does_not_unpublish_the_real_file() {
         TestWorkspace::new(vec![short_silent_source()], Capabilities::available()).unwrap();
     let directory = temporary_directory();
     let path = directory.path().join("complete.wav");
-    workspace.export().unwrap();
+    workspace
+        .apply(Command::File(FileCommand::ExportWav))
+        .unwrap();
     answer_path(&mut workspace, PathPurpose::ExportWav, Some(path.clone()));
     let job = take_file_job(&mut workspace);
     let response = execute_file(job);
@@ -1199,7 +1337,7 @@ fn a_close_request_after_export_publication_does_not_unpublish_the_real_file() {
     assert_eq!(&bytes[..4], b"RIFF");
     assert_eq!(bytes.len(), 58 + 480 * 8);
     assert!(workspace.file_busy());
-    workspace.close();
+    let _ = workspace.apply(Command::Close);
     assert!(workspace.action_pending());
     assert!(workspace.take_effects().is_empty());
     assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
@@ -1216,7 +1354,7 @@ fn managed_save_can_run_beside_admitted_audio_and_stop_does_not_cancel_it() {
     let mut workspace = workspace();
     document(&mut workspace, 440.0);
     let identity = workspace.editor().draft().recipe().unwrap().document().id;
-    workspace.play().unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
     let effects = workspace.take_effects();
     let mut jobs = effects.into_iter().filter_map(|effect| match effect {
         Effect::Run(job) => Some(job),
@@ -1232,12 +1370,21 @@ fn managed_save_can_run_beside_admitted_audio_and_stop_does_not_cancel_it() {
     assert_eq!(audio.kind(), JobKind::Audio);
     // Audio is deliberately never executed: this test opens no output device.
     assert!(workspace.audio_busy());
-    assert!(matches!(workspace.export(), Err(Refusal::AudioPlaying)));
-    workspace.save().unwrap();
+    assert!(matches!(
+        workspace.apply(Command::File(FileCommand::ExportWav)),
+        Err(Refusal::AudioPlaying)
+    ));
+    workspace.apply(Command::File(FileCommand::Save)).unwrap();
     let save = take_file_job(&mut workspace);
     assert!(workspace.file_busy());
-    assert!(matches!(workspace.import(), Err(Refusal::FileBusy)));
-    assert!(matches!(workspace.stop(), Ok(StopRequest::Accepted)));
+    assert!(matches!(
+        workspace.apply(Command::File(FileCommand::Import)),
+        Err(Refusal::FileBusy)
+    ));
+    assert!(matches!(
+        workspace.apply(Command::Audio(AudioCommand::Stop)),
+        Ok(())
+    ));
     assert_eq!(
         workspace.respond(execute_file(save)),
         ResponseDisposition::Applied
@@ -1260,9 +1407,13 @@ fn managed_save_can_run_beside_admitted_audio_and_stop_does_not_cancel_it() {
 #[test]
 fn committed_classification_never_borrows_pending_pair_facts() {
     let mut ws = workspace();
-    ws.set_view(View::Workbench);
+    let _ = ws.apply(Command::SetView(View::Workbench));
     let key = ws.editor().document_key();
-    ws.add_pair(key, crate::core::PairKind::Binaural).unwrap();
+    ws.apply(Command::Editor(EditorCommand::AddPair {
+        row: key,
+        kind: crate::core::PairKind::Binaural,
+    }))
+    .unwrap();
     let id = ws.editor().draft().components()[0].id;
     let first = ws
         .editor()
@@ -1272,11 +1423,23 @@ fn committed_classification_never_borrows_pending_pair_facts() {
         .editor()
         .handle(EditingField::Parameter(id, ParameterId::PairOffset))
         .unwrap();
-    ws.commit_field(first, "317").unwrap();
-    ws.commit_field(offset, "-7").unwrap();
+    ws.apply(Command::Editor(EditorCommand::CommitField {
+        field: first,
+        text: ("317").to_string(),
+    }))
+    .unwrap();
+    ws.apply(Command::Editor(EditorCommand::CommitField {
+        field: offset,
+        text: ("-7").to_string(),
+    }))
+    .unwrap();
     let original = ws.editor_view();
     for text in ["40", "NaN"] {
-        ws.stage(offset, text).unwrap();
+        ws.apply(Command::Editor(EditorCommand::Stage {
+            field: offset,
+            text: (text).to_string(),
+        }))
+        .unwrap();
         let view = ws.editor_view();
         assert_eq!(view.nominal, original.nominal);
         assert_eq!(view.committed, original.committed);
@@ -1290,11 +1453,17 @@ fn committed_classification_never_borrows_pending_pair_facts() {
                 .get(),
             -7.0
         );
-        assert_eq!(ws.restore(offset).unwrap(), "-7");
+        ws.apply(Command::Editor(EditorCommand::Restore(offset)))
+            .unwrap();
+        assert_eq!(ws.editor().text(offset.field), "-7");
         assert_eq!(ws.editor_view().committed, original.committed);
     }
-    ws.stage(offset, "40").unwrap();
-    ws.commit().unwrap();
+    ws.apply(Command::Editor(EditorCommand::Stage {
+        field: offset,
+        text: ("40").to_string(),
+    }))
+    .unwrap();
+    ws.apply(Command::Editor(EditorCommand::Commit)).unwrap();
     let committed = ws.editor_view();
     assert_ne!(committed.committed, original.committed);
     assert!(!committed.pending);
@@ -1305,13 +1474,21 @@ fn action_budget_refusals_distinguish_components_from_expanded_voices() {
     for (primitives, pairs, components, voices) in [(0, 8, 8, 16), (16, 0, 16, 16), (15, 0, 15, 15)]
     {
         let mut ws = workspace();
-        ws.set_view(View::Workbench);
+        let _ = ws.apply(Command::SetView(View::Workbench));
         let key = ws.editor().document_key();
         for _ in 0..primitives {
-            ws.add_component(key, CarrierKind::Tone).unwrap();
+            ws.apply(Command::Editor(EditorCommand::AddComponent {
+                row: key,
+                kind: CarrierKind::Tone,
+            }))
+            .unwrap();
         }
         for _ in 0..pairs {
-            ws.add_pair(key, crate::core::PairKind::Binaural).unwrap();
+            ws.apply(Command::Editor(EditorCommand::AddPair {
+                row: key,
+                kind: crate::core::PairKind::Binaural,
+            }))
+            .unwrap();
         }
         let view = ws.action_view();
         assert!(!view.can_add_pair);
@@ -1330,7 +1507,9 @@ fn action_budget_refusals_distinguish_components_from_expanded_voices() {
 #[test]
 fn structured_library_rows_keep_saved_identity_and_rate_independent_classification() {
     let mut ws = workspace();
-    ws.set_query("ioannou 2");
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(
+        ("ioannou 2").to_string(),
+    )));
     let view = ws.library_view();
     assert_eq!(view.rows.len(), 1);
     let LibraryRowView::Entry { entry, .. } = &view.rows[0] else {
@@ -1349,7 +1528,9 @@ fn structured_library_rows_keep_saved_identity_and_rate_independent_classificati
     ));
     let classification = entry.nominal.clone();
     let key = entry.key.clone();
-    ws.set_export_rate(SampleRate::new(96_000).unwrap());
+    let _ = ws.apply(Command::Editor(EditorCommand::SetExportRate(
+        SampleRate::new(96_000).unwrap(),
+    )));
     let next = ws.library_view();
     let LibraryRowView::Entry { entry, .. } = &next.rows[0] else {
         panic!("entry row")
@@ -1368,7 +1549,12 @@ fn staged_envelope_diagnostics_retain_quantities_and_rate_in_metadata() {
             crate::document::editing::MetadataField::Duration,
         ))
         .unwrap();
-    workspace.stage(handle, "0").unwrap();
+    workspace
+        .apply(Command::Editor(EditorCommand::Stage {
+            field: handle,
+            text: ("0").to_string(),
+        }))
+        .unwrap();
     let view = workspace.editor_view();
     let duration = view
         .metadata
@@ -1437,14 +1623,14 @@ fn diagnostic_codes_retain_typed_field_context_and_original_worker_causes() {
 fn file_activity_captures_the_operation_before_workers_run() {
     use crate::core::vocabulary::Operation;
     let mut ws = workspace();
-    ws.refresh_library();
+    let _ = ws.apply(Command::Library(LibraryCommand::Refresh));
     assert_eq!(
         ws.action_view().file_activity.unwrap().kind.operation(),
         Operation::LibraryRefresh
     );
     ws.poll();
     assert!(!ws.file_busy());
-    ws.save().unwrap();
+    ws.apply(Command::File(FileCommand::Save)).unwrap();
     assert_eq!(
         ws.action_view().file_activity.unwrap().kind.operation(),
         Operation::Save

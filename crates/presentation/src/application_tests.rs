@@ -8,7 +8,10 @@ use auditorylab_app::job::Cancel;
 use auditorylab_app::services::playback::BackendError;
 use auditorylab_app::services::playback::DeviceError;
 use auditorylab_app::workspace::status::FileStatus;
-use auditorylab_app::workspace::{Capabilities, Effect, JobKind, View, Workspace};
+use auditorylab_app::workspace::{
+    Capabilities, Command, EditorCommand, Effect, FileCommand, JobKind, LibraryCommand, View,
+    Workspace,
+};
 use auditorylab_core::query::CalendarField;
 use auditorylab_core::query::{GroupBy, SortBy};
 use auditorylab_core::test_support::finite;
@@ -95,10 +98,13 @@ fn receipt_age_reads_in_human_units() {
 #[test]
 fn committed_brief_never_borrows_pending_pair_facts() {
     let mut ws = workspace();
-    ws.set_view(View::Workbench);
+    ws.apply(Command::SetView(View::Workbench)).unwrap();
     let key = ws.editor().document_key();
-    ws.add_pair(key, auditorylab_core::PairKind::Binaural)
-        .unwrap();
+    ws.apply(Command::Editor(EditorCommand::AddPair {
+        row: key,
+        kind: auditorylab_core::PairKind::Binaural,
+    }))
+    .unwrap();
     let id = ws.editor().draft().components()[0].id;
     let first = ws
         .editor()
@@ -108,12 +114,24 @@ fn committed_brief_never_borrows_pending_pair_facts() {
         .editor()
         .handle(EditingField::Parameter(id, ParameterId::PairOffset))
         .unwrap();
-    ws.commit_field(first, "317").unwrap();
-    ws.commit_field(offset, "-7").unwrap();
+    ws.apply(Command::Editor(EditorCommand::CommitField {
+        field: first,
+        text: ("317").to_string(),
+    }))
+    .unwrap();
+    ws.apply(Command::Editor(EditorCommand::CommitField {
+        field: offset,
+        text: ("-7").to_string(),
+    }))
+    .unwrap();
     let original = crate::workspace_text::editor_view(&ws.editor_view()).brief;
     assert!(original.contains("7 Hz") && original.contains("317") && original.contains("310"));
     for text in ["40", "NaN"] {
-        ws.stage(offset, text).unwrap();
+        ws.apply(Command::Editor(EditorCommand::Stage {
+            field: offset,
+            text: (text).to_string(),
+        }))
+        .unwrap();
         let view = crate::workspace_text::editor_view(&ws.editor_view());
         assert_eq!(
             view.brief,
@@ -129,14 +147,20 @@ fn committed_brief_never_borrows_pending_pair_facts() {
                 .get(),
             -7.0
         );
-        assert_eq!(ws.restore(offset).unwrap(), "-7");
+        ws.apply(Command::Editor(EditorCommand::Restore(offset)))
+            .unwrap();
+        assert_eq!(ws.editor().text(offset.field), "-7");
         assert_eq!(
             crate::workspace_text::editor_view(&ws.editor_view()).brief,
             original
         );
     }
-    ws.stage(offset, "40").unwrap();
-    ws.commit().unwrap();
+    ws.apply(Command::Editor(EditorCommand::Stage {
+        field: offset,
+        text: ("40").to_string(),
+    }))
+    .unwrap();
+    ws.apply(Command::Editor(EditorCommand::Commit)).unwrap();
     let committed = crate::workspace_text::editor_view(&ws.editor_view()).brief;
     assert!(committed.contains("40 Hz") && committed.contains("357"));
     assert!(!committed.contains("Last committed"));
@@ -147,14 +171,21 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
     for (primitives, pairs, components, voices) in [(0, 8, 8, 16), (16, 0, 16, 16), (15, 0, 15, 15)]
     {
         let mut ws = workspace();
-        ws.set_view(View::Workbench);
+        ws.apply(Command::SetView(View::Workbench)).unwrap();
         let key = ws.editor().document_key();
         for _ in 0..primitives {
-            ws.add_component(key, CarrierKind::Tone).unwrap();
+            ws.apply(Command::Editor(EditorCommand::AddComponent {
+                row: key,
+                kind: CarrierKind::Tone,
+            }))
+            .unwrap();
         }
         for _ in 0..pairs {
-            ws.add_pair(key, auditorylab_core::PairKind::Binaural)
-                .unwrap();
+            ws.apply(Command::Editor(EditorCommand::AddPair {
+                row: key,
+                kind: auditorylab_core::PairKind::Binaural,
+            }))
+            .unwrap();
         }
         let view = crate::workspace_text::action_view(&ws.action_view());
         assert!(!view.can_add_pair);
@@ -175,7 +206,10 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
 #[test]
 fn structured_library_rows_keep_saved_identity_and_rate_independent_classification() {
     let mut ws = workspace();
-    ws.set_query("ioannou 2");
+    ws.apply(Command::Library(LibraryCommand::Search(
+        ("ioannou 2").to_string(),
+    )))
+    .unwrap();
     let view = crate::workspace_text::library_view(&ws.library_view());
     assert_eq!(view.rows.len(), 1);
     let row = &view.rows[0];
@@ -184,7 +218,10 @@ fn structured_library_rows_keep_saved_identity_and_rate_independent_classificati
     assert!(row.collection.contains("Read only"));
     assert!(row.text.contains(&row.title) && row.text.contains(&row.dates));
     let classification = view.classification.clone();
-    ws.set_export_rate(auditorylab_core::SampleRate::new(96_000).unwrap());
+    ws.apply(Command::Editor(EditorCommand::SetExportRate(
+        auditorylab_core::SampleRate::new(96_000).unwrap(),
+    )))
+    .unwrap();
     assert_eq!(
         crate::workspace_text::library_view(&ws.library_view()).classification,
         classification
@@ -204,7 +241,12 @@ fn staged_envelope_failures_render_quantities_and_rate_in_metadata() {
             auditorylab_app::document::editing::MetadataField::Duration,
         ))
         .unwrap();
-    workspace.stage(handle, "0").unwrap();
+    workspace
+        .apply(Command::Editor(EditorCommand::Stage {
+            field: handle,
+            text: ("0").to_string(),
+        }))
+        .unwrap();
     let view = crate::workspace_text::editor_view(&workspace.editor_view());
     let duration = view
         .metadata
@@ -366,7 +408,7 @@ fn idle_files(w: &mut Workspace) {
 #[test]
 fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct() {
     let (_directory, store, mut workspace) = fixture();
-    workspace.save().unwrap();
+    workspace.apply(Command::File(FileCommand::Save)).unwrap();
     idle_files(&mut workspace);
     let key = store.scan(&Cancel::default()).entries[0].key.clone();
     for (kind, publishing, inspect, replacement) in [
@@ -560,14 +602,18 @@ fn io_cause(message: &'static str) -> auditorylab_app::services::IoCause {
 #[test]
 fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scroll() {
     let mut ws = workspace();
-    ws.set_view(View::Workbench);
+    ws.apply(Command::SetView(View::Workbench)).unwrap();
     let notes = ws
         .editor()
         .handle(EditingField::Metadata(
             auditorylab_app::document::editing::MetadataField::Summary,
         ))
         .unwrap();
-    ws.stage(notes, &"Z".repeat(66000)).unwrap();
+    ws.apply(Command::Editor(EditorCommand::Stage {
+        field: notes,
+        text: "Z".repeat(66000),
+    }))
+    .unwrap();
     let mut typed = ws.action_view();
     let actions = crate::workspace_text::action_view(&typed);
     assert!(!actions.can_save);
@@ -585,7 +631,8 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
     assert!(actions.operation_summary.contains("65536"));
     assert!(actions.operation_outcome.starts_with("Exported 100"));
     assert!(actions.operation_summary.chars().count() <= 181);
-    ws.restore(notes).unwrap();
+    ws.apply(Command::Editor(EditorCommand::Restore(notes)))
+        .unwrap();
     typed = ws.action_view();
     typed.file_status = FileStatus::Failed(
         auditorylab_app::services::ExportError::File {
@@ -635,7 +682,10 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
         group_by: GroupBy::Study,
         ..CatalogQuery::default()
     };
-    w.set_catalog_query(query.clone()).unwrap();
+    w.apply(Command::Library(LibraryCommand::SetQuery(Box::new(
+        query.clone(),
+    ))))
+    .unwrap();
     let summary = w.library_count();
     for expected in [
         "exact search",
@@ -657,7 +707,12 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
     }
     let mut invalid = query;
     invalid.created.before = Some(from);
-    assert!(w.set_catalog_query(invalid).is_err());
+    assert!(
+        w.apply(Command::Library(LibraryCommand::SetQuery(Box::new(
+            invalid
+        ))))
+        .is_err()
+    );
     assert_eq!(w.library_count(), summary);
 }
 
@@ -813,6 +868,8 @@ fn rows_show_sort_dates_unknown_edit_and_duration() {
     use auditorylab_app::document::origin::LibraryKey;
     use auditorylab_app::workspace::LibraryRowView;
     use auditorylab_core::query::SortBy;
+    let handles = workspace();
+    let handle = handles.selected_entry_handle().unwrap();
     let snapshot = auditorylab_app::services::catalog().unwrap().remove(0);
     let mut entry = EntrySummary::from_snapshot(
         LibraryKey::User(snapshot.recipe().document().id),
@@ -824,6 +881,7 @@ fn rows_show_sort_dates_unknown_edit_and_duration() {
     entry.modified_at = None;
     entry.added_at = Some("2026-10-24T12:00:00Z".parse().unwrap());
     let row = LibraryRowView::Entry {
+        handle: handle.clone(),
         entry: Box::new(entry.clone()),
         requires_read: false,
     };
@@ -840,6 +898,7 @@ fn rows_show_sort_dates_unknown_edit_and_duration() {
     )));
     let stale = library_text::row(
         &LibraryRowView::Entry {
+            handle: handle.clone(),
             entry: Box::new(entry),
             requires_read: true,
         },
@@ -947,7 +1006,10 @@ fn repeated_views_keep_all_rendered_fields_and_empty_selection_clears_text() {
         assert_eq!(workspace_text::editor_view(&ws.editor_view()), editor);
         assert_eq!(workspace_text::action_view(&ws.action_view()), actions);
     }
-    ws.set_query("no matching result");
+    ws.apply(Command::Library(LibraryCommand::Search(
+        ("no matching result").to_string(),
+    )))
+    .unwrap();
     let empty = workspace_text::library_view(&ws.library_view());
     assert!(empty.rows.is_empty() && empty.title.is_empty() && empty.details.is_empty());
     assert!(!workspace_text::action_view(&ws.action_view()).can_play);

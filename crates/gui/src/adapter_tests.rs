@@ -10,7 +10,8 @@ use auditorylab_app::core::query::{Direction, GroupBy, Scope, SortBy};
 use auditorylab_app::document::editing::{EditingField, MetadataField};
 use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::workspace::{
-    Capabilities, Job, JobKind, PathPurpose, PromptAnswer, PromptId, View, Workspace,
+    AudioCommand, Capabilities, Command, EditorCommand, Job, JobKind, LibraryCommand, PathPurpose,
+    PromptAnswer, PromptId, View, Workspace,
 };
 use auditorylab_presentation::LibraryPresentation;
 use auditorylab_presentation::ParameterText;
@@ -617,7 +618,7 @@ fn unchanged_state_projects_nothing_and_paths_follow_only_new_captures() {
     assert_eq!(h.adapter.counts.path_builds.get(), paths);
     // Selecting another recipe projects once and draws its new preview once.
     h.ui()
-        .invoke_select(h.ui().get_catalog().row_data(1).unwrap().binding);
+        .invoke_select(h.ui().get_catalog().row_data(1).unwrap().entry);
     h.adapter.tick();
     h.adapter.tick();
     assert_eq!(h.adapter.counts.path_builds.get(), paths + 1);
@@ -1061,7 +1062,7 @@ fn editing_and_telemetry_do_not_project_the_library_again() {
         h.adapter.tick();
     }
     assert_eq!(h.adapter.counts.library_projections.get(), libraries);
-    ui.invoke_select(ui.get_catalog().row_data(1).unwrap().binding);
+    ui.invoke_select(ui.get_catalog().row_data(1).unwrap().entry);
     assert_eq!(h.adapter.counts.library_projections.get(), libraries + 1);
 }
 
@@ -1107,7 +1108,12 @@ fn finish_stopped_audio(h: &Harness, job: Job) {
     assert_eq!(job.kind(), JobKind::Audio);
     // The queued job has never run. Stop makes its real execution return an
     // early terminal report before any device discovery or preparation.
-    assert!(h.adapter.command(Workspace::stop).unwrap().is_ok());
+    assert!(
+        h.adapter
+            .command(|w| w.apply(Command::Audio(AudioCommand::Stop)))
+            .unwrap()
+            .is_ok()
+    );
     let finished = job.execute(|_| panic!("early-stopped audio must not prepare a device"));
     h.adapter.deliver(finished);
 }
@@ -1453,16 +1459,15 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
 fn catalog_callback_keeps_snapshot_identity_after_filter_reorders_rows() {
     let h = Harness::new();
     let ui = h.ui();
-    let stale = ui.get_catalog().row_data(0).unwrap().binding;
-    let original = h.adapter.inspect(|w| w.selected().unwrap().id());
+    let stale = ui.get_catalog().row_data(0).unwrap().entry;
     ui.invoke_rhythm_filter(1, 1);
     let selected = h.adapter.inspect(|w| w.selected().unwrap().id());
     ui.invoke_select(stale.clone());
     assert_eq!(h.adapter.inspect(|w| w.selected().unwrap().id()), selected);
     ui.invoke_rhythm_filter(0, 0);
+    let current = ui.get_library_entry();
     ui.invoke_select(stale.clone());
-    assert_eq!(h.adapter.inspect(|w| w.selected().unwrap().id()), original);
-    assert_eq!(ui.get_library_key(), stale);
+    assert_eq!(ui.get_library_entry(), current);
 }
 
 #[test]
@@ -1576,7 +1581,8 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
     let h = Harness::with_catalog(vec![snapshot], Capabilities::no_device_playback());
     h.ui().invoke_collection_filter(3, 0);
     h.wait_for_files();
-    h.adapter.command(Workspace::copy_selected);
+    h.adapter
+        .command(|w| w.apply(Command::Editor(EditorCommand::CopySelected)));
     h.workbench();
     let rows = h.ui().get_components();
     assert_eq!(rows.row_data(0).unwrap().id, u32::MAX.to_string());
@@ -1670,10 +1676,8 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     assert!(ui.get_catalog().row_data(0).unwrap().text.contains("Theta"));
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
     let key = ui.get_library_key();
-    let token = ui.get_library_token();
     ui.invoke_library_action(
-        key.clone(),
-        token,
+        ui.get_library_entry(),
         crate::generated::LibraryMutationAction::Trash,
         "".into(),
     );
@@ -1683,8 +1687,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     assert!(ui.get_library_trashed());
     assert!(!ui.get_can_play());
     ui.invoke_library_action(
-        key.clone(),
-        ui.get_library_token(),
+        ui.get_library_entry(),
         crate::generated::LibraryMutationAction::Restore,
         "".into(),
     );
@@ -1692,8 +1695,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     ui.invoke_collection_filter(2, 0);
     h.wait_for_files();
     ui.invoke_library_action(
-        key.clone(),
-        ui.get_library_token(),
+        ui.get_library_entry(),
         crate::generated::LibraryMutationAction::Trash,
         "".into(),
     );
@@ -1701,8 +1703,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     ui.invoke_collection_filter(4, 0);
     h.wait_for_files();
     ui.invoke_library_action(
-        key.clone(),
-        ui.get_library_token(),
+        ui.get_library_entry(),
         crate::generated::LibraryMutationAction::RequestPurge,
         "".into(),
     );
@@ -1820,28 +1821,30 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
 
 slint::slint! {
     import { BoundButton } from "ui/library-controls.slint";
-    export { LibraryMutationAction } from "ui/library-actions.slint";
-    import { LibraryMutationAction } from "ui/library-actions.slint";
+    export { EntryAddress, LibraryMutationAction } from "ui/library-actions.slint";
+    import { EntryAddress, LibraryMutationAction } from "ui/library-actions.slint";
     export component LibraryGestureProbe inherits Window {
         width:240px;height:100px;
-        in-out property <string> entry-key;
-        in-out property <string> version;
+        in-out property <EntryAddress> entry;
         in-out property <LibraryMutationAction> operation;
-        callback delivered(string,string,LibraryMutationAction);
-        BoundButton {x:10px;y:10px;width:220px;height:50px;text:"Bound library action";key:root.entry-key;token:root.version;action:root.operation;dispatch(k,t,a)=>{root.delivered(k,t,a);}}
+        callback delivered(EntryAddress,LibraryMutationAction);
+        BoundButton {x:10px;y:10px;width:220px;height:50px;text:"Bound library action";entry:root.entry;action:root.operation;dispatch(e,a)=>{root.delivered(e,a);}}
     }
 }
 #[test]
-fn native_library_pointer_gesture_keeps_key_token_and_action_through_rebind() {
+fn native_library_pointer_gesture_keeps_handle_and_action_through_rebind() {
     install();
     let probe = LibraryGestureProbe::new().unwrap();
-    probe.set_entry_key("user:first".into());
-    probe.set_version("observed-first".into());
+    let first = EntryAddress {
+        table: slint::ModelRc::new(slint::VecModel::from(vec![1])),
+        row: 0,
+    };
+    probe.set_entry(first.clone());
     probe.set_operation(LibraryMutationAction::Trash);
     let received = Rc::new(RefCell::new(None));
     let result = received.clone();
-    probe.on_delivered(move |k, t, a| {
-        *result.borrow_mut() = Some((k.to_string(), t.to_string(), a))
+    probe.on_delivered(move |entry, action| {
+        *result.borrow_mut() = Some((entry, action));
     });
     probe.show().unwrap();
     settle(probe.window());
@@ -1850,8 +1853,10 @@ fn native_library_pointer_gesture_keeps_key_token_and_action_through_rebind() {
         position,
         button: slint::platform::PointerEventButton::Left,
     });
-    probe.set_entry_key("user:replacement".into());
-    probe.set_version("replacement-token".into());
+    probe.set_entry(EntryAddress {
+        table: slint::ModelRc::new(slint::VecModel::from(vec![2])),
+        row: 0,
+    });
     probe.set_operation(LibraryMutationAction::Restore);
     settle(probe.window());
     probe.window().dispatch_event(WindowEvent::PointerReleased {
@@ -1860,11 +1865,7 @@ fn native_library_pointer_gesture_keeps_key_token_and_action_through_rebind() {
     });
     assert_eq!(
         *received.borrow(),
-        Some((
-            "user:first".into(),
-            "observed-first".into(),
-            LibraryMutationAction::Trash
-        ))
+        Some((first, LibraryMutationAction::Trash))
     );
 }
 #[test]
@@ -1948,8 +1949,8 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
             .entries
             .is_empty()
     );
-    let external_key = ui.get_library_key();
-    ui.invoke_add_to_library(external_key.clone());
+    let external_entry = ui.get_library_entry();
+    ui.invoke_add_to_library(external_entry);
     h.wait_for_files();
     assert_eq!(
         store
@@ -1959,7 +1960,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
         1
     );
     assert_eq!(std::fs::read(&file).unwrap(), initial_bytes);
-    ui.invoke_edit_saved(external_key, "".into());
+    ui.invoke_edit_saved(ui.get_library_entry());
     h.settle();
     assert!(ui.get_draft_location().starts_with("External file"));
     assert_eq!(
@@ -2065,7 +2066,7 @@ fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_co
             .text
             .contains('\u{202e}')
     );
-    ui.invoke_edit_saved(ui.get_library_key(), ui.get_library_token());
+    ui.invoke_edit_saved(ui.get_library_entry());
     h.settle();
     assert_eq!(ui.get_title_field().text, raw);
     assert_eq!(
@@ -2851,7 +2852,8 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
             &auditorylab_app::job::Cancel::default(),
         )
         .unwrap();
-    h.adapter.command(Workspace::refresh_library);
+    h.adapter
+        .command(|w| w.apply(Command::Library(LibraryCommand::Refresh)));
     finish_file(&h, save);
     h.wait_for_files();
     assert!(ui.get_dirty());
@@ -3051,7 +3053,7 @@ fn wide_library_group_headings_have_no_selectable_identity() {
             .all(|row| row.collection.is_empty() && row.duration.is_empty())
     );
     let before = ui.get_library_key();
-    ui.invoke_select("".into());
+    ui.invoke_select(crate::generated::EntryAddress::default());
     assert_eq!(ui.get_library_key(), before);
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
@@ -3208,7 +3210,13 @@ fn library_ux_preview_reveals_monitor_and_quiet_rows_preserve_identity() {
         count_y,
         "scrolling/selecting the last result does not move the count"
     );
-    ui.invoke_select(selected.clone());
+    ui.invoke_select(
+        ui.get_catalog()
+            .iter()
+            .find(|row| row.binding == selected)
+            .unwrap()
+            .entry,
+    );
     h.settle();
     assert!(
         find_control(ui, |item| item

@@ -103,7 +103,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the admission refusal.
-    pub fn import(&mut self) -> Result<(), Refusal> {
+    pub(super) fn import(&mut self) -> Result<(), Refusal> {
         self.import_admission()?;
         let id = self.prompt(PromptState::Import);
         self.effects.push(Effect::ChoosePath {
@@ -119,7 +119,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the admission or readiness refusal.
-    pub fn save(&mut self) -> Result<(), Refusal> {
+    pub(super) fn save(&mut self) -> Result<(), Refusal> {
         let result = self.save_inner();
         if let Err(refusal) = &result {
             self.files.status = FileStatus::Refused((refusal).clone());
@@ -138,7 +138,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Refuses occupied slots or an unserializable draft; no playback is started.
-    pub fn export_recipe(&mut self) -> Result<(), Refusal> {
+    pub(super) fn export_recipe(&mut self) -> Result<(), Refusal> {
         let (text, title) = self.prepare_export_recipe()?;
         let prompt = self.prompt(PromptState::ExportRecipe(text));
         self.effects.push(Effect::ChoosePath {
@@ -154,7 +154,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the admission or validity refusal.
-    pub fn export(&mut self) -> Result<(), Refusal> {
+    pub(super) fn export(&mut self) -> Result<(), Refusal> {
         let result = self.export_inner();
         if let Err(refusal) = &result {
             self.files.status = FileStatus::Refused((refusal).clone());
@@ -181,7 +181,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns [`Refusal::NoExport`] when no export runs.
-    pub fn cancel_export(&mut self) -> Result<(), Refusal> {
+    pub(super) fn cancel_export(&mut self) -> Result<(), Refusal> {
         self.files.cancel_export()
     }
 }

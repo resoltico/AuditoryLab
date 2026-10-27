@@ -9,8 +9,8 @@ import { WorkspaceNavigation } from "workspace-navigation.slint";
 export { Terms } from "vocabulary.slint";
 import { Terms, Choices } from "vocabulary.slint";
 import { Palette, VerticalBox, HorizontalBox, ProgressIndicator } from "std-widgets.slint";
-export { LibraryMutationAction, CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
-import { LibraryMutationAction, CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+export { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
 import { StableButton } from "editor.slint";
 export { AboutWindow, LicenseWindow } from "about.slint";
 
@@ -205,9 +205,10 @@ export component MainWindow inherits Window {
         root.library-wide = self.width >= root.ui-size*90;
         root.update-monitor-layout();
     }
-    callback select(string);
+    callback select(EntryAddress);
     callback navigate-library(int);
     in-out property <string> focused-library-key;
+    in property <EntryAddress> library-entry;
     in property <string> library-key;
     in property <string> library-token;
     in property <bool> library-trashed;
@@ -249,13 +250,13 @@ export component MainWindow inherits Window {
     in-out property <int> sort-choice: 0;
     callback refresh-library();
     callback initialize-library();
-    callback edit-saved(string, string);
+    callback edit-saved(EntryAddress);
     callback save-copy();
     in property <string> library-dates;
     in property <string> library-dates-utc;
-    callback add-to-library(string);
+    callback add-to-library(EntryAddress);
     callback show-saved();
-    callback library-action(string, string, LibraryMutationAction, string);
+    callback library-action(EntryAddress, LibraryMutationAction, string);
     callback search(string);
     callback rhythm-filter(int, int);
     in-out property <int> band-choice: 0;
@@ -267,7 +268,7 @@ export component MainWindow inherits Window {
     callback preview-selected();
     callback export-wav();
     callback export-recipe();
-    callback close-open-file(string);
+    callback close-open-file(EntryAddress);
     callback about();
     callback based-on-source();
     callback quit();
@@ -438,7 +439,7 @@ export component MainWindow inherits Window {
                 collection-labels: root.collection-labels;
                 compact <=> root.compact;
                 copy-reason: root.copy-reason;
-                edit-saved(arg0, arg1) => { root.edit-saved(arg0, arg1); }
+                edit-saved(arg0) => { root.edit-saved(arg0); }
                 export-rates: root.export-rates;
                 export-recipe() => { root.export-recipe(); }
                 export-settings <=> root.export-settings;
@@ -446,7 +447,7 @@ export component MainWindow inherits Window {
                 file-activity: root.file-activity;
                 focused-library-key <=> root.focused-library-key;
                 has-results: root.has-results;
-                library-action(arg0, arg1, arg2, arg3) => { root.library-action(arg0, arg1, arg2, arg3); }
+                library-action(arg0, arg1, arg2) => { root.library-action(arg0, arg1, arg2); }
                 library-alert: root.library-alert;
                 library-classification: root.library-classification;
                 library-dates: root.library-dates;
@@ -454,6 +455,7 @@ export component MainWindow inherits Window {
                 library-detail <=> root.library-detail;
                 library-empty-message: root.library-empty-message;
                 library-filters-active: root.library-filters-active;
+                library-entry:root.library-entry;
                 library-key: root.library-key;
                 library-overview: root.library-overview;
                 library-ownership: root.library-ownership;

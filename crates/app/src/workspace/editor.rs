@@ -326,7 +326,7 @@ impl Workspace {
     }
     /// Select the inspection and export rate. A device's actual rate is
     /// unaffected.
-    pub fn set_export_rate(&mut self, rate: SampleRate) {
+    pub(super) fn set_export_rate(&mut self, rate: SampleRate) {
         if self.editor.set_export_rate(rate) {
             self.changed();
         }
@@ -352,7 +352,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal for stale handles or while editing is blocked.
-    pub fn stage(&mut self, handle: FieldHandle, text: &str) -> Result<(), Refusal> {
+    pub(super) fn stage(&mut self, handle: FieldHandle, text: &str) -> Result<(), Refusal> {
         self.editing_allowed()?;
         let result = self.editor.stage(handle, text);
         self.changed();
@@ -362,7 +362,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal for stale handles.
-    pub fn restore(&mut self, handle: FieldHandle) -> Result<String, Refusal> {
+    pub(super) fn restore(&mut self, handle: FieldHandle) -> Result<String, Refusal> {
         self.editing_allowed()?;
         let result = self.editor.restore(handle);
         self.changed();
@@ -373,7 +373,7 @@ impl Workspace {
     /// # Errors
     /// Returns the refusal, including every field that kept the candidate
     /// staged.
-    pub fn commit_field(&mut self, handle: FieldHandle, text: &str) -> Result<(), Refusal> {
+    pub(super) fn commit_field(&mut self, handle: FieldHandle, text: &str) -> Result<(), Refusal> {
         self.editing_allowed()?;
         let result = self.editor.commit_field(handle, text);
         self.after_edit(result)
@@ -382,7 +382,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns every field that kept the candidate staged.
-    pub fn commit(&mut self) -> Result<(), Refusal> {
+    pub(super) fn commit(&mut self) -> Result<(), Refusal> {
         self.editing_allowed()?;
         let result = self.editor.commit();
         self.after_edit(result)
@@ -392,7 +392,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal for stale handles or a blocked commit.
-    pub fn slide(&mut self, handle: FieldHandle, position: f64) -> Result<(), Refusal> {
+    pub(super) fn slide(&mut self, handle: FieldHandle, position: f64) -> Result<(), Refusal> {
         let EditingField::Parameter(_, parameter) = handle.field else {
             return Err(Refusal::Edit(EditRefusal::Inapplicable));
         };
@@ -406,7 +406,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal for stale identities or while editing is blocked.
-    pub fn set_ears(&mut self, row: RowKey, ears: Ears) -> Result<(), Refusal> {
+    pub(super) fn set_ears(&mut self, row: RowKey, ears: Ears) -> Result<(), Refusal> {
         self.editing_allowed()?;
         let result = self.editor.set_ears(row, ears);
         self.after_edit(result)
@@ -415,7 +415,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal for stale identities or while editing is blocked.
-    pub fn set_carrier(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
+    pub(super) fn set_carrier(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
         self.editing_allowed()?;
         let result = self.editor.set_carrier(row, kind);
         self.after_edit(result)
@@ -424,7 +424,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal for stale identities or while editing is blocked.
-    pub fn set_modulation(
+    pub(super) fn set_modulation(
         &mut self,
         row: RowKey,
         kind: Option<ModulationKind>,
@@ -438,7 +438,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal at the component limit or while editing is blocked.
-    pub fn add_component(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
+    pub(super) fn add_component(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
         self.component_add_admission(row, kind)?;
         let result = self.editor.add_component(row, kind);
         self.after_edit(result)
@@ -447,7 +447,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Refuses stale documents, busy editing or the expanded voice budget.
-    pub fn add_pair(
+    pub(super) fn add_pair(
         &mut self,
         row: RowKey,
         kind: auditorylab_core::PairKind,
@@ -460,7 +460,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the refusal for stale identities or while editing is blocked.
-    pub fn remove_component(&mut self, row: RowKey) -> Result<(), Refusal> {
+    pub(super) fn remove_component(&mut self, row: RowKey) -> Result<(), Refusal> {
         self.editing_allowed()?;
         let result = self.editor.remove_component(row);
         self.after_edit(result)
@@ -470,7 +470,7 @@ impl Workspace {
     /// # Errors
     /// Returns the refusal when nothing was removed, at the component limit
     /// or while editing is blocked.
-    pub fn restore_component(&mut self, row: RowKey) -> Result<(), Refusal> {
+    pub(super) fn restore_component(&mut self, row: RowKey) -> Result<(), Refusal> {
         self.restore_component_admission(row)?;
         let result = self.editor.restore_component(row);
         self.after_edit(result)
@@ -483,7 +483,7 @@ impl Workspace {
     }
     /// Show the recipe the open document was copied from, by its retained
     /// snapshot rather than by its path.
-    pub fn show_based_on_source(&mut self) {
+    pub(super) fn show_based_on_source(&mut self) {
         if let Some(source) = self.editor.session.draft().based_on().cloned() {
             self.reveal_retained_source(source);
         }

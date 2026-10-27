@@ -7,6 +7,7 @@ use crate::core::{CarrierKind, ParameterId, SampleRate};
 use crate::document::editing::{EditingField, FieldHandle};
 use crate::services::library::{Library, Mutation};
 use crate::workspace::status::{AudioStatus, FileStatus};
+use crate::workspace::{AudioCommand, Command, EditorCommand, FileCommand, LibraryCommand};
 use crate::workspace::{
     Capabilities, Effect, PromptAnswer, ResponseDisposition, View, WorkerFailure,
 };
@@ -69,7 +70,7 @@ fn take_job(workspace: &mut Workspace, kind: JobKind) -> Job {
     picked.expect("command emitted the required job")
 }
 fn tone(workspace: &mut Workspace, hz: &str) -> FieldHandle {
-    workspace.set_view(View::Workbench);
+    let _ = workspace.apply(Command::SetView(View::Workbench));
     workspace
         .add_component(workspace.editor().document_key(), CarrierKind::Tone)
         .unwrap();
@@ -78,11 +79,16 @@ fn tone(workspace: &mut Workspace, hz: &str) -> FieldHandle {
         .editor()
         .handle(EditingField::Parameter(id, ParameterId::ToneFrequency))
         .unwrap();
-    workspace.commit_field(handle, hz).unwrap();
+    workspace
+        .apply(Command::Editor(EditorCommand::CommitField {
+            field: handle,
+            text: (hz).to_string(),
+        }))
+        .unwrap();
     handle
 }
 fn close_after_save(workspace: &mut Workspace) -> Job {
-    workspace.close();
+    let _ = workspace.apply(Command::Close);
     let prompt = workspace
         .take_effects()
         .into_iter()
@@ -267,9 +273,9 @@ fn launch_failure_is_a_typed_completion_and_blocks_dependent_close() {
 fn stop_before_job_execution_returns_a_real_stopped_report_without_discovery() {
     let (_directory, _store, mut workspace) = fixture();
     tone(&mut workspace, "440");
-    workspace.play().unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
     let job = take_job(&mut workspace, JobKind::Audio);
-    workspace.stop().unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Stop)).unwrap();
     let response = job.execute(|_| panic!("stopped audio must not prepare a device"));
     assert!(
         matches!(&response,Response::Finished {outcome:JobOutcome::Audio(Ok(report)),..} if report.end==EndReason::Stopped && report.generated_frames==0)
@@ -282,10 +288,20 @@ fn stop_before_job_execution_returns_a_real_stopped_report_without_discovery() {
 fn actual_rate_preparation_submits_committed_edits_but_never_staged_text() {
     let (_directory, _store, mut workspace) = fixture();
     let frequency = tone(&mut workspace, "440");
-    workspace.play().unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
     let job = take_job(&mut workspace, JobKind::Audio);
-    workspace.commit_field(frequency, "30000").unwrap();
-    workspace.stage(frequency, "500").unwrap();
+    workspace
+        .apply(Command::Editor(EditorCommand::CommitField {
+            field: frequency,
+            text: ("30000").to_string(),
+        }))
+        .unwrap();
+    workspace
+        .apply(Command::Editor(EditorCommand::Stage {
+            field: frequency,
+            text: ("500").to_string(),
+        }))
+        .unwrap();
     let (response, _generator) = prepared(&job, SampleRate::new(96000).unwrap()).unwrap();
     assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
     let accepted = workspace
@@ -309,7 +325,12 @@ fn actual_rate_preparation_submits_committed_edits_but_never_staged_text() {
     assert_eq!(workspace.diagnostic_rate().hz(), 96000);
     assert_eq!(workspace.export_rate(), SampleRate::DEFAULT);
     assert!(!workspace.action_view().can_export);
-    workspace.commit_field(frequency, "60000").unwrap();
+    workspace
+        .apply(Command::Editor(EditorCommand::CommitField {
+            field: frequency,
+            text: ("60000").to_string(),
+        }))
+        .unwrap();
     assert_eq!(
         workspace
             .audio
@@ -325,15 +346,17 @@ fn actual_rate_preparation_submits_committed_edits_but_never_staged_text() {
         2,
         "invalid committed edit retains the last accepted target"
     );
-    workspace.stop().unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Stop)).unwrap();
     workspace.respond(job.execute(|_| {}));
 }
 #[test]
 fn device_rate_validation_is_independent_of_export_rate() {
     let (_directory, _store, mut workspace) = fixture();
     tone(&mut workspace, "30000");
-    workspace.set_export_rate(SampleRate::new(96000).unwrap());
-    workspace.play().unwrap();
+    let _ = workspace.apply(Command::Editor(EditorCommand::SetExportRate(
+        SampleRate::new(96000).unwrap(),
+    )));
+    workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
     let job = take_job(&mut workspace, JobKind::Audio);
     let error = match prepared(&job, SampleRate::new(8000).unwrap()) {
         Err(error) => error,
@@ -352,7 +375,7 @@ fn device_rate_validation_is_independent_of_export_rate() {
 fn stale_and_duplicate_preparations_cannot_rebind_audio() {
     let (_directory, _store, mut workspace) = fixture();
     tone(&mut workspace, "440");
-    workspace.play().unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
     let job = take_job(&mut workspace, JobKind::Audio);
     let (response, _generator) = prepared(&job, SampleRate::DEFAULT).unwrap();
     let Response::Prepared {
@@ -385,7 +408,7 @@ fn wrong_preparation_kind_rate_and_session_are_rejected() {
     for fault in 0..3 {
         let (_directory, _store, mut workspace) = fixture();
         tone(&mut workspace, "440");
-        workspace.play().unwrap();
+        workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
         let job = take_job(&mut workspace, JobKind::Audio);
         let (response, _generator) = prepared(&job, SampleRate::DEFAULT).unwrap();
         let Response::Prepared {
@@ -428,7 +451,7 @@ fn wrong_preparation_kind_rate_and_session_are_rejected() {
 #[test]
 fn finite_preparation_refuses_a_live_control() {
     let (_directory, _store, mut workspace) = fixture();
-    workspace.play().unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
     let job = take_job(&mut workspace, JobKind::Audio);
     let (response, generator) = prepared(&job, SampleRate::DEFAULT).unwrap();
     let Response::Prepared { reader, rate, .. } = response else {
@@ -449,7 +472,7 @@ fn finite_preparation_refuses_a_live_control() {
 fn later_document_preparation_keeps_current_document_unbound() {
     let (_directory, _store, mut workspace) = fixture();
     tone(&mut workspace, "440");
-    workspace.play().unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
     let job = take_job(&mut workspace, JobKind::Audio);
     let old = workspace.editor().document();
     assert!(workspace.replace_document(Draft::new().unwrap()));
@@ -458,13 +481,13 @@ fn later_document_preparation_keeps_current_document_unbound() {
     workspace.respond(response);
     assert!(workspace.live_rate().is_none());
     assert_eq!(workspace.diagnostic_rate(), workspace.export_rate());
-    workspace.stop().unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Stop)).unwrap();
     workspace.respond(job.execute(|_| {}));
 }
 #[test]
 fn accepted_live_revision_changes_update_model_even_for_identical_audio() {
     let (_directory, _store, mut workspace) = fixture();
-    workspace.set_view(View::Workbench);
+    let _ = workspace.apply(Command::SetView(View::Workbench));
     workspace
         .add_component(workspace.editor().document_key(), CarrierKind::Clicks)
         .unwrap();
@@ -473,8 +496,13 @@ fn accepted_live_revision_changes_update_model_even_for_identical_audio() {
         .editor()
         .handle(EditingField::Parameter(id, ParameterId::ClickWidth))
         .unwrap();
-    workspace.commit_field(width, "1").unwrap();
-    workspace.play().unwrap();
+    workspace
+        .apply(Command::Editor(EditorCommand::CommitField {
+            field: width,
+            text: ("1").to_string(),
+        }))
+        .unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
     let job = take_job(&mut workspace, JobKind::Audio);
     let (response, _generator) = prepared(&job, SampleRate::new(8000).unwrap()).unwrap();
     workspace.respond(response);
@@ -485,13 +513,18 @@ fn accepted_live_revision_changes_update_model_even_for_identical_audio() {
         workspace.poll();
     }
     assert_eq!(workspace.audio.output.models, models);
-    workspace.commit_field(width, "1.01").unwrap();
+    workspace
+        .apply(Command::Editor(EditorCommand::CommitField {
+            field: width,
+            text: ("1.01").to_string(),
+        }))
+        .unwrap();
     workspace.poll();
     let second = workspace.model_view().unwrap();
     assert!(second.target.same_audio(&first.target));
     assert_ne!(second.target, first.target);
     assert_eq!(workspace.audio.output.models, models + 1);
-    workspace.stop().unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Stop)).unwrap();
     workspace.respond(job.execute(|_| {}));
 }
 #[test]
@@ -499,10 +532,10 @@ fn wrong_library_identity_or_kind_cannot_mark_a_clean_draft_saved_or_close_it() 
     for fault in 0..3 {
         let (_directory, store, mut workspace) = fixture();
         let original = workspace.editor().document();
-        workspace.save().unwrap();
+        workspace.apply(Command::File(FileCommand::Save)).unwrap();
         let job = take_job(&mut workspace, JobKind::File);
         let id = job.id();
-        workspace.close();
+        let _ = workspace.apply(Command::Close);
         let mut response = job.execute(|_| {});
         let Response::Finished {
             outcome:
@@ -558,7 +591,7 @@ fn wrong_library_identity_or_kind_cannot_mark_a_clean_draft_saved_or_close_it() 
 #[test]
 fn wrong_loaded_identity_cannot_replace_the_selected_record() {
     let (_directory, store, mut workspace) = fixture();
-    workspace.save().unwrap();
+    workspace.apply(Command::File(FileCommand::Save)).unwrap();
     idle_files(&mut workspace);
     let a = store.scan(&Cancel::default()).entries[0].key.clone();
     workspace
@@ -585,7 +618,9 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
             &Cancel::default(),
         )
         .unwrap();
-    workspace.refresh_library();
+    workspace
+        .apply(Command::Library(LibraryCommand::Refresh))
+        .unwrap();
     let scan = take_job(&mut workspace, JobKind::File);
     let inventory = scan.execute(|_| {});
     assert!(matches!(
@@ -634,7 +669,7 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
 #[test]
 fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
     let (_directory, store, mut workspace) = fixture();
-    workspace.save().unwrap();
+    workspace.apply(Command::File(FileCommand::Save)).unwrap();
     idle_files(&mut workspace);
     let record = store.scan(&Cancel::default()).entries[0].key.clone();
     let original = workspace.editor().document();
@@ -675,7 +710,7 @@ fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
 fn shutdown_reports_prior_rejected_preparation_even_when_real_job_stops_ok() {
     let (_directory, _store, mut workspace) = fixture();
     tone(&mut workspace, "440");
-    workspace.play().unwrap();
+    workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
     let job = take_job(&mut workspace, JobKind::Audio);
     let (response, _generator) = prepared(&job, SampleRate::DEFAULT).unwrap();
     let Response::Prepared { reader, rate, .. } = response else {
@@ -702,7 +737,7 @@ fn shutdown_reports_prior_rejected_preparation_even_when_real_job_stops_ok() {
 fn shutdown_reports_wrong_kind_success_after_coordinator_validation() {
     let (_directory, _store, mut workspace) = fixture();
     tone(&mut workspace, "440");
-    workspace.save().unwrap();
+    workspace.apply(Command::File(FileCommand::Save)).unwrap();
     let job = take_job(&mut workspace, JobKind::File);
     let id = job.id();
     drop(job);
@@ -740,11 +775,16 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
     for shutdown in [false, true] {
         let (_directory, store, mut workspace) = fixture();
         let field = tone(&mut workspace, "440");
-        workspace.save().unwrap();
+        workspace.apply(Command::File(FileCommand::Save)).unwrap();
         idle_files(&mut workspace);
         let key = store.scan(&Cancel::default()).entries[0].key.clone();
         let observed = store.load(&key).unwrap();
-        workspace.commit_field(field, "880").unwrap();
+        workspace
+            .apply(Command::Editor(EditorCommand::CommitField {
+                field,
+                text: ("880").to_string(),
+            }))
+            .unwrap();
         let job = close_after_save(&mut workspace);
         // The same locked mutation used by the CLI changes the observed saved
         // version after this coordinator has captured its immutable Save.

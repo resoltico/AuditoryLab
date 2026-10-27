@@ -10,6 +10,24 @@ use crate::document::origin::{LibraryKey, VersionToken};
 use crate::services::library::Library;
 use crate::storage::library::{Inventory, LoadedRecord, Mutation, MutationKind, WriteOutcome};
 
+/// An app-issued row capability bound to one process-local listing epoch.
+#[derive(Debug, Clone)]
+pub struct EntryHandle {
+    listing: Arc<()>,
+    key: LibraryKey,
+    version: Option<VersionToken>,
+    trashed: bool,
+}
+impl PartialEq for EntryHandle {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.listing, &other.listing)
+            && self.key == other.key
+            && self.version == other.version
+            && self.trashed == other.trashed
+    }
+}
+impl Eq for EntryHandle {}
+
 /// A captured library context and its immutable frontend diagnostic projection.
 #[derive(Debug)]
 pub struct LibraryBinding {
@@ -83,6 +101,7 @@ pub(super) struct LibraryState {
     stale: std::collections::BTreeSet<LibraryKey>,
     root_unavailable: bool,
     pub(super) revision: u64,
+    listing: Arc<()>,
     last_saved: Option<LibraryKey>,
 }
 impl LibraryState {
@@ -112,6 +131,7 @@ impl LibraryState {
             stale: std::collections::BTreeSet::new(),
             root_unavailable: !available,
             revision: 0,
+            listing: Arc::new(()),
             last_saved: None,
         };
         for snapshot in catalog {
@@ -198,6 +218,14 @@ impl LibraryState {
             .filter(|r| Some(&r.key) == self.selection.as_ref())
             .map(|r| r.recipe_toml.clone())
     }
+    fn entry_handle(&self, entry: &EntrySummary) -> EntryHandle {
+        EntryHandle {
+            listing: Arc::clone(&self.listing),
+            key: entry.key.clone(),
+            version: entry.version_token,
+            trashed: entry.trashed,
+        }
+    }
     fn select(&mut self, selection: Option<LibraryKey>) {
         if self.selection != selection {
             self.selection = selection;
@@ -206,6 +234,7 @@ impl LibraryState {
         }
     }
     pub(super) fn refilter(&mut self) {
+        self.listing = Arc::new(());
         // Query edits are validated before assignment; execution cannot fail here.
         self.visible = self.query.execute(&self.entries).map_or_else(
             |_| Vec::new(),
@@ -236,6 +265,7 @@ impl LibraryState {
     }
     pub(super) fn rows(&self) -> (Vec<LibraryRowView>, Option<usize>) {
         let entry = |entry: &EntrySummary| LibraryRowView::Entry {
+            handle: self.entry_handle(entry),
             entry: Box::new(entry.clone()),
             requires_read: self.requires_read(&entry.key),
         };
@@ -509,6 +539,53 @@ impl LibraryJob {
     }
 }
 impl Workspace {
+    /// Issue the current visible row's opaque handle without parsing display data.
+    #[must_use]
+    pub fn entry_handle(&self, key: &LibraryKey) -> Option<EntryHandle> {
+        self.library
+            .visible
+            .contains(key)
+            .then(|| self.library.entries.iter().find(|entry| &entry.key == key))
+            .flatten()
+            .map(|entry| self.library.entry_handle(entry))
+    }
+    /// Handle of the current indexed selection, if it belongs to this listing.
+    #[must_use]
+    pub fn selected_entry_handle(&self) -> Option<EntryHandle> {
+        self.library
+            .selection
+            .as_ref()
+            .and_then(|key| self.entry_handle(key))
+    }
+    fn resolve_entry_handle(
+        &self,
+        handle: &EntryHandle,
+        purge: bool,
+    ) -> Result<(LibraryKey, Option<VersionToken>, bool), Refusal> {
+        let refusal = || {
+            if purge {
+                Refusal::PurgeSelectionChanged
+            } else {
+                Refusal::SelectionChanged
+            }
+        };
+        if !Arc::ptr_eq(&self.library.listing, &handle.listing)
+            || !self.library.visible.contains(&handle.key)
+        {
+            return Err(refusal());
+        }
+        let current = self
+            .library
+            .entries
+            .iter()
+            .find(|entry| entry.key == handle.key)
+            .ok_or_else(refusal)?;
+        if current.version_token != handle.version || current.trashed != handle.trashed {
+            return Err(refusal());
+        }
+        Ok((handle.key.clone(), handle.version, handle.trashed))
+    }
+
     /// Create a desktop workspace connected to the configured persistent root.
     /// Filesystem reads run on the existing file worker; initialization is explicit
     /// for overrides. A missing default root is created by the first publication.
@@ -559,7 +636,7 @@ impl Workspace {
         self.changed();
     }
     /// Surface a native filter error while retaining the prior valid query.
-    pub fn library_filter_error(&mut self, error: crate::discovery::query::QueryError) {
+    pub(super) fn library_filter_error(&mut self, error: crate::discovery::query::QueryError) {
         self.library.filter_error = Some(error);
         self.library.revision += 1;
         self.changed();
@@ -611,7 +688,7 @@ impl Workspace {
     ///
     /// # Errors
     /// An invalid range leaves the previous query and selection intact.
-    pub fn set_catalog_query(
+    pub(super) fn set_catalog_query(
         &mut self,
         query: CatalogQuery,
     ) -> Result<(), crate::discovery::query::QueryError> {
@@ -622,38 +699,51 @@ impl Workspace {
     }
     /// Select only a key that still belongs to the rendered query. Old row
     /// positions and stale callbacks cannot address replacement entries.
-    pub fn select_library_key(&mut self, key: &str) {
-        self.library.select_key(key);
-        self.load_library_selection();
-        self.changed();
+    pub(super) fn select_entry(&mut self, entry: EntryHandle) -> Result<(), Refusal> {
+        let result = self
+            .resolve_entry_handle(&entry, false)
+            .map(|(key, _, _)| key);
+        match result {
+            Ok(key) => {
+                self.library.select(Some(key));
+                self.library.revision += 1;
+                self.load_library_selection();
+                self.changed();
+                Ok(())
+            }
+            Err(refusal) => {
+                self.files.status = FileStatus::Refused(refusal.clone());
+                self.changed();
+                Err(refusal)
+            }
+        }
     }
     /// Keyboard movement through unique visible sounds, skipping virtual headings.
-    pub fn navigate_library(&mut self, direction: i32) {
+    pub(super) fn navigate_library(&mut self, direction: i32) {
         self.library.navigate(direction);
         self.load_library_selection();
         self.changed();
     }
     /// Request a rescan without dropping stale rows or the open draft on failure.
-    pub fn refresh_library(&mut self) {
+    pub(super) fn refresh_library(&mut self) {
         self.library.request_refresh();
         self.continue_library();
         self.changed();
     }
     /// Explicitly initialize an override root. No scan initializes storage.
-    pub fn initialize_library(&mut self) -> Result<(), Refusal> {
+    pub(super) fn initialize_library(&mut self) -> Result<(), Refusal> {
         self.managed_job(LibraryRequest::Initialize)?;
         Ok(())
     }
     /// Open the captured User version in the editor, retaining its identity.
     /// Unsaved changes use the existing Save/Discard/Cancel decision.
-    pub fn edit_selected(&mut self) {
+    pub(super) fn edit_selected(&mut self) -> Result<(), Refusal> {
         if let Some(snapshot) = self
             .selected()
             .filter(|s| s.external_file().is_some())
             .cloned()
         {
-            self.request(DocumentAction::EditExternal(snapshot));
-            return;
+            return self.request(DocumentAction::EditExternal(snapshot));
         }
         let record = {
             self.library
@@ -663,45 +753,50 @@ impl Workspace {
         }
         .cloned();
         if let Some(record) = record.filter(|r| !r.trashed) {
-            self.request(DocumentAction::EditManaged(record));
+            self.request(DocumentAction::EditManaged(record))
         } else {
-            self.copy_selected();
+            self.copy_selected()
         }
     }
     /// Edit only the managed version bound to the activated control.
-    pub fn edit_library_binding(&mut self, key: &str, token: &str) {
-        if token.is_empty()
-            && self
+    pub(super) fn edit_entry(&mut self, entry: EntryHandle) -> Result<(), Refusal> {
+        let result = (|| {
+            let (key, version, trashed) = self.resolve_entry_handle(&entry, false)?;
+            if self.library.selection.as_ref() != Some(&key) {
+                return Err(Refusal::SelectionChanged);
+            }
+            if matches!(key, LibraryKey::External(_))
+                && self
+                    .selected()
+                    .is_some_and(|snapshot| snapshot.external_file().is_some())
+            {
+                return self.edit_selected();
+            }
+            let record = self
                 .library
-                .selection
+                .loaded
                 .as_ref()
-                .is_some_and(|k| k.to_string() == key)
-            && self.selected().is_some_and(|s| s.external_file().is_some())
-        {
-            self.edit_selected();
-            return;
-        }
-        let record = self
-            .library
-            .loaded
-            .as_ref()
-            .filter(|r| !self.library.requires_read(&r.key))
-            .filter(|r| {
-                r.key.to_string() == key && r.version_token.to_string() == token && !r.trashed
-            })
-            .cloned();
-        if let Some(record) = record {
-            self.request(DocumentAction::EditManaged(record));
-        } else {
-            self.files.status = FileStatus::Notice(FileNotice::ChangedSelection);
+                .filter(|record| {
+                    record.key == key
+                        && Some(record.version_token) == version
+                        && !trashed
+                        && !self.library.requires_read(&key)
+                })
+                .cloned()
+                .ok_or(Refusal::SelectionChanged)?;
+            self.request(DocumentAction::EditManaged(record))
+        })();
+        if let Err(refusal) = &result {
+            self.files.status = FileStatus::Refused(refusal.clone());
             self.changed();
         }
+        result
     }
     /// Save the current complete draft under a fresh independent User identity.
     ///
     /// # Errors
     /// Refuses incomplete drafts or occupied slots without replacing the document.
-    pub fn save_independent_copy(&mut self) -> Result<(), Refusal> {
+    pub(super) fn save_independent_copy(&mut self) -> Result<(), Refusal> {
         let result = self.save_independent_copy_inner();
         if let Err(refusal) = &result {
             self.files.status = FileStatus::Refused((refusal).clone());
@@ -727,28 +822,25 @@ impl Workspace {
     ///
     /// # Errors
     /// Refuses a changed/hidden selection rather than adding a replacement row.
-    pub fn add_library_binding(&mut self, key: &str) -> Result<(), Refusal> {
-        let result = self.add_library_binding_inner(key);
+    pub(super) fn add_entry(&mut self, entry: EntryHandle) -> Result<(), Refusal> {
+        let result = (|| {
+            let (key, _, _) = self.resolve_entry_handle(&entry, false)?;
+            if self.library.selection.as_ref() != Some(&key) {
+                return Err(Refusal::SelectionChanged);
+            }
+            self.add_selected_to_library()
+        })();
         if let Err(refusal) = &result {
-            self.files.status = FileStatus::Refused((refusal).clone());
+            self.files.status = FileStatus::Refused(refusal.clone());
         }
         self.changed();
         result
-    }
-    fn add_library_binding_inner(&mut self, key: &str) -> Result<(), Refusal> {
-        if !self
-            .library_binding()
-            .is_some_and(|binding| binding.key.to_string() == key)
-        {
-            return Err(Refusal::SelectionChanged);
-        }
-        self.add_selected_to_library()
     }
     /// Add a temporary opened document to User without modifying its source file.
     ///
     /// # Errors
     /// Refuses non-temporary selections or occupied task slots.
-    pub fn add_selected_to_library(&mut self) -> Result<(), Refusal> {
+    pub(super) fn add_selected_to_library(&mut self) -> Result<(), Refusal> {
         let recipe = self.prepare_add_to_library()?;
         self.managed_job(LibraryRequest::Write {
             document: None,
@@ -773,76 +865,63 @@ impl Workspace {
     /// # Errors
     /// Built-ins, stale gestures, unsafe dirty-document removal and invalid input
     /// are refused before filesystem access. Purge requires separate confirmation.
-    pub fn mutate_library(
+    pub(super) fn mutate_entry(
         &mut self,
-        key: &str,
-        token: &str,
+        entry: EntryHandle,
         mutation: EntryMutation,
     ) -> Result<(), Refusal> {
-        self.mutate_library_with_confirmation(key, token, mutation, false)
-    }
-    pub(super) fn mutate_library_with_confirmation(
-        &mut self,
-        key: &str,
-        token: &str,
-        mutation: EntryMutation,
-        confirmed: bool,
-    ) -> Result<(), Refusal> {
-        let result = self.mutate_library_inner(key, token, mutation, confirmed);
+        let result = self.mutate_entry_inner(entry, mutation);
         if let Err(refusal) = &result {
-            self.files.status = FileStatus::Refused((refusal).clone());
+            self.files.status = FileStatus::Refused(refusal.clone());
         }
         self.changed();
         result
     }
-    fn mutate_library_inner(
+    fn mutate_entry_inner(
         &mut self,
-        key: &str,
-        token: &str,
+        entry: EntryHandle,
         mutation: EntryMutation,
-        confirmed: bool,
     ) -> Result<(), Refusal> {
-        let key: LibraryKey = key
-            .parse()
-            .map_err(|e: crate::document::origin::OriginError| {
-                Refusal::Document(Box::new(e.into()))
-            })?;
+        let purge = matches!(mutation, EntryMutation::RequestPurge);
+        let (key, version, trashed) = self.resolve_entry_handle(&entry, purge)?;
         crate::storage::library::require_user(&key)
-            .map_err(|e| Refusal::Document(Box::new(e.into())))?;
-        let expect: VersionToken =
-            token
-                .parse()
-                .map_err(|e: crate::document::origin::OriginError| {
-                    Refusal::Document(Box::new(e.into()))
-                })?;
+            .map_err(|error| Refusal::Document(Box::new(error.into())))?;
+        let expect = version.ok_or(if purge {
+            Refusal::PurgeSelectionChanged
+        } else {
+            Refusal::SelectionChanged
+        })?;
         if matches!(mutation, EntryMutation::Trash) {
             self.trash_request_admission(&key)?;
-        }
-        if matches!(mutation, EntryMutation::Trash) && self.editor.dirty_managed(&key) {
-            self.request(DocumentAction::TrashSaved { key, expect });
-            return Ok(());
-        }
-        if matches!(mutation, EntryMutation::RequestPurge) && !confirmed {
-            self.library_job_admission()?;
-            let entry = {
-                self.library.entries.iter().find(|e| {
-                    e.key == key && e.version_token.as_ref() == Some(&expect) && e.trashed
-                })
+            if self.editor.dirty_managed(&key) {
+                return self.request(DocumentAction::TrashSaved { key, expect });
             }
-            .ok_or(Refusal::PurgeSelectionChanged)?;
-            let title = entry.title.clone();
-            let prompt = self.prompt(PromptState::Purge {
-                key: key.clone(),
-                expect,
-            });
-            self.effects.push(Effect::AskPurge {
-                prompt,
-                key: key.to_string(),
-                title,
-            });
-            return Ok(());
         }
         let mutation = match mutation {
+            EntryMutation::RequestPurge => {
+                self.library_job_admission()?;
+                if !trashed {
+                    return Err(Refusal::PurgeSelectionChanged);
+                }
+                let title = self
+                    .library
+                    .entries
+                    .iter()
+                    .find(|entry| entry.key == key)
+                    .ok_or(Refusal::PurgeSelectionChanged)?
+                    .title
+                    .clone();
+                let prompt = self.prompt(PromptState::Purge {
+                    key: key.clone(),
+                    expect,
+                });
+                self.effects.push(Effect::AskPurge {
+                    prompt,
+                    key: key.to_string(),
+                    title,
+                });
+                return Ok(());
+            }
             EntryMutation::Rename { title } => Mutation::Rename {
                 key,
                 expect: Some(expect),
@@ -856,11 +935,6 @@ impl Workspace {
                 key,
                 expect: Some(expect),
             },
-            EntryMutation::RequestPurge => Mutation::Purge {
-                key,
-                expect: Some(expect),
-                confirmed,
-            },
         };
         self.managed_job(LibraryRequest::Write {
             document: None,
@@ -868,17 +942,46 @@ impl Workspace {
         })?;
         Ok(())
     }
-    /// Close only a still-selected temporary entry captured at activation.
-    pub fn close_open_file_binding(&mut self, key: &str) {
-        if self
-            .library_binding()
-            .is_some_and(|binding| binding.key.to_string() == key)
-        {
-            self.close_open_file();
+    pub(super) fn purge_confirmed(
+        &mut self,
+        key: LibraryKey,
+        expect: VersionToken,
+    ) -> Result<(), Refusal> {
+        let result = self
+            .managed_job(LibraryRequest::Write {
+                document: None,
+                mutation: Mutation::Purge {
+                    key,
+                    expect: Some(expect),
+                    confirmed: true,
+                },
+            })
+            .map(|_| ());
+        if let Err(refusal) = &result {
+            self.files.status = FileStatus::Refused(refusal.clone());
         }
+        self.changed();
+        result
+    }
+    /// Close only a still-selected temporary entry captured at activation.
+    pub(super) fn close_entry(&mut self, entry: EntryHandle) -> Result<(), Refusal> {
+        let result = self
+            .resolve_entry_handle(&entry, false)
+            .and_then(|(key, _, _)| {
+                if self.library.selection.as_ref() != Some(&key) {
+                    return Err(Refusal::SelectionChanged);
+                }
+                self.close_open_file();
+                Ok(())
+            });
+        if let Err(refusal) = &result {
+            self.files.status = FileStatus::Refused(refusal.clone());
+            self.changed();
+        }
+        result
     }
     /// Close the selected temporary entry without changing its external file.
-    pub fn close_open_file(&mut self) {
+    pub(super) fn close_open_file(&mut self) {
         let p = &mut self.library;
         let Some(key @ LibraryKey::External(_)) = p.selection.clone() else {
             return;
@@ -897,7 +1000,7 @@ impl Workspace {
     }
     /// Reveal the last confirmed saved key explicitly, clearing filters only on
     /// this command; saving itself preserves the current query.
-    pub fn show_saved(&mut self) -> bool {
+    pub(super) fn show_saved(&mut self) -> bool {
         let p = &mut self.library;
         let Some(key) = p.last_saved.clone() else {
             return false;
@@ -1273,12 +1376,7 @@ impl LibraryState {
         self.refilter();
         Ok(())
     }
-    pub(super) fn select_key(&mut self, key: &str) {
-        if let Some(found) = self.visible.iter().find(|entry| entry.to_string() == key) {
-            self.select(Some(found.clone()));
-            self.revision += 1;
-        }
-    }
+
     pub(super) fn navigate(&mut self, direction: i32) {
         let current = self
             .selection
@@ -1431,13 +1529,13 @@ impl Workspace {
     }
     /// Search titles, IDs, research text and component meaning. When the
     /// selection stops matching, the first match is selected.
-    pub fn set_query(&mut self, query: &str) {
+    pub(super) fn set_query(&mut self, query: &str) {
         self.library.set_search(query);
         self.load_library_selection();
         self.changed();
     }
     /// Change nominal facets without rebinding any playback or editor snapshot.
-    pub fn set_rhythm_query(&mut self, query: crate::discovery::query::RhythmQuery) {
+    pub(super) fn set_rhythm_query(&mut self, query: crate::discovery::query::RhythmQuery) {
         self.library.set_rhythm(query);
         self.load_library_selection();
         self.changed();

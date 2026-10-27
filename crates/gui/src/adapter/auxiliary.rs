@@ -1,5 +1,6 @@
 //! Monitor and auxiliary window callbacks.
 use super::*;
+use auditorylab_app::workspace::{AudioCommand, Command, OutputCommand};
 
 pub(super) fn install_monitor(adapter: &Rc<SlintAdapter>, windows: &Windows) {
     let monitor = &windows.monitor;
@@ -27,13 +28,13 @@ pub(super) fn install_monitor(adapter: &Rc<SlintAdapter>, windows: &Windows) {
             && let Some(ui) = a.main.upgrade()
         {
             let held = !ui.get_held();
-            a.command(|w| w.set_hold(held));
+            a.command(|w| w.apply(Command::Output(OutputCommand::SetHold(held))));
         }
     });
     let weak = Rc::downgrade(adapter);
     monitor.on_follow(move || {
         if let Some(a) = weak.upgrade() {
-            a.command(Workspace::follow_motion);
+            a.command(|w| w.apply(Command::Output(OutputCommand::FollowMotion)));
         }
     });
     let weak = Rc::downgrade(adapter);
@@ -67,7 +68,7 @@ pub(super) fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
     let weak = Rc::downgrade(adapter);
     windows.audio_controls.on_stop(move || {
         if let Some(a) = weak.upgrade() {
-            a.command(Workspace::stop);
+            a.command(|w| w.apply(Command::Audio(AudioCommand::Stop)));
         }
     });
     windows

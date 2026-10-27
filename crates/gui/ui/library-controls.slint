@@ -1,28 +1,24 @@
-import { LibraryMutationAction } from "library-actions.slint";
+import { EntryAddress, LibraryMutationAction } from "library-actions.slint";
 import { Button } from "button.slint";
 import { LineEdit } from "std-widgets.slint";
-// refresh while a pointer or keyboard press is held cannot retarget the action.
+// A held activation retains both its table and row, even after a model rebind.
 export component BoundButton inherits Button {
+    in property <EntryAddress> entry;
+    private property <EntryAddress> captured-entry;
     in property <LibraryMutationAction> action;
     private property <LibraryMutationAction> captured-action;
-    callback dispatch(string,string,LibraryMutationAction);
-    in property <string> key;
-    in property <string> token;
-    private property <string> captured-key;
-    private property <string> captured-token;
     private property <bool> armed:false;
-    callback activated(string, string);
-    changed pressed => { if self.pressed { root.captured-key=root.key;root.captured-token=root.token;root.captured-action=root.action;root.armed=true; } }
-    triggered => { root.activated(root.armed ? root.captured-key : root.key, root.armed ? root.captured-token : root.token);root.dispatch(root.armed ? root.captured-key : root.key,root.armed ? root.captured-token : root.token,root.armed ? root.captured-action : root.action);root.armed=false; }
+    callback activated(EntryAddress);
+    callback dispatch(EntryAddress,LibraryMutationAction);
+    changed pressed => {if self.pressed {root.captured-entry=root.entry;root.captured-action=root.action;root.armed=true;}}
+    triggered => {root.activated(root.armed ? root.captured-entry : root.entry);root.dispatch(root.armed ? root.captured-entry : root.entry,root.armed ? root.captured-action : root.action);root.armed=false;}
 }
-// A rename retains the entry/version on which text entry started.
+// Rename retains the handle on which text entry began.
 export component BoundTitleEdit inherits LineEdit {
-    in property <string> key;
-    in property <string> token;
-    private property <string> captured-key;
-    private property <string> captured-token;
+    in property <EntryAddress> entry;
+    private property <EntryAddress> captured-entry;
     private property <bool> dirty:false;
-    callback rename(string,string,string);
-    edited(value)=> { if !root.dirty {root.captured-key=root.key;root.captured-token=root.token;root.dirty=true;} }
-    accepted(value)=> {root.rename(root.dirty ? root.captured-key : root.key,root.dirty ? root.captured-token : root.token,value);root.dirty=false;}
+    callback rename(EntryAddress,string);
+    edited(value)=>{if !root.dirty {root.captured-entry=root.entry;root.dirty=true;}}
+    accepted(value)=>{root.rename(root.dirty ? root.captured-entry : root.entry,value);root.dirty=false;}
 }

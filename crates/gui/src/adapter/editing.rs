@@ -1,5 +1,6 @@
 //! Production editor callbacks.
 use super::*;
+use auditorylab_app::workspace::{Command, EditorCommand};
 
 pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     let weak = Rc::downgrade(adapter);
@@ -12,7 +13,12 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ui.on_stage_parameter(move |binding, key, text| {
         w(&|a| {
             if let Some(handle) = parameter_handle(&binding, key) {
-                a.command(|w| w.stage(handle, &text));
+                a.command(|w| {
+                    w.apply(Command::Editor(EditorCommand::Stage {
+                        field: handle,
+                        text: text.to_string(),
+                    }))
+                });
             }
         });
     });
@@ -20,7 +26,12 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ui.on_commit_parameter(move |binding, key, text| {
         w(&|a| {
             if let Some(handle) = parameter_handle(&binding, key) {
-                a.command(|w| w.commit_field(handle, &text));
+                a.command(|w| {
+                    w.apply(Command::Editor(EditorCommand::CommitField {
+                        field: handle,
+                        text: text.to_string(),
+                    }))
+                });
             }
         });
     });
@@ -28,7 +39,7 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ui.on_restore_parameter(move |binding, key| {
         w(&|a| {
             if let Some(handle) = parameter_handle(&binding, key) {
-                a.command(|w| w.restore(handle));
+                a.command(|w| w.apply(Command::Editor(EditorCommand::Restore(handle))));
             }
         });
     });
@@ -36,7 +47,12 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ui.on_slide(move |binding, key, position| {
         w(&|a| {
             if let Some(handle) = parameter_handle(&binding, key) {
-                a.command(|w| w.slide(handle, f64::from(position)));
+                a.command(|w| {
+                    w.apply(Command::Editor(EditorCommand::Slide {
+                        field: handle,
+                        position: f64::from(position),
+                    }))
+                });
             }
         });
     });
@@ -44,7 +60,12 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ui.on_stage_metadata(move |binding, key, text| {
         w(&|a| {
             if let Some(handle) = metadata_handle(&binding, key) {
-                a.command(|w| w.stage(handle, &text));
+                a.command(|w| {
+                    w.apply(Command::Editor(EditorCommand::Stage {
+                        field: handle,
+                        text: text.to_string(),
+                    }))
+                });
             }
         });
     });
@@ -52,7 +73,12 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ui.on_commit_metadata(move |binding, key, text| {
         w(&|a| {
             if let Some(handle) = metadata_handle(&binding, key) {
-                a.command(|w| w.commit_field(handle, &text));
+                a.command(|w| {
+                    w.apply(Command::Editor(EditorCommand::CommitField {
+                        field: handle,
+                        text: text.to_string(),
+                    }))
+                });
             }
         });
     });
@@ -60,7 +86,7 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ui.on_restore_metadata(move |binding, key| {
         w(&|a| {
             if let Some(handle) = metadata_handle(&binding, key) {
-                a.command(|w| w.restore(handle));
+                a.command(|w| w.apply(Command::Editor(EditorCommand::Restore(handle))));
             }
         });
     });
@@ -68,7 +94,7 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ui.on_set_ears(move |binding, index| {
         w(&|a| {
             if let (Ok(row), Some(ears)) = (binding.parse::<RowKey>(), choice(&Ears::ALL, index)) {
-                a.command(|w| w.set_ears(row, ears));
+                a.command(|w| w.apply(Command::Editor(EditorCommand::SetEars { row, ears })));
             }
         });
     });
@@ -78,7 +104,7 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             if let (Ok(row), Some(kind)) =
                 (binding.parse::<RowKey>(), choice(&CarrierKind::ALL, index))
             {
-                a.command(|w| w.set_carrier(row, kind));
+                a.command(|w| w.apply(Command::Editor(EditorCommand::SetCarrier { row, kind })));
             }
         });
     });
@@ -90,7 +116,7 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                 i => choice(&ModulationKind::ALL, i - 1).map(Some),
             };
             if let (Ok(row), Some(kind)) = (binding.parse::<RowKey>(), kind) {
-                a.command(|w| w.set_modulation(row, kind));
+                a.command(|w| w.apply(Command::Editor(EditorCommand::SetModulation { row, kind })));
             }
         });
     });
@@ -98,7 +124,7 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ui.on_remove_component(move |binding| {
         w(&|a| {
             if let Ok(row) = binding.parse::<RowKey>() {
-                a.command(|w| w.remove_component(row));
+                a.command(|w| w.apply(Command::Editor(EditorCommand::RemoveComponent(row))));
             }
         });
     });
@@ -106,7 +132,7 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ui.on_restore_component(move |binding| {
         w(&|a| {
             if let Ok(row) = binding.parse::<RowKey>() {
-                a.command(|w| w.restore_component(row));
+                a.command(|w| w.apply(Command::Editor(EditorCommand::RestoreComponent(row))));
             }
         });
     });
@@ -119,14 +145,26 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             match index {
                 0 | 1 => {
                     if let Some(kind) = choice(&CarrierKind::ALL, index) {
-                        a.command(|w| w.add_component(row, kind));
+                        a.command(|w| {
+                            w.apply(Command::Editor(EditorCommand::AddComponent { row, kind }))
+                        });
                     }
                 }
                 2 => {
-                    a.command(|w| w.add_pair(row, auditorylab_app::core::PairKind::Binaural));
+                    a.command(|w| {
+                        w.apply(Command::Editor(EditorCommand::AddPair {
+                            row,
+                            kind: auditorylab_app::core::PairKind::Binaural,
+                        }))
+                    });
                 }
                 3 => {
-                    a.command(|w| w.add_pair(row, auditorylab_app::core::PairKind::Monaural));
+                    a.command(|w| {
+                        w.apply(Command::Editor(EditorCommand::AddPair {
+                            row,
+                            kind: auditorylab_app::core::PairKind::Monaural,
+                        }))
+                    });
                 }
                 _ => {}
             }

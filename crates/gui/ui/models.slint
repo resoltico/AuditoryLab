@@ -1,4 +1,4 @@
-export { LibraryMutationAction } from "library-actions.slint";
+export { EntryAddress, LibraryMutationAction } from "library-actions.slint";
 export { ParameterKey } from "parameters.slint";
 import { ParameterKey } from "parameters.slint";
 export enum MetadataKey { title, summary, duration, fade }
@@ -31,7 +31,9 @@ export struct MetadataRow { label: string, text: string, staged: bool, diagnosti
 export struct ModelLane { component: string, label: string, trace: string }
 
 // A process-local immutable snapshot binding, independent of row position.
+import { EntryAddress } from "library-actions.slint";
 export struct CatalogRow {
+    entry: EntryAddress,
     built-in: bool,
     text: string, binding: string, title: string, collection: string,
     summary: string, bands: string, duration: string, dates: string

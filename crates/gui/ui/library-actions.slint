@@ -1,1 +1,4 @@
 export enum LibraryMutationAction { rename, trash, restore, request-purge }
+
+// Captured model ownership keeps a rendered handle table alive through gestures.
+export struct EntryAddress { table: [int], row: int }

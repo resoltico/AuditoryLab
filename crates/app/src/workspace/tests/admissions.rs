@@ -220,15 +220,15 @@ struct Expected {
 
 fn fixture(case: Case) -> TestWorkspace {
     let mut ws = workspace();
-    ws.set_view(View::Workbench);
+    let _ = ws.apply(Command::SetView(View::Workbench));
     match case {
         Case::Idle => {}
-        Case::Prompt => ws.import().unwrap(),
+        Case::Prompt => ws.apply(Command::File(FileCommand::Import)).unwrap(),
         Case::PendingFile | Case::Import => {
             let path = ws.store.path().join("pending-input.toml");
             ws.start_file(FileKind::Import(path));
             if matches!(case, Case::PendingFile) {
-                ws.new_document();
+                let _ = ws.apply(Command::Editor(EditorCommand::New));
                 assert!(ws.action_pending());
             }
         }
@@ -256,10 +256,10 @@ fn fixture(case: Case) -> TestWorkspace {
             });
         }
         Case::Background => {
-            ws.refresh_library();
+            let _ = ws.apply(Command::Library(LibraryCommand::Refresh));
             assert!(ws.file_busy());
         }
-        Case::Audio => ws.play().unwrap(),
+        Case::Audio => ws.apply(Command::Audio(AudioCommand::Play)).unwrap(),
         Case::InvalidText => {
             let handle = ws
                 .editor()
@@ -267,7 +267,11 @@ fn fixture(case: Case) -> TestWorkspace {
                     crate::document::editing::MetadataField::Duration,
                 ))
                 .unwrap();
-            ws.stage(handle, "unparsed duration").unwrap();
+            ws.apply(Command::Editor(EditorCommand::Stage {
+                field: handle,
+                text: ("unparsed duration").to_string(),
+            }))
+            .unwrap();
         }
         Case::AcousticInvalid
         | Case::Full
@@ -328,7 +332,8 @@ fn fixture(case: Case) -> TestWorkspace {
                     .editor()
                     .component_key(ComponentId::new(u32::MAX).unwrap())
                     .unwrap();
-                ws.remove_component(row).unwrap();
+                ws.apply(Command::Editor(EditorCommand::RemoveComponent(row)))
+                    .unwrap();
             }
         }
         Case::Unavailable => {
@@ -339,8 +344,10 @@ fn fixture(case: Case) -> TestWorkspace {
                 .unwrap();
         }
         Case::NoSelection => {
-            ws.set_view(View::Library);
-            ws.set_query("no catalog source has this title");
+            let _ = ws.apply(Command::SetView(View::Library));
+            let _ = ws.apply(Command::Library(LibraryCommand::Search(
+                ("no catalog source has this title").to_string(),
+            )));
             assert!(ws.selected().is_none());
         }
         Case::NoDevice => ws.audio.capabilities = Capabilities::no_device_playback(),
@@ -350,12 +357,12 @@ fn fixture(case: Case) -> TestWorkspace {
                 crate::test_recipes::silent(1.0, 0.0),
             );
             ws.add_import(snapshot).unwrap();
-            ws.set_view(View::Library);
+            let _ = ws.apply(Command::SetView(View::Library));
             if matches!(case, Case::OpenFilePrompt) {
-                ws.import().unwrap();
+                ws.apply(Command::File(FileCommand::Import)).unwrap();
             }
             if matches!(case, Case::OpenFileBusy) {
-                ws.refresh_library();
+                let _ = ws.apply(Command::Library(LibraryCommand::Refresh));
                 assert!(ws.file_busy());
             }
         }
@@ -395,49 +402,52 @@ action_matrix!(
     can_play,
     play,
     |ws: &mut Workspace| ws.play_readiness(),
-    |ws: &mut Workspace| ws.play()
+    |ws: &mut Workspace| ws.apply(Command::Audio(AudioCommand::Play))
 );
 action_matrix!(
     import_admission_matches_view_and_action,
     can_import,
     import,
     |ws: &mut Workspace| ws.import_admission(),
-    |ws: &mut Workspace| ws.import()
+    |ws: &mut Workspace| ws.apply(Command::File(FileCommand::Import))
 );
 action_matrix!(
     save_admission_matches_view_and_action,
     can_save,
     save,
     |ws: &mut Workspace| ws.prepare_save().map(|_| ()),
-    |ws: &mut Workspace| ws.save()
+    |ws: &mut Workspace| ws.apply(Command::File(FileCommand::Save))
 );
 action_matrix!(
     save_copy_admission_matches_view_and_action,
     can_save_copy,
     save_copy,
     |ws: &mut Workspace| ws.prepare_save_copy().map(|_| ()),
-    |ws: &mut Workspace| ws.save_independent_copy()
+    |ws: &mut Workspace| ws.apply(Command::File(FileCommand::SaveCopy))
 );
 action_matrix!(
     export_admission_matches_view_and_action,
     can_export,
     export,
     |ws: &mut Workspace| ws.prepare_export().map(|_| ()),
-    |ws: &mut Workspace| ws.export()
+    |ws: &mut Workspace| ws.apply(Command::File(FileCommand::ExportWav))
 );
 action_matrix!(
     portable_export_admission_matches_view_and_action,
     can_export_recipe,
     portable,
     |ws: &mut Workspace| ws.prepare_export_recipe().map(|_| ()),
-    |ws: &mut Workspace| ws.export_recipe()
+    |ws: &mut Workspace| ws.apply(Command::File(FileCommand::ExportRecipe))
 );
 action_matrix!(
     component_admission_matches_view_and_action,
     can_add_component,
     add,
     |ws: &mut Workspace| ws.component_add_admission(ws.editor().document_key(), CarrierKind::Tone),
-    |ws: &mut Workspace| ws.add_component(ws.editor().document_key(), CarrierKind::Tone)
+    |ws: &mut Workspace| ws.apply(Command::Editor(EditorCommand::AddComponent {
+        row: ws.editor().document_key(),
+        kind: CarrierKind::Tone
+    }))
 );
 action_matrix!(
     pair_admission_matches_view_and_action,
@@ -445,42 +455,34 @@ action_matrix!(
     pair,
     |ws: &mut Workspace| ws
         .pair_add_admission(ws.editor().document_key(), crate::core::PairKind::Binaural),
-    |ws: &mut Workspace| ws.add_pair(ws.editor().document_key(), crate::core::PairKind::Binaural)
+    |ws: &mut Workspace| ws.apply(Command::Editor(EditorCommand::AddPair {
+        row: ws.editor().document_key(),
+        kind: crate::core::PairKind::Binaural
+    }))
 );
 action_matrix!(
     restore_admission_matches_view_and_action,
     can_restore_component,
     restore,
     |ws: &mut Workspace| ws.restore_component_admission(ws.editor().document_key()),
-    |ws: &mut Workspace| ws.restore_component(ws.editor().document_key())
+    |ws: &mut Workspace| ws.apply(Command::Editor(EditorCommand::RestoreComponent(
+        ws.editor().document_key()
+    )))
 );
 
-fn document_action_result(ws: &Workspace) -> Result<(), Refusal> {
-    if let FileStatus::Refused(refusal) = &ws.files.status {
-        Err(refusal.clone())
-    } else {
-        Ok(())
-    }
-}
 action_matrix!(
     new_admission_matches_view_and_action,
     can_new,
     new,
     |ws: &mut Workspace| ws.start_allowed(),
-    |ws: &mut Workspace| {
-        ws.new_document();
-        document_action_result(ws)
-    }
+    |ws: &mut Workspace| ws.apply(Command::Editor(EditorCommand::New))
 );
 action_matrix!(
     copy_admission_matches_view_and_action,
     can_copy,
     copy,
     |ws: &mut Workspace| ws.copy_admission(),
-    |ws: &mut Workspace| {
-        ws.copy_selected();
-        document_action_result(ws)
-    }
+    |ws: &mut Workspace| ws.apply(Command::Editor(EditorCommand::CopySelected))
 );
 
 #[test]
@@ -494,7 +496,7 @@ fn preview_admission_and_file_busy_use_owned_resource_state() {
         assert_eq!(view.file_busy, expected.file_busy, "{case:?}");
         assert_eq!(ws.file_busy(), expected.file_busy, "{case:?}");
         let revision = ws.revision();
-        ws.preview_current();
+        let _ = ws.apply(Command::Output(OutputCommand::Preview));
         assert_eq!(ws.revision() != revision, expected.preview, "{case:?}");
     }
 }
@@ -521,8 +523,16 @@ fn stop_and_cancel_stay_independent_of_other_admissions_until_join() {
             expected.cancel,
             "{case:?}"
         );
-        assert_eq!(ws.stop().is_ok(), expected.audio, "{case:?}");
-        assert_eq!(ws.cancel_export().is_ok(), expected.cancel, "{case:?}");
+        assert_eq!(
+            ws.apply(Command::Audio(AudioCommand::Stop)).is_ok(),
+            expected.audio,
+            "{case:?}"
+        );
+        assert_eq!(
+            ws.apply(Command::File(FileCommand::CancelExport)).is_ok(),
+            expected.cancel,
+            "{case:?}"
+        );
         assert_eq!(
             ws.audio_busy(),
             expected.audio,
@@ -549,7 +559,12 @@ fn editor_actions_share_the_owned_gate() {
                 crate::document::editing::MetadataField::Summary,
             ))
             .unwrap();
-        assert_eq!(ws.restore(handle).is_ok(), expected.edit, "{case:?}");
+        assert_eq!(
+            ws.apply(Command::Editor(EditorCommand::Restore(handle)))
+                .is_ok(),
+            expected.edit,
+            "{case:?}"
+        );
     }
 }
 
@@ -558,14 +573,14 @@ action_matrix!(
     can_manage_library,
     manage,
     |ws: &mut Workspace| ws.library_job_admission(),
-    |ws: &mut Workspace| ws.initialize_library()
+    |ws: &mut Workspace| ws.apply(Command::Library(LibraryCommand::Initialize))
 );
 action_matrix!(
     add_input_admission_matches_view_and_action,
     can_add_to_library,
     add_file,
     |ws: &mut Workspace| ws.prepare_add_to_library().map(|_| ()),
-    |ws: &mut Workspace| ws.add_selected_to_library()
+    |ws: &mut Workspace| ws.apply(Command::Library(LibraryCommand::AddSelected))
 );
 
 #[cfg(test)]

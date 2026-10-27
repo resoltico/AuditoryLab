@@ -3,12 +3,12 @@ import { BoundButton, BoundTitleEdit } from "library-controls.slint";
 import { LibraryNavigationItem } from "library-navigation.slint";
 import { Terms } from "vocabulary.slint";
 import { Palette, ComboBox, TextEdit, LineEdit, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
-import { LibraryMutationAction, CatalogRow, LibraryFacet, ModelLane } from "models.slint";
+import { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ModelLane } from "models.slint";
 import { Disclosure, ExportRate } from "editor.slint";
 
 
 export component LibraryPane inherits Rectangle {
-    callback add-to-library(string);
+    callback add-to-library(EntryAddress);
     in-out property <int> band-choice;
     in property <[string]> band-labels;
     in property <[LibraryFacet]> band-navigation;
@@ -24,13 +24,13 @@ export component LibraryPane inherits Rectangle {
     in property <bool> can-request-trash;
     in property <[CatalogRow]> catalog;
     callback clear-applied-filters();
-    callback close-open-file(string);
+    callback close-open-file(EntryAddress);
     in-out property <int> collection-choice;
     callback collection-filter(int, int);
     in property <[string]> collection-labels;
     in-out property <bool> compact;
     in property <string> copy-reason;
-    callback edit-saved(string, string);
+    callback edit-saved(EntryAddress);
     in property <[string]> export-rates;
     callback export-recipe();
     in-out property <bool> export-settings;
@@ -38,7 +38,7 @@ export component LibraryPane inherits Rectangle {
     in property <string> file-activity;
     in-out property <string> focused-library-key;
     in property <bool> has-results;
-    callback library-action(string, string, LibraryMutationAction, string);
+    callback library-action(EntryAddress, LibraryMutationAction, string);
     in property <string> library-alert;
     in property <string> library-classification;
     in property <string> library-dates;
@@ -46,6 +46,7 @@ export component LibraryPane inherits Rectangle {
     in-out property <bool> library-detail;
     in property <string> library-empty-message;
     in property <bool> library-filters-active;
+    in property <EntryAddress> library-entry;
     in property <string> library-key;
     in property <string> library-overview;
     in property <string> library-ownership;
@@ -76,7 +77,7 @@ export component LibraryPane inherits Rectangle {
     callback resize-library-pane(float);
     callback rhythm-filter(int, int);
     callback search(string);
-    callback select(string);
+    callback select(EntryAddress);
     in-out property <int> selected;
     callback show-research();
     in-out property <length> sidebar-width;
@@ -329,7 +330,7 @@ export component LibraryPane inherits Rectangle {
                                             }
 
                                             if event.text == Terms.caption-line-break || event.text == " " {
-                                                root.select(item.binding);
+                                                root.select(item.entry);
                                                 root.library-detail=true;
                                                 return accept;
                                             }
@@ -339,12 +340,12 @@ export component LibraryPane inherits Rectangle {
                                     // Above the focus scope, so a pointer press reaches it.
                                     touch := TouchArea {
                                         enabled:item.binding != "";
-                                        private property <string> captured;
+                                        private property <EntryAddress> captured;
                                         private property <bool> armed:false;
-                                        changed pressed => {if self.pressed {self.captured=item.binding;self.armed=true;}}
+                                        changed pressed => {if self.pressed {self.captured=item.entry;self.armed=true;}}
                                         clicked => {
                                             focus.focus();
-                                            root.select(self.armed ? self.captured : item.binding);
+                                            root.select(self.armed ? self.captured : item.entry);
                                             self.armed=false;
 
                                             root.library-detail=true;
@@ -494,15 +495,15 @@ export component LibraryPane inherits Rectangle {
                                 if utc-dates.expanded: TextEdit {text:root.library-dates-utc;read-only:true;wrap:word-wrap;accessible-label:Terms.facet-exact-utc-recipe-and-membership-dates;min-width:0px;height:root.ui-size*8;vertical-stretch:0;}
                                 if root.library-key != "": Text {text:root.library-key;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
                                 }
-                                if root.library-token != "" && !root.library-trashed: BoundButton {enabled:root.can-new;text:Terms.operation-edit-saved-recipe;key:root.library-key;token:root.library-token;activated(k,t)=>{root.edit-saved(k,t);}}
+                                if root.library-token != "" && !root.library-trashed: BoundButton {enabled:root.can-new;text:Terms.operation-edit-saved-recipe;entry:root.library-entry;activated(entry)=>{root.edit-saved(entry);}}
                                 Button {text:(Terms.operation-export-recipe + "…");enabled:root.can-export-recipe;triggered =>{root.export-recipe();}}
-                                if root.collection-choice == 3: BoundButton {text:Terms.operation-close-open-file;key:root.library-key;token:"";activated(k,t)=>{root.close-open-file(k);}}
-                                if root.collection-choice == 3: BoundButton {enabled:root.can-new;text:Terms.operation-edit-external-file;key:root.library-key;token:"";activated(k,t)=>{root.edit-saved(k,t);}}
-                                if root.collection-choice == 3: BoundButton {enabled:root.can-add-to-library;text:Terms.operation-library-add;key:root.library-key;token:"";activated(k,t)=>{root.add-to-library(k);}}
+                                if root.collection-choice == 3: BoundButton {text:Terms.operation-close-open-file;entry:root.library-entry;activated(entry)=>{root.close-open-file(entry);}}
+                                if root.collection-choice == 3: BoundButton {enabled:root.can-new;text:Terms.operation-edit-external-file;entry:root.library-entry;activated(entry)=>{root.edit-saved(entry);}}
+                                if root.collection-choice == 3: BoundButton {enabled:root.can-add-to-library;text:Terms.operation-library-add;entry:root.library-entry;activated(entry)=>{root.add-to-library(entry);}}
                                 if root.library-token != "": VerticalBox { vertical-stretch:0;
-                                    if !root.library-trashed: BoundTitleEdit {enabled:root.can-manage-library;key:root.library-key;token:root.library-token;placeholder-text:Terms.caption-new-title;accessible-label:Terms.operation-library-rename;rename(k,t,value)=>{root.library-action(k,t,LibraryMutationAction.rename,value);} }
-                                    BoundButton {enabled:root.library-trashed ? root.can-manage-library : root.can-request-trash;text:root.library-trashed ? Terms.operation-library-restore : Terms.operation-library-trash;key:root.library-key;token:root.library-token;action:root.library-trashed ? LibraryMutationAction.restore : LibraryMutationAction.trash;dispatch(k,t,action)=>{root.library-action(k,t,action,"");}}
-                                    if root.library-trashed: BoundButton {enabled:root.can-manage-library;text:(Terms.operation-library-purge + "…");key:root.library-key;token:root.library-token;activated(k,t)=>{root.library-action(k,t,LibraryMutationAction.request-purge,"");}}
+                                    if !root.library-trashed: BoundTitleEdit {enabled:root.can-manage-library;entry:root.library-entry;placeholder-text:Terms.caption-new-title;accessible-label:Terms.operation-library-rename;rename(entry,value)=>{root.library-action(entry,LibraryMutationAction.rename,value);} }
+                                    BoundButton {enabled:root.library-trashed ? root.can-manage-library : root.can-request-trash;text:root.library-trashed ? Terms.operation-library-restore : Terms.operation-library-trash;entry:root.library-entry;action:root.library-trashed ? LibraryMutationAction.restore : LibraryMutationAction.trash;dispatch(entry,action)=>{root.library-action(entry,action,"");}}
+                                    if root.library-trashed: BoundButton {enabled:root.can-manage-library;text:(Terms.operation-library-purge + "…");entry:root.library-entry;activated(entry)=>{root.library-action(entry,LibraryMutationAction.request-purge,"");}}
                                 }
                                 Disclosure {label:Terms.caption-research-citation-and-sound-adaptations;expanded <=> root.research;}
                                 if root.research && root.can-open-study: Button {text:Terms.action-open-study-source;triggered =>{root.open-study();}}

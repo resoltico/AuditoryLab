@@ -221,7 +221,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns [`Refusal::NoAudio`] when nothing plays.
-    pub fn stop(&mut self) -> Result<StopRequest, Refusal> {
+    pub(super) fn stop(&mut self) -> Result<StopRequest, Refusal> {
         let result = self.audio.stop();
         self.changed();
         result
@@ -234,7 +234,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the admission or input refusal.
-    pub fn play(&mut self) -> Result<(), Refusal> {
+    pub(super) fn play(&mut self) -> Result<(), Refusal> {
         let result = self.play_inner();
         self.audio.status = match &result {
             Ok(()) => AudioStatus::Idle,
@@ -247,7 +247,7 @@ impl Workspace {
     ///
     /// # Errors
     /// Returns the same admission refusal as Stop or Play.
-    pub fn play_stop(&mut self) -> Result<(), Refusal> {
+    pub(super) fn play_stop(&mut self) -> Result<(), Refusal> {
         if self.audio_busy() {
             self.stop().map(|_| ())
         } else {

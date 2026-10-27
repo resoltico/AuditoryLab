@@ -108,6 +108,8 @@ pub struct EditorView {
 pub enum LibraryRowView {
     /// One unique indexed recipe at its last observed version.
     Entry {
+        /// Captured listing identity and observed membership/version.
+        handle: super::EntryHandle,
         /// Correlated indexed content and membership.
         entry: Box<crate::discovery::collection::EntrySummary>,
         /// The row requires a fresh read before an action can use it.

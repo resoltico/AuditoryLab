@@ -31,8 +31,8 @@ use auditorylab_app::core::{CarrierKind, Ears, ModulationKind, ParameterId};
 use auditorylab_app::document::editing::{EditingField, FieldHandle, MetadataField, RowKey};
 use auditorylab_app::services::playback::PlaybackPhase;
 use auditorylab_app::workspace::{
-    Effect, Executor, MotionPreference, PathPurpose, PromptAnswer, PromptId, Response, View,
-    Workspace,
+    Command, Effect, Executor, LibraryCommand, MotionPreference, OutputCommand, PathPurpose,
+    PromptAnswer, PromptId, Response, View, Workspace,
 };
 use auxiliary::{install_auxiliary, install_monitor};
 use editing::install_editing;
@@ -145,6 +145,7 @@ pub(crate) struct SlintAdapter {
     entries: RefCell<Vec<ComponentEntry>>,
     catalog: Rc<VecModel<CatalogRow>>,
     library: RefCell<Option<Arc<auditorylab_app::workspace::LibraryView>>>,
+    entry_handles: RefCell<Option<ModelRc<i32>>>,
     lanes: Rc<VecModel<ModelLane>>,
     document: Cell<Option<RowKey>>,
     projected: Cell<Option<(u64, Option<PlaybackPhase>)>>,
@@ -201,6 +202,7 @@ impl SlintAdapter {
             entries: RefCell::new(Vec::new()),
             catalog: Rc::new(VecModel::default()),
             library: RefCell::new(None),
+            entry_handles: RefCell::new(None),
             lanes: Rc::new(VecModel::default()),
             document: Cell::new(None),
             projected: Cell::new(None),
@@ -305,7 +307,7 @@ impl SlintAdapter {
         match event {
             WindowEvent::Focused(focused) => {
                 if *focused {
-                    self.command(Workspace::refresh_library);
+                    self.command(|w| w.apply(Command::Library(LibraryCommand::Refresh)));
                 }
                 if let Some(main) = self.main.upgrade() {
                     main.set_edits_suspended(!focused);
@@ -444,6 +446,11 @@ impl SlintAdapter {
                     .choose_path(self, prompt, purpose, suggested_name);
             }
             Effect::CloseResolved { approved } => self.shell.close_resolved(self, approved),
+            Effect::ResetLibraryInputs => {
+                if let Some(ui) = self.main.upgrade() {
+                    actions::reset_filter_inputs(&ui);
+                }
+            }
             Effect::ShowView(view) => {
                 if let Some(ui) = self.main.upgrade() {
                     ui.set_tab_index(match view {
@@ -494,7 +501,7 @@ impl SlintAdapter {
         // A newer request supersedes an unanswered older one; the backend
         // already treats the older token as stale.
         *self.termination.borrow_mut() = Some(request);
-        self.command(Workspace::close);
+        self.command(|w| w.apply(Command::Close));
     }
 
     /// The pending native termination request, if any.
@@ -588,11 +595,11 @@ impl SlintAdapter {
         if let Some(motion) = preferences.motion.latest()
             && let Some(workspace) = self.workspace.borrow_mut().as_mut()
         {
-            workspace.set_motion_preference(match motion {
+            let _ = workspace.apply(Command::Output(OutputCommand::SetMotion(match motion {
                 motion::Preference::Reduced => MotionPreference::Reduced,
                 motion::Preference::Full => MotionPreference::Enabled,
                 motion::Preference::Unknown => MotionPreference::Unknown,
-            });
+            })));
         }
     }
 
@@ -1308,7 +1315,12 @@ impl SlintAdapter {
         let span = choice(&SPANS_MS, ui.get_window_index());
         let scale = choice(&WaveformScale::ALL, ui.get_scale_index());
         if let (Some(span), Some(scale)) = (span, scale) {
-            self.command(|w| w.set_waveform(span, scale));
+            self.command(|w| {
+                w.apply(Command::Output(OutputCommand::SetWaveform {
+                    span_ms: span,
+                    scale,
+                }))
+            });
         } else {
             self.project();
         }

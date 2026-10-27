@@ -22,6 +22,7 @@ pub(crate) fn row(
         Row::Entry {
             entry,
             requires_read,
+            ..
         } => entry_row(entry, sort, *requires_read),
         Row::Group(group) => heading_row(format!(
             "{} · {} unique sounds",

@@ -37,7 +37,7 @@ pub(crate) fn refusal_text(refusal: &Refusal) -> String {
         Refusal::Input(problems) => input_text(problems),
         Refusal::NotFinite => "The recipe's numbers must all be finite before it can play.".into(),
         Refusal::Document(error) => error.explain(),
-        Refusal::SelectionChanged => "Open file selection changed; activate Add again.".into(),
+        Refusal::SelectionChanged => "Library selection changed; activate the action again.".into(),
         Refusal::TemporaryRequired => "Select an Open file to add; use Edit a copy for Built-in content.".into(),
         Refusal::PurgeSelectionChanged => "Select the current trashed version before permanent deletion.".into(),
         Refusal::DetachedDraft(key) => format!("Detached draft from {key}. Edit the restored saved entry or Save independent copy; the old identity is not recreated."),

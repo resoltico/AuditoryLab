@@ -3,6 +3,36 @@ use super::*;
 use auditorylab_app::core::query::{Scope, SortBy};
 use auditorylab_presentation::DisplayText;
 use auditorylab_presentation::LibraryPresentation;
+struct EntryHandles(Vec<Option<auditorylab_app::workspace::EntryHandle>>);
+impl slint::Model for EntryHandles {
+    type Data = i32;
+    fn row_count(&self) -> usize {
+        self.0.len()
+    }
+    fn row_data(&self, row: usize) -> Option<i32> {
+        (row < self.0.len())
+            .then(|| i32::try_from(row).ok())
+            .flatten()
+    }
+    fn model_tracker(&self) -> &dyn slint::ModelTracker {
+        &()
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+pub(super) fn entry_handle(
+    address: &crate::generated::EntryAddress,
+) -> Option<auditorylab_app::workspace::EntryHandle> {
+    address
+        .table
+        .as_any()
+        .downcast_ref::<EntryHandles>()?
+        .0
+        .get(usize::try_from(address.row).ok()?)?
+        .clone()
+}
+
 impl SlintAdapter {
     pub(super) fn project_library(
         &self,
@@ -18,6 +48,36 @@ impl SlintAdapter {
             return;
         }
         let source = library;
+        let handles = source
+            .rows
+            .iter()
+            .map(|row| match row {
+                auditorylab_app::workspace::LibraryRowView::Entry { handle, .. } => {
+                    Some(handle.clone())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let table = self
+            .entry_handles
+            .borrow()
+            .as_ref()
+            .filter(|table| {
+                table
+                    .as_any()
+                    .downcast_ref::<EntryHandles>()
+                    .is_some_and(|old| old.0 == handles)
+            })
+            .cloned()
+            .unwrap_or_else(|| ModelRc::new(EntryHandles(handles)));
+        *self.entry_handles.borrow_mut() = Some(table.clone());
+        ui.set_library_entry(crate::generated::EntryAddress {
+            table: table.clone(),
+            row: source
+                .selected
+                .and_then(|row| i32::try_from(row).ok())
+                .unwrap_or(-1),
+        });
         let library = auditorylab_presentation::workspace_text::library_view(&source);
         self.counts
             .library_projections
@@ -27,7 +87,12 @@ impl SlintAdapter {
             library
                 .rows
                 .iter()
-                .map(|row| CatalogRow {
+                .enumerate()
+                .map(|(index, row)| CatalogRow {
+                    entry: crate::generated::EntryAddress {
+                        table: table.clone(),
+                        row: i32::try_from(index).unwrap_or(-1),
+                    },
                     built_in: row.built_in,
                     text: read_only(&row.text),
                     binding: row.key.as_str().into(),

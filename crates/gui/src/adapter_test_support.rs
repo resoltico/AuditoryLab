@@ -1,6 +1,8 @@
 //! Deterministic execution and private-state accessors for adapter integration tests.
 use super::*;
-use auditorylab_app::workspace::{Executor, Job, JobKind, Runner, ShutdownError};
+use auditorylab_app::workspace::{
+    AudioCommand, Command, Executor, FileCommand, Job, JobKind, Runner, ShutdownError,
+};
 #[derive(Default)]
 pub(crate) struct DeterministicExecutor {
     jobs: Vec<Job>,
@@ -22,8 +24,8 @@ impl Executor for DeterministicExecutor {
         responses
     }
     fn shutdown(mut self: Box<Self>, mut workspace: Workspace) -> Result<(), ShutdownError> {
-        let _ = workspace.stop();
-        let _ = workspace.cancel_export();
+        let _ = workspace.apply(Command::Audio(AudioCommand::Stop));
+        let _ = workspace.apply(Command::File(FileCommand::CancelExport));
         let mut runner = Runner::new();
         for job in self.jobs.drain(..) {
             runner.start(job);
