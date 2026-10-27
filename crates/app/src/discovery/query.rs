@@ -1,59 +1,8 @@
 //! Shared nominal facets for all recipe origins, independent of audio validity.
+use crate::core::query::RhythmState;
 use crate::core::rhythm::{Analysis, Band, Completeness, Method};
 use serde::Serialize;
 
-/// Special rhythm navigation; these properties can overlap band memberships.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RhythmState {
-    /// At least one positive rate outside the reference intervals.
-    OutsideBands,
-    /// Complete analysis with no rhythmic descriptors.
-    None,
-    /// At least two independent processes, even within one band.
-    Multiple,
-    /// Incomplete interpretation or document diagnostics.
-    NeedsReview,
-}
-impl RhythmState {
-    /// All special rhythm states, in navigation order.
-    pub const ALL: [Self; 4] = [
-        Self::OutsideBands,
-        Self::None,
-        Self::Multiple,
-        Self::NeedsReview,
-    ];
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::OutsideBands => ("Other rates", "other rates"),
-            Self::None => ("No rhythmic rate", "no rhythmic rate"),
-            Self::Multiple => ("Multiple rhythms", "multiple rhythms"),
-            Self::NeedsReview => ("Needs review", "needs review"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}
-impl core::str::FromStr for RhythmState {
-    type Err = &'static str;
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        match text {
-            "outside-bands" => Ok(Self::OutsideBands),
-            "none" => Ok(Self::None),
-            "multiple" => Ok(Self::Multiple),
-            "needs-review" => Ok(Self::NeedsReview),
-            _ => Err("expected outside-bands, none, multiple or needs-review"),
-        }
-    }
-}
 /// OR within each facet; simultaneous band/method restrictions match one process.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct RhythmQuery {

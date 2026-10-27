@@ -5,7 +5,7 @@ mod cli_text;
 mod library_cli;
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::error::Outcome;
-use auditorylab_app::presentation::vocabulary::Caption;
+
 use auditorylab_app::services::playback::{EndReason, PlaybackControl, Preparation, Session};
 use auditorylab_app::services::{Cancel, Progress, Replace};
 use auditorylab_app::{self as lab};
@@ -373,7 +373,7 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
                 for warning in saved.warnings {
                     eprintln!("{}", prose(&warning));
                 }
-                completed(&Caption::recipe_exported(&path));
+                completed(&lab::presentation::recipe_exported(&path));
             } else {
                 output(text.as_bytes())?;
             }

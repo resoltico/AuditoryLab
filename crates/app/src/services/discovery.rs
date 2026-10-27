@@ -3,8 +3,9 @@ use super::{
     Cancel,
     library::{DiagnosticDetail, Library, LibraryDiagnostic, LibraryKey},
 };
+use crate::core::query::Scope;
 use crate::{
-    discovery::collection::{CatalogQuery, EntrySummary, ResultGroup, Scope},
+    discovery::collection::{CatalogQuery, EntrySummary, ResultGroup},
     error::{OperationError, Outcome, QueryError},
 };
 use std::{

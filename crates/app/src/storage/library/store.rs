@@ -273,11 +273,9 @@ impl MutationStatus {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Unchanged => crate::presentation::vocabulary::Status::Unchanged.label(),
-            Self::Published => crate::presentation::vocabulary::Status::Saved.label(),
-            Self::PublishedWithWarning => {
-                crate::presentation::vocabulary::Status::SavedWithWarning.label()
-            }
+            Self::Unchanged => crate::core::vocabulary::Status::Unchanged.label(),
+            Self::Published => crate::core::vocabulary::Status::Saved.label(),
+            Self::PublishedWithWarning => crate::core::vocabulary::Status::SavedWithWarning.label(),
         }
     }
 }

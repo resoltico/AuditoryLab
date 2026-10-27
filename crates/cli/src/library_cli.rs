@@ -2,17 +2,16 @@
 use super::{Source, output, prose, usage};
 use crate::cli_text::CommandProblem;
 use auditorylab_app::core::SampleRate;
+use auditorylab_app::core::query::{Direction, GroupBy, Scope, SortBy};
 use auditorylab_app::presentation::DisplayText;
 use auditorylab_app::presentation::reports::Report;
-use auditorylab_app::presentation::vocabulary::{Caption, Status};
 use auditorylab_app::services::Cancel;
 use auditorylab_app::{
     self as lab,
-    discovery::collection::{CatalogQuery, DateRange, Direction, GroupBy, Scope, SortBy},
+    discovery::collection::{CatalogQuery, DateRange},
     services::library::{Library, LibraryKey, VersionToken},
 };
 use clap::{Args, Subcommand, ValueEnum};
-use serde_json::Value;
 use std::{
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
@@ -31,11 +30,11 @@ pub(super) enum ListFormat {
 }
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub(super) enum CollectionArg {
-    #[value(name = Scope::All.cli_key(), help = Scope::All.label())]
+    #[value(name = Scope::All.key(), help = Scope::All.label())]
     All,
-    #[value(name = Scope::BuiltIn.cli_key(), help = Scope::BuiltIn.label())]
+    #[value(name = Scope::BuiltIn.key(), help = Scope::BuiltIn.label())]
     Builtin,
-    #[value(name = Scope::User.cli_key(), help = Scope::User.label())]
+    #[value(name = Scope::User.key(), help = Scope::User.label())]
     User,
 }
 impl CollectionArg {
@@ -53,10 +52,10 @@ pub(super) struct QueryArgs {
     #[arg(long, default_value = "")]
     search: String,
     /// Nominal reference bands, OR within this facet.
-    #[arg(long)]
+    #[arg(long,value_parser=parse_choice::<lab::core::rhythm::Band>)]
     band: Vec<lab::core::rhythm::Band>,
     /// Structural methods; band/method must match one descriptor.
-    #[arg(long)]
+    #[arg(long,value_parser=parse_choice::<lab::core::rhythm::Method>)]
     method: Vec<lab::core::rhythm::Method>,
     /// Current-condition DOI or source key, never ancestor-only evidence.
     #[arg(long)]
@@ -71,8 +70,8 @@ pub(super) struct QueryArgs {
     #[arg(long,value_parser=parse_analysis)]
     analysis: Option<lab::core::rhythm::Completeness>,
     /// Special state: none, multiple, outside-bands or needs-review.
-    #[arg(long)]
-    rhythms: Option<lab::discovery::query::RhythmState>,
+    #[arg(long,value_parser=parse_choice::<lab::core::query::RhythmState>)]
+    rhythms: Option<auditorylab_app::core::query::RhythmState>,
     /// Inclusive explicit-offset creation instant.
     #[arg(long)]
     created_from: Option<lab::core::Timestamp>,
@@ -92,13 +91,13 @@ pub(super) struct QueryArgs {
     #[arg(long)]
     added_before: Option<lab::core::Timestamp>,
     /// Explicit primary sort (default follows scope only while automatic).
-    #[arg(long)]
+    #[arg(long,value_parser=parse_sort)]
     sort: Option<SortBy>,
     /// Primary direction; nulls always last, tie title/key always ascending.
-    #[arg(long)]
+    #[arg(long,value_parser=parse_choice::<Direction>)]
     direction: Option<Direction>,
     /// Virtual groups reference unique flat keys.
-    #[arg(long, default_value = "none")]
+    #[arg(long, default_value = "none",value_parser=parse_choice::<GroupBy>)]
     group_by: GroupBy,
     /// Machine output has no headings/progress; IDs require complete discovery.
     #[arg(long, value_enum, default_value = "text")]
@@ -263,18 +262,44 @@ impl LibraryCommand {
         }
     }
 }
+fn expected_choices<'a>(keys: impl Iterator<Item = &'a str>) -> String {
+    let keys = keys.collect::<Vec<_>>();
+    match keys.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("expected {} or {last}", rest.join(", ")),
+        Some((last, _)) => format!("expected {last}"),
+        None => "no choices are available".into(),
+    }
+}
+fn parse_choice<T: lab::core::vocabulary::Vocabulary + std::str::FromStr>(
+    text: &str,
+) -> std::result::Result<T, String> {
+    text.parse()
+        .map_err(|_| expected_choices(T::ALL.iter().map(|value| value.key())))
+}
+fn parse_sort(text: &str) -> std::result::Result<SortBy, String> {
+    // Automatic applies when --sort is omitted.
+    const EXPLICIT: [SortBy; 7] = [
+        SortBy::Rate,
+        SortBy::Title,
+        SortBy::Study,
+        SortBy::Collection,
+        SortBy::Created,
+        SortBy::Modified,
+        SortBy::Added,
+    ];
+    EXPLICIT
+        .into_iter()
+        .find(|value| value.key() == text)
+        .ok_or_else(|| expected_choices(EXPLICIT.iter().map(|value| value.key())))
+}
 fn parse_role(text: &str) -> std::result::Result<lab::core::ConditionRole, String> {
-    serde_json::from_value(Value::String(text.into())).map_err(|e| e.to_string())
+    parse_choice(text)
 }
 fn parse_population(text: &str) -> std::result::Result<lab::core::Population, String> {
-    serde_json::from_value(Value::String(text.into())).map_err(|e| e.to_string())
+    parse_choice(text)
 }
 fn parse_analysis(text: &str) -> std::result::Result<lab::core::rhythm::Completeness, String> {
-    match text {
-        "complete" => Ok(lab::core::rhythm::Completeness::Complete),
-        "invalid" => Ok(lab::core::rhythm::Completeness::Invalid),
-        _ => Err(CommandProblem::AnalysisCoverage.message().into()),
-    }
+    parse_choice(text)
 }
 pub(super) fn open_library(path: Option<&Path>) -> Result<Library> {
     Ok(Library::resolve(path)?)
@@ -340,7 +365,7 @@ fn print_list(operation: &str, listing: &lab::services::Listing, format: ListFor
                 output(entry.list_description().as_bytes())?;
             }
             if !listing.complete() {
-                eprintln!("{}", Status::InventoryIncomplete.label());
+                eprintln!("{}", lab::presentation::vocabulary::INVENTORY_INCOMPLETE);
             }
             for diagnostic in listing.diagnostics() {
                 eprintln!(
@@ -443,7 +468,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                     );
                 }
                 for stage in &inventory.stages {
-                    output(Caption::retained_stage(stage).as_bytes())?;
+                    output(lab::presentation::retained_stage(stage).as_bytes())?;
                 }
             }
             Ok(inventory.failure_kind.map_or(0, super::exit_code))
@@ -638,7 +663,7 @@ mod query_mapping_tests {
                 rhythm: lab::discovery::query::RhythmQuery {
                     bands: vec![lab::core::rhythm::Band::Theta],
                     methods: vec![lab::core::rhythm::Method::Monaural],
-                    state: Some(lab::discovery::query::RhythmState::OutsideBands),
+                    state: Some(auditorylab_app::core::query::RhythmState::OutsideBands),
                 },
                 studies: vec!["key:source".into()],
                 roles: vec![lab::core::ConditionRole::Comparison],

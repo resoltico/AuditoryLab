@@ -347,7 +347,7 @@ error_data! {
     /// A discovery filter or local-date range is invalid.
     QueryError {
         /// Explicit temporary inputs require the All collection.
-        TemporaryFilesScope { scope: crate::discovery::collection::Scope },
+        TemporaryFilesScope { scope: crate::core::query::Scope },
         /// The exclusive upper bound is not after the lower bound.
         RangeOrder { from: crate::core::Timestamp, before: crate::core::Timestamp },
         /// A study identity is empty or malformed.

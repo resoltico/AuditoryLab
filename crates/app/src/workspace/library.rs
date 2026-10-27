@@ -4,7 +4,8 @@
 //! Managed-library state and immutable worker requests. Only selected User content
 //! is retained in full; index rows are disposable summaries.
 use super::*;
-use crate::discovery::collection::{CatalogQuery, EntrySummary, Scope};
+use crate::core::query::Scope;
+use crate::discovery::collection::{CatalogQuery, EntrySummary};
 use crate::services::library::Library;
 use crate::storage::library::{
     Inventory, LibraryKey, LoadedRecord, Mutation, MutationKind, VersionToken, WriteOutcome,

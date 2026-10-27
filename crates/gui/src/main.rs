@@ -13,6 +13,7 @@ mod licenses;
 mod motion;
 #[cfg(target_os = "macos")]
 mod native_application;
+mod native_text;
 mod scope;
 #[expect(
     dead_code,
@@ -35,7 +36,7 @@ mod window_tests;
 mod generated {
     slint::include_modules!();
 }
-use crate::terms::{CommandProblem, InterfaceOperation};
+use crate::native_text::{CommandProblem, InterfaceOperation};
 use adapter::{Preferences, SlintAdapter, Windows};
 use auditorylab_app::workspace::{Capabilities, Workspace};
 use generated::{DetailsWindow, MainWindow};

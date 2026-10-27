@@ -72,6 +72,7 @@ fn platform_modifiers_drive_text_shortcuts() {
 fn monitor_drawer_and_focused_window_layout() {
     let auxiliary_constraints = install();
     let ui = MainWindow::new().unwrap();
+    crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.set_monitor_open(true);
     ui.set_ui_family(typography::resolve().family.into());
     ui.show().unwrap();
@@ -1064,9 +1065,10 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     use slint::{Model, VecModel};
     install();
     let ui = MainWindow::new().unwrap();
+    crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.set_ui_family(typography::resolve().family.into());
     ui.set_transport_labels(slint::ModelRc::new(VecModel::from(
-        auditorylab_app::presentation::vocabulary::Action::transport_labels()
+        auditorylab_app::presentation::vocabulary::transport_labels()
             .iter()
             .map(|label| slint::SharedString::from(*label))
             .collect::<Vec<_>>(),
@@ -1080,7 +1082,7 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     for size in [13.0, 26.0] {
         ui.set_ui_size(size);
         let mut reference = None;
-        for label in auditorylab_app::presentation::vocabulary::Action::transport_labels() {
+        for label in auditorylab_app::presentation::vocabulary::transport_labels() {
             for (elapsed, status) in [
                 ("0:00", "Preparing output… · A"),
                 (
@@ -1163,6 +1165,7 @@ fn exposed_bounds(window: &slint::Window, label: &str) -> (f32, f32, f32, f32) {
 fn a_finished_export_leaves_no_control_under_cancel_export() {
     install();
     let ui = MainWindow::new().unwrap();
+    crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.set_status("Exporting WAV".into());
     ui.set_exporting(true);
     ui.show().unwrap();
@@ -1188,6 +1191,7 @@ fn a_finished_export_leaves_no_control_under_cancel_export() {
 fn absent_recipe_texts_leave_no_gap() {
     install();
     let ui = MainWindow::new().unwrap();
+    crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.set_has_results(true);
     ui.set_sound_title("Title".into());
     ui.set_structure("Structure".into());
@@ -1263,6 +1267,7 @@ fn unbreakable_text_never_widens_the_documents() {
     use std::ops::ControlFlow;
     install();
     let ui = MainWindow::new().unwrap();
+    crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.show().unwrap();
     ui.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
     let long = "Supercalifragilisticexpialidocious_".repeat(30);
@@ -1304,6 +1309,7 @@ fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_sc
     use std::ops::ControlFlow;
     install();
     let about = AboutWindow::new().unwrap();
+    crate::native_text::initialize_identity(about.global::<crate::generated::Terms>());
     about.set_identity("Version 0.4.0 (Build 2)".into());
     about.show().unwrap();
     for scale in [1.0, 2.0] {
@@ -1379,6 +1385,7 @@ fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_sc
 fn incomplete_filtered_count_header_fits_large_text_in_compact_window() {
     install();
     let ui = MainWindow::new().unwrap();
+    crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.set_ui_family(typography::resolve().family.into());
     ui.set_ui_size(26.0);
     ui.set_library_overview(

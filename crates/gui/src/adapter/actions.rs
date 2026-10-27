@@ -1,5 +1,6 @@
 //! Workspace commands and path-independent action callbacks.
 use super::*;
+use auditorylab_app::core::query::{Direction, GroupBy, RhythmState, Scope, SortBy};
 use auditorylab_app::presentation::DisplayText;
 
 pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
@@ -18,7 +19,6 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     });
     on!(on_collection_filter, |a, scope, sort| {
         a.command(|w| {
-            use auditorylab_app::discovery::collection::{Scope, SortBy};
             {
                 let mut query = w.catalog_query().clone();
                 query.scope = choice(&Scope::ALL, scope).unwrap_or(Scope::All);
@@ -75,7 +75,6 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                     }
                 };
                 use auditorylab_app::core::{ConditionRole, Population};
-                use auditorylab_app::discovery::collection::{Direction, GroupBy};
                 query.created = created;
                 query.modified = modified;
                 query.added = added;
@@ -121,7 +120,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(on_reset_library_sort, |a| a.command(|w| {
         {
             let mut query = w.catalog_query().clone();
-            query.sort = auditorylab_app::discovery::collection::SortBy::Automatic;
+            query.sort = auditorylab_app::core::query::SortBy::Automatic;
             query.direction = None;
             if let Err(error) = w.set_catalog_query(query) {
                 w.library_filter_error(error);
@@ -151,7 +150,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(on_search, |a, query| a.command(|w| w.set_query(&query)));
     on!(on_rhythm_filter, |a, band, method| {
         use auditorylab_app::core::rhythm::{Band, Method};
-        use auditorylab_app::discovery::query::{RhythmQuery, RhythmState};
+        use auditorylab_app::discovery::query::RhythmQuery;
         let mut query = RhythmQuery::default();
         match band {
             0 => {}

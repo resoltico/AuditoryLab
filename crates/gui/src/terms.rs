@@ -81,14 +81,7 @@ chrome! {
         SavedDuration => ("action-saved-duration", "Saved duration"),
         SavedFade => ("action-saved-fade", "Saved fade"),
     }
-    Collection {
-        User => ("collection-user", "User"),
-        Library => ("collection-library", "Library"),
-        AllBuiltInUser => ("collection-all-built-in-user", "All · Built-in + User"),
-        BuiltInReadOnly => ("collection-built-in-read-only", "Built-in · Read only"),
-        OpenFilesTemporary => ("collection-open-files-temporary", "Open files · Temporary"),
-        Trash => ("collection-trash", "Trash"),
-    }
+
     Facet {
         AddedHereThroughInclusiveLocalCalendarDate => ("facet-added-here-through-inclusive-local-calendar-date", "Added here through inclusive local calendar date"),
         AddedHereThroughYyyyMmDd => ("facet-added-here-through-yyyy-mm-dd", "Added here through YYYY-MM-DD"),
@@ -109,7 +102,7 @@ chrome! {
         AnyAnalysisCoverage => ("facet-any-analysis-coverage", "Any analysis coverage"),
         NominalAnalysisCoverage => ("facet-nominal-analysis-coverage", "Nominal analysis coverage"),
         SortDirection => ("facet-sort-direction", "Sort direction"),
-        NoGrouping => ("facet-no-grouping", "No grouping"),
+
         LibraryResultGrouping => ("facet-library-result-grouping", "Library result grouping"),
         CreatedFromLocalCalendarDate => ("facet-created-from-local-calendar-date", "Created from local calendar date"),
         CreatedThroughInclusiveLocalCalendarDate => ("facet-created-through-inclusive-local-calendar-date", "Created through inclusive local calendar date"),
@@ -128,6 +121,7 @@ chrome! {
         UnmodifiedDraft => ("status-unmodified-draft", "Unmodified draft"),
     }
     Caption {
+        Library => ("caption-library", "Library"),
         AudioControls => ("caption-audio-controls", "Audio controls"),
         LibraryFilters => ("caption-library-filters", "Filters"),
         LibraryOptions => ("caption-library-options", "Library options…"),
@@ -153,10 +147,9 @@ chrome! {
         CalendarRangeError => ("caption-calendar-range-error", "Invalid calendar range. Use ordered YYYY-MM-DD dates with a unique local midnight; prior filters retained."),
         NewTitle => ("caption-new-title", "New title"),
         BundledNoticesHelp => ("caption-bundled-notices-help", "Open bundled component notices and license files."),
-        Copyright => ("caption-copyright", auditorylab_app::presentation::build_info::BUILD_IDENTITY.copyright),
-        AboutProduct => ("caption-about-product", auditorylab_app::presentation::build_info::ABOUT_TITLE),
+
         ApplicationIcon => ("caption-application-icon", "Application icon"),
-        ProductName => ("caption-product-name", auditorylab_app::presentation::build_info::BUILD_IDENTITY.name),
+
         ProductDescription => ("caption-product-description", "Play and export auditory stimuli.\nEdit sounds as TOML recipes."),
         ProjectWebsite => ("caption-project-website", "Project website"),
         SoftwareAndArtworkLicenses => ("caption-software-and-artwork-licenses", "Software and Artwork Licenses"),
@@ -227,108 +220,5 @@ chrome! {
         OutputMonitorHeight => ("caption-output-monitor-height", "Output monitor height"),
         NextPlayPrefix => ("caption-next-play-prefix", " · Next Play: "),
         AudioDetails => ("caption-audio-details", "Audio details"),
-    }
-}
-
-impl Caption {
-    /// Title of a recipe details window.
-    #[must_use]
-    pub(crate) fn sound_details(title: &str) -> String {
-        format!("Sound details · {title}")
-    }
-    /// Caption of a typography diagnostic.
-    #[must_use]
-    pub(crate) fn typography(family: &str, size: f32, source: &str) -> String {
-        format!(
-            "Typography: {}",
-            Self::typography_values(family, size, source)
-        )
-    }
-}
-impl Caption {
-    /// Prefix used for a graphical application error dialog.
-    #[must_use]
-    pub(crate) fn application_error_title() -> String {
-        format!(
-            "{} error",
-            auditorylab_app::presentation::build_info::BUILD_IDENTITY.name
-        )
-    }
-    /// A monitor's native typography values, without duplicating the diagnostic heading.
-    #[must_use]
-    pub(crate) fn typography_values(family: &str, size: f32, source: &str) -> String {
-        format!("{family} · {size} logical px · {source}")
-    }
-    /// Explain an incomplete desktop package without depending on the process cwd.
-    #[must_use]
-    pub(crate) fn missing_notices(path: &std::path::Path) -> String {
-        format!(
-            "Bundled notices are missing or empty: {}. Obtain a complete desktop download from {}",
-            path.display(),
-            auditorylab_app::presentation::build_info::SOURCE_URL
-        )
-    }
-}
-impl Caption {
-    /// Default portable filename for a file panel whose destination is not yet chosen.
-    #[must_use]
-    pub(crate) fn suggested_filename(extension: &str) -> String {
-        format!("sound.{extension}")
-    }
-}
-/// The interface operation that failed; backend error detail remains attached.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum InterfaceOperation {
-    /// Show the About window.
-    About,
-    /// Show bundled licenses.
-    Licenses,
-    /// Complete a native Quit request.
-    Quit,
-    /// Shut down application jobs.
-    Shutdown,
-    /// Show a details window.
-    Details,
-    /// Open a web or installed notices link.
-    OpenLink,
-    /// Show the output monitor.
-    ShowMonitor,
-    /// Hide the output monitor.
-    HideMonitor,
-    /// Present audio controls beside a native dialog.
-    AudioControls,
-    /// Continue the graphical application after an error.
-    Application,
-}
-impl InterfaceOperation {
-    /// Error explanation shared by native windows and terminal renderers.
-    #[must_use]
-    pub(crate) fn failure(self, error: impl std::fmt::Display) -> String {
-        match self {
-            Self::About => format!("About: {error}"),
-            Self::Licenses => format!("Licenses: {error}"),
-            Self::Quit => format!("Quit: {error}"),
-            Self::Shutdown => format!("Shutdown: {error}"),
-            Self::Details => format!("Details: {error}"),
-            Self::OpenLink => format!("Cannot open link: {error}"),
-            Self::ShowMonitor => format!("Cannot show Output monitor: {error}"),
-            Self::HideMonitor => format!("Cannot hide Output monitor: {error}"),
-            Self::AudioControls => format!("Cannot present Audio controls: {error}"),
-            Self::Application => format!(
-                "{} could not continue.\n\n{error}",
-                auditorylab_app::presentation::build_info::BUILD_IDENTITY.name
-            ),
-        }
-    }
-}
-
-pub(crate) enum CommandProblem {
-    DesktopArguments,
-}
-impl CommandProblem {
-    pub(crate) const fn message(self) -> &'static str {
-        match self {
-            Self::DesktopArguments => "Use auditorylab-gui without arguments or with --version.",
-        }
     }
 }

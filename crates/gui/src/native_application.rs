@@ -50,7 +50,7 @@ impl slint::winit_030::CustomApplicationHandler for ApplicationHandler {
     }
 
     fn application_about_title(&self) -> Option<String> {
-        Some(crate::terms::Caption::AboutProduct.label().into())
+        Some(auditorylab_app::presentation::build_info::ABOUT_TITLE.into())
     }
 
     fn about_requested(&mut self, _: &ActiveEventLoop) {
@@ -63,7 +63,10 @@ impl slint::winit_030::CustomApplicationHandler for ApplicationHandler {
 /// Answer AppKit's pending termination request.
 pub(crate) fn reply_to_termination(request: TerminationRequest, approve: bool) {
     if let Err(error) = reply(request, approve) {
-        eprintln!("{}", crate::terms::InterfaceOperation::Quit.failure(error));
+        eprintln!(
+            "{}",
+            crate::native_text::InterfaceOperation::Quit.failure(error)
+        );
     }
 }
 

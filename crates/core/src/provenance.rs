@@ -264,109 +264,32 @@ pub fn normalize_doi(doi: &str) -> Option<String> {
     .then(|| value.into())
 }
 
-impl Population {
-    /// All supported population declarations, in display order.
-    pub const ALL: [Self; 6] = [
-        Self::Human,
-        Self::Mouse,
-        Self::OtherAnimal,
-        Self::Mixed,
-        Self::NotApplicable,
-        Self::Unspecified,
-    ];
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Human => ("Human", "human"),
-            Self::Mouse => ("Mouse", "mouse"),
-            Self::OtherAnimal => ("Other animal", "other animal"),
-            Self::Mixed => ("Mixed population", "mixed population"),
-            Self::NotApplicable => ("Not applicable", "not applicable"),
-            Self::Unspecified => ("Unspecified population", "unspecified population"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}
-impl ConditionRole {
-    /// All supported experimental roles, in display order.
-    pub const ALL: [Self; 4] = [Self::Test, Self::Comparison, Self::Mixed, Self::Unspecified];
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Test => ("Test condition", "test condition"),
-            Self::Comparison => ("Comparison condition", "comparison condition"),
-            Self::Mixed => ("Mixed roles", "mixed roles"),
-            Self::Unspecified => ("Unspecified role", "unspecified role"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}
+crate::vocabulary::vocabulary! { Population,"population" {
+    Human => ("human","Human","human"),
+    Mouse => ("mouse","Mouse","mouse"),
+    OtherAnimal => ("other_animal","Other animal","other animal"),
+    Mixed => ("mixed","Mixed population","mixed population"),
+    NotApplicable => ("not_applicable","Not applicable","not applicable"),
+    Unspecified => ("unspecified","Unspecified population","unspecified population"),
+}}
 
-impl EvidenceScope {
-    /// All supported declarations, in display order.
-    pub const ALL: [Self; 2] = [Self::ReferenceCondition, Self::Ancestor];
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::ReferenceCondition => ("Reference condition", "reference condition"),
-            Self::Ancestor => ("Ancestor", "ancestor"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}
+crate::vocabulary::vocabulary! { ConditionRole,"condition_role" {
+    Test => ("test","Test condition","test condition"),
+    Comparison => ("comparison","Comparison condition","comparison condition"),
+    Mixed => ("mixed","Mixed roles","mixed roles"),
+    Unspecified => ("unspecified","Unspecified role","unspecified role"),
+}}
 
-impl Measure {
-    /// All supported declarations, in display order.
-    pub const ALL: [Self; 6] = [
-        Self::Eeg,
-        Self::Behavior,
-        Self::Subjective,
-        Self::Sleep,
-        Self::Hearing,
-        Self::Other,
-    ];
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Eeg => ("EEG", "EEG"),
-            Self::Behavior => ("Behavior", "behavior"),
-            Self::Subjective => ("Subjective report", "subjective report"),
-            Self::Sleep => ("Sleep", "sleep"),
-            Self::Hearing => ("Hearing", "hearing"),
-            Self::Other => ("Other", "other"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}
+crate::vocabulary::vocabulary! { EvidenceScope,"evidence_scope" {
+    ReferenceCondition => ("reference_condition","Reference condition","reference condition"),
+    Ancestor => ("ancestor","Ancestor","ancestor"),
+}}
+
+crate::vocabulary::vocabulary! { Measure,"measure" {
+    Eeg => ("eeg","EEG","EEG"),
+    Behavior => ("behavior","Behavior","behavior"),
+    Subjective => ("subjective","Subjective report","subjective report"),
+    Sleep => ("sleep","Sleep","sleep"),
+    Hearing => ("hearing","Hearing","hearing"),
+    Other => ("other","Other","other"),
+}}

@@ -1,25 +1,55 @@
 //! Compile the desktop interface.
 #[path = "src/terms.rs"]
-#[expect(
-    dead_code,
-    reason = "native text helpers share the desktop chrome module with the Slint build-time inventory"
-)]
 mod terms;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let generated = std::path::PathBuf::from(std::env::var_os("OUT_DIR").ok_or("missing OUT_DIR")?);
     let mut vocabulary = String::from("export global Terms {\n");
-    for (property, label) in auditorylab_app::presentation::vocabulary::UI_TERMS
-        .iter()
-        .chain(terms::UI_TERMS)
-    {
-        // Rust debug string escaping also satisfies Slint's string grammar.
-        vocabulary.push_str(&format!(
-            "    in-out property <string> {property}: {label:?};\n"
-        ));
+    let mut properties = std::collections::BTreeSet::new();
+    macro_rules! terms_from {
+        ($($kind:ty),* $(,)?)=>{$(append_terms::<$kind>(&mut vocabulary,&mut properties)?;)*};
+    }
+    use auditorylab_app::core::{
+        CarrierKind, ComponentRole, ConditionRole, Ear, Ears, EvidenceScope, Measure,
+        ModulationKind, PairKind, ParameterId, Population, SlotRole,
+        query::{Direction, GroupBy, RhythmState, Scope, SortBy},
+        rhythm::{Band, Completeness, Method},
+        vocabulary::{Action, Status},
+    };
+    terms_from!(
+        Action,
+        Status,
+        Scope,
+        SortBy,
+        Direction,
+        GroupBy,
+        RhythmState,
+        ConditionRole,
+        Population,
+        Measure,
+        EvidenceScope,
+        Ear,
+        Ears,
+        PairKind,
+        CarrierKind,
+        ModulationKind,
+        ComponentRole,
+        ParameterId,
+        SlotRole,
+        Band,
+        Method,
+        Completeness
+    );
+    for (property, label) in terms::UI_TERMS {
+        append_term(&mut vocabulary, &mut properties, property, label)?;
+    }
+    for property in [
+        "caption-product-name",
+        "caption-copyright",
+        "caption-about-product",
+    ] {
+        append_term(&mut vocabulary, &mut properties, property, "")?;
     }
     vocabulary.push_str("}\n");
-    use auditorylab_app::core::{ConditionRole, Population, rhythm::Completeness};
-    use auditorylab_app::discovery::collection::{Direction, GroupBy, Scope, SortBy};
     vocabulary.push_str("export global Choices {\n");
     let mut choices = |name: &str, labels: Vec<&str>| {
         vocabulary.push_str(&format!(
@@ -89,6 +119,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "cargo:rerun-if-changed=../../artwork/auditorylab-icon/assets/windows/auditorylab.ico"
         );
         embed_resource::compile("app.rc", embed_resource::NONE).manifest_required()?;
+    }
+    Ok(())
+}
+
+fn append_term(
+    output: &mut String,
+    properties: &mut std::collections::BTreeSet<String>,
+    property: &str,
+    label: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !properties.insert(property.into()) {
+        return Err(format!("duplicate Slint vocabulary property {property}").into());
+    }
+    output.push_str(&format!(
+        "    in-out property <string> {property}: {label:?};\n"
+    ));
+    Ok(())
+}
+fn append_terms<T: auditorylab_app::core::vocabulary::Vocabulary>(
+    output: &mut String,
+    properties: &mut std::collections::BTreeSet<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let name = std::any::type_name::<T>()
+        .rsplit("::")
+        .next()
+        .ok_or("missing vocabulary type")?;
+    let mut prefix = String::new();
+    for (index, ch) in name.chars().enumerate() {
+        if ch.is_ascii_uppercase() && index > 0 {
+            prefix.push('-');
+        }
+        prefix.push(ch.to_ascii_lowercase());
+    }
+    for value in T::ALL {
+        let property = format!("{prefix}-{}", value.key().replace('_', "-"));
+        append_term(output, properties, &property, value.term().label)?;
     }
     Ok(())
 }

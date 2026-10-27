@@ -92,11 +92,11 @@ fn missing_membership_dates_never_change_directory_state_or_invent_history() {
     assert_eq!(scan.entries.len(), 1);
     assert!(scan.entries[0].trashed);
     let mut query = crate::discovery::collection::CatalogQuery {
-        scope: crate::discovery::collection::Scope::Trash,
+        scope: crate::core::query::Scope::Trash,
         ..Default::default()
     };
     assert_eq!(query.execute(&scan.entries).unwrap().unique_count(), 1);
-    query.scope = crate::discovery::collection::Scope::User;
+    query.scope = crate::core::query::Scope::User;
     assert_eq!(query.execute(&scan.entries).unwrap().unique_count(), 0);
     let restored = store
         .apply(

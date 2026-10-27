@@ -1,5 +1,6 @@
 //! Shared collection rows, query descriptions and document-location wording.
-use crate::discovery::collection::{CatalogQuery, EntrySummary, Scope};
+use crate::core::query::Scope;
+use crate::discovery::collection::{CatalogQuery, EntrySummary};
 use crate::document::recipe::RecipeSnapshot;
 use crate::presentation::{AudioSummary, DisplayText, vocabulary::NumberStyle};
 use crate::storage::library::{LibraryDiagnostic, LibraryKey};
@@ -12,7 +13,7 @@ pub(crate) fn rows(
     requires_read: impl Fn(&LibraryKey) -> bool,
 ) -> (Vec<LibraryRowView>, Option<usize>) {
     let label = |e: &EntrySummary| {
-        use crate::discovery::collection::SortBy;
+        use crate::core::query::SortBy;
         let sort = query.effective_sort().0;
         let (date_label, date) = match sort {
             SortBy::Created => ("Created", e.created_at),
@@ -147,8 +148,8 @@ pub(crate) fn facets(
     entries: &[EntrySummary],
     complete: bool,
 ) -> (Vec<LibraryFacetView>, Vec<String>) {
+    use crate::core::query::RhythmState;
     use crate::core::rhythm::{Band, Method};
-    use crate::discovery::query::RhythmState;
     let facet = |query: &CatalogQuery, label: String, detail: &str| {
         let count = query.count(entries).unwrap_or(0);
         let count = if complete {
@@ -284,15 +285,14 @@ pub(crate) fn empty_message(
     visible: usize,
     complete: bool,
 ) -> &'static str {
-    use crate::presentation::vocabulary::Status;
     if visible > 0 {
         return "";
     }
     if !matches!(query.scope, Scope::BuiltIn | Scope::OpenFiles) && !complete {
-        return Status::InventoryIncomplete.label();
+        return crate::presentation::vocabulary::INVENTORY_INCOMPLETE;
     }
     if query.cleared_filters().count(entries).unwrap_or(0) > 0 {
-        return Status::EmptyFilteredLibrary.label();
+        return crate::presentation::vocabulary::EMPTY_FILTERED_LIBRARY;
     }
     match query.scope {
         Scope::User => {

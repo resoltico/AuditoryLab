@@ -7,7 +7,7 @@
 //! states the label, the unit people read and type it in, and a short help
 //! text. Model values keep the recipe's units (seconds, hertz, a 0..1 depth);
 //! [`Unit`] converts them to and from the displayed unit.
-use crate::{Carrier, Ears, Modulation, Sound, Voice};
+use crate::{Carrier, Modulation, Sound, Voice};
 use core::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
@@ -150,7 +150,8 @@ impl Unit {
 }
 
 /// One editable recipe quantity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ParameterId {
     /// A tone carrier's frequency.
     ToneFrequency,
@@ -194,24 +195,6 @@ pub struct ParameterDescriptor {
 }
 
 impl ParameterId {
-    /// Every quantity, components' first in the order a component lists them.
-    pub const ALL: [Self; 14] = [
-        Self::ToneFrequency,
-        Self::ClickRate,
-        Self::ClickWidth,
-        Self::PeakLevel,
-        Self::AmRate,
-        Self::AmDepth,
-        Self::GateRate,
-        Self::GateWidth,
-        Self::PairFirstFrequency,
-        Self::PairOffset,
-        Self::PairFirstLevel,
-        Self::PairSecondLevel,
-        Self::Duration,
-        Self::Fade,
-    ];
-
     /// The quantities a component can have, in display order.
     pub const COMPONENT: [Self; 12] = [
         Self::ToneFrequency,
@@ -234,46 +217,8 @@ impl ParameterId {
         ParameterDescriptor {
             id: self,
             label: self.label(),
-            unit: self.terms().2,
+            unit: self.unit(),
         }
-    }
-    const fn terms(self) -> (&'static str, &'static str, Unit) {
-        match self {
-            Self::ToneFrequency => ("Tone frequency", "tone frequency", Unit::Hertz),
-            Self::ClickRate => ("Clicks rate", "clicks rate", Unit::Hertz),
-            Self::ClickWidth => ("Clicks width", "clicks width", Unit::Milliseconds),
-            Self::PeakLevel => ("Peak level", "peak level", Unit::DecibelsFullScale),
-            Self::AmRate => ("Modulation rate", "modulation rate", Unit::Hertz),
-            Self::AmDepth => ("Modulation depth", "modulation depth", Unit::Percent),
-            Self::GateRate => ("Gate rate", "gate rate", Unit::Hertz),
-            Self::GateWidth => ("Gate width", "gate width", Unit::Milliseconds),
-            Self::PairFirstFrequency => {
-                ("First / left carrier", "first / left carrier", Unit::Hertz)
-            }
-            Self::PairOffset => ("Signed offset", "signed offset", Unit::Hertz),
-            Self::PairFirstLevel => (
-                "First / left peak",
-                "first / left peak",
-                Unit::DecibelsFullScale,
-            ),
-            Self::PairSecondLevel => (
-                "Second / right peak",
-                "second / right peak",
-                Unit::DecibelsFullScale,
-            ),
-            Self::Duration => ("Duration", "duration", Unit::Seconds),
-            Self::Fade => ("Fade", "fade", Unit::Seconds),
-        }
-    }
-    /// Domain quantity name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain quantity name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
     }
 
     /// Whether this quantity belongs to a component rather than the whole recipe.
@@ -300,34 +245,13 @@ impl Display for ParameterId {
 }
 
 /// The kind of periodic source a component has.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CarrierKind {
     /// A sine tone.
     Tone,
     /// A train of rectangular clicks.
     Clicks,
-}
-
-impl CarrierKind {
-    /// Every carrier kind in display order.
-    pub const ALL: [Self; 2] = [Self::Tone, Self::Clicks];
-
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Tone => ("Tone", "tone"),
-            Self::Clicks => ("Clicks", "clicks"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
 }
 
 impl Carrier {
@@ -342,7 +266,8 @@ impl Carrier {
 }
 
 /// The kind of amplitude modulation a component has.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ModulationKind {
     /// A sinusoidal envelope.
     Am,
@@ -351,26 +276,6 @@ pub enum ModulationKind {
 }
 
 impl ModulationKind {
-    /// Every modulation kind in display order.
-    pub const ALL: [Self; 2] = [Self::Am, Self::Gate];
-
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Am => ("AM", "AM"),
-            Self::Gate => ("Gate", "gate"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-
     /// The name of having no modulation of either kind.
     pub const NONE_LABEL: &'static str = "None";
 }
@@ -386,13 +291,9 @@ impl Modulation {
     }
 }
 
-impl Ears {
-    /// Every route in display order.
-    pub const ALL: [Self; 3] = [Self::Both, Self::Left, Self::Right];
-}
-
 /// What a component does in the sound, from its carrier and modulation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ComponentRole {
     /// A gated carrier: a rhythm of on and off.
     GateRhythm,
@@ -402,27 +303,6 @@ pub enum ComponentRole {
     ClickRhythm,
     /// An unmodulated tone, or one whose envelope has zero depth.
     SteadyTone,
-}
-
-impl ComponentRole {
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::GateRhythm => ("Gate rhythm", "gate rhythm"),
-            Self::AmEnvelope => ("AM envelope", "AM envelope"),
-            Self::ClickRhythm => ("Click rhythm", "click rhythm"),
-            Self::SteadyTone => ("Steady tone", "steady tone"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
 }
 
 impl Voice {
@@ -440,9 +320,65 @@ impl Voice {
     }
 }
 
+crate::vocabulary::vocabulary! { ParameterId,"parameter_id" {
+    ToneFrequency => ("tone_frequency","Tone frequency","tone frequency"),
+    ClickRate => ("click_rate","Clicks rate","clicks rate"),
+    ClickWidth => ("click_width","Clicks width","clicks width"),
+    PeakLevel => ("peak_level","Peak level","peak level"),
+    AmRate => ("am_rate","Modulation rate","modulation rate"),
+    AmDepth => ("am_depth","Modulation depth","modulation depth"),
+    GateRate => ("gate_rate","Gate rate","gate rate"),
+    GateWidth => ("gate_width","Gate width","gate width"),
+    PairFirstFrequency => ("pair_first_frequency","First / left carrier","first / left carrier"),
+    PairOffset => ("pair_offset","Signed offset","signed offset"),
+    PairFirstLevel => ("pair_first_level","First / left peak","first / left peak"),
+    PairSecondLevel => ("pair_second_level","Second / right peak","second / right peak"),
+    Duration => ("duration","Duration","duration"),
+    Fade => ("fade","Fade","fade"),
+}}
+
+crate::vocabulary::vocabulary! { CarrierKind,"carrier_kind" {
+    Tone => ("tone","Tone","tone"),
+    Clicks => ("clicks","Clicks","clicks"),
+}}
+
+crate::vocabulary::vocabulary! { ModulationKind,"modulation_kind" {
+    Am => ("am","AM","AM"),
+    Gate => ("gate","Gate","gate"),
+}}
+
+crate::vocabulary::vocabulary! { ComponentRole,"component_role" {
+    GateRhythm => ("gate_rhythm","Gate rhythm","gate rhythm"),
+    AmEnvelope => ("am_envelope","AM envelope","AM envelope"),
+    ClickRhythm => ("click_rhythm","Click rhythm","click rhythm"),
+    SteadyTone => ("steady_tone","Steady tone","steady tone"),
+}}
+
+impl ParameterId {
+    const fn unit(self) -> Unit {
+        match self {
+            Self::ToneFrequency => Unit::Hertz,
+            Self::ClickRate => Unit::Hertz,
+            Self::ClickWidth => Unit::Milliseconds,
+            Self::PeakLevel => Unit::DecibelsFullScale,
+            Self::AmRate => Unit::Hertz,
+            Self::AmDepth => Unit::Percent,
+            Self::GateRate => Unit::Hertz,
+            Self::GateWidth => Unit::Milliseconds,
+            Self::PairFirstFrequency => Unit::Hertz,
+            Self::PairOffset => Unit::Hertz,
+            Self::PairFirstLevel => Unit::DecibelsFullScale,
+            Self::PairSecondLevel => Unit::DecibelsFullScale,
+            Self::Duration => Unit::Seconds,
+            Self::Fade => Unit::Seconds,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Ears;
     use alloc::vec::Vec;
 
     fn every_shape() -> Vec<Voice> {

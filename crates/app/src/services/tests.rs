@@ -1,7 +1,8 @@
 //! Service boundaries use real files and captured state; no test starts audio.
 use super::*;
+use crate::core::query::Scope;
 use crate::{
-    discovery::collection::{CatalogQuery, Scope},
+    discovery::collection::CatalogQuery,
     error::{LibraryError, OperationError, Outcome, PlaybackError},
 };
 use library::{DiagnosticDetail, Library, LibraryKey};

@@ -24,8 +24,6 @@ pub(crate) enum CommandProblem {
     TemporaryRecipeSelector,
     /// ID output cannot represent temporary entries.
     TemporaryIds,
-    /// Only known nominal coverage values are accepted.
-    AnalysisCoverage,
     /// Purging requires explicit confirmation and an observed version.
     PurgeConfirmation,
     /// The root must be explicit rather than silently falling back.
@@ -39,7 +37,6 @@ impl CommandProblem {
             Self::GroupedIds => "--format ids cannot be combined with grouping",
             Self::TemporaryRecipeSelector => "temporary selectors are not reusable; use --file",
             Self::TemporaryIds => "--format ids cannot emit temporary inputs; omit --file",
-            Self::AnalysisCoverage => "expected complete or invalid",
             Self::PurgeConfirmation => "permanent deletion requires --yes",
             Self::RelativeLibraryRoot => "--library-dir must be absolute; no fallback is used",
         }

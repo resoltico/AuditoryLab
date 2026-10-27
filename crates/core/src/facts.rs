@@ -151,7 +151,8 @@ impl VoiceFacts {
     }
 }
 /// Attribution of a generator slot during a structural crossfade.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SlotRole {
     /// Same generator continues, potentially gliding.
     Continuing,
@@ -160,25 +161,7 @@ pub enum SlotRole {
     /// Generator fading in.
     Incoming,
 }
-impl SlotRole {
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Continuing => ("Continuing", "continuing"),
-            Self::Outgoing => ("Outgoing", "outgoing"),
-            Self::Incoming => ("Incoming", "incoming"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}
+
 /// Actual generator quantities and routing gains for one generated frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VoiceObservation {
@@ -210,3 +193,9 @@ impl Observation {
     /// target crossfading with every voice of its replacement.
     pub const MAX_VOICES: usize = 2 * Sound::MAX_VOICES;
 }
+
+crate::vocabulary::vocabulary! { SlotRole,"slot_role" {
+    Continuing => ("continuing","Continuing","continuing"),
+    Outgoing => ("outgoing","Outgoing","outgoing"),
+    Incoming => ("incoming","Incoming","incoming"),
+}}

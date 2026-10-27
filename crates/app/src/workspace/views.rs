@@ -424,7 +424,7 @@ impl Workspace {
         let progress = self.export_progress();
         ActionView {
             can_play: play.is_ok(),
-            library_play_label: crate::presentation::vocabulary::Action::library_play_labels()
+            library_play_label: crate::presentation::vocabulary::library_play_labels()
                 [usize::from(playing)],
             can_import: self.import_admission().is_ok(),
             can_manage_library: self.library_job_admission().is_ok(),
@@ -474,11 +474,11 @@ impl Workspace {
             exporting,
             transport_enabled: self.audio.stop_admission().is_ok() || play.is_ok(),
             transport_label: if playing {
-                crate::presentation::vocabulary::Action::StopAudio.label()
+                crate::core::vocabulary::Action::StopAudio.label()
             } else if self.view == View::Workbench {
-                crate::presentation::vocabulary::Action::PlayLive.label()
+                crate::core::vocabulary::Action::PlayLive.label()
             } else {
-                crate::presentation::vocabulary::Action::PlaySelectedSound.label()
+                crate::core::vocabulary::Action::PlaySelectedSound.label()
             }
             .into(),
             play_target: match self.view {

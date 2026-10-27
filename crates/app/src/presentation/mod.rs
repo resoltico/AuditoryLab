@@ -16,13 +16,14 @@ pub(crate) mod status_text;
 pub mod vocabulary;
 pub mod waveform_view;
 pub(crate) mod workspace_text;
+use crate::core::vocabulary::Status;
 use crate::document::recipe::{RecipeSnapshot, Rendition};
-use crate::presentation::vocabulary::{NumberStyle, Status};
+use crate::presentation::vocabulary::NumberStyle;
 use auditorylab_core::{
     CarrierFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate, PulseFacts,
     SampleRate, Sound, SoundError, VoiceFacts, VoiceObservation, rhythm::Method, rhythm::Structure,
 };
-pub use commands::DesktopDiagnostics;
+pub use commands::{DesktopDiagnostics, recipe_exported, retained_stage};
 
 impl crate::document::editing::EditRefusal {
     /// Explain why an editor command was refused without confusing authored components and voices.
@@ -520,16 +521,16 @@ pub(crate) const EXPORT_CANCELLED: &str = "Export cancelled; no file was written
 fn nominal_description(analysis: &crate::core::rhythm::Analysis) -> String {
     let mut labels: Vec<String> = analysis.bands.iter().map(ToString::to_string).collect();
     if analysis.outside_bands() {
-        labels.push(Status::OtherRates.label().into());
+        labels.push(crate::core::query::RhythmState::OutsideBands.label().into());
     }
     if analysis.no_rhythm() {
-        labels.push(Status::NoRhythmicRate.label().into());
+        labels.push(crate::core::query::RhythmState::None.label().into());
     }
     if analysis.multiple() {
-        labels.push(Status::MultipleRhythms.label().into());
+        labels.push(crate::core::query::RhythmState::Multiple.label().into());
     }
     if analysis.completeness != crate::core::rhythm::Completeness::Complete {
-        labels.push(Status::NeedsReview.label().into());
+        labels.push(crate::core::query::RhythmState::NeedsReview.label().into());
     }
     let rates = analysis
         .rhythms
@@ -611,7 +612,7 @@ impl AudioSummary for Option<&Observation> {
     fn summary(&self) -> String {
         self.map_or_else(
             || {
-                crate::presentation::vocabulary::Status::WaitingForGeneratedAudio
+                crate::core::vocabulary::Status::WaitingForGeneratedAudio
                     .label()
                     .into()
             },

@@ -36,9 +36,7 @@ impl Shell for NativeShell {
                 .set_parent(&ui.window().window_handle())
                 .set_title(crate::terms::Action::PurgeConfirmation.label())
                 .set_description(
-                    auditorylab_app::presentation::vocabulary::Action::purge_description(
-                        &title, &key,
-                    ),
+                    auditorylab_app::presentation::vocabulary::purge_description(&title, &key),
                 )
                 .set_buttons(rfd::MessageButtons::OkCancelCustom(
                     crate::terms::Action::PermanentlyDelete.label().into(),
@@ -63,7 +61,7 @@ impl Shell for NativeShell {
             adapter.respond(prompt, PromptAnswer::Cancel);
             return;
         };
-        let description = auditorylab_app::presentation::vocabulary::Action::unsaved_description(
+        let description = auditorylab_app::presentation::vocabulary::unsaved_description(
             &adapter.document_title(),
         );
         answer(adapter, prompt, async move {
@@ -138,7 +136,10 @@ impl Shell for NativeShell {
         #[cfg(not(target_os = "macos"))]
         let _ = adapter;
         if approved && let Err(error) = slint::quit_event_loop() {
-            eprintln!("{}", crate::terms::InterfaceOperation::Quit.failure(error));
+            eprintln!(
+                "{}",
+                crate::native_text::InterfaceOperation::Quit.failure(error)
+            );
         }
     }
 }

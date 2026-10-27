@@ -6,6 +6,7 @@ use crate::adapter::{Shell, SlintAdapter, Windows, parameter_id, parameter_key};
 use crate::generated::{MainWindow, MetadataKey, ParameterKey};
 use crate::test_platform::{install, settle};
 use auditorylab_app::core::ParameterId;
+use auditorylab_app::core::query::{Direction, GroupBy, Scope, SortBy};
 use auditorylab_app::document::editing::{EditingField, MetadataField};
 use auditorylab_app::presentation::ParameterText;
 use auditorylab_app::workspace::{
@@ -1174,7 +1175,7 @@ fn assert_library_play_during_file(save: bool) {
     assert!(ui.get_can_play(), "Save/Import can coexist with audio");
     assert_eq!(
         ui.get_library_play_action(),
-        auditorylab_app::presentation::vocabulary::Action::library_play_labels()[0]
+        auditorylab_app::presentation::vocabulary::library_play_labels()[0]
     );
     ui.invoke_play_recipe();
     assert!(
@@ -1184,7 +1185,7 @@ fn assert_library_play_during_file(save: bool) {
     let audio = take_job(&h, JobKind::Audio);
     assert_eq!(
         ui.get_library_play_action(),
-        auditorylab_app::presentation::vocabulary::Action::library_play_labels()[1]
+        auditorylab_app::presentation::vocabulary::library_play_labels()[1]
     );
     finish_stopped_audio(&h, audio);
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
@@ -2243,7 +2244,7 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
         h.wait_for_files();
         assert_eq!(
             h.adapter.inspect(|w| w.catalog_query().sort),
-            auditorylab_app::discovery::collection::SortBy::Title
+            auditorylab_app::core::query::SortBy::Title
         );
         assert_eq!(ui.get_collection_choice(), scope);
     }
@@ -2549,11 +2550,8 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     h.key(Key::Escape);
     h.adapter.inspect(|w| {
         let q = w.catalog_query();
-        assert_eq!(q.scope, auditorylab_app::discovery::collection::Scope::User);
-        assert_eq!(
-            q.sort,
-            auditorylab_app::discovery::collection::SortBy::Automatic
-        );
+        assert_eq!(q.scope, auditorylab_app::core::query::Scope::User);
+        assert_eq!(q.sort, auditorylab_app::core::query::SortBy::Automatic);
         assert!(q.direction.is_none());
         assert_eq!(q.search, "2");
     });
@@ -2604,7 +2602,7 @@ fn changing_display_vocabulary_preserves_typed_library_search() {
         .set_caption_structural_method("Different display wording".into());
     h.ui()
         .global::<crate::generated::Terms>()
-        .set_collection_library("Different collection wording".into());
+        .set_caption_library("Different collection wording".into());
     h.ui().invoke_search("".into());
     h.wait_for_files();
     assert!(h.ui().get_catalog().row_count() > before.len());
@@ -2622,9 +2620,7 @@ fn changing_display_vocabulary_preserves_typed_library_search() {
 #[test]
 fn filter_controls_map_to_independent_typed_queries() {
     use auditorylab_app::core::rhythm::{Band, Method};
-    use auditorylab_app::discovery::collection::{
-        CatalogQuery, DateRange, Direction, GroupBy, Scope, SortBy,
-    };
+    use auditorylab_app::discovery::collection::{CatalogQuery, DateRange};
     use auditorylab_app::discovery::query::RhythmQuery;
     let temp = tempfile::tempdir().unwrap();
     let store =
@@ -3124,6 +3120,19 @@ fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
         Capabilities::no_device_playback(),
     );
     let h = Harness::with_startup_workspace(workspace);
+    let identity = &auditorylab_app::presentation::build_info::BUILD_IDENTITY;
+    for terms in [
+        h.windows.main.global::<crate::generated::Terms>(),
+        h.windows.about.global::<crate::generated::Terms>(),
+    ] {
+        assert_eq!(terms.get_caption_product_name().as_str(), identity.name);
+        assert_eq!(terms.get_caption_copyright().as_str(), identity.copyright);
+        assert_eq!(
+            terms.get_caption_about_product().as_str(),
+            auditorylab_app::presentation::build_info::ABOUT_TITLE
+        );
+    }
+
     let ui = h.ui();
     assert!(
         !ui.get_monitor_open(),

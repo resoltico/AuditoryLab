@@ -5,11 +5,10 @@ use auditorylab_app::core::{
 };
 use auditorylab_app::document::recipe::{Origin, RecipeSnapshot};
 use auditorylab_app::{
-    discovery::collection::{
-        CatalogQuery, DateRange, Direction, EntrySummary, GroupBy, Scope, SortBy,
-    },
+    discovery::collection::{CatalogQuery, DateRange, EntrySummary},
     services::library::LibraryKey,
 };
+use auditorylab_core::query::{Direction, GroupBy, Scope, SortBy};
 #[expect(
     clippy::unwrap_used,
     reason = "Curated UUID/time fixture construction must fail rather than silently substitute data"

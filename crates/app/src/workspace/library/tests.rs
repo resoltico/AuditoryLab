@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
+use crate::core::query::{Direction, GroupBy, SortBy};
 use crate::services::library::Library;
 
 fn fixture() -> (tempfile::TempDir, Library, Workspace) {
@@ -64,7 +65,7 @@ fn user(w: &mut Workspace) {
 }
 #[test]
 fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replacement() {
-    use crate::discovery::collection::{DateRange, GroupBy, SortBy};
+    use crate::discovery::collection::DateRange;
     let (_temp, _store, mut w) = fixture();
     let from = "2026-03-28T22:00:00Z".parse().unwrap();
     let before = "2026-03-29T21:00:00Z".parse().unwrap();
@@ -77,7 +78,7 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
         rhythm: crate::discovery::query::RhythmQuery {
             bands: vec![crate::core::rhythm::Band::Delta],
             methods: vec![crate::core::rhythm::Method::Binaural],
-            state: Some(crate::discovery::query::RhythmState::Multiple),
+            state: Some(crate::core::query::RhythmState::Multiple),
         },
         created: DateRange {
             from: Some(from),
@@ -123,7 +124,6 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
 
 #[test]
 fn summary_rows_show_real_sort_date_unknown_edit_and_added_without_loading_documents() {
-    use crate::discovery::collection::{Direction, SortBy};
     let (_temp, _store, mut w) = fixture();
     let p = &mut w.library;
     let mut unknown = p.entries[0].clone();
@@ -667,9 +667,9 @@ fn selected_users() -> (
         .set_catalog_query(CatalogQuery {
             scope: Scope::User,
             search: "Shared".into(),
-            sort: crate::discovery::collection::SortBy::Title,
-            direction: Some(crate::discovery::collection::Direction::Desc),
-            group_by: crate::discovery::collection::GroupBy::Collection,
+            sort: crate::core::query::SortBy::Title,
+            direction: Some(crate::core::query::Direction::Desc),
+            group_by: crate::core::query::GroupBy::Collection,
             ..CatalogQuery::default()
         })
         .unwrap();

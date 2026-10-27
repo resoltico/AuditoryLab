@@ -1,5 +1,6 @@
 //! Library model updates depend only on an immutable library projection.
 use super::*;
+use auditorylab_app::core::query::{Scope, SortBy};
 use auditorylab_app::presentation::DisplayText;
 impl SlintAdapter {
     pub(super) fn project_library(
@@ -79,9 +80,8 @@ impl SlintAdapter {
             ui.set_calendar_context(auditorylab_app::discovery::calendar::local_context().into());
             {
                 let query = w.catalog_query();
+                use auditorylab_app::core::query::RhythmState;
                 use auditorylab_app::core::rhythm::{Band, Method};
-                use auditorylab_app::discovery::collection::{Scope, SortBy};
-                use auditorylab_app::discovery::query::RhythmState;
                 let band = query
                     .rhythm
                     .bands

@@ -77,14 +77,21 @@ pub(crate) struct Windows {
 
 impl Windows {
     pub(crate) fn new() -> Result<Self, slint::PlatformError> {
-        Ok(Self {
+        let windows = Self {
             main: MainWindow::new()?,
             about: AboutWindow::new()?,
             licenses: crate::generated::LicenseWindow::new()?,
             monitor: MonitorWindow::new()?,
             details: DetailsWindow::new()?,
             audio_controls: AudioControlsWindow::new()?,
-        })
+        };
+        for terms in [
+            windows.main.global::<crate::generated::Terms>(),
+            windows.about.global::<crate::generated::Terms>(),
+        ] {
+            crate::native_text::initialize_identity(terms);
+        }
+        Ok(windows)
     }
 }
 
@@ -542,7 +549,10 @@ impl SlintAdapter {
         }
         if let Some(about) = self.about.upgrade() {
             if let Err(error) = about.show() {
-                eprintln!("{}", crate::terms::InterfaceOperation::About.failure(error));
+                eprintln!(
+                    "{}",
+                    crate::native_text::InterfaceOperation::About.failure(error)
+                );
             }
             about.invoke_focus_website();
         }
@@ -723,10 +733,10 @@ impl SlintAdapter {
                 })
                 .and_then(|i| i32::try_from(i + 1).ok())
                 .unwrap_or(match rhythm.state {
-                    Some(auditorylab_app::discovery::query::RhythmState::OutsideBands) => 6,
-                    Some(auditorylab_app::discovery::query::RhythmState::None) => 7,
-                    Some(auditorylab_app::discovery::query::RhythmState::Multiple) => 8,
-                    Some(auditorylab_app::discovery::query::RhythmState::NeedsReview) => 9,
+                    Some(auditorylab_app::core::query::RhythmState::OutsideBands) => 6,
+                    Some(auditorylab_app::core::query::RhythmState::None) => 7,
+                    Some(auditorylab_app::core::query::RhythmState::Multiple) => 8,
+                    Some(auditorylab_app::core::query::RhythmState::NeedsReview) => 9,
                     None => 0,
                 });
             ui.set_band_choice(band);
@@ -1018,7 +1028,7 @@ impl SlintAdapter {
                     Err(error) => {
                         self.monitor_window_visible.set(false);
                         *self.monitor_error.borrow_mut() =
-                            crate::terms::InterfaceOperation::ShowMonitor.failure(error);
+                            crate::native_text::InterfaceOperation::ShowMonitor.failure(error);
                     }
                 }
             } else if !focused_monitor
@@ -1041,7 +1051,7 @@ impl SlintAdapter {
                     }
                     Err(error) => {
                         *self.monitor_error.borrow_mut() =
-                            crate::terms::InterfaceOperation::HideMonitor.failure(error);
+                            crate::native_text::InterfaceOperation::HideMonitor.failure(error);
                     }
                 }
             }
@@ -1075,7 +1085,7 @@ impl SlintAdapter {
                     }
                     Err(error) => {
                         *self.controls_error.borrow_mut() =
-                            crate::terms::InterfaceOperation::AudioControls.failure(error);
+                            crate::native_text::InterfaceOperation::AudioControls.failure(error);
                     }
                 }
             }
@@ -1215,7 +1225,7 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     ui.set_add_choices(strings(
         CarrierKind::ALL
             .iter()
-            .map(|k| auditorylab_app::presentation::vocabulary::Action::add_component(*k))
+            .map(|k| auditorylab_app::presentation::vocabulary::add_component(*k))
             .collect(),
     ));
     ui.set_modulation_choices(strings(
@@ -1240,7 +1250,7 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     monitor.set_span_choices(spans);
     monitor.set_scale_choices(scales);
     ui.set_transport_labels(strings(
-        auditorylab_app::presentation::vocabulary::Action::transport_labels()
+        auditorylab_app::presentation::vocabulary::transport_labels()
             .iter()
             .map(|label| (*label).to_owned())
             .collect(),
@@ -1404,7 +1414,7 @@ fn present_details<C: ComponentHandle + 'static>(window: &DetailsWindow, parent:
     if let Err(error) = window.show() {
         eprintln!(
             "{}",
-            crate::terms::InterfaceOperation::Details.failure(error)
+            crate::native_text::InterfaceOperation::Details.failure(error)
         );
         return;
     }
@@ -1444,7 +1454,7 @@ fn open_web(url: &str) {
     if let Err(error) = command.arg(url).spawn() {
         eprintln!(
             "{}",
-            crate::terms::InterfaceOperation::OpenLink.failure(error)
+            crate::native_text::InterfaceOperation::OpenLink.failure(error)
         );
     }
 }

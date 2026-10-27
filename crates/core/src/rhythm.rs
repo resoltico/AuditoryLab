@@ -29,14 +29,6 @@ pub enum Band {
     Gamma,
 }
 impl Band {
-    /// Reference bands in ascending frequency order.
-    pub const ALL: [Self; 5] = [
-        Self::Delta,
-        Self::Theta,
-        Self::Alpha,
-        Self::Beta,
-        Self::Gamma,
-    ];
     /// Classify a positive finite nominal rate; outside rates have no band.
     #[must_use]
     pub fn of(hz: f64) -> Option<Self> {
@@ -67,51 +59,11 @@ impl Band {
             Self::Gamma => ">30–80 Hz",
         }
     }
-    /// Stable lower-case query spelling.
-    #[must_use]
-    pub const fn key(self) -> &'static str {
-        match self {
-            Self::Delta => "delta",
-            Self::Theta => "theta",
-            Self::Alpha => "alpha",
-            Self::Beta => "beta",
-            Self::Gamma => "gamma",
-        }
-    }
 }
-impl Band {
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Delta => ("Delta", "Delta"),
-            Self::Theta => ("Theta", "Theta"),
-            Self::Alpha => ("Alpha", "Alpha"),
-            Self::Beta => ("Beta", "Beta"),
-            Self::Gamma => ("Gamma", "Gamma"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}
+
 impl Display for Band {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(self.label())
-    }
-}
-impl core::str::FromStr for Band {
-    type Err = &'static str;
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        Self::ALL
-            .into_iter()
-            .find(|b| b.key() == text)
-            .ok_or("expected delta, theta, alpha, beta or gamma")
     }
 }
 
@@ -133,61 +85,11 @@ pub enum Method {
     SteadyTone,
 }
 impl Method {
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Binaural => ("Binaural", "binaural"),
-            Self::Monaural => ("Monaural", "monaural"),
-            Self::Clicks => ("Clicks", "clicks"),
-            Self::Gate => ("Gate", "gate"),
-            Self::Am => ("AM", "AM"),
-            Self::SteadyTone => ("Steady tone", "steady tone"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
     pub(crate) const fn of_pair(kind: crate::PairKind) -> Self {
         match kind {
             crate::PairKind::Binaural => Self::Binaural,
             crate::PairKind::Monaural => Self::Monaural,
         }
-    }
-    /// Supported query vocabulary.
-    pub const ALL: [Self; 6] = [
-        Self::Binaural,
-        Self::Monaural,
-        Self::Clicks,
-        Self::Gate,
-        Self::Am,
-        Self::SteadyTone,
-    ];
-    /// Stable command-line spelling.
-    #[must_use]
-    pub const fn key(self) -> &'static str {
-        match self {
-            Self::Binaural => "binaural",
-            Self::Monaural => "monaural",
-            Self::Clicks => "clicks",
-            Self::Gate => "gate",
-            Self::Am => "am",
-            Self::SteadyTone => "steady-tone",
-        }
-    }
-}
-impl core::str::FromStr for Method {
-    type Err = &'static str;
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        Self::ALL
-            .into_iter()
-            .find(|m| m.key() == text)
-            .ok_or("unknown structural method")
     }
 }
 
@@ -581,23 +483,24 @@ pub(crate) fn classify(
     result
 }
 
-impl Completeness {
-    /// Every analysis coverage state, in display order.
-    pub const ALL: [Self; 2] = [Self::Complete, Self::Invalid];
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Complete => ("Complete", "complete"),
-            Self::Invalid => ("Invalid", "invalid"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}
+crate::vocabulary::vocabulary! { Band,"band" {
+    Delta => ("delta","Delta","Delta"),
+    Theta => ("theta","Theta","Theta"),
+    Alpha => ("alpha","Alpha","Alpha"),
+    Beta => ("beta","Beta","Beta"),
+    Gamma => ("gamma","Gamma","Gamma"),
+}}
+
+crate::vocabulary::vocabulary! { Method,"method" {
+    Binaural => ("binaural","Binaural","binaural"),
+    Monaural => ("monaural","Monaural","monaural"),
+    Clicks => ("clicks","Clicks","clicks"),
+    Gate => ("gate","Gate","gate"),
+    Am => ("am","AM","AM"),
+    SteadyTone => ("steady-tone","Steady tone","steady tone"),
+}}
+
+crate::vocabulary::vocabulary! { Completeness,"completeness" {
+    Complete => ("complete","Complete","complete"),
+    Invalid => ("invalid","Invalid","invalid"),
+}}

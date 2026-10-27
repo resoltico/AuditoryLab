@@ -27,7 +27,7 @@ export component WorkspaceNavigation inherits FocusScope {
     }
     tabs := HorizontalLayout {
         spacing:4px;
-        for label[index] in [Terms.collection-library,Terms.caption-workbench]: Rectangle {
+        for label[index] in [Terms.caption-library,Terms.caption-workbench]: Rectangle {
             min-width:caption.preferred-width+24px;
             min-height:max(root.text-size*2.5,caption.preferred-height+12px);
             border-radius:5px;

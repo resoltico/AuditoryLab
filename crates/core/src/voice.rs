@@ -47,7 +47,8 @@ pub enum Ears {
 }
 
 /// One ear.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Ear {
     /// The left ear: the first channel of each frame.
     Left,
@@ -335,45 +336,16 @@ impl core::error::Error for SoundError {
 
 impl core::error::Error for VoiceError {}
 
-impl Ears {
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Left => ("Left ear", "left ear"),
-            Self::Right => ("Right ear", "right ear"),
-            Self::Both => ("Both ears", "both ears"),
-        }
-    }
-    /// Short route name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Route name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}
-impl Ear {
-    /// Every single-ear choice, in display order.
-    pub const ALL: [Self; 2] = [Self::Left, Self::Right];
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Left => ("Left ear", "left ear"),
-            Self::Right => ("Right ear", "right ear"),
-        }
-    }
-    /// Short ear name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Ear name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}
+crate::vocabulary::vocabulary! { Ears,"ears" {
+    Both => ("both","Both ears","both ears"),
+    Left => ("left","Left ear","left ear"),
+    Right => ("right","Right ear","right ear"),
+}}
+
+crate::vocabulary::vocabulary! { Ear,"ear" {
+    Left => (crate::Ears::Left.key(),crate::Ears::Left.label(),crate::Ears::Left.phrase()),
+    Right => (crate::Ears::Right.key(),crate::Ears::Right.label(),crate::Ears::Right.phrase()),
+}}
 
 #[cfg(test)]
 mod tests;

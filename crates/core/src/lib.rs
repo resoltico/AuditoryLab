@@ -15,6 +15,8 @@ pub mod authored;
 pub mod catalog;
 mod compiled;
 mod contract;
+pub mod query;
+pub mod vocabulary;
 pub use contract::{ContractError, ReferenceOwner};
 mod facts;
 pub mod finite;

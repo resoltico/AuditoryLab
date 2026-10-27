@@ -961,26 +961,11 @@ pub enum PairKind {
     /// Two tones on one identical route.
     Monaural,
 }
+
+crate::vocabulary::vocabulary! { PairKind,"pair_kind" {
+    Binaural => ("binaural","Binaural pair","binaural pair"),
+    Monaural => ("monaural","Monaural pair","monaural pair"),
+}}
+
 #[cfg(test)]
 mod tests;
-
-impl PairKind {
-    /// Every explicit pair construction, in display order.
-    pub const ALL: [Self; 2] = [Self::Binaural, Self::Monaural];
-    const fn terms(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Binaural => ("Binaural pair", "binaural pair"),
-            Self::Monaural => ("Monaural pair", "monaural pair"),
-        }
-    }
-    /// Domain name for a heading or choice.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        self.terms().0
-    }
-    /// Domain name within a sentence.
-    #[must_use]
-    pub const fn phrase(self) -> &'static str {
-        self.terms().1
-    }
-}

@@ -1,9 +1,10 @@
 //! Human-facing operation descriptions owned by their application data.
 use super::{AudioSummary, DisplayText};
 use crate::core::Timestamp;
+use crate::core::vocabulary::Status;
 use crate::discovery::collection::EntrySummary;
 use crate::document::recipe::Rendition;
-use crate::presentation::vocabulary::{Caption, NumberStyle, Status};
+use crate::presentation::vocabulary::NumberStyle;
 use crate::storage::library::{Initialization, Inventory, RootInfo};
 use crate::storage::wav::Exported;
 use std::path::Path;
@@ -127,20 +128,19 @@ impl Exported {
         )
     }
 }
-impl Caption {
-    /// Confirm completed export of the exact captured recipe text.
-    #[must_use]
-    pub fn recipe_exported(path: &Path) -> String {
-        format!(
-            "Exported recipe to {}.",
-            path.display().to_string().display_scalar()
-        )
-    }
-    /// A storage stage retained for diagnosis.
-    #[must_use]
-    pub fn retained_stage(stage: &str) -> String {
-        format!("Retained stage: {}\n", stage.display_scalar())
-    }
+
+/// Confirm completed export of the exact captured recipe text.
+#[must_use]
+pub fn recipe_exported(path: &Path) -> String {
+    format!(
+        "Exported recipe to {}.",
+        path.display().to_string().display_scalar()
+    )
+}
+/// A storage stage retained for diagnosis.
+#[must_use]
+pub fn retained_stage(stage: &str) -> String {
+    format!("Retained stage: {}\n", stage.display_scalar())
 }
 
 /// A selectable snapshot of the information shown by the desktop diagnostics reader.

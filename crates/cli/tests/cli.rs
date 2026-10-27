@@ -476,3 +476,15 @@ fn nonfinite_recipe_diagnostic_names_the_key_line_and_column() {
     assert!(message.contains("offset_hz = nan"), "{message}");
     assert!(message.contains("expected a finite number"), "{message}");
 }
+
+#[test]
+fn explicit_sort_values_follow_the_cli_contract() {
+    assert_eq!(
+        "automatic".parse::<auditorylab_app::core::query::SortBy>(),
+        Ok(auditorylab_app::core::query::SortBy::Automatic)
+    );
+    let automatic = cli(&["list", "--collection", "builtin", "--sort", "automatic"]);
+    assert_eq!(automatic.status.code(), Some(2));
+    let explicit = cli(&["list", "--collection", "builtin", "--sort", "modified"]);
+    assert!(explicit.status.success(), "{explicit:?}");
+}

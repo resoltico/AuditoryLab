@@ -90,7 +90,7 @@ pub(super) fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
                 Ok(()) => window.invoke_focus_start(),
                 Err(error) => eprintln!(
                     "{}",
-                    crate::terms::InterfaceOperation::Licenses.failure(error)
+                    crate::native_text::InterfaceOperation::Licenses.failure(error)
                 ),
             }
         }

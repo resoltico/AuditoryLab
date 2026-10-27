@@ -1,9 +1,8 @@
 //! Typed machine-readable application reports.
+use crate::core::query::{Direction, SortBy};
 use crate::{
     core::{DocumentUuid, Timestamp, VoiceFacts, VoiceId, rhythm},
-    discovery::collection::{
-        CatalogQuery, Collection, Direction, EntrySummary, EvidenceFacet, ResultGroup, SortBy,
-    },
+    discovery::collection::{CatalogQuery, Collection, EntrySummary, EvidenceFacet, ResultGroup},
     error::Outcome,
     storage::library::{
         Initialization, Inventory, LibraryDiagnostic, LibraryKey, MutationStatus, RootInfo,
@@ -194,9 +193,9 @@ impl Report {
     #[must_use]
     pub fn completion_failure(&self, error: impl std::fmt::Display) -> String {
         let truth = if self.complete {
-            crate::presentation::vocabulary::Status::OperationConfirmed
+            crate::core::vocabulary::Status::OperationConfirmed
         } else {
-            crate::presentation::vocabulary::Status::OperationIncomplete
+            crate::core::vocabulary::Status::OperationIncomplete
         }
         .label();
         format!("{truth}; completion output failed: {error}")

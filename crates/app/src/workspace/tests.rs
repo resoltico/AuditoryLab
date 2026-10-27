@@ -38,7 +38,7 @@ impl TestWorkspace {
         drain_files(&mut inner);
         if open_files {
             inner.set_catalog_query(crate::discovery::collection::CatalogQuery {
-                scope: crate::discovery::collection::Scope::OpenFiles,
+                scope: crate::core::query::Scope::OpenFiles,
                 ..Default::default()
             })?;
             drain_files(&mut inner);
