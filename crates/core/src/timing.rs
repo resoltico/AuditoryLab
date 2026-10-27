@@ -48,7 +48,7 @@ pub struct TimingModel {
 )]
 pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
     let rate = mix.rate();
-    let slowest = crate::interpretation::Structure::classify(mix.voices(), false)
+    let slowest = crate::rhythm::classify(mix.voices(), false)
         .slowest_rate()
         .unwrap_or(f64::INFINITY);
     let seconds = (4.0 / slowest).clamp(0.25, 4.0);

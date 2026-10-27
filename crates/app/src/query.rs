@@ -1,5 +1,5 @@
 //! Shared nominal facets for all recipe origins, independent of audio validity.
-use crate::core::nominal::{Analysis, Band, Completeness, Method};
+use crate::core::rhythm::{Analysis, Band, Completeness, Method};
 use serde::Serialize;
 
 /// Special rhythm navigation; these properties can overlap band memberships.

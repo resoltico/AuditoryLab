@@ -668,13 +668,13 @@ fn nominal_cache_and_saved_memberships_follow_distinct_committed_snapshots() {
     editor.stage(rate, "bad").unwrap();
     assert!(Arc::ptr_eq(&first, &editor.nominal()));
     editor.commit_field(rate, "6").unwrap().unwrap();
-    assert_eq!(editor.nominal().bands, [crate::core::nominal::Band::Theta]);
+    assert_eq!(editor.nominal().bands, [crate::core::rhythm::Band::Theta]);
     assert!(editor.record_saved(editor.document(), &saved));
     assert_eq!(
         editor.saved_nominal().unwrap().bands,
-        [crate::core::nominal::Band::Delta]
+        [crate::core::rhythm::Band::Delta]
     );
-    assert_eq!(editor.nominal().bands, [crate::core::nominal::Band::Theta]);
+    assert_eq!(editor.nominal().bands, [crate::core::rhythm::Band::Theta]);
     assert!(editor.dirty());
     let stale = editor.document();
     let mut replacement = editor_with(&[tone(440.0)]);

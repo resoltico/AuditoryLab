@@ -1,6 +1,5 @@
 //! Public-library live generation without an audio device.
 mod common;
-use auditorylab::core::interpretation::Structure;
 use auditorylab::core::{
     Carrier, CarrierKind, ComponentId, Ears, ParameterId, SampleRate, Target, Voice,
 };
@@ -26,13 +25,22 @@ fn target(draft: &Draft) -> Target {
 
 #[expect(
     clippy::unwrap_used,
-    reason = "Fixture helper panics when the generated frame is not an interaural pair, failing the calling test"
+    reason = "Fixture helper inspects two known generated tones directly, independently of classification"
 )]
 fn difference(generator: &LiveGenerator) -> f64 {
-    let (left, right) = Structure::of_observation(&generator.observation().unwrap())
-        .interaural()
-        .unwrap();
-    (left - right).abs()
+    let rates: Vec<_> = generator
+        .observation()
+        .unwrap()
+        .voices
+        .into_iter()
+        .flatten()
+        .filter_map(|voice| match voice.facts.carrier {
+            auditorylab::core::CarrierFacts::Tone(rate) => Some(rate.realized_hz),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(rates.len(), 2);
+    (rates[0] - rates[1]).abs()
 }
 
 #[test]
@@ -92,7 +100,7 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
         ),
         (
             vec![component(380.0, Ears::Left), component(420.0, Ears::Right)],
-            true,
+            false,
         ),
     ] {
         let mut recipe = common::silent(1.0, 0.0).into_builder();
@@ -112,7 +120,7 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
         let sound = snapshot.at(SampleRate::DEFAULT).unwrap();
         let observation = sound.signal().observation(0).unwrap();
         assert_eq!(
-            Structure::of_observation(&observation)
+            auditorylab::core::rhythm::realized(&observation)
                 .interaural()
                 .is_some(),
             expected

@@ -427,7 +427,7 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
             }),
             Some(C::Clicks),
             None,
-            "Clicks rhythm",
+            "Click rhythm",
             true,
         ),
         (
@@ -693,12 +693,12 @@ fn requested_pair_intent_survives_identical_realized_audio_without_a_new_live_ra
     assert!(first.same_audio(&second));
     assert_ne!(first, second);
     assert_eq!(
-        auditorylab_core::nominal::analyze(&a.components).bands,
-        [auditorylab_core::nominal::Band::Alpha]
+        auditorylab_core::rhythm::nominal(&a.components).bands,
+        [auditorylab_core::rhythm::Band::Alpha]
     );
     assert_eq!(
-        auditorylab_core::nominal::analyze(&b.components).bands,
-        [auditorylab_core::nominal::Band::Beta]
+        auditorylab_core::rhythm::nominal(&b.components).bands,
+        [auditorylab_core::rhythm::Band::Beta]
     );
     assert_eq!(
         second

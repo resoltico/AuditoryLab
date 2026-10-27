@@ -123,9 +123,8 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                 .collect();
                 query.analysis = choice(
                     &[
-                        auditorylab::core::nominal::Completeness::Complete,
-                        auditorylab::core::nominal::Completeness::Partial,
-                        auditorylab::core::nominal::Completeness::Invalid,
+                        auditorylab::core::rhythm::Completeness::Complete,
+                        auditorylab::core::rhythm::Completeness::Invalid,
                     ],
                     analysis - 1,
                 );
@@ -197,7 +196,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         .command(|w| w.navigate_library(direction)));
     on!(on_search, |a, query| a.command(|w| w.set_query(&query)));
     on!(on_rhythm_filter, |a, band, method| {
-        use auditorylab::core::nominal::{Band, Method};
+        use auditorylab::core::rhythm::{Band, Method};
         use auditorylab::query::{RhythmQuery, RhythmState};
         let mut query = RhythmQuery::default();
         match band {

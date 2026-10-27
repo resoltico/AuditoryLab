@@ -55,10 +55,10 @@ pub(super) struct QueryArgs {
     search: String,
     /// Nominal reference bands, OR within this facet.
     #[arg(long)]
-    band: Vec<lab::core::nominal::Band>,
+    band: Vec<lab::core::rhythm::Band>,
     /// Structural methods; band/method must match one descriptor.
     #[arg(long)]
-    method: Vec<lab::core::nominal::Method>,
+    method: Vec<lab::core::rhythm::Method>,
     /// Current-condition DOI or source key, never ancestor-only evidence.
     #[arg(long)]
     study: Vec<String>,
@@ -68,9 +68,9 @@ pub(super) struct QueryArgs {
     /// Population correlated within the same evidence record.
     #[arg(long,value_parser=parse_population)]
     population: Vec<lab::core::Population>,
-    /// Nominal analysis coverage: complete, partial or invalid.
+    /// Nominal analysis coverage: complete or invalid.
     #[arg(long,value_parser=parse_analysis)]
-    analysis: Option<lab::core::nominal::Completeness>,
+    analysis: Option<lab::core::rhythm::Completeness>,
     /// Special state: none, multiple, outside-bands or needs-review.
     #[arg(long)]
     rhythms: Option<lab::query::RhythmState>,
@@ -270,11 +270,10 @@ fn parse_role(text: &str) -> std::result::Result<lab::core::ConditionRole, Strin
 fn parse_population(text: &str) -> std::result::Result<lab::core::Population, String> {
     serde_json::from_value(Value::String(text.into())).map_err(|e| e.to_string())
 }
-fn parse_analysis(text: &str) -> std::result::Result<lab::core::nominal::Completeness, String> {
+fn parse_analysis(text: &str) -> std::result::Result<lab::core::rhythm::Completeness, String> {
     match text {
-        "complete" => Ok(lab::core::nominal::Completeness::Complete),
-        "partial" => Ok(lab::core::nominal::Completeness::Partial),
-        "invalid" => Ok(lab::core::nominal::Completeness::Invalid),
+        "complete" => Ok(lab::core::rhythm::Completeness::Complete),
+        "invalid" => Ok(lab::core::rhythm::Completeness::Invalid),
         _ => Err(CommandProblem::AnalysisCoverage.message().into()),
     }
 }
@@ -773,7 +772,7 @@ mod query_mapping_tests {
                 "--population",
                 "mouse",
                 "--analysis",
-                "partial",
+                "invalid",
                 "--rhythms",
                 "outside-bands",
                 "--created-from",
@@ -805,14 +804,14 @@ mod query_mapping_tests {
                 include_external: false,
                 search: "actual text".into(),
                 rhythm: lab::query::RhythmQuery {
-                    bands: vec![lab::core::nominal::Band::Theta],
-                    methods: vec![lab::core::nominal::Method::Monaural],
+                    bands: vec![lab::core::rhythm::Band::Theta],
+                    methods: vec![lab::core::rhythm::Method::Monaural],
                     state: Some(lab::query::RhythmState::OutsideBands),
                 },
                 studies: vec!["key:source".into()],
                 roles: vec![lab::core::ConditionRole::Comparison],
                 populations: vec![lab::core::Population::Mouse],
-                analysis: Some(lab::core::nominal::Completeness::Partial),
+                analysis: Some(lab::core::rhythm::Completeness::Invalid),
                 created: DateRange {
                     from: Some("2026-01-01T00:00:00Z".parse().unwrap()),
                     before: Some("2026-02-01T00:00:00Z".parse().unwrap()),

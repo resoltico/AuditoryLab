@@ -715,7 +715,7 @@ impl SlintAdapter {
                 .bands
                 .first()
                 .and_then(|b| {
-                    auditorylab::core::nominal::Band::ALL
+                    auditorylab::core::rhythm::Band::ALL
                         .iter()
                         .position(|v| v == b)
                 })
@@ -733,7 +733,7 @@ impl SlintAdapter {
                     .methods
                     .first()
                     .and_then(|m| {
-                        auditorylab::core::nominal::Method::ALL
+                        auditorylab::core::rhythm::Method::ALL
                             .iter()
                             .position(|v| v == m)
                     })

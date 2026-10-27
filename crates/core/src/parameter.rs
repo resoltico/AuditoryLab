@@ -465,7 +465,7 @@ impl ComponentRole {
         match self {
             Self::GateRhythm => "Gate rhythm",
             Self::AmEnvelope => "AM envelope",
-            Self::ClickRhythm => "Clicks rhythm",
+            Self::ClickRhythm => "Click rhythm",
             Self::SteadyTone => "Steady tone",
         }
     }

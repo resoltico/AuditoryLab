@@ -2,7 +2,7 @@
 use crate::core::{Extent, Observation, SampleRate};
 use crate::session::{Meter, MonitorReader, SessionDescriptor};
 use crate::vocabulary::NumberStyle;
-use auditorylab_core::{Target, interpretation::Structure, timing::TimingModel};
+use auditorylab_core::{Target, rhythm::Structure, timing::TimingModel};
 /// A view cannot silently hide invalid samples or invent source coverage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaptureError {
@@ -276,7 +276,7 @@ impl ModelView {
             title,
             source,
             projection: target.timing_model(256),
-            structure: Structure::of_target(&target),
+            structure: crate::core::rhythm::realized(&target),
         }
     }
     /// Explicit model rate/origin/provenance, with insufficient-cycle warning when capped.

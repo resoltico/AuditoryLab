@@ -91,10 +91,17 @@ impl Ears {
 }
 
 impl Voice {
+    pub(crate) fn intrinsic_issues(&self) -> impl Iterator<Item = crate::ValueIssue> + '_ {
+        ParameterId::COMPONENT.into_iter().filter_map(|parameter| {
+            parameter
+                .read(self)
+                .and_then(|value| crate::validity::check_value(parameter, value).err())
+        })
+    }
     /// Check every value at `rate` and build the generator.
     pub(crate) fn voice(&self, rate: SampleRate) -> Result<GeneratorVoice, VoiceError> {
         let peak_dbfs = self.peak_dbfs;
-        if !(peak_dbfs.is_finite() && peak_dbfs <= 0.0) {
+        if crate::validity::check_value(ParameterId::PeakLevel, peak_dbfs).is_err() {
             return Err(VoiceError::PeakDbfs { peak_dbfs });
         }
         let carrier = match self.carrier {
@@ -115,7 +122,7 @@ impl Voice {
             None => None,
             Some(Modulation::Am { rate_hz, depth }) => {
                 let step = frequency_step(ParameterId::AmRate, rate_hz, rate)?;
-                if !(0.0..=1.0).contains(&depth) {
+                if crate::validity::check_value(ParameterId::AmDepth, depth).is_err() {
                     return Err(VoiceError::Depth { depth });
                 }
                 if let Carrier::Tone { frequency_hz } = self.carrier
@@ -152,11 +159,14 @@ impl Voice {
 }
 
 fn frequency_step(parameter: ParameterId, hz: f64, rate: SampleRate) -> Result<u64, VoiceError> {
-    synthesis::step(hz, rate.hz()).ok_or(VoiceError::Frequency {
-        parameter,
-        hz,
-        sample_rate_hz: rate.hz(),
-    })
+    crate::validity::check_value(parameter, hz)
+        .ok()
+        .and_then(|()| synthesis::step(hz, rate.hz()))
+        .ok_or(VoiceError::Frequency {
+            parameter,
+            hz,
+            sample_rate_hz: rate.hz(),
+        })
 }
 fn pulse_train(
     (rate_parameter, width_parameter): (ParameterId, ParameterId),
@@ -165,12 +175,15 @@ fn pulse_train(
     rate: SampleRate,
 ) -> Result<Pulse, VoiceError> {
     frequency_step(rate_parameter, rate_hz, rate)?;
-    synthesis::pulse(width_seconds, rate_hz, rate.hz()).ok_or(VoiceError::PulseWidth {
-        parameter: width_parameter,
-        width_seconds,
-        rate_hz,
-        sample_rate_hz: rate.hz(),
-    })
+    crate::validity::check_value(width_parameter, width_seconds)
+        .ok()
+        .and_then(|()| synthesis::pulse(width_seconds, rate_hz, rate.hz()))
+        .ok_or(VoiceError::PulseWidth {
+            parameter: width_parameter,
+            width_seconds,
+            rate_hz,
+            sample_rate_hz: rate.hz(),
+        })
 }
 
 /// Why a sound cannot be rendered at a sample rate.

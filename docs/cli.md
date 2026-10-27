@@ -60,7 +60,7 @@ Search normalizes Unicode/case and requires every term. Bare numeric `20` matche
 | `--study` | DOI or local source key (`key:NAME` is explicit) |
 | `--role` | test, comparison, mixed, unspecified |
 | `--population` | human, mouse, other_animal, mixed, not_applicable, unspecified |
-| `--analysis` | complete, partial, invalid nominal coverage |
+| `--analysis` | complete, invalid nominal coverage |
 | `--created-from/--created-before` | Inclusive/exclusive explicit-offset instants |
 | `--modified-from/--modified-before` | Inclusive/exclusive declared edit instants |
 | `--added-from/--added-before` | Inclusive/exclusive local membership instants |

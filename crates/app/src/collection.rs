@@ -1,5 +1,5 @@
 //! Shared persistent/temporary collection summaries; no target compilation or I/O.
-use crate::core::{DocumentUuid, Timestamp, nominal};
+use crate::core::{DocumentUuid, Timestamp, rhythm};
 use crate::recipe::RecipeSnapshot;
 use crate::{
     library::{LibraryKey, VersionToken},
@@ -58,7 +58,7 @@ pub struct EntrySummary {
     /// Expected token for existing managed mutations.
     pub version_token: Option<VersionToken>,
     /// Cached pure nominal classification, with no device/export rate dependency.
-    pub nominal: nominal::Analysis,
+    pub nominal: rhythm::Analysis,
     /// Correlated typed evidence facets.
     pub evidence: Vec<EvidenceFacet>,
     /// Requested duration; finite but not necessarily renderable at any given rate.
@@ -281,7 +281,7 @@ pub struct CatalogQuery {
     /// Population alternatives correlated to study/role on the same record.
     pub populations: Vec<Population>,
     /// Optional nominal coverage restriction.
-    pub analysis: Option<nominal::Completeness>,
+    pub analysis: Option<rhythm::Completeness>,
     /// Declared creation filter.
     pub created: DateRange,
     /// Declared edit filter.
@@ -344,9 +344,9 @@ impl QueryResult<'_> {
 #[derive(Debug, Clone, Serialize)]
 pub struct FacetCounts {
     /// Five prominent reference-band alternatives.
-    pub bands: Vec<(nominal::Band, usize)>,
+    pub bands: Vec<(rhythm::Band, usize)>,
     /// Structural method alternatives.
-    pub methods: Vec<(nominal::Method, usize)>,
+    pub methods: Vec<(rhythm::Method, usize)>,
 }
 impl CatalogQuery {
     /// Clear restrictions while retaining collection, sort, direction and grouping.
@@ -510,7 +510,7 @@ impl CatalogQuery {
                 .collect::<std::collections::BTreeSet<_>>()
                 .len()
         };
-        let bands = nominal::Band::ALL
+        let bands = rhythm::Band::ALL
             .into_iter()
             .map(|band| {
                 let mut q = self.clone();
@@ -519,7 +519,7 @@ impl CatalogQuery {
                 (band, count(&q))
             })
             .collect();
-        let methods = nominal::Method::ALL
+        let methods = rhythm::Method::ALL
             .into_iter()
             .map(|method| {
                 let mut q = self.clone();
@@ -548,7 +548,7 @@ impl CatalogQuery {
                     if entry.nominal.multiple() {
                         values.push(("multiple-rhythms".into(), "Multiple rhythms".into()));
                     }
-                    if entry.nominal.completeness != nominal::Completeness::Complete
+                    if entry.nominal.completeness != rhythm::Completeness::Complete
                         || !entry.nominal.diagnostics.is_empty()
                     {
                         values.push(("needs-review".into(), "Needs review".into()));

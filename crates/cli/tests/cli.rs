@@ -203,15 +203,21 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
 }
 
 #[test]
-fn public_cli_renders_shared_rhythms_and_rejects_pair_neighbors() {
+fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
+    use auditorylab::core::{Carrier, Component, ComponentForm, ComponentId, Ears, Pair, Voice};
     let d = dir();
     let file = d.path().join("meaning.toml");
-    use auditorylab::core::{Carrier, Component, ComponentForm, ComponentId, Ears, Voice};
     let tone = |frequency_hz, ears, peak_dbfs| Voice {
         ears,
         peak_dbfs,
         carrier: Carrier::Tone { frequency_hz },
         modulation: None,
+    };
+    let forms = |voices: Vec<Voice>| {
+        voices
+            .into_iter()
+            .map(ComponentForm::Voice)
+            .collect::<Vec<_>>()
     };
     let click = Voice {
         ears: Ears::Both,
@@ -222,55 +228,85 @@ fn public_cli_renders_shared_rhythms_and_rejects_pair_neighbors() {
         },
         modulation: None,
     };
-    for (voices, needle, rejected) in [
+    let pair = Pair {
+        first_hz: 380.0,
+        offset_hz: 40.0,
+        first_peak_dbfs: -40.0,
+        second_peak_dbfs: -41.0,
+    };
+    for (components, needle, rejected) in [
         (
-            vec![click, tone(440.0, Ears::Both, -40.0)],
+            forms(vec![click, tone(440.0, Ears::Both, -40.0)]),
             "40 Hz clicks",
             "400 Hz",
         ),
         (
-            vec![
+            forms(vec![
                 tone(380.0, Ears::Left, -40.0),
                 tone(420.0, Ears::Right, -40.0),
-            ],
+            ]),
+            "380 Hz steady tone",
+            "interaural difference",
+        ),
+        (
+            forms(vec![
+                tone(380.0, Ears::Both, -40.0),
+                tone(420.0, Ears::Both, -40.0),
+            ]),
+            "380 Hz steady tone",
+            "monaural",
+        ),
+        (
+            forms(vec![
+                tone(380.0, Ears::Both, -40.0),
+                tone(420.0, Ears::Both, -41.0),
+            ]),
+            "380 Hz steady tone",
+            "monaural",
+        ),
+        (
+            vec![ComponentForm::BinauralPair(pair)],
             "40 Hz interaural difference",
             "monaural",
         ),
         (
-            vec![
-                tone(380.0, Ears::Both, -40.0),
-                tone(420.0, Ears::Both, -40.0),
-            ],
-            "40 Hz monaural",
-            "interaural",
-        ),
-        (
-            vec![
-                tone(380.0, Ears::Both, -40.0),
-                tone(420.0, Ears::Both, -41.0),
-            ],
+            vec![ComponentForm::MonauralPair {
+                pair,
+                ears: Ears::Both,
+            }],
             "40 Hz monaural",
             "interaural",
         ),
     ] {
         let mut recipe = common::silent(1.0, 0.0).into_builder();
-        recipe.sound.components = voices
+        recipe.sound.components = components
             .into_iter()
             .enumerate()
-            .map(|(index, voice)| Component {
+            .map(|(index, form)| Component {
                 id: ComponentId::numbered(index).unwrap(),
-                form: ComponentForm::Voice(voice),
+                form,
             })
             .collect();
         fs::write(&file, recipe.build().unwrap().to_toml().unwrap()).unwrap();
         for command in ["describe", "inspect"] {
             let out = cli(&[command, "--file", file.to_str().unwrap()]);
-            assert!(out.status.success(), "{:?}", out);
+            assert!(out.status.success(), "{out:?}");
             let text = String::from_utf8(out.stdout).unwrap();
             assert!(text.contains(needle) && !text.contains(rejected), "{text}");
         }
     }
 }
+
+#[test]
+fn public_analysis_grammar_rejects_partial_and_reports_classifier_revision_two() {
+    let rejected = cli(&["list", "--collection", "builtin", "--analysis", "partial"]);
+    assert_eq!(rejected.status.code(), Some(2));
+    let report = cli(&["list", "--collection", "builtin", "--format", "json"]);
+    assert!(report.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&report.stdout).unwrap();
+    assert_eq!(value["classifier_revision"], 2);
+}
+
 #[test]
 fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realized_widths() {
     let dir = dir();

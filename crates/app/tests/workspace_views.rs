@@ -9,9 +9,8 @@ use auditorylab::core::ModulationKind;
 use auditorylab::core::ParameterId;
 use auditorylab::core::SampleRate;
 use auditorylab::core::Voice;
-use auditorylab::core::interpretation::Structure;
-use auditorylab::core::interpretation::ToneRelationship;
-use auditorylab::core::nominal::Method;
+use auditorylab::core::rhythm::Method;
+use auditorylab::core::rhythm::Structure;
 use auditorylab::presentation::{AudioDetails, AudioSummary, ParameterText};
 use auditorylab::vocabulary::NumberStyle;
 
@@ -41,7 +40,7 @@ fn summary(components: &[Voice]) -> Structure {
             form: auditorylab::core::ComponentForm::Voice(*c),
         })
         .collect();
-    Structure::of_target(
+    auditorylab::core::rhythm::realized(
         &auditorylab::core::Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
@@ -62,7 +61,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     };
     let s = summary(&[click, tone(440.0, Ears::Both)]);
     assert_eq!(s.rhythms.len(), 1);
-    assert_eq!(s.rhythms[0].kind, Method::Clicks);
+    assert_eq!(s.rhythms[0].method, Method::Clicks);
     let text = s.summary();
     assert!(
         text.contains("40 Hz clicks")
@@ -72,23 +71,53 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     );
     let left = tone(380.0, Ears::Left);
     let right = tone(420.0, Ears::Right);
-    assert!(matches!(
-        summary(&[left, right]).relationship,
-        Some(ToneRelationship::Interaural { .. })
-    ));
     let a = tone(380.0, Ears::Both);
     let b = tone(420.0, Ears::Both);
-    assert!(matches!(
-        summary(&[a, b]).relationship,
-        Some(ToneRelationship::Monaural { .. })
-    ));
-    assert!(
-        summary(&[a, tone(380.0, Ears::Both)])
-            .summary()
-            .contains("Unison")
-    );
-    for bad in [vec![a, right], vec![a, b, click]] {
-        assert!(summary(&bad).relationship.is_none());
+    for raw in [
+        vec![left, right],
+        vec![a, b],
+        vec![a, tone(380.0, Ears::Both)],
+        vec![a, right],
+        vec![a, b, click],
+    ] {
+        let structure = summary(&raw);
+        assert!(structure.pairs.is_empty());
+        assert!(!structure.summary().contains("interaural difference"));
+        assert!(!structure.summary().contains("monaural beat"));
+        assert!(!structure.summary().contains("Unison"));
+    }
+    for binaural in [true, false] {
+        let pair = auditorylab::core::Pair {
+            first_hz: 380.0,
+            offset_hz: 40.0,
+            first_peak_dbfs: -40.0,
+            second_peak_dbfs: -40.0,
+        };
+        let form = if binaural {
+            auditorylab::core::ComponentForm::BinauralPair(pair)
+        } else {
+            auditorylab::core::ComponentForm::MonauralPair {
+                pair,
+                ears: Ears::Both,
+            }
+        };
+        let target = auditorylab::core::Sound {
+            duration_seconds: 1.0,
+            fade_seconds: 0.0,
+            components: vec![auditorylab::core::Component {
+                id: ComponentId::new(1).unwrap(),
+                form,
+            }],
+        }
+        .target(SampleRate::DEFAULT)
+        .unwrap();
+        let structure = auditorylab::core::rhythm::realized(&target);
+        assert_eq!(structure.pairs.len(), 1);
+        assert!(structure.summary().contains(if binaural {
+            "40 Hz interaural difference"
+        } else {
+            "40 Hz monaural beat"
+        }));
     }
     let gate = Voice {
         modulation: Some(Modulation::Gate {
@@ -109,7 +138,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     };
     let am = summary(&[active]);
     assert_eq!(am.rhythms.len(), 1);
-    assert_eq!(am.rhythms[0].kind, Method::Am);
+    assert_eq!(am.rhythms[0].method, Method::Am);
     assert!(am.summary().contains("39.0625") && am.summary().contains("50%"));
     let inactive = Voice {
         modulation: Some(Modulation::Am {
@@ -438,7 +467,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
 }
 
 #[test]
-fn two_tone_timing_includes_monaural_and_inactive_am_without_inventing_an_envelope() {
+fn raw_tone_timing_uses_only_explicit_active_modulation() {
     for (ears, interaural) in [(Ears::Both, false), (Ears::Left, true)] {
         let a = tone(200.0, ears);
         let mut b = tone(202.0, if interaural { Ears::Right } else { ears });
@@ -448,15 +477,15 @@ fn two_tone_timing_includes_monaural_and_inactive_am_without_inventing_an_envelo
             depth: 0.0,
         });
         let s = summary(&[a, b]);
-        // Generated phase steps can shift the realized difference slightly.
-        assert!((s.slowest_rate().unwrap() - 2.0).abs() < 1e-10);
+        assert_eq!(s.slowest_rate(), None);
         assert!(s.rhythms.is_empty());
-        assert_eq!(s.interaural().is_some(), interaural);
+        assert!(s.interaural().is_none());
         b.modulation = Some(Modulation::Am {
             rate_hz: 40.0,
             depth: 0.001,
         });
-        assert!(summary(&[a, b]).relationship.is_none());
+        assert!(summary(&[a, b]).pairs.is_empty());
+        assert!((summary(&[a, b]).slowest_rate().unwrap() - 40.0).abs() < 1e-10);
         assert_eq!(summary(&[a, a]).slowest_rate(), None);
     }
 }

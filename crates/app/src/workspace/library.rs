@@ -260,7 +260,7 @@ impl LibraryState {
             if e.nominal.multiple() {
                 memberships.push("Multiple rhythms".into());
             }
-            if e.nominal.completeness != crate::core::nominal::Completeness::Complete {
+            if e.nominal.completeness != crate::core::rhythm::Completeness::Complete {
                 memberships.push("Needs review".into());
             }
             let bands = memberships.join(" · ");
@@ -606,7 +606,7 @@ impl Workspace {
     /// Disjunctive unique counts from the shared query, with reference intervals.
     #[must_use]
     pub fn library_facets(&self) -> (Vec<LibraryFacetView>, Vec<String>) {
-        use crate::core::nominal::{Band, Method};
+        use crate::core::rhythm::{Band, Method};
         use crate::query::RhythmState;
         let facet = |query: &CatalogQuery, label: String, detail: &str| {
             let count = query.count(&self.library.entries).unwrap_or(0);

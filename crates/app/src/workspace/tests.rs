@@ -613,7 +613,7 @@ fn nominal_listing_a_thousand_rows_does_not_compile_every_sound() {
         .collect::<Vec<_>>();
     let mut ws = TestWorkspace::new(snapshots.clone(), Capabilities::no_device_playback()).unwrap();
     ws.set_rhythm_query(crate::query::RhythmQuery {
-        bands: vec![crate::core::nominal::Band::Delta],
+        bands: vec![crate::core::rhythm::Band::Delta],
         ..Default::default()
     });
     assert_eq!(ws.library_view().rows.len(), 1000);

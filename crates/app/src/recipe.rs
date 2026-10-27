@@ -75,7 +75,7 @@ pub struct RecipeSnapshot {
     recipe: Arc<Recipe>,
     about: Arc<Option<About>>,
     realizations: Arc<std::sync::Mutex<Realizations>>,
-    nominal: Arc<auditorylab_core::nominal::Analysis>,
+    nominal: Arc<auditorylab_core::rhythm::Analysis>,
 }
 
 /// Two rates per immutable snapshot cover inspection/export and device use.
@@ -94,7 +94,7 @@ impl RecipeSnapshot {
     /// Capture content under a new identity.
     #[must_use]
     pub fn new(origin: Origin, recipe: Recipe) -> Self {
-        let nominal = Arc::new(auditorylab_core::nominal::analyze(
+        let nominal = Arc::new(auditorylab_core::rhythm::nominal(
             &recipe.sound().components,
         ));
         let about = Arc::new(recipe.display_about());
@@ -138,7 +138,7 @@ impl RecipeSnapshot {
 
     /// Cached sample-rate-independent nominal classification of this snapshot.
     #[must_use]
-    pub fn nominal(&self) -> &auditorylab_core::nominal::Analysis {
+    pub fn nominal(&self) -> &auditorylab_core::rhythm::Analysis {
         &self.nominal
     }
 

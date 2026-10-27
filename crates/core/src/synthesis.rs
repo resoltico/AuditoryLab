@@ -22,7 +22,7 @@ fn parts(value: f64) -> (u64, i32) {
 }
 /// Exactly ceil(hz × 2^64 / fs), for finite 0 < hz < fs/2.
 pub(crate) fn step(hz: f64, fs: u32) -> Option<u64> {
-    if !(hz > 0.0 && hz < f64::from(fs) / 2.0) {
+    if !(crate::validity::positive(hz) && hz < f64::from(fs) / 2.0) {
         return None;
     }
     let (mantissa, exponent) = parts(hz);

@@ -4,7 +4,7 @@ use crate::{
         CatalogQuery, Collection, Direction, EntrySummary, EvidenceFacet, QueryResult, ResultGroup,
         SortBy,
     },
-    core::{ComponentFacts, DocumentUuid, SampleRate, Timestamp, VoiceId, nominal},
+    core::{ComponentFacts, DocumentUuid, SampleRate, Timestamp, VoiceId, rhythm},
     error::Error,
     library::{
         Initialization, Inventory, LibraryDiagnostic, LibraryKey, LibraryRoot, MutationStatus,
@@ -29,39 +29,25 @@ macro_rules! report_struct {
     }
 }
 report_struct!(DescriptorReport {
-    owner: u32, related_owner: Option<u32>, method: nominal::Method,
-    hz: f64, band: Option<nominal::Band>, derivation: Derivation,
+    owner: VoiceId, method: rhythm::Method,
+    hz: f64, band: Option<rhythm::Band>,
 });
-/// Attribution of a nominal rate.
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Derivation {
-    /// An authored schedule or explicit pair.
-    Explicit,
-    /// An unambiguous whole-document two-tone relationship.
-    NarrowInference,
-}
 report_struct!(NominalReport {
-    descriptors: Vec<DescriptorReport>, bands: Vec<nominal::Band>, methods: Vec<nominal::Method>,
-    completeness: nominal::Completeness, multiple_rhythms: bool, outside_bands: bool,
+    descriptors: Vec<DescriptorReport>, bands: Vec<rhythm::Band>, methods: Vec<rhythm::Method>,
+    completeness: rhythm::Completeness, multiple_rhythms: bool, outside_bands: bool,
     no_rhythm: bool, diagnostics: Vec<String>,
 });
-impl From<&nominal::Analysis> for NominalReport {
-    fn from(value: &nominal::Analysis) -> Self {
+impl From<&rhythm::Analysis> for NominalReport {
+    fn from(value: &rhythm::Analysis) -> Self {
         Self {
             descriptors: value
                 .rhythms
                 .iter()
                 .map(|r| DescriptorReport {
-                    owner: r.owner.get(),
-                    related_owner: r.related.map(|id| id.get()),
+                    owner: r.owner,
                     method: r.method,
                     hz: r.hz,
                     band: r.band,
-                    derivation: match r.derivation {
-                        nominal::Derivation::Explicit => Derivation::Explicit,
-                        nominal::Derivation::NarrowInference => Derivation::NarrowInference,
-                    },
                 })
                 .collect(),
             bands: value.bands.clone(),
@@ -70,7 +56,11 @@ impl From<&nominal::Analysis> for NominalReport {
             multiple_rhythms: value.multiple(),
             outside_bands: value.outside_bands(),
             no_rhythm: value.no_rhythm(),
-            diagnostics: value.diagnostics.clone(),
+            diagnostics: value
+                .diagnostics
+                .iter()
+                .map(crate::presentation::rhythm_diagnostic)
+                .collect(),
         }
     }
 }
@@ -218,7 +208,7 @@ impl Report {
             output_schema_version: OUTPUT_SCHEMA_VERSION,
             operation: operation.into(),
             complete,
-            convention: nominal::CONVENTION,
+            convention: rhythm::CONVENTION,
             query: None,
             unique_count: 0,
             entries: Vec::new(),
@@ -257,7 +247,7 @@ impl Report {
         );
         report.query = Some(query.clone());
         report.effective_sort = Some(query.effective_sort());
-        report.classifier_revision = Some(nominal::CLASSIFIER_REVISION);
+        report.classifier_revision = Some(rhythm::CLASSIFIER_REVISION);
         report.groups = result.groups.clone();
         report.diagnostics = diagnostics
             .iter()

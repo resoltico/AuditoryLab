@@ -747,8 +747,8 @@ pub struct EditorSession {
     draft_revision: u64,
     input_revision: u64,
     saved: Arc<Recipe>,
-    saved_nominal: Option<crate::core::nominal::Analysis>,
-    nominal: Option<(u64, Arc<crate::core::nominal::Analysis>)>,
+    saved_nominal: Option<crate::core::rhythm::Analysis>,
+    nominal: Option<(u64, Arc<crate::core::rhythm::Analysis>)>,
     analyses: Vec<(AnalysisKey, Arc<Analysis>)>,
     candidate: Option<(u64, u64, Arc<Candidate>)>,
     save_check: Option<(u64, u64, Result<(), SaveRefusal>)>,
@@ -796,13 +796,13 @@ impl EditorSession {
     }
 
     /// Classification of committed values, cached independently of staged text and rate.
-    pub fn nominal(&mut self) -> Arc<crate::core::nominal::Analysis> {
+    pub fn nominal(&mut self) -> Arc<crate::core::rhythm::Analysis> {
         if let Some((revision, analysis)) = &self.nominal
             && *revision == self.draft_revision
         {
             return analysis.clone();
         }
-        let analysis = Arc::new(crate::core::nominal::analyze(self.draft.components()));
+        let analysis = Arc::new(crate::core::rhythm::nominal(self.draft.components()));
         self.nominal = Some((self.draft_revision, analysis.clone()));
         analysis
     }
@@ -810,7 +810,7 @@ impl EditorSession {
     /// Nominal classification of the exact last confirmed save candidate.
     /// Later committed edits and staged text cannot change this baseline.
     #[must_use]
-    pub const fn saved_nominal(&self) -> Option<&crate::core::nominal::Analysis> {
+    pub const fn saved_nominal(&self) -> Option<&crate::core::rhythm::Analysis> {
         self.saved_nominal.as_ref()
     }
 
@@ -1284,7 +1284,7 @@ impl EditorSession {
         if document != self.document || content.document().id != self.draft.content.document.id {
             return false;
         }
-        self.saved_nominal = Some(crate::core::nominal::analyze(&content.sound().components));
+        self.saved_nominal = Some(crate::core::rhythm::nominal(&content.sound().components));
         if &self.draft.content.document != content.document() {
             self.draft.content.document = content.document().clone();
             self.candidate = None;

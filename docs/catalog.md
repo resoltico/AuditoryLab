@@ -4,7 +4,7 @@ This reference describes the source parameters and adaptations of the built-in r
 
 ## Nominal rhythm references
 
-The CLI and desktop derive reference-band memberships from the same pure structural classifier. These labels describe authored repetition, gating, amplitude modulation and narrowly attributable two-tone differences. They do not measure EEG, predict a mental state or certify a percept. Carrier frequency and endpoint fades are not classification inputs.
+The CLI and desktop derive reference-band memberships from the same pure structural classifier. These labels describe authored repetition, gating, amplitude modulation and explicit signed-offset pairs. They do not measure EEG, predict a mental state or certify a percept. Carrier frequency and endpoint fades are not classification inputs.
 
 | Reference | Nominal frequency |
 |---|---|
@@ -16,11 +16,11 @@ The CLI and desktop derive reference-band memberships from the same pure structu
 
 The convention identifier is `ifcn-2017-corrected-2019`: [Kane et al. 2017, glossary](https://doi.org/10.1016/j.cnp.2017.07.002), with the [2019 beta correction](https://pure.au.dk/portal/en/publications/corrigendum-to-a-revised-glossary-of-terms-most-commonly-used-by-/). The glossary is also available as [publisher-deposited Europe PMC XML](https://www.ebi.ac.uk/europepmc/webservices/rest/PMC6123891/fullTextXML). Study-specific conventions remain in research notes.
 
-One sound can belong to several bands. Two independent processes in one band still count as multiple rhythms. Positive rates outside these intervals remain **Other rates**. **No rhythmic rate** requires complete analysis; ambiguous raw-tone mixtures appear under **Needs review**. A known modulation rate keeps its nominal band even if the carrier cannot play at a particular sample rate. Full target validation remains necessary before playback/export.
+One sound can belong to several bands. Two independent processes in one band still count as multiple rhythms. Positive rates outside these intervals remain **Other rates**. **No rhythmic rate** requires complete analysis; invalid intrinsic settings appear under **Needs review**. A known modulation rate keeps its nominal band even if the carrier cannot play at a particular sample rate. Full target validation remains necessary before playback/export.
 
-Am AM contributes a rhythm only at positive depth. Exactly two effectively unmodulated raw tones permit narrow inference when their routes are opposite exclusive ears or identical; unequal levels do not erase a same-route difference. Adding another component makes raw-pair attribution ambiguous. No all-pairs inference is attempted. Finite very quiet levels are not removed by an audibility threshold.
+AM contributes a rhythm only at positive depth. Raw tones remain independent steady tones; their carrier differences do not establish a binaural or monaural pair. Finite very quiet levels are retained in nominal analysis without an audibility threshold.
 
-Explicit `binaural_pair` and `monaural_pair` nodes contribute the absolute signed offset as their nominal rhythm, independently of other components. A zero offset contributes no rhythm. Their component identity attributes the relationship without raw-tone inference. The same classifier serves Built-in, User and temporary recipes.
+Explicit `binaural_pair` and `monaural_pair` components contribute the absolute signed offset as their nominal rhythm, independently of other components. A zero offset contributes no rhythm. Their component identity attributes the relationship without raw-tone inference. The same classifier serves Built-in, User and temporary recipes.
 
 Band and method filters are correlated within one descriptor. A method cannot borrow a band's membership from an unrelated process. The classifier returns exact authored rates independently of the selected device/export rate; presentation retains sufficient decimal precision at boundaries.
 

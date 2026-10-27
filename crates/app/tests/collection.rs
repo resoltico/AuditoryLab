@@ -2,7 +2,7 @@
 use auditorylab::core::{
     Carrier, Component, ComponentForm, ComponentId, DocumentIdentity, Ears, Pair, Recipe, Sound,
     Timestamp, Voice,
-    nominal::{Band, Method},
+    rhythm::{Band, Method},
 };
 use auditorylab::recipe::{Origin, RecipeSnapshot};
 use auditorylab::{

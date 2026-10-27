@@ -80,7 +80,7 @@ impl SlintAdapter {
             {
                 let query = w.catalog_query();
                 use auditorylab::collection::{Scope, SortBy};
-                use auditorylab::core::nominal::{Band, Method};
+                use auditorylab::core::rhythm::{Band, Method};
                 use auditorylab::query::RhythmState;
                 let band = query
                     .rhythm

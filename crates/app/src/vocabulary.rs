@@ -1,5 +1,5 @@
 //! Application vocabulary and stable discovery terms.
-use crate::core::nominal::Method;
+use crate::core::rhythm::Method;
 use crate::presentation::DisplayText;
 
 /// Structural search terms, independent of labels and explanatory prose.
@@ -429,7 +429,7 @@ impl CommandProblem {
                 "temporary --file inputs cannot be combined with a restrictive --collection"
             }
             Self::TemporaryIds => "--format ids cannot emit temporary inputs; omit --file",
-            Self::AnalysisCoverage => "expected complete, partial or invalid",
+            Self::AnalysisCoverage => "expected complete or invalid",
             Self::TrashedPlayback => {
                 "trashed recipes can be inspected/exported; restore before playback"
             }
@@ -576,11 +576,10 @@ impl Term for crate::core::Measure {
         }
     }
 }
-impl Term for crate::core::nominal::Completeness {
+impl Term for crate::core::rhythm::Completeness {
     fn label(&self) -> &'static str {
         match self {
             Self::Complete => Status::Complete.label(),
-            Self::Partial => Status::Partial.label(),
             Self::Invalid => Status::Invalid.label(),
         }
     }

@@ -491,7 +491,7 @@ fn a_focused_field_survives_updates_to_other_rows() {
     }
     h.settle();
     let nested_before = ui.get_components().row_data(1).unwrap().parameters;
-    let input = h.field("Clicks rhythm · component 2: Clicks rate (Hz)");
+    let input = h.field("Click rhythm · component 2: Clicks rate (Hz)");
     let inner = WindowInner::from_pub(ui.window());
     inner.set_focus_item(&input, true, FocusReason::Programmatic);
     for _ in 0..4 {
@@ -533,7 +533,7 @@ fn a_focused_field_survives_updates_to_other_rows() {
         "the nested model object is kept"
     );
     assert_eq!(
-        field(ui, "Clicks rhythm · component 1: Clicks rate (Hz)"),
+        field(ui, "Click rhythm · component 1: Clicks rate (Hz)"),
         input,
         "the moved row relabels the same widget"
     );
@@ -2170,7 +2170,7 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
     let committed = ui.get_library_count();
     assert!(
         committed.contains("Study: missing-study")
-            && committed.contains("Analysis: Partial")
+            && committed.contains("Analysis: Invalid")
             && committed.contains("Created from inclusive:")
     );
     assert!(
@@ -2603,7 +2603,7 @@ fn changing_display_vocabulary_preserves_typed_library_search() {
 #[test]
 fn filter_controls_map_to_independent_typed_queries() {
     use auditorylab::collection::{CatalogQuery, DateRange, Direction, GroupBy, Scope, SortBy};
-    use auditorylab::core::nominal::{Band, Method};
+    use auditorylab::core::rhythm::{Band, Method};
     use auditorylab::query::RhythmQuery;
     let temp = tempfile::tempdir().unwrap();
     let store = auditorylab::library::LibraryStore::new(
@@ -2701,7 +2701,7 @@ fn filter_controls_map_to_independent_typed_queries() {
         studies: vec!["key:source".into()],
         populations: vec![auditorylab::core::Population::Mouse],
         roles: vec![auditorylab::core::ConditionRole::Comparison],
-        analysis: Some(auditorylab::core::nominal::Completeness::Partial),
+        analysis: Some(auditorylab::core::rhythm::Completeness::Invalid),
         direction: Some(Direction::Desc),
         group_by: GroupBy::Study,
         created: auditorylab::calendar::local_range(
@@ -2937,7 +2937,7 @@ fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
 
 #[test]
 fn wide_library_navigation_uses_real_shared_filters_and_structured_cards() {
-    use auditorylab::core::nominal::Band;
+    use auditorylab::core::rhythm::Band;
     use slint::private_unstable_api::re_exports::AccessibilityAction;
     let h = Harness::new();
     let ui = h.ui();
@@ -3268,7 +3268,7 @@ fn library_ux_component_menu_adds_every_kind_and_retains_its_document() {
     let ui = h.ui();
     for (index, label) in [
         "Add steady tone",
-        "Add clicks rhythm",
+        "Add click rhythm",
         "Add binaural pair",
         "Add monaural pair",
     ]

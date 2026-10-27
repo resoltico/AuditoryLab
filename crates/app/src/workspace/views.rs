@@ -16,10 +16,7 @@ use crate::waveform_view::{
     monitor_warning, output_monitor_state, output_underrun_warning, phase_text,
 };
 use crate::{controls, presentation};
-use auditorylab_core::{
-    CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, SampleRate,
-    interpretation::Structure,
-};
+use auditorylab_core::{CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, SampleRate};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -565,7 +562,7 @@ impl Workspace {
         }
         let generated_brief = committed_analysis.target().map_or_else(
             || "No valid sound model; correct the fields".into(),
-            |t| Structure::of_target(t).summary(),
+            |t| crate::core::rhythm::realized(t).summary(),
         );
         let brief = format!(
             "{} classification · {}\nSaved version · {}\n{}",
@@ -692,7 +689,7 @@ impl Workspace {
             classification: format!(
                 "{}\nReference: {}. This describes the sound, not measured brain activity.",
                 snapshot.nominal().summary(),
-                crate::core::nominal::CONVENTION
+                crate::core::rhythm::CONVENTION
             ),
             ownership,
             structure: snapshot
@@ -978,7 +975,7 @@ impl Workspace {
                     } else {
                         "Last accepted target"
                     },
-                    Structure::of_target(&reader.accepted().1).summary()
+                    crate::core::rhythm::realized(&reader.accepted().1).summary()
                 )
             } else {
                 status.observation.as_ref().map_or_else(

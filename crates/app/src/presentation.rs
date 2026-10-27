@@ -8,9 +8,7 @@ use crate::recipe::{RecipeSnapshot, Rendition};
 use crate::vocabulary::{NumberStyle, Status, Term};
 use auditorylab_core::{
     CarrierFacts, ComponentFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate,
-    PulseFacts, SampleRate, Sound, SoundError, VoiceObservation,
-    interpretation::{Structure, ToneRelationship},
-    nominal::Method,
+    PulseFacts, SampleRate, Sound, SoundError, VoiceObservation, rhythm::Method, rhythm::Structure,
 };
 pub use commands::DesktopDiagnostics;
 
@@ -313,39 +311,38 @@ fn generated_details(observation: &Observation) -> String {
 /// independent processes and no perceptual effect is claimed.
 #[must_use]
 fn structure_description(structure: &Structure) -> String {
-    let relation = match structure.relationship {
-        Some(ToneRelationship::Interaural { left, right }) => Some(if left == right {
-            format!(
+    let relation = structure
+        .pairs
+        .first()
+        .filter(|_| structure.voices.len() == 2)
+        .map(|pair| match pair.kind {
+            auditorylab_core::PairKind::Binaural if pair.first == pair.second => format!(
                 "Unison · Left/right {} Hz steady tones",
-                compact_number(left)
-            )
-        } else {
-            format!(
+                compact_number(pair.first)
+            ),
+            auditorylab_core::PairKind::Binaural => format!(
                 "{} Hz interaural difference · Left {} / Right {} Hz steady tones",
-                compact_number((left - right).abs()),
-                compact_number(left),
-                compact_number(right)
-            )
-        }),
-        Some(ToneRelationship::Monaural { first, second }) => Some(if first == second {
-            format!("Unison · {} Hz steady tones", compact_number(first))
-        } else {
-            format!(
+                compact_number((pair.first - pair.second).abs()),
+                compact_number(pair.first),
+                compact_number(pair.second)
+            ),
+            auditorylab_core::PairKind::Monaural if pair.first == pair.second => {
+                format!("Unison · {} Hz steady tones", compact_number(pair.first))
+            }
+            auditorylab_core::PairKind::Monaural => format!(
                 "{} Hz monaural beat · {} + {} Hz steady tones",
-                compact_number((first - second).abs()),
-                compact_number(first),
-                compact_number(second)
-            )
-        }),
-        None => None,
-    };
+                compact_number((pair.first - pair.second).abs()),
+                compact_number(pair.first),
+                compact_number(pair.second)
+            ),
+        });
     let mut parts = Vec::new();
     for r in &structure.rhythms {
         let detail = structure
             .voices
             .iter()
-            .find(|v| v.id == r.id && v.role == r.role)
-            .map(|v| match (r.kind, v.facts.carrier, v.facts.modulation) {
+            .find(|v| v.id == r.owner && v.role == r.role)
+            .map(|v| match (r.method, v.facts.carrier, v.facts.modulation) {
                 (Method::Am, _, Some(ModulationFacts::Am { depth, .. })) => {
                     format!(" · depth {}%", compact_number(depth * 100.0))
                 }
@@ -371,7 +368,7 @@ fn structure_description(structure: &Structure) -> String {
         parts.push(format!(
             "{role}{} Hz {}{detail}",
             compact_number(r.hz),
-            r.kind.label()
+            r.method.label()
         ));
     }
     for v in &structure.voices {
@@ -508,7 +505,7 @@ pub(crate) const EXPORT_CANCELLED: &str = "Export cancelled; no file was written
 
 /// Nominal reference memberships and exact attributable rates; no EEG claim.
 #[must_use]
-fn nominal_description(analysis: &crate::core::nominal::Analysis) -> String {
+fn nominal_description(analysis: &crate::core::rhythm::Analysis) -> String {
     let mut labels: Vec<String> = analysis.bands.iter().map(ToString::to_string).collect();
     if analysis.outside_bands() {
         labels.push(Status::OtherRates.label().into());
@@ -519,7 +516,7 @@ fn nominal_description(analysis: &crate::core::nominal::Analysis) -> String {
     if analysis.multiple() {
         labels.push(Status::MultipleRhythms.label().into());
     }
-    if analysis.completeness != crate::core::nominal::Completeness::Complete {
+    if analysis.completeness != crate::core::rhythm::Completeness::Complete {
         labels.push(Status::NeedsReview.label().into());
     }
     let rates = analysis
@@ -588,7 +585,7 @@ impl AudioSummary for Structure {
 }
 impl AudioSummary for Observation {
     fn summary(&self) -> String {
-        Structure::of_observation(self).summary()
+        crate::core::rhythm::realized(self).summary()
     }
 }
 impl AudioDetails for Observation {
@@ -608,7 +605,7 @@ impl AudioSummary for Option<&Observation> {
         )
     }
 }
-impl AudioSummary for crate::core::nominal::Analysis {
+impl AudioSummary for crate::core::rhythm::Analysis {
     fn summary(&self) -> String {
         nominal_description(self)
     }
@@ -676,7 +673,7 @@ impl Rendition {
     #[must_use]
     pub fn brief(&self) -> String {
         let sound = self;
-        structure_description(&Structure::of_target(sound.signal().target()))
+        structure_description(&crate::core::rhythm::realized(sound.signal().target()))
     }
     /// Facts of a realized sound at its own rate, every line at that rate.
     /// `detail` adds the model caption and requested-versus-realized values.
@@ -976,6 +973,30 @@ impl Notice {
         notices
     }
 }
+/// Render a typed intrinsic rhythm-analysis diagnostic.
+#[must_use]
+pub fn rhythm_diagnostic(issue: &auditorylab_core::rhythm::Issue) -> String {
+    use auditorylab_core::{ValueRule, rhythm::Issue};
+    match issue {
+        Issue::Structure(error) => error.to_string(),
+        Issue::Value { owner, issue } => {
+            let parameter = issue.parameter.descriptor();
+            format!(
+                "component {owner}: {} {} {} must be {}",
+                parameter.label,
+                compact_number(parameter.unit.to_display(issue.value)),
+                parameter.unit.symbol(),
+                match issue.rule {
+                    ValueRule::Finite => "finite",
+                    ValueRule::Positive => "finite and positive",
+                    ValueRule::Peak => "at most 0 dBFS",
+                    ValueRule::Depth => "between 0% and 100%",
+                }
+            )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1023,7 +1044,7 @@ mod tests {
                 .collect(),
         };
         let target = sound.target(SampleRate::DEFAULT).unwrap();
-        let text = structure_description(&Structure::of_target(&target));
+        let text = structure_description(&crate::core::rhythm::realized(&target));
         assert_eq!(sound.components.len(), 8);
         assert_eq!(target.len(), 16);
         assert!(text.starts_with("16 voices · "), "{text}");

@@ -62,8 +62,8 @@ fn pending_entry_survives_font_reflow_clipping_and_row_changes() {
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 1);
     let inner = WindowInner::from_pub(ui.window());
-    let rate_label = "Clicks rhythm · component 1: Clicks rate (Hz)";
-    let peak_label = "Clicks rhythm · component 1: Peak level (dBFS)";
+    let rate_label = "Click rhythm · component 1: Clicks rate (Hz)";
+    let peak_label = "Click rhythm · component 1: Peak level (dBFS)";
     for (label, id, committed, raw, height) in [
         (rate_label, ParameterId::ClickRate, 40.0, "405", 900.0),
         (peak_label, ParameterId::PeakLevel, -30.0, "-305", 700.0),

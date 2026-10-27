@@ -123,6 +123,15 @@ impl ComponentForm {
     pub const fn voices(self) -> usize {
         if matches!(self, Self::Voice(_)) { 1 } else { 2 }
     }
+    /// The explicit pair construction, when this is a pair.
+    #[must_use]
+    pub const fn pair_kind(self) -> Option<PairKind> {
+        match self {
+            Self::BinauralPair(_) => Some(PairKind::Binaural),
+            Self::MonauralPair { .. } => Some(PairKind::Monaural),
+            Self::Voice(_) => None,
+        }
+    }
     /// Explicit signed pair parameters, independent of the selected sample rate.
     #[must_use]
     pub const fn pair(self) -> Option<Pair> {
@@ -153,7 +162,9 @@ pub(crate) fn lower(component: &Component) -> Result<Vec<(VoiceId, Voice)>, Lowe
             // single check also detects overflow of otherwise finite inputs.
             let issue = if !second_hz.is_finite() {
                 Some(PairIssue::Nonfinite)
-            } else if pair.first_hz <= 0.0 || second_hz <= 0.0 {
+            } else if !crate::validity::positive(pair.first_hz)
+                || !crate::validity::positive(second_hz)
+            {
                 Some(PairIssue::Nonpositive)
             } else if pair.offset_hz != 0.0 && second_hz == pair.first_hz {
                 Some(PairIssue::UnrepresentablePairDifference)
@@ -445,12 +456,30 @@ impl Sound {
             (crate::ParameterId::Fade, self.fade_seconds),
         ]
         .into_iter()
-        .filter(|(_, v)| !v.is_finite())
+        .filter(|(p, v)| {
+            matches!(
+                crate::validity::check_value(*p, *v),
+                Err(crate::ValueIssue {
+                    rule: crate::ValueRule::Finite,
+                    ..
+                })
+            )
+        })
         .map(|(p, _)| (None, p))
         .chain(self.components.iter().enumerate().flat_map(|(i, c)| {
             crate::ParameterId::COMPONENT
                 .into_iter()
-                .filter(move |p| c.form.read(*p).is_some_and(|v| !v.is_finite()))
+                .filter(move |p| {
+                    c.form.read(*p).is_some_and(|v| {
+                        matches!(
+                            crate::validity::check_value(*p, v),
+                            Err(crate::ValueIssue {
+                                rule: crate::ValueRule::Finite,
+                                ..
+                            })
+                        )
+                    })
+                })
                 .map(move |p| (Some(i), p))
         }))
     }

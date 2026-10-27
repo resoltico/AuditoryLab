@@ -72,10 +72,10 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
         studies: vec!["10.1234/exact".into()],
         populations: vec![crate::core::Population::Human],
         roles: vec![crate::core::ConditionRole::Comparison],
-        analysis: Some(crate::core::nominal::Completeness::Partial),
+        analysis: Some(crate::core::rhythm::Completeness::Invalid),
         rhythm: crate::query::RhythmQuery {
-            bands: vec![crate::core::nominal::Band::Delta],
-            methods: vec![crate::core::nominal::Method::Binaural],
+            bands: vec![crate::core::rhythm::Band::Delta],
+            methods: vec![crate::core::rhythm::Method::Binaural],
             state: Some(crate::query::RhythmState::Multiple),
         },
         created: DateRange {
@@ -101,7 +101,7 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
         "10.1234/exact",
         "Population: Human",
         "Condition role: Comparison",
-        "Analysis: Partial",
+        "Analysis: Invalid",
         "Band: Delta",
         "Method: binaural",
         "Rhythm state: Multiple",

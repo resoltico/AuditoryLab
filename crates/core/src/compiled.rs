@@ -189,17 +189,17 @@ impl TargetCheck {
         let mut first = None;
         let mut results = Vec::new();
         for component in components {
-            let pair = component.form.pair().map(|pair| crate::PairFacts {
-                owner: component.id,
-                kind: if matches!(component.form, crate::ComponentForm::BinauralPair(_)) {
-                    crate::PairKind::Binaural
-                } else {
-                    crate::PairKind::Monaural
-                },
-                first_hz: pair.first_hz,
-                offset_hz: pair.offset_hz,
-                second_hz: pair.first_hz + pair.offset_hz,
-            });
+            let pair = component
+                .form
+                .pair()
+                .zip(component.form.pair_kind())
+                .map(|(pair, kind)| crate::PairFacts {
+                    owner: component.id,
+                    kind,
+                    first_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    second_hz: pair.first_hz + pair.offset_hz,
+                });
             let lanes = match crate::authored::lower(component) {
                 Ok(lanes) => lanes,
                 Err(error) => return refused(error),

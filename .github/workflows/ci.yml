@@ -249,6 +249,10 @@ jobs:
             shard: 0/1
           - source: facts
             shard: 0/1
+          - source: rhythm
+            shard: 0/1
+          - source: validity
+            shard: 0/1
           - source: voice
             shard: 0/1
           - source: finite
