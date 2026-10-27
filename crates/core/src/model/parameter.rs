@@ -250,11 +250,6 @@ pub enum ModulationKind {
     Gate,
 }
 
-impl ModulationKind {
-    /// The name of having no modulation of either kind.
-    pub const NONE_LABEL: &'static str = "None";
-}
-
 impl Modulation {
     /// The modulation's kind.
     #[must_use]

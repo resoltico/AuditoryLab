@@ -211,16 +211,14 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
             form,
         };
         assert_eq!(component(&c), expected);
-        let recipe = Recipe::silent(DocumentIdentity {
+        let mut candidate = Recipe::builder(DocumentIdentity {
             id: "00000000-0000-4000-8000-000000000001".parse().unwrap(),
             created_at: None,
             modified_at: None,
-        })
-        .with_sound(
-            Sound::new(finite(2.0), finite(0.1), vec![c])
-                .unwrap_or_else(|error| panic!("invalid sound fixture: {error}")),
-        )
-        .unwrap();
+        });
+        candidate.content.sound = Sound::new(finite(2.0), finite(0.1), vec![c])
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+        let recipe = candidate.build().unwrap();
         let snapshot = RecipeSnapshot::new(Origin::Stream("test".into()), recipe);
         assert!(snapshot.details_at(SampleRate::DEFAULT).contains(expected));
         if snapshot.at(SampleRate::DEFAULT).is_err() {
@@ -250,16 +248,16 @@ fn independent_copies_store_the_attribution_and_ancestor_notes_verbatim() {
             "Attributed copy; source findings concern the ancestor, not this sound. Ancestor notes: Parent notes.",
         ),
     ] {
-        let recipe = Recipe::silent(DocumentIdentity {
+        let mut candidate = Recipe::builder(DocumentIdentity {
             id: "00000000-0000-4000-8000-000000000001".parse().unwrap(),
             created_at: None,
             modified_at: None,
-        })
-        .with_description(Some(Description {
+        });
+        candidate.content.description = Some(Description {
             title: "Parent".into(),
             notes: notes.map(str::to_owned),
-        }))
-        .unwrap();
+        });
+        let recipe = candidate.build().unwrap();
         let snapshot = RecipeSnapshot::new(Origin::Stream("test".into()), recipe);
         let copy = Draft::from_snapshot(&snapshot).unwrap().recipe().unwrap();
         assert_eq!(copy.lineage().last().unwrap().note, expected);

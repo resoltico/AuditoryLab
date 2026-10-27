@@ -87,7 +87,7 @@ pub use provenance::{
     Population,
 };
 pub use rate::{SampleRate, SampleRateError};
-pub use recipe::{Recipe, RecipeBuilder, RecipeContent, RecipeError, UNTITLED_SOUND, copy_title};
+pub use recipe::{Recipe, RecipeBuilder, RecipeContent, RecipeError};
 pub use signal::Signal;
 pub use voice::{Carrier, Ear, Ears, SoundError, VoiceError};
 pub use waveform::Extent;

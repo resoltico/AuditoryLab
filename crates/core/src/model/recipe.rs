@@ -6,7 +6,6 @@ use crate::{
     EvidenceScope, Finite, Lineage, Sound, StructureError,
 };
 use alloc::{
-    format,
     string::{String, ToString},
     vec::Vec,
 };
@@ -127,85 +126,37 @@ impl Recipe {
     pub const fn document(&self) -> &DocumentIdentity {
         &self.document
     }
-    /// Replace document while enforcing the portable contract.
-    ///
-    /// # Errors
-    /// Propagates metadata or bibliography-reference validation errors.
-    pub fn with_document(self, value: DocumentIdentity) -> Result<Self, RecipeError> {
-        let mut builder = self.into_builder();
-        builder.document = value;
-        builder.build()
-    }
+
     /// The document's sound.
     #[must_use]
     pub const fn sound(&self) -> &Sound {
         &self.content.sound
     }
-    /// Replace sound while enforcing the portable contract.
-    ///
-    /// # Errors
-    /// Propagates metadata or bibliography-reference validation errors.
-    pub fn with_sound(self, value: Sound) -> Result<Self, RecipeError> {
-        let mut builder = self.into_builder();
-        builder.content.sound = value;
-        builder.build()
-    }
+
     /// The document's description.
     #[must_use]
     pub const fn description(&self) -> Option<&Description> {
         self.content.description.as_ref()
     }
-    /// Replace description while enforcing the portable contract.
-    ///
-    /// # Errors
-    /// Propagates metadata or bibliography-reference validation errors.
-    pub fn with_description(self, value: Option<Description>) -> Result<Self, RecipeError> {
-        let mut builder = self.into_builder();
-        builder.content.description = value;
-        builder.build()
-    }
+
     /// The document's sources.
     #[must_use]
     pub fn sources(&self) -> &[BibliographySource] {
         &self.content.sources
     }
-    /// Replace sources while enforcing the portable contract.
-    ///
-    /// # Errors
-    /// Propagates metadata or bibliography-reference validation errors.
-    pub fn with_sources(self, value: Vec<BibliographySource>) -> Result<Self, RecipeError> {
-        let mut builder = self.into_builder();
-        builder.content.sources = value;
-        builder.build()
-    }
+
     /// The document's evidence.
     #[must_use]
     pub fn evidence(&self) -> &[Evidence] {
         &self.content.evidence
     }
-    /// Replace evidence while enforcing the portable contract.
-    ///
-    /// # Errors
-    /// Propagates metadata or bibliography-reference validation errors.
-    pub fn with_evidence(self, value: Vec<Evidence>) -> Result<Self, RecipeError> {
-        let mut builder = self.into_builder();
-        builder.content.evidence = value;
-        builder.build()
-    }
+
     /// The document's lineage.
     #[must_use]
     pub fn lineage(&self) -> &[Lineage] {
         &self.content.lineage
     }
-    /// Replace lineage while enforcing the portable contract.
-    ///
-    /// # Errors
-    /// Propagates metadata or bibliography-reference validation errors.
-    pub fn with_lineage(self, value: Vec<Lineage>) -> Result<Self, RecipeError> {
-        let mut builder = self.into_builder();
-        builder.content.lineage = value;
-        builder.build()
-    }
+
     /// Version of the portable UTF-8 TOML recipe format.
     pub const SCHEMA_VERSION: u32 = 4;
     /// Maximum portable UTF-8 bytes, including metadata.
@@ -427,24 +378,6 @@ impl RecipeBuilder {
 #[cfg(test)]
 #[path = "recipe/tests.rs"]
 mod tests;
-
-/// Title used for an untitled authored sound.
-pub const UNTITLED_SOUND: &str = "Untitled sound";
-/// Default title of an independent editable copy.
-#[must_use]
-pub fn copy_title(title: &str) -> String {
-    format!("{title} (edited)")
-}
-impl Recipe {
-    /// Attribution content written into an independent copy.
-    #[must_use]
-    pub fn copy_note(&self) -> String {
-        self.description().and_then(|d| d.notes.as_deref()).filter(|s| !s.is_empty()).map_or_else(
-        || "Attributed copy; source findings concern the ancestor, not this sound.".into(),
-        |notes| format!("Attributed copy; source findings concern the ancestor, not this sound. Ancestor notes: {notes}"),
-    )
-    }
-}
 
 crate::diagnostic_codes! {
     pub(crate) const CODES;

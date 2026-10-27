@@ -748,9 +748,9 @@ impl LibraryStore {
                     .recipe()
                     .clone();
                 let notes = recipe.description().and_then(|d| d.notes.clone());
-                recipe
-                    .with_description(Some(crate::core::Description { title, notes }))
-                    .map_err(|e| Error::Recipe { error: e })?
+                let mut candidate = recipe.into_builder();
+                candidate.content.description = Some(crate::core::Description { title, notes });
+                candidate.build().map_err(|error| Error::Recipe { error })?
             }
             _ => unreachable!("lifecycle operations handled above"),
         };

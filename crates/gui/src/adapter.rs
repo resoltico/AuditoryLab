@@ -1145,9 +1145,13 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
             .into(),
     );
     ui.set_modulation_choices(strings(
-        std::iter::once(ModulationKind::NONE_LABEL.to_owned())
-            .chain(ModulationKind::ALL.iter().map(|k| k.label().into()))
-            .collect(),
+        std::iter::once(
+            auditorylab_app::core::vocabulary::NO_MODULATION
+                .label
+                .to_owned(),
+        )
+        .chain(ModulationKind::ALL.iter().map(|k| k.label().into()))
+        .collect(),
     ));
     let spans = strings(
         SPANS_MS

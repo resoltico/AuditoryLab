@@ -1,4 +1,5 @@
 //! Shared terms and their stable serialized or command-line keys.
+use alloc::{format, string::String};
 /// A heading label and the corresponding wording inside a sentence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Term {
@@ -254,6 +255,27 @@ macro_rules! vocabularies {($consumer:ident)=>{$consumer! {
 }};}
 macro_rules! registry {($($name:ident:$kind:ty),* $(,)?)=>{pub(crate) const CODES:&[&str]=&[$(<$kind>::INVALID_CODE),*];};}
 vocabularies!(registry);
+
+/// Persisted title of an untitled authored sound.
+pub const UNTITLED_SOUND: &str = "Untitled sound";
+/// Persisted title of an independent editable copy.
+#[must_use]
+pub fn copy_title(title: &str) -> String {
+    format!("{title} (edited)")
+}
+/// Attribution content persisted into an independent copy.
+#[must_use]
+pub fn copy_note(recipe: &crate::Recipe) -> String {
+    recipe.description().and_then(|description|description.notes.as_deref()).filter(|notes|!notes.is_empty()).map_or_else(
+        ||"Attributed copy; source findings concern the ancestor, not this sound.".into(),
+        |notes|format!("Attributed copy; source findings concern the ancestor, not this sound. Ancestor notes: {notes}"),
+    )
+}
+/// The absence of authored amplitude modulation.
+pub const NO_MODULATION: Term = Term {
+    label: Status::None.label(),
+    phrase: "no modulation",
+};
 
 #[cfg(test)]
 mod tests {

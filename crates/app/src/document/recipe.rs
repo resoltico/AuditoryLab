@@ -141,7 +141,7 @@ impl RecipeSnapshot {
                     .file_stem()
                     .filter(|name| !name.is_empty())
                     .map_or_else(
-                        || crate::core::UNTITLED_SOUND.into(),
+                        || crate::core::vocabulary::UNTITLED_SOUND.into(),
                         |name| {
                             name.to_string_lossy()
                                 .chars()
@@ -155,7 +155,7 @@ impl RecipeSnapshot {
                                 .collect()
                         },
                     ),
-                Origin::User { .. } => crate::core::UNTITLED_SOUND.into(),
+                Origin::User { .. } => crate::core::vocabulary::UNTITLED_SOUND.into(),
                 Origin::BuiltIn(id) => id.to_string(),
                 Origin::Stream(label) | Origin::Draft(label) => label.clone(),
             },

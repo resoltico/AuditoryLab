@@ -127,10 +127,9 @@ impl ExternalWriter {
             diagnostics.push(crate::storage::warning::StorageWarning::ClockPredatesEdit);
         }
         document.modified_at = Some(now);
-        let recipe = (*recipe)
-            .clone()
-            .with_document(document)
-            .map_err(|e| Error::Recipe { error: e })?;
+        let mut candidate = (*recipe).clone().into_builder();
+        candidate.document = document;
+        let recipe = candidate.build().map_err(|error| Error::Recipe { error })?;
         let bytes = recipe
             .to_toml()
             .map_err(|e| Error::Recipe { error: e })?
