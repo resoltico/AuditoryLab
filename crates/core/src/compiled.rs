@@ -180,10 +180,10 @@ impl TargetCheck {
         let refused = |error| Self {
             rate,
             components: Vec::new(),
-            result: Err(SoundError::Authored(error)),
+            result: Err(error),
         };
         if let Err(error) = Sound::check_structure(components) {
-            return refused(error);
+            return refused(SoundError::Structure(error));
         }
         let mut mix = CompiledMix::empty(rate);
         let mut first = None;
@@ -202,7 +202,7 @@ impl TargetCheck {
                 });
             let lanes = match crate::authored::lower(component) {
                 Ok(lanes) => lanes,
-                Err(error) => return refused(error),
+                Err(error) => return refused(SoundError::Pair(error)),
             };
             for (id, definition) in lanes {
                 match definition.voice(rate) {

@@ -1,7 +1,7 @@
 //! File export and recipe publication workflows.
 use crate::core::Recipe;
 use crate::document::recipe::Rendition;
-use crate::error::{Error, ErrorKind};
+use crate::error::{ExportError, FileError, IoFailure, IoOperation, SaveError};
 use crate::storage::load::builtin_source;
 use crate::storage::wav::Exported;
 use crate::{storage::publish, storage::wav};
@@ -61,30 +61,27 @@ impl Progress {
     }
 }
 
-/// Export stereo float WAV, sync it and publish the completed file.
-///
-/// Confirmed replacement is atomic. No-overwrite publication preserves an
-/// existing destination but is not guaranteed atomic on every platform.
+/// Export a captured rendition with staged no-clobber or confirmed replacement.
 ///
 /// # Errors
-/// Returns [`ErrorKind::DestinationExists`], [`ErrorKind::Cancelled`] or
-/// [`ErrorKind::Write`]. A cancellation requested after the file was
-/// published does not unpublish it.
+/// Preserves typed filesystem, cancellation and verification failures.
 pub fn export(
     sound: &Rendition,
     path: &Path,
     replace: Replace,
     cancel: &Cancel,
     progress: &Progress,
-) -> Result<Exported, Error> {
+) -> Result<Exported, ExportError> {
     publish::publish(path, replace, cancel, |file| {
-        wav::encode(sound.signal(), file, &cancel.0, progress).map_err(|e| match e {
-            wav::ExportError::Cancelled => Error::new(ErrorKind::Cancelled, "export cancelled"),
-            wav::ExportError::Io(e) => Error::caused(
-                ErrorKind::Write,
-                format!("cannot export to {path:?}: {e}"),
-                e,
-            ),
+        wav::encode(sound.signal(), file, &cancel.0, progress).map_err(|error| match error {
+            wav::ExportError::Cancelled => FileError::Cancelled {
+                path: Some(path.to_owned()),
+            },
+            wav::ExportError::Io(error) => FileError::Io(IoFailure::new(
+                IoOperation::Write,
+                Some(path.to_owned()),
+                error,
+            )),
         })
     })
     .map(|published| {
@@ -92,66 +89,53 @@ pub fn export(
         exported.warnings.extend(published.warnings);
         exported
     })
+    .map_err(ExportError::from)
 }
-
-/// Save a built-in recipe's exact text, comments included.
+/// Save a built-in's exact portable text.
 ///
 /// # Errors
-/// Returns [`ErrorKind::UnknownRecipe`], [`ErrorKind::DestinationExists`]
-/// under [`Replace::Never`], or [`ErrorKind::Write`].
-pub fn save_builtin(id: &str, path: &Path, replace: Replace) -> Result<SaveOutcome, Error> {
-    use std::io::Write;
-    let text = builtin_source(id)?;
-    publish::publish(path, replace, &Cancel::default(), |file| {
-        file.write_all(text.as_bytes()).map_err(|e| {
-            Error::caused(ErrorKind::Write, format!("cannot save to {path:?}: {e}"), e)
-        })
-    })
-    .map(|published| SaveOutcome {
-        warnings: published.warnings,
-    })
+/// Preserves source resolution and staged publication failures.
+pub fn save_builtin(id: &str, path: &Path, replace: Replace) -> Result<SaveOutcome, SaveError> {
+    let text = builtin_source(id).map_err(|error| SaveError::Load { error })?;
+    publish_text(text, path, replace)
 }
-
-/// Export exact captured portable UTF-8 recipe bytes without rewriting history.
+/// Export captured portable text without rewriting history.
 ///
 /// # Errors
-/// Rejects unsupported/invalid content before staging and preserves explicit
-/// no-clobber/replacement publication semantics.
-pub fn save_recipe_text(text: &str, path: &Path, replace: Replace) -> Result<SaveOutcome, Error> {
-    use std::io::Write;
-    Recipe::parse(text).map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?;
-    publish::publish(path, replace, &Cancel::default(), |file| {
-        file.write_all(text.as_bytes()).map_err(|e| {
-            Error::caused(
-                ErrorKind::Write,
-                format!("cannot export recipe to {path:?}: {e}"),
-                e,
-            )
-        })
-    })
-    .map(|published| SaveOutcome {
-        warnings: published.warnings,
-    })
+/// Rejects an invalid portable contract before staging.
+pub fn save_recipe_text(
+    text: &str,
+    path: &Path,
+    replace: Replace,
+) -> Result<SaveOutcome, SaveError> {
+    Recipe::parse(text)?;
+    publish_text(text, path, replace)
 }
-/// Save exactly this content with staged publication. Saving cannot be
-/// cancelled once started.
+/// Save validated portable content with staged publication.
 ///
 /// # Errors
-/// Returns serialization errors, [`ErrorKind::DestinationExists`] under
-/// [`Replace::Never`], or [`ErrorKind::Write`].
+/// Preserves size, serialization and publication failures.
 pub fn save_content(
     recipe: &Recipe,
-    path: &std::path::Path,
-    replace: crate::services::Replace,
-) -> Result<crate::services::SaveOutcome, Error> {
-    use std::io::Write;
+    path: &Path,
+    replace: Replace,
+) -> Result<SaveOutcome, SaveError> {
     let text = crate::document::editing::serialize(recipe)?;
-    crate::storage::publish::publish(path, replace, &crate::services::Cancel::default(), |file| {
-        file.write_all(text.as_bytes()).map_err(|e| {
-            Error::caused(ErrorKind::Write, format!("cannot save to {path:?}: {e}"), e)
+    publish_text(&text, path, replace)
+}
+fn publish_text(text: &str, path: &Path, replace: Replace) -> Result<SaveOutcome, SaveError> {
+    use std::io::Write;
+    publish::publish(path, replace, &Cancel::default(), |file| {
+        file.write_all(text.as_bytes()).map_err(|error| {
+            FileError::Io(IoFailure::new(
+                IoOperation::Write,
+                Some(path.to_owned()),
+                error,
+            ))
         })
     })
-    .map(|published| crate::services::SaveOutcome {
+    .map(|published| SaveOutcome {
         warnings: published.warnings,
     })
+    .map_err(SaveError::from)
 }

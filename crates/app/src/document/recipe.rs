@@ -1,5 +1,5 @@
 //! Immutable loaded recipes, their provenance and identity.
-use crate::error::{Error, ErrorKind};
+use crate::error::LoadError as Error;
 use auditorylab_core::{About, Recipe, SampleRate, Signal, Sound};
 use std::{
     path::PathBuf,
@@ -34,7 +34,7 @@ impl std::fmt::Display for Origin {
         match self {
             Self::BuiltIn(id) => write!(f, "{id}"),
             Self::User { id, .. } => write!(f, "user:{id}"),
-            Self::File(path) => write!(f, "{path:?}"),
+            Self::File(path) => write!(f, "{}", path.display()),
             Self::Stream(label) | Self::Draft(label) => write!(f, "{label}"),
         }
     }
@@ -203,15 +203,13 @@ impl RecipeSnapshot {
     /// Validate the recipe and realize it at a sample rate.
     ///
     /// # Errors
-    /// Returns [`ErrorKind::InvalidSound`] naming the origin and the first
+    /// Returns [`Error::Sound`] naming the origin and the first
     /// failure at that rate.
     pub fn at(&self, rate: SampleRate) -> Result<Rendition, Error> {
-        self.realize(rate).map_err(|e| {
-            Error::caused(
-                ErrorKind::InvalidSound,
-                format!("{} at {} Hz: {e}", self.origin, rate.hz()),
-                e,
-            )
+        self.realize(rate).map_err(|error| Error::Sound {
+            origin: self.origin.clone(),
+            rate,
+            error,
         })
     }
 

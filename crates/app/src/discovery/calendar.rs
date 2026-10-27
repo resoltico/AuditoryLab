@@ -1,11 +1,11 @@
 //! Native calendar ranges normalized to the shared half-open instant query.
 use crate::core::Timestamp;
 use crate::discovery::collection::DateRange;
-use crate::error::{Error, ErrorKind};
+use crate::error::QueryError as Error;
 use chrono::{Local, NaiveDate, TimeZone};
 
 /// The visible calendar-date field pair being edited.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CalendarField {
     /// Recipe creation dates.
     Created,
@@ -15,7 +15,9 @@ pub enum CalendarField {
     Added,
 }
 impl CalendarField {
-    fn label(self) -> &'static str {
+    /// Shared name of the date field.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Created => "Created",
             Self::Modified => "Modified",
@@ -68,12 +70,7 @@ fn in_zone<T: TimeZone>(
         if text.trim().is_empty() {
             return Ok(None);
         }
-        let invalid = || {
-            Error::new(
-                ErrorKind::InvalidArgument,
-                "Use YYYY-MM-DD dates with a unique local midnight and an ordered range.",
-            )
-        };
+        let invalid = || Error::LocalDate { value: text.into() };
         let date = NaiveDate::parse_from_str(text, "%Y-%m-%d").map_err(|_| invalid())?;
         if date.format("%Y-%m-%d").to_string() != text {
             return Err(invalid());
@@ -95,15 +92,10 @@ fn in_zone<T: TimeZone>(
         from: boundary(from, false)?,
         before: boundary(through, true)?,
     };
-    range.validate().map_err(|_| {
-        Error::new(
-            ErrorKind::InvalidArgument,
-            format!(
-                "{} through ({through}) must be on or after {} from ({from}).",
-                field.label(),
-                field.label()
-            ),
-        )
+    range.validate().map_err(|_| Error::LocalOrder {
+        field,
+        from: from.into(),
+        through: through.into(),
     })?;
     Ok(range)
 }

@@ -522,8 +522,8 @@ fn save_round_trips_and_keeps_existing_destinations() {
     assert_eq!(
         save_content(&d.recipe().unwrap(), &path, crate::services::Replace::Never)
             .unwrap_err()
-            .kind(),
-        ErrorKind::DestinationExists
+            .outcome(),
+        crate::error::Outcome::DestinationExists
     );
     d.set_title("🎧".repeat(Recipe::MAX_BYTES));
     assert_eq!(
@@ -533,14 +533,18 @@ fn save_round_trips_and_keeps_existing_destinations() {
             crate::services::Replace::Allowed
         )
         .unwrap_err()
-        .kind(),
-        ErrorKind::InvalidRecipe
+        .outcome(),
+        crate::error::Outcome::InvalidRecipe
     );
     d.set_title("Small".into());
     d.set_duration_seconds(f64::NAN);
     assert!(
         d.recipe()
-            .and_then(|recipe| save_content(&recipe, &path, crate::services::Replace::Allowed))
+            .map_err(crate::error::OperationError::from)
+            .and_then(
+                |recipe| save_content(&recipe, &path, crate::services::Replace::Allowed)
+                    .map_err(Into::into)
+            )
             .is_err()
     );
     assert_eq!(std::fs::read(&path).unwrap(), bytes);

@@ -1,5 +1,5 @@
 //! Exact-byte content tokens for managed recipe files.
-use crate::error::{Error, ErrorKind};
+use crate::error::LibraryError as Error;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{fmt, str::FromStr};
@@ -33,15 +33,12 @@ impl FromStr for Fingerprint {
                 .bytes()
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         {
-            return Err(Error::new(
-                ErrorKind::InvalidArgument,
-                "expected a canonical 64-digit lowercase SHA-256 fingerprint",
-            ));
+            return Err(Error::InvalidFingerprint { value: text.into() });
         }
         let mut bytes = [0; 32];
         for (index, byte) in bytes.iter_mut().enumerate() {
             *byte = u8::from_str_radix(&text[index * 2..index * 2 + 2], 16)
-                .map_err(|e| Error::caused(ErrorKind::InvalidArgument, "invalid fingerprint", e))?;
+                .map_err(|_| Error::InvalidFingerprint { value: text.into() })?;
         }
         Ok(Self(bytes))
     }

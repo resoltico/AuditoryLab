@@ -14,6 +14,8 @@ extern crate std;
 pub mod authored;
 pub mod catalog;
 mod compiled;
+mod contract;
+pub use contract::{ContractError, ReferenceOwner};
 mod facts;
 pub mod finite;
 mod history;
@@ -31,7 +33,9 @@ mod synthesis;
 pub mod timing;
 mod voice;
 pub mod waveform;
-pub use authored::{Component, ComponentForm, LoweringError, Pair, PairIssue, PairKind, Sound};
+pub use authored::{
+    Component, ComponentForm, Pair, PairError, PairIssue, PairKind, Sound, StructureError,
+};
 pub use compiled::{Target, TargetCheck};
 pub use facts::{
     CarrierFacts, ComponentFacts, ModulationFacts, Observation, PairFacts, PhaseRate, PulseFacts,

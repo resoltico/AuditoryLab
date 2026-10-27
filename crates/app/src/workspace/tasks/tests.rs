@@ -116,7 +116,10 @@ fn closed(workspace: &mut Workspace, approved: bool) -> bool {
 }
 // Private application-unit preparation fixture: core validation and session state
 // are real, while the declared output metadata never creates a native stream.
-fn prepared(job: &Job, rate: SampleRate) -> Result<(Response, LiveGenerator), Error> {
+fn prepared(
+    job: &Job,
+    rate: SampleRate,
+) -> Result<(Response, LiveGenerator), crate::error::PlaybackError> {
     let Work::Audio {
         session,
         kind,
@@ -125,17 +128,25 @@ fn prepared(job: &Job, rate: SampleRate) -> Result<(Response, LiveGenerator), Er
     else {
         panic!("audio job")
     };
-    let target = match (kind, draft) {
-        (AudioKind::Live(_), Some(draft)) => draft
-            .check(rate)
-            .into_result()
-            .map_err(|error| Error::new(ErrorKind::InvalidSound, error.to_string())),
-        (AudioKind::Finite(snapshot), _) => snapshot.at(rate).map(|sound| *sound.signal().target()),
-        (AudioKind::Managed { snapshot, store }, _) => revalidate_managed(snapshot, store)?
-            .at(rate)
-            .map(|sound| *sound.signal().target()),
-        _ => panic!("complete audio capture"),
-    };
+    let target =
+        match (kind, draft) {
+            (AudioKind::Live(_), Some(draft)) => draft.check(rate).into_result().map_err(|error| {
+                crate::error::PlaybackError::Sound {
+                    title: "unit capture".into(),
+                    rate,
+                    error,
+                }
+            }),
+            (AudioKind::Finite(snapshot), _) => snapshot
+                .at(rate)
+                .map(|sound| *sound.signal().target())
+                .map_err(Into::into),
+            (AudioKind::Managed { snapshot, store }, _) => revalidate_managed(snapshot, store)?
+                .at(rate)
+                .map(|sound| *sound.signal().target())
+                .map_err(Into::into),
+            _ => panic!("complete audio capture"),
+        };
     let target = match target {
         Ok(target) => target,
         Err(error) => {
@@ -327,7 +338,7 @@ fn device_rate_validation_is_independent_of_export_rate() {
         Err(error) => error,
         Ok(_) => panic!("invalid at actual rate"),
     };
-    assert_eq!(error.kind(), ErrorKind::InvalidSound);
+    assert_eq!(error.outcome(), crate::error::Outcome::InvalidSound);
     workspace.respond(Response::Finished {
         job: job.id(),
         outcome: JobOutcome::Audio(Err(error)),
@@ -697,7 +708,7 @@ fn shutdown_reports_wrong_kind_success_after_coordinator_validation() {
 #[test]
 fn shutdown_does_not_reclassify_a_historical_resolved_failure() {
     let (_directory, _store, mut workspace) = fixture();
-    workspace.files.status = FileStatus::Failed(Error::new(ErrorKind::Write, "old resolved error"));
+    workspace.files.status = FileStatus::Failed(crate::error::FileError::MissingFilename.into());
     workspace.audio.status = AudioStatus::WorkerFailed(WorkerFailure::Panicked);
     assert!(Runner::new().shutdown(workspace).is_ok());
 }
@@ -777,24 +788,29 @@ fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct()
     idle_files(&mut workspace);
     let key = store.scan(&Cancel::default()).entries[0].key.clone();
     for (kind, publishing, inspect, replacement) in [
-        (ErrorKind::HistoryConflict, true, false, true),
-        (ErrorKind::Conflict, false, false, false),
-        (ErrorKind::HistoryConflict, false, false, false),
-        (ErrorKind::Write, true, true, false),
-        (ErrorKind::Unreadable, true, true, false),
-        (ErrorKind::IncompleteInventory, true, true, false),
-        (ErrorKind::Write, false, false, false),
-        (ErrorKind::Busy, true, false, false),
-        (ErrorKind::LockUnavailable, true, false, false),
-        (ErrorKind::Cancelled, true, false, false),
-        (ErrorKind::ReadOnlyBuiltIn, true, false, false),
-        (ErrorKind::InvalidRecipe, true, false, false),
-        (ErrorKind::InvalidSound, true, false, false),
-        (ErrorKind::InvalidArgument, true, false, false),
-        (ErrorKind::Identity, true, false, false),
+        (crate::error::Outcome::HistoryConflict, true, false, true),
+        (crate::error::Outcome::Conflict, false, false, false),
+        (crate::error::Outcome::HistoryConflict, false, false, false),
+        (crate::error::Outcome::Write, true, true, false),
+        (crate::error::Outcome::Unreadable, true, true, false),
+        (
+            crate::error::Outcome::IncompleteInventory,
+            true,
+            true,
+            false,
+        ),
+        (crate::error::Outcome::Write, false, false, false),
+        (crate::error::Outcome::Busy, true, false, false),
+        (crate::error::Outcome::LockUnavailable, true, false, false),
+        (crate::error::Outcome::Cancelled, true, false, false),
+        (crate::error::Outcome::ReadOnlyBuiltIn, true, false, false),
+        (crate::error::Outcome::InvalidRecipe, true, false, false),
+        (crate::error::Outcome::InvalidSound, true, false, false),
+        (crate::error::Outcome::InvalidArgument, true, false, false),
+        (crate::error::Outcome::Identity, true, false, false),
     ] {
         let status = FileStatus::Library(super::super::status::LibraryStatus::Failed {
-            error: Error::new(kind, "captured failure"),
+            error: captured_error(kind),
             publishing,
             context: super::super::status::LibraryContext {
                 path: store.root().path().into(),
@@ -816,12 +832,64 @@ fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct()
             notice.lines().next().unwrap().contains(&key.to_string()),
             "{notice}"
         );
-        if !publishing && matches!(kind, ErrorKind::Conflict | ErrorKind::HistoryConflict) {
+        if !publishing
+            && matches!(
+                kind,
+                crate::error::Outcome::Conflict | crate::error::Outcome::HistoryConflict
+            )
+        {
             assert!(notice.starts_with("Library read conflict"), "{notice}");
         }
         assert!(
             notice.contains(&store.root().path().display().to_string()),
             "{notice}"
         );
+    }
+}
+
+// Real typed representatives for the presentation policy matrix below. No
+// production failure can be constructed from a category and an arbitrary sentence.
+fn captured_error(outcome: crate::error::Outcome) -> crate::error::OperationError {
+    use crate::error::{
+        FileError, IdentityError, IdentityScope, IoCause, LibraryError, LoadError, OperationError,
+        Outcome,
+    };
+    let id = crate::storage::load::catalog().unwrap()[0]
+        .recipe()
+        .document()
+        .id;
+    match outcome {
+        Outcome::HistoryConflict => LibraryError::HistoryReplacement { id }.into(),
+        Outcome::Conflict => LibraryError::StaleContent { id }.into(),
+        Outcome::Write => FileError::MissingFilename.into(),
+        Outcome::Unreadable => LoadError::Read {
+            origin: crate::document::recipe::Origin::Stream("captured".into()),
+            cause: IoCause::new(std::io::Error::other("read failed")),
+        }
+        .into(),
+        Outcome::IncompleteInventory => LibraryError::RootMissing.into(),
+        Outcome::Busy => LibraryError::Busy.into(),
+        Outcome::LockUnavailable => LibraryError::LockUnavailable {
+            error: IoCause::new(std::io::Error::other("locking unavailable")),
+        }
+        .into(),
+        Outcome::Cancelled => LibraryError::Cancelled.into(),
+        Outcome::ReadOnlyBuiltIn => LibraryError::ReadOnlyBuiltin {
+            id: "captured".into(),
+        }
+        .into(),
+        Outcome::InvalidRecipe => OperationError::Recipe(crate::core::RecipeError::NotUtf8),
+        Outcome::InvalidSound => LoadError::Sound {
+            origin: crate::document::recipe::Origin::Stream("captured".into()),
+            rate: SampleRate::DEFAULT,
+            error: crate::core::SoundError::Duration {
+                seconds: 0.0,
+                sample_rate_hz: 48000,
+            },
+        }
+        .into(),
+        Outcome::InvalidArgument => LibraryError::PurgeUnconfirmed.into(),
+        Outcome::Identity => IdentityError::Exhausted(IdentityScope::ExternalEntry).into(),
+        _ => panic!("category not used by this notice matrix"),
     }
 }

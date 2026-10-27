@@ -458,8 +458,8 @@ fn managed_playback_worker_refuses_changed_or_trashed_observation() {
     assert_eq!(
         tasks::revalidate_managed(&captured, &store)
             .unwrap_err()
-            .kind(),
-        ErrorKind::Conflict
+            .outcome(),
+        crate::error::Outcome::Conflict
     );
     assert!(!w.audio_busy());
     assert_eq!(captured.title(), "Untitled sound");
@@ -612,12 +612,11 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
             recipe.sound.components.push(recipe.sound.components[0]);
             recipe
                 .build()
-                .map_err(|error| Error::new(ErrorKind::InvalidRecipe, error.to_string()))
+                .map_err(crate::error::EditorError::Recipe)
                 .and_then(|recipe| EditorSession::new(Draft::from_recipe(recipe)))
         } else {
-            Err(Error::new(
-                ErrorKind::Identity,
-                "secure identity source unavailable",
+            Err(crate::error::EditorError::Identity(
+                crate::error::IdentityError::Entropy(getrandom::Error::UNSUPPORTED),
             ))
         };
         assert!(replacement.is_err());

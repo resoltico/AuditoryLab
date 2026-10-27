@@ -6,7 +6,7 @@ use crate::{
     Carrier, Component, ComponentForm, ComponentId, Description, DocumentIdentity, Pair, Sound,
     Voice,
 };
-use alloc::{format, string::ToString, vec, vec::Vec};
+use alloc::{format, vec, vec::Vec};
 const PAIR: &str = r#"# Two raw tones retain their source order and authored identities.
 schema_version = 4
 [sound]
@@ -106,10 +106,6 @@ fn another_schema_version_is_reported_before_its_fields_are_read() {
             );
         let error = Recipe::parse(&text).unwrap_err();
         assert_eq!(error, RecipeError::UnsupportedVersion { found: version });
-        assert_eq!(
-            error.to_string(),
-            format!("recipe has schema_version {version}; this build reads 4")
-        );
     }
     assert!(matches!(
         edited("schema_version = 4", "schema_version = \"1\""),
@@ -144,29 +140,6 @@ fn input_is_bounded_and_must_be_utf_8() {
     // A UTF-8 byte-order mark is accepted.
     let marked = [&[0xef, 0xbb, 0xbf][..], PAIR.as_bytes()].concat();
     assert!(Recipe::from_bytes(&marked).is_ok());
-}
-
-#[test]
-fn messages_say_what_is_wrong_with_the_recipe() {
-    use core::error::Error;
-    assert_eq!(
-        RecipeError::TooLarge.to_string(),
-        "recipe exceeds 65536 bytes"
-    );
-    assert_eq!(RecipeError::NotUtf8.to_string(), "recipe is not UTF-8 text");
-    assert_eq!(
-        RecipeError::Utf16.to_string(),
-        "recipe is UTF-16 text; save it as UTF-8"
-    );
-    let format = edited("frequency_hz = 250.0\n", "").unwrap_err();
-    let text = format.to_string();
-    assert!(
-        text.starts_with("recipe does not match the format: "),
-        "{text}"
-    );
-    assert!(text.contains("frequency_hz"), "{text}");
-    assert!(format.source().is_some());
-    assert!(RecipeError::TooLarge.source().is_none());
 }
 
 #[test]

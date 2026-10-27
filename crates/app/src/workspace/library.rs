@@ -25,14 +25,16 @@ impl LibraryBinding {
     ///
     /// # Errors
     /// Refuses invalid shipped identity metadata while retaining configuration failures as data.
-    pub fn configured() -> Result<Self, Error> {
+    pub fn configured() -> Result<Self, crate::error::LibraryError> {
         match crate::storage::library::LibraryRoot::resolve(None) {
             Ok(root) => LibraryStore::new(root).map(Self::Store),
             Err(error) => Ok(Self::Unavailable(
                 crate::storage::library::LibraryDiagnostic {
                     storage_id: "configured root".into(),
                     code: "configuration".into(),
-                    message: error.to_string(),
+                    detail: crate::storage::library::DiagnosticDetail::Failure(Box::new(
+                        error.into(),
+                    )),
                 },
             )),
         }
@@ -67,7 +69,7 @@ pub(super) struct LibraryState {
     load_attempted: Option<LibraryKey>,
     inventory: Arc<InventoryStatus>,
     read_failure: Option<crate::storage::library::LibraryDiagnostic>,
-    filter_error: Option<Error>,
+    filter_error: Option<crate::error::QueryError>,
     unreadable: std::collections::BTreeSet<LibraryKey>,
     stale: std::collections::BTreeSet<LibraryKey>,
     root_unavailable: bool,
@@ -128,7 +130,7 @@ impl LibraryState {
             self.read_failure = Some(crate::storage::library::LibraryDiagnostic {
                 storage_id,
                 code: "read_failure".into(),
-                message,
+                detail: crate::storage::library::DiagnosticDetail::Notice(message),
             });
             Arc::make_mut(&mut self.inventory).complete = false;
             self.revision += 1;
@@ -319,7 +321,8 @@ impl LibraryState {
             for problem in diagnostics {
                 rows.push(Self::heading_row(format!(
                     "Needs review · {}\n{}",
-                    problem.storage_id, problem.message
+                    problem.storage_id,
+                    problem.message()
                 )));
             }
         }
@@ -497,12 +500,14 @@ impl LibraryJob {
                     },
                     &Cancel::default(),
                 )
-                .map(|r| LibraryOutcome::Written(Box::new(r))),
+                .map(|r| LibraryOutcome::Written(Box::new(r)))
+                .map_err(Error::from),
             Operation::ExternalSave {
                 expected, recipe, ..
             } => crate::storage::external::ExternalWriter
                 .save(&expected, recipe, &Cancel::default())
-                .map(|r| LibraryOutcome::ExternalWritten(Box::new(r))),
+                .map(|r| LibraryOutcome::ExternalWritten(Box::new(r)))
+                .map_err(Error::from),
             Operation::Scan => Ok(LibraryOutcome::Inventory(
                 self.store.scan(&Cancel::default()),
             )),
@@ -515,7 +520,7 @@ impl LibraryJob {
                         crate::storage::library::LibraryDiagnostic {
                             storage_id: "library.toml".into(),
                             code: "initialization_warning".into(),
-                            message,
+                            detail: crate::storage::library::DiagnosticDetail::Notice(message),
                         }
                     }));
                 Ok(LibraryOutcome::Inventory(inventory))
@@ -523,11 +528,13 @@ impl LibraryJob {
             Operation::Load(key) => self
                 .store
                 .load(&key)
-                .map(|r| LibraryOutcome::Loaded(Box::new(r))),
+                .map(|r| LibraryOutcome::Loaded(Box::new(r)))
+                .map_err(Error::from),
             Operation::Write { mutation, .. } => self
                 .store
                 .apply(mutation, &Cancel::default())
-                .map(|r| LibraryOutcome::Written(Box::new(r))),
+                .map(|r| LibraryOutcome::Written(Box::new(r)))
+                .map_err(Error::from),
         }
     }
 }
@@ -537,7 +544,7 @@ impl Workspace {
     pub fn library_alert(&self) -> String {
         let mut notices = Vec::new();
         if let Some(problem) = self.library.binding.problem() {
-            notices.push(format!("User Library unavailable: {}. Configure an absolute AUDITORYLAB_LIBRARY_DIR and restart; drafts are retained.",problem.message));
+            notices.push(format!("User Library unavailable: {}. Configure an absolute AUDITORYLAB_LIBRARY_DIR and restart; drafts are retained.",problem.message()));
         }
         if let Some(error) = &self.library.filter_error {
             notices.push(error.to_string());
@@ -545,7 +552,8 @@ impl Workspace {
         if let Some(problem) = &self.library.read_failure {
             notices.push(format!(
                 "Library read failed · {}: {}",
-                problem.storage_id, problem.message
+                problem.storage_id,
+                problem.message()
             ));
         }
         if !self.library.inventory.complete {
@@ -574,7 +582,7 @@ impl Workspace {
             let key = match crate::storage::library::ExternalId::allocate() {
                 Ok(id) => LibraryKey::External(id),
                 Err(error) => {
-                    self.files.status = FileStatus::Failed(error);
+                    self.files.status = FileStatus::Failed(error.into());
                     self.changed();
                     return;
                 }
@@ -603,7 +611,7 @@ impl Workspace {
         self.changed();
     }
     /// Surface a native filter error while retaining the prior valid query.
-    pub fn library_filter_error(&mut self, error: Error) {
+    pub fn library_filter_error(&mut self, error: crate::error::QueryError) {
         self.library.filter_error = Some(error);
         self.library.revision += 1;
         self.changed();
@@ -797,7 +805,10 @@ impl Workspace {
     ///
     /// # Errors
     /// An invalid range leaves the previous query and selection intact.
-    pub fn set_catalog_query(&mut self, query: CatalogQuery) -> Result<(), Error> {
+    pub fn set_catalog_query(
+        &mut self,
+        query: CatalogQuery,
+    ) -> Result<(), crate::error::QueryError> {
         query.execute(&self.library.entries)?;
         self.library.filter_error = None;
         self.library.query = query;
@@ -928,7 +939,7 @@ impl Workspace {
             (*content).clone(),
         );
         let draft =
-            Draft::from_snapshot(&snapshot).map_err(|e| Refusal::Document(e.to_string()))?;
+            Draft::from_snapshot(&snapshot).map_err(|e| Refusal::Document(Box::new(e.into())))?;
 
         self.replace_document(draft);
         self.save()
@@ -947,9 +958,7 @@ impl Workspace {
     }
     fn add_library_binding_inner(&mut self, key: &str) -> Result<(), Refusal> {
         if self.library_binding().0 != key {
-            return Err(Refusal::Document(
-                "Open file selection changed; activate Add again.".into(),
-            ));
+            return Err(Refusal::SelectionChanged);
         }
         self.add_selected_to_library()
     }
@@ -963,9 +972,7 @@ impl Workspace {
             snapshot.origin(),
             crate::document::recipe::Origin::File(_) | crate::document::recipe::Origin::Stream(_)
         ) {
-            return Err(Refusal::Document(
-                "Select an Open file to add; use Edit a copy for Built-in content.".into(),
-            ));
+            return Err(Refusal::TemporaryRequired);
         }
         let recipe = Arc::new(snapshot.recipe().clone());
         self.managed_job(Operation::Write {
@@ -1016,12 +1023,12 @@ impl Workspace {
     ) -> Result<(), Refusal> {
         let key: LibraryKey = key
             .parse()
-            .map_err(|e: Error| Refusal::Document(e.to_string()))?;
+            .map_err(|e: crate::error::LibraryError| Refusal::Document(Box::new(e.into())))?;
         key.require_user()
-            .map_err(|e| Refusal::Document(e.to_string()))?;
+            .map_err(|e| Refusal::Document(Box::new(e.into())))?;
         let expect: VersionToken = token
             .parse()
-            .map_err(|e: Error| Refusal::Document(e.to_string()))?;
+            .map_err(|e: crate::error::LibraryError| Refusal::Document(Box::new(e.into())))?;
         if action == "trash"
             && self.editor.session.dirty()
             && self
@@ -1043,9 +1050,7 @@ impl Workspace {
                     e.key == key && e.version_token.as_ref() == Some(&expect) && e.trashed
                 })
             }
-            .ok_or(Refusal::Document(
-                "Select the current trashed version before permanent deletion.".into(),
-            ))?;
+            .ok_or(Refusal::PurgeSelectionChanged)?;
             let title = entry.title.clone();
             let prompt = self.prompt(PromptState::Purge {
                 key: key.clone(),
@@ -1077,7 +1082,7 @@ impl Workspace {
                 expect: Some(expect),
                 confirmed,
             },
-            _ => return Err(Refusal::Document("Unknown library action.".into())),
+            _ => return Err(Refusal::UnknownLibraryAction(action.into())),
         };
         self.managed_job(Operation::Write {
             document: None,
@@ -1162,10 +1167,11 @@ impl Workspace {
                     .as_ref()
                     .map_or(String::new(), |problem| format!(
                         "\n{}: {}",
-                        problem.storage_id, problem.message
+                        problem.storage_id,
+                        problem.message()
                     ))
             ),
-            LibraryBinding::Unavailable(problem) => problem.message.clone(),
+            LibraryBinding::Unavailable(problem) => problem.message(),
         }
     }
     /// Portable history and local membership are displayed with distinct labels.
@@ -1272,9 +1278,7 @@ impl Workspace {
     ) -> Result<TaskId, Refusal> {
         let p = &self.library;
         if let Some(key) = self.editor.location.detached() {
-            return Err(Refusal::Document(format!(
-                "Detached draft from {key}. Edit the restored saved entry or Save independent copy; the old identity is not recreated."
-            )));
+            return Err(Refusal::DetachedDraft(key.clone()));
         }
         if let Some(expected) = self.editor.location.external().cloned() {
             return self.managed_job(Operation::ExternalSave {
@@ -1288,7 +1292,7 @@ impl Workspace {
                 .iter()
                 .any(|e| e.key == LibraryKey::User(recipe.document().id))
         {
-            return Err(Refusal::Document("Detached draft belongs to an existing saved identity. Restore/edit that version or Save independent copy.".into()));
+            return Err(Refusal::ExistingSavedIdentity(recipe.document().id));
         }
         let mutation = self.editor.location.managed().map_or_else(
             || Mutation::Create(recipe.clone()),
@@ -1486,7 +1490,7 @@ impl Workspace {
     fn finish_discard_reset(
         &mut self,
         mut result: (FileStatus, Option<bool>),
-        editor: Result<EditorSession, Error>,
+        editor: Result<EditorSession, crate::error::EditorError>,
     ) -> (FileStatus, Option<bool>) {
         match editor {
             Ok(editor) => self.install_document(editor),
@@ -1567,7 +1571,7 @@ impl Workspace {
         if let Some(error) = self.library.binding.problem() {
             return (
                 "User Library unavailable",
-                format!("Unsaved · User Library unavailable: {}", error.message),
+                format!("Unsaved · User Library unavailable: {}", error.message()),
             );
         }
         if let Some(key) = self.editor.location.detached() {

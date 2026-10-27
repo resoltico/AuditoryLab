@@ -452,7 +452,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         .clone()
         .unwrap_err();
     assert_eq!(
-        error.to_string(),
+        auditorylab_app::presentation::acoustic_errors::voice_error(&error),
         "Modulation depth 150% must be from 0% to 100%"
     );
     for kind in CarrierKind::ALL {

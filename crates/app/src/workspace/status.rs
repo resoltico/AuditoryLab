@@ -9,7 +9,7 @@ use super::{
 use crate::{
     audio::session::{LiveUpdateError, PlaybackReport},
     document::recipe::RecipeSnapshot,
-    error::{Error, ErrorKind},
+    error::{OperationError as Error, Outcome},
     storage::library::{LibraryDiagnostic, LibraryKey, MutationStatus},
     storage::wav::Exported,
 };
@@ -98,7 +98,7 @@ impl InventoryStatus {
             }
         );
         for problem in &self.diagnostics {
-            text.push_str(&format!("\n{}: {}", problem.code, problem.message));
+            text.push_str(&format!("\n{}: {}", problem.code, problem.message()));
         }
         if !self.stages.is_empty() {
             text.push_str(&format!(
@@ -113,10 +113,10 @@ impl InventoryStatus {
 pub(super) enum SaveFeedback {
     InvalidAtRate {
         rate: crate::core::SampleRate,
-        error: Error,
+        error: crate::error::LoadError,
     },
-    EditorRefresh(Error),
-    EditorReset(Error),
+    EditorRefresh(crate::error::EditorError),
+    EditorReset(crate::error::EditorError),
 }
 impl SaveFeedback {
     fn description(&self) -> String {
@@ -212,23 +212,23 @@ impl LibraryStatus {
                 context,
             } => {
                 let recovery = "Draft retained. Refresh and reload the saved version, keep the draft, or save an independent copy.";
-                let heading = match error.kind() {
-                    ErrorKind::Conflict if *publishing => {
+                let heading = match error.outcome() {
+                    Outcome::Conflict if *publishing => {
                         "Saved version or identity conflicts with the captured operation"
                     }
-                    ErrorKind::HistoryConflict if *publishing => {
+                    Outcome::HistoryConflict if *publishing => {
                         "Saved identity or creation history conflicts with the captured operation"
                     }
-                    ErrorKind::Conflict | ErrorKind::HistoryConflict => "Library read conflict",
-                    ErrorKind::Write | ErrorKind::Unreadable | ErrorKind::IncompleteInventory
+                    Outcome::Conflict | Outcome::HistoryConflict => "Library read conflict",
+                    Outcome::Write | Outcome::Unreadable | Outcome::IncompleteInventory
                         if *publishing =>
                     {
                         "Library operation failed; inspect this location before retrying"
                     }
-                    ErrorKind::Busy => "Library is busy; retry after the current operation",
-                    ErrorKind::LockUnavailable => "Library locking is unavailable",
-                    ErrorKind::Cancelled => "Library operation cancelled",
-                    ErrorKind::ReadOnlyBuiltIn => "Built-in recipes are read-only",
+                    Outcome::Busy => "Library is busy; retry after the current operation",
+                    Outcome::LockUnavailable => "Library locking is unavailable",
+                    Outcome::Cancelled => "Library operation cancelled",
+                    Outcome::ReadOnlyBuiltIn => "Built-in recipes are read-only",
                     _ if *publishing => "Library operation refused",
                     _ => "Library read failed",
                 };
@@ -238,8 +238,8 @@ impl LibraryStatus {
                     .map_or_else(|| heading.to_owned(), |key| format!("{heading} · {key}"));
                 let publication = if *publishing
                     && matches!(
-                        error.kind(),
-                        ErrorKind::Conflict | ErrorKind::HistoryConflict
+                        error.outcome(),
+                        Outcome::Conflict | Outcome::HistoryConflict
                     ) {
                     "\nThe conflicting operation did not publish a replacement."
                 } else {
@@ -312,7 +312,7 @@ impl FileStatus {
             operation
         }
     }
-    pub(super) fn editor_reset_error(&self) -> Option<&Error> {
+    pub(super) fn editor_reset_error(&self) -> Option<&crate::error::EditorError> {
         if let Self::Library(LibraryStatus::Written { feedback, .. }) = self {
             feedback.iter().find_map(|item| match item {
                 SaveFeedback::EditorReset(error) => Some(error),

@@ -701,3 +701,41 @@ fn inspection_serializes_expanded_identity_without_conflating_authored_owners() 
         serde_json::json!({"component": 1, "lane": "secondary"})
     );
 }
+
+#[test]
+fn schema_three_library_diagnostic_keeps_path_version_and_original_bytes() {
+    let temp = dir();
+    let root = temp.path().join("library");
+    assert!(cli(&root, &["library", "init"]).status.success());
+    let input_path = temp.path().join("input.toml");
+    let recipe = input(&input_path, "Older schema");
+    let path = root
+        .join("recipes")
+        .join(format!("{}.toml", recipe.document().id));
+    let bytes = recipe
+        .to_toml()
+        .unwrap()
+        .replacen("schema_version = 4", "schema_version = 3", 1);
+    assert!(bytes.contains("schema_version = 3"));
+    fs::write(&path, &bytes).unwrap();
+    for format in ["text", "json"] {
+        let out = cli(&root, &["list", "--collection", "user", "--format", format]);
+        assert_eq!(out.status.code(), Some(5), "{out:?}");
+        let report = String::from_utf8(if format == "text" {
+            out.stderr
+        } else {
+            out.stdout
+        })
+        .unwrap();
+        // Text wrapping may break a long path at hyphens. JSON carries it verbatim.
+        assert!(
+            report
+                .replace('\n', "")
+                .contains(path.canonicalize().unwrap().to_str().unwrap()),
+            "{report}"
+        );
+        assert!(report.contains("schema_version 3"), "{report}");
+        assert!(report.contains("this build reads 4"), "{report}");
+        assert_eq!(fs::read(&path).unwrap(), bytes.as_bytes());
+    }
+}

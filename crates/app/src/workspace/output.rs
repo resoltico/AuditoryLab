@@ -75,7 +75,7 @@ pub struct OutputView {
 }
 
 enum PreviewIssue {
-    Snapshot(crate::error::Error),
+    Snapshot(crate::error::LoadError),
     Acoustic {
         title: String,
         rate: SampleRate,

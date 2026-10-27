@@ -1,8 +1,8 @@
 //! Independent generated-state, attribution and revision oracles.
 use auditorylab_core::{
-    Carrier, CarrierFacts, Component, ComponentFacts, ComponentForm, ComponentId, Ears,
-    LoweringError, Modulation, ModulationFacts, SampleRate, SlotRole, Sound, SoundError, Target,
-    Voice, live::Engine,
+    Carrier, CarrierFacts, Component, ComponentFacts, ComponentForm, ComponentId, Ears, Modulation,
+    ModulationFacts, SampleRate, SlotRole, Sound, SoundError, StructureError, Target, Voice,
+    live::Engine,
 };
 fn tone(hz: f64, ears: Ears) -> Voice {
     Voice {
@@ -154,7 +154,7 @@ fn changed_pulses_preserve_both_real_rates_and_roles() {
             ],
         }
         .target(rate),
-        Err(SoundError::Authored(LoweringError::Identity { .. }))
+        Err(SoundError::Structure(StructureError::Identity { .. }))
     ));
 }
 #[test]

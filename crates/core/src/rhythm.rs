@@ -1,8 +1,8 @@
 //! Shared structural rhythm rules for authored content and realized generators.
 use crate::{
-    Carrier, CarrierFacts, Component, ComponentForm, Lane, LoweringError, Modulation,
-    ModulationFacts, Observation, PairKind, ParameterId, SlotRole, Target, Voice, VoiceId,
-    VoiceObservation,
+    Carrier, CarrierFacts, Component, ComponentForm, Lane, Modulation, ModulationFacts,
+    Observation, PairError, PairKind, ParameterId, SlotRole, StructureError, Target, Voice,
+    VoiceId, VoiceObservation,
     validity::{self, ValueIssue},
 };
 use alloc::vec::Vec;
@@ -203,7 +203,9 @@ pub enum Issue {
         issue: ValueIssue,
     },
     /// Authored structure or coupled pair arithmetic is invalid.
-    Structure(LoweringError),
+    Structure(StructureError),
+    /// Coupled pair arithmetic cannot retain its authored intent.
+    Pair(PairError),
 }
 /// Rate-independent analysis, including invalid but inspectable authored sounds.
 #[derive(Debug, Clone, PartialEq)]
@@ -358,7 +360,7 @@ pub fn nominal(components: &[Component]) -> Analysis {
                     }
                 }
                 if let Err(error) = crate::authored::lower(component) {
-                    result.diagnostics.push(Issue::Structure(error));
+                    result.diagnostics.push(Issue::Pair(error));
                 }
                 (
                     Voice {

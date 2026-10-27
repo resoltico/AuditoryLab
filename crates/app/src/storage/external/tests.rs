@@ -83,8 +83,8 @@ fn stale_bytes_or_same_bytes_in_a_new_file_refuse_even_noop_save() {
                     &Cancel::default()
                 )
                 .unwrap_err()
-                .kind(),
-            ErrorKind::Conflict
+                .outcome(),
+            crate::error::Outcome::Conflict
         );
         assert_eq!(fs::read(path).unwrap(), before);
     }
@@ -104,8 +104,8 @@ fn history_change_and_cancel_are_refused_without_a_stage_or_file_replacement() {
                 &Cancel::default()
             )
             .unwrap_err()
-            .kind(),
-        ErrorKind::HistoryConflict
+            .outcome(),
+        crate::error::Outcome::HistoryConflict
     );
     let cancel = Cancel::default();
     cancel.request();
@@ -113,8 +113,8 @@ fn history_change_and_cancel_are_refused_without_a_stage_or_file_replacement() {
         ExternalWriter
             .save(expected, Arc::new(snapshot.recipe().clone()), &cancel)
             .unwrap_err()
-            .kind(),
-        ErrorKind::Cancelled
+            .outcome(),
+        crate::error::Outcome::Cancelled
     );
     assert_eq!(fs::read(path).unwrap(), before);
     assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);

@@ -27,11 +27,11 @@ pub(crate) fn target(
 
 pub(crate) fn lower(
     components: &[Component],
-) -> Result<Vec<(crate::VoiceId, Voice)>, crate::LoweringError> {
-    Sound::check_structure(components)?;
+) -> Result<Vec<(crate::VoiceId, Voice)>, crate::SoundError> {
+    Sound::check_structure(components).map_err(SoundError::Structure)?;
     let mut voices = Vec::new();
     for component in components {
-        voices.extend(crate::authored::lower(component)?);
+        voices.extend(crate::authored::lower(component).map_err(SoundError::Pair)?);
     }
     Ok(voices)
 }

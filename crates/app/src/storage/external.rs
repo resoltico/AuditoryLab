@@ -1,7 +1,7 @@
 //! External Save with observed identity and exact-byte checks immediately before publication.
 use crate::core::Recipe;
 use crate::document::recipe::RecipeSnapshot;
-use crate::error::{Error, ErrorKind};
+use crate::error::{FileError, IoFailure, IoOperation, SaveError as Error};
 use crate::services::Cancel;
 use crate::storage::library::{Fingerprint, MutationStatus};
 use crate::storage::publish::{self, Policy};
@@ -20,15 +20,15 @@ pub struct ObservedFile {
     handle: Arc<same_file::Handle>,
 }
 impl ObservedFile {
-    pub(crate) fn capture(path: &Path, file: File, bytes: &[u8]) -> Result<Self, Error> {
-        let path = std::fs::canonicalize(path)
-            .map_err(|e| io("cannot resolve opened external file", e))?;
+    pub(crate) fn capture(path: &Path, file: File, bytes: &[u8]) -> Result<Self, FileError> {
+        let path =
+            std::fs::canonicalize(path).map_err(|e| io(path, IoOperation::ResolvePath, e))?;
         let handle = same_file::Handle::from_file(file)
-            .map_err(|e| io("cannot retain external file identity", e))?;
+            .map_err(|e| io(&path, IoOperation::RetainIdentity, e))?;
         let current = same_file::Handle::from_path(&path)
-            .map_err(|e| io("cannot check opened path identity", e))?;
+            .map_err(|e| io(&path, IoOperation::CheckIdentity, e))?;
         if handle != current {
-            return Err(conflict());
+            return Err(FileError::Changed { path });
         }
         Ok(Self {
             path,
@@ -91,47 +91,44 @@ impl ExternalWriter {
         cancel: &Cancel,
     ) -> Result<ExternalOutcome, Error> {
         if cancel.is_requested() {
-            return Err(Error::new(
-                ErrorKind::Cancelled,
-                "external Save cancelled before publication",
-            ));
+            return Err(Error::File {
+                error: FileError::Cancelled {
+                    path: Some(expected.path.clone()),
+                },
+            });
         }
-        let parent = expected
-            .path
-            .parent()
-            .ok_or_else(|| Error::new(ErrorKind::Write, "external destination needs a parent"))?;
-        let name = expected
-            .path
-            .file_name()
-            .ok_or_else(|| Error::new(ErrorKind::Write, "external destination needs a filename"))?;
+        let parent = expected.path.parent().ok_or(Error::File {
+            error: FileError::MissingParent,
+        })?;
+        let name = expected.path.file_name().ok_or(Error::File {
+            error: FileError::MissingFilename,
+        })?;
         let dir = Dir::open_ambient_dir(parent, cap_std::ambient_authority())
-            .map_err(|e| io("cannot open external parent", e))?;
+            .map_err(|e| io(&expected.path, IoOperation::OpenDirectory, e))?;
         let mut file = publish::open_regular(&dir, Path::new(name))?;
         let mut bytes = Vec::new();
         use std::io::Read;
         (&mut file)
             .take((Recipe::MAX_BYTES + 1) as u64)
             .read_to_end(&mut bytes)
-            .map_err(|e| io("cannot read external recipe", e))?;
+            .map_err(|e| io(&expected.path, IoOperation::Read, e))?;
         if bytes.len() > Recipe::MAX_BYTES {
-            return Err(Error::new(
-                ErrorKind::InvalidRecipe,
-                "external recipe exceeds its byte limit",
-            ));
+            return Err(Error::Recipe {
+                error: crate::core::RecipeError::TooLarge,
+            });
         }
         let current = ObservedFile::capture(&expected.path, file, &bytes)?;
         if !expected.matches(&current) {
-            return Err(conflict());
+            return Err(FileError::Changed {
+                path: expected.path.clone(),
+            }
+            .into());
         }
-        let original = Recipe::from_bytes(&bytes)
-            .map_err(|e| Error::new(ErrorKind::InvalidRecipe, e.to_string()))?;
+        let original = Recipe::from_bytes(&bytes).map_err(|e| Error::Recipe { error: e })?;
         if original.document().id != recipe.document().id
             || original.document().created_at != recipe.document().created_at
         {
-            return Err(Error::new(
-                ErrorKind::HistoryConflict,
-                "external Save must retain identity and creation history; save an independent copy instead",
-            ));
+            return Err(Error::HistoryReplacement);
         }
         if original.same_editable_content(&recipe) {
             return Ok(ExternalOutcome {
@@ -143,7 +140,7 @@ impl ExternalWriter {
             });
         }
         let mut document = recipe.document().clone();
-        let now = crate::storage::library::store::observed_now()?;
+        let now = crate::clock::observed_now()?;
         let mut diagnostics = Vec::new();
         if original
             .document()
@@ -156,10 +153,10 @@ impl ExternalWriter {
         let recipe = (*recipe)
             .clone()
             .with_document(document)
-            .map_err(|e| Error::new(ErrorKind::InvalidRecipe, e.to_string()))?;
+            .map_err(|e| Error::Recipe { error: e })?;
         let bytes = recipe
             .to_toml()
-            .map_err(|e| Error::new(ErrorKind::InvalidRecipe, e.to_string()))?
+            .map_err(|e| Error::Recipe { error: e })?
             .into_bytes();
         let publication = publish::publish_in(
             &dir,
@@ -172,12 +169,12 @@ impl ExternalWriter {
             cancel,
             |file| {
                 file.write_all(&bytes)
-                    .map_err(|e| io("cannot write external recipe stage", e))?;
+                    .map_err(|e| io(&expected.path, IoOperation::Write, e))?;
                 same_file::Handle::from_file(
                     file.try_clone()
-                        .map_err(|e| io("cannot retain saved file handle", e))?,
+                        .map_err(|e| io(&expected.path, IoOperation::RetainIdentity, e))?,
                 )
-                .map_err(|e| io("cannot retain saved file identity", e))
+                .map_err(|e| io(&expected.path, IoOperation::RetainIdentity, e))
             },
         )?;
         diagnostics.extend(publication.warnings);
@@ -199,14 +196,8 @@ impl ExternalWriter {
         })
     }
 }
-fn io(context: &str, error: std::io::Error) -> Error {
-    Error::caused(ErrorKind::Write, format!("{context}: {error}"), error)
-}
-fn conflict() -> Error {
-    Error::new(
-        ErrorKind::Conflict,
-        "external file changed identity or bytes since opening; reload or save an independent copy",
-    )
+fn io(path: &Path, action: IoOperation, error: std::io::Error) -> FileError {
+    FileError::Io(IoFailure::new(action, Some(path.to_owned()), error))
 }
 #[cfg(test)]
 mod tests;

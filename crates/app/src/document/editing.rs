@@ -11,7 +11,7 @@
 //! only supplies candidates.
 use crate::document::controls;
 use crate::document::recipe::{Origin, RecipeSnapshot};
-use crate::error::{Error, ErrorKind};
+use crate::error::{EditorError as Error, IdentityError, IdentityScope};
 use crate::presentation::ParameterText;
 use auditorylab_core::{
     CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, Recipe, RecipeBuilder, SampleRate,
@@ -38,7 +38,7 @@ impl DocumentId {
         NEXT_DOCUMENT
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map(Self)
-            .map_err(|_| Error::new(ErrorKind::InvalidRecipe, "document identities exhausted"))
+            .map_err(|_| Error::Identity(IdentityError::Exhausted(IdentityScope::Document)))
     }
 }
 
@@ -274,7 +274,7 @@ impl Draft {
         let content = snapshot
             .recipe()
             .fork(crate::identity::fresh_document()?, catalog)
-            .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?;
+            .map_err(Error::Recipe)?;
         let mut draft = Self::from_recipe(content);
         draft.set_title(format!("{} (edited)", snapshot.title()));
         draft.based_on = Some(snapshot.clone());
@@ -506,10 +506,7 @@ impl Draft {
     /// # Errors
     /// Returns the portable-contract failure for an incomplete editable candidate.
     pub fn recipe(&self) -> Result<Recipe, Error> {
-        self.content
-            .clone()
-            .build()
-            .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))
+        self.content.clone().build().map_err(Error::Recipe)
     }
     fn demote_evidence(&mut self) {
         for evidence in &mut self.content.evidence {
@@ -544,18 +541,16 @@ impl Draft {
     /// # Errors
     /// Rejects portable contract violations, including nonfinite values and capacity.
     pub fn to_toml(&self) -> Result<String, Error> {
-        serialize(&self.recipe()?)
+        serialize(&self.recipe()?).map_err(Error::Recipe)
     }
 }
 /// Serialize finite recipe content within the reader's byte limit.
 ///
 /// # Errors
-/// Returns [`ErrorKind::InvalidRecipe`] for non-finite numbers, a writer
+/// Returns [`Outcome::InvalidRecipe`] for non-finite numbers, a writer
 /// failure or text longer than [`Recipe::MAX_BYTES`].
-pub(crate) fn serialize(recipe: &Recipe) -> Result<String, Error> {
-    recipe
-        .to_toml()
-        .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))
+pub(crate) fn serialize(recipe: &Recipe) -> Result<String, crate::core::RecipeError> {
+    recipe.to_toml()
 }
 
 /// A complete or best-effort candidate: committed values with every staged
@@ -744,8 +739,7 @@ impl EditorSession {
     /// Refuses invalid component owner identities or exhausted document identities.
     pub fn new(draft: Draft) -> Result<Self, Error> {
         let saved = Draft::empty(draft.content.document.clone()).recipe()?;
-        auditorylab_core::Sound::check_structure(draft.components())
-            .map_err(|error| Error::new(ErrorKind::InvalidRecipe, error.to_string()))?;
+        auditorylab_core::Sound::check_structure(draft.components()).map_err(Error::Structure)?;
         let row_generations = draft
             .components()
             .iter()
@@ -1344,7 +1338,7 @@ impl EditorSession {
                 .draft
                 .to_toml()
                 .map(|_| ())
-                .map_err(|error| SaveRefusal::Document(error.to_string()))
+                .map_err(SaveRefusal::Document)
         } else {
             Err(SaveRefusal::Input(candidate.problems.clone()))
         };
@@ -1360,12 +1354,12 @@ impl EditorSession {
 }
 
 /// Why a candidate cannot be saved.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SaveRefusal {
     /// Staged input does not parse or numbers are not finite.
     Input(Vec<(EditingField, InputProblem)>),
     /// The document does not serialize within the reader's limits.
-    Document(String),
+    Document(Error),
 }
 
 fn apply_number(

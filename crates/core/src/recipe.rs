@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::{
-    BibliographySource, Component, Description, DocumentIdentity, Evidence, EvidenceScope, Lineage,
-    Sound,
+    BibliographySource, Component, ContractError, Description, DocumentIdentity, Evidence,
+    EvidenceScope, Lineage, Sound,
 };
 use alloc::{
     string::{String, ToString},
@@ -66,7 +66,7 @@ pub struct Research {
     pub adaptation: Option<String>,
 }
 /// Why a byte sequence does not satisfy the one supported portable contract.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RecipeError {
     /// Portable byte bound exceeded.
     TooLarge,
@@ -77,9 +77,9 @@ pub enum RecipeError {
     /// Strict TOML shape/type error.
     Format(toml::de::Error),
     /// Identity, reference, budget or finite-number contract failed.
-    Contract(String),
+    Contract(ContractError),
     /// TOML serialization failed.
-    Write(String),
+    Write(toml::ser::Error),
     /// A different schema is not read or converted.
     UnsupportedVersion {
         /// The declared unsupported version.
@@ -89,17 +89,13 @@ pub enum RecipeError {
 impl Display for RecipeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::TooLarge => write!(f, "recipe exceeds {} bytes", Recipe::MAX_BYTES),
-            Self::NotUtf8 => f.write_str("recipe is not UTF-8 text"),
-            Self::Utf16 => f.write_str("recipe is UTF-16 text; save it as UTF-8"),
-            Self::Format(e) => write!(f, "recipe does not match the format: {e}"),
-            Self::Contract(e) => write!(f, "recipe contract: {e}"),
-            Self::Write(e) => write!(f, "cannot serialize recipe: {e}"),
-            Self::UnsupportedVersion { found } => write!(
-                f,
-                "recipe has schema_version {found}; this build reads {}",
-                Recipe::SCHEMA_VERSION
-            ),
+            Self::TooLarge => f.write_str("recipe.size"),
+            Self::NotUtf8 => f.write_str("recipe.utf8"),
+            Self::Utf16 => f.write_str("recipe.utf16"),
+            Self::Format(_) => f.write_str("recipe.format"),
+            Self::Contract(error) => write!(f, "recipe.contract.{error}"),
+            Self::Write(_) => f.write_str("recipe.write"),
+            Self::UnsupportedVersion { found } => write!(f, "recipe.schema_version.{found}"),
         }
     }
 }
@@ -107,6 +103,8 @@ impl core::error::Error for RecipeError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
             Self::Format(e) => Some(e),
+            Self::Contract(e) => Some(e),
+            Self::Write(e) => Some(e),
             _ => None,
         }
     }
@@ -325,22 +323,42 @@ impl Recipe {
     /// # Errors
     /// Returns the first nonfinite, identity, capacity or metadata reference error.
     fn validate(&self) -> Result<(), RecipeError> {
-        let invalid = |message: &str| RecipeError::Contract(message.into());
-        if let Some((component, parameter)) = self.sound.nonfinite().next() {
-            return Err(RecipeError::Contract(alloc::format!(
-                "{parameter} must be finite (component {component:?})"
-            )));
+        if let Some((index, parameter)) = self.sound.nonfinite().next() {
+            let (component, value) = match index {
+                Some(index) => {
+                    let component = &self.sound.components[index];
+                    (
+                        Some(component.id),
+                        component
+                            .form
+                            .read(parameter)
+                            .unwrap_or_else(|| unreachable!("enumerated quantity")),
+                    )
+                }
+                None => (
+                    None,
+                    parameter
+                        .read_envelope(&self.sound)
+                        .unwrap_or_else(|| unreachable!("envelope quantity")),
+                ),
+            };
+            return Err(RecipeError::Contract(ContractError::Nonfinite {
+                component,
+                parameter,
+                value,
+            }));
         }
         Sound::check_structure(&self.sound.components)
-            .map_err(|error| RecipeError::Contract(error.to_string()))?;
+            .map_err(|error| RecipeError::Contract(ContractError::Structure(error)))?;
         if self
             .description
             .as_ref()
             .is_some_and(|d| d.title.trim().is_empty())
         {
-            return Err(invalid("description title must not be empty"));
+            return Err(RecipeError::Contract(ContractError::EmptyTitle));
         }
-        crate::provenance::validate(&self.sources, &self.evidence, &self.lineage).map_err(invalid)
+        crate::provenance::validate(&self.sources, &self.evidence, &self.lineage)
+            .map_err(RecipeError::Contract)
     }
     /// Canonical bounded TOML, preserving every authored field and source scope.
     ///
@@ -360,7 +378,7 @@ impl Recipe {
             evidence: self.evidence.clone(),
             lineage: self.lineage.clone(),
         })
-        .map_err(|e| RecipeError::Write(e.to_string()))?;
+        .map_err(RecipeError::Write)?;
         if text.len() > Self::MAX_BYTES {
             return Err(RecipeError::TooLarge);
         }
@@ -390,14 +408,14 @@ impl Recipe {
         catalog_id: Option<String>,
     ) -> Result<Self, RecipeError> {
         if document.id == self.document.id {
-            return Err(RecipeError::Contract(
-                "copy requires a new document UUID".into(),
-            ));
+            return Err(RecipeError::Contract(ContractError::ReusedCopyIdentity {
+                id: document.id,
+            }));
         }
         if self.lineage.len() >= crate::provenance::MAX_LINEAGE {
-            return Err(RecipeError::Contract(
-                "lineage capacity reached; review metadata before making a copy".into(),
-            ));
+            return Err(RecipeError::Contract(ContractError::CopyLineageFull {
+                count: self.lineage.len(),
+            }));
         }
         let mut copy = self.clone();
         copy.document = document;
@@ -431,9 +449,9 @@ impl Recipe {
                     .map(|s| Research {
                         studied_for: e.population_detail.clone().or_else(|| {
                             Some(alloc::format!(
-                                "{:?} study · {:?}",
-                                e.population,
-                                e.condition_role
+                                "{} study · {}",
+                                e.population.label(),
+                                e.condition_role.label()
                             ))
                         }),
                         summary: Some(alloc::format!("{} {}", e.summary, e.limitations)),

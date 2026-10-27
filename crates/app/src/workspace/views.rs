@@ -281,7 +281,7 @@ pub struct TransportView {
 pub(super) fn refusal_text(refusal: &Refusal) -> String {
     match refusal {
         Refusal::LibraryUnavailable(problem) => {
-            format!("User Library unavailable: {}", problem.message)
+            format!("User Library unavailable: {}", problem.message())
         }
         Refusal::DevicePlaybackUnavailable => {
             "Device playback is disabled for this workspace.".into()
@@ -300,7 +300,15 @@ pub(super) fn refusal_text(refusal: &Refusal) -> String {
         Refusal::NoExport => "No export is running.".into(),
         Refusal::Input(problems) => input_text(problems),
         Refusal::NotFinite => "The recipe's numbers must all be finite before it can play.".into(),
-        Refusal::Document(message) => message.clone(),
+        Refusal::Document(error) => error.to_string(),
+        Refusal::SelectionChanged => "Open file selection changed; activate Add again.".into(),
+        Refusal::TemporaryRequired => "Select an Open file to add; use Edit a copy for Built-in content.".into(),
+        Refusal::PurgeSelectionChanged => "Select the current trashed version before permanent deletion.".into(),
+        Refusal::UnknownLibraryAction(action) => format!("Unknown library action: {action}"),
+        Refusal::DetachedDraft(key) => format!("Detached draft from {key}. Edit the restored saved entry or Save independent copy; the old identity is not recreated."),
+        Refusal::ExistingSavedIdentity(_) => "Detached draft belongs to an existing saved identity. Restore/edit that version or Save independent copy.".into(),
+        Refusal::SavedEntryUnreadable => "Saved entry is unreadable; the retained snapshot is for inspection. Refresh or recover an independent copy before playback.".into(),
+        Refusal::RestoreBeforePlayback => "Restore this saved recipe before playback.".into(),
         Refusal::Invalid { title, rate, error } => error.as_ref().map_or_else(
             || format!("Could not prepare “{title}” at {} Hz.", rate.hz()),
             |error| (error).at_rate(title, *rate),
@@ -441,7 +449,7 @@ impl Workspace {
                             .envelope()
                             .err()
                             .filter(|e| e.parameters().contains(&p))
-                            .map(ToString::to_string)
+                            .map(presentation::acoustic_errors::sound_error)
                     })
                     .unwrap_or_default()
             });
@@ -473,7 +481,7 @@ impl Workspace {
                 let own = analysis.check().component((*id).into());
                 let acoustic = own.and_then(|r| r.as_ref().err());
                 let second=analysis.check().component(id.with_lane(auditorylab_core::Lane::Secondary)).and_then(|r|r.as_ref().err());
-                let coupled=analysis.check().result().err().filter(|error|match error {auditorylab_core::SoundError::Authored(auditorylab_core::LoweringError::PairDifference {id:owner,..})=>owner.get()==id.get(),auditorylab_core::SoundError::PairCarrier {id:owner,..}=>owner.component==*id,_=>false});
+                let coupled=analysis.check().result().err().filter(|error|match error {auditorylab_core::SoundError::Pair(auditorylab_core::PairError {id:owner,..})=>owner.get()==id.get(),auditorylab_core::SoundError::PairCarrier {id:owner,..}=>owner.component==*id,_=>false});
                 let parameters = ParameterId::COMPONENT
                     .into_iter()
                     .filter(|p| committed.read(*p).is_some())
@@ -548,7 +556,10 @@ impl Workspace {
                 NumberStyle::Decibels.format(target.peak_dbfs()[0]),
                 NumberStyle::Decibels.format(target.peak_dbfs()[1])
             ),
-            Err(error) if error.parameters().is_empty() => format!("{error} ({context})"),
+            Err(error) if error.parameters().is_empty() => format!(
+                "{} ({context})",
+                presentation::acoustic_errors::sound_error(error)
+            ),
             Err(_) => format!("Correct the highlighted fields to apply this sound {context}."),
         };
         let metadata_error = metadata
@@ -1104,7 +1115,10 @@ fn component_diagnostic(error: &auditorylab_core::VoiceError, context: &str) -> 
                 f64::from(*sample_rate_hz) / 2.0
             )
         }
-        _ => format!("{error} ({context})"),
+        _ => format!(
+            "{} ({context})",
+            presentation::acoustic_errors::voice_error(error)
+        ),
     }
 }
 
@@ -1113,7 +1127,10 @@ fn sound_diagnostic(error: &auditorylab_core::SoundError, context: &str) -> Stri
         auditorylab_core::SoundError::PairCarrier { error, .. } => {
             component_diagnostic(error, context)
         }
-        _ => format!("{error} ({context})"),
+        _ => format!(
+            "{} ({context})",
+            presentation::acoustic_errors::sound_error(error)
+        ),
     }
 }
 

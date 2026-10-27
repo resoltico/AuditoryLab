@@ -39,7 +39,7 @@ use crate::document::editing::{
 use crate::document::editing::{DocumentId, Draft, EditorSession};
 use crate::document::recipe::file_name;
 use crate::document::recipe::{RecipeSnapshot, Rendition};
-use crate::error::{Error, ErrorKind};
+use crate::error::{OperationError as Error, Outcome};
 use crate::presentation::waveform_view::WaveformScale;
 use crate::services::{Cancel, Progress};
 use auditorylab_core::{CarrierKind, Ears, ModulationKind, Recipe, SampleRate};
@@ -195,7 +195,7 @@ pub enum ResponseDisposition {
 }
 
 /// Why a command was not carried out.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Refusal {
     /// The configured persistent library cannot be used.
     LibraryUnavailable(crate::storage::library::LibraryDiagnostic),
@@ -220,7 +220,23 @@ pub enum Refusal {
     /// The recipe's numbers are not all finite.
     NotFinite,
     /// The document does not serialize.
-    Document(String),
+    Document(Box<Error>),
+    /// A captured selection is no longer current.
+    SelectionChanged,
+    /// Adding requires an opened temporary file.
+    TemporaryRequired,
+    /// Permanent deletion requires the current Trash version.
+    PurgeSelectionChanged,
+    /// A request named no supported managed action.
+    UnknownLibraryAction(String),
+    /// A detached draft must not recreate its old saved identity.
+    DetachedDraft(crate::storage::library::LibraryKey),
+    /// A draft UUID already belongs to a saved entry.
+    ExistingSavedIdentity(crate::core::DocumentUuid),
+    /// Retained unreadable saved content is inspection-only.
+    SavedEntryUnreadable,
+    /// A selected Trash entry must be restored before playback.
+    RestoreBeforePlayback,
     /// The source is not valid at the export rate.
     Invalid {
         /// The captured sound's title.
@@ -999,7 +1015,7 @@ impl Workspace {
                     self.finish_audio(
                         task,
                         match outcome {
-                            JobOutcome::Audio(result) => Ok(result),
+                            JobOutcome::Audio(result) => Ok(result.map_err(Error::from)),
                             JobOutcome::Failed(error) => Err(error),
                             JobOutcome::File(_) => Err(WorkerFailure::InvalidOutcome),
                         },
@@ -1187,7 +1203,7 @@ impl Workspace {
                 Ok(draft) => {
                     self.replace_document(draft);
                 }
-                Err(e) => self.files.status = FileStatus::Failed(e),
+                Err(e) => self.files.status = FileStatus::Failed(e.into()),
             },
             Action::Document(DocumentAction::Copy(snapshot)) => {
                 if let Err(refusal) = Self::copy_content_admission(&snapshot) {
@@ -1197,7 +1213,7 @@ impl Workspace {
                         Ok(draft) => {
                             self.replace_document(draft);
                         }
-                        Err(e) => self.files.status = FileStatus::Failed(e),
+                        Err(e) => self.files.status = FileStatus::Failed(e.into()),
                     }
                 }
             }
@@ -1263,7 +1279,7 @@ impl Workspace {
                 true
             }
             Err(error) => {
-                self.files.status = FileStatus::Failed(error);
+                self.files.status = FileStatus::Failed(error.into());
                 false
             }
         }
@@ -1354,7 +1370,7 @@ impl Workspace {
                     Arc::from(
                         recipe
                             .to_toml()
-                            .map_err(|e| Refusal::Document(e.to_string()))?,
+                            .map_err(|e| Refusal::Document(Box::new(e.into())))?,
                     ),
                     self.editor.session.draft().title().into(),
                 )
@@ -1364,7 +1380,7 @@ impl Workspace {
                 let text = match snapshot.origin() {
                     crate::document::recipe::Origin::BuiltIn(id) => Arc::from(
                         crate::storage::load::builtin_source(id)
-                            .map_err(|e| Refusal::Document(e.to_string()))?,
+                            .map_err(|e| Refusal::Document(Box::new(e.into())))?,
                     ),
                     crate::document::recipe::Origin::User { .. } => {
                         self.library.selected_text().ok_or(Refusal::NoSelection)?
@@ -1373,7 +1389,7 @@ impl Workspace {
                         snapshot
                             .recipe()
                             .to_toml()
-                            .map_err(|e| Refusal::Document(e.to_string()))?,
+                            .map_err(|e| Refusal::Document(Box::new(e.into())))?,
                     ),
                 };
                 (text, snapshot.title())
@@ -1664,15 +1680,12 @@ impl Workspace {
                     exported,
                 }
             }
-            (_, FileOutcome::Exported(Err(error))) if error.kind() == ErrorKind::Cancelled => {
+            (_, FileOutcome::Exported(Err(error))) if error.outcome() == Outcome::Cancelled => {
                 FileStatus::Notice(FileNotice::ExportCancelled)
             }
-            (
-                _,
-                FileOutcome::Imported(Err(error))
-                | FileOutcome::RecipeExported(Err(error))
-                | FileOutcome::Exported(Err(error)),
-            ) => FileStatus::Failed(error),
+            (_, FileOutcome::Imported(Err(error))) => FileStatus::Failed(error.into()),
+            (_, FileOutcome::RecipeExported(Err(error))) => FileStatus::Failed(error.into()),
+            (_, FileOutcome::Exported(Err(error))) => FileStatus::Failed(error.into()),
             _ => FileStatus::WorkerFailed {
                 activity: FileActivity::from_kind(&task.kind),
                 error: WorkerFailure::InvalidOutcome,

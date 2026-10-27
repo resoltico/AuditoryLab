@@ -6,7 +6,7 @@ use crate::{
         SortBy,
     },
     document::recipe::RecipeSnapshot,
-    error::Error,
+    error::{OperationError as Error, Outcome},
     storage::library::{
         Initialization, Inventory, LibraryDiagnostic, LibraryKey, LibraryRoot, MutationStatus,
         RootInfo, RootSource, VersionToken, WriteOutcome,
@@ -264,9 +264,7 @@ impl Report {
     pub fn describe(summary: &EntrySummary, snapshot: &RecipeSnapshot) -> Result<Self, Error> {
         let mut entry = EntryReport::from(summary);
         entry.history_warnings = Some(crate::storage::library::history_warnings(snapshot.recipe()));
-        entry.recipe_toml = Some(snapshot.recipe().to_toml().map_err(|e| {
-            crate::error::Error::caused(crate::error::ErrorKind::InvalidRecipe, e.to_string(), e)
-        })?);
+        entry.recipe_toml = Some(snapshot.recipe().to_toml().map_err(Error::Recipe)?);
         Ok(Self::new("describe", true).with_entries(vec![entry]))
     }
     /// Compile the captured document at the requested rate and retain invalid-content diagnostics.
@@ -275,9 +273,9 @@ impl Report {
         summary: &EntrySummary,
         snapshot: &RecipeSnapshot,
         rate: SampleRate,
-    ) -> (Self, u8) {
+    ) -> (Self, Option<Outcome>) {
         let mut entry = EntryReport::from(summary);
-        let mut code = 0;
+        let mut outcome = None;
         entry.validation = match snapshot.at(rate) {
             Ok(sound) => Validation::Valid {
                 sample_rate_hz: rate.hz(),
@@ -291,14 +289,17 @@ impl Report {
                     .collect(),
             },
             Err(error) => {
-                code = error.kind().exit_code();
+                outcome = Some(error.outcome());
                 Validation::Invalid {
                     sample_rate_hz: rate.hz(),
                     diagnostics: vec![error.to_string()],
                 }
             }
         };
-        (Self::new("inspect", true).with_entries(vec![entry]), code)
+        (
+            Self::new("inspect", true).with_entries(vec![entry]),
+            outcome,
+        )
     }
     /// A successful root inspection.
     #[must_use]
@@ -313,7 +314,7 @@ impl Report {
         operation: &str,
         root: &LibraryRoot,
         exists: Option<bool>,
-        error: &Error,
+        error: &crate::error::LibraryError,
     ) -> Self {
         let mut report = Self::new(operation, false);
         report.root = Some(RootReport::Unavailable(UnavailableRoot {
@@ -384,19 +385,25 @@ impl Report {
     }
     /// A failure classified by its public exit outcome.
     #[must_use]
-    pub fn error(operation: &str, error: &dyn std::error::Error, code: u8) -> Self {
+    pub fn error(operation: &str, message: impl Into<String>, outcome: Outcome) -> Self {
         let mut report = Self::new(operation, false);
-        report.status = Some(ReportStatus::Failure(match code {
-            3 => FailureStatus::Conflict,
-            4 => FailureStatus::Busy,
-            5 => FailureStatus::IncompleteInventory,
-            130 => FailureStatus::Cancelled,
-            2 => FailureStatus::Rejected,
-            _ => FailureStatus::Failed,
+        report.status = Some(ReportStatus::Failure(match outcome {
+            Outcome::Conflict | Outcome::HistoryConflict => FailureStatus::Conflict,
+            Outcome::Busy | Outcome::LockUnavailable => FailureStatus::Busy,
+            Outcome::IncompleteInventory => FailureStatus::IncompleteInventory,
+            Outcome::Cancelled => FailureStatus::Cancelled,
+            Outcome::UnknownRecipe
+            | Outcome::InvalidRecipe
+            | Outcome::InvalidSound
+            | Outcome::InvalidArgument
+            | Outcome::ReadOnlyBuiltIn => FailureStatus::Rejected,
+            Outcome::Unreadable
+            | Outcome::Identity
+            | Outcome::Device
+            | Outcome::DestinationExists
+            | Outcome::Write => FailureStatus::Failed,
         }));
-        report
-            .diagnostics
-            .push(Diagnostic::Message(error.to_string()));
+        report.diagnostics.push(Diagnostic::Message(message.into()));
         report
     }
 }

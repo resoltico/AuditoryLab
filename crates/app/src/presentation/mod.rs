@@ -3,8 +3,11 @@
 //! Frontends render these strings; they do not compose domain sentences of
 //! their own. Generated and model views describe realized quantities; detail
 //! views state requested and realized values together with their rate.
+pub mod acoustic_errors;
 pub mod build_info;
 mod commands;
+pub mod core_errors;
+mod errors;
 pub mod reports;
 pub mod vocabulary;
 pub mod waveform_view;
@@ -669,7 +672,11 @@ impl AudioErrorText for SoundError {
     /// A source that is not valid at a rate.
     fn at_rate(&self, title: &str, rate: SampleRate) -> String {
         let error = self;
-        format!("{title} at {} Hz: {error}", rate.hz())
+        format!(
+            "{title} at {} Hz: {}",
+            rate.hz(),
+            acoustic_errors::sound_error(error)
+        )
     }
 }
 impl Rendition {
@@ -987,7 +994,8 @@ impl Notice {
 pub fn rhythm_diagnostic(issue: &auditorylab_core::rhythm::Issue) -> String {
     use auditorylab_core::{ValueRule, rhythm::Issue};
     match issue {
-        Issue::Structure(error) => error.to_string(),
+        Issue::Structure(error) => core_errors::structure_error(error),
+        Issue::Pair(error) => core_errors::pair_error(error),
         Issue::Value { owner, issue } => {
             let parameter = issue.parameter.descriptor();
             format!(

@@ -241,12 +241,11 @@ impl DateRange {
     ///
     /// # Errors
     /// Rejects before <= from.
-    pub fn validate(&self) -> Result<(), crate::error::Error> {
-        if self.from.zip(self.before).is_some_and(|(a, b)| b <= a) {
-            Err(crate::error::Error::new(
-                crate::error::ErrorKind::InvalidArgument,
-                "date range requires before strictly after from",
-            ))
+    pub fn validate(&self) -> Result<(), crate::error::QueryError> {
+        if let Some((from, before)) = self.from.zip(self.before)
+            && before <= from
+        {
+            Err(crate::error::QueryError::RangeOrder { from, before })
         } else {
             Ok(())
         }
@@ -365,7 +364,7 @@ impl CatalogQuery {
     ///
     /// # Errors
     /// Rejects inverse dates or malformed/empty study selectors.
-    pub fn validate(&self) -> Result<(), crate::error::Error> {
+    pub fn validate(&self) -> Result<(), crate::error::QueryError> {
         self.created.validate()?;
         self.modified.validate()?;
         self.added.validate()?;
@@ -378,10 +377,9 @@ impl CatalogQuery {
                     || study.starts_with("doi:"))
                     && auditorylab_core::provenance::normalize_doi(study).is_none()
             {
-                return Err(crate::error::Error::new(
-                    crate::error::ErrorKind::InvalidArgument,
-                    "study must be a nonempty source key or valid DOI identity",
-                ));
+                return Err(crate::error::QueryError::Study {
+                    value: study.clone(),
+                });
             }
         }
         Ok(())
@@ -454,7 +452,7 @@ impl CatalogQuery {
     pub fn execute<'a>(
         &self,
         input: &'a [EntrySummary],
-    ) -> Result<QueryResult<'a>, crate::error::Error> {
+    ) -> Result<QueryResult<'a>, crate::error::QueryError> {
         self.validate()?;
         let mut seen = std::collections::BTreeSet::new();
         let mut entries = input
@@ -490,7 +488,7 @@ impl CatalogQuery {
     ///
     /// # Errors
     /// Rejects the same invalid ranges/tokens as result execution.
-    pub fn count(&self, input: &[EntrySummary]) -> Result<usize, crate::error::Error> {
+    pub fn count(&self, input: &[EntrySummary]) -> Result<usize, crate::error::QueryError> {
         self.validate()?;
         Ok(input
             .iter()

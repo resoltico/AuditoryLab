@@ -6,7 +6,8 @@ use super::{Response, Workspace};
 use crate::audio::session::{LiveControl, PlaybackControl, PlaybackReport, Session};
 use crate::document::editing::{DocumentId, Draft};
 use crate::document::recipe::{RecipeSnapshot, Rendition};
-use crate::error::{Error, ErrorKind};
+use crate::error::{ExportError, LibraryError, LoadError, PlaybackError, SaveError};
+use crate::error::{OperationError as Error, Outcome};
 use crate::services::{Cancel, Progress, Replace};
 use crate::storage::wav::Exported;
 use auditorylab_core::SampleRate;
@@ -80,26 +81,26 @@ pub(crate) enum FileKind {
 /// A file task's typed result.
 pub enum FileOutcome {
     /// Captured external recipe load.
-    Imported(Result<RecipeSnapshot, Error>),
+    Imported(Result<RecipeSnapshot, LoadError>),
     /// Managed library operation.
     Managed(Result<super::library::LibraryOutcome, Error>),
     /// Published portable bytes.
-    RecipeExported(Result<crate::services::SaveOutcome, Error>),
+    RecipeExported(Result<crate::services::SaveOutcome, SaveError>),
     /// Published audio export.
-    Exported(Result<Exported, Error>),
+    Exported(Result<Exported, ExportError>),
 }
 
 impl FileOutcome {
     pub(crate) fn conclusion(&self) -> Conclusion {
-        let result = match self {
-            Self::Managed(r) => r.as_ref().err(),
-            Self::Imported(r) => r.as_ref().err(),
-            Self::RecipeExported(r) => r.as_ref().err(),
-            Self::Exported(r) => r.as_ref().err(),
+        let outcome = match self {
+            Self::Managed(result) => result.as_ref().err().map(|error| error.outcome()),
+            Self::Imported(result) => result.as_ref().err().map(|error| error.outcome()),
+            Self::RecipeExported(result) => result.as_ref().err().map(|error| error.outcome()),
+            Self::Exported(result) => result.as_ref().err().map(|error| error.outcome()),
         };
-        match result {
+        match outcome {
             None => Conclusion::Succeeded,
-            Some(e) if e.kind() == ErrorKind::Cancelled => Conclusion::ExpectedCleanup,
+            Some(Outcome::Cancelled) => Conclusion::ExpectedCleanup,
             Some(_) => Conclusion::Failed,
         }
     }
@@ -151,19 +152,13 @@ impl FileKind {
 pub(super) fn revalidate_managed(
     snapshot: &RecipeSnapshot,
     store: &crate::storage::library::LibraryStore,
-) -> Result<RecipeSnapshot, Error> {
+) -> Result<RecipeSnapshot, LibraryError> {
     let crate::document::recipe::Origin::User { id, version } = snapshot.origin() else {
-        return Err(Error::new(
-            ErrorKind::InvalidArgument,
-            "expected a captured User selection",
-        ));
+        return Err(LibraryError::ExpectedUser);
     };
     let record = store.load(&crate::storage::library::LibraryKey::User(*id))?;
     if record.trashed || &record.version_token != version {
-        return Err(Error::new(
-            ErrorKind::Conflict,
-            "Saved selection changed or moved to Trash. Refresh before starting playback; no audio was started.",
-        ));
+        return Err(LibraryError::StalePlayback);
     }
     Ok(record.snapshot)
 }
@@ -213,7 +208,7 @@ pub enum JobOutcome {
     /// Completed filesystem operation.
     File(FileOutcome),
     /// Completed playback or preparation failure.
-    Audio(Result<PlaybackReport, Error>),
+    Audio(Result<PlaybackReport, PlaybackError>),
     /// No operation result can be trusted.
     Failed(WorkerFailure),
 }
@@ -222,17 +217,20 @@ impl JobOutcome {
         match self {
             Self::Failed(error) => Some(error.description()),
             Self::Audio(Err(error)) => Some(error.to_string()),
-            Self::File(outcome) => match outcome {
-                FileOutcome::Imported(Err(e))
-                | FileOutcome::Managed(Err(e))
-                | FileOutcome::RecipeExported(Err(e))
-                | FileOutcome::Exported(Err(e))
-                    if e.kind() != ErrorKind::Cancelled =>
-                {
-                    Some(e.to_string())
-                }
-                _ => None,
-            },
+            Self::File(outcome) => {
+                let value = match outcome {
+                    FileOutcome::Imported(Err(error)) => Some((error.outcome(), error.to_string())),
+                    FileOutcome::Managed(Err(error)) => Some((error.outcome(), error.to_string())),
+                    FileOutcome::RecipeExported(Err(error)) => {
+                        Some((error.outcome(), error.to_string()))
+                    }
+                    FileOutcome::Exported(Err(error)) => Some((error.outcome(), error.to_string())),
+                    _ => None,
+                };
+                value
+                    .filter(|(outcome, _)| *outcome != Outcome::Cancelled)
+                    .map(|(_, message)| message)
+            }
             _ => None,
         }
     }
@@ -301,19 +299,17 @@ fn execute_audio(
     kind: AudioKind,
     draft: Option<Draft>,
     prepared: &mut impl FnMut(Response),
-) -> Result<PlaybackReport, Error> {
+) -> Result<PlaybackReport, PlaybackError> {
     use crate::{
         audio::device,
-        audio::session::{MonitorDetail, Outcome, Preparation},
+        audio::session::{MonitorDetail, Outcome as TransportOutcome, Preparation},
     };
-    if session.state().outcome() == Outcome::StopRequested {
-        session.state().finish_drained(Outcome::Completed);
-        return session.state().report().ok_or_else(|| {
-            Error::new(
-                ErrorKind::Device,
-                "stopped preparation has no terminal outcome",
-            )
-        });
+    if session.state().outcome() == TransportOutcome::StopRequested {
+        session.state().finish_drained(TransportOutcome::Completed);
+        return session
+            .state()
+            .report()
+            .ok_or(PlaybackError::MissingTerminalOutcome);
     }
     let kind = match kind {
         AudioKind::Managed { snapshot, store } => {
@@ -327,12 +323,7 @@ fn execute_audio(
                 let reader = output
                     .monitor(MonitorDetail::Waveform)
                     .reader()
-                    .ok_or_else(|| {
-                        Error::new(
-                            ErrorKind::Device,
-                            crate::presentation::vocabulary::Caption::MonitorAlreadyInUse.label(),
-                        )
-                    })?;
+                    .ok_or(PlaybackError::MonitorInUse)?;
                 prepared(Response::Prepared {
                     job: id,
                     reader: Box::new(reader),
@@ -348,12 +339,7 @@ fn execute_audio(
                 let reader = output
                     .monitor(MonitorDetail::Waveform)
                     .reader()
-                    .ok_or_else(|| {
-                        Error::new(
-                            ErrorKind::Device,
-                            crate::presentation::vocabulary::Caption::MonitorAlreadyInUse.label(),
-                        )
-                    })?;
+                    .ok_or(PlaybackError::MonitorInUse)?;
                 prepared(Response::Prepared {
                     job: id,
                     reader: Box::new(reader),
@@ -367,10 +353,7 @@ fn execute_audio(
         (AudioKind::Managed { .. }, _) => {
             unreachable!("managed content resolved before device preparation")
         }
-        (AudioKind::Live(_), None) => Err(Error::new(
-            ErrorKind::InvalidSound,
-            "a live session needs a committed document",
-        )),
+        (AudioKind::Live(_), None) => Err(PlaybackError::MissingDocument),
     }
 }
 struct Running {

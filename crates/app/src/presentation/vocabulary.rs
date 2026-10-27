@@ -539,24 +539,12 @@ pub trait Term {
 }
 impl Term for crate::core::Population {
     fn label(&self) -> &'static str {
-        match self {
-            Self::Human => Caption::Human.label(),
-            Self::Mouse => Caption::Mouse.label(),
-            Self::OtherAnimal => Caption::OtherAnimal.label(),
-            Self::Mixed => Facet::MixedPopulation.label(),
-            Self::NotApplicable => Caption::NotApplicable.label(),
-            Self::Unspecified => Facet::UnspecifiedPopulation.label(),
-        }
+        (*self).label()
     }
 }
 impl Term for crate::core::ConditionRole {
     fn label(&self) -> &'static str {
-        match self {
-            Self::Test => Caption::TestCondition.label(),
-            Self::Comparison => Caption::ComparisonCondition.label(),
-            Self::Mixed => Caption::MixedRoles.label(),
-            Self::Unspecified => Caption::UnspecifiedRole.label(),
-        }
+        (*self).label()
     }
 }
 impl Term for crate::core::EvidenceScope {

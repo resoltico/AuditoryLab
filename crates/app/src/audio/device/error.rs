@@ -3,13 +3,12 @@
 
 use crate::audio::session::{Outcome, SessionState};
 use std::error::Error;
-use std::fmt::{Display, Formatter};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
 /// Why device playback did not start or did not finish normally.
 #[derive(Debug, Clone)]
-pub(crate) enum DeviceError {
+pub enum DeviceError {
     /// No default output device is available.
     NoDefaultOutput,
     /// The audio backend refused an operation or reported that the stream
@@ -35,42 +34,6 @@ pub(crate) enum DeviceError {
     TimedOut,
     /// The session ended before playback could start.
     Abandoned,
-}
-
-impl Display for DeviceError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NoDefaultOutput => write!(f, "no default audio output device found"),
-            Self::Backend(error) if error.kind() == cpal::ErrorKind::DeviceChanged => write!(
-                f,
-                "the audio output route changed and playback stopped; select the intended output and play again"
-            ),
-            Self::Backend(error) => write!(f, "audio backend: {error}"),
-            Self::UnsupportedSampleFormat(format) => write!(
-                f,
-                "the output device's {format} sample format is not supported"
-            ),
-            Self::UnsupportedSampleRate { hz } => write!(
-                f,
-                "the output device's {hz} Hz sample rate is not supported"
-            ),
-            Self::TooFewChannels { channels } => write!(
-                f,
-                "the default output device has {channels} channel{}; stimuli need two, one for each ear",
-                if *channels == 1 { "" } else { "s" }
-            ),
-            Self::InvalidTiming => write!(f, "the audio backend supplied invalid playback timing"),
-            Self::MisalignedBuffer => write!(
-                f,
-                "the audio backend supplied a buffer holding a partial frame"
-            ),
-            Self::TimedOut => write!(
-                f,
-                "the audio stream stopped making progress or outlasted its time limit"
-            ),
-            Self::Abandoned => write!(f, "the playback session ended before its stream started"),
-        }
-    }
 }
 
 impl Error for DeviceError {

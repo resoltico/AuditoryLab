@@ -1,8 +1,8 @@
 //! Independent signed-pair, owner/lane, strict shape and sample-preservation oracles.
 use crate as auditorylab_core;
 use auditorylab_core::{
-    Carrier, Component, ComponentForm, ComponentId, Ears, Lane, LoweringError, Pair, PairIssue,
-    SampleRate, Sound, TargetCheck, Voice,
+    Carrier, Component, ComponentForm, ComponentId, Ears, Lane, Pair, PairError, PairIssue,
+    SampleRate, Sound, StructureError, TargetCheck, Voice,
 };
 use serde::{Deserialize, Serialize};
 use std::{format, vec, vec::Vec};
@@ -609,19 +609,19 @@ fn raw_order_is_never_regrouped_and_both_budgets_are_enforced() {
     let mut nine = eight;
     nine.push(form(9, ComponentForm::Voice(raw)));
     assert_eq!(
-        crate::test_support::lower(&nine),
-        Err(LoweringError::VoiceBudget { count: 17 })
+        Sound::check_structure(&nine),
+        Err(StructureError::VoiceBudget { count: 17 })
     );
     let raw17 = (1..=17)
         .map(|id| form(id, ComponentForm::Voice(raw)))
         .collect::<Vec<_>>();
     assert_eq!(
-        crate::test_support::lower(&raw17),
-        Err(LoweringError::ComponentBudget { count: 17 })
+        Sound::check_structure(&raw17),
+        Err(StructureError::ComponentBudget { count: 17 })
     );
     assert_eq!(
-        crate::test_support::lower(&[values[0], values[0]]),
-        Err(LoweringError::Identity {
+        Sound::check_structure(&[values[0], values[0]]),
+        Err(StructureError::Identity {
             id: ComponentId::new(7).unwrap()
         })
     );
@@ -643,7 +643,7 @@ fn coupled_pair_failures_are_not_clamped_or_rounded_into_valid_audio() {
             ..pair(0.0)
         };
         assert!(
-            matches!(crate::test_support::lower(&[form(1,ComponentForm::BinauralPair(p))]),Err(LoweringError::PairDifference {issue:found,..}) if found==issue)
+            matches!(crate::authored::lower(&form(1,ComponentForm::BinauralPair(p))),Err(PairError {issue:found,..}) if found==issue)
         );
     }
 }
@@ -852,14 +852,14 @@ fn raw_component_budget_and_duplicate_owners_are_checked_at_the_authored_boundar
     let mut seventeen = sixteen;
     seventeen.push(form(17, ComponentForm::Voice(raw)));
     assert_eq!(
-        crate::test_support::lower(&seventeen),
-        Err(LoweringError::ComponentBudget { count: 17 })
+        Sound::check_structure(&seventeen),
+        Err(StructureError::ComponentBudget { count: 17 })
     );
     assert!(ComponentId::new(0).is_none());
     let duplicate = [form(1, ComponentForm::Voice(raw)); 2];
     assert_eq!(
         Sound::check_structure(&duplicate),
-        Err(LoweringError::Identity {
+        Err(StructureError::Identity {
             id: ComponentId::new(1).unwrap()
         })
     );
@@ -951,39 +951,6 @@ fn mixed_explicit_pairs_retain_independent_requested_facts_on_every_lane() {
 }
 
 #[test]
-fn lowering_failures_explain_the_rejected_owner_budget_or_pair() {
-    let identity = format!(
-        "{}",
-        LoweringError::Identity {
-            id: ComponentId::new(1).unwrap()
-        }
-    );
-    assert!(identity.contains("identity 1"));
-    let budget = format!("{}", LoweringError::VoiceBudget { count: 18 });
-    assert!(budget.contains("16"));
-    assert!(budget.contains("18 expanded voices"));
-    for (issue, explanation) in [
-        (PairIssue::Nonfinite, "nonfinite"),
-        (PairIssue::Nonpositive, "positive"),
-        (PairIssue::UnrepresentablePairDifference, "offset collapses"),
-    ] {
-        let message = format!(
-            "{}",
-            LoweringError::PairDifference {
-                issue,
-                id: ComponentId::new(42).unwrap(),
-                first_hz: 200.0,
-                offset_hz: -6.0,
-            }
-        );
-        assert!(message.contains("42"));
-        assert!(message.contains("200"));
-        assert!(message.contains("-6"));
-        assert!(message.contains(explanation), "{message}");
-    }
-}
-
-#[test]
 fn authored_callback_workloads_preserve_distinct_owner_lanes() {
     for hz in [48_000, 768_000] {
         let rate = SampleRate::new(hz).unwrap();
@@ -1045,7 +1012,7 @@ fn structural_failures_are_single_and_distinguish_both_budgets() {
     for (components, expected) in [
         (
             vec![form(7, ComponentForm::Voice(raw)); 2],
-            LoweringError::Identity {
+            StructureError::Identity {
                 id: ComponentId::new(7).unwrap(),
             },
         ),
@@ -1053,19 +1020,19 @@ fn structural_failures_are_single_and_distinguish_both_budgets() {
             (1..=17)
                 .map(|id| form(id, ComponentForm::Voice(raw)))
                 .collect(),
-            LoweringError::ComponentBudget { count: 17 },
+            StructureError::ComponentBudget { count: 17 },
         ),
         (
             (1..=9)
                 .map(|id| form(id, ComponentForm::BinauralPair(pair(6.0))))
                 .collect(),
-            LoweringError::VoiceBudget { count: 18 },
+            StructureError::VoiceBudget { count: 18 },
         ),
     ] {
-        assert_eq!(Sound::check_structure(&components), Err(expected.clone()));
+        assert_eq!(Sound::check_structure(&components), Err(expected));
         let check = TargetCheck::authored(SampleRate::DEFAULT, &components);
         assert!(check.components().is_empty());
-        assert_eq!(check.result(), Err(&crate::SoundError::Authored(expected)));
+        assert_eq!(check.result(), Err(&crate::SoundError::Structure(expected)));
     }
 }
 
@@ -1126,7 +1093,7 @@ fn direct_pair_arithmetic_failures_retain_their_independent_reason() {
             }),
         )];
         let check = TargetCheck::authored(SampleRate::DEFAULT, &components);
-        let Err(crate::SoundError::Authored(LoweringError::PairDifference {
+        let Err(crate::SoundError::Pair(PairError {
             issue,
             id,
             first_hz,

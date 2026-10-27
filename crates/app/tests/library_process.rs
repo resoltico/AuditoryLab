@@ -1,6 +1,6 @@
 //! Actual independent processes: lock lifetime, lost updates and killed native writers.
 use auditorylab_app::document::editing::Draft;
-use auditorylab_app::error::ErrorKind;
+use auditorylab_app::error::Outcome;
 use auditorylab_app::services::Cancel;
 use auditorylab_app::storage::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation};
 use std::{
@@ -141,7 +141,7 @@ fn controlled_child() {
             serde_json::json!({"code":0,"status":format!("{:?}",result.status)})
         }
         Err(error) => {
-            serde_json::json!({"code":match error.kind(){ErrorKind::Conflict=>3,ErrorKind::Busy=>4,_=>1},"error":error.to_string()})
+            serde_json::json!({"code":match error.outcome(){Outcome::Conflict=>3,Outcome::Busy=>4,_=>1},"error":error.to_string()})
         }
     };
     fs::write(
@@ -170,12 +170,12 @@ fn shared_and_exclusive_locks_exclude_real_other_processes_and_die_with_handles(
                 &Cancel::default(),
             )
             .unwrap_err();
-        assert_eq!(error.kind(), ErrorKind::Busy);
+        assert_eq!(error.outcome(), Outcome::Busy);
         assert!(start.elapsed() < Duration::from_secs(2));
         if mode == "exclusive" {
             let scan = store.scan(&Cancel::default());
             assert!(!scan.complete);
-            assert_eq!(scan.failure_kind, Some(ErrorKind::Busy));
+            assert_eq!(scan.failure_kind, Some(Outcome::Busy));
         } else {
             assert!(store.scan(&Cancel::default()).complete);
         }
@@ -240,8 +240,8 @@ fn two_real_editors_cannot_overwrite_the_same_observed_version() {
                 &Cancel::default()
             )
             .unwrap_err()
-            .kind(),
-        ErrorKind::Conflict,
+            .outcome(),
+        Outcome::Conflict,
         "even a stale no-op must recheck"
     );
     let current = store.load(&record.key).unwrap();

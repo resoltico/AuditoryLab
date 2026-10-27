@@ -1,7 +1,6 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::signal::Signal;
 use crate::synthesis::{self, Carrier as Generator, GeneratorVoice, Modulator, Pulse};
 use crate::{ParameterId, SampleRate, VoiceId, numeric};
 use core::fmt::{self, Display, Formatter};
@@ -190,7 +189,9 @@ fn pulse_train(
 #[derive(Debug, Clone, PartialEq)]
 pub enum SoundError {
     /// Authored identity, voice-budget or coupled pair arithmetic failure.
-    Authored(crate::LoweringError),
+    Structure(crate::StructureError),
+    /// A coupled pair arithmetic failure.
+    Pair(crate::PairError),
     /// A pair carrier is invalid at this rate; both coupled inputs are named.
     PairCarrier {
         /// Authored owner, including which lane failed.
@@ -203,7 +204,7 @@ pub enum SoundError {
         error: VoiceError,
     },
     /// `duration_seconds` is not finite, gives no frame, or spans more than
-    /// [`Signal::MAX_FRAMES`].
+    /// [`crate::Signal::MAX_FRAMES`].
     Duration {
         /// The rejected duration.
         seconds: f64,
@@ -211,7 +212,7 @@ pub enum SoundError {
         sample_rate_hz: u32,
     },
     /// `fade_seconds` is not finite and non-negative, or spans more than
-    /// [`Signal::MAX_FRAMES`].
+    /// [`crate::Signal::MAX_FRAMES`].
     Fade {
         /// The rejected fade.
         seconds: f64,
@@ -249,11 +250,10 @@ impl SoundError {
     #[must_use]
     pub const fn parameters(&self) -> &'static [ParameterId] {
         match self {
-            Self::PairCarrier { .. }
-            | Self::Authored(crate::LoweringError::PairDifference { .. }) => {
+            Self::PairCarrier { .. } | Self::Pair(_) => {
                 &[ParameterId::PairFirstFrequency, ParameterId::PairOffset]
             }
-            Self::Authored(_) => &[],
+            Self::Structure(_) => &[],
             Self::Duration { .. } => &[ParameterId::Duration],
             Self::Fade { .. } => &[ParameterId::Fade],
             Self::FadesOverlap { .. } => &[ParameterId::Duration, ParameterId::Fade],
@@ -330,169 +330,37 @@ impl VoiceError {
     }
 }
 
-/// A model value in its displayed unit, with the unit's symbol.
-struct Quantity(ParameterId, f64);
-
-/// The longest length at a rate, in days.
-struct Longest(u32);
-
-impl Display for Longest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let days = numeric::frames_to_f64(Signal::MAX_FRAMES) / f64::from(self.0) / 86_400.0;
-        write!(f, "{days:.1} days")
-    }
-}
-
-/// A value as short text: scientific notation for magnitudes from 10¹² or
-/// below 10⁻⁶, so a message never carries hundreds of digits.
-struct Number(f64);
-
-impl Display for Number {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let value = self.0;
-        if value.is_finite() && value != 0.0 && (value.abs() >= 1e12 || value.abs() < 1e-6) {
-            write!(f, "{value:e}")
-        } else {
-            write!(f, "{value}")
-        }
-    }
-}
-
-impl Display for Quantity {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let unit = self.0.descriptor().unit;
-        let separator = if unit == crate::Unit::Percent {
-            ""
-        } else {
-            " "
-        };
-        write!(
-            f,
-            "{} {}{separator}{}",
-            self.0.descriptor().label,
-            Number(unit.to_display(self.1)),
-            unit.symbol()
-        )
-    }
-}
-
 impl Display for SoundError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Authored(error) => error.fmt(f),
-            Self::PairCarrier {
-                id,
-                first_hz,
-                offset_hz,
-                error,
-            } => write!(
-                f,
-                "component {id}: first carrier {first_hz} Hz and signed offset {offset_hz} Hz: {error}"
-            ),
-            Self::Duration {
-                seconds,
-                sample_rate_hz,
-            } => write!(
-                f,
-                "{} must last from one sample (1/{sample_rate_hz} s) to {} at {sample_rate_hz} Hz",
-                Quantity(ParameterId::Duration, *seconds),
-                Longest(*sample_rate_hz)
-            ),
-            Self::Fade {
-                seconds,
-                sample_rate_hz,
-            } => write!(
-                f,
-                "{} must be from 0 s to {} at {sample_rate_hz} Hz",
-                Quantity(ParameterId::Fade, *seconds),
-                Longest(*sample_rate_hz)
-            ),
-            Self::FadesOverlap {
-                fade_frames,
-                frames,
-                sample_rate_hz,
-            } => {
-                let seconds = |n: u64| numeric::frames_to_f64(n) / f64::from(*sample_rate_hz);
-                write!(
-                    f,
-                    "a {} s fade at each edge does not fit in {} s; the two fades together must be shorter than the duration",
-                    Number(seconds(*fade_frames)),
-                    Number(seconds(*frames))
-                )
-            }
-            Self::Component { number, error } => write!(f, "component {number}: {error}"),
-            Self::Peak { ear, amplitude } => {
-                let db = numeric::dbfs(*amplitude);
-                let rounded = alloc::format!("{db:.2}");
-                let level = if db > 0.0 && rounded == "0.00" {
-                    alloc::format!("{db:.2e}")
-                } else {
-                    rounded
-                };
-                write!(
-                    f,
-                    "the components for the {} add up to a peak of {level} dBFS, above full scale; lower their peak levels",
-                    ear.phrase()
-                )
-            }
-        }
+        f.write_str(match self {
+            Self::Structure(_) => "sound.structure",
+            Self::Pair(_) => "sound.pair",
+            Self::PairCarrier { .. } => "sound.pair_carrier",
+            Self::Duration { .. } => "sound.duration",
+            Self::Fade { .. } => "sound.fade",
+            Self::FadesOverlap { .. } => "sound.fades_overlap",
+            Self::Component { .. } => "sound.component",
+            Self::Peak { .. } => "sound.peak",
+        })
     }
 }
-
 impl Display for VoiceError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Frequency {
-                parameter,
-                hz,
-                sample_rate_hz,
-            } => write!(
-                f,
-                "{} must be finite, positive and below {} Hz, half the {sample_rate_hz} Hz sample rate",
-                Quantity(*parameter, *hz),
-                f64::from(*sample_rate_hz) / 2.0
-            ),
-            Self::Sideband {
-                frequency_hz,
-                rate_hz,
-                sample_rate_hz,
-            } => write!(
-                f,
-                "{} plus {} must stay below {} Hz, half the {sample_rate_hz} Hz sample rate",
-                Quantity(ParameterId::ToneFrequency, *frequency_hz),
-                Quantity(ParameterId::AmRate, *rate_hz),
-                f64::from(*sample_rate_hz) / 2.0
-            ),
-            Self::PulseWidth {
-                parameter,
-                width_seconds,
-                rate_hz,
-                sample_rate_hz,
-            } => write!(
-                f,
-                "{} must give 1 to {} frames at {sample_rate_hz} Hz and leave at least one closed frame in each 1/{} s period",
-                Quantity(*parameter, *width_seconds),
-                crate::Signal::MAX_FRAMES,
-                Number(*rate_hz)
-            ),
-            Self::PeakDbfs { peak_dbfs } => write!(
-                f,
-                "{} must be finite and at most 0 dBFS",
-                Quantity(ParameterId::PeakLevel, *peak_dbfs)
-            ),
-            Self::Depth { depth } => write!(
-                f,
-                "{} must be from 0% to 100%",
-                Quantity(ParameterId::AmDepth, *depth)
-            ),
-        }
+        f.write_str(match self {
+            Self::Frequency { .. } => "voice.frequency",
+            Self::Sideband { .. } => "voice.sideband",
+            Self::PulseWidth { .. } => "voice.pulse_width",
+            Self::PeakDbfs { .. } => "voice.peak_dbfs",
+            Self::Depth { .. } => "voice.depth",
+        })
     }
 }
 
 impl core::error::Error for SoundError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
-            Self::Authored(error) => Some(error),
+            Self::Structure(error) => Some(error),
+            Self::Pair(error) => Some(error),
             Self::PairCarrier { error, .. } => Some(error),
             Self::Component { error, .. } => Some(error),
             _ => None,

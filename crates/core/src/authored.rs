@@ -54,23 +54,23 @@ pub enum PairIssue {
 impl fmt::Display for PairIssue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::Nonfinite => "pair carrier/offset arithmetic is nonfinite",
-            Self::Nonpositive => "both pair carriers must be positive",
-            Self::UnrepresentablePairDifference => "nonzero offset collapses to the first carrier",
+            Self::Nonfinite => "pair.nonfinite",
+            Self::Nonpositive => "pair.nonpositive",
+            Self::UnrepresentablePairDifference => "pair.unrepresentable_difference",
         })
     }
 }
-/// Why authored nodes cannot be lowered into a bounded primitive target.
-#[derive(Debug, Clone, PartialEq)]
-pub enum LoweringError {
-    /// Duplicate, zero or already-expanded identities are not authored owner IDs.
+/// Why authored owners or generator capacity violate the sound structure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StructureError {
+    /// A repeated authored identity.
     Identity {
-        /// Repeated authored owner.
+        /// Repeated owner.
         id: ComponentId,
     },
-    /// Authored form or expanded voice count exceeds the established budget.
+    /// Too many expanded voices.
     VoiceBudget {
-        /// Expanded generator count.
+        /// Expanded voice count.
         count: usize,
     },
     /// Too many authored components.
@@ -78,45 +78,35 @@ pub enum LoweringError {
         /// Authored component count.
         count: usize,
     },
-    /// The first carrier and signed offset cannot produce the intended second tone.
-    PairDifference {
-        /// Failure in the coupled first carrier and signed offset.
-        issue: PairIssue,
-        /// Authored owner.
-        id: ComponentId,
-        /// Requested first carrier.
-        first_hz: f64,
-        /// Requested signed difference.
-        offset_hz: f64,
-    },
 }
-impl fmt::Display for LoweringError {
+/// A requested pair cannot retain its coupled carrier arithmetic.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PairError {
+    /// The failed arithmetic rule.
+    pub issue: PairIssue,
+    /// Authored owner.
+    pub id: ComponentId,
+    /// Requested first carrier.
+    pub first_hz: f64,
+    /// Requested signed offset.
+    pub offset_hz: f64,
+}
+impl fmt::Display for StructureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Identity { id } => write!(f, "two authored components share identity {id}"),
-            Self::ComponentBudget { count } => write!(
-                f,
-                "{count} authored components exceed the limit of {}",
-                Sound::MAX_COMPONENTS
-            ),
-            Self::VoiceBudget { count } => write!(
-                f,
-                "{count} expanded voices exceed the limit of {}",
-                Sound::MAX_VOICES
-            ),
-            Self::PairDifference {
-                issue,
-                id,
-                first_hz,
-                offset_hz,
-            } => write!(
-                f,
-                "component {id}: first/left carrier {first_hz} Hz and signed offset {offset_hz} Hz: {issue}"
-            ),
+            Self::Identity { id } => write!(f, "structure.identity.{id}"),
+            Self::ComponentBudget { count } => write!(f, "structure.component_budget.{count}"),
+            Self::VoiceBudget { count } => write!(f, "structure.voice_budget.{count}"),
         }
     }
 }
-impl core::error::Error for LoweringError {}
+impl fmt::Display for PairError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}", self.issue, self.id)
+    }
+}
+impl core::error::Error for StructureError {}
+impl core::error::Error for PairError {}
 impl ComponentForm {
     /// Number of primitive generators needed, before live crossfade expansion.
     #[must_use]
@@ -146,7 +136,7 @@ impl ComponentForm {
 ///
 /// # Errors
 /// Refuses unrepresentable pair carrier arithmetic.
-pub(crate) fn lower(component: &Component) -> Result<Vec<(VoiceId, Voice)>, LoweringError> {
+pub(crate) fn lower(component: &Component) -> Result<Vec<(VoiceId, Voice)>, PairError> {
     let mut output = Vec::new();
     let id = component.id;
     match component.form {
@@ -172,7 +162,7 @@ pub(crate) fn lower(component: &Component) -> Result<Vec<(VoiceId, Voice)>, Lowe
                 None
             };
             if let Some(issue) = issue {
-                return Err(LoweringError::PairDifference {
+                return Err(PairError {
                     issue,
                     id,
                     first_hz: pair.first_hz,
@@ -398,22 +388,22 @@ impl Sound {
     ///
     /// # Errors
     /// Returns one identity or capacity diagnostic before any acoustic compilation.
-    pub fn check_structure(components: &[Component]) -> Result<(), LoweringError> {
+    pub fn check_structure(components: &[Component]) -> Result<(), StructureError> {
         if components.len() > Self::MAX_COMPONENTS {
-            return Err(LoweringError::ComponentBudget {
+            return Err(StructureError::ComponentBudget {
                 count: components.len(),
             });
         }
         let count = components.iter().map(|c| c.form.voices()).sum::<usize>();
         if count > Self::MAX_VOICES {
-            return Err(LoweringError::VoiceBudget { count });
+            return Err(StructureError::VoiceBudget { count });
         }
         for (index, component) in components.iter().enumerate() {
             if components[..index]
                 .iter()
                 .any(|other| other.id == component.id)
             {
-                return Err(LoweringError::Identity { id: component.id });
+                return Err(StructureError::Identity { id: component.id });
             }
         }
         Ok(())

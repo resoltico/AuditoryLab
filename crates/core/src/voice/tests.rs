@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
+use crate::Signal;
 use crate::{ComponentId, Sound};
-use alloc::{string::ToString, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
 use core::f64::consts::TAU;
 
 fn rate(hz: u32) -> SampleRate {
@@ -243,8 +244,8 @@ fn guards_accept_and_reject_neighbours() {
     s.components.push(s.components[0]);
     assert!(matches!(
         s.signal(rate(48_000)),
-        Err(SoundError::Authored(
-            crate::LoweringError::ComponentBudget { count: 17 }
+        Err(SoundError::Structure(
+            crate::StructureError::ComponentBudget { count: 17 }
         ))
     ));
     s.components.clear();
@@ -503,75 +504,6 @@ mod validate {
             Err(VoiceError::PeakDbfs { .. })
         ));
     }
-}
-
-#[test]
-fn excessive_width_names_the_signal_frame_limit() {
-    let component = crate::Voice {
-        ears: crate::Ears::Both,
-        peak_dbfs: -30.0,
-        carrier: crate::Carrier::Clicks {
-            rate_hz: 1e-12,
-            width_seconds: 68_719_476_737.0 / 48_000.0,
-        },
-        modulation: None,
-    };
-    let message = validate::own(component, crate::SampleRate::DEFAULT)
-        .unwrap_err()
-        .to_string();
-    assert!(
-        message.contains(&crate::Signal::MAX_FRAMES.to_string()),
-        "{message}"
-    );
-}
-
-#[test]
-fn messages_keep_extreme_values_short() {
-    let error = VoiceError::Frequency {
-        parameter: ParameterId::ToneFrequency,
-        hz: 1e300,
-        sample_rate_hz: 48_000,
-    }
-    .to_string();
-    assert!(error.contains("1e300 Hz"), "{error}");
-    assert!(error.len() < 120, "{error}");
-    let tiny = VoiceError::Frequency {
-        parameter: ParameterId::ToneFrequency,
-        hz: 1e-9,
-        sample_rate_hz: 48_000,
-    }
-    .to_string();
-    assert!(tiny.contains("1e-9 Hz"), "{tiny}");
-    let ordinary = VoiceError::Frequency {
-        parameter: ParameterId::ToneFrequency,
-        hz: 30_000.0,
-        sample_rate_hz: 48_000,
-    }
-    .to_string();
-    assert!(ordinary.contains("30000 Hz"), "{ordinary}");
-}
-
-#[test]
-fn length_messages_speak_in_time_not_frames() {
-    let duration = SoundError::Duration {
-        seconds: 0.0,
-        sample_rate_hz: 48_000,
-    }
-    .to_string();
-    assert_eq!(
-        duration,
-        "Duration 0 s must last from one sample (1/48000 s) to 16.6 days at 48000 Hz"
-    );
-    let overlap = SoundError::FadesOverlap {
-        fade_frames: 24_000,
-        frames: 48_000,
-        sample_rate_hz: 48_000,
-    }
-    .to_string();
-    assert_eq!(
-        overlap,
-        "a 0.5 s fade at each edge does not fit in 1 s; the two fades together must be shorter than the duration"
-    );
 }
 
 fn first_voice(sound: &mut Sound) -> &mut Voice {

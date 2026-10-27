@@ -152,7 +152,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
     );
     assert_eq!(
         check.result().unwrap_err(),
-        &SoundError::Authored(crate::LoweringError::Identity { id: id(1) })
+        &SoundError::Structure(crate::StructureError::Identity { id: id(1) })
     );
     assert!(check.result().unwrap_err().parameters().is_empty());
     assert!(
@@ -206,7 +206,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
         if count > Sound::MAX_COMPONENTS {
             assert_eq!(
                 check.result().unwrap_err(),
-                &SoundError::Authored(crate::LoweringError::ComponentBudget { count })
+                &SoundError::Structure(crate::StructureError::ComponentBudget { count })
             );
             assert!(check.components().is_empty());
         } else {

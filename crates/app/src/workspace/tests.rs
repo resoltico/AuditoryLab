@@ -215,8 +215,8 @@ fn a_search_that_hides_every_recipe_leaves_nothing_to_play_or_export() {
     let chosen = ws.selected().unwrap().id();
     ws.set_query("no recipe has this text");
     assert!(ws.selected().is_none());
-    assert_eq!(ws.play(), Err(Refusal::NoSelection));
-    assert_eq!(ws.export(), Err(Refusal::NoSelection));
+    assert!(matches!(ws.play(), Err(Refusal::NoSelection)));
+    assert!(matches!(ws.export(), Err(Refusal::NoSelection)));
     assert!(
         ws.take_effects()
             .iter()
@@ -600,12 +600,18 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
     assert!(actions.operation_outcome.starts_with("Exported 100"));
     assert!(actions.operation_summary.chars().count() <= 181);
     ws.editor.session.restore(notes).unwrap();
-    ws.files.status = FileStatus::Failed(Error::new(
-        ErrorKind::Write,
-        format!("Export failed: {}", "deep/path/".repeat(50)),
-    ));
+    ws.files.status = FileStatus::Failed(
+        crate::error::ExportError::File {
+            error: crate::error::FileError::Io(crate::error::IoFailure::new(
+                crate::error::IoOperation::Write,
+                Some(std::path::PathBuf::from("deep/path/".repeat(50))),
+                std::io::Error::other("disk full"),
+            )),
+        }
+        .into(),
+    );
     let actions = ws.action_view();
-    assert!(actions.operation_summary.starts_with("Export failed"));
+    assert!(actions.operation_details.contains("cannot write file"));
     assert!(actions.operation_details.len() > actions.operation_summary.len());
 }
 
@@ -797,9 +803,9 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
         workspace.store.scan(&Cancel::default()).entries.is_empty(),
         "admission itself performs no disk IO"
     );
-    assert_eq!(workspace.import(), Err(Refusal::FileBusy));
-    assert_eq!(workspace.save(), Err(Refusal::FileBusy));
-    assert_eq!(workspace.export(), Err(Refusal::FileBusy));
+    assert!(matches!(workspace.import(), Err(Refusal::FileBusy)));
+    assert!(matches!(workspace.save(), Err(Refusal::FileBusy)));
+    assert!(matches!(workspace.export(), Err(Refusal::FileBusy)));
     workspace.commit_field(field, "880").unwrap();
     for _ in 0..10 {
         workspace.inner.poll();
@@ -901,7 +907,7 @@ fn save_before_close_waits_for_the_captured_job_completion() {
     );
     let job = take_file_job(&mut workspace);
     assert!(workspace.action_pending());
-    assert_eq!(workspace.import(), Err(Refusal::ActionPending));
+    assert!(matches!(workspace.import(), Err(Refusal::ActionPending)));
     let response = execute_file(job);
     assert!(
         workspace
@@ -983,9 +989,8 @@ fn one_prompt_coalesces_quit_and_ignores_an_older_real_panel_answer() {
         &workspace.files.status,
         FileStatus::Refused(Refusal::PromptOpen)
     ));
-    assert_eq!(
-        workspace.stop(),
-        Err(Refusal::NoAudio),
+    assert!(
+        matches!(workspace.stop(), Err(Refusal::NoAudio)),
         "Stop admission is independent of a native panel"
     );
     assert_eq!(
@@ -1063,14 +1068,14 @@ fn actual_import_completion_controls_dependent_close_and_never_runs_on_poll() {
         }
         let count = workspace.catalog().len();
         workspace.import().unwrap();
-        assert_eq!(workspace.save(), Err(Refusal::PromptOpen));
+        assert!(matches!(workspace.save(), Err(Refusal::PromptOpen)));
         answer_path(&mut workspace, PathPurpose::OpenRecipe, Some(path.clone()));
         let job = take_file_job(&mut workspace);
         assert!(
             !workspace.can_edit(),
             "admitted import excludes editor changes"
         );
-        assert_eq!(workspace.import(), Err(Refusal::FileBusy));
+        assert!(matches!(workspace.import(), Err(Refusal::FileBusy)));
         workspace.close();
         assert!(workspace.action_pending());
         for _ in 0..10 {
@@ -1100,10 +1105,10 @@ fn portable_export_keeps_the_prompt_capture_and_does_not_advance_the_save_baseli
     let directory = temporary_directory();
     let path = directory.path().join("portable.toml");
     workspace.export_recipe().unwrap();
-    assert_eq!(
+    assert!(matches!(
         workspace.commit_field(field, "880"),
         Err(Refusal::PromptOpen)
-    );
+    ));
     answer_path(
         &mut workspace,
         PathPurpose::ExportRecipe,
@@ -1141,11 +1146,11 @@ fn canceled_real_exports_cleanup_and_close_treats_requested_cancellation_as_expe
         let directory = temporary_directory();
         let path = directory.path().join("cancelled.wav");
         workspace.export().unwrap();
-        assert_eq!(workspace.play(), Err(Refusal::PromptOpen));
+        assert!(matches!(workspace.play(), Err(Refusal::PromptOpen)));
         answer_path(&mut workspace, PathPurpose::ExportWav, Some(path.clone()));
         let job = take_file_job(&mut workspace);
-        assert_eq!(workspace.play(), Err(Refusal::Exporting));
-        assert_eq!(workspace.import(), Err(Refusal::FileBusy));
+        assert!(matches!(workspace.play(), Err(Refusal::Exporting)));
+        assert!(matches!(workspace.import(), Err(Refusal::FileBusy)));
         if close {
             workspace.close();
         } else {
@@ -1166,7 +1171,7 @@ fn canceled_real_exports_cleanup_and_close_treats_requested_cancellation_as_expe
         } else {
             assert!(workspace.take_effects().is_empty());
         }
-        assert_eq!(workspace.cancel_export(), Err(Refusal::NoExport));
+        assert!(matches!(workspace.cancel_export(), Err(Refusal::NoExport)));
     }
 }
 
@@ -1217,12 +1222,12 @@ fn managed_save_can_run_beside_admitted_audio_and_stop_does_not_cancel_it() {
     assert_eq!(audio.kind(), JobKind::Audio);
     // Audio is deliberately never executed: this test opens no output device.
     assert!(workspace.audio_busy());
-    assert_eq!(workspace.export(), Err(Refusal::AudioPlaying));
+    assert!(matches!(workspace.export(), Err(Refusal::AudioPlaying)));
     workspace.save().unwrap();
     let save = take_file_job(&mut workspace);
     assert!(workspace.file_busy());
-    assert_eq!(workspace.import(), Err(Refusal::FileBusy));
-    assert_eq!(workspace.stop(), Ok(StopRequest::Accepted));
+    assert!(matches!(workspace.import(), Err(Refusal::FileBusy)));
+    assert!(matches!(workspace.stop(), Ok(StopRequest::Accepted)));
     assert_eq!(
         workspace.respond(execute_file(save)),
         ResponseDisposition::Applied
@@ -1331,4 +1336,27 @@ fn structured_library_rows_keep_saved_identity_and_rate_independent_classificati
     ws.set_export_rate(auditorylab_core::SampleRate::new(96_000).unwrap());
     assert_eq!(ws.library_view().classification, classification);
     assert_eq!(ws.library_view().rows[0].key, row.key);
+}
+
+#[test]
+fn staged_envelope_failures_render_quantities_and_rate_in_metadata() {
+    let mut workspace = workspace();
+    let handle = workspace
+        .editor
+        .session
+        .handle(EditingField::Metadata(
+            crate::document::editing::MetadataField::Duration,
+        ))
+        .unwrap();
+    workspace.stage(handle, "0").unwrap();
+    let view = workspace.editor_view();
+    let duration = view
+        .metadata
+        .iter()
+        .find(|field| field.handle == handle)
+        .unwrap();
+    assert_eq!(
+        duration.diagnostic,
+        "Duration 0 s must last from one sample (1/48000 s) to 16.6 days at 48000 Hz"
+    );
 }

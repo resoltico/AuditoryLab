@@ -1,7 +1,7 @@
 //! Native filesystem lifecycle and strict managed-record behavior through shared APIs.
 use auditorylab_app::core::Recipe;
 use auditorylab_app::document::editing::Draft;
-use auditorylab_app::error::ErrorKind;
+use auditorylab_app::error::Outcome;
 use auditorylab_app::services::Cancel;
 use auditorylab_app::storage::library::{
     LibraryKey, LibraryRoot, LibraryStore, Mutation, MutationStatus, VersionToken,
@@ -48,7 +48,7 @@ fn readonly_discovery_and_builtin_refusals_never_initialize_a_root() {
             &Cancel::default(),
         )
         .unwrap_err();
-    assert_eq!(error.kind(), ErrorKind::ReadOnlyBuiltIn);
+    assert_eq!(error.outcome(), Outcome::ReadOnlyBuiltIn);
     assert!(!path.exists());
     let builtin = auditorylab_app::storage::load::builtin("ioannou-2015-binaural-2-hz").unwrap();
     let error = store
@@ -57,7 +57,7 @@ fn readonly_discovery_and_builtin_refusals_never_initialize_a_root() {
             &Cancel::default(),
         )
         .unwrap_err();
-    assert_eq!(error.kind(), ErrorKind::Conflict);
+    assert_eq!(error.outcome(), Outcome::Conflict);
     assert!(!path.exists());
     assert!(
         store
@@ -114,8 +114,8 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
                 &Cancel::default()
             )
             .unwrap_err()
-            .kind(),
-        ErrorKind::Conflict
+            .outcome(),
+        Outcome::Conflict
     );
     let renamed = store
         .apply(
@@ -148,7 +148,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
             &Cancel::default(),
         )
         .unwrap_err();
-    assert_eq!(error.kind(), ErrorKind::Conflict);
+    assert_eq!(error.outcome(), Outcome::Conflict);
     assert_eq!(fs::read(&record_path).unwrap(), changed_bytes);
     let mut wrong_history = changed.snapshot.recipe().clone().into_builder();
     wrong_history.document.created_at = Some("2020-01-01T00:00:00Z".parse().unwrap());
@@ -163,8 +163,8 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
                 &Cancel::default()
             )
             .unwrap_err()
-            .kind(),
-        ErrorKind::HistoryConflict
+            .outcome(),
+        Outcome::HistoryConflict
     );
     let history = changed.snapshot.recipe().document().clone();
     let trashed = store
@@ -187,8 +187,8 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
                 &Cancel::default()
             )
             .unwrap_err()
-            .kind(),
-        ErrorKind::Conflict
+            .outcome(),
+        Outcome::Conflict
     );
     let restored = store
         .apply(
@@ -265,8 +265,8 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
                 &Cancel::default()
             )
             .unwrap_err()
-            .kind(),
-        ErrorKind::Conflict
+            .outcome(),
+        Outcome::Conflict
     );
     assert_eq!(
         fs::read_to_string(external).unwrap(),
@@ -340,8 +340,8 @@ fn exact_byte_digest_detects_manual_whitespace_edits() {
                 &Cancel::default()
             )
             .unwrap_err()
-            .kind(),
-        ErrorKind::Conflict
+            .outcome(),
+        Outcome::Conflict
     );
     assert_eq!(fs::read(path).unwrap(), bytes);
 }
@@ -359,7 +359,11 @@ fn managed_descendant_symlinks_and_nonregular_entries_never_read_external_conten
     let scan = store.scan(&Cancel::default());
     assert!(!scan.complete);
     assert!(scan.entries.is_empty());
-    assert!(!scan.diagnostics[0].message.contains("secret outside bytes"));
+    assert!(
+        !scan.diagnostics[0]
+            .message()
+            .contains("secret outside bytes")
+    );
     assert_eq!(fs::read(&external).unwrap(), b"secret outside bytes");
     fs::remove_file(bad).unwrap();
     fs::remove_dir(path.join("recipes")).unwrap();
@@ -386,7 +390,7 @@ fn lock_contention_is_nonblocking_and_closure_releases_the_same_persistent_lock(
     let start = std::time::Instant::now();
     let inventory = store.scan(&Cancel::default());
     assert!(!inventory.complete);
-    assert_eq!(inventory.failure_kind, Some(ErrorKind::Busy));
+    assert_eq!(inventory.failure_kind, Some(Outcome::Busy));
     assert!(start.elapsed() < std::time::Duration::from_secs(2));
     drop(lock);
     assert!(store.scan(&Cancel::default()).complete);
@@ -491,7 +495,11 @@ fn unknown_membership_dates_remain_visible_in_human_descriptions() {
 #[test]
 fn failed_report_completion_never_claims_a_failed_operation_was_confirmed() {
     let error = std::io::Error::other("rejected operation");
-    let report = auditorylab_app::presentation::reports::Report::error("library_init", &error, 2);
+    let report = auditorylab_app::presentation::reports::Report::error(
+        "library_init",
+        error.to_string(),
+        Outcome::InvalidArgument,
+    );
     let text = report.completion_failure(std::io::Error::other("closed output"));
     assert!(text.contains("Operation not completed"));
     assert!(!text.contains("Operation confirmed"));

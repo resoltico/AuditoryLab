@@ -4,8 +4,8 @@ mod common;
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::document::recipe::Rendition;
-use auditorylab_app::error::Error;
-use auditorylab_app::error::ErrorKind;
+use auditorylab_app::error::OperationError;
+use auditorylab_app::error::Outcome;
 use auditorylab_app::presentation::build_info::BUILD_IDENTITY;
 use auditorylab_app::services::Cancel;
 use auditorylab_app::services::Progress;
@@ -30,8 +30,8 @@ fn bounded_input_and_regular_file_admission() {
     assert!(load_reader(&bytes[..], "limit").is_ok());
     bytes.push(b' ');
     assert_eq!(
-        load_reader(&bytes[..], "limit").unwrap_err().kind(),
-        ErrorKind::InvalidRecipe
+        load_reader(&bytes[..], "limit").unwrap_err().outcome(),
+        Outcome::InvalidRecipe
     );
     for bytes in [
         &[0xff][..],
@@ -40,14 +40,14 @@ fn bounded_input_and_regular_file_admission() {
         b"schema_version=4\nunknown=1",
     ] {
         assert_eq!(
-            load_reader(bytes, "bad").unwrap_err().kind(),
-            ErrorKind::InvalidRecipe
+            load_reader(bytes, "bad").unwrap_err().outcome(),
+            Outcome::InvalidRecipe
         );
     }
     let dir = dir();
     assert_eq!(
-        load_file(dir.path()).unwrap_err().kind(),
-        ErrorKind::Unreadable
+        load_file(dir.path()).unwrap_err().outcome(),
+        Outcome::Unreadable
     );
     let path = dir.path().join("sound.toml");
     fs::write(&path, silence()).unwrap();
@@ -66,7 +66,7 @@ fn bounded_input_and_regular_file_admission() {
                 .unwrap()
                 .success()
         );
-        assert_eq!(load_file(&fifo).unwrap_err().kind(), ErrorKind::Unreadable);
+        assert_eq!(load_file(&fifo).unwrap_err().outcome(), Outcome::Unreadable);
     }
 }
 #[test]
@@ -85,8 +85,8 @@ fn public_export_progress_no_clobber_replace_and_cancellation() {
     assert_eq!(
         export(&sound, &path, Replace::Never, &Cancel::default(), &progress)
             .unwrap_err()
-            .kind(),
-        ErrorKind::DestinationExists
+            .outcome(),
+        Outcome::DestinationExists
     );
     assert_eq!(fs::read(&path).unwrap(), original);
     fs::write(&path, b"old").unwrap();
@@ -105,8 +105,8 @@ fn public_export_progress_no_clobber_replace_and_cancellation() {
     assert_eq!(
         export(&sound, &other, Replace::Never, &cancelled, &progress)
             .unwrap_err()
-            .kind(),
-        ErrorKind::Cancelled
+            .outcome(),
+        Outcome::Cancelled
     );
     assert!(!other.exists());
     assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
@@ -116,7 +116,7 @@ fn shared_values_cross_threads() {
     fn shared<T: Send + Sync + 'static>() {}
     shared::<RecipeSnapshot>();
     shared::<Rendition>();
-    shared::<Error>();
+    shared::<OperationError>();
     shared::<Cancel>();
     shared::<Progress>();
     assert!(!catalog().unwrap().is_empty());

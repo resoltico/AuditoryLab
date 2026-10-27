@@ -8,7 +8,6 @@
 //! when Stop was accepted before stream start was admitted. Playback runs on
 //! the calling thread until the session reaches a terminal outcome; the
 //! stream is torn down before its report is read.
-use crate::presentation::AudioErrorText;
 mod error;
 
 use crate::audio::session::supervisor::{POLL_INTERVAL, STALL_LIMIT, Supervision, time_limit};
@@ -20,13 +19,13 @@ use crate::audio::session::{
 };
 use crate::document::editing::Draft;
 use crate::document::recipe::{Origin, RecipeSnapshot, Rendition};
-use crate::error::{Error, ErrorKind};
+use crate::error::PlaybackError as Error;
 use auditorylab_core::{SampleRate, Signal};
 use cpal::{
     OutputCallbackInfo, Sample, SizedSample, Stream, StreamConfig, StreamInstant,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-pub(crate) use error::DeviceError;
+pub use error::DeviceError;
 use error::Diagnostics;
 use std::sync::Arc;
 use std::thread;
@@ -161,8 +160,8 @@ pub struct PreparedPlayback {
 /// there, the result is a stopped report and no stream is created.
 ///
 /// # Errors
-/// Returns [`ErrorKind::Device`] for discovery failures and
-/// [`ErrorKind::InvalidSound`] when the snapshot is not valid at the device
+/// Returns [`Error::Device`] for discovery failures and
+/// [`Error::Sound`] when the snapshot is not valid at the device
 /// rate. The session's outcome becomes a preparation failure.
 pub fn prepare_playback(
     session: Session,
@@ -174,7 +173,7 @@ pub fn prepare_playback(
     let output = Output::default_device().map_err(|e| failed(&session, device_error(e)))?;
     let sound = snapshot
         .at(output.description.sample_rate)
-        .map_err(|e| failed(&session, e))?;
+        .map_err(|e| failed(&session, e.into()))?;
     if let Some(report) = stopped_before_start(&session) {
         return Ok(Preparation::Stopped(report));
     }
@@ -238,7 +237,7 @@ impl PreparedPlayback {
     /// Play on this thread until completion, Stop or failure.
     ///
     /// # Errors
-    /// Returns [`ErrorKind::Device`] for stream setup, backend, timing and
+    /// Returns [`Error::Device`] for stream setup, backend, timing and
     /// watchdog failures.
     pub fn play(self) -> Result<PlaybackReport, Error> {
         let source = Source::Finite(FiniteSource::new(self.sound.shared_signal()));
@@ -262,8 +261,8 @@ pub struct PreparedLive {
 /// playback.
 ///
 /// # Errors
-/// Returns [`ErrorKind::Device`] for discovery failures and
-/// [`ErrorKind::InvalidSound`] when the components are not valid at the
+/// Returns [`Error::Device`] for discovery failures and
+/// [`Error::Sound`] when the components are not valid at the
 /// device rate. The session's outcome becomes a preparation failure.
 pub fn prepare_live(session: Session, draft: &Draft) -> Result<Preparation<PreparedLive>, Error> {
     if let Some(report) = stopped_before_start(&session) {
@@ -274,7 +273,11 @@ pub fn prepare_live(session: Session, draft: &Draft) -> Result<Preparation<Prepa
     let target = draft.check(rate).into_result().map_err(|e| {
         failed(
             &session,
-            Error::caused(ErrorKind::InvalidSound, e.at_rate(draft.title(), rate), e),
+            Error::Sound {
+                title: draft.title().into(),
+                rate,
+                error: e,
+            },
         )
     })?;
     if let Some(report) = stopped_before_start(&session) {
@@ -350,7 +353,7 @@ impl PreparedLive {
     /// Play until Stop, the frame limit or an output failure.
     ///
     /// # Errors
-    /// Returns [`ErrorKind::Device`] for stream setup, backend, timing and
+    /// Returns [`Error::Device`] for stream setup, backend, timing and
     /// watchdog failures.
     pub fn play(self) -> Result<PlaybackReport, Error> {
         let source = Source::Live(self.generator);
@@ -378,7 +381,7 @@ fn failed(session: &Session, error: Error) -> Error {
 }
 
 fn device_error(error: DeviceError) -> Error {
-    Error::boxed(ErrorKind::Device, error.to_string(), Box::new(error))
+    Error::Device(error)
 }
 
 /// Quantize through a saturated 32-bit integer: the direct conversion maps

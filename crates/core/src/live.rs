@@ -711,8 +711,8 @@ mod tests {
         let many = vec![tone(440.0, -40.0, Ears::Both); 17];
         assert!(matches!(
             crate::test_support::target(rate(), &numbered(&many)),
-            Err(SoundError::Authored(
-                crate::LoweringError::ComponentBudget { count: 17 }
+            Err(SoundError::Structure(
+                crate::StructureError::ComponentBudget { count: 17 }
             ))
         ));
         let other = SampleRate::new(44_100).unwrap();

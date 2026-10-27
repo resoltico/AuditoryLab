@@ -5,7 +5,7 @@ mod library_cli;
 use auditorylab_app::audio::session::{EndReason, PlaybackControl, Preparation, Session};
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::document::recipe::RecipeSnapshot;
-use auditorylab_app::error::ErrorKind;
+use auditorylab_app::error::Outcome;
 use auditorylab_app::presentation::vocabulary::{
     Caption, CommandProblem, InterfaceOperation, Status,
 };
@@ -103,11 +103,112 @@ impl std::fmt::Display for Usage {
     }
 }
 impl std::error::Error for Usage {}
-fn usage(message: &str) -> Box<dyn std::error::Error> {
-    Box::new(Usage(message.into()))
+#[derive(Debug)]
+enum CliError {
+    Usage(Usage),
+    Operation(Box<lab::error::OperationError>),
+    Io(io::Error),
+    Interrupt(ctrlc::Error),
+    Json(serde_json::Error),
+    Formatting(std::fmt::Error),
 }
-fn exit_code(kind: ErrorKind) -> u8 {
-    kind.exit_code()
+impl CliError {
+    fn outcome(&self) -> Outcome {
+        match self {
+            Self::Usage(_) => Outcome::InvalidArgument,
+            Self::Operation(error) => error.outcome(),
+            Self::Io(_) | Self::Interrupt(_) | Self::Json(_) | Self::Formatting(_) => {
+                Outcome::Write
+            }
+        }
+    }
+    fn message(&self) -> String {
+        let message = match self {
+            Self::Usage(error) => error.to_string(),
+            Self::Operation(error) => error.to_string(),
+            Self::Io(error) => error.to_string(),
+            Self::Interrupt(error) => error.to_string(),
+            Self::Json(error) => error.to_string(),
+            Self::Formatting(error) => error.to_string(),
+        };
+        if self.outcome() == Outcome::UnknownRecipe {
+            format!("{message}; run `auditorylab list`, or use --file PATH")
+        } else {
+            message
+        }
+    }
+}
+impl std::fmt::Display for CliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message())
+    }
+}
+impl std::error::Error for CliError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Self::Usage(e) => e,
+            Self::Operation(e) => e.as_ref(),
+            Self::Io(e) => e,
+            Self::Interrupt(e) => e,
+            Self::Json(e) => e,
+            Self::Formatting(e) => e,
+        })
+    }
+}
+macro_rules! operation_errors {
+    ($($ty:ty),* $(,)?) => { $(impl From<$ty> for CliError { fn from(error: $ty) -> Self { Self::Operation(Box::new(error.into())) } })* };
+}
+operation_errors! { lab::error::OperationError, lab::error::LoadError, lab::error::LibraryError, lab::error::SaveError, lab::error::ExportError, lab::error::PlaybackError, lab::error::EditorError, lab::error::IdentityError, lab::error::QueryError, lab::core::RecipeError }
+impl From<io::Error> for CliError {
+    fn from(error: io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+impl From<ctrlc::Error> for CliError {
+    fn from(error: ctrlc::Error) -> Self {
+        Self::Interrupt(error)
+    }
+}
+impl From<serde_json::Error> for CliError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Json(error)
+    }
+}
+impl From<std::fmt::Error> for CliError {
+    fn from(error: std::fmt::Error) -> Self {
+        Self::Formatting(error)
+    }
+}
+impl From<String> for CliError {
+    fn from(message: String) -> Self {
+        Self::Usage(Usage(message))
+    }
+}
+impl From<&str> for CliError {
+    fn from(message: &str) -> Self {
+        Self::Usage(Usage(message.into()))
+    }
+}
+fn usage(message: &str) -> CliError {
+    CliError::Usage(Usage(message.into()))
+}
+fn exit_code(outcome: Outcome) -> u8 {
+    match outcome {
+        Outcome::UnknownRecipe
+        | Outcome::InvalidRecipe
+        | Outcome::InvalidSound
+        | Outcome::InvalidArgument
+        | Outcome::ReadOnlyBuiltIn => 2,
+        Outcome::Conflict | Outcome::HistoryConflict => 3,
+        Outcome::Busy | Outcome::LockUnavailable => 4,
+        Outcome::IncompleteInventory => 5,
+        Outcome::Cancelled => 130,
+        Outcome::Unreadable
+        | Outcome::Identity
+        | Outcome::Device
+        | Outcome::DestinationExists
+        | Outcome::Write => 1,
+    }
 }
 
 fn prose(text: &str) -> String {
@@ -140,7 +241,7 @@ fn completed(text: &str) {
     }
 }
 /// The first interrupt runs `request`; a second one exits at once.
-fn on_interrupt(request: impl Fn() + Send + 'static) -> Result<(), Box<dyn std::error::Error>> {
+fn on_interrupt(request: impl Fn() + Send + 'static) -> Result<(), CliError> {
     let interrupted = std::sync::atomic::AtomicBool::new(false);
     ctrlc::set_handler(move || {
         if interrupted.swap(true, std::sync::atomic::Ordering::Relaxed) {
@@ -178,7 +279,7 @@ enum Ended {
     Stopped,
     Code(u8),
 }
-fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> {
+fn play(snapshot: &RecipeSnapshot) -> Result<Ended, CliError> {
     let session = Session::new();
     let control: PlaybackControl = session.control();
     let stop = control.clone();
@@ -210,7 +311,7 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> 
             })?;
         let done = std::sync::atomic::AtomicBool::new(false);
         std::thread::scope(
-            |scope| -> Result<lab::audio::session::PlaybackReport, Box<dyn std::error::Error>> {
+            |scope| -> Result<lab::audio::session::PlaybackReport, CliError> {
                 let printer = scope.spawn(|| {
                     let mut terminal = StatusLine { active: false };
                     while !done.load(std::sync::atomic::Ordering::Acquire) {
@@ -239,7 +340,7 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> 
         Ended::Normally
     })
 }
-fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
+fn run(cli: Cli) -> Result<Ended, CliError> {
     match cli.command {
         None => output(format!("{}\n", Cli::command().render_help()).as_bytes())?,
         Some(Command::List(args)) => {
@@ -367,17 +468,10 @@ fn main() -> ExitCode {
         Ok(Ended::Stopped) => ExitCode::from(130),
         Ok(Ended::Code(code)) => ExitCode::from(code),
         Err(e) => {
-            let message = e
-                .downcast_ref::<lab::error::Error>()
-                .map_or_else(|| e.to_string(), lab::error::Error::user_message);
-            let code = if e.downcast_ref::<Usage>().is_some() {
-                2
-            } else {
-                e.downcast_ref::<lab::error::Error>()
-                    .map_or(1, |e| exit_code(e.kind()))
-            };
+            let message = e.message();
+            let code = exit_code(e.outcome());
             if json {
-                if let Err(output_error) = library_cli::error_json(operation, e.as_ref(), code) {
+                if let Err(output_error) = library_cli::error_json(operation, &e) {
                     eprintln!(
                         "{}",
                         InterfaceOperation::StructuredFailure.failure(output_error)

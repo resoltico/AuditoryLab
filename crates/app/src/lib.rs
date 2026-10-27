@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 pub use auditorylab_core as core;
 pub mod audio;
+mod clock;
 pub mod discovery;
 pub mod document;
 pub mod error;

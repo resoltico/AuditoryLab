@@ -1,11 +1,21 @@
-//! Errors shared by library workflows.
-use std::{
-    fmt,
-    path::{Path, PathBuf},
+//! Typed operation failures and frontend-independent outcome categories.
+mod clock;
+mod families;
+mod file;
+mod load;
+mod native;
+pub use clock::ClockError;
+pub use families::{
+    EditorError, ExportError, IdentityError, IdentityScope, LibraryError, PlaybackError,
+    QueryError, SaveError,
 };
+pub use file::{Confirmation, FileError, IoFailure, IoOperation, MutationPhase};
+pub use load::LoadError;
+pub use native::IoCause;
 /// A failure category for frontend exit codes and presentation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ErrorKind {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Outcome {
     /// Unknown built-in recipe ID.
     UnknownRecipe,
     /// Input could not be read.
@@ -39,97 +49,61 @@ pub enum ErrorKind {
     /// A file operation was cancelled before publication.
     Cancelled,
 }
-impl ErrorKind {
-    /// Shared CLI status policy; publication warnings are confirmed outcomes, not errors.
-    #[must_use]
-    pub const fn exit_code(self) -> u8 {
-        match self {
-            Self::UnknownRecipe
-            | Self::InvalidRecipe
-            | Self::InvalidSound
-            | Self::InvalidArgument
-            | Self::ReadOnlyBuiltIn => 2,
-            Self::Conflict | Self::HistoryConflict => 3,
-            Self::Busy | Self::LockUnavailable => 4,
-            Self::IncompleteInventory => 5,
-            Self::Cancelled => 130,
-            _ => 1,
-        }
-    }
-}
-/// A complete contextual error, optionally naming a leftover partial file.
-#[derive(Debug)]
-pub struct Error {
-    kind: ErrorKind,
-    message: String,
-    source: Option<Box<dyn std::error::Error + Send + Sync>>,
-    leftover: Option<PathBuf>,
-}
-impl Error {
-    pub(crate) fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
-        Self {
-            kind,
-            message: message.into(),
-            source: None,
-            leftover: None,
-        }
-    }
 
-    pub(crate) fn boxed(
-        kind: ErrorKind,
-        message: impl Into<String>,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    ) -> Self {
-        Self {
-            source: Some(source),
-            ..Self::new(kind, message)
-        }
-    }
-    pub(crate) fn caused(
-        kind: ErrorKind,
-        message: impl Into<String>,
-        source: impl std::error::Error + Send + Sync + 'static,
-    ) -> Self {
-        Self {
-            source: Some(Box::new(source)),
-            ..Self::new(kind, message)
-        }
-    }
-    pub(crate) fn with_leftover(mut self, path: PathBuf, error: std::io::Error) -> Self {
-        self.message
-            .push_str(&format!("; a partial file remains at {path:?}: {error}"));
-        self.leftover = Some(path);
-        self.kind = ErrorKind::Write;
-        self
-    }
-    /// Complete user-facing explanation, with discovery guidance for an unknown recipe.
+/// A typed completion failure for code coordinating several operation families.
+#[derive(Debug, Clone)]
+pub enum OperationError {
+    /// Portable input or rendition loading failed.
+    Load(LoadError),
+    /// Managed library operation failed.
+    Library(LibraryError),
+    /// WAV export failed.
+    Export(ExportError),
+    /// Device playback failed.
+    Playback(PlaybackError),
+    /// Portable save failed.
+    Save(SaveError),
+    /// Editable document creation failed.
+    Editor(EditorError),
+    /// Identity allocation failed.
+    Identity(IdentityError),
+    /// Discovery query failed.
+    Query(QueryError),
+    /// Filesystem adapter failed.
+    File(FileError),
+    /// A pure portable candidate failed validation.
+    Recipe(crate::core::RecipeError),
+}
+impl OperationError {
+    /// Frontend-independent failure category.
     #[must_use]
-    pub fn user_message(&self) -> String {
-        if self.kind == ErrorKind::UnknownRecipe {
-            format!(
-                "{}; run `auditorylab list`, or use --file PATH",
-                self.message
-            )
-        } else {
-            self.message.clone()
+    pub fn outcome(&self) -> Outcome {
+        match self {
+            Self::Load(error) => error.outcome(),
+            Self::Library(error) => error.outcome(),
+            Self::Export(error) => error.outcome(),
+            Self::Playback(error) => error.outcome(),
+            Self::Save(error) => error.outcome(),
+            Self::Editor(error) => error.outcome(),
+            Self::Identity(error) => error.outcome(),
+            Self::Query(error) => error.outcome(),
+            Self::File(error) => error.outcome(),
+            Self::Recipe(_) => Outcome::InvalidRecipe,
         }
     }
-    /// Failure category.
-    pub fn kind(&self) -> ErrorKind {
-        self.kind
-    }
-    /// Partial file that cleanup could not remove.
-    pub fn leftover(&self) -> Option<&Path> {
-        self.leftover.as_deref()
-    }
-}
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
+    /// Owned partial file that cleanup could not remove.
+    #[must_use]
+    pub fn leftover(&self) -> Option<&std::path::Path> {
+        match self {
+            Self::File(error) => error.leftover(),
+            Self::Save(SaveError::File { error })
+            | Self::Export(ExportError::File { error })
+            | Self::Library(LibraryError::File { error }) => error.leftover(),
+            _ => None,
+        }
     }
 }
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source.as_deref().map(|e| e as _)
-    }
+macro_rules! operation_from {
+    ($($ty:ty => $variant:ident),* $(,)?) => { $(impl From<$ty> for OperationError { fn from(error: $ty) -> Self { Self::$variant(error) } })* };
 }
+operation_from! { LoadError => Load, LibraryError => Library, ExportError => Export, PlaybackError => Playback, SaveError => Save, EditorError => Editor, IdentityError => Identity, QueryError => Query, FileError => File, crate::core::RecipeError => Recipe }

@@ -39,9 +39,9 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                     _ => SortBy::Automatic,
                 };
                 if let Err(error) = w.set_catalog_query(query) {
-                    return Err(auditorylab_app::workspace::Refusal::Document(
-                        error.to_string(),
-                    ));
+                    return Err(auditorylab_app::workspace::Refusal::Document(Box::new(
+                        error.into(),
+                    )));
                 }
             }
             Ok(())
@@ -63,7 +63,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         let applied = a
             .command(|w| {
                 let mut query = w.catalog_query().clone();
-                let ranges = (|| -> Result<_, auditorylab_app::error::Error> {
+                let ranges = (|| -> Result<_, auditorylab_app::error::QueryError> {
                     Ok([
                         auditorylab_app::discovery::calendar::local_range(
                             auditorylab_app::discovery::calendar::CalendarField::Created,

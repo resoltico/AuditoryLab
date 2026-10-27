@@ -87,7 +87,11 @@ impl RootInfo {
 impl LibraryRoot {
     /// An inspection failure preserves what is known and marks initialization unverified.
     #[must_use]
-    pub fn inspection_failure(&self, exists: Option<bool>, error: &crate::error::Error) -> String {
+    pub fn inspection_failure(
+        &self,
+        exists: Option<bool>,
+        error: &crate::error::LibraryError,
+    ) -> String {
         format!(
             "{}\nExists: {} · Initialized: unverified · Source: {}\n{}\n",
             self.path().display().to_string().display_scalar(),
@@ -128,8 +132,9 @@ impl Rendition {
     #[must_use]
     pub fn export_preamble(&self, path: &Path) -> String {
         format!(
-            "Exporting {} to {path:?} at {} Hz. Press Ctrl-C to stop.",
+            "Exporting {} to {} at {} Hz. Press Ctrl-C to stop.",
             self.snapshot().title(),
+            path.display().to_string().display_scalar(),
             self.signal().sample_rate().hz()
         )
     }
@@ -139,8 +144,10 @@ impl Exported {
     #[must_use]
     pub fn description(&self, path: &Path) -> String {
         format!(
-            "Exported {} frames to {path:?} ({}).",
-            self.frames, self.container
+            "Exported {} frames to {} ({}).",
+            self.frames,
+            path.display().to_string().display_scalar(),
+            self.container
         )
     }
 }
@@ -148,7 +155,10 @@ impl Caption {
     /// Confirm completed export of the exact captured recipe text.
     #[must_use]
     pub fn recipe_exported(path: &Path) -> String {
-        format!("Exported recipe to {path:?}.")
+        format!(
+            "Exported recipe to {}.",
+            path.display().to_string().display_scalar()
+        )
     }
     /// A storage stage retained for diagnosis.
     #[must_use]

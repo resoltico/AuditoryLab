@@ -6,7 +6,7 @@ mod record;
 mod root;
 pub(crate) mod store;
 use crate::core::DocumentUuid;
-use crate::error::{Error, ErrorKind};
+use crate::error::{IdentityError, IdentityScope, LibraryError as Error};
 pub use record::{Fingerprint, VersionToken};
 pub use root::{Initialization, LIBRARY_LAYOUT, LibraryRoot, RootInfo, RootSource};
 use serde::{Serialize, Serializer};
@@ -16,9 +16,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 pub use store::{
-    Inventory, LibraryDiagnostic, LibraryStore, LoadedRecord, MAX_SCAN_DECODED_BYTES,
-    MAX_SCAN_RAW_BYTES, MAX_SCAN_RECORDS, Mutation, MutationKind, MutationStatus, WriteOutcome,
-    history_warnings,
+    DiagnosticDetail, Inventory, LibraryDiagnostic, LibraryStore, LoadedRecord,
+    MAX_SCAN_DECODED_BYTES, MAX_SCAN_RAW_BYTES, MAX_SCAN_RECORDS, Mutation, MutationKind,
+    MutationStatus, WriteOutcome, history_warnings,
 };
 
 /// Identity of a temporary entry in one application process, never a CLI selector.
@@ -30,11 +30,11 @@ impl ExternalId {
     ///
     /// # Errors
     /// Returns an identity-allocation error at the process counter limit.
-    pub fn allocate() -> Result<Self, Error> {
+    pub fn allocate() -> Result<Self, IdentityError> {
         NEXT_EXTERNAL
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map(Self)
-            .map_err(|_| Error::new(ErrorKind::Identity, "temporary entry identities exhausted"))
+            .map_err(|_| IdentityError::Exhausted(IdentityScope::ExternalEntry))
     }
 }
 /// Stable collection capability; titles and portable declarations cannot grant it.
@@ -55,14 +55,8 @@ impl LibraryKey {
     pub fn require_user(&self) -> Result<DocumentUuid, Error> {
         match self {
             Self::User(id) => Ok(*id),
-            Self::BuiltIn(_) => Err(Error::new(
-                ErrorKind::ReadOnlyBuiltIn,
-                "shipped recipes cannot be renamed, replaced, trashed or purged; edit a copy",
-            )),
-            Self::External(_) => Err(Error::new(
-                ErrorKind::InvalidArgument,
-                "temporary files must be explicitly added or copied before managed operations",
-            )),
+            Self::BuiltIn(id) => Err(Error::ReadOnlyBuiltin { id: id.clone() }),
+            Self::External(_) => Err(Error::TemporarySelection),
         }
     }
 }
@@ -90,12 +84,9 @@ impl FromStr for LibraryKey {
             return id
                 .parse()
                 .map(Self::User)
-                .map_err(|e| Error::new(ErrorKind::InvalidArgument, e));
+                .map_err(|_| Error::InvalidSelector { value: text.into() });
         }
-        Err(Error::new(
-            ErrorKind::InvalidArgument,
-            "expected builtin:<catalog-id> or user:<canonical-uuid>; use --file for temporary input",
-        ))
+        Err(Error::InvalidSelector { value: text.into() })
     }
 }
 impl Serialize for LibraryKey {

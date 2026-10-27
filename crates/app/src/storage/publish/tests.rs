@@ -22,7 +22,7 @@ fn put(dir: &Dir, path: &Path, policy: Policy<'_>, bytes: &[u8]) -> Result<Publi
         &Cancel::default(),
         |file| {
             file.write_all(bytes)
-                .map_err(|e| io(path, "write fixture", e))
+                .map_err(|e| io(path, IoOperation::Write, e))
         },
     )
 }
@@ -36,8 +36,8 @@ fn policies_have_accepted_and_rejected_neighbors() {
     assert_eq!(
         put(&dir, &path, Policy::CreateNew, b"bad")
             .unwrap_err()
-            .kind(),
-        ErrorKind::DestinationExists
+            .outcome(),
+        crate::error::Outcome::DestinationExists
     );
     assert_eq!(fs::read(&path).unwrap(), b"first");
     put(&dir, &path, Policy::Replace, b"second").unwrap();
@@ -54,8 +54,8 @@ fn policies_have_accepted_and_rejected_neighbors() {
             b"bad"
         )
         .unwrap_err()
-        .kind(),
-        ErrorKind::Conflict
+        .outcome(),
+        crate::error::Outcome::Conflict
     );
     put(
         &dir,
@@ -83,8 +83,8 @@ fn policies_have_accepted_and_rejected_neighbors() {
             b"bad"
         )
         .unwrap_err()
-        .kind(),
-        ErrorKind::Conflict
+        .outcome(),
+        crate::error::Outcome::Conflict
     );
     assert_eq!(fs::read(&path).unwrap(), b"third");
     fs::remove_file(&path).unwrap();
@@ -119,9 +119,10 @@ fn precommit_failures_preserve_previous_bytes_and_cleanup_only_our_stage() {
         &Cancel::default(),
         |file| {
             file.write_all(b"partial").unwrap();
-            Err(Error::new(
-                ErrorKind::Write,
-                "writer failed after partial output",
+            Err(io(
+                &path,
+                IoOperation::Write,
+                std::io::Error::other("writer failed after partial output"),
             ))
         },
     );
@@ -151,9 +152,8 @@ fn postcommit_failures_verify_candidate_previous_and_foreign_content() {
     });
     inject(&[FaultPoint::AfterPublish]);
     let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
-    // Context names the complete path using Rust's escaped path representation,
-    // including doubled Windows separators rather than an unescaped substring.
-    assert!(error.to_string().contains(&format!("{path:?}")));
+    // Human rendering names the complete path without Debug escaping.
+    assert!(error.to_string().contains(&path.display().to_string()));
     assert!(error.to_string().contains("differs from both"));
     assert_eq!(fs::read(path).unwrap(), b"foreign");
 }
@@ -173,7 +173,7 @@ fn no_clobber_race_and_cleanup_failure_preserve_publication_truth() {
         },
     )
     .unwrap_err();
-    assert_eq!(error.kind(), ErrorKind::DestinationExists);
+    assert_eq!(error.outcome(), crate::error::Outcome::DestinationExists);
     assert_eq!(fs::read(path).unwrap(), b"foreign");
     let (temp, dir, path) = fixture();
     inject(&[FaultPoint::Cleanup]);
@@ -533,8 +533,8 @@ fn killed_purge_never_recreates_the_removed_identity() {
                 &Cancel::default()
             )
             .unwrap_err()
-            .kind(),
-        ErrorKind::Conflict
+            .outcome(),
+        crate::error::Outcome::Conflict
     );
 }
 
@@ -580,9 +580,18 @@ fn unreadable_publication_verification_never_guesses_the_destination_state() {
         fs::write(&path, b"previous").unwrap();
         inject(&[point, FaultPoint::Verify]);
         let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
+        assert!(matches!(
+            &error,
+            Error::AfterMutation {
+                confirmation: Confirmation::Unavailable(_),
+                ..
+            }
+        ));
+        let cause = std::error::Error::source(&error).unwrap();
+        assert!(cause.to_string().contains("injected"));
         let message = error.to_string();
-        assert_eq!(error.kind(), ErrorKind::Write);
-        assert!(message.contains(&format!("{path:?}")));
+        assert_eq!(error.outcome(), crate::error::Outcome::Write);
+        assert!(message.contains(&path.display().to_string()));
         assert!(message.contains("publication outcome is unconfirmed"));
         assert!(message.contains("destination could not be verified"));
         assert!(!message.contains("previous content remains"));
@@ -634,10 +643,14 @@ fn precommit_hashing_checks_cancellation_between_blocks() {
         let result = publish_in(&dir, Path::new("entry"), &path, policy, &cancel, |file| {
             written.set(true);
             file.write_all(&candidate)
-                .map_err(|error| io(&path, "cannot write candidate", error))
+                .map_err(|error| io(&path, IoOperation::Write, error))
         });
         HASH_BLOCK.with(|slot| *slot.borrow_mut() = None);
-        assert_eq!(result.unwrap_err().kind(), ErrorKind::Cancelled, "{phase}");
+        assert_eq!(
+            result.unwrap_err().outcome(),
+            crate::error::Outcome::Cancelled,
+            "{phase}"
+        );
         assert_eq!(
             blocks.get(),
             stop_after,
@@ -670,7 +683,7 @@ fn cancellation_after_publication_does_not_interrupt_truth_verification() {
         &cancel,
         |file| {
             file.write_all(&candidate)
-                .map_err(|error| io(&path, "cannot write candidate", error))
+                .map_err(|error| io(&path, IoOperation::Write, error))
         },
     )
     .unwrap();
@@ -737,8 +750,8 @@ fn relocation_flushes_the_source_without_changing_bytes_or_file_identity() {
     assert_eq!(
         relocate(&from, &to, name, &source, &destination, &Cancel::default())
             .unwrap_err()
-            .kind(),
-        ErrorKind::Conflict
+            .outcome(),
+        crate::error::Outcome::Conflict
     );
     assert_eq!(fs::read(&source).unwrap(), bytes);
     assert_eq!(fs::read(&destination).unwrap(), b"foreign destination");
@@ -754,8 +767,17 @@ fn unreadable_deletion_verification_never_claims_the_file_remains() {
         fs::write(&path, b"original").unwrap();
         inject(&[point, FaultPoint::Verify]);
         let error = remove(&dir, Path::new("entry"), &path).unwrap_err();
+        assert!(matches!(
+            &error,
+            Error::AfterMutation {
+                confirmation: Confirmation::Unavailable(_),
+                ..
+            }
+        ));
+        let cause = std::error::Error::source(&error).unwrap();
+        assert!(cause.to_string().contains("injected"));
         let message = error.to_string();
-        assert!(message.contains(&format!("{path:?}")));
+        assert!(message.contains(&path.display().to_string()));
         assert!(message.contains("deletion outcome is unconfirmed"));
         assert!(!message.contains("was not applied"));
         assert_eq!(path.exists(), exists);
@@ -783,8 +805,17 @@ fn unreadable_relocation_verification_does_not_guess_source_removal() {
             &Cancel::default(),
         )
         .unwrap_err();
+        assert!(matches!(
+            &error,
+            Error::AfterMutation {
+                confirmation: Confirmation::Unavailable(_),
+                ..
+            }
+        ));
+        let cause = std::error::Error::source(&error).unwrap();
+        assert!(cause.to_string().contains("injected"));
         let message = error.to_string();
-        assert!(message.contains(&format!("{destination:?}")));
+        assert!(message.contains(&destination.display().to_string()));
         assert!(message.contains("relocation outcome is unconfirmed"));
         assert!(!message.contains("did not remove its source"));
         assert_eq!(path.exists(), source_exists);

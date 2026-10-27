@@ -1,5 +1,7 @@
 //! Exclusive adjacent staging, atomic publication and verification of ambiguous I/O results.
-use crate::error::{Error, ErrorKind};
+use crate::error::{
+    Confirmation, FileError as Error, IoCause, IoFailure, IoOperation, MutationPhase,
+};
 use crate::services::{Cancel, Replace};
 use crate::storage::library::Fingerprint;
 use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt};
@@ -38,16 +40,15 @@ fn open_regular_with(dir: &Dir, name: &Path, mut options: OpenOptions) -> Result
     }
     let file = dir
         .open_with(name, &options)
-        .map_err(|e| io(name, "cannot open file safely", e))?;
+        .map_err(|e| io(name, IoOperation::Open, e))?;
     if !file
         .metadata()
-        .map_err(|e| io(name, "cannot inspect opened file", e))?
+        .map_err(|e| io(name, IoOperation::Inspect, e))?
         .is_file()
     {
-        return Err(Error::new(
-            ErrorKind::Unreadable,
-            format!("{name:?}: expected a regular file"),
-        ));
+        return Err(Error::NotRegular {
+            path: name.to_owned(),
+        });
     }
     Ok(file.into_std())
 }
@@ -63,26 +64,26 @@ pub(crate) fn read_bounded_counted(
     let file = open_regular(dir, name)?;
     if file
         .metadata()
-        .map_err(|e| io(name, "cannot inspect byte size", e))?
+        .map_err(|e| io(name, IoOperation::Inspect, e))?
         .len()
         > u64::try_from(limit).unwrap_or(u64::MAX)
     {
-        return Err(Error::new(
-            ErrorKind::IncompleteInventory,
-            format!("{name:?}: file exceeds the bounded read limit"),
-        ));
+        return Err(Error::ReadLimit {
+            path: name.to_owned(),
+            grew: false,
+        });
     }
     let mut bytes = Vec::new();
     let result = file
         .take(u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1))
         .read_to_end(&mut bytes);
     *consumed = consumed.saturating_add(bytes.len());
-    result.map_err(|e| io(name, "cannot read file", e))?;
+    result.map_err(|e| io(name, IoOperation::Read, e))?;
     if bytes.len() > limit {
-        return Err(Error::new(
-            ErrorKind::IncompleteInventory,
-            format!("{name:?}: file grew beyond the bounded read limit"),
-        ));
+        return Err(Error::ReadLimit {
+            path: name.to_owned(),
+            grew: true,
+        });
     }
     Ok(bytes)
 }
@@ -93,7 +94,7 @@ fn hash(file: &mut File, path: &Path, cancel: Option<&Cancel>) -> Result<Fingerp
         return Err(cancelled(path));
     }
     file.seek(SeekFrom::Start(0))
-        .map_err(|e| io(path, "cannot seek file for hashing", e))?;
+        .map_err(|e| io(path, IoOperation::Seek, e))?;
     let mut digest = Sha256::new();
     let mut block = [0; 64 * 1024];
     loop {
@@ -103,7 +104,7 @@ fn hash(file: &mut File, path: &Path, cancel: Option<&Cancel>) -> Result<Fingerp
         let count = match file.read(&mut block) {
             Ok(count) => count,
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(error) => return Err(io(path, "cannot read file for hashing", error)),
+            Err(error) => return Err(io(path, IoOperation::Read, error)),
         };
         if count == 0 {
             break;
@@ -121,23 +122,31 @@ fn hash(file: &mut File, path: &Path, cancel: Option<&Cancel>) -> Result<Fingerp
 fn observed(dir: &Dir, name: &Path, cancel: Option<&Cancel>) -> Result<Option<Fingerprint>, Error> {
     match dir.symlink_metadata(name) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(io(name, "cannot inspect destination", error)),
+        Err(error) => Err(io(name, IoOperation::Inspect, error)),
         Ok(_) => hash(&mut open_regular(dir, name)?, name, cancel).map(Some),
     }
 }
 
-fn io(path: &Path, context: &str, error: std::io::Error) -> Error {
-    Error::caused(
-        ErrorKind::Write,
-        format!("{path:?}: {context}: {error}"),
-        error,
-    )
+fn io(path: &Path, action: IoOperation, error: std::io::Error) -> Error {
+    Error::Io(IoFailure::new(action, Some(path.to_owned()), error))
 }
 fn cancelled(path: &Path) -> Error {
-    Error::new(
-        ErrorKind::Cancelled,
-        format!("publication to {path:?} cancelled before commit"),
-    )
+    Error::Cancelled {
+        path: Some(path.to_owned()),
+    }
+}
+fn failed(
+    path: &Path,
+    phase: MutationPhase,
+    confirmation: Confirmation,
+    error: std::io::Error,
+) -> Error {
+    Error::AfterMutation {
+        path: path.to_owned(),
+        phase,
+        confirmation,
+        cause: IoCause::new(error),
+    }
 }
 fn cleanup(dir: &Dir, stage: &Path, path: &Path, error: Error) -> Error {
     match fault(FaultPoint::Cleanup).and_then(|()| dir.remove_file(stage)) {
@@ -172,10 +181,10 @@ pub(crate) fn publish_in<T>(
         return Err(cancelled(path));
     }
     if matches!(policy, Policy::CreateNew) && dir.symlink_metadata(name).is_ok() {
-        return Err(Error::new(
-            ErrorKind::DestinationExists,
-            format!("{path:?}: destination already exists and was left untouched"),
-        ));
+        return Err(Error::DestinationExists {
+            path: path.to_owned(),
+            cause: None,
+        });
     }
     let previous = if matches!(policy, Policy::CreateNew) {
         None
@@ -197,18 +206,18 @@ pub(crate) fn publish_in<T>(
         use cap_std::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    fault(FaultPoint::StageCreate).map_err(|e| io(path, "cannot create stage", e))?;
+    fault(FaultPoint::StageCreate).map_err(|e| io(path, IoOperation::CreateStage, e))?;
     let mut file = dir
         .open_with(&stage, &options)
-        .map_err(|e| io(path, "cannot create exclusive stage", e))?
+        .map_err(|e| io(path, IoOperation::CreateStage, e))?
         .into_std();
     let prepared = (|| {
-        fault(FaultPoint::Write).map_err(|e| io(path, "cannot write stage", e))?;
+        fault(FaultPoint::Write).map_err(|e| io(path, IoOperation::Write, e))?;
         let value = write(&mut file)?;
         file.flush()
             .and_then(|()| fault(FaultPoint::FileSync))
             .and_then(|()| file.sync_all())
-            .map_err(|e| io(path, "cannot synchronize stage", e))?;
+            .map_err(|e| io(path, IoOperation::SyncFile, e))?;
         let fingerprint = hash(&mut file, path, Some(cancel))?;
         if let Policy::ReplaceIfUnchanged {
             fingerprint: expected,
@@ -218,12 +227,11 @@ pub(crate) fn publish_in<T>(
             let mut latest = open_regular(dir, name)?;
             let found = hash(&mut latest, path, Some(cancel))?;
             let handle = same_file::Handle::from_file(latest)
-                .map_err(|e| io(path, "cannot verify current identity", e))?;
+                .map_err(|e| io(path, IoOperation::CheckIdentity, e))?;
             if found != expected || handle != *identity {
-                return Err(Error::new(
-                    ErrorKind::Conflict,
-                    format!("{path:?}: file changed identity or bytes since it was opened"),
-                ));
+                return Err(Error::Changed {
+                    path: path.to_owned(),
+                });
             }
         }
         if cancel.is_requested() {
@@ -251,17 +259,14 @@ pub(crate) fn publish_in<T>(
                 dir,
                 &stage,
                 path,
-                Error::caused(
-                    ErrorKind::DestinationExists,
-                    format!(
-                        "{path:?}: destination was created by another writer and was left untouched"
-                    ),
-                    error,
-                ),
+                Error::DestinationExists {
+                    path: path.to_owned(),
+                    cause: Some(IoCause::new(error)),
+                },
             ));
         }
         let found = fault(FaultPoint::Verify)
-            .map_err(|e| io(path, "destination verification unavailable", e))
+            .map_err(|e| io(path, IoOperation::Inspect, e))
             .and_then(|()| observed(dir, name, None));
         match found {
             Ok(Some(fingerprint)) if fingerprint == candidate => warnings.push(format!(
@@ -272,11 +277,7 @@ pub(crate) fn publish_in<T>(
                     dir,
                     &stage,
                     path,
-                    io(
-                        path,
-                        "publication was not applied; previous content remains",
-                        error,
-                    ),
+                    failed(path, MutationPhase::Publish, Confirmation::Unchanged, error),
                 ));
             }
             Err(verification_error) => {
@@ -284,11 +285,10 @@ pub(crate) fn publish_in<T>(
                     dir,
                     &stage,
                     path,
-                    io(
+                    failed(
                         path,
-                        &format!(
-                            "publication outcome is unconfirmed; destination could not be verified ({verification_error}); inspect this path before retrying"
-                        ),
+                        MutationPhase::Publish,
+                        Confirmation::Unavailable(Box::new(verification_error)),
                         error,
                     ),
                 ));
@@ -298,11 +298,7 @@ pub(crate) fn publish_in<T>(
                     dir,
                     &stage,
                     path,
-                    io(
-                        path,
-                        "publication failed and destination differs from both previous and candidate bytes; inspect this path before retrying",
-                        error,
-                    ),
+                    failed(path, MutationPhase::Publish, Confirmation::Different, error),
                 ));
             }
         }
@@ -318,23 +314,24 @@ pub(crate) fn publish_in<T>(
                     dir,
                     &stage,
                     path,
-                    io(
+                    failed(
                         path,
-                        "directory sync failed and previous bytes remain",
+                        MutationPhase::SyncPublication,
+                        Confirmation::Unchanged,
                         error,
                     ),
                 ));
             }
-            _ => {
+            found => {
+                let confirmation = match found {
+                    Ok(_) => Confirmation::Different,
+                    Err(error) => Confirmation::Unavailable(Box::new(error)),
+                };
                 return Err(cleanup(
                     dir,
                     &stage,
                     path,
-                    io(
-                        path,
-                        "directory sync failed and candidate bytes could not be verified; inspect this path",
-                        error,
-                    ),
+                    failed(path, MutationPhase::SyncPublication, confirmation, error),
                 ));
             }
         }
@@ -359,11 +356,9 @@ pub(crate) fn publish<T>(
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
-    let name = path
-        .file_name()
-        .ok_or_else(|| Error::new(ErrorKind::Write, "destination needs a filename"))?;
+    let name = path.file_name().ok_or(Error::MissingFilename)?;
     let dir = Dir::open_ambient_dir(parent, cap_std::ambient_authority())
-        .map_err(|e| io(path, "cannot open destination directory", e))?;
+        .map_err(|e| io(path, IoOperation::OpenDirectory, e))?;
     let result = publish_in(
         &dir,
         Path::new(name),
@@ -452,9 +447,9 @@ pub(crate) fn same_file(
     second_name: &Path,
 ) -> Result<bool, Error> {
     let a = same_file::Handle::from_file(open_regular(first, first_name)?)
-        .map_err(|e| io(first_name, "cannot retain file identity", e))?;
+        .map_err(|e| io(first_name, IoOperation::RetainIdentity, e))?;
     let b = same_file::Handle::from_file(open_regular(second, second_name)?)
-        .map_err(|e| io(second_name, "cannot retain file identity", e))?;
+        .map_err(|e| io(second_name, IoOperation::RetainIdentity, e))?;
     Ok(a == b)
 }
 pub(crate) fn relocate(
@@ -469,12 +464,9 @@ pub(crate) fn relocate(
         return Err(cancelled(destination));
     }
     if to.symlink_metadata(name).is_ok() {
-        return Err(Error::new(
-            ErrorKind::Conflict,
-            format!(
-                "{destination:?}: relocation destination already exists and was left untouched"
-            ),
-        ));
+        return Err(Error::RelocationExists {
+            path: destination.to_owned(),
+        });
     }
     #[cfg(windows)]
     let mut source_file = {
@@ -488,7 +480,7 @@ pub(crate) fn relocate(
     let mut source_file = open_regular(from, name)?;
     source_file
         .sync_all()
-        .map_err(|e| io(source, "cannot sync relocation source", e))?;
+        .map_err(|e| io(source, IoOperation::SyncFile, e))?;
     let expected = hash(&mut source_file, source, Some(cancel))?;
     if cancel.is_requested() {
         return Err(cancelled(destination));
@@ -496,7 +488,7 @@ pub(crate) fn relocate(
     pause(FaultPoint::BeforeLink);
     fault(FaultPoint::BeforeLink)
         .and_then(|()| from.hard_link(name, to, name))
-        .map_err(|e| io(destination, "cannot create no-clobber relocation link", e))?;
+        .map_err(|e| io(destination, IoOperation::Relocate, e))?;
     pause(FaultPoint::AfterLink);
     let removal = fault(FaultPoint::AfterLink)
         .and_then(|()| fault(FaultPoint::BeforeRemove))
@@ -515,22 +507,28 @@ pub(crate) fn relocate(
                     && same_file(from, name, to, name)? =>
             {
                 warnings.push(format!(
-                    "Moved to Trash; redundant active link remains at {source:?}: {error}"
+                    "Moved to Trash; redundant active link remains at {}: {error}",
+                    source.display()
                 ))
             }
             Ok(_) => {
-                return Err(io(
+                return Err(failed(
                     destination,
-                    "relocation did not remove its source; Trash remains authoritative for same-file links",
+                    MutationPhase::Relocate {
+                        source: source.to_owned(),
+                    },
+                    Confirmation::Unchanged,
                     error,
                 ));
             }
             Err(verification_error) => {
-                return Err(io(
+                let verification = io(source, IoOperation::Inspect, verification_error);
+                return Err(failed(
                     destination,
-                    &format!(
-                        "relocation outcome is unconfirmed; source {source:?} could not be inspected ({verification_error}); recheck before retrying"
-                    ),
+                    MutationPhase::Relocate {
+                        source: source.to_owned(),
+                    },
+                    Confirmation::Unavailable(Box::new(verification)),
                     error,
                 ));
             }
@@ -538,12 +536,20 @@ pub(crate) fn relocate(
     }
     for dir in [from, to] {
         if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
-            if observed(to, name, None)? != Some(expected) {
-                return Err(io(
-                    destination,
-                    "relocation durability failed and destination changed",
-                    error,
-                ));
+            match observed(to, name, None) {
+                Ok(Some(found)) if found == expected => {}
+                found => {
+                    let confirmation = match found {
+                        Ok(_) => Confirmation::Different,
+                        Err(error) => Confirmation::Unavailable(Box::new(error)),
+                    };
+                    return Err(failed(
+                        destination,
+                        MutationPhase::SyncRelocation,
+                        confirmation,
+                        error,
+                    ));
+                }
             }
             warnings.push(format!("Moved; directory durability warning: {error}"));
         }
@@ -562,18 +568,19 @@ pub(crate) fn remove(dir: &Dir, name: &Path, path: &Path) -> Result<Vec<String>,
                 "Deleted; absence verified under the exclusive lock after I/O error: {error}"
             )),
             Ok(_) => {
-                return Err(io(
+                return Err(failed(
                     path,
-                    "deletion was not applied; the destination remains",
+                    MutationPhase::Remove,
+                    Confirmation::Unchanged,
                     error,
                 ));
             }
             Err(verification_error) => {
-                return Err(io(
+                let verification = io(path, IoOperation::Inspect, verification_error);
+                return Err(failed(
                     path,
-                    &format!(
-                        "deletion outcome is unconfirmed; destination could not be inspected ({verification_error}); recheck before retrying"
-                    ),
+                    MutationPhase::Remove,
+                    Confirmation::Unavailable(Box::new(verification)),
                     error,
                 ));
             }
@@ -584,10 +591,17 @@ pub(crate) fn remove(dir: &Dir, name: &Path, path: &Path) -> Result<Vec<String>,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 warnings.push(format!("Deleted; directory durability warning: {error}"))
             }
-            _ => {
-                return Err(io(
+            found => {
+                let confirmation = match found {
+                    Ok(_) => Confirmation::Different,
+                    Err(error) => {
+                        Confirmation::Unavailable(Box::new(io(path, IoOperation::Inspect, error)))
+                    }
+                };
+                return Err(failed(
                     path,
-                    "deletion durability failed and the destination is present or unreadable",
+                    MutationPhase::SyncRemoval,
+                    confirmation,
                     error,
                 ));
             }

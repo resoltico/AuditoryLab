@@ -20,7 +20,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+type Result<T> = std::result::Result<T, super::CliError>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(super) enum ReadFormat {
     Text,
@@ -354,34 +354,26 @@ pub(super) fn list(args: ListArgs, path: Option<&Path>) -> Result<u8> {
         let inventory = match store(path) {
             Ok(store) => store.scan(&Cancel::default()),
             Err(error) => {
-                if error
-                    .downcast_ref::<lab::error::Error>()
-                    .is_some_and(|error| {
-                        matches!(
-                            error.kind(),
-                            lab::error::ErrorKind::InvalidArgument
-                                | lab::error::ErrorKind::InvalidRecipe
-                        )
-                    })
-                {
+                if matches!(
+                    error.outcome(),
+                    lab::error::Outcome::InvalidArgument | lab::error::Outcome::InvalidRecipe
+                ) {
                     return Err(error);
                 }
                 lab::storage::library::Inventory {
                     complete: false,
-                    failure_kind: Some(lab::error::ErrorKind::IncompleteInventory),
+                    failure_kind: Some(lab::error::Outcome::IncompleteInventory),
                     diagnostics: vec![lab::storage::library::LibraryDiagnostic {
                         storage_id: Caption::ConfiguredRoot.label().into(),
                         code: "root_resolution".into(),
-                        message: error.to_string(),
+                        detail: lab::storage::library::DiagnosticDetail::Notice(error.to_string()),
                     }],
                     ..lab::storage::library::Inventory::default()
                 }
             }
         };
         complete = inventory.complete;
-        exit = inventory
-            .failure_kind
-            .map_or(0, lab::error::ErrorKind::exit_code);
+        exit = inventory.failure_kind.map_or(0, super::exit_code);
         entries.extend(inventory.entries);
         diagnostics = inventory.diagnostics;
         stages = inventory.stages;
@@ -430,7 +422,7 @@ fn print_list(
                 }
             } else {
                 for diagnostic in diagnostics {
-                    eprintln!("{}", prose(&diagnostic.message));
+                    eprintln!("{}", prose(&diagnostic.message()));
                 }
             }
         }
@@ -449,7 +441,7 @@ fn print_list(
                 eprintln!(
                     "{}: {}",
                     diagnostic.storage_id.display_scalar(),
-                    prose(&diagnostic.message)
+                    prose(&diagnostic.message())
                 );
             }
         }
@@ -480,7 +472,7 @@ pub(super) fn inspect(resolved: &Resolved, rate: SampleRate, format: ReadFormat)
     }
     let (report, code) = Report::inspect(&resolved.summary, &resolved.snapshot, rate);
     print_json(&report)?;
-    Ok(code)
+    Ok(code.map_or(0, super::exit_code))
 }
 pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8> {
     let operation = command.operation();
@@ -498,8 +490,8 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                     }
                     return Ok(
                         if matches!(
-                            error.kind(),
-                            lab::error::ErrorKind::Busy | lab::error::ErrorKind::LockUnavailable
+                            error.outcome(),
+                            lab::error::Outcome::Busy | lab::error::Outcome::LockUnavailable
                         ) {
                             4
                         } else {
@@ -536,9 +528,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                 &inventory.stages,
                 format,
             )?;
-            Ok(inventory
-                .failure_kind
-                .map_or(0, lab::error::ErrorKind::exit_code))
+            Ok(inventory.failure_kind.map_or(0, super::exit_code))
         }
         LibraryCommand::Check { format } => {
             let inventory = store(path)?.scan(&Cancel::default());
@@ -550,16 +540,14 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                     eprintln!(
                         "{}: {}",
                         diagnostic.storage_id.display_scalar(),
-                        prose(&diagnostic.message)
+                        prose(&diagnostic.message())
                     );
                 }
                 for stage in &inventory.stages {
                     output(Caption::retained_stage(stage).as_bytes())?;
                 }
             }
-            Ok(inventory
-                .failure_kind
-                .map_or(0, lab::error::ErrorKind::exit_code))
+            Ok(inventory.failure_kind.map_or(0, super::exit_code))
         }
         command => {
             let (mutation, format) = match command {
@@ -739,8 +727,8 @@ fn print_mutation_json(value: &Report) -> Result<()> {
     }
     Ok(())
 }
-pub(super) fn error_json(operation: &str, error: &dyn std::error::Error, code: u8) -> Result<()> {
-    print_json(&Report::error(operation, error, code))
+pub(super) fn error_json(operation: &str, error: &super::CliError) -> Result<()> {
+    print_json(&Report::error(operation, error.message(), error.outcome()))
 }
 
 #[cfg(test)]

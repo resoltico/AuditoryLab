@@ -1,9 +1,10 @@
 //! Bounded plain-recipe inventory and locked single-entry mutations.
 use super::{LibraryKey, LibraryRoot, VersionToken, root};
+use crate::clock::observed_now;
 use crate::core::{DocumentUuid, Recipe, Timestamp};
 use crate::discovery::collection::EntrySummary;
 use crate::document::recipe::{Origin, RecipeSnapshot};
-use crate::error::{Error, ErrorKind};
+use crate::error::{FileError, IoFailure, IoOperation, LibraryError as Error, Outcome};
 use crate::services::Cancel;
 use crate::storage::publish::{self, Policy};
 use cap_std::fs::Dir;
@@ -23,15 +24,48 @@ pub const MAX_SCAN_RAW_BYTES: usize = 256 * 1024 * 1024;
 pub const MAX_SCAN_DECODED_BYTES: usize = 128 * 1024 * 1024;
 const MEMBERSHIP: &str = "membership.toml";
 const MAX_MEMBERSHIP_BYTES: usize = 4 * 1024 * 1024;
-/// One storage diagnostic without invented content or raw corrupt snippets.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// A nonfatal inventory notice or a typed operation failure.
+#[derive(Debug, Clone)]
+pub enum DiagnosticDetail {
+    /// A descriptive inventory notice.
+    Notice(String),
+    /// A failure with its exact typed cause.
+    Failure(Box<crate::error::OperationError>),
+}
+impl From<String> for DiagnosticDetail {
+    fn from(value: String) -> Self {
+        Self::Notice(value)
+    }
+}
+impl From<&str> for DiagnosticDetail {
+    fn from(value: &str) -> Self {
+        Self::Notice(value.into())
+    }
+}
+impl From<Error> for DiagnosticDetail {
+    fn from(value: Error) -> Self {
+        Self::Failure(Box::new(value.into()))
+    }
+}
+impl From<FileError> for DiagnosticDetail {
+    fn from(value: FileError) -> Self {
+        Self::Failure(Box::new(value.into()))
+    }
+}
+impl From<crate::error::OperationError> for DiagnosticDetail {
+    fn from(error: crate::error::OperationError) -> Self {
+        Self::Failure(Box::new(error))
+    }
+}
+/// One storage diagnostic retains its cause separately from human rendering.
+#[derive(Debug, Clone)]
 pub struct LibraryDiagnostic {
     /// Root or relative storage identifier.
     pub storage_id: String,
-    /// Stable category.
+    /// Inventory diagnostic category.
     pub code: String,
-    /// User-facing explanation.
-    pub message: String,
+    /// Exact notice or operation failure.
+    pub detail: DiagnosticDetail,
 }
 /// Disposable bounded index; incomplete never means an empty library.
 #[derive(Debug, Clone)]
@@ -47,7 +81,7 @@ pub struct Inventory {
     /// Missing root has not been initialized.
     pub not_initialized: bool,
     /// Failure class for CLI exit policy.
-    pub failure_kind: Option<ErrorKind>,
+    pub failure_kind: Option<Outcome>,
 }
 impl Default for Inventory {
     fn default() -> Self {
@@ -66,18 +100,18 @@ impl Inventory {
         &mut self,
         path: impl Into<String>,
         code: &str,
-        error: impl std::fmt::Display,
-        kind: ErrorKind,
+        error: impl Into<DiagnosticDetail>,
+        kind: Outcome,
     ) {
         self.complete = false;
         self.failure_kind = Some(kind);
         self.note(path, code, error);
     }
-    fn note(&mut self, path: impl Into<String>, code: &str, message: impl std::fmt::Display) {
+    fn note(&mut self, path: impl Into<String>, code: &str, message: impl Into<DiagnosticDetail>) {
         self.diagnostics.push(LibraryDiagnostic {
             storage_id: path.into(),
             code: code.into(),
-            message: message.to_string(),
+            detail: message.into(),
         });
     }
 }
@@ -102,20 +136,27 @@ pub struct LoadedRecord {
 impl LoadedRecord {
     fn decode(
         id: DocumentUuid,
+        path: &Path,
         bytes: Vec<u8>,
         trashed: bool,
         membership: Option<&Membership>,
     ) -> Result<Self, Error> {
-        let recipe=Recipe::from_bytes(&bytes).map_err(|_|Error::new(ErrorKind::IncompleteInventory,format!("user:{id}: recipe violates the supported portable contract; file was left intact")))?;
+        let recipe = Recipe::from_bytes(&bytes).map_err(|error| Error::RecipeFile {
+            path: path.to_owned(),
+            error,
+        })?;
         if recipe.document().id != id {
-            return Err(Error::new(
-                ErrorKind::IncompleteInventory,
-                format!("user:{id}: filename UUID does not match document.id"),
-            ));
+            return Err(Error::RecordIdentity {
+                path: path.to_owned(),
+                expected: id,
+                found: recipe.document().id,
+            });
         }
         let version_token = VersionToken::observed(&bytes);
-        let recipe_toml = String::from_utf8(bytes)
-            .map_err(|e| Error::caused(ErrorKind::IncompleteInventory, "recipe is not UTF-8", e))?;
+        let recipe_toml = String::from_utf8(bytes).map_err(|e| Error::RecipeUtf8 {
+            path: path.to_owned(),
+            error: e,
+        })?;
         let snapshot = RecipeSnapshot::new(
             Origin::User {
                 id,
@@ -320,14 +361,12 @@ impl LibraryStore {
     pub fn new(root: LibraryRoot) -> Result<Self, Error> {
         let mut reserved = BTreeSet::new();
         for entry in crate::core::catalog::ENTRIES {
-            let recipe = Recipe::parse(entry.text).map_err(|e| {
-                Error::caused(ErrorKind::InvalidRecipe, "invalid shipped identity", e)
-            })?;
+            let recipe =
+                Recipe::parse(entry.text).map_err(|e| Error::InvalidBuiltin { error: e })?;
             if !reserved.insert(recipe.document().id) {
-                return Err(Error::new(
-                    ErrorKind::InvalidRecipe,
-                    "duplicate shipped UUID",
-                ));
+                return Err(Error::DuplicateBuiltin {
+                    id: recipe.document().id,
+                });
             }
         }
         Ok(Self {
@@ -342,10 +381,7 @@ impl LibraryStore {
     }
     fn reserved(&self, id: DocumentUuid) -> Result<(), Error> {
         if self.reserved.contains(&id) {
-            Err(Error::new(
-                ErrorKind::Conflict,
-                "this document UUID belongs to a built-in; explicitly create a copy",
-            ))
+            Err(Error::ReservedBuiltin { id })
         } else {
             Ok(())
         }
@@ -358,21 +394,16 @@ impl LibraryStore {
         let id = key.require_user()?;
         self.reserved(id)?;
         (|| {
-            let lease = self.root.lock(false, false)?.ok_or_else(|| {
-                Error::new(ErrorKind::UnknownRecipe, "library is not initialized")
-            })?;
+            let lease = self.root.lock(false, false)?.ok_or(Error::NotInitialized)?;
             root::validate_marker(&lease.dir)?;
             let membership = read_memberships(&lease.dir)?;
-            read_record(&lease, id, &membership)?.ok_or_else(|| {
-                Error::new(
-                    ErrorKind::UnknownRecipe,
-                    format!("unknown managed recipe user:{id}"),
-                )
-            })
+            read_record(&lease, id, &membership)?.ok_or(Error::UnknownManaged { id })
         })()
         .map_err(|error| {
-            if matches!(error.kind(), ErrorKind::Write | ErrorKind::Unreadable) {
-                Error::caused(ErrorKind::IncompleteInventory, error.to_string(), error)
+            if matches!(error.outcome(), Outcome::Write | Outcome::Unreadable) {
+                Error::IncompleteRead {
+                    error: Box::new(error),
+                }
             } else {
                 error
             }
@@ -386,9 +417,9 @@ impl LibraryStore {
     fn scan_limited(&self, cancel: &Cancel, limits: ScanLimits) -> Inventory {
         let mut result = Inventory::default();
         if let Err(error) = self.scan_into(cancel, &mut result, limits) {
-            let kind = match error.kind() {
-                ErrorKind::Busy | ErrorKind::LockUnavailable | ErrorKind::Cancelled => error.kind(),
-                _ => ErrorKind::IncompleteInventory,
+            let kind = match error.outcome() {
+                Outcome::Busy | Outcome::LockUnavailable | Outcome::Cancelled => error.outcome(),
+                _ => Outcome::IncompleteInventory,
             };
             result.error(self.root.path().display().to_string(), "root", error, kind);
         }
@@ -408,10 +439,7 @@ impl LibraryStore {
             return if self.root.missing_is_empty() {
                 Ok(())
             } else {
-                Err(Error::new(
-                    ErrorKind::IncompleteInventory,
-                    "configured root is missing; initialize it explicitly",
-                ))
+                Err(Error::RootMissing)
             };
         };
         root::validate_marker(&lease.dir)?;
@@ -422,7 +450,7 @@ impl LibraryStore {
                     MEMBERSHIP,
                     "membership",
                     error,
-                    ErrorKind::IncompleteInventory,
+                    Outcome::IncompleteInventory,
                 );
                 Memberships::default()
             }
@@ -433,12 +461,12 @@ impl LibraryStore {
         for entry in lease
             .dir
             .entries()
-            .map_err(|e| root::io("cannot enumerate library root", e))?
+            .map_err(|e| root::io(IoOperation::Read, e))?
         {
             if cancel.is_requested() {
                 return Err(cancelled());
             }
-            let entry = entry.map_err(|e| root::io("cannot inspect root entry", e))?;
+            let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
             let name = entry.file_name();
             if matches!(
                 name.to_str(),
@@ -470,14 +498,11 @@ impl LibraryStore {
         let mut duplicates = BTreeSet::new();
         for (directory, trashed) in [("recipes", false), ("trash", true)] {
             let dir = lease.directory(directory)?;
-            for entry in dir
-                .entries()
-                .map_err(|e| root::io("cannot enumerate recipe directory", e))?
-            {
+            for entry in dir.entries().map_err(|e| root::io(IoOperation::Read, e))? {
                 if cancel.is_requested() {
                     return Err(cancelled());
                 }
-                let entry = entry.map_err(|e| root::io("cannot inspect recipe entry", e))?;
+                let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
                 count += 1;
                 if count > limits.entries {
                     return Err(budget());
@@ -499,7 +524,7 @@ impl LibraryStore {
                             relative,
                             "filename",
                             "expected a canonical UUID.toml filename",
-                            ErrorKind::IncompleteInventory,
+                            Outcome::IncompleteInventory,
                         );
                         continue;
                     }
@@ -512,7 +537,7 @@ impl LibraryStore {
                         relative,
                         "reserved_identity",
                         "managed file uses a reserved built-in UUID",
-                        ErrorKind::IncompleteInventory,
+                        Outcome::IncompleteInventory,
                     );
                     continue;
                 }
@@ -530,22 +555,23 @@ impl LibraryStore {
                 ) {
                     Ok(bytes) => bytes,
                     Err(error) => {
-                        result.error(
-                            relative,
-                            "recipe_read",
-                            error,
-                            ErrorKind::IncompleteInventory,
-                        );
+                        result.error(relative, "recipe_read", error, Outcome::IncompleteInventory);
                         continue;
                     }
                 };
-                match LoadedRecord::decode(id, bytes, trashed, memberships.entries.get(&id)) {
+                match LoadedRecord::decode(
+                    id,
+                    &self.root.path().join(&relative),
+                    bytes,
+                    trashed,
+                    memberships.entries.get(&id),
+                ) {
                     Ok(record) => result.entries.push(record.summary()),
                     Err(error) => result.error(
                         relative,
                         "recipe_contract",
                         error,
-                        ErrorKind::IncompleteInventory,
+                        Outcome::IncompleteInventory,
                     ),
                 }
             }
@@ -565,7 +591,7 @@ impl LibraryStore {
                 result
                     .entries
                     .retain(|entry| entry.key != LibraryKey::User(id));
-                result.error(name,"duplicate_identity","different files with the same UUID exist in recipes and trash; both were retained",ErrorKind::IncompleteInventory);
+                result.error(name,"duplicate_identity","different files with the same UUID exist in recipes and trash; both were retained",Outcome::IncompleteInventory);
             }
         }
         for id in memberships.entries.keys().filter(|id| !seen.contains(id)) {
@@ -578,7 +604,7 @@ impl LibraryStore {
         let stages = lease.directory(".stage")?;
         for entry in stages
             .entries()
-            .map_err(|e| root::io("cannot enumerate private stages", e))?
+            .map_err(|e| root::io(IoOperation::Read, e))?
         {
             if cancel.is_requested() {
                 return Err(cancelled());
@@ -587,7 +613,7 @@ impl LibraryStore {
             if count > limits.entries {
                 return Err(budget());
             }
-            let entry = entry.map_err(|e| root::io("cannot inspect private stage", e))?;
+            let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
             result
                 .stages
                 .push(format!(".stage/{}", entry.file_name().to_string_lossy()));
@@ -628,19 +654,16 @@ impl LibraryStore {
             &mutation
             && recipe.document().id != id
         {
-            return Err(Error::new(
-                ErrorKind::Conflict,
-                "proposed document identity differs from the selected key",
-            ));
+            return Err(Error::ProposedIdentity {
+                expected: id,
+                found: recipe.document().id,
+            });
         }
         if let Mutation::Purge {
             confirmed: false, ..
         } = mutation
         {
-            return Err(Error::new(
-                ErrorKind::InvalidArgument,
-                "permanent deletion requires explicit confirmation",
-            ));
+            return Err(Error::PurgeUnconfirmed);
         }
         if cancel.is_requested() {
             return Err(cancelled());
@@ -651,19 +674,14 @@ impl LibraryStore {
             Some(lease) => lease,
             None if creating && self.root.missing_is_empty() => {
                 diagnostics.extend(self.root.initialize()?.warnings);
-                self.root
-                    .lock(true, false)?
-                    .ok_or_else(|| Error::new(ErrorKind::Write, "initialized root disappeared"))?
+                self.root.lock(true, false)?.ok_or(Error::RootDisappeared)?
             }
             None => {
-                return Err(Error::new(
-                    if creating {
-                        ErrorKind::IncompleteInventory
-                    } else {
-                        ErrorKind::Conflict
-                    },
-                    "library is not initialized; existing content was not recreated",
-                ));
+                return Err(if creating {
+                    Error::MissingMarkerOnCreate
+                } else {
+                    Error::MissingMarkerOnMutation
+                });
             }
         };
         root::validate_marker(&lease.dir)?;
@@ -678,16 +696,10 @@ impl LibraryStore {
         if let Some(expect) = expected
             && old.as_ref().is_none_or(|old| old.version_token != expect)
         {
-            return Err(Error::new(
-                ErrorKind::Conflict,
-                "saved recipe changed or disappeared; retain the draft and reload or save a copy",
-            ));
+            return Err(Error::StaleContent { id });
         }
         if !creating && old.is_none() {
-            return Err(Error::new(
-                ErrorKind::Conflict,
-                "selected managed recipe disappeared; it was not recreated",
-            ));
+            return Err(Error::EntryDisappeared { id });
         }
         let removed = prune_memberships(&lease, &mut memberships)?;
         if removed > 0 {
@@ -705,21 +717,14 @@ impl LibraryStore {
             {
                 return Ok(unchanged(key, kind, old.clone(), diagnostics));
             }
-            return Err(Error::new(
-                ErrorKind::Conflict,
-                "identity already exists, including Trash; restore or create an independent copy",
-            ));
+            return Err(Error::IdentityExists { id });
         }
         let now = observed_now()?;
         let name = format!("{id}.toml");
         if matches!(kind, MutationKind::Purge) {
-            let old =
-                old.ok_or_else(|| Error::new(ErrorKind::Conflict, "selected entry disappeared"))?;
+            let old = old.ok_or(Error::EntryDisappeared { id })?;
             if !old.trashed {
-                return Err(Error::new(
-                    ErrorKind::Conflict,
-                    "only entries in Trash can be permanently deleted",
-                ));
+                return Err(Error::PurgeRequiresTrash { id });
             }
             let trash = lease.directory("trash")?;
             diagnostics.extend(publish::remove(
@@ -732,8 +737,7 @@ impl LibraryStore {
             return Ok(outcome(key, kind, None, diagnostics));
         }
         if matches!(kind, MutationKind::Trash | MutationKind::Restore) {
-            let mut record =
-                old.ok_or_else(|| Error::new(ErrorKind::Conflict, "selected entry disappeared"))?;
+            let mut record = old.ok_or(Error::EntryDisappeared { id })?;
             let trashed = kind == MutationKind::Trash;
             if record.trashed == trashed {
                 return Ok(unchanged(key, kind, record, diagnostics));
@@ -769,36 +773,30 @@ impl LibraryStore {
             Mutation::Rename { title, .. } => {
                 let recipe = old
                     .as_ref()
-                    .ok_or_else(|| Error::new(ErrorKind::Conflict, "selected entry disappeared"))?
+                    .ok_or(Error::EntryDisappeared { id })?
                     .snapshot
                     .recipe()
                     .clone();
                 let notes = recipe.description().as_ref().and_then(|d| d.notes.clone());
                 recipe
                     .with_description(Some(crate::core::Description { title, notes }))
-                    .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?
+                    .map_err(|e| Error::Recipe { error: e })?
             }
             _ => unreachable!("lifecycle operations handled above"),
         };
         if recipe.document().id != id {
-            return Err(Error::new(
-                ErrorKind::Conflict,
-                "proposed document identity differs from the selected key",
-            ));
+            return Err(Error::ProposedIdentity {
+                expected: id,
+                found: recipe.document().id,
+            });
         }
         if let Some(old) = &old {
             if old.trashed {
-                return Err(Error::new(
-                    ErrorKind::Conflict,
-                    "restore a trashed entry before editing it",
-                ));
+                return Err(Error::MustRestore { id });
             }
             let previous = old.snapshot.recipe();
             if previous.document().created_at != recipe.document().created_at {
-                return Err(Error::new(
-                    ErrorKind::HistoryConflict,
-                    "an update cannot replace this identity's creation history",
-                ));
+                return Err(Error::HistoryReplacement { id });
             }
             if previous.same_editable_content(&recipe) {
                 return Ok(unchanged(key, kind, old.clone(), diagnostics));
@@ -818,9 +816,7 @@ impl LibraryStore {
         } else if !creating {
             proposal.document.modified_at = Some(now);
         }
-        let recipe = proposal
-            .build()
-            .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?;
+        let recipe = proposal.build().map_err(|e| Error::Recipe { error: e })?;
         diagnostics.extend(chronology(
             &recipe,
             old.as_ref().map(|r| r.snapshot.recipe()),
@@ -828,7 +824,7 @@ impl LibraryStore {
         ));
         let bytes = recipe
             .to_toml()
-            .map_err(|e| Error::caused(ErrorKind::InvalidRecipe, e.to_string(), e))?
+            .map_err(|e| Error::Recipe { error: e })?
             .into_bytes();
         let recipes = lease.directory("recipes")?;
         let publication = publish::publish_in(
@@ -842,8 +838,13 @@ impl LibraryStore {
             },
             cancel,
             |file| {
-                file.write_all(&bytes)
-                    .map_err(|e| Error::caused(ErrorKind::Write, "cannot write recipe stage", e))
+                file.write_all(&bytes).map_err(|e| {
+                    FileError::Io(IoFailure::new(
+                        IoOperation::Write,
+                        Some(lease.canonical.join("recipes").join(&name)),
+                        e,
+                    ))
+                })
             },
         )?;
         diagnostics.extend(publication.warnings);
@@ -852,7 +853,13 @@ impl LibraryStore {
             membership.added_at = Some(now);
             membership.trashed_at = None;
         }
-        let mut record = LoadedRecord::decode(id, bytes, false, Some(membership))?;
+        let mut record = LoadedRecord::decode(
+            id,
+            &lease.canonical.join("recipes").join(&name),
+            bytes,
+            false,
+            Some(membership),
+        )?;
         if !persist_memberships(&lease, &memberships, cancel, &mut diagnostics) {
             refresh_membership(&lease, &mut record, &mut diagnostics);
         }
@@ -866,20 +873,8 @@ fn read_memberships(dir: &Dir) -> Result<Memberships, Error> {
         return Ok(Memberships::default());
     }
     let bytes = root::read_bounded(dir, MEMBERSHIP, MAX_MEMBERSHIP_BYTES)?;
-    let text = std::str::from_utf8(&bytes).map_err(|e| {
-        Error::caused(
-            ErrorKind::IncompleteInventory,
-            "membership.toml is not UTF-8",
-            e,
-        )
-    })?;
-    toml::from_str(text).map_err(|e| {
-        Error::caused(
-            ErrorKind::IncompleteInventory,
-            "invalid membership.toml timestamps",
-            e,
-        )
-    })
+    let text = std::str::from_utf8(&bytes).map_err(|e| Error::MembershipUtf8 { error: e })?;
+    toml::from_str(text).map_err(|e| Error::MembershipFormat { error: e })
 }
 fn persist_memberships(
     lease: &root::Lease,
@@ -889,14 +884,13 @@ fn persist_memberships(
 ) -> bool {
     // The primary recipe already committed; cancellation cannot undo it or skip best-effort timestamps.
     let result = (|| {
-        let text = toml::to_string(memberships).map_err(|e| {
-            Error::caused(ErrorKind::Write, "cannot encode membership timestamps", e)
-        })?;
+        let text =
+            toml::to_string(memberships).map_err(|e| Error::MembershipEncode { error: e })?;
         if text.len() > MAX_MEMBERSHIP_BYTES {
-            return Err(Error::new(
-                ErrorKind::Write,
-                "membership timestamps exceed their bounded file size",
-            ));
+            return Err(Error::MembershipSize {
+                bytes: text.len(),
+                limit: MAX_MEMBERSHIP_BYTES,
+            });
         }
         publish::publish_in(
             &lease.dir,
@@ -906,10 +900,15 @@ fn persist_memberships(
             &Cancel::default(),
             |file| {
                 file.write_all(text.as_bytes()).map_err(|e| {
-                    Error::caused(ErrorKind::Write, "cannot write membership timestamps", e)
+                    FileError::Io(IoFailure::new(
+                        IoOperation::Write,
+                        Some(lease.canonical.join(MEMBERSHIP)),
+                        e,
+                    ))
                 })
             },
         )
+        .map_err(Error::from)
     })();
     match result {
         Ok(publication) => {
@@ -968,22 +967,27 @@ fn read_record(
             (&trash, true)
         }
         (true, true) => {
-            return Err(Error::new(
-                ErrorKind::IncompleteInventory,
-                format!(
-                    "user:{id}: different recipe files exist in recipes and trash; both were retained"
-                ),
-            ));
+            return Err(Error::AmbiguousRecord { id });
         }
     };
     let bytes = root::read_bounded(directory.0, &name, Recipe::MAX_BYTES)?;
-    LoadedRecord::decode(id, bytes, directory.1, memberships.entries.get(&id)).map(Some)
+    LoadedRecord::decode(
+        id,
+        &lease
+            .canonical
+            .join(if directory.1 { "trash" } else { "recipes" })
+            .join(&name),
+        bytes,
+        directory.1,
+        memberships.entries.get(&id),
+    )
+    .map(Some)
 }
 fn exists(dir: &Dir, name: &str) -> Result<bool, Error> {
     match dir.symlink_metadata(name) {
         Ok(_) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(root::io("cannot inspect managed entry", e)),
+        Err(e) => Err(root::io(IoOperation::Inspect, e)),
     }
 }
 fn prune_memberships(lease: &root::Lease, memberships: &mut Memberships) -> Result<usize, Error> {
@@ -1005,9 +1009,9 @@ fn reconcile_moves(lease: &root::Lease, warnings: &mut Vec<String>) -> Result<()
     let trash = lease.directory("trash")?;
     for entry in trash
         .entries()
-        .map_err(|e| root::io("cannot enumerate interrupted moves", e))?
+        .map_err(|e| root::io(IoOperation::Read, e))?
     {
-        let entry = entry.map_err(|e| root::io("cannot inspect interrupted move", e))?;
+        let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
         let name = entry.file_name();
         if name
             .to_str()
@@ -1021,7 +1025,7 @@ fn reconcile_moves(lease: &root::Lease, warnings: &mut Vec<String>) -> Result<()
         {
             recipes
                 .remove_file(&name)
-                .map_err(|e| root::io("cannot clean interrupted relocation link", e))?;
+                .map_err(|e| root::io(IoOperation::Remove, e))?;
             warnings.push(format!(
                 "Recovered interrupted move for {}; Trash remains authoritative",
                 name.to_string_lossy()
@@ -1063,16 +1067,10 @@ fn unchanged(
     }
 }
 fn cancelled() -> Error {
-    Error::new(
-        ErrorKind::Cancelled,
-        "library operation cancelled before publication",
-    )
+    Error::Cancelled
 }
 fn budget() -> Error {
-    Error::new(
-        ErrorKind::IncompleteInventory,
-        "library scan budget exhausted; inventory is incomplete",
-    )
+    Error::ScanBudget
 }
 
 fn chronology(recipe: &Recipe, previous: Option<&Recipe>, now: Timestamp) -> Vec<String> {
@@ -1110,31 +1108,6 @@ pub fn history_warnings(recipe: &Recipe) -> Vec<String> {
         },
         |now| chronology(recipe, None, now),
     )
-}
-pub(crate) fn observed_now() -> Result<Timestamp, Error> {
-    let invalid = || {
-        Error::new(
-            ErrorKind::Write,
-            "observed system time is outside the supported UTC timestamp range",
-        )
-    };
-    let (seconds, nanos) = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-    {
-        Ok(d) => (
-            i64::try_from(d.as_secs()).map_err(|_| invalid())?,
-            d.subsec_nanos(),
-        ),
-        Err(e) => {
-            let d = e.duration();
-            let seconds = i64::try_from(d.as_secs()).map_err(|_| invalid())?;
-            if d.subsec_nanos() == 0 {
-                (-seconds, 0)
-            } else {
-                (-seconds - 1, 1_000_000_000 - d.subsec_nanos())
-            }
-        }
-    };
-    Timestamp::from_unix(seconds, nanos).ok_or_else(invalid)
 }
 
 #[cfg(test)]

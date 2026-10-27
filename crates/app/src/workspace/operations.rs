@@ -36,9 +36,12 @@ impl Workspace {
 
     pub(super) fn copy_content_admission(snapshot: &RecipeSnapshot) -> Result<(), Refusal> {
         if snapshot.recipe().lineage().len() >= auditorylab_core::provenance::MAX_LINEAGE {
-            return Err(Refusal::Document(
-                "Lineage capacity reached; review metadata before making a copy.".into(),
-            ));
+            return Err(Refusal::Document(Box::new(
+                crate::core::RecipeError::Contract(crate::core::ContractError::CopyLineageFull {
+                    count: snapshot.recipe().lineage().len(),
+                })
+                .into(),
+            )));
         }
         Ok(())
     }
@@ -60,9 +63,7 @@ impl Workspace {
             return Err(Refusal::FileBusy);
         }
         if let Some(key) = self.editor.location.detached() {
-            return Err(Refusal::Document(format!(
-                "Detached draft from {key}. Edit the restored saved entry or Save independent copy."
-            )));
+            return Err(Refusal::DetachedDraft(key.clone()));
         }
 
         self.prepare_recipe()
@@ -73,7 +74,7 @@ impl Workspace {
             .save_readiness()
             .map_err(|refusal| match refusal {
                 SaveRefusal::Input(problems) => Refusal::Input(problems),
-                SaveRefusal::Document(message) => Refusal::Document(message),
+                SaveRefusal::Document(error) => Refusal::Document(Box::new(error.into())),
             })?;
         self.editor
             .session
@@ -81,7 +82,7 @@ impl Workspace {
             .draft()
             .recipe()
             .map(Arc::new)
-            .map_err(|error| Refusal::Document(error.to_string()))
+            .map_err(|error| Refusal::Document(Box::new(error.into())))
     }
 
     pub(super) fn prepare_export(&mut self) -> Result<PreparedExport, Refusal> {
@@ -123,7 +124,7 @@ impl Workspace {
                     recipe: candidate
                         .draft()
                         .recipe()
-                        .map_err(|error| Refusal::Document(error.to_string()))?,
+                        .map_err(|error| Refusal::Document(Box::new(error.into())))?,
                     signal,
                     name,
                 })
@@ -142,12 +143,10 @@ impl Workspace {
         match self.view {
             View::Library => {
                 if self.selected_unreadable() {
-                    return Err(Refusal::Document("Saved entry is unreadable; the retained snapshot is for inspection. Refresh or recover an independent copy before playback.".into()));
+                    return Err(Refusal::SavedEntryUnreadable);
                 }
                 if self.selected_trashed() {
-                    return Err(Refusal::Document(
-                        "Restore this saved recipe before playback.".into(),
-                    ));
+                    return Err(Refusal::RestoreBeforePlayback);
                 }
                 let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
                 if snapshot.sound().nonfinite().next().is_some() {

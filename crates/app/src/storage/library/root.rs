@@ -1,5 +1,5 @@
 //! Root resolution, private initialization and stable cooperative filesystem locks.
-use crate::error::{Error, ErrorKind};
+use crate::error::{FileError, IoCause, IoFailure, IoOperation, LibraryError as Error};
 use crate::services::Cancel;
 use crate::storage::publish::{self, Policy};
 use cap_fs_ext::{DirExt, FollowSymlinks, OpenOptionsFollowExt};
@@ -44,7 +44,8 @@ impl LibraryRoot {
         } else if let Some(path) = std::env::var_os("AUDITORYLAB_LIBRARY_DIR") {
             (PathBuf::from(path), RootSource::Environment)
         } else {
-            let project=directories::ProjectDirs::from("org","resoltico","auditorylab").ok_or_else(||Error::new(ErrorKind::InvalidArgument,"cannot resolve native per-user application data; configure an absolute --library-dir"))?;
+            let project = directories::ProjectDirs::from("org", "resoltico", "auditorylab")
+                .ok_or(Error::NativeRootUnavailable)?;
             (
                 project.data_local_dir().join("library"),
                 RootSource::Default,
@@ -61,15 +62,12 @@ impl LibraryRoot {
     }
     fn configured(path: PathBuf, source: RootSource) -> Result<Self, Error> {
         if !path.is_absolute() {
-            return Err(Error::new(
-                ErrorKind::InvalidArgument,
-                "library directory must be an absolute path; no fallback was used",
-            ));
+            return Err(Error::RelativeRoot { path: path.clone() });
         }
         let path = match std::fs::canonicalize(&path) {
             Ok(canonical) => canonical,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => path,
-            Err(e) => return Err(io("cannot resolve the configured library root", e)),
+            Err(e) => return Err(io(IoOperation::ResolvePath, e)),
         };
         Ok(Self { path, source })
     }
@@ -117,9 +115,7 @@ impl LibraryRoot {
     /// # Errors
     /// Refuses unknown existing content, symlinks, unsupported layouts and lock failures.
     pub fn initialize(&self) -> Result<Initialization, Error> {
-        let lease = self
-            .lock(true, true)?
-            .ok_or_else(|| Error::new(ErrorKind::Write, "initialization did not create a root"))?;
+        let lease = self.lock(true, true)?.ok_or(Error::RootDisappeared)?;
         if lease.dir.symlink_metadata(MARKER).is_ok() {
             validate_marker(&lease.dir)?;
             for name in ["recipes", "trash", ".stage"] {
@@ -149,9 +145,9 @@ impl LibraryRoot {
                     lease
                         .dir
                         .create_dir_with(name, &builder)
-                        .map_err(|e| io("cannot create private library directory", e))?;
+                        .map_err(|e| io(IoOperation::CreateDirectory, e))?;
                 }
-                Err(e) => return Err(io("cannot inspect library directory", e)),
+                Err(e) => return Err(io(IoOperation::Inspect, e)),
             }
         }
         let bytes = format!("layout = {LIBRARY_LAYOUT}\n");
@@ -165,8 +161,13 @@ impl LibraryRoot {
                 &Cancel::default(),
                 |file| {
                     use std::io::Write;
-                    file.write_all(b"[entries]\n")
-                        .map_err(|e| io("cannot initialize membership timestamps", e))
+                    file.write_all(b"[entries]\n").map_err(|e| {
+                        FileError::Io(IoFailure::new(
+                            IoOperation::Write,
+                            Some(lease.canonical.join("membership.toml")),
+                            e,
+                        ))
+                    })
                 },
             )?;
             warnings.extend(initialized.warnings);
@@ -180,8 +181,13 @@ impl LibraryRoot {
             &Cancel::default(),
             |file| {
                 use std::io::Write;
-                file.write_all(bytes.as_bytes())
-                    .map_err(|e| io("cannot write library marker", e))
+                file.write_all(bytes.as_bytes()).map_err(|e| {
+                    FileError::Io(IoFailure::new(
+                        IoOperation::Write,
+                        Some(lease.canonical.join(MARKER)),
+                        e,
+                    ))
+                })
             },
         )?;
         warnings.extend(result.warnings);
@@ -205,15 +211,14 @@ impl LibraryRoot {
                 }
                 builder
                     .create(&self.path)
-                    .map_err(|e| io("cannot create configured library root", e))?;
-                std::fs::canonicalize(&self.path)
-                    .map_err(|e| io("cannot resolve initialized root", e))?
+                    .map_err(|e| io(IoOperation::CreateDirectory, e))?;
+                std::fs::canonicalize(&self.path).map_err(|e| io(IoOperation::ResolvePath, e))?
             }
-            Err(e) => return Err(io("cannot inspect configured library root", e)),
+            Err(e) => return Err(io(IoOperation::Inspect, e)),
         };
         let admission = Admission::acquire(canonical.clone())?;
         let dir = Dir::open_ambient_dir(&canonical, cap_std::ambient_authority())
-            .map_err(|e| io("cannot open configured library root", e))?;
+            .map_err(|e| io(IoOperation::OpenDirectory, e))?;
         if initialize && dir.symlink_metadata(LOCK).is_err() {
             validate_unmarked(&dir)?;
             match create_lock(&dir, LOCK) {
@@ -226,16 +231,16 @@ impl LibraryRoot {
         }
         let mut options = read_options();
         options.write(exclusive);
-        let file=dir.open_with(LOCK,&options).map_err(|e|io("library lock is missing/unreadable; use library init only after inspecting this layout",e))?.into_std();
+        let file = dir
+            .open_with(LOCK, &options)
+            .map_err(|e| io(IoOperation::Open, e))?
+            .into_std();
         if !file
             .metadata()
-            .map_err(|e| io("cannot inspect library lock", e))?
+            .map_err(|e| io(IoOperation::Inspect, e))?
             .is_file()
         {
-            return Err(Error::new(
-                ErrorKind::IncompleteInventory,
-                "library lock must be a regular persistent file",
-            ));
+            return Err(Error::LockNotRegular);
         }
         let result = if exclusive {
             file.try_lock()
@@ -243,15 +248,10 @@ impl LibraryRoot {
             file.try_lock_shared()
         };
         result.map_err(|e| match e {
-            std::fs::TryLockError::WouldBlock => Error::new(
-                ErrorKind::Busy,
-                "Library busy; retry after the other operation finishes",
-            ),
-            std::fs::TryLockError::Error(e) => Error::caused(
-                ErrorKind::LockUnavailable,
-                "required library locking assurance is unavailable; no unlocked fallback",
-                e,
-            ),
+            std::fs::TryLockError::WouldBlock => Error::Busy,
+            std::fs::TryLockError::Error(e) => Error::LockUnavailable {
+                error: IoCause::new(e),
+            },
         })?;
         Ok(Some(Lease {
             dir,
@@ -292,37 +292,19 @@ struct Marker {
 }
 pub(super) fn validate_marker(dir: &Dir) -> Result<(), Error> {
     let bytes = read_bounded(dir, MARKER, 1024)?;
-    let marker: Marker = toml::from_str(std::str::from_utf8(&bytes).map_err(|e| {
-        Error::caused(
-            ErrorKind::IncompleteInventory,
-            "layout marker is not UTF-8",
-            e,
-        )
-    })?)
-    .map_err(|e| {
-        Error::caused(
-            ErrorKind::IncompleteInventory,
-            "invalid library.toml layout marker",
-            e,
-        )
-    })?;
+    let marker: Marker =
+        toml::from_str(std::str::from_utf8(&bytes).map_err(|e| Error::MarkerUtf8 { error: e })?)
+            .map_err(|e| Error::MarkerFormat { error: e })?;
     if marker.layout != LIBRARY_LAYOUT {
-        return Err(Error::new(
-            ErrorKind::IncompleteInventory,
-            format!(
-                "unsupported library layout {}; this build reads {LIBRARY_LAYOUT}",
-                marker.layout
-            ),
-        ));
+        return Err(Error::UnsupportedLayout {
+            found: marker.layout,
+        });
     }
     Ok(())
 }
 fn validate_unmarked(dir: &Dir) -> Result<(), Error> {
-    for entry in dir
-        .entries()
-        .map_err(|e| io("cannot enumerate uninitialized root", e))?
-    {
-        let entry = entry.map_err(|e| io("cannot inspect root entry", e))?;
+    for entry in dir.entries().map_err(|e| io(IoOperation::Read, e))? {
+        let entry = entry.map_err(|e| io(IoOperation::Inspect, e))?;
         let name = entry.file_name();
         if name == LOCK {
             continue;
@@ -336,25 +318,16 @@ fn validate_unmarked(dir: &Dir) -> Result<(), Error> {
             if bytes == b"[entries]\n" {
                 continue;
             }
-            return Err(Error::new(
-                ErrorKind::IncompleteInventory,
-                "nonempty membership exists without a layout marker; initialization left it intact",
-            ));
+            return Err(Error::MembershipWithoutMarker);
         }
         if matches!(name.to_str(), Some("recipes" | "trash" | ".stage")) {
             let child = dir
                 .open_dir_nofollow(&name)
-                .map_err(|e| io("library directory is unsafe", e))?;
-            for entry in child
-                .entries()
-                .map_err(|e| io("cannot enumerate unmarked directory", e))?
-            {
-                let entry = entry.map_err(|e| io("cannot inspect unmarked entry", e))?;
+                .map_err(|e| io(IoOperation::OpenDirectory, e))?;
+            for entry in child.entries().map_err(|e| io(IoOperation::Read, e))? {
+                let entry = entry.map_err(|e| io(IoOperation::Inspect, e))?;
                 if !owned_stage(&entry.file_name()) {
-                    return Err(Error::new(
-                        ErrorKind::IncompleteInventory,
-                        "recipes exist without a supported marker; initialization left them unchanged",
-                    ));
+                    return Err(Error::RecipesWithoutMarker);
                 }
             }
             continue;
@@ -362,10 +335,7 @@ fn validate_unmarked(dir: &Dir) -> Result<(), Error> {
         if owned_stage(&name) {
             continue;
         }
-        return Err(Error::new(
-            ErrorKind::IncompleteInventory,
-            "unknown existing root contents; initialization refused without changing them",
-        ));
+        return Err(Error::UnknownRootContents);
     }
     Ok(())
 }
@@ -388,14 +358,14 @@ fn create_lock(dir: &Dir, name: &str) -> Result<cap_std::fs::File, Error> {
         options.mode(0o600);
     }
     dir.open_with(name, &options)
-        .map_err(|e| io("cannot exclusively create library lock", e))
+        .map_err(|e| io(IoOperation::CreateStage, e))
 }
 pub(super) fn read_bounded(
     dir: &Dir,
     name: impl AsRef<Path>,
     limit: usize,
 ) -> Result<Vec<u8>, Error> {
-    publish::read_bounded(dir, name.as_ref(), limit)
+    publish::read_bounded(dir, name.as_ref(), limit).map_err(Error::from)
 }
 pub(super) fn owned_stage(name: &std::ffi::OsStr) -> bool {
     name.to_str()
@@ -408,20 +378,17 @@ pub(super) fn cleanup_stages(
     path: &Path,
     warnings: &mut Vec<String>,
 ) -> Result<(), Error> {
-    for entry in dir
-        .entries()
-        .map_err(|e| io("cannot enumerate owned stages", e))?
-    {
-        let entry = entry.map_err(|e| io("cannot inspect owned stage", e))?;
+    for entry in dir.entries().map_err(|e| io(IoOperation::Read, e))? {
+        let entry = entry.map_err(|e| io(IoOperation::Inspect, e))?;
         let name = entry.file_name();
         if owned_stage(&name)
             && entry
                 .file_type()
-                .map_err(|e| io("cannot inspect stage type", e))?
+                .map_err(|e| io(IoOperation::Inspect, e))?
                 .is_file()
         {
             dir.remove_file(&name)
-                .map_err(|e| io("cannot clean abandoned owned stage", e))?;
+                .map_err(|e| io(IoOperation::Remove, e))?;
             warnings.push(format!(
                 "Removed abandoned stage {}",
                 path.join(name).display()
@@ -440,7 +407,7 @@ impl Lease {
     pub(super) fn directory(&self, name: &str) -> Result<Dir, Error> {
         self.dir
             .open_dir_nofollow(name)
-            .map_err(|e| io("library directory is missing, unreadable or a symlink", e))
+            .map_err(|e| io(IoOperation::OpenDirectory, e))
     }
 }
 impl Drop for Lease {
@@ -463,10 +430,7 @@ impl Admission {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if !active.insert(key.clone()) {
-            return Err(Error::new(
-                ErrorKind::Busy,
-                "Library root already has an operation in this process; retry",
-            ));
+            return Err(Error::Busy);
         }
         Ok(Self { key: Some(key) })
     }
@@ -485,6 +449,8 @@ impl Drop for Admission {
         self.release();
     }
 }
-pub(super) fn io(context: &str, error: std::io::Error) -> Error {
-    Error::caused(ErrorKind::Unreadable, format!("{context}: {error}"), error)
+pub(super) fn io(context: IoOperation, error: std::io::Error) -> Error {
+    Error::Read {
+        error: IoFailure::new(context, None, error),
+    }
 }

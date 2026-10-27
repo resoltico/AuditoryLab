@@ -147,55 +147,101 @@ pub fn validate(
     sources: &[BibliographySource],
     evidence: &[Evidence],
     lineage: &[Lineage],
-) -> Result<(), &'static str> {
-    if sources.len() > MAX_SOURCES || evidence.len() > MAX_EVIDENCE || lineage.len() > MAX_LINEAGE {
-        return Err(
-            "metadata capacity: at most 16 sources, 32 evidence records and 16 lineage descriptors; edit metadata explicitly rather than dropping history",
-        );
+) -> Result<(), crate::ContractError> {
+    use crate::{ContractError as E, ReferenceOwner};
+    if sources.len() > MAX_SOURCES {
+        return Err(E::SourceBudget {
+            count: sources.len(),
+        });
     }
-    for (i, source) in sources.iter().enumerate() {
-        if source.key.trim().is_empty()
-            || source.label.trim().is_empty()
-            || source.citation.trim().is_empty()
-            || sources[..i].iter().any(|s| s.key == source.key)
-        {
-            return Err("source keys must be unique and nonempty; label and citation are required");
+    if evidence.len() > MAX_EVIDENCE {
+        return Err(E::EvidenceBudget {
+            count: evidence.len(),
+        });
+    }
+    if lineage.len() > MAX_LINEAGE {
+        return Err(E::LineageBudget {
+            count: lineage.len(),
+        });
+    }
+    for (index, source) in sources.iter().enumerate() {
+        if source.key.trim().is_empty() {
+            return Err(E::EmptySourceKey { index });
+        }
+        if source.label.trim().is_empty() {
+            return Err(E::EmptySourceLabel {
+                key: source.key.clone(),
+            });
+        }
+        if source.citation.trim().is_empty() {
+            return Err(E::EmptySourceCitation {
+                key: source.key.clone(),
+            });
+        }
+        if sources[..index].iter().any(|other| other.key == source.key) {
+            return Err(E::DuplicateSourceKey {
+                key: source.key.clone(),
+            });
         }
         if source.doi.is_none() && source.url.is_none() {
-            return Err("source requires a DOI or explicit http(s) URL");
+            return Err(E::MissingLocator {
+                key: source.key.clone(),
+            });
         }
         if let Some(url) = &source.url {
             let host = url
                 .strip_prefix("https://")
                 .or_else(|| url.strip_prefix("http://"))
-                .ok_or("source URL must be explicit http(s)")?;
+                .ok_or_else(|| E::UrlScheme {
+                    key: source.key.clone(),
+                    url: url.clone(),
+                })?;
             if host.is_empty()
                 || host.starts_with(['/', '?', '#'])
                 || url.chars().any(char::is_whitespace)
                 || url.chars().any(char::is_control)
             {
-                return Err("source URL requires a host and no whitespace/control characters");
+                return Err(E::InvalidUrl {
+                    key: source.key.clone(),
+                    url: url.clone(),
+                });
             }
         }
         if let Some(doi) = &source.doi
             && normalize_doi(doi).is_none()
         {
-            return Err("DOI must begin with 10. and include a nonempty suffix");
+            return Err(E::InvalidDoi {
+                key: source.key.clone(),
+                doi: doi.clone(),
+            });
         }
     }
-    let exists = |key: &str| sources.iter().any(|s| s.key == key);
-    if evidence.iter().any(|e| !exists(&e.source))
-        || lineage
-            .iter()
-            .any(|l| l.source_keys.iter().any(|key| !exists(key)))
-    {
-        return Err("dangling bibliography reference");
+    let exists = |key: &str| sources.iter().any(|source| source.key == key);
+    for (index, value) in evidence.iter().enumerate() {
+        if !exists(&value.source) {
+            return Err(E::DanglingReference {
+                owner: ReferenceOwner::Evidence(index),
+                key: value.source.clone(),
+            });
+        }
     }
-    if lineage
-        .iter()
-        .any(|l| l.title.trim().is_empty() || l.note.trim().is_empty())
-    {
-        return Err("lineage requires a title and an explicit relationship note");
+    for (index, value) in lineage.iter().enumerate() {
+        for key in &value.source_keys {
+            if !exists(key) {
+                return Err(E::DanglingReference {
+                    owner: ReferenceOwner::Lineage(index),
+                    key: key.clone(),
+                });
+            }
+        }
+    }
+    for (index, value) in lineage.iter().enumerate() {
+        if value.title.trim().is_empty() {
+            return Err(E::EmptyLineageTitle { index });
+        }
+        if value.note.trim().is_empty() {
+            return Err(E::EmptyLineageNote { index });
+        }
     }
     Ok(())
 }
@@ -216,4 +262,42 @@ pub fn normalize_doi(doi: &str) -> Option<String> {
         && !suffix.is_empty()
         && !value.chars().any(char::is_whitespace))
     .then(|| value.into())
+}
+
+impl Population {
+    /// All supported population declarations, in display order.
+    pub const ALL: [Self; 6] = [
+        Self::Human,
+        Self::Mouse,
+        Self::OtherAnimal,
+        Self::Mixed,
+        Self::NotApplicable,
+        Self::Unspecified,
+    ];
+    /// Human-readable population name.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Human => "Human",
+            Self::Mouse => "Mouse",
+            Self::OtherAnimal => "Other animal",
+            Self::Mixed => "Mixed population",
+            Self::NotApplicable => "Not applicable",
+            Self::Unspecified => "Unspecified population",
+        }
+    }
+}
+impl ConditionRole {
+    /// All supported experimental roles, in display order.
+    pub const ALL: [Self; 4] = [Self::Test, Self::Comparison, Self::Mixed, Self::Unspecified];
+    /// Human-readable experimental role.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Test => "Test condition",
+            Self::Comparison => "Comparison condition",
+            Self::Mixed => "Mixed roles",
+            Self::Unspecified => "Unspecified role",
+        }
+    }
 }
