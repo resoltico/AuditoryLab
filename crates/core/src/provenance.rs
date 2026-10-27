@@ -274,44 +274,68 @@ impl Population {
         Self::NotApplicable,
         Self::Unspecified,
     ];
-    /// Human-readable population name.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Human => ("Human", "human"),
+            Self::Mouse => ("Mouse", "mouse"),
+            Self::OtherAnimal => ("Other animal", "other animal"),
+            Self::Mixed => ("Mixed population", "mixed population"),
+            Self::NotApplicable => ("Not applicable", "not applicable"),
+            Self::Unspecified => ("Unspecified population", "unspecified population"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Human => "Human",
-            Self::Mouse => "Mouse",
-            Self::OtherAnimal => "Other animal",
-            Self::Mixed => "Mixed population",
-            Self::NotApplicable => "Not applicable",
-            Self::Unspecified => "Unspecified population",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 impl ConditionRole {
     /// All supported experimental roles, in display order.
     pub const ALL: [Self; 4] = [Self::Test, Self::Comparison, Self::Mixed, Self::Unspecified];
-    /// Human-readable experimental role.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Test => ("Test condition", "test condition"),
+            Self::Comparison => ("Comparison condition", "comparison condition"),
+            Self::Mixed => ("Mixed roles", "mixed roles"),
+            Self::Unspecified => ("Unspecified role", "unspecified role"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Test => "Test condition",
-            Self::Comparison => "Comparison condition",
-            Self::Mixed => "Mixed roles",
-            Self::Unspecified => "Unspecified role",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 
 impl EvidenceScope {
     /// All supported declarations, in display order.
     pub const ALL: [Self; 2] = [Self::ReferenceCondition, Self::Ancestor];
-    /// Human-readable declaration name.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::ReferenceCondition => ("Reference condition", "reference condition"),
+            Self::Ancestor => ("Ancestor", "ancestor"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::ReferenceCondition => "Reference condition",
-            Self::Ancestor => "Ancestor",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 
@@ -325,16 +349,24 @@ impl Measure {
         Self::Hearing,
         Self::Other,
     ];
-    /// Human-readable declaration name.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Eeg => ("EEG", "EEG"),
+            Self::Behavior => ("Behavior", "behavior"),
+            Self::Subjective => ("Subjective report", "subjective report"),
+            Self::Sleep => ("Sleep", "sleep"),
+            Self::Hearing => ("Hearing", "hearing"),
+            Self::Other => ("Other", "other"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Eeg => "EEG",
-            Self::Behavior => "Behavior",
-            Self::Subjective => "Subjective report",
-            Self::Sleep => "Sleep",
-            Self::Hearing => "Hearing",
-            Self::Other => "Other",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }

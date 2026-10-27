@@ -260,7 +260,7 @@ pub(crate) fn editor_view(
                         help: match parameter {
                             ParameterId::Duration => "The length of saved recipes and exported audio; live playback continues until stopped.",
                             ParameterId::Fade => "The raised-cosine fade at each edge of saved recipes and exported audio.",
-                            _ => parameter.descriptor().help,
+                            _ => parameter.help(),
                         },
                         text: editor.text(field),
                         staged: editor.staged(field).is_some(),

@@ -662,42 +662,66 @@ fn study(entry: &EntrySummary) -> Option<String> {
 }
 
 impl SortBy {
-    /// Shared name of the primary sort field.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Automatic => ("Automatic order", "automatic order"),
+            Self::Rate => ("Nominal rate", "nominal rate"),
+            Self::Title => ("Title", "title"),
+            Self::Created => ("Created", "created"),
+            Self::Modified => ("Modified", "modified"),
+            Self::Added => ("Added here", "added here"),
+            Self::Study => ("Study", "study"),
+            Self::Collection => ("Collection", "collection"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Automatic => "Automatic order",
-            Self::Rate => "Nominal rate",
-            Self::Title => "Title",
-            Self::Created => "Created",
-            Self::Modified => "Modified",
-            Self::Added => "Added here",
-            Self::Study => "Study",
-            Self::Collection => "Collection",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 impl Direction {
-    /// Shared name of a primary sort direction.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Asc => ("Ascending", "ascending"),
+            Self::Desc => ("Descending", "descending"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Asc => "Ascending",
-            Self::Desc => "Descending",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 impl GroupBy {
-    /// Shared name of the result grouping.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::None => ("No grouping", "no grouping"),
+            Self::Band => ("Band groups", "band groups"),
+            Self::Method => ("Method groups", "method groups"),
+            Self::Study => ("Study groups", "study groups"),
+            Self::Collection => ("Collection groups", "collection groups"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::None => "No grouping",
-            Self::Band => "Band groups",
-            Self::Method => "Method groups",
-            Self::Study => "Study groups",
-            Self::Collection => "Collection groups",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 
@@ -743,16 +767,24 @@ impl GroupBy {
 }
 
 impl Scope {
-    /// Human-readable collection choice.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::All => ("All · Built-in + User", "all · Built-in + User"),
+            Self::BuiltIn => ("Built-in · Read only", "built-in · Read only"),
+            Self::User => ("User", "user"),
+            Self::OpenFiles => ("Open files · Temporary", "open files · Temporary"),
+            Self::Trash => ("Trash", "trash"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::All => "All · Built-in + User",
-            Self::BuiltIn => "Built-in · Read only",
-            Self::User => "User",
-            Self::OpenFiles => "Open files · Temporary",
-            Self::Trash => "Trash",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 

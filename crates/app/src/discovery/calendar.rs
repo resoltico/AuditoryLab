@@ -15,14 +15,24 @@ pub enum CalendarField {
     Added,
 }
 impl CalendarField {
-    /// Shared name of the date field.
+    /// Every calendar-date choice, in display order.
+    pub const ALL: [Self; 3] = [Self::Created, Self::Modified, Self::Added];
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Created => ("Created", "created"),
+            Self::Modified => ("Modified", "modified"),
+            Self::Added => ("Added here", "added here"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Created => "Created",
-            Self::Modified => "Modified",
-            Self::Added => "Added here",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 

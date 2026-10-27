@@ -191,8 +191,6 @@ pub struct ParameterDescriptor {
     pub label: &'static str,
     /// The unit the quantity is displayed and entered in.
     pub unit: Unit,
-    /// One plain sentence about the quantity's meaning.
-    pub help: &'static str,
 }
 
 impl ParameterId {
@@ -230,83 +228,52 @@ impl ParameterId {
         Self::PairSecondLevel,
     ];
 
-    /// Label, unit and help.
+    /// Label and model/display unit of this quantity.
     #[must_use]
     pub const fn descriptor(self) -> ParameterDescriptor {
-        let (label, unit, help) = match self {
-            Self::ToneFrequency => (
-                "Tone frequency",
-                Unit::Hertz,
-                "How many cycles per second the sine tone has.",
-            ),
-            Self::ClickRate => (
-                "Clicks rate",
-                Unit::Hertz,
-                "How many clicks start each second; every click starts at its exact scheduled time.",
-            ),
-            Self::ClickWidth => (
-                "Clicks width",
-                Unit::Milliseconds,
-                "How long each click lasts; generation rounds it to whole frames at the sample rate.",
-            ),
-            Self::PeakLevel => (
-                "Peak level",
-                Unit::DecibelsFullScale,
-                "The component's highest level relative to digital full scale; 0 dBFS is the maximum.",
-            ),
-            Self::AmRate => (
-                "Modulation rate",
-                Unit::Hertz,
-                "How many times each second the sinusoidal envelope rises and falls.",
-            ),
-            Self::AmDepth => (
-                "Modulation depth",
-                Unit::Percent,
-                "How far the envelope dips: 0% leaves the level steady and 100% reaches silence.",
-            ),
-            Self::GateRate => (
-                "Gate rate",
-                Unit::Hertz,
-                "How many times each second the gate opens.",
-            ),
-            Self::GateWidth => (
-                "Gate width",
-                Unit::Milliseconds,
-                "How long each gate stays open; generation rounds it to whole frames at the sample rate.",
-            ),
-            Self::PairFirstFrequency => (
-                "First / left carrier",
-                Unit::Hertz,
-                "The first carrier; changing it also changes the second carrier through the signed offset.",
-            ),
-            Self::PairOffset => (
-                "Signed offset",
-                Unit::Hertz,
-                "Second carrier minus first carrier; its absolute value is the nominal pair rhythm.",
-            ),
+        ParameterDescriptor {
+            id: self,
+            label: self.label(),
+            unit: self.terms().2,
+        }
+    }
+    const fn terms(self) -> (&'static str, &'static str, Unit) {
+        match self {
+            Self::ToneFrequency => ("Tone frequency", "tone frequency", Unit::Hertz),
+            Self::ClickRate => ("Clicks rate", "clicks rate", Unit::Hertz),
+            Self::ClickWidth => ("Clicks width", "clicks width", Unit::Milliseconds),
+            Self::PeakLevel => ("Peak level", "peak level", Unit::DecibelsFullScale),
+            Self::AmRate => ("Modulation rate", "modulation rate", Unit::Hertz),
+            Self::AmDepth => ("Modulation depth", "modulation depth", Unit::Percent),
+            Self::GateRate => ("Gate rate", "gate rate", Unit::Hertz),
+            Self::GateWidth => ("Gate width", "gate width", Unit::Milliseconds),
+            Self::PairFirstFrequency => {
+                ("First / left carrier", "first / left carrier", Unit::Hertz)
+            }
+            Self::PairOffset => ("Signed offset", "signed offset", Unit::Hertz),
             Self::PairFirstLevel => (
                 "First / left peak",
+                "first / left peak",
                 Unit::DecibelsFullScale,
-                "Peak bound of the first or left tone.",
             ),
             Self::PairSecondLevel => (
                 "Second / right peak",
+                "second / right peak",
                 Unit::DecibelsFullScale,
-                "Peak bound of the second or right tone.",
             ),
-            Self::Duration => ("Duration", Unit::Seconds, "The finite sound duration."),
-            Self::Fade => (
-                "Fade",
-                Unit::Seconds,
-                "The raised-cosine fade at each edge of a finite sound.",
-            ),
-        };
-        ParameterDescriptor {
-            id: self,
-            label,
-            unit,
-            help,
+            Self::Duration => ("Duration", "duration", Unit::Seconds),
+            Self::Fade => ("Fade", "fade", Unit::Seconds),
         }
+    }
+    /// Domain quantity name for a heading or choice.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        self.terms().0
+    }
+    /// Domain quantity name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 
     /// Whether this quantity belongs to a component rather than the whole recipe.
@@ -382,13 +349,21 @@ impl CarrierKind {
     /// Every carrier kind in display order.
     pub const ALL: [Self; 2] = [Self::Tone, Self::Clicks];
 
-    /// A short name for the kind.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Tone => ("Tone", "tone"),
+            Self::Clicks => ("Clicks", "clicks"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Tone => "Tone",
-            Self::Clicks => "Clicks",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 
@@ -416,13 +391,21 @@ impl ModulationKind {
     /// Every modulation kind in display order.
     pub const ALL: [Self; 2] = [Self::Am, Self::Gate];
 
-    /// A short name for the kind.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Am => ("AM", "AM"),
+            Self::Gate => ("Gate", "gate"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Am => "AM",
-            Self::Gate => "Gate",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 
     /// The name of having no modulation of either kind.
@@ -459,15 +442,23 @@ pub enum ComponentRole {
 }
 
 impl ComponentRole {
-    /// A short name for the role.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::GateRhythm => ("Gate rhythm", "gate rhythm"),
+            Self::AmEnvelope => ("AM envelope", "aM envelope"),
+            Self::ClickRhythm => ("Click rhythm", "click rhythm"),
+            Self::SteadyTone => ("Steady tone", "steady tone"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::GateRhythm => "Gate rhythm",
-            Self::AmEnvelope => "AM envelope",
-            Self::ClickRhythm => "Click rhythm",
-            Self::SteadyTone => "Steady tone",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 
@@ -582,7 +573,7 @@ mod tests {
         for id in ParameterId::ALL {
             let descriptor = id.descriptor();
             assert_eq!(descriptor.id, id);
-            assert!(!descriptor.label.is_empty() && descriptor.help.ends_with('.'));
+            assert!(!descriptor.label.is_empty() && !id.phrase().is_empty());
             assert_eq!(id.is_component(), ParameterId::COMPONENT.contains(&id));
         }
     }

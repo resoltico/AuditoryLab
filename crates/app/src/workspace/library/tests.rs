@@ -104,7 +104,7 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
         "Condition role: Comparison",
         "Analysis: Invalid",
         "Band: Delta",
-        "Method: binaural",
+        "Method: Binaural",
         "Rhythm state: Multiple",
         "Created from inclusive:",
         "Created before exclusive:",

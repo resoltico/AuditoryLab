@@ -521,12 +521,20 @@ pub fn output_underrun_warning(underruns: u64) -> String {
 impl WaveformScale {
     /// Every visual scaling choice, in display order.
     pub const ALL: [Self; 2] = [Self::Fixed, Self::Fit];
-    /// Display label; this never changes the captured samples.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Fixed => ("Fixed ±1", "fixed ±1"),
+            Self::Fit => ("Fit signal", "fit signal"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Fixed => "Fixed ±1",
-            Self::Fit => "Fit signal",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }

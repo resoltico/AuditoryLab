@@ -38,33 +38,6 @@ pub struct Recipe {
     lineage: Vec<Lineage>,
 }
 
-/// Derived presentation of current title/notes and a primary current condition.
-/// This is a view, not a second persisted metadata authority.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct About {
-    /// Current title.
-    pub title: String,
-    /// Current own notes.
-    pub summary: Option<String>,
-    /// Primary current-condition context; complete evidence remains on Recipe.
-    pub research: Option<Research>,
-}
-/// A concise derived research view. Full records retain their explicit scope.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Research {
-    /// Declared population/role context.
-    pub studied_for: Option<String>,
-    /// Findings with limitations.
-    pub summary: Option<String>,
-    /// Primary source citation.
-    pub citation: Option<String>,
-    /// Explicit source URL, never fetched automatically.
-    pub source_url: Option<String>,
-    /// Primary methods locator.
-    pub study: Option<String>,
-    /// Disclosed adaptations.
-    pub adaptation: Option<String>,
-}
 /// Why a byte sequence does not satisfy the one supported portable contract.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RecipeError {
@@ -410,14 +383,17 @@ impl Recipe {
         }
         Ok(())
     }
-    /// Fork under a new supplied identity; retain bibliography and scoped ancestry.
+    /// Fork under a new supplied identity and explicit attribution note.
+    /// Retain bibliography and demote evidence to ancestor scope.
     ///
     /// # Errors
-    /// Refuses ancestry overflow or reuse of the original UUID; drops no history.
+    /// Refuses ancestry overflow, an empty note or reuse of the original UUID;
+    /// drops no history.
     pub fn fork(
         &self,
         document: DocumentIdentity,
         catalog_id: Option<String>,
+        note: String,
     ) -> Result<Self, RecipeError> {
         if document.id == self.document.id {
             return Err(RecipeError::Contract(ContractError::ReusedCopyIdentity {
@@ -425,6 +401,11 @@ impl Recipe {
             }));
         }
         self.copy_readiness().map_err(RecipeError::Contract)?;
+        if note.trim().is_empty() {
+            return Err(RecipeError::Contract(ContractError::EmptyLineageNote {
+                index: self.lineage.len(),
+            }));
+        }
         let mut copy = self.clone();
         copy.document = document;
         copy.lineage.push(Lineage {
@@ -432,7 +413,7 @@ impl Recipe {
                 .description
                 .as_ref()
                 .map_or_else(|| self.document.id.to_string(), |d| d.title.clone()),
-            note: self.description.as_ref().and_then(|d|d.notes.as_deref()).filter(|s|!s.is_empty()).map_or_else(||"Attributed copy; source findings concern the ancestor, not this sound.".into(),|notes|alloc::format!("Attributed copy; source findings concern the ancestor, not this sound. Ancestor notes: {notes}")),
+            note,
             document_id: Some(self.document.id),
             catalog_id,
             source_keys: self.sources.iter().map(|s| s.key.clone()).collect(),
@@ -441,43 +422,6 @@ impl Recipe {
             e.scope = EvidenceScope::Ancestor;
         }
         Ok(copy)
-    }
-    /// Derive concise presentation; all full records remain separately available.
-    #[must_use]
-    pub fn display_about(&self) -> Option<About> {
-        let description = self.description.as_ref()?;
-        let research = self
-            .evidence
-            .iter()
-            .find(|e| e.scope == EvidenceScope::ReferenceCondition)
-            .and_then(|e| {
-                self.sources
-                    .iter()
-                    .find(|s| s.key == e.source)
-                    .map(|s| Research {
-                        studied_for: e.population_detail.clone().or_else(|| {
-                            Some(alloc::format!(
-                                "{} study · {}",
-                                e.population.label(),
-                                e.condition_role.label()
-                            ))
-                        }),
-                        summary: Some(alloc::format!("{} {}", e.summary, e.limitations)),
-                        citation: Some(s.citation.clone()),
-                        source_url: s.url.clone().or_else(|| {
-                            s.doi
-                                .as_ref()
-                                .map(|d| alloc::format!("https://doi.org/{d}"))
-                        }),
-                        study: Some(e.methods_locator.clone()),
-                        adaptation: Some(e.adaptation.clone()),
-                    })
-            });
-        Some(About {
-            title: description.title.clone(),
-            summary: description.notes.clone(),
-            research,
-        })
     }
 }
 /// Editable portable content; only `build` produces a validated recipe.

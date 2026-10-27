@@ -189,7 +189,7 @@ pub(crate) fn facets(
     for method in Method::ALL {
         let mut query = unrestricted.clone();
         query.rhythm.methods = vec![method];
-        methods.push(facet(&query, method.key().into(), "").text);
+        methods.push(facet(&query, method.label().into(), "").text);
     }
     (bands, methods)
 }
@@ -234,7 +234,7 @@ pub(crate) fn count(query: &CatalogQuery, visible: usize, complete: bool) -> Str
             restrictions.push(format!("Band: {band} · {}", band.interval()));
         }
         for method in &q.rhythm.methods {
-            restrictions.push(format!("Method: {}", method.key()));
+            restrictions.push(format!("Method: {}", method.label()));
         }
         if let Some(state) = q.rhythm.state {
             let label = state.label();

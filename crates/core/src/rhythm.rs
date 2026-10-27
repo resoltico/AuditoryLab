@@ -81,16 +81,24 @@ impl Band {
     }
 }
 impl Band {
-    /// Human-readable reference band name.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Delta => ("Delta", "Delta"),
+            Self::Theta => ("Theta", "Theta"),
+            Self::Alpha => ("Alpha", "Alpha"),
+            Self::Beta => ("Beta", "Beta"),
+            Self::Gamma => ("Gamma", "Gamma"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Delta => "Delta",
-            Self::Theta => "Theta",
-            Self::Alpha => "Alpha",
-            Self::Beta => "Beta",
-            Self::Gamma => "Gamma",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 impl Display for Band {
@@ -126,17 +134,25 @@ pub enum Method {
     SteadyTone,
 }
 impl Method {
-    /// A short display name for the structural process.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Binaural => ("Binaural", "binaural"),
+            Self::Monaural => ("Monaural", "monaural"),
+            Self::Clicks => ("Clicks", "clicks"),
+            Self::Gate => ("Gate", "gate"),
+            Self::Am => ("AM", "AM"),
+            Self::SteadyTone => ("Steady tone", "steady tone"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Binaural => "interaural pair",
-            Self::Monaural => "monaural pair",
-            Self::Clicks => "clicks",
-            Self::Gate => "gate",
-            Self::Am => "AM",
-            Self::SteadyTone => "steady tone",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
     pub(crate) const fn of_pair(kind: crate::PairKind) -> Self {
         match kind {
@@ -560,12 +576,20 @@ pub(crate) fn classify(
 impl Completeness {
     /// Every analysis coverage state, in display order.
     pub const ALL: [Self; 2] = [Self::Complete, Self::Invalid];
-    /// Human-readable analysis coverage.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Complete => ("Complete", "complete"),
+            Self::Invalid => ("Invalid", "invalid"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Complete => "Complete",
-            Self::Invalid => "Invalid",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }

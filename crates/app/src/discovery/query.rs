@@ -23,15 +23,23 @@ impl RhythmState {
         Self::Multiple,
         Self::NeedsReview,
     ];
-    /// Shared name of the navigation state.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::OutsideBands => ("Other rates", "other rates"),
+            Self::None => ("No rhythmic rate", "no rhythmic rate"),
+            Self::Multiple => ("Multiple rhythms", "multiple rhythms"),
+            Self::NeedsReview => ("Needs review", "needs review"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::OutsideBands => "Other rates",
-            Self::None => "No rhythmic rate",
-            Self::Multiple => "Multiple rhythms",
-            Self::NeedsReview => "Needs review",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 impl core::str::FromStr for RhythmState {

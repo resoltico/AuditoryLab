@@ -9,7 +9,6 @@
 use crate as auditorylab_core;
 use auditorylab_core::catalog::{self, Entry};
 use auditorylab_core::{Carrier, Ears, Modulation, Recipe, SampleRate};
-use std::collections::BTreeMap;
 use std::path::Path;
 use std::{borrow::ToOwned, format, string::String, vec::Vec};
 
@@ -337,64 +336,6 @@ fn every_entry_has_its_independently_written_recipe() {
             parts.iter().any(|p| p.0 != B),
             "{name}"
         );
-    }
-}
-
-fn printable_about_value(value: &str) -> bool {
-    value
-        .chars()
-        .all(|c| !c.is_control() || matches!(c, '\n' | '\r' | '\t'))
-}
-
-#[test]
-fn descriptive_text_supports_unicode_quotes_and_multiline() {
-    assert!(printable_about_value("Rīga \"quoted\"\nline\ttab"));
-    assert!(!printable_about_value("escape\u{1b}"));
-}
-
-#[test]
-fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
-    let mut citations = BTreeMap::new();
-    for entry in catalog::ENTRIES {
-        let about = recipe(entry)
-            .display_about()
-            .unwrap_or_else(|| panic!("{} has no about table", entry.id));
-        let field = |name: &str, value: &Option<String>| {
-            value
-                .clone()
-                .unwrap_or_else(|| panic!("{}: no {name}", entry.id))
-        };
-        let research = about.research.as_ref().unwrap();
-        let citation = field("citation", &research.citation);
-        let source_url = field("source_url", &research.source_url);
-        for (name, value) in [
-            ("title", about.title.clone()),
-            ("studied_for", field("studied_for", &research.studied_for)),
-            ("summary", field("summary", &research.summary)),
-            ("citation", citation.clone()),
-            ("source_url", source_url.clone()),
-            ("study", field("study", &research.study)),
-            ("adaptation", field("adaptation", &research.adaptation)),
-        ] {
-            assert!(!value.trim().is_empty(), "{}: empty {name}", entry.id);
-            // Human text permits Unicode and TOML escaping; control bytes remain invalid.
-            assert!(printable_about_value(&value), "{}: {name}", entry.id);
-        }
-        assert!(
-            source_url.starts_with("https://doi.org/10."),
-            "{}",
-            entry.id
-        );
-        let year = entry
-            .id
-            .split('-')
-            .find(|part| part.len() == 4 && part.bytes().all(|b| b.is_ascii_digit()))
-            .unwrap();
-        assert!(citation.contains(&format!("({year})")), "{}", entry.id);
-        let first = citations
-            .entry(source_url.clone())
-            .or_insert_with(|| citation.clone());
-        assert_eq!(*first, citation, "{}", entry.id);
     }
 }
 

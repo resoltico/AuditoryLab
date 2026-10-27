@@ -10,6 +10,7 @@ pub mod core_errors;
 mod errors;
 pub(crate) mod library_text;
 pub(crate) mod publication_text;
+pub mod recipe_text;
 pub mod reports;
 pub(crate) mod status_text;
 pub mod vocabulary;
@@ -379,7 +380,7 @@ fn structure_description(structure: &Structure) -> String {
         parts.push(format!(
             "{role}{} Hz {}{detail}",
             compact_number(r.hz),
-            r.method.label()
+            r.method.phrase()
         ));
     }
     for v in &structure.voices {
@@ -533,7 +534,7 @@ fn nominal_description(analysis: &crate::core::rhythm::Analysis) -> String {
     let rates = analysis
         .rhythms
         .iter()
-        .map(|r| format!("{} Hz {}", r.hz, r.method.key()))
+        .map(|r| format!("{} Hz {}", r.hz, r.method.phrase()))
         .collect::<Vec<_>>()
         .join(" + ");
     if rates.is_empty() {
@@ -557,6 +558,8 @@ pub trait AudioDetails {
 }
 /// Application text for editable core quantities.
 pub trait ParameterText {
+    /// Explain the quantity in shared user-facing text.
+    fn help(self) -> &'static str;
     /// Exact round-tripping text in the parameter's displayed unit.
     #[must_use]
     fn input_text(self, model: f64) -> String;
@@ -646,6 +649,39 @@ impl crate::audio::session::OutputInfo {
 }
 
 impl ParameterText for ParameterId {
+    fn help(self) -> &'static str {
+        match self {
+            Self::ToneFrequency => "How many cycles per second the sine tone has.",
+            Self::ClickRate => {
+                "How many clicks start each second; every click starts at its exact scheduled time."
+            }
+            Self::ClickWidth => {
+                "How long each click lasts; generation rounds it to whole frames at the sample rate."
+            }
+            Self::PeakLevel => {
+                "The component's highest level relative to digital full scale; 0 dBFS is the maximum."
+            }
+            Self::AmRate => "How many times each second the sinusoidal envelope rises and falls.",
+            Self::AmDepth => {
+                "How far the envelope dips: 0% leaves the level steady and 100% reaches silence."
+            }
+            Self::GateRate => "How many times each second the gate opens.",
+            Self::GateWidth => {
+                "How long each gate stays open; generation rounds it to whole frames at the sample rate."
+            }
+            Self::PairFirstFrequency => {
+                "The first carrier; changing it also changes the second carrier through the signed offset."
+            }
+            Self::PairOffset => {
+                "Second carrier minus first carrier; its absolute value is the nominal pair rhythm."
+            }
+            Self::PairFirstLevel => "Peak bound of the first or left tone.",
+            Self::PairSecondLevel => "Peak bound of the second or right tone.",
+            Self::Duration => "The finite sound duration.",
+            Self::Fade => "The raised-cosine fade at each edge of a finite sound.",
+        }
+    }
+
     /// The shortest text, in the quantity's displayed unit, that enters exactly
     /// the given model value again. Entered values are never rounded.
     fn input_text(self, model: f64) -> String {
@@ -800,7 +836,11 @@ impl RecipeSnapshot {
             text.push_str(&format!("{name}: {value}\n\n"));
         }
         for (i, c) in snapshot.sound().components.iter().enumerate() {
-            text.push_str(&format!("Component {}: {c}\n", i + 1));
+            text.push_str(&format!(
+                "Component {}: {}\n",
+                i + 1,
+                recipe_text::component(c)
+            ));
         }
         match snapshot.at(rate) {
             Ok(sound) => {
@@ -852,7 +892,11 @@ impl RecipeSnapshot {
             )),
             Err(error) => {
                 for (i, component) in s.components.iter().enumerate() {
-                    out.push_str(&format!("Component {}: {component}\n", i + 1));
+                    out.push_str(&format!(
+                        "Component {}: {}\n",
+                        i + 1,
+                        recipe_text::component(component)
+                    ));
                 }
                 out.push_str(&format!("{error}\n"));
             }
@@ -1165,6 +1209,7 @@ mod tests {
         // Every value entered as displayed text is shown so that it enters the
         // same model value again.
         for id in ParameterId::ALL {
+            assert!(id.help().ends_with('.'));
             for typed in [
                 "29",
                 "1.1",

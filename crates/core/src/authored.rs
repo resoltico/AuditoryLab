@@ -521,29 +521,6 @@ impl ComponentForm {
         }
     }
 }
-impl fmt::Display for Component {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.form {
-            ComponentForm::Voice(c) => c.fmt(f),
-            form => {
-                let (p, method) = match form {
-                    ComponentForm::BinauralPair(p) => (p, "binaural"),
-                    ComponentForm::MonauralPair { pair, .. } => (pair, "monaural"),
-                    ComponentForm::Voice(_) => unreachable!("primitive handled above"),
-                };
-                write!(
-                    f,
-                    "{method} pair, first {} Hz, signed offset {} Hz, second {} Hz, peaks {} / {} dBFS",
-                    p.first_hz,
-                    p.offset_hz,
-                    p.first_hz + p.offset_hz,
-                    p.first_peak_dbfs,
-                    p.second_peak_dbfs
-                )
-            }
-        }
-    }
-}
 
 impl ComponentForm {
     /// Exact authored comparison for dirty/no-op semantics, including signed zeros.
@@ -635,12 +612,20 @@ mod tests;
 impl PairKind {
     /// Every explicit pair construction, in display order.
     pub const ALL: [Self; 2] = [Self::Binaural, Self::Monaural];
-    /// Human-readable pair construction.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Binaural => ("Binaural pair", "binaural pair"),
+            Self::Monaural => ("Monaural pair", "monaural pair"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Binaural => "Binaural pair",
-            Self::Monaural => "Monaural pair",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }

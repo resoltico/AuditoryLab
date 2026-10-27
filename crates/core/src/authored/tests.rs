@@ -479,27 +479,6 @@ fn node_choices_headings_routes_and_component_text_describe_authored_intent() {
         assert_eq!(value.heading(), heading);
         assert_eq!(value.routing_editable(), editable);
     }
-    assert_eq!(
-        format!("{}", form(7, ComponentForm::Voice(plain))),
-        "tone 437 Hz, peak -24 dBFS, left ear"
-    );
-    assert_eq!(
-        format!("{}", form(7, ComponentForm::BinauralPair(pair(-6.0)))),
-        "binaural pair, first 200 Hz, signed offset -6 Hz, second 194 Hz, peaks -20 / -30 dBFS"
-    );
-    assert_eq!(
-        format!(
-            "{}",
-            form(
-                7,
-                ComponentForm::MonauralPair {
-                    ears: Ears::Right,
-                    pair: pair(6.0)
-                }
-            )
-        ),
-        "monaural pair, first 200 Hz, signed offset 6 Hz, second 206 Hz, peaks -20 / -30 dBFS"
-    );
 }
 
 #[test]

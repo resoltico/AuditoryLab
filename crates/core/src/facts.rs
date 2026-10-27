@@ -161,14 +161,22 @@ pub enum SlotRole {
     Incoming,
 }
 impl SlotRole {
-    /// A short name for the role.
+    const fn terms(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Continuing => ("Continuing", "continuing"),
+            Self::Outgoing => ("Outgoing", "outgoing"),
+            Self::Incoming => ("Incoming", "incoming"),
+        }
+    }
+    /// Domain name for a heading or choice.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        match self {
-            Self::Continuing => "Continuing",
-            Self::Outgoing => "Outgoing",
-            Self::Incoming => "Incoming",
-        }
+        self.terms().0
+    }
+    /// Domain name within a sentence.
+    #[must_use]
+    pub const fn phrase(self) -> &'static str {
+        self.terms().1
     }
 }
 /// Actual generator quantities and routing gains for one generated frame.

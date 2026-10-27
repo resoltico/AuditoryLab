@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Strict one-version portable contract; independent shape, byte and numeric oracles.
 use super::{Recipe, RecipeError};
+use crate::ContractError;
 use crate::{
     Carrier, Component, ComponentForm, ComponentId, Description, DocumentIdentity, Pair, Sound,
     Voice,
@@ -218,8 +219,17 @@ fn copies_keep_scoped_sources_and_refuse_capacity_without_dropping_ancestry() {
         created_at: None,
         modified_at: None,
     };
-    let copy = original.fork(document.clone(), None).unwrap();
+    let copy = original
+        .fork(document.clone(), None, "Explicit attribution".into())
+        .unwrap();
     assert_eq!(copy.sources, original.sources);
+    assert_eq!(copy.lineage.last().unwrap().note, "Explicit attribution");
+    assert!(matches!(
+        original.fork(document.clone(), None, " ".into()),
+        Err(RecipeError::Contract(
+            ContractError::EmptyLineageNote { .. }
+        ))
+    ));
     assert!(
         copy.evidence
             .iter()
@@ -229,7 +239,10 @@ fn copies_keep_scoped_sources_and_refuse_capacity_without_dropping_ancestry() {
     assert_ne!(copy.document.id, original.document.id);
     let mut full = original;
     full.lineage.resize(16, full.lineage[0].clone());
-    assert!(full.fork(document, None).is_err());
+    assert!(
+        full.fork(document, None, "Explicit attribution".into())
+            .is_err()
+    );
     assert_eq!(full.lineage.len(), 16);
 }
 #[test]
@@ -513,46 +526,4 @@ fn the_builder_separates_portable_contracts_from_acoustic_validity() {
     let mut builder = original.into_builder();
     builder.sound.components.push(builder.sound.components[0]);
     assert!(matches!(builder.build(), Err(RecipeError::Contract(_))));
-}
-
-#[test]
-fn display_about_uses_population_and_condition_labels_for_every_declaration() {
-    let source = crate::catalog::ENTRIES
-        .iter()
-        .find_map(|entry| {
-            let recipe = Recipe::parse(entry.text).unwrap();
-            recipe
-                .evidence()
-                .iter()
-                .any(|e| e.scope == crate::EvidenceScope::ReferenceCondition)
-                .then_some(recipe)
-        })
-        .unwrap();
-    for population in crate::Population::ALL {
-        for role in crate::ConditionRole::ALL {
-            let mut builder = source.clone().into_builder();
-            let evidence = builder
-                .evidence
-                .iter_mut()
-                .find(|e| e.scope == crate::EvidenceScope::ReferenceCondition)
-                .unwrap();
-            evidence.population = population;
-            evidence.population_detail = None;
-            evidence.condition_role = role;
-            let text = builder
-                .build()
-                .unwrap()
-                .display_about()
-                .unwrap()
-                .research
-                .unwrap()
-                .studied_for
-                .unwrap();
-            assert_eq!(
-                text,
-                format!("{} study · {}", population.label(), role.label())
-            );
-            assert!(!text.contains("OtherAnimal") && !text.contains("NotApplicable"));
-        }
-    }
 }

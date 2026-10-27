@@ -460,7 +460,7 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
             for shown in row.parameters.iter() {
                 let id = parameter_id(shown.key);
                 assert_eq!(shown.label, (id).input_label());
-                assert_eq!(shown.help, id.descriptor().help);
+                assert_eq!(shown.help, id.help());
                 assert_eq!(
                     shown.has_slider,
                     auditorylab_app::document::controls::range(id, Workspace::export_rates()[1])
@@ -2668,6 +2668,10 @@ fn filter_controls_map_to_independent_typed_queries() {
     }
     ui.invoke_collection_filter(0, 0);
     h.wait_for_files();
+    for (index, method) in Method::ALL.iter().enumerate() {
+        let label = ui.get_method_labels().row_data(index + 1).unwrap();
+        assert!(label.starts_with(method.label()), "{method:?}: {label}");
+    }
     for (band_choice, band) in [
         (1, Band::Delta),
         (2, Band::Theta),

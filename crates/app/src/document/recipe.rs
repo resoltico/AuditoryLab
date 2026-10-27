@@ -1,6 +1,7 @@
 //! Immutable loaded recipes, their provenance and identity.
 use crate::error::LoadError as Error;
-use auditorylab_core::{About, Recipe, SampleRate, Signal, Sound};
+use crate::presentation::recipe_text::About;
+use auditorylab_core::{Recipe, SampleRate, Signal, Sound};
 use std::{
     path::PathBuf,
     sync::{
@@ -85,7 +86,7 @@ impl RecipeSnapshot {
         let nominal = Arc::new(auditorylab_core::rhythm::nominal(
             &recipe.sound().components,
         ));
-        let about = Arc::new(recipe.display_about());
+        let about = Arc::new(crate::presentation::recipe_text::about(&recipe));
         Self {
             nominal,
             canonical_text: Arc::new(std::sync::OnceLock::new()),

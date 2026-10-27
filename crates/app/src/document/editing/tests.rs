@@ -500,7 +500,7 @@ fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids()
             .collect::<Vec<_>>(),
         recipe_ids
     );
-    let about = d.recipe().unwrap().display_about().unwrap();
+    let about = crate::presentation::recipe_text::about(&d.recipe().unwrap()).unwrap();
     assert_eq!(about.summary, snapshot.about().unwrap().summary);
     assert!(about.research.is_none());
 }

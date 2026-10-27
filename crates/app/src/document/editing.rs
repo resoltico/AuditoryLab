@@ -273,7 +273,11 @@ impl Draft {
         };
         let content = snapshot
             .recipe()
-            .fork(crate::identity::fresh_document()?, catalog)
+            .fork(
+                crate::identity::fresh_document()?,
+                catalog,
+                crate::presentation::recipe_text::copy_note(snapshot.recipe()),
+            )
             .map_err(Error::Recipe)?;
         let mut draft = Self::from_recipe(content);
         draft.set_title(crate::presentation::edited_title(&snapshot.title()));

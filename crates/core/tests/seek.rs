@@ -1,5 +1,6 @@
 //! Seekability, bounds, fades and trace extrema against independent oracles.
-use auditorylab_core::{Recipe, SampleRate, catalog, waveform};
+mod common;
+use auditorylab_core::{Carrier, Ears, Modulation, Recipe, SampleRate, Voice, catalog, waveform};
 use proptest::prelude::*;
 proptest! {
     #![proptest_config(ProptestConfig { cases: 64, max_shrink_iters: 128, failure_persistence: None, .. ProptestConfig::default() })]
@@ -16,13 +17,23 @@ proptest! {
 }
 #[test]
 fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
-    let text = "schema_version = 4\n[sound]\nduration_seconds = 1.25\nfade_seconds = 0.0\n[[sound.component]]\nid=1\nkind = 'clicks'\nears = 'left'\nrate_hz = 3.0\nwidth_seconds = 0.000125\npeak_dbfs = -20.0\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
-    let signal = Recipe::parse(text)
-        .unwrap()
-        .sound()
-        .clone()
-        .signal(SampleRate::new(8000).unwrap())
-        .unwrap();
+    let signal = common::recipe(
+        1.25,
+        0.0,
+        &[Voice {
+            ears: Ears::Left,
+            carrier: Carrier::Clicks {
+                rate_hz: 3.0,
+                width_seconds: 0.000125,
+            },
+            peak_dbfs: -20.0,
+            modulation: None,
+        }],
+    )
+    .sound()
+    .clone()
+    .signal(SampleRate::new(8000).unwrap())
+    .unwrap();
     let mut out = Vec::new();
     for (start, frames, bins, expected_bins) in [
         (0, 10000, 3, 3),
@@ -81,13 +92,25 @@ fn fades_and_late_tones_follow_independent_sine_formulas() {
 }
 #[test]
 fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
-    let text = "schema_version=4\n[sound]\nduration_seconds=1431655.7653333333\nfade_seconds=0\n[[sound.component]]\nid=1\nkind='tone'\nears='both'\nfrequency_hz=8000\npeak_dbfs=-20\n[sound.component.modulation]\nkind='am'\nrate_hz=39.0625\ndepth=0.7\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
-    let signal = Recipe::parse(text)
-        .unwrap()
-        .sound()
-        .clone()
-        .signal(SampleRate::DEFAULT)
-        .unwrap();
+    let signal = common::recipe(
+        1431655.7653333333,
+        0.0,
+        &[Voice {
+            ears: Ears::Both,
+            carrier: Carrier::Tone {
+                frequency_hz: 8000.0,
+            },
+            peak_dbfs: -20.0,
+            modulation: Some(Modulation::Am {
+                rate_hz: 39.0625,
+                depth: 0.7,
+            }),
+        }],
+    )
+    .sound()
+    .clone()
+    .signal(SampleRate::DEFAULT)
+    .unwrap();
     for n in [0_u64, 1, 23456, 172800000, (1 << 36) - 100] {
         let carrier = f64::from(u32::try_from(u128::from(n) * 8000 % 48000).unwrap()) / 48000.0;
         let modulation = f64::from(u32::try_from(u128::from(n) * 625 % (48000 * 16)).unwrap())
@@ -106,13 +129,23 @@ fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
 }
 #[test]
 fn raised_cosine_is_symmetric_and_matches_sine_squared() {
-    let text = "schema_version=4\n[sound]\nduration_seconds=0.125125\nfade_seconds=0.008\n[[sound.component]]\nid=1\nkind='clicks'\nears='both'\nrate_hz=0.5\nwidth_seconds=0.25\npeak_dbfs=0\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
-    let signal = Recipe::parse(text)
-        .unwrap()
-        .sound()
-        .clone()
-        .signal(SampleRate::new(8000).unwrap())
-        .unwrap();
+    let signal = common::recipe(
+        0.125125,
+        0.008,
+        &[Voice {
+            ears: Ears::Both,
+            carrier: Carrier::Clicks {
+                rate_hz: 0.5,
+                width_seconds: 0.25,
+            },
+            peak_dbfs: 0.0,
+            modulation: None,
+        }],
+    )
+    .sound()
+    .clone()
+    .signal(SampleRate::new(8000).unwrap())
+    .unwrap();
     assert_eq!(signal.frames(), 1001);
     assert_eq!(signal.fade_frames(), 64);
     for n in 0..1001_u32 {
@@ -138,12 +171,21 @@ fn raised_cosine_is_symmetric_and_matches_sine_squared() {
 #[test]
 fn public_signals_preserve_slow_onsets_and_widths_longer_than_a_second() {
     let recipe = |rate, width| {
-        format!(
-            "schema_version=4\n[sound]\nduration_seconds=3\nfade_seconds=0\n[[sound.component]]\nid=1\nkind='clicks'\nears='both'\nrate_hz={rate}\nwidth_seconds={width}\npeak_dbfs=-20\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n"
+        common::recipe(
+            3.0,
+            0.0,
+            &[Voice {
+                ears: Ears::Both,
+                carrier: Carrier::Clicks {
+                    rate_hz: rate,
+                    width_seconds: width,
+                },
+                peak_dbfs: -20.0,
+                modulation: None,
+            }],
         )
     };
-    let signal = Recipe::parse(&recipe(1.0_f64.next_down(), 0.001))
-        .unwrap()
+    let signal = recipe(1.0_f64.next_down(), 0.001)
         .sound()
         .clone()
         .signal(SampleRate::DEFAULT)
@@ -154,8 +196,7 @@ fn public_signals_preserve_slow_onsets_and_widths_longer_than_a_second() {
         assert_eq!(signal.frame(onset + 47), [0.1; 2]);
         assert_eq!(signal.frame(onset + 48), [0.0; 2]);
     }
-    let signal = Recipe::parse(&recipe(0.1, 2.0))
-        .unwrap()
+    let signal = recipe(0.1, 2.0)
         .sound()
         .clone()
         .signal(SampleRate::DEFAULT)

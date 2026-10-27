@@ -390,6 +390,8 @@ impl Ears {
     }
 }
 impl Ear {
+    /// Every single-ear choice, in display order.
+    pub const ALL: [Self; 2] = [Self::Left, Self::Right];
     const fn terms(self) -> (&'static str, &'static str) {
         match self {
             Self::Left => ("Left ear", "left ear"),
@@ -405,37 +407,6 @@ impl Ear {
     #[must_use]
     pub const fn phrase(self) -> &'static str {
         self.terms().1
-    }
-}
-
-impl Display for Modulation {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Am { rate_hz, depth } => {
-                write!(f, "AM {rate_hz} Hz, depth {depth}")
-            }
-            Self::Gate {
-                rate_hz,
-                width_seconds,
-            } => write!(f, "gate {rate_hz} Hz, {width_seconds} s open"),
-        }
-    }
-}
-
-impl Display for Voice {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.carrier {
-            Carrier::Tone { frequency_hz } => write!(f, "tone {frequency_hz} Hz")?,
-            Carrier::Clicks {
-                rate_hz,
-                width_seconds,
-            } => write!(f, "clicks {rate_hz} Hz, {width_seconds} s wide")?,
-        }
-        write!(f, ", peak {} dBFS, {}", self.peak_dbfs, self.ears.phrase())?;
-        if let Some(modulation) = self.modulation {
-            write!(f, ", {modulation}")?;
-        }
-        Ok(())
     }
 }
 

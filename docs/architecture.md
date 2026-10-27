@@ -49,3 +49,5 @@ Managed mutation checks run against locked state. Services cannot replace the ad
 One atomic terminal outcome owns playback truth. Generated frames, backend-submitted frames and estimated output position stay separate. Held captures retain samples, source, rate, span, observation, scale and meters together. Timing models describe origin-zero structure; generated observations describe actual frames and transition roles.
 
 [Formats](formats.md) owns schema/layout/JSON/exit-code reference. [Toolkit integration](../third_party/README.md) defines authenticated patches and retirement checks; [packaging](releasing.md) defines native prerequisites and delivered-content verification.
+
+Shared research views, authored-component descriptions, copy-attribution notes and parameter help are constructed in [presentation](../crates/app/src/presentation/recipe_text.rs). Core keeps typed records and copy scope/history rules; a fork takes an explicit nonempty attribution note. Domain term enums provide heading labels and running-text phrases from one vocabulary match.
