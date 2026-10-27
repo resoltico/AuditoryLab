@@ -1,0 +1,179 @@
+import { Button } from "button.slint";
+import { Terms } from "vocabulary.slint";
+import { Palette, ComboBox, TextEdit, LineEdit, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+import { Disclosure } from "editor.slint";
+
+export component Dialogs inherits Rectangle {
+    in property <[string]> add-choices;
+    callback add-component(string, int);
+    in property <string> add-reason;
+    in-out property <string> added-from;
+    in-out property <string> added-through;
+    in-out property <int> analysis-choice;
+    in property <[string]> analysis-labels;
+    in-out property <int> band-choice;
+    in property <string> calendar-context;
+    in property <bool> can-add-component;
+    in property <bool> can-add-pair;
+    in property <bool> can-import;
+    in property <bool> can-manage-library;
+    callback clear-library-filters();
+    in-out property <int> collection-choice;
+    callback collection-filter(int, int);
+    in-out property <bool> compact;
+    in-out property <string> created-from;
+    in-out property <string> created-through;
+    in-out property <int> direction-choice;
+    in property <[string]> direction-labels;
+    in property <string> document;
+    in-out property <int> group-choice;
+    in property <[string]> group-labels;
+    callback initialize-library();
+    in property <string> library-alert;
+    in property <string> library-count;
+    in property <string> library-status;
+    in-out property <int> method-choice;
+    in property <[string]> method-labels;
+    in-out property <string> modified-from;
+    in-out property <string> modified-through;
+    callback more-filters(string, int, int, int, int, int, string, string, string, string, string, string);
+    callback open-recipe();
+    in property <string> pair-add-reason;
+    in-out property <int> population-choice;
+    in property <[string]> population-labels;
+    in-out property <string> query;
+    callback refresh-library();
+    callback reset-library-sort();
+    callback rhythm-filter(int, int);
+    in-out property <int> role-choice;
+    in property <[string]> role-labels;
+    callback show-saved();
+    in-out property <int> sort-choice;
+    in property <[string]> sort-labels;
+    in-out property <bool> storage-open;
+    in-out property <string> study-query;
+    in property <length> ui-size;
+    in property <length> window-width;
+    in property <length> window-height;
+    in property <length> toolbar-height;
+    private property <string> component-menu-document;
+    out property <bool> library-tools-open: filters-popup.is-open;
+    out property <bool> library-query-open: query-popup.is-open;
+    public function open-query-details(){query-popup.show();}
+    public function close-query-details(){query-popup.close();}
+    public function open-library-filters(){filters-popup.show();}
+    public function close-library-filters(){filters-popup.close();}
+    public function open-library-options(){library-options.show();}
+    public function open-component-menu(){root.component-menu-document=root.document;component-menu.show();}
+
+    public function clear-applied-filters() {
+        root.clear-library-filters();
+        root.query="";root.band-choice=0;root.method-choice=0;
+        root.study-query="";root.population-choice=0;root.role-choice=0;root.analysis-choice=0;
+        root.created-from="";root.created-through="";root.modified-from="";root.modified-through="";root.added-from="";root.added-through="";
+    }
+    function apply-filters() { root.more-filters(root.study-query,root.population-choice,root.role-choice,root.analysis-choice,root.direction-choice,root.group-choice,root.created-from,root.created-through,root.modified-from,root.modified-through,root.added-from,root.added-through); }
+    query-popup := PopupWindow {
+        x:max(8px,root.window-width - self.width - 12px);y:root.toolbar-height+8px;
+        width:min(520px,root.window-width - 24px);height:min(480px,root.window-height - root.toolbar-height - 24px);
+        close-policy:close-on-click-outside;
+        forward-focus:query-focus;
+        Rectangle {background:Palette.background;border-width:1px;border-color:Palette.border;border-radius:6px;}
+        query-focus := FocusScope {
+            key-pressed(event)=>{if event.text==Key.Escape {query-popup.close();return accept;}return reject;}
+            VerticalLayout {padding:12px;spacing:8px;
+                HorizontalBox {padding:0px;vertical-stretch:0;
+                    Text {text:Terms.facet-applied-library-filters;font-weight:600;horizontal-stretch:1;}
+                    Button {text:Terms.action-close;triggered =>{query-popup.close();}}
+                }
+                TextEdit {text:root.library-count;read-only:true;wrap:word-wrap;min-width:0px;accessible-label:Terms.caption-committed-library-query;}
+            }
+        }
+    }
+    filters-popup := PopupWindow {
+        x:max(8px,root.window-width - self.width - 12px);
+        y:root.toolbar-height + 8px;
+        width:min(500px,root.window-width - 24px);
+        height:min(620px,root.window-height - root.toolbar-height - 24px);
+        close-policy:close-on-click-outside;
+        forward-focus:filter-focus;
+        Rectangle {background:Palette.background;border-width:1px;border-color:Palette.border;border-radius:6px;}
+        filter-focus := FocusScope {
+            key-pressed(event)=>{if event.text==Key.Escape {filters-popup.close();return accept;}return reject;}
+            VerticalLayout {padding:12px;spacing:8px;
+                HorizontalBox {padding:0px;vertical-stretch:0;
+                    Text {text:Terms.caption-library-filters;font-weight:600;vertical-alignment:center;horizontal-stretch:1;}
+                    Button {text:Terms.action-close;accessible-label:Terms.action-close-filters;triggered =>{filters-popup.close();}}
+                }
+                filter-scroll := ScrollView {
+                    accessible-role:groupbox;
+                    accessible-label:Terms.caption-library-filters;
+                    VerticalBox {width:filter-scroll.visible-width;
+                        if root.compact: Text {text:Terms.caption-structural-method;vertical-stretch:0;}
+                        if root.compact: ComboBox {model:root.method-labels;current-index <=> root.method-choice;accessible-label:Terms.caption-structural-method;selected(value)=>{root.rhythm-filter(root.band-choice,root.method-choice);}}
+
+                            Text {text:root.calendar-context;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
+                            LineEdit {text <=> root.study-query;placeholder-text:Terms.caption-study-doi-or-key-source;accessible-label:Terms.facet-study-evidence-filter;}
+                            ComboBox {model:root.population-labels;current-index <=> root.population-choice;accessible-label:Terms.facet-population-evidence-filter;}
+                            ComboBox {model:root.role-labels;current-index <=> root.role-choice;accessible-label:Terms.facet-condition-role-evidence-filter;}
+                            ComboBox {model:root.analysis-labels;current-index <=> root.analysis-choice;accessible-label:Terms.facet-nominal-analysis-coverage;}
+                            ComboBox {model:root.direction-labels;current-index <=> root.direction-choice;accessible-label:Terms.facet-sort-direction;}
+                            ComboBox {model:root.group-labels;current-index <=> root.group-choice;accessible-label:Terms.facet-library-result-grouping;}
+                            LineEdit {text <=> root.created-from;placeholder-text:Terms.caption-created-from-yyyy-mm-dd;accessible-label:Terms.facet-created-from-local-calendar-date;}
+                            LineEdit {text <=> root.created-through;placeholder-text:Terms.caption-created-through-yyyy-mm-dd;accessible-label:Terms.facet-created-through-inclusive-local-calendar-date;}
+                            LineEdit {text <=> root.modified-from;placeholder-text:Terms.caption-modified-from-yyyy-mm-dd;accessible-label:Terms.facet-modified-from-local-calendar-date;}
+                            LineEdit {text <=> root.modified-through;placeholder-text:Terms.caption-modified-through-yyyy-mm-dd;accessible-label:Terms.facet-modified-through-inclusive-local-calendar-date;}
+                            LineEdit {text <=> root.added-from;placeholder-text:Terms.facet-added-here-from-yyyy-mm-dd;accessible-label:Terms.facet-added-here-from-local-calendar-date;}
+                            LineEdit {text <=> root.added-through;placeholder-text:Terms.facet-added-here-through-yyyy-mm-dd;accessible-label:Terms.facet-added-here-through-inclusive-local-calendar-date;}
+
+
+                        if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
+                    }
+                }
+                HorizontalBox {padding:0px;vertical-stretch:0;
+                    Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
+                    Button {text:Terms.action-apply-filters;primary:true;triggered =>{root.apply-filters();}}
+                }
+            }
+        }
+    }
+    library-options := PopupWindow {
+        x:max(8px,root.window-width - self.width - 12px);y:root.toolbar-height + 8px;
+        width:min(450px,root.window-width - 24px);height:min(480px,root.window-height - root.toolbar-height - 24px);
+        close-policy:close-on-click-outside;
+        Rectangle {background:Palette.background;border-width:1px;border-color:Palette.border;border-radius:6px;}
+        FocusScope {
+            key-pressed(event)=>{if event.text==Key.Escape {library-options.close();return accept;}return reject;}
+            options-scroll := ScrollView {VerticalBox {
+                width:options-scroll.visible-width;
+                Text {text:Terms.caption-library-options;font-weight:600;vertical-stretch:0;}
+                if root.compact: ComboBox {model:root.sort-labels;current-index <=> root.sort-choice;accessible-label:Terms.facet-sort-library;selected(value)=>{root.collection-filter(root.collection-choice,root.sort-choice);}}
+                Button {text:Terms.action-open-recipe-dialog;enabled:root.can-import;triggered =>{root.open-recipe();library-options.close();}}
+                Button {text:Terms.action-refresh;triggered =>{root.refresh-library();}}
+                Button {text:Terms.action-show-saved;triggered =>{root.show-saved();library-options.close();}}
+                Button {text:Terms.action-reset-sort;triggered =>{root.reset-library-sort();root.direction-choice=0;}}
+                Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
+                Disclosure {label:Terms.caption-library-storage-and-recovery;expanded <=> root.storage-open;}
+                if root.storage-open: Text {text:root.library-status;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
+                if root.storage-open: Button {enabled:root.can-manage-library;text:Terms.action-initialize-configured-library;triggered =>{root.initialize-library();}}
+                Button {text:Terms.action-close;triggered =>{library-options.close();}}
+            }}
+        }
+    }
+    component-menu := PopupWindow {
+        x:max(8px,root.window-width - self.width - 12px);y:root.toolbar-height + 64px;
+        width:min(310px,root.window-width - 24px);height:min(root.window-height - root.toolbar-height - 80px,root.ui-size*20);
+        close-policy:close-on-click-outside;
+        Rectangle {background:Palette.background;border-width:1px;border-color:Palette.border;border-radius:6px;}
+        FocusScope {
+            key-pressed(event)=>{if event.text==Key.Escape {component-menu.close();return accept;}return reject;}
+            VerticalBox {
+                for label[index] in root.add-choices: Button {text:label;enabled:root.can-add-component;accessible-description:root.add-reason;triggered =>{root.add-component(root.component-menu-document,index);component-menu.close();}}
+                Button {text:Terms.action-add-binaural-pair;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,2);component-menu.close();}}
+                Button {text:Terms.action-add-monaural-pair;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,3);component-menu.close();}}
+                Button {text:Terms.action-close;triggered =>{component-menu.close();}}
+            }
+        }
+    }
+
+}

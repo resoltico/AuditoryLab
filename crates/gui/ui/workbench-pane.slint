@@ -1,0 +1,351 @@
+import { Button } from "button.slint";
+
+
+import { Terms } from "vocabulary.slint";
+import { Palette, ComboBox, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+import { ParameterKey, MetadataKey, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import { Disclosure, ParameterControl, MetadataField, NotesField, ExportRate } from "editor.slint";
+
+
+export component WorkbenchPane inherits Rectangle {
+    in property <string> add-reason;
+    in property <string> based-on;
+    callback based-on-source();
+    in property <string> based-on-title;
+    in property <bool> can-edit;
+    in property <bool> can-export;
+    in property <bool> can-export-recipe;
+    in property <bool> can-new;
+    in property <bool> can-restore-component;
+    in property <[string]> carrier-choices;
+    callback commit-metadata(string, MetadataKey, string);
+    callback commit-parameter(string, ParameterKey, string);
+    in-out property <bool> compact;
+    in property <[ComponentRow]> components;
+    in property <bool> dirty;
+    in property <string> document;
+    in property <int> document-reset;
+    in property <string> draft-brief;
+    in property <string> draft-location;
+    in property <string> draft-location-details;
+    in property <MetadataRow> duration-field;
+    in property <[string]> ears-choices;
+    in-out property <length> editor-scroll-y;
+    in-out property <bool> edits-suspended;
+    in property <[string]> export-rates;
+    in property <string> export-reason;
+    callback export-recipe();
+    callback export-wav();
+    in property <MetadataRow> fade-field;
+    in property <string> file-activity;
+    in property <string> metadata-error;
+    in property <string> model-caption;
+    in property <[ModelLane]> model-lanes;
+    in property <[string]> modulation-choices;
+    callback new-draft();
+    in-out property <bool> notes;
+    callback open-component-menu();
+    in property <string> pair-add-reason;
+    in property <string> peak;
+    callback rate-changed(int);
+    in-out property <int> rate-index;
+    callback remove-component(string);
+    in property <string> removed-component;
+    callback restore-component(string);
+    callback restore-metadata(string, MetadataKey);
+    callback restore-parameter(string, ParameterKey);
+    in property <string> retained-warning;
+    in property <string> save-reason;
+    in-out property <bool> saved-audio;
+    callback set-carrier(string, int);
+    callback set-ears(string, int);
+    callback set-modulation(string, int);
+    callback slide(string, ParameterKey, float);
+    callback stage-metadata(string, MetadataKey, string);
+    callback stage-parameter(string, ParameterKey, string);
+    in property <MetadataRow> summary-field;
+    in-out property <int> tab-index;
+    in property <MetadataRow> title-field;
+    in property <length> ui-size;
+
+                accessible-role:tab-panel;accessible-label:Terms.caption-workbench;
+                visible:root.tab-index==1;
+
+
+
+                editor-scroll := ScrollView {
+                    width:parent.width;height:parent.height;
+                    content-y <=> root.editor-scroll-y;
+                    // Follow the visible width so long text wraps rather than widening the page.
+                    VerticalBox {
+                    width: editor-scroll.visible-width;
+                    HorizontalBox {
+                        padding: 0px;
+                        vertical-stretch: 0;
+                        Text {
+                            text:root.title-field.label;
+                            vertical-alignment:center;
+                        }
+                        MetadataField {
+                            key: MetadataKey.title;
+                            field: root.title-field;
+                            binding: root.document;
+                            reset-key:root.document-reset;
+                            enabled:root.can-edit;
+                            edits-suspended:root.edits-suspended;
+                            accessible-label:Terms.caption-sound-title;
+                            stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
+                            commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
+                            restore-field(owner, key) => { root.restore-metadata(owner, key); }
+                        }
+                    }
+                    HorizontalBox {vertical-stretch:0;
+                        Text {min-width:0px;
+                            text:root.dirty ? Terms.status-unsaved-changes : Terms.status-unmodified-draft;
+                            wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;
+                        }
+                        Button {text:Terms.action-add-component;enabled:root.can-edit;triggered =>{root.open-component-menu();}}
+                        Button {
+                            horizontal-stretch:0;
+                            text:Terms.action-new;
+                            enabled:root.can-new;
+                            triggered => {
+                                root.new-draft();
+                            }
+                        }
+                    }
+
+
+                    if root.pair-add-reason != "" && root.add-reason == "": Text {min-width:0px;text:root.pair-add-reason;wrap:word-wrap;vertical-stretch:0;}
+                    if root.add-reason != "": Text {min-width:0px;text:root.add-reason;wrap:word-wrap;vertical-stretch:0;}
+                    if root.removed-component != "": HorizontalBox {
+                        padding: 0px;
+                        vertical-stretch: 0;
+                        Button {
+                            text: Terms.action-undo-remove;
+                            horizontal-stretch: 0;
+                            enabled: root.can-restore-component;
+                            accessible-description: root.removed-component + " " + root.add-reason;
+                            triggered => { root.restore-component(root.document); }
+                        }
+                        Text {min-width:0px;horizontal-stretch:1;text:root.removed-component;wrap:word-wrap;vertical-alignment:center;}
+                    }
+                    if root.retained-warning != "": Text {min-width:0px;
+                        text:root.retained-warning;
+                        color:Palette.foreground;
+                        font-weight:700;
+                        wrap:word-wrap;
+                        vertical-stretch:0;
+                        accessible-label:root.retained-warning;
+                        accessible-live-region:polite;
+                    }
+                    if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
+                    if root.metadata-error != "": Text {min-width:0px;text:root.metadata-error;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
+                    if root.save-reason != "": Text {min-width:0px;text:root.save-reason;wrap:word-wrap;vertical-stretch:0;}
+                    Text {min-width:0px;text:root.draft-location;wrap:word-wrap;vertical-stretch:0;}
+                    Text {min-width:0px;text:root.draft-brief; wrap:word-wrap; vertical-stretch:0;}
+                    if root.based-on-title != "": Text {min-width:0px;
+                        text:root.based-on-title;
+                        wrap:word-wrap;
+                        font-size:root.ui-size*0.93;
+                        vertical-stretch:0;
+                    }
+                    for row in root.components: VerticalBox {
+                        spacing: 4px;
+                        vertical-stretch: 0;
+                        Rectangle {
+                            height:1px;
+                            background:Palette.border;
+                        }
+                        Text {
+                            text: row.heading;
+                            font-weight: 700;
+                            vertical-stretch: 0;
+                        }
+                        Text {min-width:0px;text:row.context; wrap:word-wrap; vertical-stretch:0;}
+                        pattern := Disclosure {label:Terms.caption-pattern-explained-static-core-model;}
+                        if pattern.expanded: VerticalBox {
+                            vertical-stretch:0;
+                            Text {min-width:0px;text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
+                            VerticalBox {
+                              padding:0px; spacing:0px; vertical-stretch:0;
+                              for lane in root.model-lanes: VerticalBox {
+                                padding:0px; spacing:0px; vertical-stretch:0;
+                                if lane.component == row.id: VerticalBox {
+                                  vertical-stretch:0;
+                                  Text {min-width:0px;text:lane.label;wrap:word-wrap;vertical-stretch:0;}
+                                  Rectangle {height:36px;background:Palette.control-background;
+                                      accessible-role:image;accessible-label:lane.label+Terms.caption-static-model-origin-zero;
+                                      Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
+                                  }
+                                }
+                              }
+                            }
+                        }
+                        component-options := Disclosure {label:Terms.caption-routing-modulation-and-component-options;}
+                        // Labels beside choices sized to their content; the
+                        // shared column keeps the three choices aligned.
+                        if component-options.expanded: GridLayout {
+                            spacing: 6px;
+                            vertical-stretch: 0;
+                            Row {
+                                if row.routing-editable: Text { text: Terms.caption-ears; vertical-alignment: center; }
+                                if row.routing-editable: ComboBox { enabled: root.can-edit; model: root.ears-choices; current-index: row.ears; accessible-label: row.name + Terms.caption-ears-suffix; selected(value) => { root.set-ears(row.key, self.current-index); } }
+                                Rectangle { horizontal-stretch: 1; }
+                            }
+                            Row {
+                                if row.carrier >= 0: Text { text: Terms.caption-carrier; vertical-alignment: center; }
+                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.carrier-choices; current-index: row.carrier; accessible-label: row.name + Terms.caption-carrier-suffix; selected(value) => { root.set-carrier(row.key, self.current-index); } }
+                            }
+                            Row {
+                                if row.carrier >= 0: Text { text: Terms.caption-modulation; vertical-alignment: center; }
+                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.modulation-choices; current-index: row.modulation; accessible-label: row.name + Terms.caption-modulation-suffix; selected(value) => { root.set-modulation(row.key, self.current-index); } }
+                            }
+                            Row { Button { col:1; text: Terms.action-remove; enabled: root.can-edit; accessible-label: Terms.action-remove-prefix + row.name; triggered => { root.remove-component(row.key); } } }
+                        }
+                        for parameter in row.parameters: ParameterControl {
+                            parameter: parameter;
+                            owner: row.key;
+                            context: row.name;
+                            compact: root.compact;
+                            ui-size: root.ui-size;
+                            edit-enabled: root.can-edit;
+                            edits-suspended: root.edits-suspended;
+                            stage(owner, key, value) => { root.stage-parameter(owner, key, value); }
+                            commit(owner, key, value) => { root.commit-parameter(owner, key, value); }
+                            restore(owner, key) => { root.restore-parameter(owner, key); }
+                            slide(owner, key, value) => { root.slide(owner, key, value); }
+                        }
+                        if row.error != "": Text {min-width:0px;
+                            text: row.error;
+                            color: Palette.foreground;
+                            accessible-live-region: polite;
+                            wrap: word-wrap;
+                            vertical-stretch: 0;
+                        }
+                    }
+                    Text {min-width:0px;
+                        text:root.peak;
+                        wrap:word-wrap;
+                        vertical-stretch:0;
+                    }
+                    settings := Disclosure {label:Terms.caption-sound-settings-notes-and-saved-exported-audio;}
+                    if settings.expanded: VerticalBox {
+                        vertical-stretch:0;
+                        Text {text:root.draft-location-details;min-width:0px;wrap:word-wrap;vertical-stretch:0;}
+
+                        Button {text:Terms.action-export-portable-draft-recipe-dialog;enabled:root.can-export-recipe;triggered =>{root.export-recipe();}}
+
+                        HorizontalLayout {
+                            Button {
+                                horizontal-stretch:0;
+                                text:Terms.action-export-wav-dialog;
+                                enabled:root.can-export;
+                                accessible-description:root.export-reason;
+                                triggered => {
+                                    root.export-wav();
+                                }
+                            }
+                            Rectangle {}
+                        }
+                        if !root.can-export && root.export-reason != "": Text {min-width:0px;text:root.export-reason;wrap:word-wrap;vertical-stretch:0;}
+                        Disclosure {label:Terms.caption-sound-notes;expanded <=> root.notes;}
+                        if root.notes: VerticalBox {
+                            vertical-stretch:0;
+                            if root.based-on != "": Text {min-width:0px;
+                                text:root.based-on;
+                                wrap:word-wrap;
+                                vertical-stretch:0;
+                            }
+                            if root.based-on != "": Button {
+                                text:Terms.action-show-copied-from-snapshot-in-library;
+                                triggered => {
+                                    root.based-on-source();
+                                }
+                            }
+                            Text {
+                                text:Terms.caption-your-notes-about-this-sound;
+                                vertical-stretch:0;
+                            }
+                            NotesField {
+                                key: MetadataKey.summary;
+                                field: root.summary-field;
+                                binding: root.document;
+                                reset-key:root.document-reset;
+                                enabled:root.can-edit;
+                                edits-suspended:root.edits-suspended;
+                                accessible-label:Terms.caption-custom-recipe-notes;
+                                stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
+                                commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
+                                restore-field(owner, key) => { root.restore-metadata(owner, key); }
+                            }
+                        }
+                        Disclosure {label:Terms.action-saved-audio-duration-fades-and-export-rate;expanded <=> root.saved-audio;}
+                        if root.saved-audio: VerticalBox {
+                            vertical-stretch:0;
+                            Text {min-width:0px;
+                                text:Terms.caption-saved-audio-help;
+                                wrap:word-wrap;
+                                vertical-stretch:0;
+                            }
+                            HorizontalBox {
+                                padding: 0px;
+                                vertical-stretch: 0;
+                                Text {
+                                    text:root.duration-field.label;
+                                    vertical-alignment:center;
+                                }
+                                MetadataField {
+                                    key: MetadataKey.duration;
+                                    field: root.duration-field;
+                                    binding: root.document;
+                                    reset-key:root.document-reset;
+                                    enabled:root.can-edit;
+                                    edits-suspended:root.edits-suspended;
+                                    accessible-label:Terms.action-saved-duration;
+                                    horizontal-stretch:0;
+                                    preferred-width:root.ui-size*10;
+                                    stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
+                                    commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
+                                    restore-field(owner, key) => { root.restore-metadata(owner, key); }
+                                }
+                                Text {
+                                    text:root.fade-field.label;
+                                    vertical-alignment:center;
+                                }
+                                MetadataField {
+                                    key: MetadataKey.fade;
+                                    field: root.fade-field;
+                                    binding: root.document;
+                                    reset-key:root.document-reset;
+                                    enabled:root.can-edit;
+                                    edits-suspended:root.edits-suspended;
+                                    accessible-label:Terms.action-saved-fade;
+                                    horizontal-stretch:0;
+                                    preferred-width:root.ui-size*10;
+                                    stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
+                                    commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
+                                    restore-field(owner, key) => { root.restore-metadata(owner, key); }
+                                }
+                                Rectangle {}
+                            }
+                            if root.duration-field.diagnostic != "": Text {min-width:0px;text:root.duration-field.diagnostic;wrap:word-wrap;vertical-stretch:0;}
+                            if root.fade-field.diagnostic != "": Text {min-width:0px;text:root.fade-field.diagnostic;wrap:word-wrap;vertical-stretch:0;}
+                            ExportRate {
+                                choices:root.export-rates;
+                                selected <=> root.rate-index;
+                                edit-enabled:true;
+                                changed(i)=> {
+                                    root.rate-changed(i);
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        vertical-stretch:1;
+                    }
+                    }
+                }
+
+            
+}

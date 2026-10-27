@@ -1,19 +1,21 @@
+import { Dialogs } from "dialogs.slint";
+import { LibraryPane } from "library-pane.slint";
+import { WorkbenchPane } from "workbench-pane.slint";
+import { TransportBar } from "transport.slint";
 import { Button } from "button.slint";
-import { BoundButton, BoundTitleEdit } from "library-controls.slint";
-import { LibraryNavigationItem } from "library-navigation.slint";
+
+
 import { WorkspaceNavigation } from "workspace-navigation.slint";
 export { Terms } from "vocabulary.slint";
 import { Terms, Choices } from "vocabulary.slint";
-import {
-    Palette, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, ProgressIndicator
-} from "std-widgets.slint";
+import { Palette, VerticalBox, HorizontalBox, ProgressIndicator } from "std-widgets.slint";
 export { CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
 import { CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
-import { Disclosure, NumericField, ParameterControl, MetadataField, NotesField, StableButton, ExportRate } from "editor.slint";
+import { StableButton } from "editor.slint";
 export { AboutWindow, LicenseWindow } from "about.slint";
 
 export { MonitorWindow, DetailsWindow, AudioControlsWindow, MonitorData } from "monitor.slint";
-import { Lane, MonitorPanel, MonitorData } from "monitor.slint";
+import { MonitorPanel, MonitorData } from "monitor.slint";
 
 export component MainWindow inherits Window {
     icon: @image-url("../../../artwork/auditorylab-icon/assets/runtime/window-icon.png");
@@ -52,8 +54,7 @@ export component MainWindow inherits Window {
     callback remove-component(string);
     callback restore-component(string);
     callback add-component(string, int);
-    private property <string> component-menu-document;
-    function open-component-menu(){root.component-menu-document=root.document;component-menu.show();}
+    function open-component-menu(){dialogs.open-component-menu();}
 
     in property <string> output-state;
     in property <string> receipt-age;
@@ -108,12 +109,12 @@ export component MainWindow inherits Window {
     in property <string> library-empty-message;
     in property <bool> library-filters-active;
     in-out property <bool> library-wide: false;
-    out property <bool> library-tools-open: filters-popup.is-open;
-    out property <bool> library-query-open: query-popup.is-open;
-    public function open-query-details(){query-popup.show();}
-    public function close-query-details(){query-popup.close();}
-    public function open-library-filters(){filters-popup.show();}
-    public function close-library-filters(){filters-popup.close();}
+    out property <bool> library-tools-open: dialogs.library-tools-open;
+    out property <bool> library-query-open: dialogs.library-query-open;
+    public function open-query-details(){dialogs.open-query-details();}
+    public function close-query-details(){dialogs.close-query-details();}
+    public function open-library-filters(){dialogs.open-library-filters();}
+    public function close-library-filters(){dialogs.close-library-filters();}
     in-out property <int> selected: 0;
     in property <string> sound-title;
     in property <string> studied;
@@ -188,8 +189,6 @@ export component MainWindow inherits Window {
     in-out property <bool> saved-audio: false;
     in-out property <bool> library-detail: false;
     in-out property <length> library-scroll-y: 0px;
-    private property <bool> library-restoring: false;
-    private property <bool> library-restore-ready: false;
     in-out property <bool> export-settings: false;
     in-out property <length> sidebar-width: 330px;
     public function resize-library-pane(pixels:float) {
@@ -221,12 +220,7 @@ export component MainWindow inherits Window {
     callback more-filters(string, int, int, int, int, int, string, string, string, string, string, string);
     callback clear-library-filters();
     callback reset-library-sort();
-    function clear-applied-filters() {
-        root.clear-library-filters();
-        root.query="";root.band-choice=0;root.method-choice=0;
-        root.study-query="";root.population-choice=0;root.role-choice=0;root.analysis-choice=0;
-        root.created-from="";root.created-through="";root.modified-from="";root.modified-through="";root.added-from="";root.added-through="";
-    }
+    function clear-applied-filters(){dialogs.clear-applied-filters();}
     in-out property <string> study-query;
     in-out property <int> population-choice:0;
     in-out property <int> role-choice:0;
@@ -239,7 +233,7 @@ export component MainWindow inherits Window {
     in-out property <string> modified-through;
     in-out property <string> added-from;
     in-out property <string> added-through;
-    function apply-filters() { root.more-filters(root.study-query,root.population-choice,root.role-choice,root.analysis-choice,root.direction-choice,root.group-choice,root.created-from,root.created-through,root.modified-from,root.modified-through,root.added-from,root.added-through); }
+
 
     private property <[string]> collection-labels: Choices.collection-labels;
     private property <[string]> sort-labels: Choices.sort-labels;
@@ -281,6 +275,58 @@ export component MainWindow inherits Window {
     callback open-workbench();
     callback new-draft();
     callback save-recipe();
+    dialogs := Dialogs {
+        window-width:root.width;window-height:root.height;toolbar-height:toolbar.height;
+        add-choices: root.add-choices;
+        add-component(arg0, arg1) => {root.add-component(arg0, arg1);}
+        add-reason: root.add-reason;
+        added-from <=> root.added-from;
+        added-through <=> root.added-through;
+        analysis-choice <=> root.analysis-choice;
+        analysis-labels: root.analysis-labels;
+        band-choice <=> root.band-choice;
+        calendar-context: root.calendar-context;
+        can-add-component: root.can-add-component;
+        can-add-pair: root.can-add-pair;
+        can-import: root.can-import;
+        can-manage-library: root.can-manage-library;
+        clear-library-filters() => {root.clear-library-filters();}
+        collection-choice <=> root.collection-choice;
+        collection-filter(arg0, arg1) => {root.collection-filter(arg0, arg1);}
+        compact <=> root.compact;
+        created-from <=> root.created-from;
+        created-through <=> root.created-through;
+        direction-choice <=> root.direction-choice;
+        direction-labels: root.direction-labels;
+        document: root.document;
+        group-choice <=> root.group-choice;
+        group-labels: root.group-labels;
+        initialize-library() => {root.initialize-library();}
+        library-alert: root.library-alert;
+        library-count: root.library-count;
+        library-status: root.library-status;
+        method-choice <=> root.method-choice;
+        method-labels: root.method-labels;
+        modified-from <=> root.modified-from;
+        modified-through <=> root.modified-through;
+        more-filters(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) => {root.more-filters(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);}
+        open-recipe() => {root.open-recipe();}
+        pair-add-reason: root.pair-add-reason;
+        population-choice <=> root.population-choice;
+        population-labels: root.population-labels;
+        query <=> root.query;
+        refresh-library() => {root.refresh-library();}
+        reset-library-sort() => {root.reset-library-sort();}
+        rhythm-filter(arg0, arg1) => {root.rhythm-filter(arg0, arg1);}
+        role-choice <=> root.role-choice;
+        role-labels: root.role-labels;
+        show-saved() => {root.show-saved();}
+        sort-choice <=> root.sort-choice;
+        sort-labels: root.sort-labels;
+        storage-open <=> root.storage-open;
+        study-query <=> root.study-query;
+        ui-size: root.ui-size;
+    }
     MenuBar {
         Menu {
             title: Terms.caption-file;
@@ -335,108 +381,6 @@ export component MainWindow inherits Window {
         }
     }
 
-    query-popup := PopupWindow {
-        x:max(8px,root.width - self.width - 12px);y:toolbar.height+8px;
-        width:min(520px,root.width - 24px);height:min(480px,root.height - toolbar.height - 24px);
-        close-policy:close-on-click-outside;
-        forward-focus:query-focus;
-        Rectangle {background:Palette.background;border-width:1px;border-color:Palette.border;border-radius:6px;}
-        query-focus := FocusScope {
-            key-pressed(event)=>{if event.text==Key.Escape {query-popup.close();return accept;}return reject;}
-            VerticalLayout {padding:12px;spacing:8px;
-                HorizontalBox {padding:0px;vertical-stretch:0;
-                    Text {text:Terms.facet-applied-library-filters;font-weight:600;horizontal-stretch:1;}
-                    Button {text:Terms.action-close;triggered =>{query-popup.close();}}
-                }
-                TextEdit {text:root.library-count;read-only:true;wrap:word-wrap;min-width:0px;accessible-label:Terms.caption-committed-library-query;}
-            }
-        }
-    }
-    filters-popup := PopupWindow {
-        x:max(8px,root.width - self.width - 12px);
-        y:toolbar.height + 8px;
-        width:min(500px,root.width - 24px);
-        height:min(620px,root.height - toolbar.height - 24px);
-        close-policy:close-on-click-outside;
-        forward-focus:filter-focus;
-        Rectangle {background:Palette.background;border-width:1px;border-color:Palette.border;border-radius:6px;}
-        filter-focus := FocusScope {
-            key-pressed(event)=>{if event.text==Key.Escape {filters-popup.close();return accept;}return reject;}
-            VerticalLayout {padding:12px;spacing:8px;
-                HorizontalBox {padding:0px;vertical-stretch:0;
-                    Text {text:Terms.caption-library-filters;font-weight:600;vertical-alignment:center;horizontal-stretch:1;}
-                    Button {text:Terms.action-close;accessible-label:Terms.action-close-filters;triggered =>{filters-popup.close();}}
-                }
-                filter-scroll := ScrollView {
-                    accessible-role:groupbox;
-                    accessible-label:Terms.caption-library-filters;
-                    VerticalBox {width:filter-scroll.visible-width;
-                        if root.compact: Text {text:Terms.caption-structural-method;vertical-stretch:0;}
-                        if root.compact: ComboBox {model:root.method-labels;current-index <=> root.method-choice;accessible-label:Terms.caption-structural-method;selected(value)=>{root.rhythm-filter(root.band-choice,root.method-choice);}}
-
-                            Text {text:root.calendar-context;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                            LineEdit {text <=> root.study-query;placeholder-text:Terms.caption-study-doi-or-key-source;accessible-label:Terms.facet-study-evidence-filter;}
-                            ComboBox {model:root.population-labels;current-index <=> root.population-choice;accessible-label:Terms.facet-population-evidence-filter;}
-                            ComboBox {model:root.role-labels;current-index <=> root.role-choice;accessible-label:Terms.facet-condition-role-evidence-filter;}
-                            ComboBox {model:root.analysis-labels;current-index <=> root.analysis-choice;accessible-label:Terms.facet-nominal-analysis-coverage;}
-                            ComboBox {model:root.direction-labels;current-index <=> root.direction-choice;accessible-label:Terms.facet-sort-direction;}
-                            ComboBox {model:root.group-labels;current-index <=> root.group-choice;accessible-label:Terms.facet-library-result-grouping;}
-                            LineEdit {text <=> root.created-from;placeholder-text:Terms.caption-created-from-yyyy-mm-dd;accessible-label:Terms.facet-created-from-local-calendar-date;}
-                            LineEdit {text <=> root.created-through;placeholder-text:Terms.caption-created-through-yyyy-mm-dd;accessible-label:Terms.facet-created-through-inclusive-local-calendar-date;}
-                            LineEdit {text <=> root.modified-from;placeholder-text:Terms.caption-modified-from-yyyy-mm-dd;accessible-label:Terms.facet-modified-from-local-calendar-date;}
-                            LineEdit {text <=> root.modified-through;placeholder-text:Terms.caption-modified-through-yyyy-mm-dd;accessible-label:Terms.facet-modified-through-inclusive-local-calendar-date;}
-                            LineEdit {text <=> root.added-from;placeholder-text:Terms.facet-added-here-from-yyyy-mm-dd;accessible-label:Terms.facet-added-here-from-local-calendar-date;}
-                            LineEdit {text <=> root.added-through;placeholder-text:Terms.facet-added-here-through-yyyy-mm-dd;accessible-label:Terms.facet-added-here-through-inclusive-local-calendar-date;}
-
-
-                        if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
-                    }
-                }
-                HorizontalBox {padding:0px;vertical-stretch:0;
-                    Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
-                    Button {text:Terms.action-apply-filters;primary:true;triggered =>{root.apply-filters();}}
-                }
-            }
-        }
-    }
-    library-options := PopupWindow {
-        x:max(8px,root.width - self.width - 12px);y:toolbar.height + 8px;
-        width:min(450px,root.width - 24px);height:min(480px,root.height - toolbar.height - 24px);
-        close-policy:close-on-click-outside;
-        Rectangle {background:Palette.background;border-width:1px;border-color:Palette.border;border-radius:6px;}
-        FocusScope {
-            key-pressed(event)=>{if event.text==Key.Escape {library-options.close();return accept;}return reject;}
-            options-scroll := ScrollView {VerticalBox {
-                width:options-scroll.visible-width;
-                Text {text:Terms.caption-library-options;font-weight:600;vertical-stretch:0;}
-                if root.compact: ComboBox {model:root.sort-labels;current-index <=> root.sort-choice;accessible-label:Terms.facet-sort-library;selected(value)=>{root.collection-filter(root.collection-choice,root.sort-choice);}}
-                Button {text:Terms.action-open-recipe-dialog;enabled:root.can-import;triggered =>{root.open-recipe();library-options.close();}}
-                Button {text:Terms.action-refresh;triggered =>{root.refresh-library();}}
-                Button {text:Terms.action-show-saved;triggered =>{root.show-saved();library-options.close();}}
-                Button {text:Terms.action-reset-sort;triggered =>{root.reset-library-sort();root.direction-choice=0;}}
-                Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
-                Disclosure {label:Terms.caption-library-storage-and-recovery;expanded <=> root.storage-open;}
-                if root.storage-open: Text {text:root.library-status;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                if root.storage-open: Button {enabled:root.can-manage-library;text:Terms.action-initialize-configured-library;triggered =>{root.initialize-library();}}
-                Button {text:Terms.action-close;triggered =>{library-options.close();}}
-            }}
-        }
-    }
-    component-menu := PopupWindow {
-        x:max(8px,root.width - self.width - 12px);y:toolbar.height + 64px;
-        width:min(310px,root.width - 24px);height:min(root.height - toolbar.height - 80px,root.ui-size*20);
-        close-policy:close-on-click-outside;
-        Rectangle {background:Palette.background;border-width:1px;border-color:Palette.border;border-radius:6px;}
-        FocusScope {
-            key-pressed(event)=>{if event.text==Key.Escape {component-menu.close();return accept;}return reject;}
-            VerticalBox {
-                for label[index] in root.add-choices: Button {text:label;enabled:root.can-add-component;accessible-description:root.add-reason;triggered =>{root.add-component(root.component-menu-document,index);component-menu.close();}}
-                Button {text:Terms.action-add-binaural-pair;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,2);component-menu.close();}}
-                Button {text:Terms.action-add-monaural-pair;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,3);component-menu.close();}}
-                Button {text:Terms.action-close;triggered =>{component-menu.close();}}
-            }
-        }
-    }
     workspace-layout := VerticalBox {
         spacing: 0px;
         toolbar := HorizontalBox {
@@ -450,7 +394,7 @@ export component MainWindow inherits Window {
                 selected(index)=>{root.tab-changed(index);}
             }
             Rectangle {horizontal-stretch:1;}
-            if root.tab-index==0: Button {text:Terms.caption-library-options;triggered =>{library-options.show();}}
+            if root.tab-index==0: Button {text:Terms.caption-library-options;triggered =>{dialogs.open-library-options();}}
             // Left of the lasting controls, so a late press on Cancel export
             // lands in the space it leaves rather than on another control.
             if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:Terms.caption-wav-export-progress;max-width:120px;}
@@ -466,737 +410,148 @@ export component MainWindow inherits Window {
         }
         Rectangle {
             min-height:0px;
-            library-page := Rectangle {
-                accessible-role:tab-panel;accessible-label:Terms.collection-library;
-                visible:root.tab-index==0;
+            library-page := LibraryPane {
                 width:parent.width;height:parent.height;
-
-
-                VerticalBox {
-                    spacing: 0px;
-                    padding: 0px;
-                    if root.library-wide: HorizontalBox {
-                        vertical-stretch: 0;
-                        padding: 12px;
-                        spacing: 10px;
-                        LineEdit {
-                            text <=> root.query;
-                            placeholder-text: Terms.caption-title-id-sound-or-study-topic;
-                            accessible-label: Terms.caption-find-arecipe;
-                            horizontal-stretch: 1;
-                            edited(value) => {root.search(value);}
-                        }
-                        ComboBox {
-                            model: root.method-labels;
-                            current-index <=> root.method-choice;
-                            accessible-label: Terms.caption-structural-method;
-                            selected(value) => {root.rhythm-filter(root.band-choice, root.method-choice);}
-                        }
-                        ComboBox {
-                            model: root.sort-labels;
-                            current-index <=> root.sort-choice;
-                            accessible-label: Terms.facet-sort-library;
-                            selected(value) => {root.collection-filter(root.collection-choice, root.sort-choice);}
-                        }
-                        Button {text:Terms.caption-library-filters;triggered =>{root.open-library-filters();}}
-
-                    }
-                HorizontalBox {
-                    padding: 0px;
-                    vertical-stretch: 1;
-                    if root.library-wide: navigation-scroll := ScrollView {
-                        preferred-width: 220px;
-                        max-width: 250px;
-                        min-width: 190px;
-                        horizontal-stretch: 0;
-                        accessible-role: groupbox;
-                        accessible-label: Terms.caption-browse-rhythm;
-                        VerticalBox {
-                            width: navigation-scroll.visible-width;
-                            padding: 10px;
-                            spacing: 4px;
-                            Text {text:Terms.caption-collections;font-weight:600;vertical-stretch:0;}
-                            for label[index] in root.collection-labels: LibraryNavigationItem {
-                                label:label; description:label; selected:root.collection-choice==index;
-                                text-size:root.ui-size;
-                                activated=>{root.collection-filter(index,root.sort-choice);}
-                            }
-                            Rectangle {height:1px;background:Palette.border;vertical-stretch:0;}
-                            Text {text:Terms.caption-browse-rhythm;font-weight:600;vertical-stretch:0;}
-                            for facet[index] in root.band-navigation: LibraryNavigationItem {
-                                label:facet.label;detail:facet.detail;count:facet.count;description:facet.text;
-                                selected:root.band-choice==index;text-size:root.ui-size;
-                                activated=>{root.rhythm-filter(index,root.method-choice);}
-                            }
-                            Rectangle {vertical-stretch:1;}
-                        }
-                    }
-                    if !root.compact || !root.library-detail: VerticalBox {
-                        preferred-width: root.has-results && !root.compact ? root.sidebar-width : 600px;
-                        max-width: root.has-results && !root.compact ? root.sidebar-width : 3000px;
-                        if !root.library-wide: VerticalBox {
-                            vertical-stretch:0;padding:0px;spacing:4px;
-                        HorizontalBox {padding:0px;vertical-stretch:0;
-                        ComboBox {
-                            min-width:0px;
-                            model: root.collection-labels;
-                            current-index <=> root.collection-choice;
-                            accessible-label: Terms.caption-library-collection;
-                            selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
-                        }
-                        if !root.compact: ComboBox {
-                            min-width:0px;
-                            model: root.sort-labels;
-                            current-index <=> root.sort-choice;
-                            accessible-label: Terms.facet-sort-library;
-                            selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
-                        }
-                        if root.compact: ComboBox {
-                            min-width:0px;
-                            model: root.band-labels;
-                            current-index <=> root.band-choice;
-                            accessible-label: Terms.caption-nominal-rhythm-reference-band;
-                            selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
-                        }
-                        }
-                        HorizontalBox {padding:0px;vertical-stretch:0;
-                        LineEdit {
-                            text <=> root.query;
-                            placeholder-text: Terms.caption-title-id-sound-or-study-topic;
-                            accessible-label: Terms.caption-find-arecipe;
-                            edited(value) => {
-                                root.search(value);
-                            }
-                        }
-                            Button {text:Terms.caption-library-filters;triggered =>{root.open-library-filters();}}
-                        }
-                        if !root.compact: HorizontalBox {padding:0px;vertical-stretch:0;
-                        ComboBox {
-                            min-width:0px;
-                            model: root.band-labels;
-                            current-index <=> root.band-choice;
-                            accessible-label: Terms.caption-nominal-rhythm-reference-band;
-                            selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
-                        }
-                        ComboBox {
-                            min-width:0px;
-                            model: root.method-labels;
-                            current-index <=> root.method-choice;
-                            accessible-label: Terms.caption-structural-method;
-                            selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
-                        }
-                        }
-                        if root.band-choice != 0 || root.method-choice != 0: Button {
-                            text: Terms.action-clear-rhythm-filters;
-                            triggered => {
-                                root.band-choice = 0;
-                                root.method-choice = 0;
-                                root.rhythm-filter(0, 0);
-                            }
-                        }
-
-                        if root.query != "": Button {
-                            text: Terms.action-clear-search;
-                            triggered => {
-                                root.query="";
-                                root.search("");
-                            }
-                        }
-
-                        }
-                        if root.library-wide: VerticalBox {
-                            vertical-stretch:0;padding:12px;spacing:8px;
-                            Text {text:root.band-choice!=0 || root.collection-choice==0 ? root.band-navigation[root.band-choice].label : root.collection-labels[root.collection-choice];font-size:root.ui-size*1.4;font-weight:700;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-
-
-                        }
-                                HorizontalBox {padding:0px;vertical-stretch:0;
-                                    Text {text:root.library-overview;min-width:0px;wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;}
-                                    Button {text:Terms.action-query-details;accessible-label:Terms.facet-applied-library-filters;accessible-expanded:root.library-query-open;triggered =>{root.open-query-details();}}
-                                }
-
-                        catalog-scroll := ScrollView {
-                            min-height:max(64px,root.ui-size*3);
-                            content-y: root.library-scroll-y;
-                            changed content-y => {if !root.library-restoring {root.library-scroll-y=self.content-y;}}
-                            accessible-role:list;
-                            accessible-label:Terms.caption-library-results;
-                            VerticalBox {
-                                spacing: 4px;
-                                width:catalog-scroll.visible-width;
-                                if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
-                                if !root.has-results && root.file-activity != "": Text {text:root.file-activity;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                                if !root.has-results: Text {text:root.library-empty-message;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                                if !root.has-results && root.library-filters-active: Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
-
-                        if !root.has-results: HorizontalBox { vertical-stretch:0;
-                        Button {
-                            horizontal-stretch:0;
-                            text: Terms.action-open-recipe-dialog;
-                            enabled: root.can-import;
-                            triggered => {
-                                root.open-recipe();
-                            }
-                        }
-                        Button {
-                            horizontal-stretch:0;
-                            text:Terms.caption-create-sound;
-                            enabled:root.can-new;
-                            triggered =>{root.new-draft();}
-                        }
-                        Rectangle {horizontal-stretch:1;}
-                        }
-
-
-                                for item[index] in root.catalog: catalog-row := Rectangle {
-                                    property <bool> selected-row: root.selected==index;
-                                    // A row created already selected, such as a new import,
-                                    // reveals itself once it has been laid out.
-                                    initial-reveal := Timer {
-                                        interval: 1ms;
-                                        running: catalog-row.selected-row;
-                                        triggered => {
-                                            self.running = false;
-                                            if root.library-restoring {root.library-restore-ready=true;}
-                                            else {catalog-row.reveal();}
-                                        }
-                                    }
-                                    function reveal() {
-                                        if self.selected-row && !root.library-restoring {
-                                            if self.y + catalog-scroll.content-y < 0px {catalog-scroll.content-y=-self.y;}
-                                            else if self.y+self.height+catalog-scroll.content-y > catalog-scroll.visible-height {catalog-scroll.content-y=catalog-scroll.visible-height - self.y - self.height;}
-                                        }
-                                    }
-                                    changed selected-row => {self.reveal();}
-                                    changed y => {self.reveal();}
-                                    changed height => {self.reveal();}
-
-                                    height: max(root.ui-size*3.5, card-content.preferred-height + 16px);
-                                    border-radius: 6px;
-                                    background: self.selected-row ? Palette.accent-background.with-alpha(0.12) : Palette.background;
-                                    border-width: focus.has-focus ? 2px : 0px;
-                                    border-color: root.selected == index ? Palette.accent-background : Palette.border;
-                                    accessible-role: list-item;
-                                    accessible-label: item.text;
-                                    accessible-item-selectable: item.binding != "";
-                                    accessible-item-selected: self.selected-row;
-                                    property <bool> wants-focus: self.selected-row && item.binding != "" && root.focused-library-key == item.binding;
-                                    changed wants-focus => {if self.wants-focus {focus.focus();}}
-
-                                    accessible-action-default => {
-                                        touch.clicked();
-                                    }
-                                    card-content := VerticalLayout {
-                                        x:10px;y:8px;width:parent.width - 20px;height:parent.height - 16px;spacing:4px;
-                                        Text {text:item.title;font-size:root.ui-size*1.08;font-weight:600;min-width:0px;wrap:word-wrap;color:Palette.control-foreground;}
-                                        if !item.built-in && item.collection != "": Text {text:item.collection;min-width:0px;wrap:word-wrap;color:Palette.control-foreground;}
-
-                                        if item.summary != "": Text {text:item.summary;min-width:0px;wrap:word-wrap;color:Palette.control-foreground;}
-                                        if item.duration != "": Text {text:item.duration;min-width:0px;wrap:word-wrap;color:Palette.control-foreground;}
-                                        if item.dates != "" && (!item.built-in || root.sort-choice==3 || root.sort-choice==4 || root.sort-choice==5): Text {text:item.dates;min-width:0px;wrap:word-wrap;font-size:root.ui-size*0.9;color:Palette.control-foreground;}
-                                    }
-                                    focus := FocusScope {
-                                        enabled:item.binding != "";
-                                        focus-on-tab-navigation:catalog-row.selected-row && item.binding != "";
-                                        changed has-focus => { if self.has-focus {root.focused-library-key=item.binding;} else if catalog-row.selected-row && root.focused-library-key==item.binding {root.focused-library-key="";} }
-                                        key-pressed(event) => {
-                                            if event.text == Key.DownArrow || event.text == Key.UpArrow || event.text == Key.Home || event.text == Key.End {
-                                                root.navigate-library(event.text == Key.DownArrow ? 1 : event.text == Key.UpArrow ? -1 : event.text == Key.Home ? -2 : 2);
-                                                root.focused-library-key=root.library-key;
-                                                return accept;
-                                            }
-
-                                            if event.text == Terms.caption-line-break || event.text == " " {
-                                                root.select(item.binding);
-                                                root.library-detail=true;
-                                                return accept;
-                                            }
-                                            return reject;
-                                        }
-                                    }
-                                    // Above the focus scope, so a pointer press reaches it.
-                                    touch := TouchArea {
-                                        enabled:item.binding != "";
-                                        private property <string> captured;
-                                        private property <bool> armed:false;
-                                        changed pressed => {if self.pressed {self.captured=item.binding;self.armed=true;}}
-                                        clicked => {
-                                            focus.focus();
-                                            root.select(self.armed ? self.captured : item.binding);
-                                            self.armed=false;
-
-                                            root.library-detail=true;
-                                        }
-                                    }
-                                }
-                                Rectangle {
-                                    vertical-stretch: 1;
-                                }
-                            }
-                        }
-                        // Re-created compact list rows must not replace the saved
-                        // scroll position with their initial selection reveal.
-                        Timer { interval:1ms;running:root.library-restoring && (root.library-restore-ready || !root.has-results);
-                            triggered=>{
-                                catalog-scroll.content-y=max(min(0px,root.library-scroll-y),min(0px,catalog-scroll.visible-height - catalog-scroll.content-height));
-                                root.library-scroll-y=catalog-scroll.content-y;
-                                root.library-restoring=false;
-                            }
-                        }
-
-                    }
-                    if !root.compact && root.has-results: Rectangle {
-                        width: 6px;
-                        background: resize-touch.has-hover || resize-focus.has-focus ? Palette.accent-background : Palette.border;
-                        accessible-role: slider;
-                        accessible-label: Terms.caption-library-pane-width;
-                        accessible-value: root.sidebar-width / 1px;
-                        accessible-value-minimum: 230;
-                        accessible-value-maximum: 500;
-                        accessible-value-step: 16;
-                        accessible-action-set-value(v) => {
-                            if v.is-float() {
-                                root.resize-library-pane(v.to-float());
-                            }
-                        }
-                        accessible-action-increment => {
-                            root.resize-library-pane(root.sidebar-width/1px + 16);
-                        }
-                        accessible-action-decrement => {
-                            root.resize-library-pane(root.sidebar-width/1px - 16);
-                        }
-                        forward-focus: resize-focus;
-                        resize-focus := FocusScope {
-                            key-pressed(event)=> {
-                                if event.text==Key.LeftArrow {
-                                    root.resize-library-pane(root.sidebar-width/1px - 16);
-                                    return accept;
-                                }
-                                if event.text==Key.RightArrow {
-                                    root.resize-library-pane(root.sidebar-width/1px + 16);
-                                    return accept;
-                                }
-                                return reject;
-                            }
-                        }
-                        // Above the focus scope, so a pointer press reaches it.
-                        resize-touch := TouchArea {
-                            mouse-cursor:col-resize;
-                            clicked=> {
-                                resize-focus.focus();
-                            }
-                            moved=> {
-                                if self.pressed {
-                                    root.resize-library-pane((root.sidebar-width + self.mouse-x - self.pressed-x)/1px);
-                                }
-                            }
-                        }
-                    }
-                    if root.has-results && (!root.compact || root.library-detail): detail-scroll := ScrollView {
-                        // Follow the visible width so long text wraps rather than widening the page.
-                        VerticalBox {
-                            width: detail-scroll.visible-width;
-                            spacing: 10px;
-                            if root.compact: Button {
-                                text:Terms.action-back-to-recipes;
-                                triggered => {
-                                    root.library-restore-ready=false;
-                                    root.library-restoring=true;
-                                    root.library-detail=false;
-                                }
-                            }
-
-
-                            if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
-
-                            if root.has-results: VerticalBox {
-                                vertical-stretch: 0;
-                                if root.library-ownership != "": Text {text:root.library-ownership;font-weight:600;min-width:0px;wrap:word-wrap;vertical-stretch:0;}
-                                Text {min-width:0px;
-                                    text:root.sound-title;
-                                    font-size:root.ui-size*1.85;
-                                    font-weight:600;
-                                    wrap:word-wrap;
-                                    vertical-stretch:0;
-                                }
-
-                                Text {min-width:0px;
-                                    text:root.structure;
-                                    wrap:word-wrap;
-                                    vertical-stretch:0;
-                                }
-                                Text {min-width:0px;
-                                    text:root.recipe-timing;
-                                    wrap:word-wrap;
-                                    vertical-stretch:0;
-                                }
-                                HorizontalBox {
-                                    padding: 0px;
-                                    vertical-stretch: 0;
-
-                                    Button {text:Terms.action-preview-waveform;enabled:root.can-preview;triggered =>{root.preview-selected();}}
-                                    Button {
-                                        text:Terms.action-edit-acopy;
-                                        enabled:root.can-copy;
-                                        accessible-description:root.copy-reason;
-                                        triggered => {
-                                            root.open-workbench();
-                                        }
-                                    }
-                                    Button {
-                                        text:Terms.action-export-wav-dialog;
-                                        enabled:root.can-export;
-                                        triggered => {
-                                            root.export-wav();
-                                        }
-                                    }
-
-                                }
-                                // A custom recipe has no study or summary to show.
-                                if root.studied != "": Text {min-width:0px;text:root.studied;wrap:word-wrap;vertical-stretch:0;}
-                                if root.summary != "": VerticalBox {padding:0px;vertical-stretch:0;
-                                summary-disclosure := Disclosure {label:Terms.caption-research-summary;}
-                                if summary-disclosure.expanded: Text {min-width:0px;text:root.summary;wrap:word-wrap;vertical-stretch:0;}
-
-
-                                }
-                                Rectangle {height:1px;background:Palette.border;vertical-stretch:0;}
-                                Text {text:Terms.caption-classification;font-weight:600;vertical-stretch:0;}
-                                Text {text:root.library-classification;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                                metadata-disclosure := Disclosure {label:Terms.caption-source-dates-details;}
-                                if metadata-disclosure.expanded: VerticalBox {vertical-stretch:0;
-                                Rectangle {height:1px;background:Palette.border;vertical-stretch:0;}
-
-                                if root.library-dates != "": Text {text:root.library-dates;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
-                                utc-dates := Disclosure {label:Terms.facet-exact-utc-dates;}
-                                if utc-dates.expanded: TextEdit {text:root.library-dates-utc;read-only:true;wrap:word-wrap;accessible-label:Terms.facet-exact-utc-recipe-and-membership-dates;min-width:0px;height:root.ui-size*8;vertical-stretch:0;}
-                                if root.library-key != "": Text {text:root.library-key;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
-                                }
-                                if root.library-token != "" && !root.library-trashed: BoundButton {enabled:root.can-new;text:Terms.action-edit-saved-user-recipe;key:root.library-key;token:root.library-token;activated(k,t)=>{root.edit-saved(k,t);}}
-                                Button {text:Terms.action-export-portable-recipe-dialog;enabled:root.can-export-recipe;triggered =>{root.export-recipe();}}
-                                if root.collection-choice == 3: BoundButton {text:Terms.action-close-open-file;key:root.library-key;token:"";activated(k,t)=>{root.close-open-file(k);}}
-                                if root.collection-choice == 3: BoundButton {enabled:root.can-new;text:Terms.action-edit-external-file;key:root.library-key;token:"";activated(k,t)=>{root.edit-saved(k,t);}}
-                                if root.collection-choice == 3: BoundButton {enabled:root.can-add-to-library;text:Terms.action-add-to-user-library;key:root.library-key;token:"";activated(k,t)=>{root.add-to-library(k);}}
-                                if root.library-token != "": VerticalBox { vertical-stretch:0;
-                                    if !root.library-trashed: BoundTitleEdit {enabled:root.can-manage-library;key:root.library-key;token:root.library-token;placeholder-text:Terms.caption-new-title;accessible-label:Terms.action-rename-saved-recipe;rename(k,t,value)=>{root.library-action(k,t,Terms.action-rename,value);} }
-                                    BoundButton {enabled:root.library-trashed ? root.can-manage-library : root.can-request-trash;text:root.library-trashed ? Terms.action-restore-from-trash : Terms.action-move-saved-entry-to-trash;key:root.library-key;token:root.library-token;action:root.library-trashed ? Terms.action-restore : Terms.action-trash;dispatch(k,t,action)=>{root.library-action(k,t,action,"");}}
-                                    if root.library-trashed: BoundButton {enabled:root.can-manage-library;text:Terms.action-permanently-delete-dialog;key:root.library-key;token:root.library-token;activated(k,t)=>{root.library-action(k,t,Terms.action-purge,"");}}
-                                }
-                                Disclosure {label:Terms.caption-research-citation-and-sound-adaptations;expanded <=> root.research;}
-                                if root.research && root.can-open-study: Button {text:Terms.action-open-study-source;triggered =>{root.open-study();}}
-                                if root.research: Button {text:Terms.action-read-selectable-research-and-recipe-details-dialog;triggered =>{root.show-research();}}
-                                library-pattern := Disclosure {label:Terms.caption-pattern-explained-static-core-model;}
-                                if library-pattern.expanded: VerticalBox {
-                                    vertical-stretch:0;
-                                    Text {min-width:0px;text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
-                                    for lane in root.model-lanes: VerticalBox {
-                                        vertical-stretch:0;
-                                        Text {min-width:0px;text:lane.label;wrap:word-wrap;vertical-stretch:0;}
-                                        Rectangle {height:30px;background:Palette.control-background;
-                                            accessible-role:image;accessible-label:lane.label+Terms.caption-static-model;
-                                            Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
-                                        }
-                                    }
-                                }
-                                Disclosure {label:Terms.action-export-settings;expanded <=> root.export-settings;}
-                                if root.export-settings: ExportRate {
-                                    choices:root.export-rates;
-                                    selected <=> root.rate-index;
-                                    edit-enabled:true;
-                                    changed(i)=> {
-                                        root.rate-changed(i);
-                                    }
-                                }
-                            }
-                            Rectangle {
-                                vertical-stretch:1;
-                            }
-                        }
-                    }
-                }
-                }
-
+                add-to-library(arg0) => { root.add-to-library(arg0); }
+                band-choice <=> root.band-choice;
+                band-labels: root.band-labels;
+                band-navigation: root.band-navigation;
+                can-add-to-library: root.can-add-to-library;
+                can-copy: root.can-copy;
+                can-export: root.can-export;
+                can-export-recipe: root.can-export-recipe;
+                can-import: root.can-import;
+                can-manage-library: root.can-manage-library;
+                can-new: root.can-new;
+                can-open-study: root.can-open-study;
+                can-preview: root.can-preview;
+                can-request-trash: root.can-request-trash;
+                catalog: root.catalog;
+                clear-applied-filters() => { root.clear-applied-filters(); }
+                close-open-file(arg0) => { root.close-open-file(arg0); }
+                collection-choice <=> root.collection-choice;
+                collection-filter(arg0, arg1) => { root.collection-filter(arg0, arg1); }
+                collection-labels: root.collection-labels;
+                compact <=> root.compact;
+                copy-reason: root.copy-reason;
+                edit-saved(arg0, arg1) => { root.edit-saved(arg0, arg1); }
+                export-rates: root.export-rates;
+                export-recipe() => { root.export-recipe(); }
+                export-settings <=> root.export-settings;
+                export-wav() => { root.export-wav(); }
+                file-activity: root.file-activity;
+                focused-library-key <=> root.focused-library-key;
+                has-results: root.has-results;
+                library-action(arg0, arg1, arg2, arg3) => { root.library-action(arg0, arg1, arg2, arg3); }
+                library-alert: root.library-alert;
+                library-classification: root.library-classification;
+                library-dates: root.library-dates;
+                library-dates-utc: root.library-dates-utc;
+                library-detail <=> root.library-detail;
+                library-empty-message: root.library-empty-message;
+                library-filters-active: root.library-filters-active;
+                library-key: root.library-key;
+                library-overview: root.library-overview;
+                library-ownership: root.library-ownership;
+                library-query-open: root.library-query-open;
+                library-scroll-y <=> root.library-scroll-y;
+                library-token: root.library-token;
+                library-trashed: root.library-trashed;
+                library-wide <=> root.library-wide;
+                method-choice <=> root.method-choice;
+                method-labels: root.method-labels;
+                model-caption: root.model-caption;
+                model-lanes: root.model-lanes;
+                navigate-library(arg0) => { root.navigate-library(arg0); }
+                new-draft() => { root.new-draft(); }
+                open-library-filters() => { root.open-library-filters(); }
+                open-query-details() => { root.open-query-details(); }
+                open-recipe() => { root.open-recipe(); }
+                open-study() => { root.open-study(); }
+                open-workbench() => { root.open-workbench(); }
+                preview-selected() => { root.preview-selected(); }
+                query <=> root.query;
+                rate-changed(arg0) => { root.rate-changed(arg0); }
+                rate-index <=> root.rate-index;
+                recipe-timing: root.recipe-timing;
+                research <=> root.research;
+                resize-library-pane(arg0) => { root.resize-library-pane(arg0); }
+                rhythm-filter(arg0, arg1) => { root.rhythm-filter(arg0, arg1); }
+                search(arg0) => { root.search(arg0); }
+                select(arg0) => { root.select(arg0); }
+                selected <=> root.selected;
+                show-research() => { root.show-research(); }
+                sidebar-width <=> root.sidebar-width;
+                sort-choice <=> root.sort-choice;
+                sort-labels: root.sort-labels;
+                sound-title: root.sound-title;
+                structure: root.structure;
+                studied: root.studied;
+                summary: root.summary;
+                tab-index <=> root.tab-index;
+                ui-size: root.ui-size;
             }
-            Rectangle {
-                accessible-role:tab-panel;accessible-label:Terms.caption-workbench;
-                visible:root.tab-index==1;
+            WorkbenchPane {
                 width:parent.width;height:parent.height;
-
-
-                editor-scroll := ScrollView {
-                    width:parent.width;height:parent.height;
-                    content-y <=> root.editor-scroll-y;
-                    // Follow the visible width so long text wraps rather than widening the page.
-                    VerticalBox {
-                    width: editor-scroll.visible-width;
-                    HorizontalBox {
-                        padding: 0px;
-                        vertical-stretch: 0;
-                        Text {
-                            text:root.title-field.label;
-                            vertical-alignment:center;
-                        }
-                        MetadataField {
-                            key: MetadataKey.title;
-                            field: root.title-field;
-                            binding: root.document;
-                            reset-key:root.document-reset;
-                            enabled:root.can-edit;
-                            edits-suspended:root.edits-suspended;
-                            accessible-label:Terms.caption-sound-title;
-                            stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
-                            commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
-                            restore-field(owner, key) => { root.restore-metadata(owner, key); }
-                        }
-                    }
-                    HorizontalBox {vertical-stretch:0;
-                        Text {min-width:0px;
-                            text:root.dirty ? Terms.status-unsaved-changes : Terms.status-unmodified-draft;
-                            wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;
-                        }
-                        Button {text:Terms.action-add-component;enabled:root.can-edit;triggered =>{root.open-component-menu();}}
-                        Button {
-                            horizontal-stretch:0;
-                            text:Terms.action-new;
-                            enabled:root.can-new;
-                            triggered => {
-                                root.new-draft();
-                            }
-                        }
-                    }
-
-
-                    if root.pair-add-reason != "" && root.add-reason == "": Text {min-width:0px;text:root.pair-add-reason;wrap:word-wrap;vertical-stretch:0;}
-                    if root.add-reason != "": Text {min-width:0px;text:root.add-reason;wrap:word-wrap;vertical-stretch:0;}
-                    if root.removed-component != "": HorizontalBox {
-                        padding: 0px;
-                        vertical-stretch: 0;
-                        Button {
-                            text: Terms.action-undo-remove;
-                            horizontal-stretch: 0;
-                            enabled: root.can-restore-component;
-                            accessible-description: root.removed-component + " " + root.add-reason;
-                            triggered => { root.restore-component(root.document); }
-                        }
-                        Text {min-width:0px;horizontal-stretch:1;text:root.removed-component;wrap:word-wrap;vertical-alignment:center;}
-                    }
-                    if root.retained-warning != "": Text {min-width:0px;
-                        text:root.retained-warning;
-                        color:Palette.foreground;
-                        font-weight:700;
-                        wrap:word-wrap;
-                        vertical-stretch:0;
-                        accessible-label:root.retained-warning;
-                        accessible-live-region:polite;
-                    }
-                    if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
-                    if root.metadata-error != "": Text {min-width:0px;text:root.metadata-error;wrap:word-wrap;vertical-stretch:0;accessible-live-region:polite;}
-                    if root.save-reason != "": Text {min-width:0px;text:root.save-reason;wrap:word-wrap;vertical-stretch:0;}
-                    Text {min-width:0px;text:root.draft-location;wrap:word-wrap;vertical-stretch:0;}
-                    Text {min-width:0px;text:root.draft-brief; wrap:word-wrap; vertical-stretch:0;}
-                    if root.based-on-title != "": Text {min-width:0px;
-                        text:root.based-on-title;
-                        wrap:word-wrap;
-                        font-size:root.ui-size*0.93;
-                        vertical-stretch:0;
-                    }
-                    for row in root.components: VerticalBox {
-                        spacing: 4px;
-                        vertical-stretch: 0;
-                        Rectangle {
-                            height:1px;
-                            background:Palette.border;
-                        }
-                        Text {
-                            text: row.heading;
-                            font-weight: 700;
-                            vertical-stretch: 0;
-                        }
-                        Text {min-width:0px;text:row.context; wrap:word-wrap; vertical-stretch:0;}
-                        pattern := Disclosure {label:Terms.caption-pattern-explained-static-core-model;}
-                        if pattern.expanded: VerticalBox {
-                            vertical-stretch:0;
-                            Text {min-width:0px;text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
-                            VerticalBox {
-                              padding:0px; spacing:0px; vertical-stretch:0;
-                              for lane in root.model-lanes: VerticalBox {
-                                padding:0px; spacing:0px; vertical-stretch:0;
-                                if lane.component == row.id: VerticalBox {
-                                  vertical-stretch:0;
-                                  Text {min-width:0px;text:lane.label;wrap:word-wrap;vertical-stretch:0;}
-                                  Rectangle {height:36px;background:Palette.control-background;
-                                      accessible-role:image;accessible-label:lane.label+Terms.caption-static-model-origin-zero;
-                                      Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
-                                  }
-                                }
-                              }
-                            }
-                        }
-                        component-options := Disclosure {label:Terms.caption-routing-modulation-and-component-options;}
-                        // Labels beside choices sized to their content; the
-                        // shared column keeps the three choices aligned.
-                        if component-options.expanded: GridLayout {
-                            spacing: 6px;
-                            vertical-stretch: 0;
-                            Row {
-                                if row.routing-editable: Text { text: Terms.caption-ears; vertical-alignment: center; }
-                                if row.routing-editable: ComboBox { enabled: root.can-edit; model: root.ears-choices; current-index: row.ears; accessible-label: row.name + Terms.caption-ears-suffix; selected(value) => { root.set-ears(row.key, self.current-index); } }
-                                Rectangle { horizontal-stretch: 1; }
-                            }
-                            Row {
-                                if row.carrier >= 0: Text { text: Terms.caption-carrier; vertical-alignment: center; }
-                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.carrier-choices; current-index: row.carrier; accessible-label: row.name + Terms.caption-carrier-suffix; selected(value) => { root.set-carrier(row.key, self.current-index); } }
-                            }
-                            Row {
-                                if row.carrier >= 0: Text { text: Terms.caption-modulation; vertical-alignment: center; }
-                                if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.modulation-choices; current-index: row.modulation; accessible-label: row.name + Terms.caption-modulation-suffix; selected(value) => { root.set-modulation(row.key, self.current-index); } }
-                            }
-                            Row { Button { col:1; text: Terms.action-remove; enabled: root.can-edit; accessible-label: Terms.action-remove-prefix + row.name; triggered => { root.remove-component(row.key); } } }
-                        }
-                        for parameter in row.parameters: ParameterControl {
-                            parameter: parameter;
-                            owner: row.key;
-                            context: row.name;
-                            compact: root.compact;
-                            ui-size: root.ui-size;
-                            edit-enabled: root.can-edit;
-                            edits-suspended: root.edits-suspended;
-                            stage(owner, key, value) => { root.stage-parameter(owner, key, value); }
-                            commit(owner, key, value) => { root.commit-parameter(owner, key, value); }
-                            restore(owner, key) => { root.restore-parameter(owner, key); }
-                            slide(owner, key, value) => { root.slide(owner, key, value); }
-                        }
-                        if row.error != "": Text {min-width:0px;
-                            text: row.error;
-                            color: Palette.foreground;
-                            accessible-live-region: polite;
-                            wrap: word-wrap;
-                            vertical-stretch: 0;
-                        }
-                    }
-                    Text {min-width:0px;
-                        text:root.peak;
-                        wrap:word-wrap;
-                        vertical-stretch:0;
-                    }
-                    settings := Disclosure {label:Terms.caption-sound-settings-notes-and-saved-exported-audio;}
-                    if settings.expanded: VerticalBox {
-                        vertical-stretch:0;
-                        Text {text:root.draft-location-details;min-width:0px;wrap:word-wrap;vertical-stretch:0;}
-
-                        Button {text:Terms.action-export-portable-draft-recipe-dialog;enabled:root.can-export-recipe;triggered =>{root.export-recipe();}}
-
-                        HorizontalLayout {
-                            Button {
-                                horizontal-stretch:0;
-                                text:Terms.action-export-wav-dialog;
-                                enabled:root.can-export;
-                                accessible-description:root.export-reason;
-                                triggered => {
-                                    root.export-wav();
-                                }
-                            }
-                            Rectangle {}
-                        }
-                        if !root.can-export && root.export-reason != "": Text {min-width:0px;text:root.export-reason;wrap:word-wrap;vertical-stretch:0;}
-                        Disclosure {label:Terms.caption-sound-notes;expanded <=> root.notes;}
-                        if root.notes: VerticalBox {
-                            vertical-stretch:0;
-                            if root.based-on != "": Text {min-width:0px;
-                                text:root.based-on;
-                                wrap:word-wrap;
-                                vertical-stretch:0;
-                            }
-                            if root.based-on != "": Button {
-                                text:Terms.action-show-copied-from-snapshot-in-library;
-                                triggered => {
-                                    root.based-on-source();
-                                }
-                            }
-                            Text {
-                                text:Terms.caption-your-notes-about-this-sound;
-                                vertical-stretch:0;
-                            }
-                            NotesField {
-                                key: MetadataKey.summary;
-                                field: root.summary-field;
-                                binding: root.document;
-                                reset-key:root.document-reset;
-                                enabled:root.can-edit;
-                                edits-suspended:root.edits-suspended;
-                                accessible-label:Terms.caption-custom-recipe-notes;
-                                stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
-                                commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
-                                restore-field(owner, key) => { root.restore-metadata(owner, key); }
-                            }
-                        }
-                        Disclosure {label:Terms.action-saved-audio-duration-fades-and-export-rate;expanded <=> root.saved-audio;}
-                        if root.saved-audio: VerticalBox {
-                            vertical-stretch:0;
-                            Text {min-width:0px;
-                                text:Terms.caption-saved-audio-help;
-                                wrap:word-wrap;
-                                vertical-stretch:0;
-                            }
-                            HorizontalBox {
-                                padding: 0px;
-                                vertical-stretch: 0;
-                                Text {
-                                    text:root.duration-field.label;
-                                    vertical-alignment:center;
-                                }
-                                MetadataField {
-                                    key: MetadataKey.duration;
-                                    field: root.duration-field;
-                                    binding: root.document;
-                                    reset-key:root.document-reset;
-                                    enabled:root.can-edit;
-                                    edits-suspended:root.edits-suspended;
-                                    accessible-label:Terms.action-saved-duration;
-                                    horizontal-stretch:0;
-                                    preferred-width:root.ui-size*10;
-                                    stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
-                                    commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
-                                    restore-field(owner, key) => { root.restore-metadata(owner, key); }
-                                }
-                                Text {
-                                    text:root.fade-field.label;
-                                    vertical-alignment:center;
-                                }
-                                MetadataField {
-                                    key: MetadataKey.fade;
-                                    field: root.fade-field;
-                                    binding: root.document;
-                                    reset-key:root.document-reset;
-                                    enabled:root.can-edit;
-                                    edits-suspended:root.edits-suspended;
-                                    accessible-label:Terms.action-saved-fade;
-                                    horizontal-stretch:0;
-                                    preferred-width:root.ui-size*10;
-                                    stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
-                                    commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
-                                    restore-field(owner, key) => { root.restore-metadata(owner, key); }
-                                }
-                                Rectangle {}
-                            }
-                            if root.duration-field.diagnostic != "": Text {min-width:0px;text:root.duration-field.diagnostic;wrap:word-wrap;vertical-stretch:0;}
-                            if root.fade-field.diagnostic != "": Text {min-width:0px;text:root.fade-field.diagnostic;wrap:word-wrap;vertical-stretch:0;}
-                            ExportRate {
-                                choices:root.export-rates;
-                                selected <=> root.rate-index;
-                                edit-enabled:true;
-                                changed(i)=> {
-                                    root.rate-changed(i);
-                                }
-                            }
-                        }
-                    }
-                    Rectangle {
-                        vertical-stretch:1;
-                    }
-                    }
-                }
-
+                add-reason: root.add-reason;
+                based-on: root.based-on;
+                based-on-source() => { root.based-on-source(); }
+                based-on-title: root.based-on-title;
+                can-edit: root.can-edit;
+                can-export: root.can-export;
+                can-export-recipe: root.can-export-recipe;
+                can-new: root.can-new;
+                can-restore-component: root.can-restore-component;
+                carrier-choices: root.carrier-choices;
+                commit-metadata(arg0, arg1, arg2) => { root.commit-metadata(arg0, arg1, arg2); }
+                commit-parameter(arg0, arg1, arg2) => { root.commit-parameter(arg0, arg1, arg2); }
+                compact <=> root.compact;
+                components: root.components;
+                dirty: root.dirty;
+                document: root.document;
+                document-reset: root.document-reset;
+                draft-brief: root.draft-brief;
+                draft-location: root.draft-location;
+                draft-location-details: root.draft-location-details;
+                duration-field: root.duration-field;
+                ears-choices: root.ears-choices;
+                editor-scroll-y <=> root.editor-scroll-y;
+                edits-suspended <=> root.edits-suspended;
+                export-rates: root.export-rates;
+                export-reason: root.export-reason;
+                export-recipe() => { root.export-recipe(); }
+                export-wav() => { root.export-wav(); }
+                fade-field: root.fade-field;
+                file-activity: root.file-activity;
+                metadata-error: root.metadata-error;
+                model-caption: root.model-caption;
+                model-lanes: root.model-lanes;
+                modulation-choices: root.modulation-choices;
+                new-draft() => { root.new-draft(); }
+                notes <=> root.notes;
+                open-component-menu() => { root.open-component-menu(); }
+                pair-add-reason: root.pair-add-reason;
+                peak: root.peak;
+                rate-changed(arg0) => { root.rate-changed(arg0); }
+                rate-index <=> root.rate-index;
+                remove-component(arg0) => { root.remove-component(arg0); }
+                removed-component: root.removed-component;
+                restore-component(arg0) => { root.restore-component(arg0); }
+                restore-metadata(arg0, arg1) => { root.restore-metadata(arg0, arg1); }
+                restore-parameter(arg0, arg1) => { root.restore-parameter(arg0, arg1); }
+                retained-warning: root.retained-warning;
+                save-reason: root.save-reason;
+                saved-audio <=> root.saved-audio;
+                set-carrier(arg0, arg1) => { root.set-carrier(arg0, arg1); }
+                set-ears(arg0, arg1) => { root.set-ears(arg0, arg1); }
+                set-modulation(arg0, arg1) => { root.set-modulation(arg0, arg1); }
+                slide(arg0, arg1, arg2) => { root.slide(arg0, arg1, arg2); }
+                stage-metadata(arg0, arg1, arg2) => { root.stage-metadata(arg0, arg1, arg2); }
+                stage-parameter(arg0, arg1, arg2) => { root.stage-parameter(arg0, arg1, arg2); }
+                summary-field: root.summary-field;
+                tab-index <=> root.tab-index;
+                title-field: root.title-field;
+                ui-size: root.ui-size;
             }
         }
         Rectangle {
@@ -1232,41 +587,23 @@ export component MainWindow inherits Window {
                 }
             }
         }
-        transport := Rectangle {
-            accessible-role:groupbox;accessible-label:Terms.caption-playback-transport;
-            changed preferred-height=>{root.update-monitor-layout();}
-            min-height:self.preferred-height;max-height:self.preferred-height;
-            vertical-stretch:0;
-            background:Palette.control-background;border-width:1px;border-color:Palette.border;
-            VerticalBox {padding:8px;spacing:3px;
-                HorizontalBox {vertical-stretch:0;padding:0px;
-                    StableButton {text:root.transport-action;labels:root.transport-labels;primary:true;enabled:root.transport-enabled;accessible-name:root.transport-action+(root.playback-busy || root.play-target == "" ? "" : " · "+root.play-target);clicked=>{root.play-stop();}}
-                    VerticalBox {padding:0px;spacing:2px;horizontal-stretch:1;
-                        // One line each: the transport keeps its height; Details has the full text.
-                        Text {min-width:0px;text:root.player-title+(root.playback-busy || root.play-target == "" ? "" : Terms.caption-next-play-prefix+root.play-target);wrap:no-wrap;overflow:elide;}
-                        Text {min-width:0px;text:root.generated;wrap:no-wrap;overflow:elide;}
-                    }
-                    // Sized for the longest clock, so ticking never reflows the row.
-                    Rectangle {
-                        horizontal-stretch:0;
-                        min-width:elapsed-template.preferred-width;
-                        preferred-width:elapsed-template.preferred-width;
-                        min-height:elapsed-text.preferred-height;
-                        elapsed-template := Text {visible:false;text:"00:00:00 / 00:00:00";}
-                        elapsed-text := Text {width:parent.width;height:parent.height;text:root.elapsed;horizontal-alignment:right;vertical-alignment:center;}
-                    }
-                    Button {text:Terms.caption-details-dialog;horizontal-stretch:0;accessible-label:Terms.caption-audio-details;triggered =>{root.show-diagnostics();}}
-                }
-                if root.auxiliary-error != "" || root.operation-summary != "" || root.operation-outcome != "": VerticalBox {
-                    padding:0px; spacing:0px; min-height:root.ui-size*2.5; max-height:root.ui-size*2.5; vertical-stretch:0;
-                    Text { min-width:0px; min-height:root.ui-size*1.25; max-height:root.ui-size*1.25;
-                        text:root.auxiliary-error != "" ? root.auxiliary-error : root.operation-summary;
-                        wrap:no-wrap; overflow:elide; accessible-label:self.text; accessible-live-region:polite; }
-                    Text { min-width:0px; min-height:root.ui-size*1.25; max-height:root.ui-size*1.25;
-                        text:root.operation-outcome; wrap:no-wrap; overflow:elide; accessible-label:self.text; accessible-live-region:polite; }
-                }
-                Text {min-width:0px;text:root.guidance;wrap:word-wrap;vertical-stretch:0;}
+        transport := TransportBar {
+                auxiliary-error: root.auxiliary-error;
+                elapsed: root.elapsed;
+                generated: root.generated;
+                guidance: root.guidance;
+                operation-outcome: root.operation-outcome;
+                operation-summary: root.operation-summary;
+                play-stop() => { root.play-stop(); }
+                play-target: root.play-target;
+                playback-busy: root.playback-busy;
+                player-title: root.player-title;
+                show-diagnostics() => { root.show-diagnostics(); }
+                transport-action: root.transport-action;
+                transport-enabled: root.transport-enabled;
+                transport-labels: root.transport-labels;
+                ui-size: root.ui-size;
+                update-monitor-layout() => { root.update-monitor-layout(); }
             }
-        }
     }
 }
