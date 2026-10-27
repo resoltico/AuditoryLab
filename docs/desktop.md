@@ -30,9 +30,11 @@ Rename and Trash use the key/version captured by their controls. Trashing a dirt
 
 **New Sound** opens an empty, silent Workbench. **Add component…** offers tones, clicks and explicit pairs. Each raw component uses one voice; a pair uses two. [Fields and limits](formats.md#recipe-schema) define the budgets.
 
-Enter exact frequency/rate, width, level and modulation values. The UI uses Hz, milliseconds, dBFS and percent. Carrier, modulation, ears and Remove are in each component’s disclosure. **Undo remove** restores the latest removed component and its staged text when capacity permits.
+Component names use their authored IDs; removing/restoring rows keeps those references stable. A pair's secondary lane is labeled as its second tone.
 
-Typing stages text. Enter, leaving a field or a commit action applies the complete finite candidate. Unparseable or nonfinite values preserve staged text for correction. Escape restores the committed value. Notes support multiple lines; Return inserts a line break. Sliders use comfortable ranges and gesture rounding, while exact fields retain typed values outside those ranges.
+Enter frequency/rate, width, level and modulation values. The UI uses Hz, milliseconds, dBFS and percent. Carrier, modulation, ears and Remove are in each component’s disclosure. **Undo remove** restores the latest removed component and its staged text when capacity permits.
+
+Typing stages text. Enter, leaving a field or a commit action applies the complete finite candidate. Unparseable or nonfinite values preserve staged text for correction. Escape restores the committed value. Notes support multiple lines; Return inserts a line break. Sliders use comfortable ranges and gesture rounding; numeric fields accept values outside those spans without clamping. Display-unit conversion uses binary64 and can round or overflow for extreme finite model values. An unedited field callback preserves the exact committed bits; explicitly edited text is parsed in the displayed unit.
 
 Set device volume low before Play. Workbench playback follows committed settings valid at the actual device rate. Invalid edits retain the last valid playing settings. Pending text is labeled; metadata-only edits leave audio transitions unchanged. Library and Workbench playback remain distinct captured sources.
 

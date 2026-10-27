@@ -1,6 +1,6 @@
 # Contributing
 
-Start from a clean checkout with the [source prerequisites](README.md#build-from-source). [rust-toolchain.toml](rust-toolchain.toml) owns the compiler/components; root [Cargo.toml](Cargo.toml) owns product version/build metadata, and [Cargo.lock](Cargo.lock) pins dependencies. [CI](.github/workflows/ci.yml) owns auxiliary tool versions and target/shard selection.
+Start from a clean checkout with the [source prerequisites](README.md#build-from-source). [rust-toolchain.toml](rust-toolchain.toml) owns the compiler/components; root [Cargo.toml](Cargo.toml) owns product name/copyright/version/build metadata, and [Cargo.lock](Cargo.lock) pins dependencies. [CI](.github/workflows/ci.yml) owns auxiliary tool versions and target/shard selection.
 
 ## Checks
 
@@ -23,7 +23,7 @@ The compiler warns about ordinary hygiene locally. Core emits missing-documentat
 
 Use the CI-pinned cargo-deny, cargo-mutants, cargo-about and actionlint versions. On Windows, point TMP/TEMP to an absolute directory under `target/`. Linux calendar checks need system `tzdata`.
 
-Unit tests exercise owners and private adapters; integration tests use public services and the actual CLI. GUI tests install production callbacks on an offscreen platform. Use independent numerical/structural expectations, relevant failures and negative controls. Check discovered/ignored counts and retain useful failure evidence.
+Unit tests exercise owners and private adapters; integration tests use public services and the actual CLI. GUI tests install production callbacks on an offscreen platform with an injected deterministic executor; startup injects the real Runner. App private-state tests share the authoritative presentation source, while public presentation integration suites live in `crates/presentation/tests`. Use independent numerical/structural expectations, relevant failures and negative controls. Check discovered/ignored counts and retain useful failure evidence.
 
 The [determinism tests](crates/core/tests/determinism.rs) and [seek tests](crates/core/tests/seek.rs) pin sample bits. Preserve them unless an intended sample-contract change is authorized. Device checks stay ignored by default and use component-free silence. Preserve device, routing, volume and accessibility preferences.
 
@@ -48,11 +48,11 @@ TMPDIR="$PWD/target/tmp" cargo mutants --file crates/core/src/synthesis.rs \
   --timeout 60 --cargo-arg=--locked --output target/mutations
 ```
 
-Use `--re` or a bounded shard for the question being investigated. Each selected shard checks its unmutated baseline. Keep Nyquist/pulse-width guards under mutation. Equivalent exclusions use operator/function names with a reason, without line/column numbers. Update CI scopes when code moves. Each worker adds a compiler directory; parallel work needs explicit authorization and a concrete benefit.
+Use `--re` or a bounded shard for the question being investigated. Each selected shard checks its unmutated baseline. Keep Nyquist/pulse-width guards under mutation. Equivalent exclusions use operator/function names with a reason, without line/column numbers. Update CI scopes when code moves; `number.rs` owns finite-value invariants and `catalog_id.rs` owns catalog-name grammar. Lint capping is disabled, so unsafe-code policies still apply to generated mutants. Each worker adds a compiler directory; parallel work needs explicit authorization and a concrete benefit.
 
 ## Ownership and implementation
 
-Follow [architecture](docs/architecture.md) and the repository agent instructions. Core owns sound/format invariants. Application services own operations; the workspace owns interactive admission/continuation. Private adapters enforce checks against the actual action state. Frontends translate requests and render presentation-owned descriptions. GUI-only chrome stays in the GUI.
+Follow [architecture](docs/architecture.md) and the repository agent instructions. Core owns sound/format invariants. Application services own operations; the workspace owns interactive admission/continuation. Private adapters enforce checks against the actual action state. Frontends translate requests and render `auditorylab-presentation` descriptions. Number-entry grammar belongs to `document::input`; workspace views carry typed data and causes. GUI-only chrome stays in the GUI.
 
 Preserve actual-rate validation, callback allocation/free/wait/I/O rules, typed causes, terminal-outcome authority, captured-save baselines and no-clobber publication. Use the existing shared rules and tests when changing affected consumers. [Formats](docs/formats.md) defines compatibility contracts.
 

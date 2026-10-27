@@ -65,6 +65,8 @@ jobs:
         run: cargo xtask verify-vendor
       - if: github.event_name != 'schedule'
         run: cargo doc --workspace --no-deps --locked
+        env:
+          RUSTDOCFLAGS: "-D warnings"
       - name: Cache cargo-deny
         id: deny-cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -252,6 +254,10 @@ jobs:
           - source: rhythm
             shard: 0/1
           - source: validity
+            shard: 0/1
+          - source: number
+            shard: 0/1
+          - source: catalog_id
             shard: 0/1
           - source: voice
             shard: 0/1

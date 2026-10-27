@@ -34,7 +34,7 @@ Search requires every Unicode-normalized term. A bare number matches a whole num
 
 Use `--created-from`, `--created-before`, `--modified-from`, `--modified-before`, `--added-from` and `--added-before` for inclusive/exclusive timestamp ranges. Supply an explicit offset, such as `2026-10-24T00:00:00+03:00`. Unknown dates fail bounded ranges and sort last. Automatic ordering is rate ascending for All/Built-in and modified descending for User/Trash; explicit sort choices survive collection changes.
 
-`--format json` returns structured entries, groups and diagnostics. `--format ids` emits reusable selectors, requires complete discovery, and rejects grouping and temporary inputs. An incomplete IDs query emits no stdout IDs. [JSON and exit codes](formats.md#cli-json-output) define the scripting contract.
+`--format json` returns structured entries, groups and diagnostics. Each diagnostic/warning has `code` and `message`; inspect exposes expanded lanes under `voices`. `--format ids` emits reusable selectors, requires complete discovery, and rejects grouping and temporary inputs. An incomplete IDs query emits no stdout IDs. [JSON and exit codes](formats.md#cli-json-output) define the scripting contract.
 
 ## Inspect, save portable text and export WAV
 
@@ -44,7 +44,7 @@ auditorylab inspect --file pair.toml --sample-rate 48000
 auditorylab export --file pair.toml --output pair.wav --sample-rate 48000
 ```
 
-`inspect` opens no device. It reports the chosen rate, resolved frame count, per-ear peak bounds and component facts. WAV export validates at its chosen rate and writes stereo 32-bit float RIFF/RF64. The [recipe guide](recipes.md) explains rate-dependent validity and waveforms.
+`inspect` opens no device. It reports the chosen rate, resolved frame count, per-ear peak bounds and generator-voice facts. Components are named by their authored ID; a pair's secondary lane is its second tone. WAV export validates at its chosen rate and writes stereo 32-bit float RIFF/RF64. The [recipe guide](recipes.md) explains rate-dependent validity and waveforms.
 
 `recipe SELECTOR` prints saved portable TOML; `--output PATH` writes it. Built-in output retains embedded comments and User output retains exact file bytes. This preserves document identity and history. CLI recipe and WAV exports never overwrite an existing destination.
 

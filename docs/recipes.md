@@ -37,7 +37,7 @@ left_peak_dbfs = -24.0
 right_peak_dbfs = -24.0
 ```
 
-The UUID is an illustrative fixture. The positive component ID names this authored owner; a pair expands to primary/secondary generator lanes. Use an explicit pair when its carrier relationship is part of the sound.
+The UUID is an illustrative fixture. The positive component ID names this authored owner in Workbench, diagnostics and reports, independently of row position. A pair expands to primary/secondary generator lanes, with the secondary described as its second tone. Use an explicit pair when its carrier relationship is part of the sound.
 
 ## AM and gates
 

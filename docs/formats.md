@@ -4,7 +4,7 @@ Auditory Lab reads recipe schema **4**, emits CLI JSON output **2**, uses nomina
 
 ## Recipe schema
 
-A portable recipe is UTF-8 TOML, at most 65,536 bytes including metadata. A UTF-8 byte-order mark is accepted. Unsupported versions, unknown/duplicate keys, mistyped fields and nonfinite numbers are rejected. A required `[sound]` table contains the finite envelope and ordered components.
+A portable recipe is UTF-8 TOML, at most 65,536 bytes including metadata. A UTF-8 byte-order mark is accepted. Unsupported versions, unknown/duplicate keys, mistyped fields and nonfinite numbers are rejected. A required `[sound]` table contains the finite envelope and ordered components. Nonfinite numeric input produces a format error naming its key, line and column.
 
 ```toml
 schema_version = 4
@@ -45,6 +45,8 @@ There are at most 16 authored components and 16 expanded voices. A raw tone/clic
 | `clicks` | `ears`, `rate_hz`, `width_seconds`, `peak_dbfs` |
 | `binaural_pair` | `left_hz`, signed `offset_hz`, `left_peak_dbfs`, `right_peak_dbfs` |
 | `monaural_pair` | `ears`, `first_hz`, signed `offset_hz`, `first_peak_dbfs`, `second_peak_dbfs` |
+
+Human component references use the authored `id`, including after removal/restore. A pair's secondary lane is named as that component's second tone.
 
 `ears` is `left`, `right` or `both`. A binaural pair fixes the first carrier to the left ear and the second to the right. Its second frequency is `left_hz + offset_hz`; a monaural pair uses `first_hz + offset_hz` on the same route. Zero offset is permitted. A nonzero offset that collapses during floating-point addition cannot render.
 
@@ -127,7 +129,7 @@ Diagnostics and warnings are objects with a stable lowercase `code` and a human-
 
 Entries identify key, collection, title, portable document identity, duration, dates, content token, directory-owned Trash state, nominal facts, evidence and validation. Unknown dates/values use null. Discovery validation is `not_checked`.
 
-Descriptors contain `owner`, `role`, `method`, `hz` and optional band membership. Expanded owners use `{"component":N,"lane":"primary"}` or `secondary`. Each descriptor identifies its own generator lane and structural method. Display labels are separate from serialized keys.
+Descriptors contain `owner`, `role`, `method`, `hz` and optional band membership. Expanded owners use `{"component":N,"lane":"primary"}` or `secondary`. Each descriptor identifies its own generator lane and structural method. Display labels are separate from serialized keys; method group captions use the same owning vocabulary labels as the other views.
 
 Read-only partial inventories return healthy entries with `complete:false`. IDs output emits no stdout selectors for incomplete discovery and rejects grouping or temporary inputs. Prose escapes controls/bidi overrides; raw portable output retains its bytes. JSON escaping preserves decoded string data.
 
@@ -152,7 +154,7 @@ Directory location owns active/Trash membership. Missing local dates are Unknown
 
 Managed writes hold the exclusive cooperative lock through read, expected-token/history checks, publication and verification. Recipe bytes are published before membership dates. An interruption can lose a local timestamp while retaining readable content.
 
-Writers use an exclusive adjacent stage, synchronize it, check cancellation and publish by no-clobber link or confirmed replacement. Before-publication failure preserves previous bytes. After ambiguous I/O, verified candidate bytes mean saved with a warning; verified previous state means not applied; differing or unreadable state is an error naming the path. Confirmed durability/cleanup warnings remain success.
+Writers use an exclusive adjacent stage, synchronize it, check cancellation and publish by no-clobber link or confirmed replacement. Before-publication failure preserves previous bytes. After ambiguous I/O, verified candidate bytes mean saved with a warning; verified previous state means not applied; differing or unreadable state is an error naming the path. Confirmed durability/cleanup warnings remain success. The adapter explicitly synchronizes directory entries on Unix; non-Unix adapters perform no separate directory-sync operation.
 
 Trash/Restore use a no-clobber link then unlink. Same-file links in both directories retain Trash authority; a locked write removes the redundant active link. Different files sharing a UUID remain for explicit reconciliation. Purge confirms absence under the same lock and affects only the chosen Trash entry.
 

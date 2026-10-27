@@ -5,16 +5,29 @@
 - Recipes require schema 4: put duration, fade and components in `[sound]`; use `clicks`, `am` and `gate`. Rewrite custom files against the [format](docs/formats.md#recipe-schema).
 - Schema-3 User files stay unchanged; discovery is incomplete and `list` exits 5. Rewrite or move them outside the library; see [recovery](docs/formats.md#unsupported-and-unreadable-recipes).
 - CLI `--method am` replaces `amplitude-modulation`; `--analysis` accepts only `complete` or `invalid`. Plain tones remain independent; author pairs explicitly.
-- CLI JSON output is schema 2 and classifier revision is 2. Update consumers for expanded owner/lane identities and removal of inferred tone relationships.
-- The Rust app package is `auditorylab-app`, exposing core as `auditorylab_app::core`. Call shared services; native storage/audio adapters are private.
-- Rust `Recipe` fields are private; use checked builders and accessors. Contract and operation errors are typed; update error matches.
-- `ComponentForm`, `Clicks`, `Am` and `Gate` replace `Node`, `Click`, `Sinusoidal` and `Rectangular`; update Rust matches and recipe generation.
-- Core errors use `SoundError` and `VoiceError`; update `StimulusError`/`ComponentError` imports and matches.
+- CLI JSON schema 2 exposes generator lanes under `voices`; diagnostics and warnings contain stable `code` and human `message` fields. Update consumers.
+- Classifier revision 2 uses expanded owner/lane identities and removes inferred raw-tone pairings.
+- The Rust app package is `auditorylab-app`, exposing core as `auditorylab_app::core`. Call typed services/workspace views; native storage/audio adapters are private.
+- `auditorylab-presentation` owns research/About views, parameter help and reports through extension traits. `Recipe::fork` requires an explicit attribution note.
+- Rust authored numbers use `Finite`; `Sound` fields are private with checked constructors/mutators enforcing unique owners and both budgets.
+- `Finite` equality preserves signed-zero bits; `RecipeContent`/`Recipe` equality replace manual content/document comparisons. `Recipe` fields use checked builders/accessors.
+- `ComponentForm` replaces `Node` with flat tone/click/pair variants; `Voice` is private. Build forms with `Finite` values and use `get`/`set`.
+- `Clicks`, `Am` and `Gate` replace `Click`, `Sinusoidal` and `Rectangular`; update Rust matches and recipe generation.
+- Core uses `SoundError`/`VoiceError` instead of `StimulusError`/`ComponentError`; `SoundError::Voice` identifies the authored owner and lane.
+- Rust generator APIs use `CompiledVoice`, `VoiceFacts` and `voices()`; `observations()` yields origin-zero observations. Update lane-level callers.
 - `ComponentId` is nonzero; expanded generators use `VoiceId { component, lane }`. Update constructors and consumers of generator identities.
-- `About`/`Research` views and parameter help live in app presentation; `Recipe::fork` accepts an attribution note. Update Rust consumers.
+- App origin keys/tokens live in `document::origin`, job controls in `job` and outcome categories in `outcome`. Shared vocabulary and query choices belong to core.
+- Editable number text belongs to `document::input`; monitor/control models and typed views belong to workspace. Update app/presentation imports.
+- App errors/warnings retain typed causes and display stable codes; use presentation explanations/renderers for human text and update error matches.
+- Workspace jobs run through `Executor`; `Runner::shutdown` returns typed failures with captured context after joining workers.
+- Nonfinite TOML numbers fail at their key with line/column format diagnostics; finite but acoustically invalid documents remain savable for repair.
+- Components are named by authored ID, including a pair's second tone; removal keeps references stable. Method group captions use shared vocabulary labels.
+- Unedited numeric fields retain exact model bits. Explicit numeric input uses displayed units, whose binary64 conversions can round.
 - Core users can drive finite playback and Stop fading through `FiniteSource` without the native app adapters.
 - Workbench preview, copy, restore and export controls share operation admission. Stale selections, save failures and newer edits retain their captured context.
-- Toolkit button overrides move into the app; patched packages include archive lockfiles. Keep vendored-source verification in dependency maintenance.
+- App-owned buttons guard disabled actions; authenticated toolkit patches include archive lockfiles and require verification during dependency maintenance.
+- GUI vocabulary generation builds core without app/audio build dependencies; product display identity is declared in workspace metadata.
+- Local compiler hygiene warns; CI denies workspace Clippy/doc warnings. Missing-documentation warnings apply only to core.
 
 ## [0.6.0] - 2026-10-26
 

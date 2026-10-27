@@ -8,7 +8,7 @@ auditorylab describe builtin:ioannou-2015-binaural-10-hz
 auditorylab inspect builtin:ioannou-2015-binaural-10-hz
 ```
 
-`describe` shows the current recipe's research context; `inspect` validates its sound at the chosen rate. `recipe builtin:ID` prints its complete portable document. The CLI and desktop use the same embedded catalog.
+`describe` shows the current recipe's research context; `inspect` validates its sound at the chosen rate. `recipe builtin:ID` prints its complete portable document. The CLI and desktop use the same embedded catalog. Catalog names contain lowercase ASCII letters, digits and hyphens; a syntactically valid name still needs a matching entry. Generator details identify each authored component ID and lane.
 
 [Source methods](catalog-sources.md) gives the detailed paper locators and explains each recipe's adaptations. The [authoring guide](recipes.md#research-context-and-catalog-entries) defines admission and fidelity requirements. The authoritative condition data is in [catalog](../crates/core/catalog), with shared bibliography in [studies](../crates/core/studies); the build produces the standalone recipes shipped by the application.
 

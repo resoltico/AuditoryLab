@@ -50,6 +50,8 @@ Install [rustup](https://rustup.rs/); [rust-toolchain.toml](rust-toolchain.toml)
 - Debian/Ubuntu: install `build-essential pkg-config libasound2-dev libfontconfig1-dev libxkbcommon-x11-0 libglib2.0-bin`.
 - Windows: install Visual Studio Build Tools with Desktop development with C++, native MSVC tools and the Windows SDK. Use the native MSVC Rust host.
 
+The workspace separates `auditorylab-core`, `auditorylab-app`, `auditorylab-presentation`, CLI and GUI. The [architecture](docs/architecture.md) describes their public boundaries; the GUI build script uses core vocabulary only.
+
 From a clean checkout:
 
 ```sh

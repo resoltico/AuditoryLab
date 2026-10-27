@@ -553,7 +553,7 @@ impl Draft {
     /// Serialize a complete finite candidate without I/O.
     ///
     /// # Errors
-    /// Rejects portable contract violations, including nonfinite values and capacity.
+    /// Rejects metadata contract violations or output exceeding the portable byte limit.
     pub fn to_toml(&self) -> Result<String, Error> {
         serialize(&self.recipe()?).map_err(Error::Recipe)
     }
