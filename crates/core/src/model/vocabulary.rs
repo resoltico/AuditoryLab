@@ -23,6 +23,36 @@ pub const NOT_APPLICABLE: Term = Term {
     label: "Not applicable",
     phrase: "not applicable",
 };
+/// Every sound after non-rhythm restrictions.
+pub const ALL_SOUNDS: Term = Term {
+    label: "All sounds",
+    phrase: "all sounds",
+};
+/// Absence of a structural-method restriction.
+pub const ALL_METHODS: Term = Term {
+    label: "All methods",
+    phrase: "all methods",
+};
+/// Absence of a population restriction.
+pub const ANY_POPULATION: Term = Term {
+    label: "Any population",
+    phrase: "any population",
+};
+/// Absence of a condition-role restriction.
+pub const ANY_CONDITION_ROLE: Term = Term {
+    label: "Any condition role",
+    phrase: "any condition role",
+};
+/// Absence of an analysis-coverage restriction.
+pub const ANY_ANALYSIS_COVERAGE: Term = Term {
+    label: "Any analysis coverage",
+    phrase: "any analysis coverage",
+};
+/// Use the query sort’s normal direction.
+pub const AUTOMATIC_DIRECTION: Term = Term {
+    label: "Automatic direction",
+    phrase: "automatic direction",
+};
 /// One finite vocabulary with stable keys and owned labels.
 pub trait Vocabulary: Copy + 'static {
     /// Every supported value in display order.

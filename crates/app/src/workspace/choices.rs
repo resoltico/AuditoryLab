@@ -62,33 +62,53 @@ impl Workspace {
             QueryFacet::Scope => values!(Scope, |v| q.scope == v),
             QueryFacet::Sort => values!(SortBy, |v| q.sort == v),
             QueryFacet::Direction => {
-                option("automatic", "Automatic direction", q.direction.is_none());
+                option(
+                    "automatic",
+                    crate::core::vocabulary::AUTOMATIC_DIRECTION.label,
+                    q.direction.is_none(),
+                );
                 values!(Direction, |v| q.direction == Some(v));
             }
             QueryFacet::Group => values!(GroupBy, |v| q.group_by == v),
             QueryFacet::Band => {
                 option(
                     "any",
-                    "All sounds",
+                    crate::core::vocabulary::ALL_SOUNDS.label,
                     q.rhythm.bands.is_empty() && q.rhythm.state.is_none(),
                 );
                 values!(Band, |v| q.rhythm.bands.contains(&v));
                 values!(RhythmState, |v| q.rhythm.state == Some(v));
             }
             QueryFacet::Method => {
-                option("any", "All methods", q.rhythm.methods.is_empty());
+                option(
+                    "any",
+                    crate::core::vocabulary::ALL_METHODS.label,
+                    q.rhythm.methods.is_empty(),
+                );
                 values!(Method, |v| q.rhythm.methods.contains(&v));
             }
             QueryFacet::Population => {
-                option("any", "Any population", q.populations.is_empty());
+                option(
+                    "any",
+                    crate::core::vocabulary::ANY_POPULATION.label,
+                    q.populations.is_empty(),
+                );
                 values!(Population, |v| q.populations.contains(&v));
             }
             QueryFacet::Role => {
-                option("any", "Any condition role", q.roles.is_empty());
+                option(
+                    "any",
+                    crate::core::vocabulary::ANY_CONDITION_ROLE.label,
+                    q.roles.is_empty(),
+                );
                 values!(ConditionRole, |v| q.roles.contains(&v));
             }
             QueryFacet::Analysis => {
-                option("any", "Any analysis coverage", q.analysis.is_none());
+                option(
+                    "any",
+                    crate::core::vocabulary::ANY_ANALYSIS_COVERAGE.label,
+                    q.analysis.is_none(),
+                );
                 values!(Completeness, |v| q.analysis == Some(v));
             }
         }

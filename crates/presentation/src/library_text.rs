@@ -142,8 +142,8 @@ pub fn facets(
     use auditorylab_app::workspace::FacetKind;
     let facet = |facet: &auditorylab_app::workspace::LibraryFacetView| {
         let (label, detail) = match facet.kind {
-            FacetKind::AllSounds => ("All sounds".into(), ""),
-            FacetKind::AllMethods => ("All methods".into(), ""),
+            FacetKind::AllSounds => (auditorylab_core::vocabulary::ALL_SOUNDS.label.into(), ""),
+            FacetKind::AllMethods => (auditorylab_core::vocabulary::ALL_METHODS.label.into(), ""),
             FacetKind::Band(band) => (band.to_string(), band.interval()),
             FacetKind::State(state) => (state.label().into(), ""),
             FacetKind::Method(method) => (method.label().into(), ""),
