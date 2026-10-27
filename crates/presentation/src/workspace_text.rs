@@ -1,10 +1,10 @@
 //! Shared wording derived from interactive application values.
-use crate::presentation;
-use crate::presentation::AudioErrorText;
-use crate::presentation::Explain;
-use crate::presentation::recipe_text::SnapshotText;
-use crate::presentation::waveform_view::*;
-use crate::presentation::*;
+use crate as presentation;
+use crate::AudioErrorText;
+use crate::Explain;
+use crate::recipe_text::SnapshotText;
+use crate::waveform_view::*;
+use crate::*;
 use auditorylab_app::document::editing::EditingField;
 use auditorylab_app::document::editing::InputProblem;
 use auditorylab_app::document::editing::MetadataField;
@@ -260,9 +260,9 @@ pub struct EditorView {
 /// Render a typed editor projection without changing its admission or applicability.
 #[must_use]
 pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorView {
-    use crate::presentation::AudioSummary;
-    use crate::presentation::ParameterText;
-    use crate::presentation::vocabulary::NumberStyle;
+    use crate::AudioSummary;
+    use crate::ParameterText;
+    use crate::vocabulary::NumberStyle;
     use auditorylab_app::workspace::FieldDiagnostic;
     let rate = view.rate;
     let context = if view.live {
@@ -444,11 +444,11 @@ pub struct TransportView {
 /// Render a coherent transport projection; all lifecycle decisions are captured by workspace.
 #[must_use]
 pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> TransportView {
-    use crate::presentation::AudioDetails;
-    use crate::presentation::AudioSummary;
-    use crate::presentation::vocabulary::NumberStyle;
-    use crate::presentation::waveform_view::output_underrun_warning;
-    use crate::presentation::waveform_view::phase_text;
+    use crate::AudioDetails;
+    use crate::AudioSummary;
+    use crate::vocabulary::NumberStyle;
+    use crate::waveform_view::output_underrun_warning;
+    use crate::waveform_view::phase_text;
     use auditorylab_app::workspace::MotionPreference;
     use auditorylab_app::workspace::View;
     let output = &data.output;
@@ -695,8 +695,8 @@ pub struct LibraryView {
 /// Render an immutable library projection without querying or loading sources.
 #[must_use]
 pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryView {
-    use crate::presentation::AudioSummary;
-    use crate::presentation::vocabulary::NumberStyle;
+    use crate::AudioSummary;
+    use crate::vocabulary::NumberStyle;
     let rows = data
         .rows
         .iter()
@@ -920,8 +920,7 @@ pub fn action_view(view: &auditorylab_app::workspace::ActionView) -> ActionView 
     };
     ActionView {
         can_play: view.can_play,
-        library_play_label: crate::presentation::vocabulary::library_play_labels()
-            [usize::from(view.playing)],
+        library_play_label: crate::vocabulary::library_play_labels()[usize::from(view.playing)],
         can_import: view.can_import,
         can_manage_library: view.can_manage_library,
         can_add_to_library: view.can_add_to_library,

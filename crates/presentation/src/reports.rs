@@ -1,6 +1,6 @@
 //! Typed machine-readable application reports.
-use crate::presentation::Explain;
-use crate::presentation::*;
+use crate::Explain;
+use crate::*;
 use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::document::origin::VersionToken;
 use auditorylab_core::query::Direction;
@@ -115,7 +115,7 @@ impl From<&rhythm::Analysis> for NominalReport {
                 .iter()
                 .map(|cause| DiagnosticMessage {
                     code: cause.to_string(),
-                    message: crate::presentation::rhythm_diagnostic(cause),
+                    message: crate::rhythm_diagnostic(cause),
                 })
                 .collect(),
         }

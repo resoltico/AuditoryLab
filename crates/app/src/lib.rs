@@ -12,11 +12,6 @@ pub mod document;
 pub mod identity;
 pub mod job;
 pub mod outcome;
-#[cfg(test)]
-extern crate self as auditorylab_app;
-#[cfg(test)]
-#[path = "../../presentation/src/mod.rs"]
-pub mod presentation;
 pub mod services;
 pub(crate) mod storage;
 pub mod workspace;

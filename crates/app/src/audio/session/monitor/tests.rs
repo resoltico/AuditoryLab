@@ -1,4 +1,3 @@
-use crate::presentation::waveform_view::WaveformCaptureText;
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
@@ -116,7 +115,11 @@ fn real_callback_samples_match_history_and_finite_stop() {
     )
     .unwrap()
     .unwrap();
-    let caption = frozen.caption(true, false);
+    let capture_context = (
+        frozen.span(),
+        frozen.sequence(),
+        frozen.observation().cloned(),
+    );
     let captured_meters = frozen.meters();
     let captured_id = frozen.session().unwrap().id;
     assert_eq!(frozen.span(), (0, 512));
@@ -154,7 +157,14 @@ fn real_callback_samples_match_history_and_finite_stop() {
     .unwrap();
     assert_ne!(latest.span(), frozen.span());
     assert!(latest.sequence() > frozen.sequence());
-    assert_eq!(frozen.caption(true, false), caption);
+    assert_eq!(
+        (
+            frozen.span(),
+            frozen.sequence(),
+            frozen.observation().cloned()
+        ),
+        capture_context
+    );
     assert_eq!(frozen.meters(), captured_meters);
     assert_eq!(frozen.rate().hz(), 8000);
     assert_eq!(frozen.session().unwrap().id, captured_id);
@@ -607,7 +617,7 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
         monitor_warning(&reader, 40),
         Some(crate::workspace::monitor::MonitorWarning::Stale)
     );
-    let prior = held.caption(true, false);
+    let prior = (held.span(), held.sequence(), held.observation().cloned());
     let another = PlaybackMonitor::new(
         descriptor(48000),
         MonitorDetail::Waveform,
@@ -621,7 +631,10 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
         output_monitor_state(Some(&other), Some(&held), true, true),
         State::Held
     );
-    assert_eq!(held.caption(true, false), prior);
+    assert_eq!(
+        (held.span(), held.sequence(), held.observation().cloned()),
+        prior
+    );
     {
         writer.append(3424, &[[0.0; 2]; 512]);
         writer.finish(3936, None);
@@ -655,17 +668,11 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
     let mut reader = underrun.reader().unwrap();
     reader.poll(40);
     assert_eq!(monitor_warning(&reader, 40), None);
-    assert!(
-        crate::presentation::waveform_view::output_underrun_warning(reader.status().underruns)
-            .contains("underruns: 1")
-    );
+    assert_eq!(reader.status().underruns, 1);
 }
 #[test]
 fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
-    use {
-        crate::presentation::waveform_view::output_underrun_warning,
-        crate::workspace::monitor::MonitorWarning, crate::workspace::monitor::monitor_warning,
-    };
+    use {crate::workspace::monitor::MonitorWarning, crate::workspace::monitor::monitor_warning};
     let rate = SampleRate::DEFAULT;
     let state = SessionState::new();
     let generator = LiveGenerator::with_state(Target::silence(rate), Arc::clone(&state));
@@ -704,10 +711,7 @@ fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
         assert!(!warning.announces_changes());
         assert_eq!(reader.status().gaps, episode);
         if episode >= 5 {
-            assert_eq!(
-                output_underrun_warning(reader.status().underruns),
-                "Backend-reported output underruns: 1 · see details."
-            );
+            assert_eq!(reader.status().underruns, 1);
         }
         for _ in 0..20 {
             reader.poll(40);

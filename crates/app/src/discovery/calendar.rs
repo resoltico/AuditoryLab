@@ -147,24 +147,14 @@ mod tests {
 #[cfg(test)]
 mod order_tests {
     use super::*;
-    use crate::presentation::Explain;
     #[test]
-    fn calendar_order_errors_name_visible_fields_and_same_day_is_inclusive() {
-        for (field, label) in [
-            (CalendarField::Created, "Created"),
-            (CalendarField::Modified, "Modified"),
-            (CalendarField::Added, "Added here"),
-        ] {
+    fn calendar_order_errors_retain_fields_and_same_day_is_inclusive() {
+        for field in CalendarField::ALL {
             let error = local_range(field, "2026-10-26", "2026-10-25").unwrap_err();
             assert_eq!(error.to_string(), "query.local_order");
-            let error = error.explain();
-            assert_eq!(
-                error,
-                format!(
-                    "{label} through (2026-10-25) must be on or after {label} from (2026-10-26)."
-                )
+            assert!(
+                matches!(error,Error::LocalOrder {field:retained, ref from, ref through} if retained==field && from=="2026-10-26" && through=="2026-10-25")
             );
-            assert!(!error.contains("before"));
             let range = local_range(field, "2026-10-25", "2026-10-25").unwrap();
             assert!(range.from.unwrap() < range.before.unwrap());
             assert!(range.contains(range.from));

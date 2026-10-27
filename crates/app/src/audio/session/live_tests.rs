@@ -3,11 +3,8 @@ use crate as auditorylab_app;
 use crate::audio::session::{LiveGenerator, LiveUpdateError};
 use crate::test_recipes as common;
 use crate::workspace::controls;
-use auditorylab_app::core::{
-    CarrierKind, ComponentForm, ComponentId, Ears, ParameterId, SampleRate, Target,
-};
+use auditorylab_app::core::{CarrierKind, ComponentForm, Ears, ParameterId, SampleRate, Target};
 use auditorylab_app::document::editing::Draft;
-use auditorylab_app::presentation::{AudioDetails, AudioSummary};
 
 fn component(frequency_hz: f64, ears: Ears) -> ComponentForm {
     ComponentForm::Tone {
@@ -135,53 +132,6 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
             expected
         );
     }
-}
-
-#[test]
-fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint() {
-    use auditorylab_app::core::{Observation, SlotRole, VoiceObservation};
-
-    let check = auditorylab_core::Sound::new(
-        finite(1.0),
-        finite(0.0),
-        ([(ComponentId::new(1).unwrap(), component(440.0, Ears::Right))])
-            .iter()
-            .map(|(id, voice)| auditorylab_core::Component {
-                id: *id,
-                form: *voice,
-            })
-            .collect(),
-    )
-    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
-    .check(SampleRate::DEFAULT);
-    let facts = *check.target().unwrap().voices().next().unwrap().1;
-    let mut voices = [None; Observation::MAX_VOICES];
-    voices[0] = Some(VoiceObservation {
-        id: ComponentId::new(1).unwrap().into(),
-        role: SlotRole::Continuing,
-        facts,
-        gains: [0.05, 0.05],
-    });
-    let observation = Observation {
-        frame: 100,
-        active_revision: 2,
-        settled_revision: 1,
-        transitioning: true,
-        voices,
-    };
-    let text = (Some(&observation)).summary();
-    assert!(text.contains("Both ears"), "{text}");
-    assert!(
-        observation
-            .details()
-            .contains("gain L -26.0 / R -26.0 dBFS")
-    );
-    assert!(
-        observation.details().contains("Continuing"),
-        "role label, not Debug"
-    );
-    assert!(text.starts_with("Changing"));
-    assert_eq!(ParameterId::ClickWidth.descriptor().label, "Clicks width");
 }
 
 #[test]

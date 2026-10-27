@@ -1,6 +1,6 @@
 use super::*;
-use crate::presentation::RecipeSnapshotText;
-use crate::presentation::recipe_text::SnapshotText;
+use crate::RecipeSnapshotText;
+use crate::recipe_text::SnapshotText;
 use auditorylab_core::catalog;
 use std::collections::BTreeMap;
 

@@ -1,5 +1,5 @@
 //! Wording for monitor captures and model views.
-use crate::presentation::vocabulary::NumberStyle;
+use crate::vocabulary::NumberStyle;
 use auditorylab_app::workspace::monitor::ModelSource;
 use auditorylab_app::workspace::monitor::ModelView;
 use auditorylab_app::workspace::monitor::MonitorWarning;

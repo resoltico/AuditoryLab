@@ -5,9 +5,6 @@
 use super::*;
 use crate::core::{CarrierKind, ParameterId, SampleRate};
 use crate::document::editing::{EditingField, FieldHandle};
-use crate::presentation::Explain;
-use crate::presentation::LibraryPresentation;
-use crate::presentation::*;
 use crate::services::library::{Library, Mutation};
 use crate::workspace::status::{AudioStatus, FileStatus};
 use crate::workspace::{
@@ -242,11 +239,9 @@ fn a_panic_after_actual_publication_retains_dirty_state_and_denies_close() {
     assert_eq!(store.scan(&Cancel::default()).entries.len(), 1);
     assert!(workspace.editor().dirty());
     assert!(closed(&mut workspace, false));
-    let outcome = crate::presentation::workspace_text::action_view(&workspace.action_view())
-        .operation_details;
-    assert!(outcome.contains("thread failed"));
-    assert!(outcome.contains("does not establish that storage was unchanged"));
-    assert!(outcome.contains(&store.path().display().to_string()));
+    assert!(
+        matches!(workspace.files.status,FileStatus::WorkerFailed {error:WorkerFailure::Panicked,ref activity} if activity.path==store.path())
+    );
 }
 #[test]
 fn launch_failure_is_a_typed_completion_and_blocks_dependent_close() {
@@ -313,7 +308,7 @@ fn actual_rate_preparation_submits_committed_edits_but_never_staged_text() {
     assert_eq!(workspace.editor().staged(frequency.field), Some("500"));
     assert_eq!(workspace.diagnostic_rate().hz(), 96000);
     assert_eq!(workspace.export_rate(), SampleRate::DEFAULT);
-    assert!(!crate::presentation::workspace_text::action_view(&workspace.action_view()).can_export);
+    assert!(!workspace.action_view().can_export);
     workspace.commit_field(frequency, "60000").unwrap();
     assert_eq!(
         workspace
@@ -350,11 +345,7 @@ fn device_rate_validation_is_independent_of_export_rate() {
         outcome: JobOutcome::Audio(Err(error)),
     });
     assert!(!workspace.audio_busy());
-    assert!(
-        crate::presentation::workspace_text::action_view(&workspace.action_view())
-            .audio_status
-            .contains("8000")
-    );
+    assert!(matches!(workspace.audio.status, AudioStatus::Failed(_)));
     drop(job);
 }
 #[test]
@@ -636,7 +627,7 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
         ResponseDisposition::Rejected
     );
     assert!(workspace.selected().is_none());
-    assert!(workspace.library_alert().contains("read failed"));
+    assert!(workspace.library_data().read_failure.is_some());
     drop(load);
 }
 
@@ -647,7 +638,10 @@ fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
     idle_files(&mut workspace);
     let record = store.scan(&Cancel::default()).entries[0].key.clone();
     let original = workspace.editor().document();
-    let location = workspace.document_location();
+    let location = workspace
+        .library_data()
+        .managed
+        .map(|(key, token)| (key.clone(), token));
     let candidate = store
         .load(&record)
         .unwrap()
@@ -668,7 +662,13 @@ fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
         .is_err()
     );
     assert_eq!(workspace.editor().document(), original);
-    assert_eq!(workspace.document_location(), location);
+    assert_eq!(
+        workspace
+            .library_data()
+            .managed
+            .map(|(key, token)| (key.clone(), token)),
+        location
+    );
 }
 
 #[test]
@@ -689,13 +689,14 @@ fn shutdown_reports_prior_rejected_preparation_even_when_real_job_stops_ok() {
     });
     let mut runner = Runner::new();
     runner.start(job);
-    assert!(
-        runner
-            .shutdown(workspace)
-            .unwrap_err()
-            .explain()
-            .contains("another operation")
-    );
+    let error = runner.shutdown(workspace).unwrap_err();
+    assert!(error.issues.iter().any(|issue| matches!(
+        issue,
+        ShutdownIssue::Task {
+            error: TaskFailure::Worker(WorkerFailure::InvalidOutcome),
+            ..
+        }
+    )));
 }
 #[test]
 fn shutdown_reports_wrong_kind_success_after_coordinator_validation() {
@@ -716,9 +717,14 @@ fn shutdown_reports_wrong_kind_success_after_coordinator_validation() {
             outcome: JobOutcome::File(FileOutcome::Imported(Ok(snapshot))),
         })),
     );
-    let error = runner.shutdown(workspace).unwrap_err().explain();
-    assert!(error.contains("another operation"));
-    assert!(error.contains("library"));
+    let error = runner.shutdown(workspace).unwrap_err();
+    assert!(error.issues.iter().any(|issue| matches!(
+        issue,
+        ShutdownIssue::Task {
+            error: TaskFailure::Worker(WorkerFailure::InvalidOutcome),
+            context: JobContext::Library(_)
+        }
+    )));
 }
 #[test]
 fn shutdown_does_not_reclassify_a_historical_resolved_failure() {
@@ -759,8 +765,12 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
         let concurrent_bytes = std::fs::read(&path).unwrap();
         let mut runner = Runner::new();
         runner.start(job);
-        let notice = if shutdown {
-            runner.shutdown(workspace).unwrap_err().explain()
+        let (failure, context) = if shutdown {
+            let error = runner.shutdown(workspace).unwrap_err();
+            let ShutdownIssue::Library(failure) = error.issues.into_iter().next().unwrap() else {
+                panic!("library failure")
+            };
+            (failure.error, failure.context)
         } else {
             pump(&mut runner, &mut workspace);
             assert!(workspace.editor().dirty());
@@ -771,151 +781,29 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
                 Some(finite(880.0))
             );
             assert!(closed(&mut workspace, false));
-            crate::presentation::workspace_text::action_view(&workspace.action_view())
-                .operation_details
+            let FileStatus::Library(super::super::status::LibraryStatus::Failed {
+                error,
+                context,
+                ..
+            }) = workspace.files.status.clone()
+            else {
+                panic!("library failure")
+            };
+            (error, context)
         };
         assert_eq!(std::fs::read(&path).unwrap(), concurrent_bytes);
         assert_eq!(
             store.load(&key).unwrap().snapshot.title(),
             "Concurrent writer"
         );
-        assert!(notice.contains(&format!("Selector: {key}")), "{notice}");
-        assert!(
-            notice.contains(&format!("Location: {}", store.path().display())),
-            "{notice}"
-        );
-        assert!(
-            notice.contains("conflicts with the captured operation"),
-            "{notice}"
-        );
-        assert!(notice.contains("did not publish a replacement"), "{notice}");
-        assert!(notice.contains("Draft retained"), "{notice}");
-        assert!(
-            !notice.contains("inspect"),
-            "a known conflict is not an uncertain publication: {notice}"
-        );
-    }
-}
-
-#[test]
-fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct() {
-    let (_directory, store, mut workspace) = fixture();
-    workspace.save().unwrap();
-    idle_files(&mut workspace);
-    let key = store.scan(&Cancel::default()).entries[0].key.clone();
-    for (kind, publishing, inspect, replacement) in [
-        (crate::outcome::Outcome::HistoryConflict, true, false, true),
-        (crate::outcome::Outcome::Conflict, false, false, false),
-        (
-            crate::outcome::Outcome::HistoryConflict,
-            false,
-            false,
-            false,
-        ),
-        (crate::outcome::Outcome::Write, true, true, false),
-        (crate::outcome::Outcome::Unreadable, true, true, false),
-        (
-            crate::outcome::Outcome::IncompleteInventory,
-            true,
-            true,
-            false,
-        ),
-        (crate::outcome::Outcome::Write, false, false, false),
-        (crate::outcome::Outcome::Busy, true, false, false),
-        (crate::outcome::Outcome::LockUnavailable, true, false, false),
-        (crate::outcome::Outcome::Cancelled, true, false, false),
-        (crate::outcome::Outcome::ReadOnlyBuiltIn, true, false, false),
-        (crate::outcome::Outcome::InvalidRecipe, true, false, false),
-        (crate::outcome::Outcome::InvalidSound, true, false, false),
-        (crate::outcome::Outcome::InvalidArgument, true, false, false),
-        (crate::outcome::Outcome::Identity, true, false, false),
-    ] {
-        let status = FileStatus::Library(super::super::status::LibraryStatus::Failed {
-            error: captured_error(kind),
-            publishing,
-            context: super::super::status::LibraryContext {
-                path: store.path().into(),
-                selector: Some(key.clone()),
-            },
-        });
-        let notice = status.description();
-        assert_eq!(
-            notice.contains("inspect this location"),
-            inspect,
-            "{notice}"
-        );
-        assert_eq!(
-            notice.contains("did not publish a replacement"),
-            replacement,
-            "{notice}"
-        );
-        assert!(
-            notice.lines().next().unwrap().contains(&key.to_string()),
-            "{notice}"
-        );
-        if !publishing
-            && matches!(
-                kind,
-                crate::outcome::Outcome::Conflict | crate::outcome::Outcome::HistoryConflict
-            )
-        {
-            assert!(notice.starts_with("Library read conflict"), "{notice}");
-        }
-        assert!(
-            notice.contains(&store.path().display().to_string()),
-            "{notice}"
-        );
+        assert_eq!(failure.outcome(), crate::outcome::Outcome::Conflict);
+        assert_eq!(context.selector, Some(key));
+        assert_eq!(context.path, store.path());
     }
 }
 
 // Real typed representatives for the presentation policy matrix below. No
 // production failure can be constructed from a category and an arbitrary sentence.
-fn captured_error(outcome: crate::outcome::Outcome) -> crate::services::OperationError {
-    use {
-        crate::identity::IdentityError, crate::identity::IdentityScope, crate::outcome::Outcome,
-        crate::services::OperationError, crate::storage::error::FileError,
-        crate::storage::error::IoCause, crate::storage::library::LibraryError,
-        crate::storage::load::LoadError,
-    };
-    let id = crate::services::catalog().unwrap()[0]
-        .recipe()
-        .document()
-        .id;
-    match outcome {
-        Outcome::HistoryConflict => LibraryError::HistoryReplacement { id }.into(),
-        Outcome::Conflict => LibraryError::StaleContent { id }.into(),
-        Outcome::Write => FileError::MissingFilename.into(),
-        Outcome::Unreadable => LoadError::Read {
-            origin: crate::document::recipe::Origin::Stream("captured".into()),
-            cause: IoCause::new(std::io::Error::other("read failed")),
-        }
-        .into(),
-        Outcome::IncompleteInventory => LibraryError::RootMissing.into(),
-        Outcome::Busy => LibraryError::Busy.into(),
-        Outcome::LockUnavailable => LibraryError::LockUnavailable {
-            error: IoCause::new(std::io::Error::other("locking unavailable")),
-        }
-        .into(),
-        Outcome::Cancelled => LibraryError::Cancelled.into(),
-        Outcome::ReadOnlyBuiltIn => LibraryError::ReadOnlyBuiltin {
-            id: "captured".into(),
-        }
-        .into(),
-        Outcome::InvalidRecipe => OperationError::Recipe(crate::core::RecipeError::NotUtf8),
-        Outcome::InvalidSound => LoadError::Sound {
-            origin: crate::document::recipe::Origin::Stream("captured".into()),
-            rate: SampleRate::DEFAULT,
-            error: crate::core::SoundError::Duration {
-                seconds: 0.0,
-                sample_rate_hz: 48000,
-            },
-        }
-        .into(),
-        Outcome::InvalidArgument => LibraryError::PurgeUnconfirmed.into(),
-        Outcome::Identity => IdentityError::Exhausted(IdentityScope::ExternalEntry).into(),
-        _ => panic!("category not used by this notice matrix"),
-    }
-}
 
 const fn finite(value: f64) -> auditorylab_core::Finite {
     match auditorylab_core::Finite::new(value) {

@@ -1,7 +1,7 @@
 //! Human-facing operation descriptions owned by their application data.
 use super::{AudioSummary, DisplayText};
-use crate::presentation::vocabulary::NumberStyle;
-use crate::presentation::*;
+use crate::vocabulary::NumberStyle;
+use crate::*;
 use auditorylab_app::discovery::collection::EntrySummary;
 use auditorylab_app::services::Exported;
 use auditorylab_app::services::library::Initialization;

@@ -1,7 +1,7 @@
 //! Shared status and refusal sentences for interactive frontends.
 use super::Explain;
-use crate::presentation::AudioErrorText;
-use crate::presentation::*;
+use crate::AudioErrorText;
+use crate::*;
 use auditorylab_app::outcome::Outcome;
 use auditorylab_app::workspace::WorkerFailure;
 use auditorylab_app::workspace::output::PreviewIssue;
@@ -113,7 +113,7 @@ impl WorkerFailureText for WorkerFailure {
     fn description(&self) -> String {
         match self {
             Self::Launch(error) => format!("Cannot start worker: {error}", error = error.explain()),
-            Self::Panicked => crate::presentation::WORKER_FAILED.into(),
+            Self::Panicked => crate::WORKER_FAILED.into(),
             Self::InvalidOutcome => "The worker returned a result for another operation.".into(),
         }
     }
@@ -168,8 +168,8 @@ impl FileStatusText for FileStatus {
             FileNotice::RetainedSource=>"Showing the retained source snapshot; filters explicitly cleared. This does not reload or reconstruct an ancestor.".into(),
             FileNotice::ChangedSelection=>"Saved selection changed. Refresh before editing this version.".into(),
             FileNotice::MissingSavedEntry=>"The saved entry is no longer in the observed inventory; refresh before locating it.".into(),
-            FileNotice::SavedSnapshotStillDirty=>crate::presentation::SAVED_SNAPSHOT_STILL_DIRTY.into(),
-            FileNotice::ExportCancelled=>crate::presentation::EXPORT_CANCELLED.into(),
+            FileNotice::SavedSnapshotStillDirty=>crate::SAVED_SNAPSHOT_STILL_DIRTY.into(),
+            FileNotice::ExportCancelled=>crate::EXPORT_CANCELLED.into(),
         },
     }
     }

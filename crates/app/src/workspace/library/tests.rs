@@ -3,8 +3,6 @@
 
 use super::*;
 use crate::core::query::{Direction, GroupBy, SortBy};
-use crate::presentation::LibraryPresentation;
-use crate::presentation::*;
 use crate::services::library::Library;
 
 fn fixture() -> (tempfile::TempDir, Library, Workspace) {
@@ -99,33 +97,16 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
         ..CatalogQuery::default()
     };
     w.set_catalog_query(query.clone()).unwrap();
-    let summary = w.library_count();
-    for expected in [
-        "exact search",
-        "10.1234/exact",
-        "Population: Human",
-        "Condition role: Comparison",
-        "Analysis: Invalid",
-        "Band: Delta",
-        "Method: Binaural",
-        "Rhythm state: Multiple",
-        "Created from inclusive:",
-        "Created before exclusive:",
-        "Edited from inclusive:",
-        "Added here before exclusive:",
-        "2026-03-28T22:00:00.000000000Z",
-        "2026-03-29T21:00:00.000000000Z",
-    ] {
-        assert!(summary.contains(expected), "{expected}: {summary}");
-    }
+    let summary = w.catalog_query().clone();
+    assert_eq!(&summary, &query);
     let mut invalid = query;
     invalid.created.before = Some(from);
     assert!(w.set_catalog_query(invalid).is_err());
-    assert_eq!(w.library_count(), summary);
+    assert_eq!(w.catalog_query(), &summary);
 }
 
 #[test]
-fn summary_rows_show_real_sort_date_unknown_edit_and_added_without_loading_documents() {
+fn summary_rows_sort_by_real_dates_without_loading_documents() {
     let (_temp, _store, mut w) = fixture();
     let p = &mut w.library;
     let mut unknown = p.entries[0].clone();
@@ -152,40 +133,29 @@ fn summary_rows_show_real_sort_date_unknown_edit_and_added_without_loading_docum
     };
     p.refilter();
     let (rows, _) = p.rows();
-    let rows = rows
-        .iter()
-        .map(|row| crate::presentation::library_text::row(row, p.query.effective_sort().0))
-        .collect::<Vec<_>>();
+    let rows = row_entries(&rows);
     assert_eq!(
-        rows[0].key,
-        known.key.to_string(),
+        rows[0].key, known.key,
         "Unknown edit must not sort by newer Added here"
     );
-    assert!(rows[1].text.contains("Edited: Unknown") && rows[1].text.contains("Added here:"));
-    assert!(rows[0].text.contains("Duration 1 min"));
+    assert_eq!(rows[1].modified_at, None);
+    assert!(rows[1].added_at.is_some());
+    assert_eq!(rows[0].duration_seconds, 60.0);
     p.query.sort = SortBy::Created;
     p.query.direction = Some(Direction::Asc);
     p.refilter();
     let (rows, _) = p.rows();
-    let rows = rows
-        .iter()
-        .map(|row| crate::presentation::library_text::row(row, p.query.effective_sort().0))
-        .collect::<Vec<_>>();
-    assert_eq!(rows[0].key, unknown.key.to_string());
-    assert!(rows[0].text.contains(&format!(
-        "Created: {}",
-        crate::presentation::calendar_text::local_timestamp(unknown.created_at.unwrap())
-    )));
+    let rows = row_entries(&rows);
+    assert_eq!(rows[0].key, unknown.key);
+    assert_eq!(rows[0].created_at, unknown.created_at);
     p.query.sort = SortBy::Added;
     p.query.direction = Some(Direction::Desc);
     p.refilter();
     let (rows, _) = p.rows();
-    let rows = rows
-        .iter()
-        .map(|row| crate::presentation::library_text::row(row, p.query.effective_sort().0))
-        .collect::<Vec<_>>();
-    assert_eq!(rows[0].key, unknown.key.to_string());
-    assert!(rows[0].text.contains("Edited: Unknown") && rows[0].text.contains("Added here:"));
+    let rows = row_entries(&rows);
+    assert_eq!(rows[0].key, unknown.key);
+    assert_eq!(rows[0].modified_at, None);
+    assert!(rows[0].added_at.is_some());
     assert!(
         p.loaded.is_none(),
         "Rows consume summaries, not full selected User documents"
@@ -234,19 +204,14 @@ fn two_editors_conflict_even_for_noop_and_refresh_preserves_draft() {
     idle(&mut other);
     user(&mut other);
     other.edit_selected();
-    let crate::presentation::library_text::SelectionBindingText { key, token, .. } =
-        crate::presentation::library_text::selection_binding(w.library_binding());
+    let (key, token, _) = binding(w.library_binding());
     w.mutate_library(&key, &token, "rename", "renamed elsewhere", false)
         .unwrap();
     idle(&mut w);
     other.save().unwrap();
     idle(&mut other);
     assert!(
-        other
-            .files
-            .status
-            .description()
-            .contains("saved recipe changed")
+        matches!(&other.files.status,FileStatus::Library(LibraryStatus::Failed {error,..}) if error.outcome()==crate::outcome::Outcome::Conflict)
     );
     assert_eq!(other.editor.session.draft().title(), "Untitled sound");
     other.refresh_library();
@@ -271,35 +236,24 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     w.save().unwrap();
     idle(&mut w);
     user(&mut w);
-    let crate::presentation::library_text::SelectionBindingText { key, token, .. } =
-        crate::presentation::library_text::selection_binding(w.library_binding());
+    let (key, token, _) = binding(w.library_binding());
     w.mutate_library(&key, &token, "trash", "", false).unwrap();
     idle(&mut w);
-    assert!(
-        crate::presentation::workspace_text::library_view(&w.library_view())
-            .rows
-            .is_empty()
-    );
+    assert!(w.library_view().rows.is_empty());
     w.set_catalog_query(CatalogQuery {
         scope: Scope::Trash,
         ..CatalogQuery::default()
     })
     .unwrap();
     idle(&mut w);
-    let crate::presentation::library_text::SelectionBindingText {
-        token: trash_token,
-        trashed,
-        ..
-    } = crate::presentation::library_text::selection_binding(w.library_binding());
+    let (_, trash_token, trashed) = binding(w.library_binding());
     assert!(trashed);
     assert!(w.prepare_audio().is_err());
     w.mutate_library(&key, &trash_token, "restore", "", false)
         .unwrap();
     idle(&mut w);
     user(&mut w);
-    let crate::presentation::library_text::SelectionBindingText {
-        token: restored, ..
-    } = crate::presentation::library_text::selection_binding(w.library_binding());
+    let (_, restored, _) = binding(w.library_binding());
     w.mutate_library(&key, &restored, "trash", "", false)
         .unwrap();
     idle(&mut w);
@@ -309,8 +263,7 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     })
     .unwrap();
     idle(&mut w);
-    let crate::presentation::library_text::SelectionBindingText { token: current, .. } =
-        crate::presentation::library_text::selection_binding(w.library_binding());
+    let (_, current, _) = binding(w.library_binding());
     w.mutate_library(&key, &current, "purge", "", false)
         .unwrap();
     let prompt = w
@@ -338,7 +291,7 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     });
     idle(&mut w);
     assert!(store.scan(&Cancel::default()).entries.is_empty());
-    assert!(w.document_location().starts_with("Detached draft"));
+    assert!(w.library_data().detached.is_some());
     assert!(
         w.save().is_err(),
         "purging a saved entry cannot turn the retained draft into an implicit Create with the old UUID"
@@ -356,8 +309,7 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
     w.save().unwrap();
     idle(&mut w);
     user(&mut w);
-    let crate::presentation::library_text::SelectionBindingText { key, .. } =
-        crate::presentation::library_text::selection_binding(w.library_binding());
+    let (key, _, _) = binding(w.library_binding());
     let record = store.load(&key.parse().unwrap()).unwrap();
     std::fs::write(
         store
@@ -370,22 +322,23 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
     w.refresh_library();
     idle(&mut w);
     assert_eq!(
-        crate::presentation::workspace_text::library_view(&w.library_view())
+        w.library_view()
             .rows
             .iter()
-            .filter(|row| !row.key.is_empty())
+            .filter(|row| matches!(row, super::super::LibraryRowView::Entry { .. }))
             .count(),
         1
     );
-    assert!(
-        crate::presentation::workspace_text::library_view(&w.library_view())
-            .rows
-            .iter()
-            .any(|row| row.text.contains("Needs review"))
-    );
+    assert!(w.library_view().rows.iter().any(|row| matches!(
+        row,
+        super::super::LibraryRowView::Entry {
+            requires_read: true,
+            ..
+        }
+    )));
     assert!(w.library.selected_unreadable());
     assert!(w.library_binding().unwrap().version_token.is_none());
-    assert!(w.library_status().contains("incomplete"));
+    assert!(!w.library_data().inventory.complete);
     assert_eq!(w.editor.session.draft().title(), "Untitled sound");
 }
 
@@ -397,8 +350,7 @@ fn save_before_trash_uses_confirmed_new_token_and_preserves_published_edit() {
     user(&mut w);
     w.edit_selected();
     title(&mut w, "save before trash");
-    let crate::presentation::library_text::SelectionBindingText { key, token, .. } =
-        crate::presentation::library_text::selection_binding(w.library_binding());
+    let (key, token, _) = binding(w.library_binding());
     w.mutate_library(&key, &token, "trash", "", false).unwrap();
     let prompt = w
         .take_effects()
@@ -430,8 +382,7 @@ fn discard_before_trash_preserves_edits_made_after_the_job_was_captured() {
     user(&mut w);
     w.edit_selected();
     title(&mut w, "before request");
-    let crate::presentation::library_text::SelectionBindingText { key, token, .. } =
-        crate::presentation::library_text::selection_binding(w.library_binding());
+    let (key, token, _) = binding(w.library_binding());
     let document = w.editor().document();
     w.mutate_library(&key, &token, "trash", "", false).unwrap();
     let prompt = w
@@ -551,19 +502,19 @@ fn a_failed_completion_keeps_draft_and_retry_observes_actual_storage() {
             outcome: JobOutcome::Failed(WorkerFailure::Panicked),
         });
         assert!(workspace.editor().dirty());
-        assert!(
-            crate::presentation::workspace_text::action_view(&workspace.action_view())
-                .operation_details
-                .contains("thread failed")
-        );
+        assert!(matches!(
+            workspace.files.status,
+            FileStatus::WorkerFailed {
+                error: WorkerFailure::Panicked,
+                ..
+            }
+        ));
         workspace.save().unwrap();
         idle(&mut workspace);
         if applied {
             assert!(workspace.editor().dirty());
             assert!(
-                crate::presentation::workspace_text::action_view(&workspace.action_view())
-                    .operation_details
-                    .contains("identity already exists")
+                matches!(&workspace.files.status,FileStatus::Library(LibraryStatus::Failed {error,..}) if error.outcome()==crate::outcome::Outcome::Conflict)
             );
             workspace.save_independent_copy().unwrap();
             idle(&mut workspace);
@@ -581,11 +532,7 @@ fn refresh_reloads_membership_state_even_when_recipe_sha_is_unchanged() {
     workspace.save().unwrap();
     idle(&mut workspace);
     user(&mut workspace);
-    let crate::presentation::library_text::SelectionBindingText {
-        key: binding,
-        token,
-        ..
-    } = crate::presentation::library_text::selection_binding(workspace.library_binding());
+    let (binding, token, _) = binding(workspace.library_binding());
     let key: LibraryKey = binding.parse().unwrap();
     store
         .apply(
@@ -656,10 +603,7 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
         assert!(status.editor_reset_error().is_some());
         assert_eq!(status.conclusion(Conclusion::Succeeded), Conclusion::Failed);
         assert_eq!(confirmed, Some(false));
-        let details = status.description();
-        assert!(details.contains("Trash confirmed"));
-        assert!(details.contains("Open draft retained"));
-        assert!(details.contains("dependent action stopped"));
+        assert!(status.editor_reset_error().is_some());
         // A later background read retains the banner but does not make the old
         // reset failure a new shutdown failure.
         workspace.files.status = status;
@@ -738,10 +682,9 @@ fn selected_ready(workspace: &mut Workspace, key: &LibraryKey, title: &str, quer
         Some(key)
     );
     assert_eq!(workspace.selected().unwrap().title(), title);
-    let view = crate::presentation::workspace_text::library_view(&workspace.library_view());
-    assert_eq!(view.title, title);
-    assert!(view.details.contains(title));
-    let actions = crate::presentation::workspace_text::action_view(&workspace.action_view());
+    let view = workspace.library_view();
+    assert_eq!(view.snapshot.as_ref().unwrap().title(), title);
+    let actions = workspace.action_view();
     assert!(actions.can_play);
     assert!(actions.can_copy);
     assert!(actions.can_export);
@@ -870,10 +813,7 @@ fn retained_user_source_exports_its_captured_portable_text_without_reloading_use
     assert!(!workspace.library.selected_user());
     let next = workspace.next_id;
     for _ in 0..20 {
-        assert!(
-            crate::presentation::workspace_text::action_view(&workspace.action_view())
-                .can_export_recipe
-        );
+        assert!(workspace.action_view().can_export_recipe);
     }
     assert_eq!(workspace.next_id, next);
     let first = workspace.prepare_export_recipe().unwrap().0;
@@ -891,4 +831,24 @@ fn retained_user_source_exports_its_captured_portable_text_without_reloading_use
     };
     assert!(crate::core::Recipe::parse(text).unwrap() == *original.recipe());
     assert!(!text.contains("Current saved version"));
+}
+
+fn binding(binding: Option<SelectionBinding<'_>>) -> (String, String, bool) {
+    let binding = binding.unwrap();
+    (
+        binding.key.to_string(),
+        binding
+            .version_token
+            .map(|token| token.to_string())
+            .unwrap_or_default(),
+        binding.trashed,
+    )
+}
+fn row_entries(rows: &[super::super::LibraryRowView]) -> Vec<&EntrySummary> {
+    rows.iter()
+        .filter_map(|row| match row {
+            super::super::LibraryRowView::Entry { entry, .. } => Some(entry.as_ref()),
+            _ => None,
+        })
+        .collect()
 }

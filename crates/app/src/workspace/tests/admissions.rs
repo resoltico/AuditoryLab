@@ -374,7 +374,7 @@ macro_rules! action_matrix {
                 let mut ws = fixture(case);
                 let expected = case.expected().$expected;
                 let next = ws.next_id;
-                let view = crate::presentation::workspace_text::action_view(&ws.action_view());
+                let view = ws.action_view();
                 assert_eq!(view.$field, expected, "view: {case:?}");
                 assert_eq!(
                     ($admit)(&mut ws.inner).is_ok(),
@@ -491,7 +491,7 @@ fn preview_admission_and_file_busy_use_owned_resource_state() {
     for case in Case::ALL {
         let mut ws = fixture(case);
         let expected = case.expected();
-        let view = crate::presentation::workspace_text::action_view(&ws.action_view());
+        let view = ws.action_view();
         assert_eq!(view.can_preview, expected.preview, "{case:?}");
         assert_eq!(ws.preview_admission().is_ok(), expected.preview, "{case:?}");
         assert_eq!(view.file_busy, expected.file_busy, "{case:?}");
@@ -506,7 +506,7 @@ fn stop_and_cancel_stay_independent_of_other_admissions_until_join() {
     for case in Case::ALL {
         let mut ws = fixture(case);
         let expected = case.expected();
-        let view = crate::presentation::workspace_text::action_view(&ws.action_view());
+        let view = ws.action_view();
         assert_eq!(view.playback_busy, expected.audio, "{case:?}");
         assert_eq!(view.exporting, expected.cancel, "{case:?}");
         assert_eq!(
@@ -543,7 +543,7 @@ fn editor_actions_share_the_owned_gate() {
     for case in Case::ALL {
         let mut ws = fixture(case);
         let expected = case.expected();
-        let view = crate::presentation::workspace_text::action_view(&ws.action_view());
+        let view = ws.action_view();
         assert_eq!(view.can_edit, expected.edit, "{case:?}");
         assert_eq!(ws.editing_allowed().is_ok(), expected.edit, "{case:?}");
         let handle = ws

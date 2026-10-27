@@ -84,6 +84,6 @@ Define its meaning and checked construction in core, including equality and stri
 
 ## Test and format boundaries
 
-App private-state unit suites compile the same authoritative presentation source through a test-only module. Public presentation-dependent integration suites live in [presentation tests](../crates/presentation/tests); the presentation library's unit target does not run those same assertions twice. Normal CLI/GUI/integration builds exercise the separate crate boundary. The app production dependency tree contains no presentation crate.
+App unit suites assert typed state, views and causes. Presentation unit suites and [integration tests](../crates/presentation/tests) assert wording through the public app API. Presentation is compiled as its own crate for every consumer. Core’s `test-support` feature supplies shared behavioral recipe builders through dev-dependencies; normal application graphs exclude it. The app dependency tree contains no presentation crate.
 
 [Formats](formats.md) owns schema/layout/JSON/exit-code reference. [Toolkit integration](../third_party/README.md) defines authenticated patches and replacement contracts; [packaging](releasing.md) defines native prerequisites and delivered contents. Core's sample tests use independent numerical expectations; xtask's version/package expectations remain independent from the product's formatters.

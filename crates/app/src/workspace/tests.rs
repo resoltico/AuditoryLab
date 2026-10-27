@@ -1,7 +1,5 @@
 //! Coordinator semantics with real persistent stores and directly executed file jobs.
 use super::*;
-use crate::presentation::recipe_text::SnapshotText;
-use crate::presentation::*;
 use crate::workspace::monitor::WaveformScale;
 use auditorylab_core::{ComponentId, ParameterId};
 use std::sync::Arc;
@@ -56,17 +54,18 @@ impl TestWorkspace {
         self.inner.poll()
     }
     fn select(&mut self, position: usize) {
-        let key = crate::presentation::workspace_text::library_view(&self.inner.library_view())
-            .rows[position]
-            .key
-            .clone();
+        let LibraryRowView::Entry { entry, .. } = &self.inner.library_view().rows[position] else {
+            panic!("entry row")
+        };
+        let key = entry.key.to_string();
         self.select_library_key(&key);
     }
     fn visible_count(&self) -> usize {
-        crate::presentation::workspace_text::library_view(&self.inner.library_view())
+        self.inner
+            .library_view()
             .rows
             .iter()
-            .filter(|row| !row.key.is_empty())
+            .filter(|row| matches!(row, LibraryRowView::Entry { .. }))
             .count()
     }
 }
@@ -116,8 +115,8 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     let mut ws = workspace();
     document(&mut ws, 440.0);
     ws.poll();
-    let view = crate::presentation::workspace_text::editor_view(&ws.editor_view());
-    let actions = crate::presentation::workspace_text::action_view(&ws.action_view());
+    let view = ws.editor_view();
+    let actions = ws.action_view();
     let previews = ws.audio.output.previews;
     let models = ws.audio.output.models;
     let evaluations = ws.editor.session.evaluations();
@@ -128,10 +127,8 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     for _ in 0..100 {
         assert!(!ws.poll());
     }
-    assert_eq!(
-        crate::presentation::workspace_text::action_view(&ws.action_view()),
-        actions
-    );
+    assert_eq!(ws.action_view().can_play, actions.can_play);
+    assert_eq!(ws.action_view().can_save, actions.can_save);
     assert_eq!(ws.audio.output.previews, previews);
     assert_eq!(ws.audio.output.models, models);
     assert_eq!(ws.editor.session.evaluations(), evaluations);
@@ -143,10 +140,8 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     assert!(Arc::ptr_eq(&model, &ws.model_view().unwrap()));
     assert_eq!(ws.revision(), revision);
     assert!(Arc::ptr_eq(&capture, &ws.output_view().capture.unwrap()));
-    assert_eq!(
-        crate::presentation::workspace_text::editor_view(&ws.editor_view()),
-        view
-    );
+    assert_eq!(ws.editor_view().metadata, view.metadata);
+    assert_eq!(ws.editor_view().components, view.components);
     assert_eq!(
         ws.editor.session.evaluations(),
         evaluations,
@@ -191,13 +186,7 @@ fn invalid_commits_clear_unheld_previews_and_held_captures_stay_frozen() {
         current.capture.is_none(),
         "invalid committed source clears the preview"
     );
-    assert!(
-        current
-            .unavailable
-            .unwrap()
-            .description()
-            .contains("48000 Hz")
-    );
+    assert!(current.unavailable.is_some());
     let evaluations = ws.editor.session.evaluations();
     for _ in 0..10 {
         ws.poll();
@@ -207,22 +196,6 @@ fn invalid_commits_clear_unheld_previews_and_held_captures_stay_frozen() {
         evaluations,
         "invalid results are cached"
     );
-}
-
-#[test]
-fn receipt_age_reads_in_human_units() {
-    use std::time::Duration;
-    for (millis, held, text) in [
-        (120, false, "Received samples just now"),
-        (12_495, false, "Received samples 12 s ago"),
-        (125_000, false, "Received samples 2 min ago"),
-        (7_300_000, true, "Current session received samples 2 h ago"),
-    ] {
-        assert_eq!(
-            crate::presentation::workspace_text::received_text(Duration::from_millis(millis), held),
-            text
-        );
-    }
 }
 
 #[test]
@@ -239,12 +212,8 @@ fn a_search_that_hides_every_recipe_leaves_nothing_to_play_or_export() {
             .all(|effect| !matches!(effect, Effect::Run(_))),
         "refused commands never admit jobs"
     );
-    assert!(!crate::presentation::workspace_text::action_view(&ws.action_view()).can_play);
-    assert!(
-        crate::presentation::workspace_text::library_view(&ws.library_view())
-            .selected
-            .is_none()
-    );
+    assert!(!ws.action_view().can_play);
+    assert!(ws.library_view().selected.is_none());
     ws.copy_selected();
     assert_eq!(ws.view(), View::Library, "nothing to copy");
     ws.set_query("");
@@ -279,7 +248,7 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
     let next_id = ws.next_id;
     let effects = ws.take_effects();
     for _ in 0..10 {
-        let actions = crate::presentation::workspace_text::action_view(&ws.action_view());
+        let actions = ws.action_view();
         assert!(actions.can_save);
         assert!(!actions.can_export);
     }
@@ -309,34 +278,30 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
 #[test]
 fn library_dependencies_exclude_editor_and_telemetry_but_include_selection_query_and_rate() {
     let mut ws = workspace();
-    let initial = crate::presentation::workspace_text::library_view(&ws.library_view());
+    let initial = ws.library_view();
     let evaluations = ws.library.evaluations.get();
     let (_, field) = document(&mut ws, 440.0);
     ws.stage(field, "880").unwrap();
-    let _ = crate::presentation::workspace_text::action_view(&ws.action_view());
-    let _ = crate::presentation::workspace_text::editor_view(&ws.editor_view());
+    let _ = ws.action_view();
+    let _ = ws.editor_view();
     ws.poll();
     assert_eq!(
-        crate::presentation::workspace_text::library_view(&ws.library_view()),
-        initial
+        ws.library_view().snapshot.as_ref().map(RecipeSnapshot::id),
+        initial.snapshot.as_ref().map(RecipeSnapshot::id)
     );
     assert_eq!(ws.library.evaluations.get(), evaluations);
     ws.select(1);
     assert_ne!(
-        crate::presentation::workspace_text::library_view(&ws.library_view()).title,
-        initial.title
+        ws.library_view().snapshot.as_ref().unwrap().id(),
+        initial.snapshot.as_ref().unwrap().id()
     );
     assert_eq!(ws.library.evaluations.get(), evaluations + 1);
     ws.set_query("no matching result");
-    let empty = crate::presentation::workspace_text::library_view(&ws.library_view());
-    assert!(empty.rows.is_empty() && empty.title.is_empty() && empty.details.is_empty());
+    let empty = ws.library_view();
+    assert!(empty.rows.is_empty() && empty.snapshot.is_none());
     ws.set_query("");
     ws.set_export_rate(SampleRate::new(96000).unwrap());
-    assert!(
-        !crate::presentation::workspace_text::library_view(&ws.library_view())
-            .rows
-            .is_empty()
-    );
+    assert!(!ws.library_view().rows.is_empty());
     assert_eq!(ws.library.evaluations.get(), evaluations + 3);
 }
 
@@ -391,15 +356,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
 #[test]
 fn search_includes_own_notes_and_attributed_persisted_source_context() {
     let source = crate::services::catalog().unwrap().remove(0);
-    let citation = source
-        .about()
-        .unwrap()
-        .research
-        .as_ref()
-        .unwrap()
-        .citation
-        .clone()
-        .unwrap();
+    let citation = source.recipe().sources()[0].citation.clone();
     let mut draft = Draft::from_snapshot(&source).unwrap();
     draft.set_summary("unique-own-notes-marker 🎧".into());
     let bytes = draft.to_toml().unwrap();
@@ -410,11 +367,21 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
         ws.set_query(query);
         assert_eq!(ws.visible_count(), 1, "{query}");
         assert!(
-            crate::presentation::workspace_text::library_view(&ws.library_view())
-                .details
-                .contains("Source citation:")
+            ws.selected()
+                .unwrap()
+                .recipe()
+                .sources()
+                .iter()
+                .any(|source| source.citation == citation)
         );
-        assert!(ws.selected().unwrap().about().unwrap().research.is_none());
+        assert!(
+            ws.selected()
+                .unwrap()
+                .recipe()
+                .evidence()
+                .iter()
+                .all(|e| e.scope == crate::core::EvidenceScope::Ancestor)
+        );
     }
     ws.set_query("not-present-anywhere-marker");
     assert!((ws.visible_count() == 0));
@@ -446,15 +413,15 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     )
     .unwrap();
     let selected = ws.selected().unwrap().clone();
-    let _ = crate::presentation::workspace_text::library_view(&ws.library_view());
+    let _ = ws.library_view();
     let count = selected.realization_count();
     assert_eq!(
         count, 1,
         "rows, structure and details share the same actual compile"
     );
     for _ in 0..10 {
-        let _ = crate::presentation::workspace_text::action_view(&ws.action_view());
-        let _ = crate::presentation::workspace_text::library_view(&ws.library_view());
+        let _ = ws.action_view();
+        let _ = ws.library_view();
         ws.set_hold(true);
         ws.set_hold(false);
     }
@@ -467,10 +434,10 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     });
     assert_eq!(selected.realization_count(), count);
     ws.set_export_rate(SampleRate::new(96000).unwrap());
-    let _ = crate::presentation::workspace_text::action_view(&ws.action_view());
+    let _ = ws.action_view();
     assert_eq!(selected.realization_count(), count + 1);
     ws.set_export_rate(SampleRate::DEFAULT);
-    let _ = crate::presentation::workspace_text::action_view(&ws.action_view());
+    let _ = ws.action_view();
     assert_eq!(selected.realization_count(), count + 1);
     let mut invalid = Draft::new().unwrap();
     invalid.set_duration_seconds(finite(-1.0));
@@ -542,19 +509,18 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
     );
     ws.add_import(replacement.clone()).unwrap();
     ws.set_query("original-custom-note-marker");
-    assert!(
-        crate::presentation::workspace_text::library_view(&ws.library_view())
-            .rows
-            .is_empty()
-    );
+    assert!(ws.library_view().rows.is_empty());
     ws.set_query("reimport-source-marker");
     assert_eq!(ws.visible_count(), 1);
     assert!(
-        crate::presentation::workspace_text::library_view(&ws.library_view())
-            .details
-            .contains("reimport-source-marker")
+        ws.selected()
+            .unwrap()
+            .recipe()
+            .lineage()
+            .iter()
+            .any(|ancestor| ancestor.note.contains("reimport-source-marker"))
     );
-    let _ = crate::presentation::workspace_text::action_view(&ws.action_view());
+    let _ = ws.action_view();
     assert_eq!(replacement.realization_count(), 1);
     assert_eq!(first.realization_count(), initial);
 }
@@ -615,7 +581,7 @@ fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
 }
 
 #[test]
-fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scroll() {
+fn save_refusal_and_file_outcome_remain_independent() {
     let mut ws = workspace();
     ws.set_view(View::Workbench);
     let notes = ws
@@ -626,9 +592,9 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
         ))
         .unwrap();
     ws.stage(notes, &"Z".repeat(66000)).unwrap();
-    let actions = crate::presentation::workspace_text::action_view(&ws.action_view());
+    let actions = ws.action_view();
     assert!(!actions.can_save);
-    assert!(actions.operation_summary.contains("65536"));
+    assert!(actions.save_reason.is_some());
     ws.files.status = FileStatus::Exported {
         path: PathBuf::from("capture.wav"),
         exported: crate::storage::wav::Exported {
@@ -638,10 +604,11 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
             warnings: Vec::new(),
         },
     };
-    let actions = crate::presentation::workspace_text::action_view(&ws.action_view());
-    assert!(actions.operation_summary.contains("65536"));
-    assert!(actions.operation_outcome.starts_with("Exported 100"));
-    assert!(actions.operation_summary.chars().count() <= 181);
+    let actions = ws.action_view();
+    assert!(actions.save_reason.is_some());
+    assert!(
+        matches!(actions.file_status,FileStatus::Exported {ref exported,..} if exported.frames==100)
+    );
     ws.editor.session.restore(notes).unwrap();
     ws.files.status = FileStatus::Failed(
         crate::services::ExportError::File {
@@ -653,9 +620,8 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
         }
         .into(),
     );
-    let actions = crate::presentation::workspace_text::action_view(&ws.action_view());
-    assert!(actions.operation_details.contains("cannot write file"));
-    assert!(actions.operation_details.len() > actions.operation_summary.len());
+    let actions = ws.action_view();
+    assert!(matches!(actions.file_status, FileStatus::Failed(_)));
 }
 
 #[test]
@@ -674,12 +640,8 @@ fn nominal_listing_a_thousand_rows_does_not_compile_every_sound() {
         bands: vec![crate::core::rhythm::Band::Delta],
         ..Default::default()
     });
-    assert_eq!(
-        crate::presentation::workspace_text::library_view(&ws.library_view())
-            .rows
-            .len(),
-        1000
-    );
+    assert_eq!(ws.library_view().rows.len(), 1000);
+    ws.selected().unwrap().at(ws.export_rate()).unwrap();
     assert_eq!(
         snapshots
             .iter()
@@ -689,12 +651,8 @@ fn nominal_listing_a_thousand_rows_does_not_compile_every_sound() {
         "only the selected detail is compiled"
     );
     ws.set_export_rate(SampleRate::new(96_000).unwrap());
-    assert_eq!(
-        crate::presentation::workspace_text::library_view(&ws.library_view())
-            .rows
-            .len(),
-        1000
-    );
+    assert_eq!(ws.library_view().rows.len(), 1000);
+    ws.selected().unwrap().at(ws.export_rate()).unwrap();
     assert_eq!(
         snapshots
             .iter()
@@ -1300,7 +1258,7 @@ fn managed_save_can_run_beside_admitted_audio_and_stop_does_not_cancel_it() {
 }
 
 #[test]
-fn committed_brief_never_borrows_pending_pair_facts() {
+fn committed_classification_never_borrows_pending_pair_facts() {
     let mut ws = workspace();
     ws.set_view(View::Workbench);
     let key = ws.editor().document_key();
@@ -1316,16 +1274,13 @@ fn committed_brief_never_borrows_pending_pair_facts() {
         .unwrap();
     ws.commit_field(first, "317").unwrap();
     ws.commit_field(offset, "-7").unwrap();
-    let original = crate::presentation::workspace_text::editor_view(&ws.editor_view()).brief;
-    assert!(original.contains("7 Hz") && original.contains("317") && original.contains("310"));
+    let original = ws.editor_view();
     for text in ["40", "NaN"] {
         ws.stage(offset, text).unwrap();
-        let view = crate::presentation::workspace_text::editor_view(&ws.editor_view());
-        assert_eq!(
-            view.brief,
-            original.replace("Draft classification", "Last committed classification")
-        );
-        assert!(!view.brief.contains("357") && !view.brief.contains("No valid sound"));
+        let view = ws.editor_view();
+        assert_eq!(view.nominal, original.nominal);
+        assert_eq!(view.committed, original.committed);
+        assert!(view.pending);
         assert_eq!(
             ws.editor().draft().components()[0]
                 .form
@@ -1335,20 +1290,17 @@ fn committed_brief_never_borrows_pending_pair_facts() {
             -7.0
         );
         assert_eq!(ws.restore(offset).unwrap(), "-7");
-        assert_eq!(
-            crate::presentation::workspace_text::editor_view(&ws.editor_view()).brief,
-            original
-        );
+        assert_eq!(ws.editor_view().committed, original.committed);
     }
     ws.stage(offset, "40").unwrap();
     ws.commit().unwrap();
-    let committed = crate::presentation::workspace_text::editor_view(&ws.editor_view()).brief;
-    assert!(committed.contains("40 Hz") && committed.contains("357"));
-    assert!(!committed.contains("Last committed"));
+    let committed = ws.editor_view();
+    assert_ne!(committed.committed, original.committed);
+    assert!(!committed.pending);
 }
 
 #[test]
-fn action_budget_messages_distinguish_components_from_expanded_voices() {
+fn action_budget_refusals_distinguish_components_from_expanded_voices() {
     for (primitives, pairs, components, voices) in [(0, 8, 8, 16), (16, 0, 16, 16), (15, 0, 15, 15)]
     {
         let mut ws = workspace();
@@ -1360,18 +1312,16 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
         for _ in 0..pairs {
             ws.add_pair(key, crate::core::PairKind::Binaural).unwrap();
         }
-        let view = crate::presentation::workspace_text::action_view(&ws.action_view());
+        let view = ws.action_view();
         assert!(!view.can_add_pair);
-        assert!(view.pair_add_reason.contains(&format!(
-            "{components} authored components and {voices} expanded voices"
-        )));
-        assert!(view.pair_add_reason.contains("2 more voices"));
+        assert!(
+            matches!(view.pair_add_reason, Some(Refusal::Edit(EditRefusal::BudgetExceeded { components:c, voices:v, additional_voices:2 })) if c==components && v==voices)
+        );
         assert_eq!(view.can_add_component, voices < 16 && components < 16);
         if !view.can_add_component {
-            assert!(view.add_component_reason.contains(&format!(
-                "{components} authored components and {voices} expanded voices"
-            )));
-            assert!(view.add_component_reason.contains("1 more voice"));
+            assert!(
+                matches!(view.add_component_reason, Some(Refusal::Edit(EditRefusal::BudgetExceeded { components:c, voices:v, additional_voices:1 })) if c==components && v==voices)
+            );
         }
     }
 }
@@ -1380,27 +1330,35 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
 fn structured_library_rows_keep_saved_identity_and_rate_independent_classification() {
     let mut ws = workspace();
     ws.set_query("ioannou 2");
-    let view = crate::presentation::workspace_text::library_view(&ws.library_view());
+    let view = ws.library_view();
     assert_eq!(view.rows.len(), 1);
-    let row = &view.rows[0];
-    assert!(row.key.contains("ioannou-2015-binaural-2-hz"));
-    assert_eq!(row.bands, "Delta");
-    assert!(row.collection.contains("Read only"));
-    assert!(row.text.contains(&row.title) && row.text.contains(&row.dates));
-    let classification = view.classification.clone();
-    ws.set_export_rate(auditorylab_core::SampleRate::new(96_000).unwrap());
-    assert_eq!(
-        crate::presentation::workspace_text::library_view(&ws.library_view()).classification,
-        classification
+    let LibraryRowView::Entry { entry, .. } = &view.rows[0] else {
+        panic!("entry row")
+    };
+    assert!(entry.key.to_string().contains("ioannou-2015-binaural-2-hz"));
+    assert!(
+        entry
+            .nominal
+            .bands
+            .contains(&crate::core::rhythm::Band::Delta)
     );
-    assert_eq!(
-        crate::presentation::workspace_text::library_view(&ws.library_view()).rows[0].key,
-        row.key
-    );
+    assert!(matches!(
+        entry.key,
+        crate::document::origin::LibraryKey::BuiltIn(_)
+    ));
+    let classification = entry.nominal.clone();
+    let key = entry.key.clone();
+    ws.set_export_rate(SampleRate::new(96_000).unwrap());
+    let next = ws.library_view();
+    let LibraryRowView::Entry { entry, .. } = &next.rows[0] else {
+        panic!("entry row")
+    };
+    assert_eq!(entry.nominal, classification);
+    assert_eq!(entry.key, key);
 }
 
 #[test]
-fn staged_envelope_failures_render_quantities_and_rate_in_metadata() {
+fn staged_envelope_diagnostics_retain_quantities_and_rate_in_metadata() {
     let mut workspace = workspace();
     let handle = workspace
         .editor
@@ -1410,7 +1368,7 @@ fn staged_envelope_failures_render_quantities_and_rate_in_metadata() {
         ))
         .unwrap();
     workspace.stage(handle, "0").unwrap();
-    let view = crate::presentation::workspace_text::editor_view(&workspace.editor_view());
+    let view = workspace.editor_view();
     let duration = view
         .metadata
         .iter()
@@ -1418,7 +1376,10 @@ fn staged_envelope_failures_render_quantities_and_rate_in_metadata() {
         .unwrap();
     assert_eq!(
         duration.diagnostic,
-        "Duration 0 s must last from one sample (1/48000 s) to 16.6 days at 48000 Hz"
+        Some(FieldDiagnostic::Sound(crate::core::SoundError::Duration {
+            seconds: 0.0,
+            sample_rate_hz: 48000
+        }))
     );
 }
 

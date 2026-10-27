@@ -94,13 +94,11 @@ pub const BUILD_IDENTITY: BuildIdentity = generated::BUILD;
 mod input;
 #[cfg(test)]
 mod tests {
-    use crate::presentation::Explain;
     #[test]
     fn random_failure_does_not_fall_back_to_clock_or_counter() {
         let error = super::generate_uuid(|_| Err(getrandom::Error::UNSUPPORTED)).unwrap_err();
         assert_eq!(error.outcome(), crate::outcome::Outcome::Identity);
         assert_eq!(error.to_string(), "identity.entropy");
-        assert!(error.explain().contains("random UUID"));
         assert!(std::error::Error::source(&error).is_some());
     }
 }

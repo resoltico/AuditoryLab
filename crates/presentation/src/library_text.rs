@@ -1,10 +1,10 @@
 //! Shared collection rows, query descriptions and document-location wording.
 use super::workspace_text::{LibraryFacetView, LibraryRowView};
-use crate::presentation::AudioSummary;
-use crate::presentation::DisplayText;
-use crate::presentation::Explain;
-use crate::presentation::vocabulary::NumberStyle;
-use crate::presentation::*;
+use crate::AudioSummary;
+use crate::DisplayText;
+use crate::Explain;
+use crate::vocabulary::NumberStyle;
+use crate::*;
 use auditorylab_app::discovery::collection::CatalogQuery;
 use auditorylab_app::discovery::collection::EntrySummary;
 use auditorylab_app::document::origin::LibraryKey;
@@ -53,10 +53,7 @@ fn entry_row(
         _ => ("Created", e.created_at),
     };
     let shown = |date: Option<auditorylab_core::Timestamp>| {
-        date.map_or_else(
-            || "Unknown".into(),
-            crate::presentation::calendar_text::local_timestamp,
-        )
+        date.map_or_else(|| "Unknown".into(), crate::calendar_text::local_timestamp)
     };
     let mut dates = format!("{date_label}: {}", shown(date));
     if matches!(e.key, LibraryKey::User(_)) {
@@ -233,7 +230,7 @@ pub(crate) fn count(query: &CatalogQuery, visible: usize, complete: bool) -> Str
                 if let Some(value) = value {
                     restrictions.push(format!(
                         "{name} {label}: {} · UTC {value}",
-                        crate::presentation::calendar_text::local_timestamp(value)
+                        crate::calendar_text::local_timestamp(value)
                     ));
                 }
             }
@@ -257,10 +254,10 @@ pub(crate) fn empty_message(
         return "";
     }
     if !matches!(query.scope, Scope::BuiltIn | Scope::OpenFiles) && !complete {
-        return crate::presentation::vocabulary::INVENTORY_INCOMPLETE;
+        return crate::vocabulary::INVENTORY_INCOMPLETE;
     }
     if query.cleared_filters().count(entries).unwrap_or(0) > 0 {
-        return crate::presentation::vocabulary::EMPTY_FILTERED_LIBRARY;
+        return crate::vocabulary::EMPTY_FILTERED_LIBRARY;
     }
     match query.scope {
         Scope::User => {
@@ -311,7 +308,7 @@ pub(crate) fn dates(
                     if utc {
                         d.to_string()
                     } else {
-                        crate::presentation::calendar_text::local_timestamp(d)
+                        crate::calendar_text::local_timestamp(d)
                     }
                 },
             )
@@ -610,4 +607,27 @@ pub fn selection_binding(
             trashed: binding.trashed,
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn incomplete_inventory_and_read_failures_stay_visible() {
+        use auditorylab_app::services::library::DiagnosticDetail;
+        use auditorylab_app::workspace::{TaskFailure, WorkerFailure};
+        let problem = LibraryDiagnostic {
+            storage_id: "captured entry".into(),
+            code: "worker.invalid_outcome".into(),
+            detail: DiagnosticDetail::Failure(Box::new(TaskFailure::Worker(
+                WorkerFailure::InvalidOutcome,
+            ))),
+        };
+        assert!(alert(None, None, Some(&problem), false).contains("read failed"));
+        assert!(
+            auditorylab_app::workspace::status::InventoryStatus::default()
+                .description()
+                .contains("incomplete")
+        );
+    }
 }

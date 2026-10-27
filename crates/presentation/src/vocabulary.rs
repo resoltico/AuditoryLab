@@ -1,5 +1,5 @@
 //! Presentation number styles and operation wording.
-use crate::presentation::DisplayText;
+use crate::DisplayText;
 
 use auditorylab_core::vocabulary::Action;
 /// Incomplete discovery cannot establish an empty library.

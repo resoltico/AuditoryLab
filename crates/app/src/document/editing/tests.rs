@@ -4,7 +4,6 @@ use auditorylab_core::{CarrierKind, ModulationKind};
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use crate::presentation::recipe_text::SnapshotText;
 use crate::services::save_content;
 use auditorylab_core::{Component, ComponentForm};
 
@@ -508,9 +507,14 @@ fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids()
             .collect::<Vec<_>>(),
         recipe_ids
     );
-    let about = crate::presentation::recipe_text::about(&d.recipe().unwrap()).unwrap();
-    assert_eq!(about.summary, snapshot.about().unwrap().summary);
-    assert!(about.research.is_none());
+    let recipe = d.recipe().unwrap();
+    assert_eq!(recipe.sources(), snapshot.recipe().sources());
+    assert!(
+        recipe
+            .evidence()
+            .iter()
+            .all(|e| e.scope == auditorylab_core::EvidenceScope::Ancestor)
+    );
 }
 
 #[test]
@@ -568,7 +572,13 @@ fn derivatives_reopen_with_full_scoped_graph_and_bounded_flat_ancestry() {
     for expected in 1..=16 {
         let reopened =
             crate::storage::load::load_reader(bytes.as_bytes(), "reopened elsewhere").unwrap();
-        assert!(reopened.about().unwrap().research.is_none());
+        assert!(
+            reopened
+                .recipe()
+                .evidence()
+                .iter()
+                .all(|e| e.scope == auditorylab_core::EvidenceScope::Ancestor)
+        );
         assert_eq!(reopened.recipe().sources(), original.sources());
         assert_eq!(reopened.recipe().lineage().len(), expected);
         assert!(

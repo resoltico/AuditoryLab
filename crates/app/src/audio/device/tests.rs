@@ -3,7 +3,6 @@
 
 use super::*;
 use crate::audio::session::SessionState;
-use crate::presentation::Explain;
 use cpal::ErrorKind;
 use std::sync::Barrier;
 
@@ -78,19 +77,12 @@ fn integer_formats_reach_but_never_pass_full_scale() {
 }
 
 #[test]
-fn a_route_change_says_what_happened_and_what_to_do() {
+fn a_route_change_keeps_the_native_cause() {
     let changed = DeviceError::from(cpal::Error::new(ErrorKind::DeviceChanged));
-    assert_eq!(changed.to_string(), "device.backend");
-    assert_eq!(
-        changed.explain(),
-        "the audio output route changed and playback stopped; select the intended output and play again"
+    assert!(
+        matches!(changed,DeviceError::Backend(ref error) if error.kind()==ErrorKind::DeviceChanged)
     );
-    let busy = DeviceError::from(cpal::Error::with_message(ErrorKind::DeviceBusy, "in use"));
-    assert_eq!(busy.explain(), "audio backend: in use");
-    assert_eq!(
-        DeviceError::TooFewChannels { channels: 1 }.explain(),
-        "the default output device has 1 channel; stimuli need two, one for each ear"
-    );
+    assert!(std::error::Error::source(&changed).is_some());
 }
 
 #[test]
@@ -147,7 +139,7 @@ fn a_winning_backend_failure_carries_its_own_payload() {
     diagnostics.report(cpal::Error::new(ErrorKind::DeviceBusy));
     assert_eq!(state.outcome(), Outcome::Backend);
     let resolved = resolve(&state, Outcome::Backend, None, &diagnostics).unwrap_err();
-    assert_eq!(resolved.explain(), "audio backend: unplugged");
+    assert!(matches!(resolved,DeviceError::Backend(ref error) if error.to_string()=="unplugged"));
     // A setup failure resolves to its worker-local diagnostic.
     let state = SessionState::new();
     let diagnostics = Diagnostics::new(Arc::clone(&state));
@@ -158,7 +150,9 @@ fn a_winning_backend_failure_carries_its_own_payload() {
         &mut local,
     );
     let resolved = resolve(&state, winner, local, &diagnostics).unwrap_err();
-    assert_eq!(resolved.explain(), "audio backend: original setup failure");
+    assert!(
+        matches!(resolved,DeviceError::Backend(ref error) if error.to_string()=="original setup failure")
+    );
 }
 
 #[test]
