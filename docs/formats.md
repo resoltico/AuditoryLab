@@ -94,15 +94,20 @@ Back up the affected file. Correct it against the [recipe reference](#recipe-sch
 
 Vocabulary values use snake_case in CLI options and JSON. CLI flag names use kebab-case. Structural methods may overlap; component headings choose Gate, then active AM, then Clicks or Steady tone. Explicit pairs use Binaural or Monaural.
 
+<!-- query-options:begin -->
 | Option | Values |
 | --- | --- |
+| `--collection` | `all`, `builtin`, `user` |
 | `--band` | `delta`, `theta`, `alpha`, `beta`, `gamma` |
 | `--method` | `binaural`, `monaural`, `clicks`, `gate`, `am`, `steady_tone` |
-| `--rhythms` | `none`, `multiple`, `outside_bands`, `needs_review` |
+| `--rhythms` | `outside_bands`, `none`, `multiple`, `needs_review` |
+| `--population` | `human`, `mouse`, `other_animal`, `mixed`, `not_applicable`, `unspecified` |
+| `--role` | `test`, `comparison`, `mixed`, `unspecified` |
 | `--analysis` | `complete`, `invalid` |
-| `--sort` | `rate`, `title`, `study`, `collection`, `created`, `modified`, `added` |
+| `--sort` | `rate`, `title`, `created`, `modified`, `added`, `study`, `collection` |
 | `--direction` | `asc`, `desc` |
 | `--group-by` | `none`, `band`, `method`, `study`, `collection` |
+<!-- query-options:end -->
 
 Nominal classification reads authored settings without a sample rate. Its completeness is independent of rate-specific inspection validity. Plain tones remain independent steady tones; use explicit pairs for pair relationships. Generated descriptions use realized rates and transition roles.
 
@@ -111,6 +116,37 @@ Reference intervals are Delta `[0.1,4)`, Theta `[4,8)`, Alpha `[8,13]`, Beta `(1
 Repeated facet values are alternatives. Band/method correlation uses one descriptor. Study/population/role correlation uses one current evidence record. Ancestor-only evidence does not match a current study. `--study` accepts a DOI or source key; `key:NAME` explicitly selects a local key.
 
 Unknown dates fail bounded filters and sort last in either direction. Date sorts default descending; other explicit sorts default ascending. Ties use normalized title, then stable key ascending. Groups reference unique flat entries; repeated group memberships do not increase the unique count.
+
+### Vocabulary keys
+
+These are the owning core vocabulary keys used by queries, portable choices and JSON values. CLI options expose the subsets above; `automatic` sorting and `open_files`/`trash` scope also describe app query state. GUI absence options use the explicit key `any`; direction uses `automatic` for its query-owned default.
+
+<!-- vocabulary-keys:begin -->
+| Vocabulary | Keys |
+| --- | --- |
+| `band` | `delta`, `theta`, `alpha`, `beta`, `gamma` |
+| `calendar_field` | `created`, `modified`, `added` |
+| `carrier_kind` | `tone`, `clicks` |
+| `completeness` | `complete`, `invalid` |
+| `condition_role` | `test`, `comparison`, `mixed`, `unspecified` |
+| `direction` | `asc`, `desc` |
+| `ear` | `left`, `right` |
+| `ears` | `both`, `left`, `right` |
+| `evidence_scope` | `reference_condition`, `ancestor` |
+| `group_by` | `none`, `band`, `method`, `study`, `collection` |
+| `measure` | `eeg`, `behavior`, `subjective`, `sleep`, `hearing`, `other` |
+| `method` | `binaural`, `monaural`, `clicks`, `gate`, `am`, `steady_tone` |
+| `modulation_kind` | `am`, `gate` |
+| `operation` | `list`, `list_trash`, `describe`, `inspect`, `recipe`, `export`, `play`, `stop`, `library_path`, `library_init`, `library_add`, `library_update`, `library_rename`, `library_trash`, `library_restore`, `library_purge`, `library_check`, `library_refresh`, `library_read`, `new_sound`, `edit_copy`, `save`, `save_copy`, `open_recipe`, `export_recipe`, `stop_current_and_play_recipe`, `play_selected_sound`, `play_live`, `edit_saved_recipe`, `edit_external_file`, `close_open_file`, `show_saved`, `cancel_export`, `add_component`, `undo_remove`, `remove_component` |
+| `pair_kind` | `binaural`, `monaural` |
+| `parameter_id` | `tone_frequency`, `click_rate`, `click_width`, `peak_level`, `am_rate`, `am_depth`, `gate_rate`, `gate_width`, `pair_first_frequency`, `pair_offset`, `pair_first_level`, `pair_second_level`, `duration`, `fade` |
+| `population` | `human`, `mouse`, `other_animal`, `mixed`, `not_applicable`, `unspecified` |
+| `rhythm_state` | `outside_bands`, `none`, `multiple`, `needs_review` |
+| `scope` | `all`, `builtin`, `user`, `open_files`, `trash` |
+| `slot_role` | `continuing`, `outgoing`, `incoming` |
+| `sort_by` | `automatic`, `rate`, `title`, `created`, `modified`, `added`, `study`, `collection` |
+| `status` | `saved`, `saved_with_warning`, `unchanged`, `unknown`, `none`, `operation_incomplete`, `operation_confirmed`, `waiting_for_generated_audio` |
+<!-- vocabulary-keys:end -->
 
 ## CLI JSON output
 

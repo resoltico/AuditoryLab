@@ -30,7 +30,7 @@ auditorylab list --file custom.toml --group-by method --format json
 
 `list` defaults to active Built-in and User entries. `--collection builtin` skips User discovery; `--collection user` selects active managed entries. Temporary `--file` inputs require All. Query Trash with `library list-trash`.
 
-Search requires every Unicode-normalized term. A bare number matches a whole numeric value. Repeated facet options are alternatives. Band and method must match one rhythmic process; study, population and role must match one current evidence record. See [query values and classification](formats.md#queries-and-classification).
+Search requires every Unicode-normalized term. A bare number matches a whole numeric value. Repeated facet options are alternatives. Band and method must match one rhythmic process; study, population and role must match one current evidence record. Vocabulary values use snake_case, including `steady_tone`, `outside_bands` and `needs_review`; CLI flag names retain kebab-case. See [query values and classification](formats.md#queries-and-classification).
 
 Use `--created-from`, `--created-before`, `--modified-from`, `--modified-before`, `--added-from` and `--added-before` for inclusive/exclusive timestamp ranges. Supply an explicit offset, such as `2026-10-24T00:00:00+03:00`. Unknown dates fail bounded ranges and sort last. Automatic ordering is rate ascending for All/Built-in and modified descending for User/Trash; explicit sort choices survive collection changes.
 
@@ -44,13 +44,13 @@ auditorylab inspect --file pair.toml --sample-rate 48000
 auditorylab export --file pair.toml --output pair.wav --sample-rate 48000
 ```
 
-`inspect` opens no device. It reports the chosen rate, resolved frame count, per-ear peak bounds and generator-voice facts. Components are named by their authored ID; a pair's secondary lane is its second tone. WAV export validates at its chosen rate and writes stereo 32-bit float RIFF/RF64. The [recipe guide](recipes.md) explains rate-dependent validity and waveforms.
+`inspect` opens no device. It reports the chosen rate, resolved frame count, per-ear peak bounds and generator-voice facts. Components are named by their authored ID; a pair's secondary lane is its second tone. WAV export writes the exact rendition inspected at its chosen rate as stereo 32-bit float RIFF/RF64. The [recipe guide](recipes.md) explains rate-dependent validity and waveforms.
 
 `recipe SELECTOR` prints saved portable TOML; `--output PATH` writes it. Built-in output retains embedded comments and User output retains exact file bytes. This preserves document identity and history. CLI recipe and WAV exports never overwrite an existing destination.
 
 ## Root and lifecycle
 
-CLI and desktop share one native per-user library. An absolute `--library-dir PATH` takes precedence over `AUDITORYLAB_LIBRARY_DIR`, then the native default. Inspect the location before changing it:
+CLI and desktop share one native per-user library. Each command captures one configured root and precedence source; filesystem/layout checks still run against the state used for each action. An absolute `--library-dir PATH` takes precedence over `AUDITORYLAB_LIBRARY_DIR`, then the native default. Inspect the location before changing it:
 
 ```text
 auditorylab library path --format json

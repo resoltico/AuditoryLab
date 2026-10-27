@@ -24,7 +24,7 @@ The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBR
 
 **Edit saved User recipe** retains its managed identity and observed content token. **Edit external file** retains its opened path, identity and bytes. Save/Discard/Cancel protects dirty content before replacement.
 
-Rename and Trash use the key/version captured by their controls. Trashing a dirty managed edit asks how to handle its draft. Restore preserves portable history and Added here. Permanent deletion is offered in Trash and asks for confirmation naming the entry. Copies, ancestors and external originals remain independent.
+Library actions retain an app-issued handle for the rendered listing and captured version. A superseded listing refuses the action; activate it again on the current entry. Rename and Trash use that captured entry. Trashing a dirty managed edit asks how to handle its draft. Restore preserves portable history and Added here. Permanent deletion is offered in Trash and asks for confirmation naming the entry. Copies, ancestors and external originals remain independent.
 
 ## Build and edit a sound
 
@@ -59,6 +59,8 @@ New/copy/close/Quit protect unsaved content through Save/Discard/Cancel. Repeate
 The monitor displays generated stereo samples before device conversion, with peak/RMS values and coverage status. Choose a 2/10/40/100 ms window. **Fit signal** changes the common stereo axis, while **Fixed ±1** uses digital full scale. Neither changes samples or levels.
 
 **Hold display** retains samples, source, rate, frame span, scale and meters together across navigation and sessions. **Return to live** selects current coverage. Monitor gaps, stale coverage and backend underruns remain distinct. Details opens selectable quantities; **Refresh diagnostics snapshot** updates them explicitly.
+
+Worker completion, export progress and native preference changes arrive as events. The desktop redraw timer runs while audio is bound or the monitor is visible; an idle closed monitor needs no workspace polling.
 
 The drawer can be resized by pointer, keyboard or accessibility slider actions. When it cannot fit, a focused monitor window provides scrollable content. Closing that window returns focus to its opener. Reduce Motion defaults to a held display; Hold/Return to live overrides it, and **Follow system motion** restores the native preference.
 
