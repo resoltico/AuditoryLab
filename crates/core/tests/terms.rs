@@ -1,7 +1,7 @@
 //! Public domain vocabulary follows the glossary in both grammatical forms.
 use auditorylab_core::{
-    CarrierKind, ConditionRole, Ear, Ears, EvidenceScope, Measure, ModulationKind, PairKind,
-    ParameterId, Population,
+    CarrierKind, ComponentRole, ConditionRole, Ear, Ears, EvidenceScope, Measure, ModulationKind,
+    PairKind, ParameterId, Population, SlotRole,
     rhythm::{Band, Completeness, Method},
 };
 
@@ -86,6 +86,30 @@ fn selectable_terms_expose_ordered_labels_and_running_text() {
     assert_eq!(
         Completeness::ALL.map(|v| v.phrase()),
         ["complete", "invalid"]
+    );
+    assert_eq!(
+        [
+            ComponentRole::GateRhythm,
+            ComponentRole::AmEnvelope,
+            ComponentRole::ClickRhythm,
+            ComponentRole::SteadyTone
+        ]
+        .map(|v| (v.label(), v.phrase())),
+        [
+            ("Gate rhythm", "gate rhythm"),
+            ("AM envelope", "AM envelope"),
+            ("Click rhythm", "click rhythm"),
+            ("Steady tone", "steady tone")
+        ]
+    );
+    assert_eq!(
+        [SlotRole::Continuing, SlotRole::Outgoing, SlotRole::Incoming]
+            .map(|v| (v.label(), v.phrase())),
+        [
+            ("Continuing", "continuing"),
+            ("Outgoing", "outgoing"),
+            ("Incoming", "incoming")
+        ]
     );
     for parameter in ParameterId::ALL {
         assert_eq!(parameter.label(), parameter.descriptor().label);

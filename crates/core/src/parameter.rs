@@ -445,7 +445,7 @@ impl ComponentRole {
     const fn terms(self) -> (&'static str, &'static str) {
         match self {
             Self::GateRhythm => ("Gate rhythm", "gate rhythm"),
-            Self::AmEnvelope => ("AM envelope", "aM envelope"),
+            Self::AmEnvelope => ("AM envelope", "AM envelope"),
             Self::ClickRhythm => ("Click rhythm", "click rhythm"),
             Self::SteadyTone => ("Steady tone", "steady tone"),
         }
