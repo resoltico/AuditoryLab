@@ -41,10 +41,11 @@ impl SlintAdapter {
                 .collect(),
         );
         if let Some(w) = self.workspace.borrow().as_ref() {
-            let (key, token, trashed) = w.library_binding();
-            ui.set_library_key(key.into());
-            ui.set_library_token(token.into());
-            ui.set_library_trashed(trashed);
+            let binding =
+                auditorylab_presentation::library_text::selection_binding(w.library_binding());
+            ui.set_library_key(binding.key.into());
+            ui.set_library_token(binding.token.into());
+            ui.set_library_trashed(binding.trashed);
             ui.set_library_status(read_only(&w.library_status()));
             ui.set_library_alert(read_only(&w.library_alert()));
             ui.set_library_dates(read_only(&w.library_dates()));

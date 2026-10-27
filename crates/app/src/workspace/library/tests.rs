@@ -234,7 +234,8 @@ fn two_editors_conflict_even_for_noop_and_refresh_preserves_draft() {
     idle(&mut other);
     user(&mut other);
     other.edit_selected();
-    let (key, token, _) = w.library_binding();
+    let crate::presentation::library_text::SelectionBindingText { key, token, .. } =
+        crate::presentation::library_text::selection_binding(w.library_binding());
     w.mutate_library(&key, &token, "rename", "renamed elsewhere", false)
         .unwrap();
     idle(&mut w);
@@ -270,7 +271,8 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     w.save().unwrap();
     idle(&mut w);
     user(&mut w);
-    let (key, token, _) = w.library_binding();
+    let crate::presentation::library_text::SelectionBindingText { key, token, .. } =
+        crate::presentation::library_text::selection_binding(w.library_binding());
     w.mutate_library(&key, &token, "trash", "", false).unwrap();
     idle(&mut w);
     assert!(
@@ -284,14 +286,20 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     })
     .unwrap();
     idle(&mut w);
-    let (_, trash_token, trashed) = w.library_binding();
+    let crate::presentation::library_text::SelectionBindingText {
+        token: trash_token,
+        trashed,
+        ..
+    } = crate::presentation::library_text::selection_binding(w.library_binding());
     assert!(trashed);
     assert!(w.prepare_audio().is_err());
     w.mutate_library(&key, &trash_token, "restore", "", false)
         .unwrap();
     idle(&mut w);
     user(&mut w);
-    let (_, restored, _) = w.library_binding();
+    let crate::presentation::library_text::SelectionBindingText {
+        token: restored, ..
+    } = crate::presentation::library_text::selection_binding(w.library_binding());
     w.mutate_library(&key, &restored, "trash", "", false)
         .unwrap();
     idle(&mut w);
@@ -301,7 +309,8 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     })
     .unwrap();
     idle(&mut w);
-    let (_, current, _) = w.library_binding();
+    let crate::presentation::library_text::SelectionBindingText { token: current, .. } =
+        crate::presentation::library_text::selection_binding(w.library_binding());
     w.mutate_library(&key, &current, "purge", "", false)
         .unwrap();
     let prompt = w
@@ -347,7 +356,8 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
     w.save().unwrap();
     idle(&mut w);
     user(&mut w);
-    let (key, _, _) = w.library_binding();
+    let crate::presentation::library_text::SelectionBindingText { key, .. } =
+        crate::presentation::library_text::selection_binding(w.library_binding());
     let record = store.load(&key.parse().unwrap()).unwrap();
     std::fs::write(
         store
@@ -374,6 +384,7 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
             .any(|row| row.text.contains("Needs review"))
     );
     assert!(w.library.selected_unreadable());
+    assert!(w.library_binding().unwrap().version_token.is_none());
     assert!(w.library_status().contains("incomplete"));
     assert_eq!(w.editor.session.draft().title(), "Untitled sound");
 }
@@ -386,7 +397,8 @@ fn save_before_trash_uses_confirmed_new_token_and_preserves_published_edit() {
     user(&mut w);
     w.edit_selected();
     title(&mut w, "save before trash");
-    let (key, token, _) = w.library_binding();
+    let crate::presentation::library_text::SelectionBindingText { key, token, .. } =
+        crate::presentation::library_text::selection_binding(w.library_binding());
     w.mutate_library(&key, &token, "trash", "", false).unwrap();
     let prompt = w
         .take_effects()
@@ -418,7 +430,8 @@ fn discard_before_trash_preserves_edits_made_after_the_job_was_captured() {
     user(&mut w);
     w.edit_selected();
     title(&mut w, "before request");
-    let (key, token, _) = w.library_binding();
+    let crate::presentation::library_text::SelectionBindingText { key, token, .. } =
+        crate::presentation::library_text::selection_binding(w.library_binding());
     let document = w.editor().document();
     w.mutate_library(&key, &token, "trash", "", false).unwrap();
     let prompt = w
@@ -460,7 +473,7 @@ fn managed_playback_worker_refuses_changed_or_trashed_observation() {
     user(&mut w);
     let captured = w.selected().unwrap().clone();
     assert!(crate::services::playback::revalidate_managed(&captured, &store).is_ok());
-    let record = store.load(&w.library_binding().0.parse().unwrap()).unwrap();
+    let record = store.load(w.library_binding().unwrap().key).unwrap();
     store
         .apply(
             Mutation::Trash {
@@ -568,7 +581,11 @@ fn refresh_reloads_membership_state_even_when_recipe_sha_is_unchanged() {
     workspace.save().unwrap();
     idle(&mut workspace);
     user(&mut workspace);
-    let (binding, token, _) = workspace.library_binding();
+    let crate::presentation::library_text::SelectionBindingText {
+        key: binding,
+        token,
+        ..
+    } = crate::presentation::library_text::selection_binding(workspace.library_binding());
     let key: LibraryKey = binding.parse().unwrap();
     store
         .apply(

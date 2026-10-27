@@ -32,7 +32,7 @@ pub mod status;
 pub(crate) mod tasks;
 mod views;
 
-pub use library::{LibraryBinding, LibraryData, LibraryOutcome};
+pub use library::{LibraryBinding, LibraryData, LibraryOutcome, SelectionBinding};
 pub use output::{MotionPreference, OutputView};
 pub use tasks::{
     Executor, FileOutcome, Job, JobContext, JobKind, JobOutcome, LibraryFailure, Runner,

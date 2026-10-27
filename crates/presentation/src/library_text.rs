@@ -579,3 +579,35 @@ impl WriteOutcomeText for auditorylab_app::services::library::WriteOutcome {
         )
     }
 }
+
+/// Encoded selection fields for frontends whose binding properties are strings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectionBindingText {
+    /// Canonical runtime key, empty only when no indexed selection exists.
+    pub key: String,
+    /// Canonical content token, empty when no readable managed token exists.
+    pub token: String,
+    /// Directory-owned state; false when no indexed selection exists.
+    pub trashed: bool,
+}
+/// Encode one already-selected identity without choosing or admitting an action.
+#[must_use]
+pub fn selection_binding(
+    binding: Option<auditorylab_app::workspace::SelectionBinding<'_>>,
+) -> SelectionBindingText {
+    binding.map_or_else(
+        || SelectionBindingText {
+            key: String::new(),
+            token: String::new(),
+            trashed: false,
+        },
+        |binding| SelectionBindingText {
+            key: binding.key.to_string(),
+            token: binding
+                .version_token
+                .map(|token| token.to_string())
+                .unwrap_or_default(),
+            trashed: binding.trashed,
+        },
+    )
+}

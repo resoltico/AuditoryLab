@@ -693,7 +693,10 @@ impl Workspace {
         result
     }
     fn add_library_binding_inner(&mut self, key: &str) -> Result<(), Refusal> {
-        if self.library_binding().0 != key {
+        if !self
+            .library_binding()
+            .is_some_and(|binding| binding.key.to_string() == key)
+        {
             return Err(Refusal::SelectionChanged);
         }
         self.add_selected_to_library()
@@ -819,7 +822,10 @@ impl Workspace {
     }
     /// Close only a still-selected temporary entry captured at activation.
     pub fn close_open_file_binding(&mut self, key: &str) {
-        if self.library_binding().0 == key {
+        if self
+            .library_binding()
+            .is_some_and(|binding| binding.key.to_string() == key)
+        {
             self.close_open_file();
         }
     }
@@ -870,26 +876,21 @@ impl Workspace {
         true
     }
 
-    /// Captured selected managed key/token for action binding, or empty values.
+    /// Selected indexed identity and observed token; absence is represented by None.
     #[must_use]
-    pub fn library_binding(&self) -> (String, String, bool) {
+    pub fn library_binding(&self) -> Option<SelectionBinding<'_>> {
         let p = &self.library;
         p.selection
             .as_ref()
             .and_then(|key| p.entries.iter().find(|entry| &entry.key == key))
-            .map_or((String::new(), String::new(), false), |entry| {
-                (
-                    entry.key.to_string(),
-                    if p.selected_unreadable() {
-                        String::new()
-                    } else {
-                        entry
-                            .version_token
-                            .as_ref()
-                            .map_or(String::new(), ToString::to_string)
-                    },
-                    entry.trashed,
-                )
+            .map(|entry| SelectionBinding {
+                key: &entry.key,
+                version_token: if p.selected_unreadable() {
+                    None
+                } else {
+                    entry.version_token
+                },
+                trashed: entry.trashed,
             })
     }
     fn managed_job(&mut self, operation: Operation) -> Result<TaskId, Refusal> {
@@ -1488,4 +1489,15 @@ impl Workspace {
             managed: self.editor.location.managed(),
         }
     }
+}
+
+/// Selected indexed identity for a captured frontend action; workers still revalidate it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelectionBinding<'a> {
+    /// Current runtime ownership key; temporary identities remain process-local.
+    pub key: &'a LibraryKey,
+    /// Exact observed content token, absent for temporary or unreadable entries.
+    pub version_token: Option<VersionToken>,
+    /// Directory-owned Trash state from the current index.
+    pub trashed: bool,
 }
