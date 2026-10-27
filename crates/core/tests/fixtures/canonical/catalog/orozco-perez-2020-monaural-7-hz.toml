@@ -1,0 +1,39 @@
+schema_version = 4
+
+[document]
+id = "46436f54-474a-4ec2-b12b-252baa7f3c85"
+
+[description]
+title = "7 Hz monaural beat"
+
+[sound]
+duration_seconds = 480.0
+fade_seconds = 0.1
+
+[[sound.component]]
+kind = "monaural_pair"
+id = 1
+ears = "both"
+first_hz = 396.5
+offset_hz = 7.0
+first_peak_dbfs = -23.0103
+second_peak_dbfs = -23.0103
+
+[[source]]
+key = "orozco-perez-2020"
+label = "orozco-perez-2020"
+citation = "Orozco Perez HD, Dumas G, Lehmann A (2020). Binaural beats through the auditory pathway: from brainstem to connectivity patterns. eNeuro 7(2): ENEURO.0232-19.2020."
+doi = "10.1523/eneuro.0232-19.2020"
+url = "https://doi.org/10.1523/ENEURO.0232-19.2020"
+
+[[evidence]]
+source = "orozco-perez-2020"
+scope = "reference_condition"
+population = "human"
+population_detail = "Human study: Relaxation and brain-rhythm response"
+condition_role = "comparison"
+measures = ["eeg", "subjective"]
+methods_locator = "Monaural-beat control for the 7 Hz binaural condition: 396.5 Hz and 403.5 Hz added together, the same signal in both ears. Sixteen adults heard each of four 8-minute conditions (7 Hz and 40 Hz, binaural and monaural) during EEG. Both beat types entrained cortical activity at the beat frequency, monaural beats more strongly; ratings of mental relaxation and absorption did not differ between conditions."
+summary = "396.5 Hz and 403.5 Hz mixed together in both ears, so the 7-per-second beat is in the sound itself and loudspeakers work too. It was the comparison for the binaural version in a study of 16 adults: this mixed version produced the stronger brain response, and neither made listeners feel more relaxed or absorbed."
+limitations = "Source findings concern the stated population and condition; adaptations do not establish efficacy for generated audio. See the summary and adaptation for study-specific limitations."
+adaptation = "The source added the two tones, halved the sum and RMS-normalized both sound types. Here each tone's peak is 3.01 dB below -20 dBFS, so each ear has the unfaded plateau RMS of the binaural condition's -20 dBFS tone; the per-ear summed peak bound is -16.99 dBFS. Both tones start at phase zero. The Stimuli section gives 396.5 Hz and the FFR analysis 397.5 Hz; this recipe uses 396.5 Hz, which gives the stated 7 Hz difference. The source generated sound live at 48 kHz and calibrated output to 70 dB SPL per ear; it does not specify ramps; this recipe is uncalibrated and adds 0.1 s fades."

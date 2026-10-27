@@ -1,0 +1,39 @@
+schema_version = 4
+
+[document]
+id = "00000000-0000-4000-8000-000000000005"
+
+[description]
+title = "6 Hz interaural tone pair"
+notes = "Selected study sound condition. Requires separate left/right presentation."
+
+[sound]
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[[sound.component]]
+kind = "binaural_pair"
+id = 1
+left_hz = 200.0
+offset_hz = 6.0
+left_peak_dbfs = -20.0
+right_peak_dbfs = -20.0
+
+[[source]]
+key = "ioannou-2015"
+label = "Ioannou 2015"
+citation = "Ioannou CI, Pereda E, Lindsen JP, Bhattacharya J (2015). Electrical Brain Responses to an Auditory Illusion and the Impact of Musical Expertise. PLOS ONE 10(6):e0129486."
+doi = "10.1371/journal.pone.0129486"
+url = "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0129486"
+
+[[evidence]]
+source = "ioannou-2015"
+scope = "reference_condition"
+population = "human"
+population_detail = "32 adults: 16 musicians and 16 non-musicians"
+condition_role = "test"
+measures = ["eeg"]
+methods_locator = "Materials and Methods / Stimuli; Supporting Information / S1 File description"
+summary = "The study reported its clearest frequency-following result in the alpha band. That group-level result does not establish an exact-frequency outcome for this selected condition."
+limitations = "No sleep benefit is established. Study-wide or band-aggregated results are not exact-condition outcome evidence."
+adaptation = "One 60-second condition only; preceding silence/comparison periods omitted. Phase-zero starts, -20 dBFS component peaks and 0.1-second endpoint fades are application choices. Acoustic level and source audio sampling rate are not reproduced."

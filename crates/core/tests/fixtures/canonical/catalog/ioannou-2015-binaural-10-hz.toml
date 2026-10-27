@@ -1,0 +1,38 @@
+schema_version = 4
+
+[document]
+id = "8a7d76e9-bb30-4857-86a3-d9c92efcf692"
+
+[description]
+title = "10 Hz binaural beat"
+
+[sound]
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[[sound.component]]
+kind = "binaural_pair"
+id = 1
+left_hz = 200.0
+offset_hz = 10.0
+left_peak_dbfs = -20.0
+right_peak_dbfs = -20.0
+
+[[source]]
+key = "ioannou-2015"
+label = "ioannou-2015"
+citation = "Ioannou CI, Pereda E, Lindsen JP, Bhattacharya J (2015). Electrical brain responses to an auditory illusion and the impact of musical expertise. PLoS ONE 10(6): e0129486."
+doi = "10.1371/journal.pone.0129486"
+url = "https://doi.org/10.1371/journal.pone.0129486"
+
+[[evidence]]
+source = "ioannou-2015"
+scope = "reference_condition"
+population = "human"
+population_detail = "Human study: Brain-rhythm response"
+condition_role = "test"
+measures = ["eeg"]
+methods_locator = "The binaural minute of the 10 Hz block: 200 Hz in the left ear and 210 Hz in the right. Sixteen musicians and sixteen non-musicians watched a silent subtitled film during EEG while 34 blocks played, each 20 s of silence, 1 minute of 200 Hz in both ears, then 1 minute of a binaural beat from 1 to 48 Hz. Beats in the alpha band, 9 to 12 Hz, gave the strongest steady-state responses."
+summary = "200 Hz in the left ear and 210 Hz in the right, heard through headphones as a 10-per-second binaural beat. In one study, 32 adults, half of them musicians, listened while watching a silent film; their brain recordings followed beats near 10 per second most strongly. The study measured brain responses, not effects such as relaxation or focus. Reviews of binaural-beat research report mixed results."
+limitations = "Source findings concern the stated population and condition; adaptations do not establish efficacy for generated audio. See the summary and adaptation for study-specific limitations."
+adaptation = "Volume was set by each participant; the source states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added. The silent interval and the block sequence are not part of this recipe. The source's other blocks differ only in the right ear's frequency, 200 Hz plus the beat frequency."

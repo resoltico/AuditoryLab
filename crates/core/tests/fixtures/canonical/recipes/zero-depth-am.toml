@@ -1,0 +1,24 @@
+schema_version = 4
+
+[document]
+id = "00000000-0000-4000-8000-000000000105"
+
+[description]
+title = "Inactive amplitude modulation"
+notes = "Design fixture, not a clinical claim."
+
+[sound]
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[[sound.component]]
+kind = "tone"
+id = 1
+ears = "both"
+frequency_hz = 1000.0
+peak_dbfs = -20.0
+
+[sound.component.modulation]
+kind = "am"
+rate_hz = 10.0
+depth = 0.0

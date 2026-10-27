@@ -1,0 +1,37 @@
+schema_version = 4
+
+[document]
+id = "3f1e196c-7fb8-465b-98f4-2cb1163b6770"
+
+[description]
+title = "200 Hz pure tone"
+
+[sound]
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[[sound.component]]
+kind = "tone"
+id = 1
+ears = "both"
+frequency_hz = 200.0
+peak_dbfs = -20.0
+
+[[source]]
+key = "ioannou-2015"
+label = "ioannou-2015"
+citation = "Ioannou CI, Pereda E, Lindsen JP, Bhattacharya J (2015). Electrical brain responses to an auditory illusion and the impact of musical expertise. PLoS ONE 10(6): e0129486."
+doi = "10.1371/journal.pone.0129486"
+url = "https://doi.org/10.1371/journal.pone.0129486"
+
+[[evidence]]
+source = "ioannou-2015"
+scope = "reference_condition"
+population = "human"
+population_detail = "Human study: Comparison sound in a brain-rhythm study"
+condition_role = "comparison"
+measures = ["eeg"]
+methods_locator = "The non-binaural minute that preceded the binaural minute of every block: 200 Hz in both ears. Sixteen musicians and sixteen non-musicians watched a silent subtitled film during EEG while 34 blocks played, each 20 s of silence, 1 minute of 200 Hz in both ears, then 1 minute of a binaural beat from 1 to 48 Hz. Beats in the alpha band, 9 to 12 Hz, gave the strongest steady-state responses."
+summary = "A steady 200 Hz tone in both ears: the comparison minute that came before every binaural beat in a study of 32 adults' brain responses while they watched a silent film. The comparison helped researchers measure responses to the beats; responses were strongest for beats near 10 per second. The study did not test a wellbeing benefit."
+limitations = "Source findings concern the stated population and condition; adaptations do not establish efficacy for generated audio. See the summary and adaptation for study-specific limitations."
+adaptation = "Volume was set by each participant; the source states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added. The silent interval and the block sequence are not part of this recipe."

@@ -1,0 +1,47 @@
+schema_version = 4
+
+[document]
+id = "00000000-0000-4000-8000-000000000001"
+created_at = "2026-10-20T09:00:00.000000000Z"
+modified_at = "2026-10-23T12:30:00.000000000Z"
+
+[description]
+title = "My 3 Hz pair"
+notes = "Edited from the source condition; no outcome claim for this version."
+
+[sound]
+duration_seconds = 60.0
+fade_seconds = 0.1
+
+[[sound.component]]
+kind = "binaural_pair"
+id = 1
+left_hz = 200.0
+offset_hz = 3.0
+left_peak_dbfs = -20.0
+right_peak_dbfs = -20.0
+
+[[source]]
+key = "ioannou-2015"
+label = "Ioannou 2015"
+citation = "Ioannou CI, Pereda E, Lindsen JP, Bhattacharya J (2015). Electrical Brain Responses to an Auditory Illusion and the Impact of Musical Expertise. PLOS ONE 10(6):e0129486."
+doi = "10.1371/journal.pone.0129486"
+url = "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0129486"
+
+[[evidence]]
+source = "ioannou-2015"
+scope = "ancestor"
+population = "human"
+population_detail = "32 adults: 16 musicians and 16 non-musicians"
+condition_role = "test"
+measures = ["eeg"]
+methods_locator = "Materials and Methods / Stimuli; Supporting Information / S1 File description"
+summary = "The source study reported an alpha-band response; that finding is retained as ancestor context only and does not evaluate this edited sound."
+limitations = "No sleep benefit is established. Study-wide or band-aggregated results are not exact-condition outcome evidence."
+adaptation = "One 60-second condition only; preceding silence/comparison periods omitted. Phase-zero starts, -20 dBFS component peaks and 0.1-second endpoint fades are application choices. Acoustic level and source audio sampling rate are not reproduced."
+
+[[lineage]]
+title = "2 Hz interaural tone pair"
+note = "Offset changed from 2 to 3 Hz. Research applies to the source condition, not this edited sound."
+catalog_id = "ioannou-2015-binaural-2-hz"
+source_keys = ["ioannou-2015"]

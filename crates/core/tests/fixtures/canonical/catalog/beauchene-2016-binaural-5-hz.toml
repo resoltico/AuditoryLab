@@ -1,0 +1,38 @@
+schema_version = 4
+
+[document]
+id = "2a7e2aa0-1cfe-458c-9a29-a591a4d4a80b"
+
+[description]
+title = "5 Hz binaural beat"
+
+[sound]
+duration_seconds = 300.0
+fade_seconds = 0.1
+
+[[sound.component]]
+kind = "binaural_pair"
+id = 1
+left_hz = 245.0
+offset_hz = -5.0
+left_peak_dbfs = -20.0
+right_peak_dbfs = -20.0
+
+[[source]]
+key = "beauchene-2016"
+label = "beauchene-2016"
+citation = "Beauchene C, Abaid N, Moran R, Diana RA, Leonessa A (2016). The effect of binaural beats on visuospatial working memory and cortical connectivity. PLoS ONE 11(11): e0166630."
+doi = "10.1371/journal.pone.0166630"
+url = "https://doi.org/10.1371/journal.pone.0166630"
+
+[[evidence]]
+source = "beauchene-2016"
+scope = "reference_condition"
+population = "human"
+population_detail = "Human study: Visual working memory"
+condition_role = "test"
+measures = ["eeg", "behavior"]
+methods_locator = "Binaural-beat condition: 240 Hz in the right ear and 245 Hz in the left. One of six 5-minute sound conditions played in random order while 28 adults did a visuospatial working-memory task during EEG. Accuracy rose during the 15 Hz binaural beat and fell during the other conditions."
+summary = "Two steady low tones, 245 Hz in the left ear and 240 Hz in the right, which the brain hears as a 5-per-second pulsing (a binaural beat); use headphones. In one study, 28 adults heard it for 5 minutes during a visual memory task, and their accuracy fell slightly, as it did with most of the study's sounds; only the 15 Hz beat improved it. Reaction times did not differ significantly between the study's sounds. Reviews of binaural-beat research report mixed results."
+limitations = "Source findings concern the stated population and condition; adaptations do not establish efficacy for generated audio. See the summary and adaptation for study-specific limitations."
+adaptation = "The source generated the tones in MATLAB and let participants set the volume; it states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added."

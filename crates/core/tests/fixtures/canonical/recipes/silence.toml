@@ -1,0 +1,12 @@
+schema_version = 4
+
+[document]
+id = "00000000-0000-4000-8000-000000000103"
+
+[description]
+title = "Silent sound"
+notes = "Design fixture, not a clinical claim."
+
+[sound]
+duration_seconds = 60.0
+fade_seconds = 0.1
