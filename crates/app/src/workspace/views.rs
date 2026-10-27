@@ -150,6 +150,18 @@ pub enum FacetKind {
     /// One declared structural method.
     Method(auditorylab_core::rhythm::Method),
 }
+impl FacetKind {
+    /// Semantic option key, independent of count presentation and row order.
+    #[must_use]
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::AllSounds | Self::AllMethods => "any",
+            Self::Band(value) => value.key(),
+            Self::State(value) => value.key(),
+            Self::Method(value) => value.key(),
+        }
+    }
+}
 /// Unique count for one navigation membership.
 #[derive(Debug, Clone, Copy)]
 pub struct LibraryFacetView {

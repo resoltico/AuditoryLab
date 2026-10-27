@@ -964,3 +964,31 @@ fn superseded_listing_and_foreign_handles_are_refused() {
         Err(Refusal::SelectionChanged)
     ));
 }
+
+#[test]
+fn keyed_query_edits_reject_unknown_options_atomically() {
+    let (_root, _store, mut workspace) = fixture();
+    let before = workspace.catalog_query().clone();
+    assert!(matches!(
+        workspace.apply(Command::Library(LibraryCommand::SetFacets(vec![
+            (QueryFacet::Scope, "user".into()),
+            (QueryFacet::Method, "not_offered".into())
+        ]))),
+        Err(Refusal::SelectionChanged)
+    ));
+    assert_eq!(workspace.catalog_query(), &before);
+    let bands = workspace.library_choices(QueryFacet::Band);
+    let counts = workspace.library_facets();
+    assert_eq!(
+        bands
+            .options
+            .iter()
+            .map(|option| option.key)
+            .collect::<Vec<_>>(),
+        counts
+            .bands
+            .iter()
+            .map(|count| count.kind.key())
+            .collect::<Vec<_>>()
+    );
+}

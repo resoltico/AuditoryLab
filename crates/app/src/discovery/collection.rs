@@ -266,6 +266,16 @@ pub struct FacetCounts {
     pub methods: Vec<(rhythm::Method, usize)>,
 }
 impl CatalogQuery {
+    /// Retain restrictions while restoring query-owned ordering defaults.
+    #[must_use]
+    pub fn reset_sort(&self) -> Self {
+        Self {
+            sort: Self::default().sort,
+            direction: Self::default().direction,
+            ..self.clone()
+        }
+    }
+
     /// Clear restrictions while retaining collection, sort, direction and grouping.
     #[must_use]
     pub fn cleared_filters(&self) -> Self {

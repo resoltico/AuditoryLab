@@ -3487,3 +3487,95 @@ const fn finite(value: f64) -> auditorylab_app::core::Finite {
         None => panic!("nonfinite fixture value"),
     }
 }
+
+#[test]
+fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
+    use auditorylab_app::core::query::{Direction, GroupBy};
+    use auditorylab_app::core::rhythm::Completeness;
+    use auditorylab_app::core::{ConditionRole, Population};
+    let h = Harness::new();
+    let ui = h.ui();
+    let apply = |population, role, analysis, direction, group| {
+        ui.invoke_more_filters(
+            "".into(),
+            population,
+            role,
+            analysis,
+            direction,
+            group,
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+        );
+        h.wait_for_files();
+    };
+    for (index, expected) in std::iter::once(None)
+        .chain(Population::ALL.into_iter().map(Some))
+        .enumerate()
+    {
+        apply(i32::try_from(index).unwrap(), 0, 0, 0, 0);
+        h.adapter.inspect(|w| {
+            assert_eq!(
+                w.catalog_query().populations,
+                expected.into_iter().collect::<Vec<_>>()
+            )
+        });
+    }
+    for (index, expected) in std::iter::once(None)
+        .chain(ConditionRole::ALL.into_iter().map(Some))
+        .enumerate()
+    {
+        apply(0, i32::try_from(index).unwrap(), 0, 0, 0);
+        h.adapter.inspect(|w| {
+            assert_eq!(
+                w.catalog_query().roles,
+                expected.into_iter().collect::<Vec<_>>()
+            )
+        });
+    }
+    for (index, expected) in std::iter::once(None)
+        .chain(Completeness::ALL.into_iter().map(Some))
+        .enumerate()
+    {
+        apply(0, 0, i32::try_from(index).unwrap(), 0, 0);
+        h.adapter
+            .inspect(|w| assert_eq!(w.catalog_query().analysis, expected));
+    }
+    for (index, expected) in std::iter::once(None)
+        .chain(Direction::ALL.into_iter().map(Some))
+        .enumerate()
+    {
+        apply(0, 0, 0, i32::try_from(index).unwrap(), 0);
+        h.adapter
+            .inspect(|w| assert_eq!(w.catalog_query().direction, expected));
+    }
+    for (index, expected) in GroupBy::ALL.into_iter().enumerate() {
+        apply(0, 0, 0, 0, i32::try_from(index).unwrap());
+        h.adapter
+            .inspect(|w| assert_eq!(w.catalog_query().group_by, expected));
+    }
+    apply(0, 0, 0, 0, 0);
+    ui.invoke_more_filters(
+        "".into(),
+        999,
+        0,
+        0,
+        0,
+        0,
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+        "".into(),
+    );
+    h.adapter.inspect(|w| {
+        assert_eq!(
+            w.catalog_query(),
+            &auditorylab_app::discovery::collection::CatalogQuery::default()
+        )
+    });
+}

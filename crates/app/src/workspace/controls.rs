@@ -213,6 +213,14 @@ pub fn slider_position(id: ParameterId, rate: SampleRate, model: f64) -> Option<
     )
 }
 
+/// Offered modulation states, including the unmodulated state as a real choice.
+#[must_use]
+pub fn modulation_choices() -> Vec<Option<ModulationKind>> {
+    std::iter::once(None)
+        .chain(ModulationKind::ALL.into_iter().map(Some))
+        .collect()
+}
+
 #[cfg(test)]
 const fn finite(value: f64) -> auditorylab_core::Finite {
     match auditorylab_core::Finite::new(value) {

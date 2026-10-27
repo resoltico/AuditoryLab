@@ -49,55 +49,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         append_term(&mut vocabulary, &mut properties, property, "")?;
     }
     vocabulary.push_str("}\n");
-    vocabulary.push_str("export global Choices {\n");
-    let mut choices = |name: &str, labels: Vec<&str>| {
-        vocabulary.push_str(&format!(
-            "    out property <[string]> {name}: [{}];\n",
-            labels
-                .iter()
-                .map(|label| format!("{label:?}"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-    };
-
-    choices(
-        "collection-labels",
-        Scope::ALL.iter().map(|value| value.label()).collect(),
-    );
-    choices(
-        "sort-labels",
-        SortBy::ALL.iter().map(|value| value.label()).collect(),
-    );
-    choices(
-        "population-labels",
-        std::iter::once(terms::Facet::AnyPopulation.label())
-            .chain(Population::ALL.iter().map(|value| value.label()))
-            .collect(),
-    );
-    choices(
-        "role-labels",
-        std::iter::once(terms::Facet::AnyConditionRole.label())
-            .chain(ConditionRole::ALL.iter().map(|value| value.label()))
-            .collect(),
-    );
-    choices(
-        "analysis-labels",
-        std::iter::once(terms::Facet::AnyAnalysisCoverage.label())
-            .chain(Completeness::ALL.iter().map(|value| value.label()))
-            .collect(),
-    );
-    choices(
-        "direction-labels",
-        std::iter::once(terms::Caption::AutomaticDirection.label())
-            .chain(Direction::ALL.iter().map(|value| value.label()))
-            .collect(),
-    );
-    choices(
-        "group-labels",
-        GroupBy::ALL.iter().map(|value| value.label()).collect(),
-    );
-    vocabulary.push_str("}\n");
     write_generated(&generated.join("vocabulary.slint"), &vocabulary)?;
     let mut parameter_enum = String::from("export enum ParameterKey {\n");
     let mut to_binding = String::from(

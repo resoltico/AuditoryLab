@@ -1,6 +1,6 @@
 //! Library model updates depend only on an immutable library projection.
 use super::*;
-use auditorylab_app::core::query::{Scope, SortBy};
+use auditorylab_app::workspace::QueryFacet;
 use auditorylab_presentation::DisplayText;
 use auditorylab_presentation::LibraryPresentation;
 struct EntryHandles(Vec<Option<auditorylab_app::workspace::EntryHandle>>);
@@ -34,6 +34,17 @@ pub(super) fn entry_handle(
 }
 
 impl SlintAdapter {
+    pub(super) fn facet_key(&self, facet: QueryFacet, index: i32) -> Option<String> {
+        self.choices
+            .borrow()
+            .iter()
+            .find(|(kind, _)| *kind == facet)?
+            .1
+            .options
+            .get(usize::try_from(index).ok()?)
+            .map(|option| option.key.to_string())
+    }
+
     pub(super) fn project_library(
         &self,
         ui: &MainWindow,
@@ -129,11 +140,20 @@ impl SlintAdapter {
                         .collect::<Vec<_>>(),
                 ))
             };
-            let (bands, methods) =
-                auditorylab_presentation::library_text::facets(&w.library_facets());
-            ui.set_band_labels(strings(
-                bands.iter().map(|band| band.text.clone()).collect(),
-            ));
+            let counts = w.library_facets();
+            let (bands, methods) = auditorylab_presentation::library_text::facets(&counts);
+            let band_text = counts
+                .bands
+                .iter()
+                .zip(&bands)
+                .map(|(count, text)| (count.kind.key(), text.text.clone()))
+                .collect::<std::collections::BTreeMap<_, _>>();
+            let method_text = counts
+                .methods
+                .iter()
+                .zip(&methods)
+                .map(|(count, text)| (count.kind.key(), text.clone()))
+                .collect::<std::collections::BTreeMap<_, _>>();
             ui.set_band_navigation(ModelRc::new(VecModel::from(
                 bands
                     .into_iter()
@@ -145,52 +165,81 @@ impl SlintAdapter {
                     })
                     .collect::<Vec<_>>(),
             )));
-            ui.set_method_labels(strings(methods));
             ui.set_calendar_context(
                 auditorylab_presentation::calendar_text::local_context().into(),
             );
-            {
-                let query = w.catalog_query();
-                use auditorylab_app::core::query::RhythmState;
-                use auditorylab_app::core::rhythm::{Band, Method};
-                let band = query
-                    .rhythm
-                    .bands
-                    .first()
-                    .and_then(|band| Band::ALL.iter().position(|value| value == band))
-                    .and_then(|index| i32::try_from(index + 1).ok())
-                    .unwrap_or(match query.rhythm.state {
-                        Some(RhythmState::OutsideBands) => 6,
-                        Some(RhythmState::None) => 7,
-                        Some(RhythmState::Multiple) => 8,
-                        Some(RhythmState::NeedsReview) => 9,
-                        None => 0,
-                    });
-                ui.set_band_choice(band);
-                ui.set_method_choice(
-                    query
-                        .rhythm
-                        .methods
-                        .first()
-                        .and_then(|method| Method::ALL.iter().position(|value| value == method))
-                        .and_then(|index| i32::try_from(index + 1).ok())
-                        .unwrap_or(0),
-                );
-                ui.set_collection_choice(
-                    Scope::ALL
+            let choices = [
+                QueryFacet::Scope,
+                QueryFacet::Sort,
+                QueryFacet::Direction,
+                QueryFacet::Group,
+                QueryFacet::Band,
+                QueryFacet::Method,
+                QueryFacet::Population,
+                QueryFacet::Role,
+                QueryFacet::Analysis,
+            ]
+            .into_iter()
+            .map(|facet| (facet, w.library_choices(facet)))
+            .collect::<Vec<_>>();
+            for (facet, view) in &choices {
+                let labels = strings(
+                    view.options
                         .iter()
-                        .position(|value| *value == query.scope)
-                        .and_then(|index| i32::try_from(index).ok())
-                        .unwrap_or(0),
+                        .map(|option| option.label.to_string())
+                        .collect(),
                 );
-                ui.set_sort_choice(
-                    SortBy::ALL
-                        .iter()
-                        .position(|value| *value == query.sort)
-                        .and_then(|index| i32::try_from(index).ok())
-                        .unwrap_or(0),
-                );
+                let selected = view
+                    .options
+                    .iter()
+                    .position(|option| option.selected)
+                    .and_then(|index| i32::try_from(index).ok())
+                    .unwrap_or(0);
+                match facet {
+                    QueryFacet::Scope => {
+                        ui.set_collection_labels(labels);
+                        ui.set_collection_choice(selected);
+                    }
+                    QueryFacet::Sort => {
+                        ui.set_sort_labels(labels);
+                        ui.set_sort_choice(selected);
+                    }
+                    QueryFacet::Direction => ui.set_direction_labels(labels),
+                    QueryFacet::Group => ui.set_group_labels(labels),
+                    QueryFacet::Band => {
+                        ui.set_band_labels(strings(
+                            view.options
+                                .iter()
+                                .map(|option| {
+                                    band_text
+                                        .get(option.key)
+                                        .cloned()
+                                        .unwrap_or_else(|| option.label.into())
+                                })
+                                .collect(),
+                        ));
+                        ui.set_band_choice(selected);
+                    }
+                    QueryFacet::Method => {
+                        ui.set_method_labels(strings(
+                            view.options
+                                .iter()
+                                .map(|option| {
+                                    method_text
+                                        .get(option.key)
+                                        .cloned()
+                                        .unwrap_or_else(|| option.label.into())
+                                })
+                                .collect(),
+                        ));
+                        ui.set_method_choice(selected);
+                    }
+                    QueryFacet::Population => ui.set_population_labels(labels),
+                    QueryFacet::Role => ui.set_role_labels(labels),
+                    QueryFacet::Analysis => ui.set_analysis_labels(labels),
+                }
             }
+            *self.choices.borrow_mut() = choices;
         }
         // Virtual group/diagnostic rows do not create a selectable sound.
         let has_results = library.rows.iter().any(|row| !row.key.is_empty());

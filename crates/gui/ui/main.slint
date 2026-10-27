@@ -7,7 +7,7 @@ import { Button } from "button.slint";
 
 import { WorkspaceNavigation } from "workspace-navigation.slint";
 export { Terms } from "vocabulary.slint";
-import { Terms, Choices } from "vocabulary.slint";
+import { Terms } from "vocabulary.slint";
 import { Palette, VerticalBox, HorizontalBox, ProgressIndicator } from "std-widgets.slint";
 export { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
 import { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
@@ -238,13 +238,13 @@ export component MainWindow inherits Window {
     in-out property <string> added-through;
 
 
-    private property <[string]> collection-labels: Choices.collection-labels;
-    private property <[string]> sort-labels: Choices.sort-labels;
-    private property <[string]> population-labels: Choices.population-labels;
-    private property <[string]> role-labels: Choices.role-labels;
-    private property <[string]> analysis-labels: Choices.analysis-labels;
-    private property <[string]> direction-labels: Choices.direction-labels;
-    private property <[string]> group-labels: Choices.group-labels;
+    in property <[string]> collection-labels;
+    in property <[string]> sort-labels;
+    in property <[string]> population-labels;
+    in property <[string]> role-labels;
+    in property <[string]> analysis-labels;
+    in property <[string]> direction-labels;
+    in property <[string]> group-labels;
 
     in-out property <int> collection-choice: 0;
     in-out property <int> sort-choice: 0;

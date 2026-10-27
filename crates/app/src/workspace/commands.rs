@@ -1,9 +1,6 @@
 //! Typed user input; handlers retain their owner-specific admission/status rules.
 use super::*;
-use crate::discovery::{
-    collection::CatalogQuery,
-    query::{QueryError, RhythmQuery},
-};
+use crate::discovery::{collection::CatalogQuery, query::RhythmQuery};
 use crate::workspace::monitor::WaveformScale;
 
 /// One requested workspace transition. Display labels are never command input.
@@ -80,9 +77,12 @@ pub enum Navigation {
 #[derive(Debug, Clone)]
 pub enum LibraryCommand {
     SetQuery(Box<CatalogQuery>),
+    SetFacets(Vec<(QueryFacet, String)>),
+    SetFilters(Box<FilterInput>),
+    ClearFilters,
+    ResetSort,
     Search(String),
     SetRhythm(RhythmQuery),
-    ReportFilterError(QueryError),
     Select(EntryHandle),
     Navigate(Navigation),
     Refresh,
@@ -163,6 +163,16 @@ impl Workspace {
                 }
             },
             Command::Library(command) => match command {
+                LibraryCommand::SetFacets(facets) => self.edit_facets(facets),
+                LibraryCommand::SetFilters(input) => self.edit_filters(*input),
+                LibraryCommand::ClearFilters => {
+                    let query = self.catalog_query().cleared_filters();
+                    self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))
+                }
+                LibraryCommand::ResetSort => {
+                    let query = self.catalog_query().reset_sort();
+                    self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))
+                }
                 LibraryCommand::SetQuery(query) => {
                     self.set_catalog_query(*query).map_err(|error| {
                         self.library_filter_error(error.clone());
@@ -175,10 +185,6 @@ impl Workspace {
                 }
                 LibraryCommand::SetRhythm(query) => {
                     self.set_rhythm_query(query);
-                    Ok(())
-                }
-                LibraryCommand::ReportFilterError(error) => {
-                    self.library_filter_error(error);
                     Ok(())
                 }
                 LibraryCommand::Select(entry) => self.select_entry(entry),

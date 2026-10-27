@@ -17,6 +17,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 mod audio;
+mod choices;
+pub use choices::{ChoiceOption, ChoiceView, FilterInput, QueryFacet};
 mod commands;
 pub use commands::{
     AudioCommand, Command, EditorCommand, FileCommand, LibraryCommand, Navigation, OutputCommand,

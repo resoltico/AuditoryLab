@@ -111,10 +111,10 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     let w = with.clone();
     ui.on_set_modulation(move |binding, index| {
         w(&|a| {
-            let kind = match index {
-                0 => Some(None),
-                i => choice(&ModulationKind::ALL, i - 1).map(Some),
-            };
+            let kind = choice(
+                &auditorylab_app::workspace::controls::modulation_choices(),
+                index,
+            );
             if let (Ok(row), Some(kind)) = (binding.parse::<RowKey>(), kind) {
                 a.command(|w| w.apply(Command::Editor(EditorCommand::SetModulation { row, kind })));
             }

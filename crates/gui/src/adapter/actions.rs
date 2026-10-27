@@ -1,9 +1,9 @@
 //! Workspace commands and path-independent action callbacks.
 use super::*;
-use auditorylab_app::core::query::{Direction, GroupBy, RhythmState, Scope, SortBy};
 use auditorylab_app::workspace::{
     AudioCommand, Command, EditorCommand, FileCommand, LibraryCommand, Navigation, OutputCommand,
 };
+use auditorylab_app::workspace::{FilterInput, QueryFacet};
 use auditorylab_presentation::DisplayText;
 
 pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
@@ -23,15 +23,17 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         }
     });
     on!(on_collection_filter, |a, scope, sort| {
-        a.command(|w| {
-            {
-                let mut query = w.catalog_query().clone();
-                query.scope = choice(&Scope::ALL, scope).unwrap_or(Scope::All);
-                query.sort = choice(&SortBy::ALL, sort).unwrap_or(SortBy::Automatic);
-                w.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))?;
-            }
-            Ok::<(), auditorylab_app::workspace::Refusal>(())
-        });
+        if let (Some(scope), Some(sort)) = (
+            a.facet_key(QueryFacet::Scope, scope),
+            a.facet_key(QueryFacet::Sort, sort),
+        ) {
+            a.command(|w| {
+                w.apply(Command::Library(LibraryCommand::SetFacets(vec![
+                    (QueryFacet::Scope, scope),
+                    (QueryFacet::Sort, sort),
+                ])))
+            });
+        }
     });
     on!(on_more_filters, |a,
                           study,
@@ -46,84 +48,47 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                           mt,
                           af,
                           at| {
+        let facets = [
+            (QueryFacet::Population, population),
+            (QueryFacet::Role, role),
+            (QueryFacet::Analysis, analysis),
+            (QueryFacet::Direction, direction),
+            (QueryFacet::Group, group),
+        ]
+        .into_iter()
+        .map(|(facet, index)| a.facet_key(facet, index).map(|key| (facet, key)))
+        .collect::<Option<Vec<_>>>();
+        let Some(facets) = facets else {
+            return;
+        };
         let applied = a
             .command(|w| {
-                let mut query = w.catalog_query().clone();
-                let ranges = (|| -> Result<_, auditorylab_app::discovery::query::QueryError> {
-                    Ok([
-                        auditorylab_app::discovery::calendar::local_range(
-                            auditorylab_app::core::query::CalendarField::Created,
-                            &cf,
-                            &ct,
-                        )?,
-                        auditorylab_app::discovery::calendar::local_range(
-                            auditorylab_app::core::query::CalendarField::Modified,
-                            &mf,
-                            &mt,
-                        )?,
-                        auditorylab_app::discovery::calendar::local_range(
-                            auditorylab_app::core::query::CalendarField::Added,
-                            &af,
-                            &at,
-                        )?,
-                    ])
-                })();
-                let [created, modified, added] = match ranges {
-                    Ok(ranges) => ranges,
-                    Err(error) => {
-                        let _ = w.apply(Command::Library(LibraryCommand::ReportFilterError(error)));
-                        return false;
-                    }
-                };
-                use auditorylab_app::core::{ConditionRole, Population};
-                query.created = created;
-                query.modified = modified;
-                query.added = added;
-                query.studies = if study.trim().is_empty() {
-                    Vec::new()
-                } else {
-                    vec![study.to_string()]
-                };
-                query.populations = choice(&Population::ALL, population - 1)
-                    .into_iter()
-                    .collect();
-                query.roles = choice(&ConditionRole::ALL, role - 1).into_iter().collect();
-                query.analysis = choice(
-                    &auditorylab_app::core::rhythm::Completeness::ALL,
-                    analysis - 1,
-                );
-                query.direction = choice(&Direction::ALL, direction - 1);
-                query.group_by = choice(&GroupBy::ALL, group).unwrap_or(GroupBy::None);
-                match w.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query)))) {
-                    Ok(()) => true,
-                    Err(_) => false,
-                }
+                w.apply(Command::Library(LibraryCommand::SetFilters(Box::new(
+                    FilterInput {
+                        study: study.into(),
+                        facets,
+                        dates: [
+                            [cf.into(), ct.into()],
+                            [mf.into(), mt.into()],
+                            [af.into(), at.into()],
+                        ],
+                    },
+                ))))
             })
-            .unwrap_or(false);
+            .is_some_and(|result| result.is_ok());
         if applied && let Some(ui) = a.main.upgrade() {
             ui.invoke_close_library_filters();
         }
     });
-    on!(on_clear_library_filters, |a| a.command(|w| {
-        {
-            let query = w.catalog_query().clone();
-            let cleared = query.cleared_filters();
-            let _ = w.apply(Command::Library(LibraryCommand::SetQuery(Box::new(
-                cleared,
-            ))));
-        }
-    }));
+    on!(on_clear_library_filters, |a| a.command(
+        |w| w.apply(Command::Library(LibraryCommand::ClearFilters))
+    ));
     on!(on_refresh_library, |a| a.command(
         |w| w.apply(Command::Library(LibraryCommand::Refresh))
     ));
-    on!(on_reset_library_sort, |a| a.command(|w| {
-        {
-            let mut query = w.catalog_query().clone();
-            query.sort = auditorylab_app::core::query::SortBy::Automatic;
-            query.direction = None;
-            let _ = w.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))));
-        }
-    }));
+    on!(on_reset_library_sort, |a| a.command(
+        |w| w.apply(Command::Library(LibraryCommand::ResetSort))
+    ));
     on!(on_initialize_library, |a| a.command(
         |w| w.apply(Command::Library(LibraryCommand::Initialize))
     ));
@@ -168,29 +133,17 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         Command::Library(LibraryCommand::Search(query.to_string()))
     )));
     on!(on_rhythm_filter, |a, band, method| {
-        use auditorylab_app::core::rhythm::{Band, Method};
-        use auditorylab_app::discovery::query::RhythmQuery;
-        let mut query = RhythmQuery::default();
-        match band {
-            0 => {}
-            1..=5 => {
-                if let Some(band) = choice(&Band::ALL, band - 1) {
-                    query.bands.push(band);
-                }
-            }
-            6 => query.state = Some(RhythmState::OutsideBands),
-            7 => query.state = Some(RhythmState::None),
-            8 => query.state = Some(RhythmState::Multiple),
-            9 => query.state = Some(RhythmState::NeedsReview),
-            _ => return,
+        if let (Some(band), Some(method)) = (
+            a.facet_key(QueryFacet::Band, band),
+            a.facet_key(QueryFacet::Method, method),
+        ) {
+            a.command(|w| {
+                w.apply(Command::Library(LibraryCommand::SetFacets(vec![
+                    (QueryFacet::Band, band),
+                    (QueryFacet::Method, method),
+                ])))
+            });
         }
-        if method > 0 {
-            let Some(method) = choice(&Method::ALL, method - 1) else {
-                return;
-            };
-            query.methods.push(method);
-        }
-        a.command(|w| w.apply(Command::Library(LibraryCommand::SetRhythm(query))));
     });
     on!(on_tab_changed, |a, index| {
         // The tab's change handler can run while a projection is writing

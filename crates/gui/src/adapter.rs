@@ -146,6 +146,12 @@ pub(crate) struct SlintAdapter {
     catalog: Rc<VecModel<CatalogRow>>,
     library: RefCell<Option<Arc<auditorylab_app::workspace::LibraryView>>>,
     entry_handles: RefCell<Option<ModelRc<i32>>>,
+    choices: RefCell<
+        Vec<(
+            auditorylab_app::workspace::QueryFacet,
+            auditorylab_app::workspace::ChoiceView,
+        )>,
+    >,
     lanes: Rc<VecModel<ModelLane>>,
     document: Cell<Option<RowKey>>,
     projected: Cell<Option<(u64, Option<PlaybackPhase>)>>,
@@ -203,6 +209,7 @@ impl SlintAdapter {
             catalog: Rc::new(VecModel::default()),
             library: RefCell::new(None),
             entry_handles: RefCell::new(None),
+            choices: RefCell::new(Vec::new()),
             lanes: Rc::new(VecModel::default()),
             document: Cell::new(None),
             projected: Cell::new(None),
@@ -651,10 +658,9 @@ impl SlintAdapter {
                 w.library_view(),
                 auditorylab_presentation::workspace_text::action_view(&w.action_view()),
                 w.export_rate(),
-                w.rhythm_query().clone(),
             )
         });
-        let Some((editor, library, actions, rate, rhythm)) = views else {
+        let Some((editor, library, actions, rate)) = views else {
             return;
         };
         self.reconcile_document(ui, &editor);
@@ -673,37 +679,6 @@ impl SlintAdapter {
         self.project_library(ui, library);
         if ui.get_query() != self.query() {
             ui.set_query(self.query().into());
-        }
-        {
-            let band = rhythm
-                .bands
-                .first()
-                .and_then(|b| {
-                    auditorylab_app::core::rhythm::Band::ALL
-                        .iter()
-                        .position(|v| v == b)
-                })
-                .and_then(|i| i32::try_from(i + 1).ok())
-                .unwrap_or(match rhythm.state {
-                    Some(auditorylab_app::core::query::RhythmState::OutsideBands) => 6,
-                    Some(auditorylab_app::core::query::RhythmState::None) => 7,
-                    Some(auditorylab_app::core::query::RhythmState::Multiple) => 8,
-                    Some(auditorylab_app::core::query::RhythmState::NeedsReview) => 9,
-                    None => 0,
-                });
-            ui.set_band_choice(band);
-            ui.set_method_choice(
-                rhythm
-                    .methods
-                    .first()
-                    .and_then(|m| {
-                        auditorylab_app::core::rhythm::Method::ALL
-                            .iter()
-                            .position(|v| v == m)
-                    })
-                    .and_then(|i| i32::try_from(i + 1).ok())
-                    .unwrap_or(0),
-            );
         }
 
         ui.set_can_play(actions.can_play);
@@ -1152,13 +1127,16 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
             .into(),
     );
     ui.set_modulation_choices(strings(
-        std::iter::once(
-            auditorylab_app::core::vocabulary::NO_MODULATION
-                .label
-                .to_owned(),
-        )
-        .chain(ModulationKind::ALL.iter().map(|k| k.label().into()))
-        .collect(),
+        auditorylab_app::workspace::controls::modulation_choices()
+            .into_iter()
+            .map(|kind| {
+                kind.map_or(
+                    auditorylab_app::core::vocabulary::NO_MODULATION.label,
+                    ModulationKind::label,
+                )
+                .to_owned()
+            })
+            .collect(),
     ));
     let spans = strings(
         SPANS_MS
@@ -1218,9 +1196,10 @@ fn component_row(entry: &ComponentEntry, view: &ComponentView) -> ComponentRow {
             .carrier
             .map_or(-1, |kind| index_of(&CarrierKind::ALL, &kind)),
         routing_editable: view.routing_editable,
-        modulation: view
-            .modulation
-            .map_or(0, |kind| index_of(&ModulationKind::ALL, &kind) + 1),
+        modulation: index_of(
+            &auditorylab_app::workspace::controls::modulation_choices(),
+            &view.modulation,
+        ),
         heading: view.heading.into(),
         name: view.name.as_str().into(),
         context: view.context.as_str().into(),
