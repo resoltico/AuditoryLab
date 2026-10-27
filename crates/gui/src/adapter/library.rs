@@ -19,7 +19,6 @@ impl SlintAdapter {
         }
         let source = library;
         let library = auditorylab_presentation::workspace_text::library_view(&source);
-        #[cfg(test)]
         self.counts
             .library_projections
             .set(self.counts.library_projections.get() + 1);

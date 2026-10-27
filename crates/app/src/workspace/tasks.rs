@@ -341,6 +341,19 @@ struct Running {
     handle: JoinHandle<Response>,
     prepared: Receiver<Response>,
 }
+/// Execution strategy for admitted jobs, retaining each capture until completion.
+/// Preparation responses may arrive before a worker exits; final responses require joining it.
+pub trait Executor: std::any::Any {
+    /// Accept one immutable admitted job; launch failure is returned through polling.
+    fn start(&mut self, job: Job);
+    /// Return preparation messages and joined terminal responses available now.
+    fn poll(&mut self) -> Vec<Response>;
+    /// End admitted work and join every owned worker before returning.
+    ///
+    /// # Errors
+    /// Returns every observed operation, execution or editor-reset failure.
+    fn shutdown(self: Box<Self>, workspace: Workspace) -> Result<(), ShutdownError>;
+}
 /// Executes a single workspace's admitted jobs and returns joined completions.
 #[derive(Default)]
 pub struct Runner {
@@ -587,3 +600,15 @@ impl std::fmt::Display for ShutdownError {
     }
 }
 impl std::error::Error for ShutdownError {}
+
+impl Executor for Runner {
+    fn start(&mut self, job: Job) {
+        Runner::start(self, job);
+    }
+    fn poll(&mut self) -> Vec<Response> {
+        Runner::poll(self)
+    }
+    fn shutdown(self: Box<Self>, workspace: Workspace) -> Result<(), ShutdownError> {
+        Runner::shutdown(*self, workspace)
+    }
+}

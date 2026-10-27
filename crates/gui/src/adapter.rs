@@ -31,11 +31,9 @@ use auditorylab_app::core::{CarrierKind, Ears, ModulationKind, ParameterId};
 use auditorylab_app::document::editing::{EditingField, FieldHandle, MetadataField, RowKey};
 use auditorylab_app::services::playback::PlaybackPhase;
 use auditorylab_app::workspace::{
-    Effect, MotionPreference, PathPurpose, PromptAnswer, PromptId, Response, Runner, View,
+    Effect, Executor, MotionPreference, PathPurpose, PromptAnswer, PromptId, Response, View,
     Workspace,
 };
-#[cfg(test)]
-use auditorylab_app::workspace::{Job, JobKind};
 use auxiliary::{install_auxiliary, install_monitor};
 use editing::install_editing;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
@@ -135,9 +133,7 @@ struct ComponentEntry {
 /// The adapter between Slint and the workspace.
 pub(crate) struct SlintAdapter {
     workspace: RefCell<Option<Workspace>>,
-    runner: RefCell<Option<Runner>>,
-    #[cfg(test)]
-    jobs: RefCell<Vec<Job>>,
+    executor: RefCell<Option<Box<dyn Executor>>>,
     shell: Box<dyn Shell>,
     main: slint::Weak<MainWindow>,
     about: slint::Weak<AboutWindow>,
@@ -169,14 +165,12 @@ pub(crate) struct SlintAdapter {
     deferred: slint::Timer,
     #[cfg(target_os = "macos")]
     termination: RefCell<Option<slint::winit_030::winit::platform::macos::TerminationRequest>>,
-    #[cfg(test)]
-    pub(crate) counts: TestCounts,
+    pub(crate) counts: ProjectionCounts,
 }
 
 /// Work the adapter did, for checking that unchanged state does none.
-#[cfg(test)]
 #[derive(Default)]
-pub(crate) struct TestCounts {
+pub(crate) struct ProjectionCounts {
     pub(crate) document_projections: Cell<u64>,
     pub(crate) path_builds: Cell<u64>,
     pub(crate) library_projections: Cell<u64>,
@@ -189,14 +183,13 @@ impl SlintAdapter {
         windows: &Windows,
         workspace: Workspace,
         shell: Box<dyn Shell>,
+        executor: Box<dyn Executor>,
         preferences: Option<Preferences>,
     ) -> Rc<Self> {
         let ui = &windows.main;
         let adapter = Rc::new(Self {
             workspace: RefCell::new(Some(workspace)),
-            runner: RefCell::new(Some(Runner::new())),
-            #[cfg(test)]
-            jobs: RefCell::new(Vec::new()),
+            executor: RefCell::new(Some(executor)),
             shell,
             main: ui.as_weak(),
             about: windows.about.as_weak(),
@@ -228,8 +221,7 @@ impl SlintAdapter {
             deferred: slint::Timer::default(),
             #[cfg(target_os = "macos")]
             termination: RefCell::new(None),
-            #[cfg(test)]
-            counts: TestCounts::default(),
+            counts: ProjectionCounts::default(),
         });
         set_choices(ui, &windows.monitor);
         ui.set_window_index(index_of(
@@ -400,10 +392,10 @@ impl SlintAdapter {
         }
         self.drain_preferences();
         let responses = self
-            .runner
+            .executor
             .borrow_mut()
             .as_mut()
-            .map(Runner::poll)
+            .map(|executor| executor.poll())
             .unwrap_or_default();
         if let Some(workspace) = self.workspace.borrow_mut().as_mut() {
             for response in responses {
@@ -411,8 +403,6 @@ impl SlintAdapter {
             }
             workspace.poll();
         }
-        #[cfg(test)]
-        self.run_file_jobs();
         self.after_command();
     }
 
@@ -432,11 +422,8 @@ impl SlintAdapter {
     fn perform(self: &Rc<Self>, effect: Effect) {
         match effect {
             Effect::Run(job) => {
-                #[cfg(test)]
-                self.jobs.borrow_mut().push(job);
-                #[cfg(not(test))]
-                if let Some(runner) = self.runner.borrow_mut().as_mut() {
-                    runner.start(job);
+                if let Some(executor) = self.executor.borrow_mut().as_mut() {
+                    executor.start(job);
                 }
             }
             Effect::AskPurge { prompt, key, title } => {
@@ -477,40 +464,6 @@ impl SlintAdapter {
             .borrow()
             .as_ref()
             .and_then(Workspace::audio_control)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn take_jobs(&self) -> Vec<Job> {
-        std::mem::take(&mut *self.jobs.borrow_mut())
-    }
-    #[cfg(test)]
-    pub(crate) fn deliver(self: &Rc<Self>, response: Response) {
-        if let Some(workspace) = self.workspace.borrow_mut().as_mut() {
-            workspace.respond(response);
-        }
-        self.after_command();
-    }
-    #[cfg(test)]
-    fn run_file_jobs(self: &Rc<Self>) {
-        let jobs = self.take_jobs();
-        for job in jobs {
-            if job.kind() == JobKind::File {
-                let response = job.execute(|prepared| self.deliver(prepared));
-                self.deliver(response);
-            } else {
-                self.jobs.borrow_mut().push(job);
-            }
-        }
-    }
-
-    /// Inspect the workspace directly, bypassing the bindings under test.
-    #[cfg(test)]
-    pub(crate) fn inspect<R>(&self, f: impl FnOnce(&mut Workspace) -> R) -> R {
-        f(self
-            .workspace
-            .borrow_mut()
-            .as_mut()
-            .expect("the workspace is open until shutdown"))
     }
 
     /// The open document's title, shortened for a dialog.
@@ -575,32 +528,14 @@ impl SlintAdapter {
             preferences.shutdown();
         }
         match (
-            self.runner.borrow_mut().take(),
+            self.executor.borrow_mut().take(),
             self.workspace.borrow_mut().take(),
         ) {
-            (Some(runner), Some(workspace)) => {
-                #[cfg(test)]
-                let (runner, workspace) = {
-                    let mut runner = runner;
-                    let mut workspace = workspace;
-                    let _ = workspace.stop();
-                    let _ = workspace.cancel_export();
-                    for job in self.jobs.borrow_mut().drain(..) {
-                        runner.start(job);
-                    }
-                    (runner, workspace)
-                };
-                runner
-                    .shutdown(workspace)
-                    .map_err(|error| auditorylab_presentation::Explain::explain(&error))
-            }
+            (Some(executor), Some(workspace)) => executor
+                .shutdown(workspace)
+                .map_err(|error| auditorylab_presentation::Explain::explain(&error)),
             _ => Ok(()),
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn monitor_presented(&self) -> bool {
-        self.monitor_window_visible.get()
     }
 
     fn drain_preferences(&self) {
@@ -700,7 +635,6 @@ impl SlintAdapter {
     }
 
     fn project_document(&self, ui: &MainWindow) {
-        #[cfg(test)]
         self.counts
             .document_projections
             .set(self.counts.document_projections.get() + 1);
@@ -942,7 +876,6 @@ impl SlintAdapter {
         if changed {
             // Paths are rebuilt only for another capture, never for
             // receipt age or other telemetry.
-            #[cfg(test)]
             self.counts
                 .path_builds
                 .set(self.counts.path_builds.get() + 1);
@@ -1474,3 +1407,7 @@ fn open_web(url: &str) {
 fn read_only(text: &str) -> SharedString {
     (text).display_text().into()
 }
+
+#[cfg(test)]
+#[path = "adapter_test_support.rs"]
+pub(crate) mod tests;

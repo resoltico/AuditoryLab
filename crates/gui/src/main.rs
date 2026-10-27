@@ -90,6 +90,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         &windows,
         workspace,
         Box::new(dialogs::NativeShell),
+        Box::new(auditorylab_app::workspace::Runner::new()),
         Some(Preferences::start()),
     );
     #[cfg(target_os = "macos")]

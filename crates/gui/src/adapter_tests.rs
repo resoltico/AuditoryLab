@@ -125,6 +125,7 @@ impl Harness {
             &windows,
             workspace,
             Box::new(Recorder(requests.clone())),
+            Box::new(crate::adapter::tests::DeterministicExecutor::default()),
             None,
         );
         adapter.show_main().unwrap();
@@ -1323,6 +1324,7 @@ fn monitor_presentation_waits_for_main_and_failures_are_visible_and_retryable() 
         &windows,
         workspace,
         Box::new(Recorder(Rc::new(RefCell::new(Vec::new())))),
+        Box::new(crate::adapter::tests::DeterministicExecutor::default()),
         None,
     );
     assert!(

@@ -35,8 +35,8 @@ mod views;
 pub use library::{LibraryBinding, LibraryData, LibraryOutcome};
 pub use output::{MotionPreference, OutputView};
 pub use tasks::{
-    FileOutcome, Job, JobContext, JobKind, JobOutcome, LibraryFailure, Runner, ShutdownError,
-    ShutdownIssue, TaskFailure, TaskId, WorkerFailure,
+    Executor, FileOutcome, Job, JobContext, JobKind, JobOutcome, LibraryFailure, Runner,
+    ShutdownError, ShutdownIssue, TaskFailure, TaskId, WorkerFailure,
 };
 pub use views::{
     ActionView, ComponentView, EditorView, FacetCounts, FacetKind, FieldDiagnostic,
