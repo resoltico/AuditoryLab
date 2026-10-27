@@ -2,7 +2,7 @@
 
 The workspace patches the native toolkit for accessibility, focus, multiline editing, modeless windows and macOS application menus. Font shaping and X11 DPI use the toolkit's upstream policy. No font files are embedded.
 
-[patches.toml](patches.toml) defines archive URLs, versions and SHA-256 digests. [patches/](patches/) contains the exact unified diffs. Vendored source must equal its authenticated archive with the corresponding patch applied. Every vendored package retains the archive’s `Cargo.lock`.
+[patches.toml](patches.toml) defines archive URLs, versions and SHA-256 digests. [patches/](patches/) contains the exact unified diffs. Vendored source must equal its authenticated archive with the corresponding patch applied. Each vendored package includes its authenticated archive’s `Cargo.lock`.
 
 ```sh
 cargo xtask verify-vendor
@@ -10,7 +10,7 @@ cargo xtask verify-vendor
 
 The verifier authenticates archives before extraction, compares every source byte and checks Cargo resolution for both products on every target in `xtask/src/targets.rs`. Temporary extraction stays under `target/tmp`; authenticated archives stay under `target/vendor-review` until cleanup. Symlinks, unexpected additions, missing changes and registry resolutions that bypass a patch fail. Only Cargo metadata and compiler outputs are excluded. `curl`, Git and the pinned Rust toolchain are required.
 
-## Retained behavior
+## Patched behavior
 
 | Patch | Behavior and retirement condition |
 | --- | --- |

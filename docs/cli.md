@@ -76,7 +76,7 @@ auditorylab library purge user:UUID --expect TOKEN --yes
 
 The placeholders must be replaced with observed values. `--expect` is optional in CLI commands and checks exact portable bytes even for a no-op. Re-read membership before another action: Trash/Restore can leave the token unchanged. Missing or stale mutation targets conflict rather than being recreated. Purge requires a trashed User entry and explicit confirmation. It affects only that entry.
 
-`library check [--format json]` reports malformed recipes, unknown artifacts, orphan membership dates and retained stages. For unsupported files, follow the [schema-3 remedy](formats.md#unsupported-recipes-and-schema-3-libraries). The [library reference](formats.md#library-layout) describes locking, timestamps and interruption recovery.
+`library check [--format json]` reports malformed recipes, unknown artifacts, orphan membership dates and retained stages. For unsupported files, follow the [unsupported-file handling](formats.md#unsupported-and-unreadable-recipes). The [library reference](formats.md#library-layout) describes locking, timestamps and interruption recovery.
 
 ## Playback and cancellation
 

@@ -18,13 +18,13 @@ The light palette supplies Windows, Linux and the runtime PNG. The macOS icon pa
 
 ## Inspect construction output
 
-Application builds use the tracked assets and do not need Python image libraries. To inspect the drawing generator, use an isolated Python environment with Shapely 2 or later, CairoSVG and Pillow, plus NumPy for the contrast script. Run from this directory, writing to a separate output directory:
+Application builds use the tracked assets and do not need Python image libraries. To inspect the drawing generator, use an isolated Python environment with Shapely 2 or later, CairoSVG and Pillow, plus NumPy for the contrast script. From the repository root, write a comparison tree under `target/`:
 
 ```sh
-python3 source/make_icon.py ../../target/icon-review
-python3 source/check_contrast.py
-diff -ru assets ../../target/icon-review
-shasum -a 256 -c SHA256SUMS
+python3 artwork/auditorylab-icon/source/make_icon.py target/icon-review
+python3 artwork/auditorylab-icon/source/check_contrast.py
+diff -ru artwork/auditorylab-icon/assets target/icon-review
+(cd artwork/auditorylab-icon && shasum -a 256 -c SHA256SUMS)
 ```
 
 The generator emits `assets/` contents; it does not regenerate the separate preview or this documentation. Image-library versions can affect exported bytes, so inspect differences rather than treating unpinned construction tools as a reproducible application build. The contrast script calculates reference-palette ratios, not whole-application accessibility or native rendering qualification. The manifest covers the files it lists; it is not a complete directory inventory. Changes to proprietary artwork require the owner's permission.

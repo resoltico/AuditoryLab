@@ -1,6 +1,6 @@
 # Authoring recipes
 
-A recipe describes ordered stereo components, finite duration/fades, identity and optional research context. It contains no sample rate. Inspect/export choose one; playback validates against the device’s actual rate. The [format reference](formats.md#recipe-schema) defines all fields, limits and supported versions.
+A recipe describes ordered stereo components, finite duration/fades, identity and optional research context. It contains no sample rate. Inspect/export choose one; playback validates against the device’s actual rate. The [format reference](formats.md#recipe-schema) defines all fields, limits and the supported schema.
 
 Start from a built-in:
 
@@ -70,7 +70,7 @@ Run `inspect --file custom.toml` after editing. A finite portable document can r
 
 Peak amplitudes add per ear. Lower component levels until their summed linear bounds fit full scale, including both voices of a monaural pair. These bounds protect against possible peaks rather than relying on phase cancellation. Endpoint fades require room within the finite duration.
 
-Workbench typing stages values; committing applies the complete finite candidate. Exact fields keep values outside comfortable slider ranges. Saving a copy creates independent identity/history and retains bounded ancestry. Sound changes demote current source evidence to ancestor scope; title/notes changes alone retain it.
+Workbench typing stages values; committing applies the complete finite candidate. Exact fields keep values outside comfortable slider ranges. An independent copy gets a fresh identity and bounded ancestry; its first User Library save sets its declared dates. Sound changes demote current source evidence to ancestor scope; title/notes changes alone retain it.
 
 ## Waveforms
 

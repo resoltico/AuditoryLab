@@ -14,13 +14,13 @@ Desktop date bounds are inclusive local days. The timezone is shown; **Exact UTC
 
 **Library options…** provides Open, Refresh, Show saved, filter resets and storage details, including when results are empty. **Show saved** reveals a confirmed saved entry and clears filters. Saving itself preserves the current query. Incomplete discovery keeps healthy and last-observed rows with a warning. Use Refresh and inspect the named files before editing a saved version.
 
-The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBRARY_DIR`. Initialize an override through Library storage controls or `auditorylab --library-dir PATH library init`. Built-ins and independent external exports remain available when persistent storage is unavailable. See [library configuration](cli.md#root-and-lifecycle) and [unsupported-file recovery](formats.md#unsupported-recipes-and-schema-3-libraries).
+The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBRARY_DIR`. Initialize an override through Library storage controls or `auditorylab --library-dir PATH library init`. Built-ins and independent external exports remain available when persistent storage is unavailable. See [library configuration](cli.md#root-and-lifecycle) and [unsupported-file recovery](formats.md#unsupported-and-unreadable-recipes).
 
 ## Open, copy and manage sounds
 
 **Open Recipe…** admits a regular portable file into Open files. **Close open file** removes its temporary entry. **Add to User Library** imports its content while keeping the original file unchanged.
 
-**Edit a copy** creates a new UUID and retains the source’s notes, bibliography and ancestry. Source evidence becomes ancestor evidence. The copied-from snapshot remains inspectable during the session; saved lineage retains attribution after reopening.
+**Edit a copy** creates a new UUID and retains the source’s notes, bibliography and bounded ancestry. Its first User Library save sets Created and Modified. Source evidence becomes ancestor evidence. The copied-from snapshot remains inspectable during the session; saved lineage retains attribution after reopening.
 
 **Edit saved User recipe** retains its managed identity and observed content token. **Edit external file** retains its opened path, identity and bytes. Save/Discard/Cancel protects dirty content before replacement.
 

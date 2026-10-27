@@ -68,6 +68,10 @@ Retain small open-failure evidence under `target/evidence/<topic>/` and explicit
 
 Isolated outputs use a temporary target directory, removed after required outputs are saved. Put TMPDIR under target for subprocesses. Omit `--target-dir` for Cargo-installed tools so their installation intermediates stay temporary. Remove task-created containers/layers; preserve shared pre-existing images.
 
+## Release summaries
+
+[AGENTS.md](AGENTS.md#changelog-rules) owns the changelog rules. Keep `Unreleased` cumulative against the latest published non-prerelease release, and verify that publication through GitHub. Describe implemented compatibility effects and required action. Documentation-only maintenance does not need a changelog entry.
+
 ## Packaging
 
 Use the [release guide](docs/releasing.md) for native toolchains, icon resources, identity, archives and extracted-package checks. Execute checks on the matching OS/CPU; cross-compilation alone does not exercise native rendering/devices. Use silent recipes for hardware checks. Versioning, tagging, publication and upstream submission require the owner’s authorization. [LICENSE](LICENSE) and the [artwork guide](artwork/README.md) define distribution terms.

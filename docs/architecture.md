@@ -50,4 +50,4 @@ One atomic terminal outcome owns playback truth. Generated frames, backend-submi
 
 [Formats](formats.md) owns schema/layout/JSON/exit-code reference. [Toolkit integration](../third_party/README.md) defines authenticated patches and retirement checks; [packaging](releasing.md) defines native prerequisites and delivered-content verification.
 
-Shared research views, authored-component descriptions, copy-attribution notes and parameter help are constructed in [presentation](../crates/app/src/presentation/recipe_text.rs). Core keeps typed records and copy scope/history rules; a fork takes an explicit nonempty attribution note. Domain term enums provide heading labels and running-text phrases from one vocabulary match.
+Shared research views, authored-component descriptions and copy-attribution notes are constructed in [recipe presentation](../crates/app/src/presentation/recipe_text.rs). [ParameterText](../crates/app/src/presentation/mod.rs) owns parameter help. Core keeps typed records and copy scope/history rules; a fork takes an explicit nonempty attribution note. Domain term enums provide heading labels and running-text phrases from one vocabulary match.

@@ -68,7 +68,7 @@ Evidence requires `source`, `scope`, `population`, `condition_role`, `measures`,
 - Condition role: `test`, `comparison`, `mixed`, `unspecified`.
 - Measures: any list of `eeg`, `behavior`, `subjective`, `sleep`, `hearing`, `other`.
 
-Copying creates a new UUID with unknown dates and appends an ancestor descriptor. Reference-condition evidence becomes ancestor evidence. Sound-setting changes also demote applicable current evidence; title/notes changes alone do not. A reopened lineage record retains attribution rather than an ancestor waveform.
+An independent copy starts with a new UUID and unknown declared dates, and appends an ancestor descriptor. Its first User Library save stamps Created and Modified; importing a file preserves its declared dates. Reference-condition evidence becomes ancestor evidence. Sound-setting changes also demote applicable current evidence; title/notes changes alone do not. A reopened lineage record retains attribution rather than an ancestor waveform.
 
 ### Validation at a sample rate
 
@@ -82,11 +82,11 @@ Inspection/export accept integer sample rates from 1 through 768,000 Hz and defa
 
 Lengths resolve to nearest whole frames, with halves away from zero. A structurally valid finite document can fail these acoustic rules and remain savable for repair. [Waveform formulas](recipes.md#waveforms) define synthesis.
 
-## Unsupported recipes and schema-3 libraries
+## Unsupported and unreadable recipes
 
-A schema-3 file is rejected with a diagnostic such as `schema_version 3; this build reads 4`. If it remains under `recipes/` or `trash/`, User discovery is incomplete: healthy rows are retained and `list` exits **5**. The diagnostic names the file, which remains unchanged.
+Only recipe schema 4 is accepted. Unsupported versions and malformed documents produce a diagnostic naming the file and the failed rule. The file remains unchanged. If it is inside `recipes/` or `trash/`, discovery is incomplete: healthy rows remain available and `list` exits **5**.
 
-Back up the affected files. Rewrite each as schema 4 using the reference above, or move it outside the library. Schema 4 moves root duration/fade into `[sound]`, uses `[[sound.component]]` and `[sound.component.modulation]`, and spells the kinds `clicks`, `am` and `gate`. Changing only the version number is insufficient. Check a rewritten file with `auditorylab inspect --file PATH` before putting it back, then run `library check` or Refresh.
+Back up the affected file. Correct it against the [recipe reference](#recipe-schema), or move it outside the library. Check the corrected file with `auditorylab inspect --file PATH` before returning it, then run `library check` or Refresh. Changing a declared schema number does not establish that a document satisfies the format.
 
 ## Queries and classification
 
@@ -125,7 +125,7 @@ Every envelope contains `output_schema_version`, `operation`, `complete`, `conve
 
 Entries identify key, collection, title, portable document identity, duration, dates, content token, directory-owned Trash state, nominal facts, evidence and validation. Unknown dates/values use null. Discovery validation is `not_checked`.
 
-Descriptors contain `owner`, `role`, `method`, `hz` and optional band membership. Expanded owners use `{"component":N,"lane":"primary"}` or `secondary`. Schema 2 has no inferred related-tone owner or derivation field. Display labels remain separate from serialized keys.
+Descriptors contain `owner`, `role`, `method`, `hz` and optional band membership. Expanded owners use `{"component":N,"lane":"primary"}` or `secondary`. Each descriptor identifies its own generator lane and structural method. Display labels are separate from serialized keys.
 
 Read-only partial inventories return healthy entries with `complete:false`. IDs output emits no stdout selectors for incomplete discovery and rejects grouping or temporary inputs. Prose escapes controls/bidi overrides; raw portable output retains its bytes. JSON escaping preserves decoded string data.
 
