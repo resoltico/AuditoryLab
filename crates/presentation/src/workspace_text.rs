@@ -179,7 +179,6 @@ pub(crate) fn sound_diagnostic(error: &auditorylab_core::SoundError, context: &s
 pub struct ParameterView {
     /// The field this row edits, bound to its document.
     pub handle: auditorylab_app::document::editing::FieldHandle,
-    /// The quantity.
     pub parameter: ParameterId,
     /// Label with unit.
     pub label: String,
@@ -202,11 +201,9 @@ pub struct ComponentView {
     pub key: auditorylab_app::document::editing::RowKey,
     /// The authored component identity.
     pub id: auditorylab_core::ComponentId,
-    /// Ear routing.
     pub ears: auditorylab_core::Ears,
     /// False for separate-ear pairs whose routes are part of their construction.
     pub routing_editable: bool,
-    /// Carrier kind.
     pub carrier: Option<auditorylab_core::CarrierKind>,
     /// Modulation kind, if any.
     pub modulation: Option<auditorylab_core::ModulationKind>,
@@ -236,8 +233,6 @@ pub struct MetadataView {
     /// What is wrong with the field, if anything.
     pub diagnostic: String,
 }
-
-/// The open document.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditorView {
     /// Opaque identity of the rendered document lifetime.
@@ -426,7 +421,7 @@ pub struct TransportView {
     pub device: String,
     /// Monitor state label.
     pub output_state: &'static str,
-    /// Receipt age.
+    /// Time since changed generated data was received.
     pub receipt_age: String,
     /// Current monitor warning and whether it is announced.
     pub warning: (String, bool),
@@ -884,7 +879,6 @@ pub struct ActionView {
     pub progress: f64,
     /// File and general status.
     pub file_status: String,
-    /// Audio status.
     pub audio_status: String,
     /// What the running file task does.
     pub file_activity: String,

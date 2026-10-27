@@ -204,10 +204,7 @@ use crate::outcome::Outcome;
 #[derive(Debug, Clone, PartialEq)]
 pub enum QueryError {
     /// Explicit temporary inputs require the All collection.
-    TemporaryFilesScope {
-        /// Captured scope.
-        scope: crate::core::query::Scope,
-    },
+    TemporaryFilesScope { scope: crate::core::query::Scope },
     /// The exclusive upper bound is not after the lower bound.
     RangeOrder {
         from: crate::core::Timestamp,

@@ -393,8 +393,6 @@ impl Workspace {
     pub fn take_effects(&mut self) -> Vec<Effect> {
         std::mem::take(&mut self.effects)
     }
-
-    /// The current view.
     #[must_use]
     pub const fn view(&self) -> View {
         self.view

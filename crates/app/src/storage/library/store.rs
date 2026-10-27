@@ -31,17 +31,13 @@ const MAX_MEMBERSHIP_BYTES: usize = 4 * 1024 * 1024;
 /// A bounded inventory observation.
 #[derive(Debug, Clone)]
 pub enum InventoryNotice {
-    /// Unknown Root Entry.
     UnknownRootEntry,
-    /// Unknown Entry.
     UnknownEntry,
-    /// Uuid Filename Required.
     UuidFilenameRequired,
-    /// Reserved Builtin Identity.
     ReservedBuiltinIdentity,
-    /// Interrupted Move.
+    /// Both directories link to the same file; Trash owns membership.
     InterruptedMove,
-    /// Duplicate Identity.
+    /// Active and Trash contain different files with the same UUID.
     DuplicateIdentity,
     /// Membership has no corresponding recipe.
     OrphanMembership(crate::core::DocumentUuid),

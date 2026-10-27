@@ -4,86 +4,63 @@ use std::path::PathBuf;
 /// A nonfatal publication, cleanup or history condition.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StorageWarning {
-    /// Saved After Io.
+    /// Candidate bytes were verified after publication reported an I/O error.
     SavedAfterIo {
-        /// Retained cause.
         cause: IoCause,
     },
-    /// Saved Durability.
+    /// Candidate bytes are present, but synchronizing the directory failed.
     SavedDurability {
-        /// Retained cause.
         cause: IoCause,
     },
-    /// Retained Stage.
+    /// Publication succeeded, but removing its owned stage failed.
     RetainedStage {
-        /// Retained path.
         path: PathBuf,
-        /// Retained cause.
         cause: IoCause,
     },
-    /// Moved After Io.
+    /// Source removal was verified after relocation reported an I/O error.
     MovedAfterIo {
-        /// Retained cause.
         cause: IoCause,
     },
-    /// Trash Link.
+    /// Trash owns membership; a redundant active link remains at the captured path.
     TrashLink {
-        /// Retained path.
         path: PathBuf,
-        /// Retained cause.
         cause: IoCause,
     },
-    /// Moved Durability.
+    /// Relocation was verified, but synchronizing its directory failed.
     MovedDurability {
-        /// Retained cause.
         cause: IoCause,
     },
-    /// Deleted After Io.
+    /// Absence was verified under the exclusive lock after deletion reported an I/O error.
     DeletedAfterIo {
-        /// Retained cause.
         cause: IoCause,
     },
-    /// Deleted Durability.
+    /// Absence is confirmed, but synchronizing its directory failed.
     DeletedDurability {
-        /// Retained cause.
         cause: IoCause,
     },
-    /// Clock Predates Edit.
     ClockPredatesEdit,
-    /// Removed Stage.
     RemovedStage {
-        /// Retained path.
         path: PathBuf,
     },
-    /// Removed Memberships.
     RemovedMemberships {
-        /// Retained count.
         count: usize,
     },
-    /// Membership Update Failed.
+    /// Recipe publication succeeded, but updating membership timestamps failed.
     MembershipUpdateFailed {
-        /// Retained cause.
         cause: Box<crate::storage::library::LibraryError>,
     },
-    /// Membership Read Failed.
+    /// Recipe bytes are confirmed; local membership dates are unknown.
     MembershipReadFailed {
-        /// Retained cause.
         cause: Box<crate::storage::library::LibraryError>,
     },
-    /// Recovered Move.
+    /// Interrupted same-file links were reconciled with Trash authoritative.
     RecoveredMove {
-        /// Retained name.
         name: std::ffi::OsString,
     },
-    /// Modification Precedes Creation.
     ModificationPrecedesCreation,
-    /// Clock Predates History.
     ClockPredatesHistory,
-    /// Future History.
     FutureHistory,
-    /// Unavailable History Clock.
     UnavailableHistoryClock {
-        /// Retained cause.
         cause: crate::clock::ClockError,
     },
 }

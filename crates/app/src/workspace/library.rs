@@ -1377,7 +1377,6 @@ impl Workspace {
     pub fn selected(&self) -> Option<&RecipeSnapshot> {
         self.library.selected()
     }
-    /// The search text.
     #[must_use]
     pub fn query(&self) -> &str {
         &self.library.query.search

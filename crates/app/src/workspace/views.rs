@@ -30,7 +30,6 @@ pub enum FieldDiagnostic {
 pub struct ParameterView {
     /// Captured document and component lifetime.
     pub handle: FieldHandle,
-    /// Domain quantity.
     pub parameter: ParameterId,
     /// Staged input or committed input grammar.
     pub text: String,
@@ -238,7 +237,6 @@ pub struct ActionView {
     pub progress: f64,
     /// File and general status.
     pub file_status: super::status::FileStatus,
-    /// Audio status.
     pub audio_status: super::status::AudioStatus,
     /// What the running file task does.
     pub file_activity: Option<super::status::FileActivity>,
