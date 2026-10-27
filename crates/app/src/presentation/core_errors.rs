@@ -2,6 +2,16 @@
 use crate::core::{
     ContractError, PairError, Recipe, RecipeError, ReferenceOwner, Sound, StructureError,
 };
+/// Explain a rejected rate using the core's supported bounds.
+#[must_use]
+pub fn sample_rate_error(error: &crate::core::SampleRateError) -> String {
+    format!(
+        "sample rate {} Hz must be from {} to {} Hz",
+        error.hz,
+        crate::core::SampleRate::MIN_HZ,
+        crate::core::SampleRate::MAX_HZ
+    )
+}
 /// Explain a portable-document failure without losing its rule or supported version.
 #[must_use]
 pub fn recipe_error(error: &RecipeError) -> String {
@@ -125,6 +135,10 @@ mod tests {
     use std::error::Error;
     #[test]
     fn messages_say_what_is_wrong_with_the_recipe() {
+        assert_eq!(
+            sample_rate_error(&crate::core::SampleRateError { hz: 0 }),
+            "sample rate 0 Hz must be from 1 to 768000 Hz"
+        );
         assert_eq!(
             recipe_error(&RecipeError::TooLarge),
             "recipe exceeds 65536 bytes"

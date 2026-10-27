@@ -84,7 +84,9 @@ struct Source {
 fn rate(text: &str) -> Result<SampleRate, String> {
     text.parse::<u32>()
         .map_err(|e| e.to_string())
-        .and_then(|n| SampleRate::new(n).map_err(|e| e.to_string()))
+        .and_then(|n| {
+            SampleRate::new(n).map_err(|e| lab::presentation::core_errors::sample_rate_error(&e))
+        })
 }
 fn absolute_path(text: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(text);
