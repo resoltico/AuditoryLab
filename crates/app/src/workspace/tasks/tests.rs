@@ -851,3 +851,52 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
         None => panic!("nonfinite fixture value"),
     }
 }
+
+#[test]
+fn completion_notification_waits_for_real_worker_exit_and_preserves_join_ownership() {
+    let (_directory, store, mut workspace) = fixture();
+    tone(&mut workspace, "440");
+    let job = close_after_save(&mut workspace);
+    let id = job.id();
+    let release = Arc::new(Barrier::new(2));
+    let worker_release = release.clone();
+    let (computed, received) = mpsc::channel();
+    let worker = thread::spawn(move || {
+        let result = job.execute(|_| panic!("file only"));
+        computed.send(()).unwrap();
+        worker_release.wait();
+        result
+    });
+    let (notified, notification) = mpsc::channel();
+    let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        notified.send(()).unwrap();
+    });
+    let mut runner = Runner::with_waker(wake.clone());
+    let (terminal, completed) = mpsc::channel();
+    let observer =
+        thread::spawn(move || Runner::post_joined(id, Ok(worker), terminal, wake.as_ref()));
+    let (_, prepared) = mpsc::channel();
+    runner.running.push(Running {
+        id,
+        handle: Worker::Notifying {
+            observer,
+            completed,
+        },
+        prepared,
+    });
+    received.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(store.scan(&Cancel::default()).entries.len(), 1);
+    assert!(notification.try_recv().is_err());
+    assert!(runner.poll().is_empty());
+    assert!(workspace.file_busy() && workspace.action_pending() && workspace.editor().dirty());
+    release.wait();
+    notification.recv_timeout(Duration::from_secs(5)).unwrap();
+    for response in runner.poll() {
+        workspace.respond(response);
+    }
+    workspace.poll();
+    assert!(!workspace.file_busy());
+    assert!(!workspace.editor().dirty());
+    assert!(closed(&mut workspace, true));
+    runner.shutdown(workspace).unwrap();
+}

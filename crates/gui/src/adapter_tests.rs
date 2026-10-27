@@ -3580,3 +3580,78 @@ fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
         )
     });
 }
+
+#[test]
+fn real_worker_completion_reaches_projection_without_a_timer_and_wakes_coalesce() {
+    let events = crate::test_platform::install_with_events();
+    let (workspace, _directory, store) = bound_workspace(
+        auditorylab_app::services::catalog().unwrap(),
+        Capabilities::no_device_playback(),
+    );
+    let windows = Windows::new().unwrap();
+    // No worker exists in this phase, so unrelated notifications cannot satisfy coalescing.
+    let wake = crate::adapter::tests::isolated_waker(&windows.main);
+    wake();
+    wake();
+    let event = events.recv_timeout(Duration::from_secs(1)).unwrap();
+    assert!(
+        events.try_recv().is_err(),
+        "two wakes schedule exactly one event"
+    );
+    event();
+    let adapter = SlintAdapter::install(
+        &windows,
+        workspace,
+        Box::new(Recorder(Rc::new(RefCell::new(Vec::new())))),
+        Box::new(auditorylab_app::workspace::Runner::new()),
+        None,
+    );
+    let pump = || {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while adapter.inspect(|workspace| workspace.file_busy()) {
+            assert!(
+                !adapter.timer_running(),
+                "file work never enables the redraw timer"
+            );
+            assert!(
+                std::time::Instant::now() < deadline,
+                "worker did not notify the event loop"
+            );
+            events
+                .recv_timeout(Duration::from_secs(5))
+                .expect("actual Slint proxy notification")();
+        }
+        while let Ok(event) = events.try_recv() {
+            event();
+        }
+    };
+    pump();
+    assert!(!adapter.timer_running());
+    let before = adapter.counts.document_projections.get();
+    windows.main.invoke_new_draft();
+    windows.main.invoke_save_recipe();
+    assert!(adapter.inspect(|workspace| workspace.file_busy()));
+    pump();
+    assert!(!adapter.inspect(|workspace| workspace.editor().dirty()));
+    assert_eq!(
+        store
+            .scan(&auditorylab_app::job::Cancel::default())
+            .entries
+            .len(),
+        1
+    );
+    assert!(adapter.counts.document_projections.get() > before);
+    assert!(!adapter.timer_running());
+    let wake = adapter.test_waker();
+    adapter.shutdown().unwrap();
+    let projected = adapter.counts.document_projections.get();
+    while let Ok(event) = events.try_recv() {
+        event();
+    }
+    assert_eq!(adapter.counts.document_projections.get(), projected);
+    wake();
+    assert!(
+        events.try_recv().is_err(),
+        "shutdown rejects later notifications"
+    );
+}

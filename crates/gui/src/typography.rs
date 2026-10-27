@@ -44,6 +44,7 @@ pub(super) fn resolve() -> Typography {
 #[derive(Clone)]
 pub(super) struct TypographySink {
     pending: std::sync::Arc<std::sync::Mutex<Option<Typography>>>,
+    wake: crate::preference_wake::PreferenceWake,
     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 #[cfg(any(target_os = "linux", target_os = "windows", test))]
@@ -53,12 +54,14 @@ impl TypographySink {
             return Err(());
         }
         *self.pending.lock().map_err(|_| ())? = Some(font);
+        self.wake.notify();
         Ok(())
     }
 }
 /// One bounded listener, one coherent value. No audio callbacks or targets.
 pub(super) struct TypographyService {
     pending: std::sync::Arc<std::sync::Mutex<Option<Typography>>>,
+    wake: crate::preference_wake::PreferenceWake,
     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
     worker: Option<std::thread::JoinHandle<()>>,
     #[cfg(target_os = "linux")]
@@ -67,10 +70,12 @@ pub(super) struct TypographyService {
 impl TypographyService {
     pub(super) fn start() -> Self {
         let pending = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let wake = crate::preference_wake::PreferenceWake::default();
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         #[cfg(target_os = "windows")]
         let sender = TypographySink {
             pending: pending.clone(),
+            wake: wake.clone(),
             stop: stop.clone(),
         };
         #[cfg(target_os = "windows")]
@@ -85,6 +90,7 @@ impl TypographyService {
         let worker = None;
         Self {
             pending,
+            wake,
             stop,
             worker,
             #[cfg(target_os = "linux")]
@@ -108,6 +114,7 @@ impl TypographyService {
         if wayland && gnome && !kde {
             let sender = TypographySink {
                 pending: self.pending.clone(),
+                wake: self.wake.clone(),
                 stop: self.stop.clone(),
             };
             let stop = self.stop.clone();
@@ -116,6 +123,9 @@ impl TypographyService {
                 linux::listen(sender, stop, base)
             }));
         }
+    }
+    pub(super) fn set_waker(&self, wake: std::sync::Arc<dyn Fn() + Send + Sync>) {
+        self.wake.bind(wake);
     }
     pub(super) fn latest(&self) -> Option<Typography> {
         self.pending.try_lock().ok()?.take()
@@ -204,15 +214,26 @@ mod tests {
     #[test]
     fn preference_updates_coalesce_and_shutdown_rejects_late_writes() {
         let pending = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let wake = crate::preference_wake::PreferenceWake::default();
+        let notifications = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let count = notifications.clone();
+        wake.bind(std::sync::Arc::new(move || {
+            count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }));
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let service = TypographyService {
             pending: pending.clone(),
+            wake: wake.clone(),
             stop: stop.clone(),
             worker: None,
             #[cfg(target_os = "linux")]
             backend_ready: false,
         };
-        let sink = TypographySink { pending, stop };
+        let sink = TypographySink {
+            pending,
+            stop,
+            wake,
+        };
         sink.send(Typography {
             family: "First".into(),
             size: 13.0,
@@ -229,7 +250,9 @@ mod tests {
         assert_eq!(latest.family, "Newest");
         assert_eq!(latest.size, 20.0);
         assert!(service.latest().is_none());
+        assert_eq!(notifications.load(std::sync::atomic::Ordering::Relaxed), 2);
         drop(service);
         assert!(sink.send(latest).is_err());
+        assert_eq!(notifications.load(std::sync::atomic::Ordering::Relaxed), 2);
     }
 }

@@ -3,6 +3,9 @@ use super::*;
 use auditorylab_app::workspace::{
     AudioCommand, Command, Executor, FileCommand, Job, JobKind, Runner, ShutdownError,
 };
+pub(crate) fn isolated_waker(ui: &MainWindow) -> std::sync::Arc<dyn Fn() + Send + Sync> {
+    wake::Wake::new(ui).callback()
+}
 #[derive(Default)]
 pub(crate) struct DeterministicExecutor {
     jobs: Vec<Job>,
@@ -34,6 +37,12 @@ impl Executor for DeterministicExecutor {
     }
 }
 impl SlintAdapter {
+    pub(crate) fn timer_running(&self) -> bool {
+        self.timer.running()
+    }
+    pub(crate) fn test_waker(&self) -> std::sync::Arc<dyn Fn() + Send + Sync> {
+        self.wake.callback()
+    }
     pub(crate) fn take_jobs(&self) -> Vec<Job> {
         let mut executor = self.executor.borrow_mut();
         let driver = executor

@@ -15,6 +15,7 @@ mod motion;
 #[cfg(target_os = "macos")]
 mod native_application;
 mod native_text;
+mod preference_wake;
 mod scope;
 #[expect(
     dead_code,

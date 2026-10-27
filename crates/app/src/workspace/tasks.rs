@@ -11,7 +11,10 @@ use crate::storage::wav::Exported;
 use auditorylab_core::SampleRate;
 use std::{
     path::PathBuf,
-    sync::mpsc::{self, Receiver},
+    sync::{
+        Arc,
+        mpsc::{self, Receiver},
+    },
     thread::{self, JoinHandle},
 };
 use {
@@ -338,12 +341,22 @@ fn execute_audio(
 }
 struct Running {
     id: TaskId,
-    handle: JoinHandle<Response>,
+    handle: Worker,
     prepared: Receiver<Response>,
+}
+enum Worker {
+    Direct(JoinHandle<Response>),
+    /// The completion observer sends only after joining the actual worker.
+    Notifying {
+        observer: JoinHandle<()>,
+        completed: Receiver<Response>,
+    },
 }
 /// Execution strategy for admitted jobs, retaining each capture until completion.
 /// Preparation responses may arrive before a worker exits; final responses require joining it.
 pub trait Executor: std::any::Any {
+    /// Install the event-loop notification before admitting work. Deterministic executors may ignore it.
+    fn set_waker(&mut self, _wake: Arc<dyn Fn() + Send + Sync>) {}
     /// Accept one immutable admitted job; launch failure is returned through polling.
     fn start(&mut self, job: Job);
     /// Return preparation messages and joined terminal responses available now.
@@ -359,6 +372,8 @@ pub trait Executor: std::any::Any {
 pub struct Runner {
     running: Vec<Running>,
     ready: Vec<Response>,
+    retiring: Vec<JoinHandle<()>>,
+    wake: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 impl Runner {
     /// Create an idle executor; it discovers no device and starts no thread.
@@ -367,10 +382,105 @@ impl Runner {
         Self {
             running: Vec::new(),
             ready: Vec::new(),
+            retiring: Vec::new(),
+            wake: None,
+        }
+    }
+    /// Create an event-driven runner. Completion notifications follow the real worker join.
+    #[must_use]
+    pub fn with_waker(wake: Arc<dyn Fn() + Send + Sync>) -> Self {
+        Self {
+            wake: Some(wake),
+            ..Self::new()
+        }
+    }
+    fn reap_observers(&mut self) {
+        let mut index = 0;
+        while index < self.retiring.len() {
+            if self.retiring[index].is_finished() {
+                let _ = self.retiring.swap_remove(index).join();
+            } else {
+                index += 1;
+            }
+        }
+    }
+    fn failure(id: TaskId, error: std::io::Error) -> Response {
+        Response::Finished {
+            job: id,
+            outcome: JobOutcome::Failed(WorkerFailure::Launch(crate::services::IoCause::new(
+                error,
+            ))),
+        }
+    }
+    fn joined(id: TaskId, worker: JoinHandle<Response>) -> Response {
+        worker.join().unwrap_or_else(|_| Response::Finished {
+            job: id,
+            outcome: JobOutcome::Failed(WorkerFailure::Panicked),
+        })
+    }
+    fn post_joined(
+        id: TaskId,
+        started: std::io::Result<JoinHandle<Response>>,
+        terminal: mpsc::Sender<Response>,
+        wake: &dyn Fn(),
+    ) {
+        let response = match started {
+            Ok(worker) => Self::joined(id, worker),
+            Err(error) => Self::failure(id, error),
+        };
+        if terminal.send(response).is_ok() {
+            wake();
+        }
+    }
+    fn start_notifying(&mut self, mut job: Job, wake: Arc<dyn Fn() + Send + Sync>) {
+        if let Work::File(FileKind::Export {
+            progress, frames, ..
+        }) = job.work.as_mut()
+        {
+            *progress = progress.with_waker(wake.clone(), *frames);
+        }
+        let id = job.id;
+        let (tx, prepared) = mpsc::channel();
+        let (terminal, completed) = mpsc::channel();
+        let notify = wake.clone();
+        // Start the observer first: failure cannot detach an already-launched worker.
+        let observer = thread::Builder::new()
+            .name("auditorylab-completion".into())
+            .spawn(move || {
+                let prepared_wake = notify.clone();
+                let started = thread::Builder::new()
+                    .name("auditorylab-worker".into())
+                    .spawn(move || {
+                        job.execute(|response| {
+                            if tx.send(response).is_ok() {
+                                prepared_wake();
+                            }
+                        })
+                    });
+                Self::post_joined(id, started, terminal, notify.as_ref());
+            });
+        match observer {
+            Ok(observer) => self.running.push(Running {
+                id,
+                handle: Worker::Notifying {
+                    observer,
+                    completed,
+                },
+                prepared,
+            }),
+            Err(error) => {
+                self.ready.push(Self::failure(id, error));
+                wake();
+            }
         }
     }
     /// Start one admitted operation. A launch error becomes a Finished response.
     pub fn start(&mut self, job: Job) {
+        self.reap_observers();
+        if let Some(wake) = self.wake.clone() {
+            self.start_notifying(job, wake);
+            return;
+        }
         let id = job.id;
         let (tx, prepared) = mpsc::channel();
         let started = thread::Builder::new()
@@ -391,7 +501,7 @@ impl Runner {
         match started {
             Ok(handle) => self.running.push(Running {
                 id,
-                handle,
+                handle: Worker::Direct(handle),
                 prepared,
             }),
             Err(error) => self.ready.push(Response::Finished {
@@ -404,19 +514,36 @@ impl Runner {
     }
     /// Nonblocking: preparations may arrive early; final results require a join.
     pub fn poll(&mut self) -> Vec<Response> {
+        self.reap_observers();
         let mut responses = std::mem::take(&mut self.ready);
         let mut index = 0;
         while index < self.running.len() {
             responses.extend(self.running[index].prepared.try_iter());
-            if self.running[index].handle.is_finished() {
+            let (finished, terminal) = match &self.running[index].handle {
+                Worker::Direct(worker) => (worker.is_finished(), None),
+                Worker::Notifying { completed, .. } => match completed.try_recv() {
+                    Ok(response) => (true, Some(response)),
+                    Err(mpsc::TryRecvError::Disconnected) => (
+                        true,
+                        Some(Response::Finished {
+                            job: self.running[index].id,
+                            outcome: JobOutcome::Failed(WorkerFailure::Panicked),
+                        }),
+                    ),
+                    Err(mpsc::TryRecvError::Empty) => (false, None),
+                },
+            };
+            if finished {
                 let running = self.running.swap_remove(index);
-                let response = running
-                    .handle
-                    .join()
-                    .unwrap_or_else(|_| Response::Finished {
-                        job: running.id,
-                        outcome: JobOutcome::Failed(WorkerFailure::Panicked),
-                    });
+                let response = match running.handle {
+                    Worker::Direct(worker) => Self::joined(running.id, worker),
+                    Worker::Notifying { observer, .. } => {
+                        self.retiring.push(observer);
+                        terminal.unwrap_or_else(|| {
+                            unreachable!("notifying worker has joined terminal response")
+                        })
+                    }
+                };
                 responses.extend(running.prepared.try_iter());
                 responses.push(response);
             } else {
@@ -443,15 +570,24 @@ impl Runner {
         }
         let mut responses = std::mem::take(&mut self.ready);
         for running in self.running.drain(..) {
-            let response = running
-                .handle
-                .join()
-                .unwrap_or_else(|_| Response::Finished {
-                    job: running.id,
-                    outcome: JobOutcome::Failed(WorkerFailure::Panicked),
-                });
+            let response = match running.handle {
+                Worker::Direct(worker) => Self::joined(running.id, worker),
+                Worker::Notifying {
+                    observer,
+                    completed,
+                } => {
+                    let _ = observer.join();
+                    completed.recv().unwrap_or_else(|_| Response::Finished {
+                        job: running.id,
+                        outcome: JobOutcome::Failed(WorkerFailure::Panicked),
+                    })
+                }
+            };
             responses.extend(running.prepared.try_iter());
             responses.push(response);
+        }
+        for observer in self.retiring.drain(..) {
+            let _ = observer.join();
         }
         let mut errors = Vec::new();
         for response in responses {
@@ -598,6 +734,9 @@ impl std::fmt::Display for ShutdownError {
 impl std::error::Error for ShutdownError {}
 
 impl Executor for Runner {
+    fn set_waker(&mut self, wake: Arc<dyn Fn() + Send + Sync>) {
+        self.wake = Some(wake);
+    }
     fn start(&mut self, job: Job) {
         Runner::start(self, job);
     }

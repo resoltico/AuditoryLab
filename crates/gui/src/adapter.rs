@@ -19,6 +19,7 @@ mod actions;
 mod auxiliary;
 mod editing;
 mod library;
+mod wake;
 use crate::generated::{
     AboutWindow, AudioControlsWindow, CatalogRow, ComponentRow, DetailsWindow, MainWindow,
     MetadataKey, MetadataRow, ModelLane, MonitorWindow, ParameterKey, ParameterRow,
@@ -47,9 +48,8 @@ use {
 };
 
 use auditorylab_app::workspace::controls::MONITOR_SPANS_MS as SPANS_MS;
-/// Tick intervals while work is running and while idle.
+/// Redraw cadence while a session is bound or the monitor is visible.
 const ACTIVE_TICK: Duration = Duration::from_millis(50);
-const IDLE_TICK: Duration = Duration::from_millis(200);
 
 /// What the workspace asks of the platform: dialogs, file panels and the
 /// answer to a close request. Answers return through [`SlintAdapter::respond`].
@@ -166,6 +166,7 @@ pub(crate) struct SlintAdapter {
     controls_error: RefCell<String>,
     audio_controls_visible: Cell<bool>,
     preferences: RefCell<Option<Preferences>>,
+    wake: Arc<wake::Wake>,
     timer: slint::Timer,
     deferred: slint::Timer,
     #[cfg(target_os = "macos")]
@@ -188,10 +189,16 @@ impl SlintAdapter {
         windows: &Windows,
         workspace: Workspace,
         shell: Box<dyn Shell>,
-        executor: Box<dyn Executor>,
+        mut executor: Box<dyn Executor>,
         preferences: Option<Preferences>,
     ) -> Rc<Self> {
         let ui = &windows.main;
+        let wake = wake::Wake::new(ui);
+        executor.set_waker(wake.callback());
+        if let Some(preferences) = &preferences {
+            preferences.typography.set_waker(wake.callback());
+            preferences.motion.set_waker(wake.callback());
+        }
         let adapter = Rc::new(Self {
             workspace: RefCell::new(Some(workspace)),
             executor: RefCell::new(Some(executor)),
@@ -224,6 +231,7 @@ impl SlintAdapter {
             controls_error: RefCell::new(String::new()),
             audio_controls_visible: Cell::new(false),
             preferences: RefCell::new(preferences),
+            wake,
             timer: slint::Timer::default(),
             deferred: slint::Timer::default(),
             #[cfg(target_os = "macos")]
@@ -259,15 +267,13 @@ impl SlintAdapter {
         install_actions(&adapter, ui);
         install_monitor(&adapter, windows);
         install_auxiliary(&adapter, windows);
-        adapter.after_command();
         let weak = Rc::downgrade(&adapter);
-        adapter
-            .timer
-            .start(slint::TimerMode::Repeated, IDLE_TICK, move || {
-                if let Some(adapter) = weak.upgrade() {
-                    adapter.tick();
-                }
-            });
+        ui.on_worker_ready(move || {
+            if let Some(adapter) = weak.upgrade() {
+                adapter.tick();
+            }
+        });
+        adapter.tick();
         adapter
     }
 
@@ -534,6 +540,7 @@ impl SlintAdapter {
 
     /// Stop polling, end every task and native listener, and report actual failures.
     pub(crate) fn shutdown(&self) -> Result<(), String> {
+        self.wake.stop();
         self.timer.stop();
         self.deferred.stop();
         if let Some(mut preferences) = self.preferences.borrow_mut().take() {
@@ -636,13 +643,27 @@ impl SlintAdapter {
         self.updating.set(false);
     }
 
-    fn schedule(&self) {
-        let busy = self.workspace.borrow().as_ref().is_some_and(|w| {
-            w.audio_busy() || w.file_busy() || w.action_pending() || w.prompt_open()
-        });
-        let interval = if busy { ACTIVE_TICK } else { IDLE_TICK };
-        if self.timer.interval() != interval {
-            self.timer.set_interval(interval);
+    fn schedule(self: &Rc<Self>) {
+        let redraw = self
+            .main
+            .upgrade()
+            .is_some_and(|main| main.get_monitor_open())
+            || self.monitor_window_visible.get()
+            || self.workspace.borrow().as_ref().is_some_and(|workspace| {
+                workspace.audio_busy() && workspace.transport_view().monitor.is_some()
+            });
+        if redraw {
+            if !self.timer.running() {
+                let weak = Rc::downgrade(self);
+                self.timer
+                    .start(slint::TimerMode::Repeated, ACTIVE_TICK, move || {
+                        if let Some(adapter) = weak.upgrade() {
+                            adapter.tick();
+                        }
+                    });
+            }
+        } else {
+            self.timer.stop();
         }
     }
 

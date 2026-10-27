@@ -18,7 +18,7 @@ fontique = "=0.11.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "=0.6.2"
-objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "block2", "NSArray", "NSURL", "NSString", "NSGeometry"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "block2", "NSArray", "NSURL", "NSString", "NSGeometry", "NSNotification", "NSOperation"] }
 objc2 = "0.6.5"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSFont", "NSWorkspace", "NSAccessibility", "NSButton", "NSControl", "NSView", "NSWindow", "NSSavePanel", "NSOpenPanel", "NSMenu", "NSMenuItem"] }
 

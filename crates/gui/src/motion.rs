@@ -14,14 +14,26 @@ pub(crate) enum Preference {
 pub(crate) struct Service {
     pending: Arc<Mutex<Option<Preference>>>,
     stop: Arc<AtomicBool>,
+    wake: crate::preference_wake::PreferenceWake,
+    #[cfg(not(target_os = "macos"))]
     handle: Option<std::thread::JoinHandle<()>>,
+    #[cfg(target_os = "macos")]
+    observer: Option<
+        objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2_foundation::NSObjectProtocol>>,
+    >,
 }
 impl Service {
     pub(crate) fn start() -> Self {
         let pending = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
+        let wake = crate::preference_wake::PreferenceWake::default();
+        #[cfg(not(target_os = "macos"))]
         let target = pending.clone();
+        #[cfg(not(target_os = "macos"))]
         let stopped = stop.clone();
+        #[cfg(not(target_os = "macos"))]
+        let notify = wake.clone();
+        #[cfg(not(target_os = "macos"))]
         let handle = std::thread::spawn(move || {
             let mut last = None;
             while !stopped.load(Ordering::Relaxed) {
@@ -31,6 +43,7 @@ impl Service {
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(next);
                     last = Some(next);
+                    notify.notify();
                 }
                 for _ in 0..10 {
                     if stopped.load(Ordering::Relaxed) {
@@ -40,17 +53,35 @@ impl Service {
                 }
             }
         });
+        #[cfg(target_os = "macos")]
+        let observer = Some(observe(pending.clone(), stop.clone(), wake.clone()));
+        #[cfg(target_os = "macos")]
+        {
+            *pending
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(query());
+        }
         Self {
             pending,
+            wake,
             stop,
+            #[cfg(not(target_os = "macos"))]
             handle: Some(handle),
+            #[cfg(target_os = "macos")]
+            observer,
         }
+    }
+    pub(crate) fn set_waker(&self, wake: Arc<dyn Fn() + Send + Sync>) {
+        self.wake.bind(wake);
     }
     pub(crate) fn latest(&self) -> Option<Preference> {
         self.pending.try_lock().ok()?.take()
     }
     pub(crate) fn shutdown(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        #[cfg(target_os = "macos")]
+        unobserve(self.observer.take());
+        #[cfg(not(target_os = "macos"))]
         if let Some(handle) = self.handle.take() {
             let _ = handle.join();
         }
@@ -59,6 +90,58 @@ impl Service {
 impl Drop for Service {
     fn drop(&mut self) {
         self.shutdown();
+    }
+}
+#[cfg(target_os = "macos")]
+#[expect(
+    unsafe_code,
+    reason = "Register a sendable read-only block with NSWorkspace's documented notification center; retain and remove its observer before shutdown"
+)]
+fn observe(
+    pending: Arc<Mutex<Option<Preference>>>,
+    stop: Arc<AtomicBool>,
+    wake: crate::preference_wake::PreferenceWake,
+) -> objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2_foundation::NSObjectProtocol>> {
+    let block = block2::RcBlock::new(
+        move |_: std::ptr::NonNull<objc2_foundation::NSNotification>| {
+            if !stop.load(Ordering::Relaxed) {
+                *pending
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(query());
+                wake.notify();
+            }
+        },
+    );
+    // SAFETY: the block captures only synchronized state, ignores the notification pointer,
+    // and is owned by the center until unobserve. The notification uses NSWorkspace's center.
+    unsafe {
+        objc2_app_kit::NSWorkspace::sharedWorkspace()
+            .notificationCenter()
+            .addObserverForName_object_queue_usingBlock(
+                Some(objc2_app_kit::NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification),
+                None,
+                None,
+                &block,
+            )
+    }
+}
+#[cfg(target_os = "macos")]
+#[expect(
+    unsafe_code,
+    reason = "Remove only the retained observer issued by the same NSWorkspace notification center"
+)]
+fn unobserve(
+    observer: Option<
+        objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2_foundation::NSObjectProtocol>>,
+    >,
+) {
+    if let Some(observer) = observer {
+        // SAFETY: this is the live observer token returned by this center.
+        unsafe {
+            objc2_app_kit::NSWorkspace::sharedWorkspace()
+                .notificationCenter()
+                .removeObserver((*observer).as_ref());
+        }
     }
 }
 fn from_reduced(reduced: Option<bool>) -> Preference {

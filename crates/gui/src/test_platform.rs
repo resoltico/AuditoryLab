@@ -16,8 +16,21 @@ pub(crate) type Constraints = Rc<RefCell<Option<LayoutConstraints>>>;
 struct Offscreen {
     auxiliary_constraints: Constraints,
     fail_auxiliary_show: Rc<Cell<bool>>,
+    events: Option<std::sync::mpsc::Sender<Event>>,
 }
 
+pub(crate) type Event = Box<dyn FnOnce() + Send>;
+struct EventProxy(std::sync::mpsc::Sender<Event>);
+impl slint::platform::EventLoopProxy for EventProxy {
+    fn quit_event_loop(&self) -> Result<(), slint::EventLoopError> {
+        Ok(())
+    }
+    fn invoke_from_event_loop(&self, event: Event) -> Result<(), slint::EventLoopError> {
+        self.0
+            .send(event)
+            .map_err(|_| slint::EventLoopError::EventLoopTerminated)
+    }
+}
 struct OffscreenWindow {
     window: slint::Window,
     renderer: SoftwareRenderer,
@@ -68,6 +81,11 @@ impl WindowAdapter for OffscreenWindow {
 }
 
 impl Platform for Offscreen {
+    fn new_event_loop_proxy(&self) -> Option<Box<dyn slint::platform::EventLoopProxy>> {
+        self.events
+            .clone()
+            .map(|sender| Box::new(EventProxy(sender)) as Box<dyn slint::platform::EventLoopProxy>)
+    }
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
         Ok(Rc::new_cyclic(|weak| OffscreenWindow {
             window: slint::Window::new(weak.clone()),
@@ -86,10 +104,24 @@ pub(crate) fn install() -> Constraints {
 }
 
 pub(crate) fn install_with_auxiliary_failure(fail_auxiliary_show: Rc<Cell<bool>>) -> Constraints {
+    install_platform(fail_auxiliary_show, None)
+}
+
+/// Exactly one test installs Slint's process-global proxy; others keep thread-local platforms.
+pub(crate) fn install_with_events() -> std::sync::mpsc::Receiver<Event> {
+    let (sender, events) = std::sync::mpsc::channel();
+    install_platform(Rc::new(Cell::new(false)), Some(sender));
+    events
+}
+fn install_platform(
+    fail_auxiliary_show: Rc<Cell<bool>>,
+    events: Option<std::sync::mpsc::Sender<Event>>,
+) -> Constraints {
     let constraints = Rc::new(RefCell::new(None));
     slint::platform::set_platform(Box::new(Offscreen {
         auxiliary_constraints: constraints.clone(),
         fail_auxiliary_show,
+        events,
     }))
     .expect("each test thread installs its platform once");
     constraints

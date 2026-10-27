@@ -248,6 +248,7 @@ export component MainWindow inherits Window {
 
     in-out property <int> collection-choice: 0;
     in-out property <int> sort-choice: 0;
+    callback worker-ready();
     callback refresh-library();
     callback initialize-library();
     callback edit-saved(EntryAddress);
