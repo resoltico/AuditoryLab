@@ -1,11 +1,11 @@
 //! Native filesystem lifecycle and strict managed-record behavior through shared APIs.
-use auditorylab::core::Recipe;
-use auditorylab::editing::Draft;
-use auditorylab::error::ErrorKind;
-use auditorylab::library::{
+use auditorylab_app::core::Recipe;
+use auditorylab_app::document::editing::Draft;
+use auditorylab_app::error::ErrorKind;
+use auditorylab_app::services::Cancel;
+use auditorylab_app::storage::library::{
     LibraryKey, LibraryRoot, LibraryStore, Mutation, MutationStatus, VersionToken,
 };
-use auditorylab::workflow::Cancel;
 use std::{fs, path::PathBuf, sync::Arc};
 #[expect(
     clippy::unwrap_used,
@@ -50,7 +50,7 @@ fn readonly_discovery_and_builtin_refusals_never_initialize_a_root() {
         .unwrap_err();
     assert_eq!(error.kind(), ErrorKind::ReadOnlyBuiltIn);
     assert!(!path.exists());
-    let builtin = auditorylab::recipe::builtin("ioannou-2015-binaural-2-hz").unwrap();
+    let builtin = auditorylab_app::storage::load::builtin("ioannou-2015-binaural-2-hz").unwrap();
     let error = store
         .apply(
             Mutation::Add(Arc::new(builtin.recipe().clone())),
@@ -491,7 +491,7 @@ fn unknown_membership_dates_remain_visible_in_human_descriptions() {
 #[test]
 fn failed_report_completion_never_claims_a_failed_operation_was_confirmed() {
     let error = std::io::Error::other("rejected operation");
-    let report = auditorylab::reports::Report::error("library_init", &error, 2);
+    let report = auditorylab_app::presentation::reports::Report::error("library_init", &error, 2);
     let text = report.completion_failure(std::io::Error::other("closed output"));
     assert!(text.contains("Operation not completed"));
     assert!(!text.contains("Operation confirmed"));

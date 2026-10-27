@@ -2,9 +2,9 @@
 use std::path::{Path, PathBuf};
 
 fn beside_executable(executable: &Path) -> Result<PathBuf, String> {
-    let parent = executable
-        .parent()
-        .ok_or(auditorylab::vocabulary::Caption::ExecutableDirectoryUnavailable.label())?;
+    let parent = executable.parent().ok_or(
+        auditorylab_app::presentation::vocabulary::Caption::ExecutableDirectoryUnavailable.label(),
+    )?;
     let directory = if parent.file_name().is_some_and(|name| name == "MacOS")
         && parent
             .parent()
@@ -12,7 +12,10 @@ fn beside_executable(executable: &Path) -> Result<PathBuf, String> {
     {
         parent
             .parent()
-            .ok_or(auditorylab::vocabulary::Caption::BundleResourcesUnavailable.label())?
+            .ok_or(
+                auditorylab_app::presentation::vocabulary::Caption::BundleResourcesUnavailable
+                    .label(),
+            )?
             .join("Resources")
     } else {
         parent.to_owned()
@@ -25,7 +28,7 @@ fn beside_executable(executable: &Path) -> Result<PathBuf, String> {
     ] {
         let path = directory.join(name);
         if !path.is_file() || std::fs::metadata(&path).map_err(|e| e.to_string())?.len() == 0 {
-            return Err(auditorylab::vocabulary::Caption::missing_notices(&path));
+            return Err(auditorylab_app::presentation::vocabulary::Caption::missing_notices(&path));
         }
     }
     Ok(directory)

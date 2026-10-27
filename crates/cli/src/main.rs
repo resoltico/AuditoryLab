@@ -1,14 +1,16 @@
 //! Command-line interface to Auditory Lab.
 #![forbid(unsafe_code)]
-use auditorylab::presentation::DisplayText;
+use auditorylab_app::presentation::DisplayText;
 mod library_cli;
-use auditorylab::core::SampleRate;
-use auditorylab::error::ErrorKind;
-use auditorylab::recipe::RecipeSnapshot;
-use auditorylab::session::{EndReason, PlaybackControl, Preparation, Session};
-use auditorylab::vocabulary::{Caption, CommandProblem, InterfaceOperation, Status};
-use auditorylab::workflow::{Cancel, Progress, Replace};
-use auditorylab::{self as lab};
+use auditorylab_app::audio::session::{EndReason, PlaybackControl, Preparation, Session};
+use auditorylab_app::core::SampleRate;
+use auditorylab_app::document::recipe::RecipeSnapshot;
+use auditorylab_app::error::ErrorKind;
+use auditorylab_app::presentation::vocabulary::{
+    Caption, CommandProblem, InterfaceOperation, Status,
+};
+use auditorylab_app::services::{Cancel, Progress, Replace};
+use auditorylab_app::{self as lab};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use std::{
     io::{self, IsTerminal, Write},
@@ -16,7 +18,7 @@ use std::{
     process::ExitCode,
 };
 #[derive(Parser)]
-#[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = lab::identity::BUILD_IDENTITY.version_text())]
+#[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = lab::presentation::build_info::BUILD_IDENTITY.version_text())]
 struct Cli {
     /// Absolute persistent User Library override (then environment, then native data).
     #[arg(long,global=true,value_name="ABSOLUTE_PATH",value_parser=absolute_path)]
@@ -183,7 +185,7 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> 
     on_interrupt(move || {
         stop.request_stop();
     })?;
-    let mut playback = match lab::device::prepare_playback(session, snapshot)? {
+    let mut playback = match lab::audio::device::prepare_playback(session, snapshot)? {
         Preparation::Ready(playback) => playback,
         Preparation::Stopped(report) => {
             eprintln!("{}", prose(&report.description()));
@@ -199,14 +201,16 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, Box<dyn std::error::Error>> 
     eprintln!("{}", prose(&sound.description(false)));
     let report = if io::stderr().is_terminal() {
         let mut reader = playback
-            .monitor(lab::session::MonitorDetail::Quantities)
+            .monitor(lab::audio::session::MonitorDetail::Quantities)
             .reader()
             .ok_or_else(|| {
-                std::io::Error::other(auditorylab::vocabulary::Caption::MonitorAlreadyInUse.label())
+                std::io::Error::other(
+                    auditorylab_app::presentation::vocabulary::Caption::MonitorAlreadyInUse.label(),
+                )
             })?;
         let done = std::sync::atomic::AtomicBool::new(false);
         std::thread::scope(
-            |scope| -> Result<lab::session::PlaybackReport, Box<dyn std::error::Error>> {
+            |scope| -> Result<lab::audio::session::PlaybackReport, Box<dyn std::error::Error>> {
                 let printer = scope.spawn(|| {
                     let mut terminal = StatusLine { active: false };
                     while !done.load(std::sync::atomic::Ordering::Acquire) {
@@ -254,23 +258,23 @@ fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
             selector,
             output: path,
         }) => {
-            let key: lab::library::LibraryKey = selector.parse()?;
+            let key: lab::storage::library::LibraryKey = selector.parse()?;
             let text = match &key {
-                lab::library::LibraryKey::BuiltIn(id) => {
-                    lab::recipe::builtin_source(id)?.to_owned()
+                lab::storage::library::LibraryKey::BuiltIn(id) => {
+                    lab::storage::load::builtin_source(id)?.to_owned()
                 }
-                lab::library::LibraryKey::User(_) => {
+                lab::storage::library::LibraryKey::User(_) => {
                     library_cli::store(cli.library_dir.as_deref())?
                         .load(&key)?
                         .recipe_toml
                         .to_string()
                 }
-                lab::library::LibraryKey::External(_) => {
+                lab::storage::library::LibraryKey::External(_) => {
                     return Err(usage(CommandProblem::TemporaryRecipeSelector.message()));
                 }
             };
             if let Some(path) = path {
-                let saved = lab::workflow::save_recipe_text(&text, &path, Replace::Never)?;
+                let saved = lab::services::save_recipe_text(&text, &path, Replace::Never)?;
                 for warning in saved.warnings {
                     eprintln!("{}", prose(&warning));
                 }
@@ -305,7 +309,7 @@ fn run(cli: Cli) -> Result<Ended, Box<dyn std::error::Error>> {
             let request = cancel.clone();
             on_interrupt(move || request.request())?;
             eprintln!("{}", prose(&sound.export_preamble(&path)));
-            let result = lab::workflow::export(
+            let result = lab::services::export(
                 &sound,
                 &path,
                 Replace::Never,

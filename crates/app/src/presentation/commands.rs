@@ -1,11 +1,11 @@
 //! Human-facing operation descriptions owned by their application data.
 use super::{AudioSummary, DisplayText};
-use crate::collection::{EntrySummary, Scope};
 use crate::core::Timestamp;
-use crate::library::{Initialization, Inventory, LibraryRoot, RootInfo};
-use crate::recipe::Rendition;
-use crate::vocabulary::{Caption, Collection, NumberStyle, Status};
-use crate::wav::Exported;
+use crate::discovery::collection::{EntrySummary, Scope};
+use crate::document::recipe::Rendition;
+use crate::presentation::vocabulary::{Caption, Collection, NumberStyle, Status};
+use crate::storage::library::{Initialization, Inventory, LibraryRoot, RootInfo};
+use crate::storage::wav::Exported;
 use std::path::Path;
 
 fn date(value: Option<Timestamp>) -> String {
@@ -54,7 +54,7 @@ impl EntrySummary {
     /// Membership details shown next to the selected portable description.
     #[must_use]
     pub fn membership_description(&self) -> String {
-        if !matches!(self.key, crate::library::LibraryKey::User(_)) {
+        if !matches!(self.key, crate::storage::library::LibraryKey::User(_)) {
             return String::new();
         }
         format!(
@@ -198,7 +198,7 @@ impl DesktopDiagnostics<'_> {
     }
 }
 
-impl crate::library::RootSource {
+impl crate::storage::library::RootSource {
     /// Name of the configuration source without exposing its internal enum spelling.
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -210,17 +210,17 @@ impl crate::library::RootSource {
     }
 }
 
-impl std::fmt::Display for crate::library::RootSource {
+impl std::fmt::Display for crate::storage::library::RootSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.label())
     }
 }
 
-impl crate::collection::SortBy {
+impl crate::discovery::collection::SortBy {
     /// Shared name of the primary sort field.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        use crate::vocabulary::Facet;
+        use crate::presentation::vocabulary::Facet;
         match self {
             Self::Automatic => Caption::AutomaticOrder.label(),
             Self::Rate => Caption::NominalRate.label(),
@@ -233,7 +233,7 @@ impl crate::collection::SortBy {
         }
     }
 }
-impl crate::collection::Direction {
+impl crate::discovery::collection::Direction {
     /// Shared name of a primary sort direction.
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -243,11 +243,11 @@ impl crate::collection::Direction {
         }
     }
 }
-impl crate::collection::GroupBy {
+impl crate::discovery::collection::GroupBy {
     /// Shared name of the result grouping.
     #[must_use]
     pub const fn label(self) -> &'static str {
-        use crate::vocabulary::Facet;
+        use crate::presentation::vocabulary::Facet;
         match self {
             Self::None => Facet::NoGrouping.label(),
             Self::Band => Caption::BandGroups.label(),

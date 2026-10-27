@@ -13,7 +13,7 @@ use std::{
 /// produces, shown on the window under test.
 fn sync_monitor_warnings(
     ui: &MainWindow,
-    warning: Option<auditorylab::waveform_view::MonitorWarning>,
+    warning: Option<auditorylab_app::presentation::waveform_view::MonitorWarning>,
     capture_error: Option<&str>,
     underruns: u64,
     clipped: bool,
@@ -23,16 +23,23 @@ fn sync_monitor_warnings(
         str::to_owned,
     );
     let live = capture_error.is_some()
-        || warning.is_some_and(auditorylab::waveform_view::MonitorWarning::announces_changes);
+        || warning.is_some_and(
+            auditorylab_app::presentation::waveform_view::MonitorWarning::announces_changes,
+        );
     if clipped {
         if !text.is_empty() {
             text.push('\n');
         }
-        text.push_str(auditorylab::waveform_view::MonitorWarning::FixedRangeExceeded.message());
+        text.push_str(
+            auditorylab_app::presentation::waveform_view::MonitorWarning::FixedRangeExceeded
+                .message(),
+        );
     }
     ui.set_monitor_warning(text.into());
     ui.set_monitor_warning_live(live);
-    ui.set_backend_warning(auditorylab::waveform_view::output_underrun_warning(underruns).into());
+    ui.set_backend_warning(
+        auditorylab_app::presentation::waveform_view::output_underrun_warning(underruns).into(),
+    );
 }
 
 #[test]
@@ -156,13 +163,13 @@ fn assert_monitor_layout_survives_warning_changes(ui: &MainWindow) {
                 observed_fallback |= !fits;
                 for (warning, underruns, clipped) in [
                     (
-                        Some(auditorylab::waveform_view::MonitorWarning::IncompleteCoverage),
+                        Some(auditorylab_app::presentation::waveform_view::MonitorWarning::IncompleteCoverage),
                         0,
                         false,
                     ),
                     (None, 1, false),
                     (
-                        Some(auditorylab::waveform_view::MonitorWarning::IncompleteCoverage),
+                        Some(auditorylab_app::presentation::waveform_view::MonitorWarning::IncompleteCoverage),
                         1,
                         true,
                     ),
@@ -746,7 +753,8 @@ fn assert_monitor_warning_accessibility(ui: &MainWindow) {
         Some("polite")
     );
     for _ in 0..10 {
-        let partial = auditorylab::waveform_view::MonitorWarning::IncompleteCoverage;
+        let partial =
+            auditorylab_app::presentation::waveform_view::MonitorWarning::IncompleteCoverage;
         sync_monitor_warnings(ui, Some(partial), None, 1, false);
         window.set_data(ui.get_monitor_data());
         reveal_warnings(window.window());
@@ -769,7 +777,7 @@ fn assert_monitor_warning_accessibility(ui: &MainWindow) {
         assert!(find(backend_text).is_some_and(|item| item == backend));
     }
     {
-        let critical = auditorylab::waveform_view::MonitorWarning::Stale;
+        let critical = auditorylab_app::presentation::waveform_view::MonitorWarning::Stale;
         sync_monitor_warnings(ui, Some(critical), None, 1, false);
         window.set_data(ui.get_monitor_data());
         reveal_warnings(window.window());
@@ -1058,7 +1066,7 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     let ui = MainWindow::new().unwrap();
     ui.set_ui_family(typography::resolve().family.into());
     ui.set_transport_labels(slint::ModelRc::new(VecModel::from(
-        auditorylab::vocabulary::Action::transport_labels()
+        auditorylab_app::presentation::vocabulary::Action::transport_labels()
             .iter()
             .map(|label| slint::SharedString::from(*label))
             .collect::<Vec<_>>(),
@@ -1072,7 +1080,7 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     for size in [13.0, 26.0] {
         ui.set_ui_size(size);
         let mut reference = None;
-        for label in auditorylab::vocabulary::Action::transport_labels() {
+        for label in auditorylab_app::presentation::vocabulary::Action::transport_labels() {
             for (elapsed, status) in [
                 ("0:00", "Preparing output… · A"),
                 (

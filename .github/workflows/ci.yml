@@ -176,8 +176,8 @@ jobs:
       - run: cargo test --workspace --locked
       - name: Check callback median cost
         if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-apple-darwin'
-        run: cargo test -p auditorylab --profile dist --locked callback_cost -- --ignored --nocapture
-      - run: cargo test -p auditorylab --test library_process --locked
+        run: cargo test -p auditorylab-app --profile dist --locked callback_cost -- --ignored --nocapture
+      - run: cargo test -p auditorylab-app --test library_process --locked
       - name: Verify native AT-SPI cache signal contracts
         if: runner.os == 'Linux'
         run: cargo test -p accesskit_unix --lib --locked

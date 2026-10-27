@@ -1,5 +1,5 @@
 [package]
-name = "auditorylab"
+name = "auditorylab-app"
 description = "Shared application workflows for auditory recipes"
 version.workspace = true
 edition.workspace = true

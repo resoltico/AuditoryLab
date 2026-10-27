@@ -123,10 +123,10 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                     }
                 }
                 2 => {
-                    a.command(|w| w.add_pair(row, auditorylab::core::PairKind::Binaural));
+                    a.command(|w| w.add_pair(row, auditorylab_app::core::PairKind::Binaural));
                 }
                 3 => {
-                    a.command(|w| w.add_pair(row, auditorylab::core::PairKind::Monaural));
+                    a.command(|w| w.add_pair(row, auditorylab_app::core::PairKind::Monaural));
                 }
                 _ => {}
             }

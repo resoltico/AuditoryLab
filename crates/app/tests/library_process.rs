@@ -1,8 +1,8 @@
 //! Actual independent processes: lock lifetime, lost updates and killed native writers.
-use auditorylab::editing::Draft;
-use auditorylab::error::ErrorKind;
-use auditorylab::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation};
-use auditorylab::workflow::Cancel;
+use auditorylab_app::document::editing::Draft;
+use auditorylab_app::error::ErrorKind;
+use auditorylab_app::services::Cancel;
+use auditorylab_app::storage::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -18,7 +18,7 @@ fn fixture() -> (
     tempfile::TempDir,
     PathBuf,
     LibraryStore,
-    auditorylab::library::LoadedRecord,
+    auditorylab_app::storage::library::LoadedRecord,
 ) {
     let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
     fs::create_dir_all(&base).unwrap();
@@ -47,7 +47,7 @@ fn child(
     mode: &str,
     ready: &Path,
     go: &Path,
-    record: &auditorylab::library::LoadedRecord,
+    record: &auditorylab_app::storage::library::LoadedRecord,
     result: &Path,
 ) -> Child {
     Command::new(std::env::current_exe().unwrap())
@@ -116,10 +116,11 @@ fn controlled_child() {
         .unwrap()
         .parse()
         .unwrap();
-    let expect: auditorylab::library::VersionToken = std::env::var("AUDITORYLAB_STORE_TEST_EXPECT")
-        .unwrap()
-        .parse()
-        .unwrap();
+    let expect: auditorylab_app::storage::library::VersionToken =
+        std::env::var("AUDITORYLAB_STORE_TEST_EXPECT")
+            .unwrap()
+            .parse()
+            .unwrap();
     if mode == "race-a" || mode == "race-b" {
         fs::write(&ready, b"ready").unwrap();
         let deadline = Instant::now() + Duration::from_secs(15);

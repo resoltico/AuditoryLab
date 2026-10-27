@@ -8,8 +8,8 @@
 //! Rendered fields carry application-owned opaque row keys. The editor validates
 //! the document, component and generation, so late callbacks cannot address a
 //! replacement document or a restored component lifetime.
-use auditorylab::presentation::DisplayText;
-use auditorylab::vocabulary::NumberStyle;
+use auditorylab_app::presentation::DisplayText;
+use auditorylab_app::presentation::vocabulary::NumberStyle;
 mod actions;
 mod auxiliary;
 mod editing;
@@ -20,16 +20,16 @@ use crate::generated::{
 };
 use crate::{details_parent, motion, scope, typography};
 use actions::install_actions;
-use auditorylab::core::{CarrierKind, Ears, ModulationKind, ParameterId};
-use auditorylab::editing::{EditingField, FieldHandle, MetadataField, RowKey};
-use auditorylab::session::PlaybackPhase;
-use auditorylab::waveform_view::{ModelView, WaveformCapture};
-use auditorylab::workspace::{
+use auditorylab_app::audio::session::PlaybackPhase;
+use auditorylab_app::core::{CarrierKind, Ears, ModulationKind, ParameterId};
+use auditorylab_app::document::editing::{EditingField, FieldHandle, MetadataField, RowKey};
+use auditorylab_app::presentation::waveform_view::{ModelView, WaveformCapture};
+use auditorylab_app::workspace::{
     ComponentView, EditorView, Effect, MetadataView, MotionPreference, ParameterView, PathPurpose,
     PromptAnswer, PromptId, Response, Runner, View, Workspace,
 };
 #[cfg(test)]
-use auditorylab::workspace::{Job, JobKind};
+use auditorylab_app::workspace::{Job, JobKind};
 use auxiliary::{install_auxiliary, install_monitor};
 use editing::install_editing;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
@@ -40,7 +40,7 @@ use std::{
     time::Duration,
 };
 
-use auditorylab::controls::{MONITOR_SCALES as SCALES, MONITOR_SPANS_MS as SPANS_MS};
+use auditorylab_app::document::controls::{MONITOR_SCALES as SCALES, MONITOR_SPANS_MS as SPANS_MS};
 /// Tick intervals while work is running and while idle.
 const ACTIVE_TICK: Duration = Duration::from_millis(50);
 const IDLE_TICK: Duration = Duration::from_millis(200);
@@ -131,7 +131,7 @@ pub(crate) struct SlintAdapter {
     components: Rc<VecModel<ComponentRow>>,
     entries: RefCell<Vec<ComponentEntry>>,
     catalog: Rc<VecModel<CatalogRow>>,
-    library: RefCell<Option<Arc<auditorylab::workspace::LibraryView>>>,
+    library: RefCell<Option<Arc<auditorylab_app::workspace::LibraryView>>>,
     lanes: Rc<VecModel<ModelLane>>,
     document: Cell<Option<RowKey>>,
     projected: Cell<Option<(u64, Option<PlaybackPhase>)>>,
@@ -217,20 +217,22 @@ impl SlintAdapter {
         set_choices(ui, &windows.monitor);
         ui.set_window_index(index_of(
             &SPANS_MS,
-            &auditorylab::controls::DEFAULT_MONITOR_SPAN_MS,
+            &auditorylab_app::document::controls::DEFAULT_MONITOR_SPAN_MS,
         ));
         ui.set_scale_index(index_of(
             &SCALES.map(|(scale, _)| scale),
-            &auditorylab::controls::DEFAULT_MONITOR_SCALE,
+            &auditorylab_app::document::controls::DEFAULT_MONITOR_SCALE,
         ));
         ui.set_components(ModelRc::from(adapter.components.clone()));
         ui.set_catalog(ModelRc::from(adapter.catalog.clone()));
         ui.set_model_lanes(ModelRc::from(adapter.lanes.clone()));
-        ui.set_guidance(auditorylab::presentation::Notice::general_guidance().into());
+        ui.set_guidance(auditorylab_app::presentation::Notice::general_guidance().into());
         ui.set_native_mac(cfg!(target_os = "macos"));
-        windows
-            .about
-            .set_identity(auditorylab::identity::BUILD_IDENTITY.about_version().into());
+        windows.about.set_identity(
+            auditorylab_app::presentation::build_info::BUILD_IDENTITY
+                .about_version()
+                .into(),
+        );
         windows
             .licenses
             .set_licenses(include_str!("../../../LICENSE").into());
@@ -451,7 +453,7 @@ impl SlintAdapter {
 
     /// The current audio session's Stop control, for a native control bound
     /// to exactly that session.
-    pub(crate) fn audio_control(&self) -> Option<auditorylab::session::PlaybackControl> {
+    pub(crate) fn audio_control(&self) -> Option<auditorylab_app::audio::session::PlaybackControl> {
         self.workspace
             .borrow()
             .as_ref()
@@ -539,7 +541,8 @@ impl SlintAdapter {
             if let Err(error) = about.show() {
                 eprintln!(
                     "{}",
-                    auditorylab::vocabulary::InterfaceOperation::About.failure(error)
+                    auditorylab_app::presentation::vocabulary::InterfaceOperation::About
+                        .failure(error)
                 );
             }
             about.invoke_focus_website();
@@ -596,7 +599,11 @@ impl SlintAdapter {
         {
             eprintln!(
                 "{}",
-                auditorylab::vocabulary::Caption::typography(&font.family, font.size, &font.origin)
+                auditorylab_app::presentation::vocabulary::Caption::typography(
+                    &font.family,
+                    font.size,
+                    &font.origin
+                )
             );
             preferences.font = font;
             if let (
@@ -715,16 +722,16 @@ impl SlintAdapter {
                 .bands
                 .first()
                 .and_then(|b| {
-                    auditorylab::core::rhythm::Band::ALL
+                    auditorylab_app::core::rhythm::Band::ALL
                         .iter()
                         .position(|v| v == b)
                 })
                 .and_then(|i| i32::try_from(i + 1).ok())
                 .unwrap_or(match rhythm.state {
-                    Some(auditorylab::query::RhythmState::OutsideBands) => 6,
-                    Some(auditorylab::query::RhythmState::None) => 7,
-                    Some(auditorylab::query::RhythmState::Multiple) => 8,
-                    Some(auditorylab::query::RhythmState::NeedsReview) => 9,
+                    Some(auditorylab_app::discovery::query::RhythmState::OutsideBands) => 6,
+                    Some(auditorylab_app::discovery::query::RhythmState::None) => 7,
+                    Some(auditorylab_app::discovery::query::RhythmState::Multiple) => 8,
+                    Some(auditorylab_app::discovery::query::RhythmState::NeedsReview) => 9,
                     None => 0,
                 });
             ui.set_band_choice(band);
@@ -733,7 +740,7 @@ impl SlintAdapter {
                     .methods
                     .first()
                     .and_then(|m| {
-                        auditorylab::core::rhythm::Method::ALL
+                        auditorylab_app::core::rhythm::Method::ALL
                             .iter()
                             .position(|v| v == m)
                     })
@@ -966,7 +973,7 @@ impl SlintAdapter {
                 .borrow()
                 .as_ref()
                 .map_or_else(String::new, |p| {
-                    auditorylab::vocabulary::Caption::typography_values(
+                    auditorylab_app::presentation::vocabulary::Caption::typography_values(
                         &p.font.family,
                         p.font.size,
                         &p.font.origin,
@@ -1011,7 +1018,7 @@ impl SlintAdapter {
                     Err(error) => {
                         self.monitor_window_visible.set(false);
                         *self.monitor_error.borrow_mut() =
-                            auditorylab::vocabulary::InterfaceOperation::ShowMonitor.failure(error);
+                            auditorylab_app::presentation::vocabulary::InterfaceOperation::ShowMonitor.failure(error);
                     }
                 }
             } else if !focused_monitor
@@ -1034,7 +1041,7 @@ impl SlintAdapter {
                     }
                     Err(error) => {
                         *self.monitor_error.borrow_mut() =
-                            auditorylab::vocabulary::InterfaceOperation::HideMonitor.failure(error);
+                            auditorylab_app::presentation::vocabulary::InterfaceOperation::HideMonitor.failure(error);
                     }
                 }
             }
@@ -1068,7 +1075,7 @@ impl SlintAdapter {
                     }
                     Err(error) => {
                         *self.controls_error.borrow_mut() =
-                            auditorylab::vocabulary::InterfaceOperation::AudioControls
+                            auditorylab_app::presentation::vocabulary::InterfaceOperation::AudioControls
                                 .failure(error);
                     }
                 }
@@ -1099,13 +1106,13 @@ impl SlintAdapter {
             return;
         };
         window.set_heading(
-            auditorylab::vocabulary::Caption::AudioSnapshot
+            auditorylab_app::presentation::vocabulary::Caption::AudioSnapshot
                 .label()
                 .into(),
         );
         window.set_can_refresh(true);
         window.set_content(
-            auditorylab::presentation::DesktopDiagnostics {
+            auditorylab_app::presentation::DesktopDiagnostics {
                 player: &ui.get_player_title(),
                 generated: &ui.get_generated_details(),
                 monitor: &ui.get_monitor_state(),
@@ -1213,7 +1220,7 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     ui.set_add_choices(strings(
         CarrierKind::ALL
             .iter()
-            .map(|k| auditorylab::vocabulary::Action::add_component(*k))
+            .map(|k| auditorylab_app::presentation::vocabulary::Action::add_component(*k))
             .collect(),
     ));
     ui.set_modulation_choices(strings(
@@ -1238,7 +1245,7 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     monitor.set_span_choices(spans);
     monitor.set_scale_choices(scales);
     ui.set_transport_labels(strings(
-        auditorylab::vocabulary::Action::transport_labels()
+        auditorylab_app::presentation::vocabulary::Action::transport_labels()
             .iter()
             .map(|label| (*label).to_owned())
             .collect(),
@@ -1402,7 +1409,7 @@ fn present_details<C: ComponentHandle + 'static>(window: &DetailsWindow, parent:
     if let Err(error) = window.show() {
         eprintln!(
             "{}",
-            auditorylab::vocabulary::InterfaceOperation::Details.failure(error)
+            auditorylab_app::presentation::vocabulary::InterfaceOperation::Details.failure(error)
         );
         return;
     }
@@ -1442,7 +1449,7 @@ fn open_web(url: &str) {
     if let Err(error) = command.arg(url).spawn() {
         eprintln!(
             "{}",
-            auditorylab::vocabulary::InterfaceOperation::OpenLink.failure(error)
+            auditorylab_app::presentation::vocabulary::InterfaceOperation::OpenLink.failure(error)
         );
     }
 }

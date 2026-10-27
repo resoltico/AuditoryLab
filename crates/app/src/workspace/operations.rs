@@ -4,7 +4,7 @@ use super::*;
 pub(super) enum PreparedExport {
     Library(Rendition, String),
     Draft {
-        origin: crate::recipe::Origin,
+        origin: crate::document::recipe::Origin,
         recipe: Recipe,
         signal: Arc<auditorylab_core::Signal>,
         name: String,
@@ -117,7 +117,9 @@ impl Workspace {
                 })?;
                 let name = file_name(candidate.draft().title(), "wav");
                 Ok(PreparedExport::Draft {
-                    origin: crate::recipe::Origin::Draft(candidate.draft().title().into()),
+                    origin: crate::document::recipe::Origin::Draft(
+                        candidate.draft().title().into(),
+                    ),
                     recipe: candidate
                         .draft()
                         .recipe()

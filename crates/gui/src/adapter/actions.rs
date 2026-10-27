@@ -1,6 +1,6 @@
 //! Workspace commands and path-independent action callbacks.
 use super::*;
-use auditorylab::presentation::DisplayText;
+use auditorylab_app::presentation::DisplayText;
 
 pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     macro_rules! on {
@@ -18,7 +18,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     });
     on!(on_collection_filter, |a, scope, sort| {
         a.command(|w| {
-            use auditorylab::collection::{Scope, SortBy};
+            use auditorylab_app::discovery::collection::{Scope, SortBy};
             {
                 let mut query = w.catalog_query().clone();
                 query.scope = match scope {
@@ -39,7 +39,9 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                     _ => SortBy::Automatic,
                 };
                 if let Err(error) = w.set_catalog_query(query) {
-                    return Err(auditorylab::workspace::Refusal::Document(error.to_string()));
+                    return Err(auditorylab_app::workspace::Refusal::Document(
+                        error.to_string(),
+                    ));
                 }
             }
             Ok(())
@@ -61,20 +63,20 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         let applied = a
             .command(|w| {
                 let mut query = w.catalog_query().clone();
-                let ranges = (|| -> Result<_, auditorylab::error::Error> {
+                let ranges = (|| -> Result<_, auditorylab_app::error::Error> {
                     Ok([
-                        auditorylab::calendar::local_range(
-                            auditorylab::calendar::CalendarField::Created,
+                        auditorylab_app::discovery::calendar::local_range(
+                            auditorylab_app::discovery::calendar::CalendarField::Created,
                             &cf,
                             &ct,
                         )?,
-                        auditorylab::calendar::local_range(
-                            auditorylab::calendar::CalendarField::Modified,
+                        auditorylab_app::discovery::calendar::local_range(
+                            auditorylab_app::discovery::calendar::CalendarField::Modified,
                             &mf,
                             &mt,
                         )?,
-                        auditorylab::calendar::local_range(
-                            auditorylab::calendar::CalendarField::Added,
+                        auditorylab_app::discovery::calendar::local_range(
+                            auditorylab_app::discovery::calendar::CalendarField::Added,
                             &af,
                             &at,
                         )?,
@@ -87,8 +89,8 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                         return false;
                     }
                 };
-                use auditorylab::collection::{Direction, GroupBy};
-                use auditorylab::core::{ConditionRole, Population};
+                use auditorylab_app::core::{ConditionRole, Population};
+                use auditorylab_app::discovery::collection::{Direction, GroupBy};
                 query.created = created;
                 query.modified = modified;
                 query.added = added;
@@ -123,8 +125,8 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                 .collect();
                 query.analysis = choice(
                     &[
-                        auditorylab::core::rhythm::Completeness::Complete,
-                        auditorylab::core::rhythm::Completeness::Invalid,
+                        auditorylab_app::core::rhythm::Completeness::Complete,
+                        auditorylab_app::core::rhythm::Completeness::Invalid,
                     ],
                     analysis - 1,
                 );
@@ -167,7 +169,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(on_reset_library_sort, |a| a.command(|w| {
         {
             let mut query = w.catalog_query().clone();
-            query.sort = auditorylab::collection::SortBy::Automatic;
+            query.sort = auditorylab_app::discovery::collection::SortBy::Automatic;
             query.direction = None;
             if let Err(error) = w.set_catalog_query(query) {
                 w.library_filter_error(error);
@@ -196,8 +198,8 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         .command(|w| w.navigate_library(direction)));
     on!(on_search, |a, query| a.command(|w| w.set_query(&query)));
     on!(on_rhythm_filter, |a, band, method| {
-        use auditorylab::core::rhythm::{Band, Method};
-        use auditorylab::query::{RhythmQuery, RhythmState};
+        use auditorylab_app::core::rhythm::{Band, Method};
+        use auditorylab_app::discovery::query::{RhythmQuery, RhythmState};
         let mut query = RhythmQuery::default();
         match band {
             0 => {}
@@ -293,8 +295,10 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             (a.details.upgrade(), a.main.upgrade(), library)
         {
             window.set_heading(
-                auditorylab::vocabulary::Caption::sound_details(&library.title.display_scalar())
-                    .into(),
+                auditorylab_app::presentation::vocabulary::Caption::sound_details(
+                    &library.title.display_scalar(),
+                )
+                .into(),
             );
             window.set_can_refresh(false);
             window.set_content(read_only(&library.details));

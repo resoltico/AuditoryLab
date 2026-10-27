@@ -1,11 +1,11 @@
 //! Library model updates depend only on an immutable library projection.
 use super::*;
-use auditorylab::presentation::DisplayText;
+use auditorylab_app::presentation::DisplayText;
 impl SlintAdapter {
     pub(super) fn project_library(
         &self,
         ui: &MainWindow,
-        library: Arc<auditorylab::workspace::LibraryView>,
+        library: Arc<auditorylab_app::workspace::LibraryView>,
     ) {
         if self
             .library
@@ -76,12 +76,12 @@ impl SlintAdapter {
                     .collect::<Vec<_>>(),
             )));
             ui.set_method_labels(strings(methods));
-            ui.set_calendar_context(auditorylab::calendar::local_context().into());
+            ui.set_calendar_context(auditorylab_app::discovery::calendar::local_context().into());
             {
                 let query = w.catalog_query();
-                use auditorylab::collection::{Scope, SortBy};
-                use auditorylab::core::rhythm::{Band, Method};
-                use auditorylab::query::RhythmState;
+                use auditorylab_app::core::rhythm::{Band, Method};
+                use auditorylab_app::discovery::collection::{Scope, SortBy};
+                use auditorylab_app::discovery::query::RhythmState;
                 let band = query
                     .rhythm
                     .bands

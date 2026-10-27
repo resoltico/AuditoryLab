@@ -31,17 +31,17 @@ pub use views::{
     MetadataView, ParameterView, TransportView,
 };
 
-use crate::controls;
-use crate::editing::{
+use crate::audio::session::{PlaybackControl, PlaybackPhase, Session, StopRequest};
+use crate::document::controls;
+use crate::document::editing::{
     CommitRefusal, EditRefusal, EditingField, FieldHandle, InputProblem, RowKey, SaveRefusal,
 };
-use crate::editing::{DocumentId, Draft, EditorSession};
+use crate::document::editing::{DocumentId, Draft, EditorSession};
+use crate::document::recipe::file_name;
+use crate::document::recipe::{RecipeSnapshot, Rendition};
 use crate::error::{Error, ErrorKind};
-use crate::recipe::file_name;
-use crate::recipe::{RecipeSnapshot, Rendition};
-use crate::session::{PlaybackControl, PlaybackPhase, Session, StopRequest};
-use crate::waveform_view::WaveformScale;
-use crate::workflow::{Cancel, Progress};
+use crate::presentation::waveform_view::WaveformScale;
+use crate::services::{Cancel, Progress};
 use auditorylab_core::{CarrierKind, Ears, ModulationKind, Recipe, SampleRate};
 use output::OutputState;
 use status::{
@@ -168,11 +168,11 @@ pub enum Response {
         /// Admitted audio job.
         job: TaskId,
         /// Unique monitoring reader.
-        reader: Box<crate::session::MonitorReader>,
+        reader: Box<crate::audio::session::MonitorReader>,
         /// Actual device rate.
         rate: SampleRate,
         /// Live-update control, when playing an editable document.
-        live: Option<crate::session::LiveControl>,
+        live: Option<crate::audio::session::LiveControl>,
     },
     /// The executor has joined this job; its slot may now be released.
     Finished {
@@ -198,7 +198,7 @@ pub enum ResponseDisposition {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Refusal {
     /// The configured persistent library cannot be used.
-    LibraryUnavailable(crate::library::LibraryDiagnostic),
+    LibraryUnavailable(crate::storage::library::LibraryDiagnostic),
     /// Device playback is disabled by this workspace’s runtime policy.
     DevicePlaybackUnavailable,
     /// A prompt is open.
@@ -240,11 +240,11 @@ pub enum Refusal {
 enum DocumentAction {
     New,
     Copy(RecipeSnapshot),
-    EditManaged(crate::library::LoadedRecord),
+    EditManaged(crate::storage::library::LoadedRecord),
     EditExternal(RecipeSnapshot),
     TrashSaved {
-        key: crate::library::LibraryKey,
-        expect: crate::library::VersionToken,
+        key: crate::storage::library::LibraryKey,
+        expect: crate::storage::library::VersionToken,
     },
     Close,
 }
@@ -253,11 +253,11 @@ enum DocumentAction {
 enum AudioRequest {
     Finite {
         snapshot: Box<RecipeSnapshot>,
-        store: Option<crate::library::LibraryStore>,
+        store: Option<crate::storage::library::LibraryStore>,
     },
     Live {
         document: DocumentId,
-        candidate: Arc<crate::editing::Candidate>,
+        candidate: Arc<crate::document::editing::Candidate>,
     },
 }
 
@@ -306,8 +306,8 @@ struct Pending {
 enum PromptState {
     Unsaved(DocumentAction),
     Purge {
-        key: crate::library::LibraryKey,
-        expect: crate::library::VersionToken,
+        key: crate::storage::library::LibraryKey,
+        expect: crate::storage::library::VersionToken,
     },
     Import,
     Export(Rendition),
@@ -325,26 +325,31 @@ enum DocumentLocation {
     #[default]
     Unsaved,
     Managed {
-        key: crate::library::LibraryKey,
-        token: crate::library::VersionToken,
+        key: crate::storage::library::LibraryKey,
+        token: crate::storage::library::VersionToken,
     },
-    External(crate::external::ObservedFile),
-    Detached(crate::library::LibraryKey),
+    External(crate::storage::external::ObservedFile),
+    Detached(crate::storage::library::LibraryKey),
 }
 impl DocumentLocation {
-    fn managed(&self) -> Option<(&crate::library::LibraryKey, crate::library::VersionToken)> {
+    fn managed(
+        &self,
+    ) -> Option<(
+        &crate::storage::library::LibraryKey,
+        crate::storage::library::VersionToken,
+    )> {
         match self {
             Self::Managed { key, token } => Some((key, *token)),
             _ => None,
         }
     }
-    fn detached(&self) -> Option<&crate::library::LibraryKey> {
+    fn detached(&self) -> Option<&crate::storage::library::LibraryKey> {
         match self {
             Self::Detached(key) => Some(key),
             _ => None,
         }
     }
-    fn external(&self) -> Option<&crate::external::ObservedFile> {
+    fn external(&self) -> Option<&crate::storage::external::ObservedFile> {
         match self {
             Self::External(file) => Some(file),
             _ => None,
@@ -352,8 +357,8 @@ impl DocumentLocation {
     }
     fn saved_token(
         &self,
-        key: &crate::library::LibraryKey,
-    ) -> Option<crate::library::VersionToken> {
+        key: &crate::storage::library::LibraryKey,
+    ) -> Option<crate::storage::library::VersionToken> {
         self.managed()
             .filter(|(saved, _)| *saved == key)
             .map(|(_, token)| token)
@@ -560,7 +565,7 @@ impl Workspace {
     }
 
     /// Change nominal facets without rebinding any playback or editor snapshot.
-    pub fn set_rhythm_query(&mut self, query: crate::query::RhythmQuery) {
+    pub fn set_rhythm_query(&mut self, query: crate::discovery::query::RhythmQuery) {
         self.library.query.rhythm = query;
         self.refilter();
         self.load_library_selection();
@@ -569,7 +574,7 @@ impl Workspace {
 
     /// Current shared nominal restrictions, retained when text search changes.
     #[must_use]
-    pub const fn rhythm_query(&self) -> &crate::query::RhythmQuery {
+    pub const fn rhythm_query(&self) -> &crate::discovery::query::RhythmQuery {
         &self.library.query.rhythm
     }
 
@@ -855,7 +860,7 @@ impl Workspace {
         let analysis = self.editor.session.committed_analysis(rate);
         if let Some(target) = analysis.target()
             && let Err(error) = live.update(target)
-            && error != crate::session::LiveUpdateError::SessionClosed
+            && error != crate::audio::session::LiveUpdateError::SessionClosed
         {
             self.audio.status = AudioStatus::LiveUpdate(error);
         }
@@ -1357,11 +1362,11 @@ impl Workspace {
             View::Library => {
                 let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
                 let text = match snapshot.origin() {
-                    crate::recipe::Origin::BuiltIn(id) => Arc::from(
-                        crate::recipe::builtin_source(id)
+                    crate::document::recipe::Origin::BuiltIn(id) => Arc::from(
+                        crate::storage::load::builtin_source(id)
                             .map_err(|e| Refusal::Document(e.to_string()))?,
                     ),
-                    crate::recipe::Origin::User { .. } => {
+                    crate::document::recipe::Origin::User { .. } => {
                         self.library.selected_text().ok_or(Refusal::NoSelection)?
                     }
                     _ => Arc::from(
@@ -1584,7 +1589,7 @@ impl Workspace {
     fn finish_audio(
         &mut self,
         task: AudioTask,
-        result: Result<Result<crate::session::PlaybackReport, Error>, WorkerFailure>,
+        result: Result<Result<crate::audio::session::PlaybackReport, Error>, WorkerFailure>,
     ) {
         let failed = task.protocol_failed || !matches!(&result, Ok(Ok(_)));
         self.audio.status = match result {
@@ -1817,7 +1822,7 @@ impl Workspace {
     /// document's accepted live revision, its committed content, or the
     /// selected recipe. `None` when that source is not valid.
     #[must_use]
-    pub fn model_view(&self) -> Option<Arc<crate::waveform_view::ModelView>> {
+    pub fn model_view(&self) -> Option<Arc<crate::presentation::waveform_view::ModelView>> {
         self.audio.output.model().cloned()
     }
 

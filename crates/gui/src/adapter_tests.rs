@@ -5,10 +5,10 @@
 use crate::adapter::{Shell, SlintAdapter, Windows, parameter_id, parameter_key};
 use crate::generated::{MainWindow, MetadataKey, ParameterKey};
 use crate::test_platform::{install, settle};
-use auditorylab::core::ParameterId;
-use auditorylab::editing::{EditingField, MetadataField};
-use auditorylab::presentation::ParameterText;
-use auditorylab::workspace::{
+use auditorylab_app::core::ParameterId;
+use auditorylab_app::document::editing::{EditingField, MetadataField};
+use auditorylab_app::presentation::ParameterText;
+use auditorylab_app::workspace::{
     Capabilities, Job, JobKind, PathPurpose, PromptAnswer, PromptId, View, Workspace,
 };
 use slint::platform::{Key, WindowEvent};
@@ -52,18 +52,19 @@ impl Shell for Recorder {
 }
 
 fn bound_workspace(
-    catalog: Vec<auditorylab::recipe::RecipeSnapshot>,
+    catalog: Vec<auditorylab_app::document::recipe::RecipeSnapshot>,
     capabilities: Capabilities,
 ) -> (
     Workspace,
     tempfile::TempDir,
-    auditorylab::library::LibraryStore,
+    auditorylab_app::storage::library::LibraryStore,
 ) {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
     std::fs::create_dir_all(&base).unwrap();
     let directory = tempfile::tempdir_in(base).unwrap();
-    let store = auditorylab::library::LibraryStore::new(
-        auditorylab::library::LibraryRoot::explicit(directory.path().join("library")).unwrap(),
+    let store = auditorylab_app::storage::library::LibraryStore::new(
+        auditorylab_app::storage::library::LibraryRoot::explicit(directory.path().join("library"))
+            .unwrap(),
     )
     .unwrap();
     store.root().initialize().unwrap();
@@ -75,18 +76,21 @@ pub(crate) struct Harness {
     pub(crate) windows: Windows,
     pub(crate) adapter: Rc<SlintAdapter>,
     requests: Rc<RefCell<Vec<Request>>>,
-    library: Option<(tempfile::TempDir, auditorylab::library::LibraryStore)>,
+    library: Option<(
+        tempfile::TempDir,
+        auditorylab_app::storage::library::LibraryStore,
+    )>,
 }
 
 impl Harness {
     pub(crate) fn new() -> Self {
         Self::with_catalog(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
         )
     }
     fn with_catalog(
-        catalog: Vec<auditorylab::recipe::RecipeSnapshot>,
+        catalog: Vec<auditorylab_app::document::recipe::RecipeSnapshot>,
         capabilities: Capabilities,
     ) -> Self {
         let (workspace, directory, store) = bound_workspace(catalog, capabilities);
@@ -94,7 +98,7 @@ impl Harness {
         harness.library = Some((directory, store));
         harness
     }
-    fn store(&self) -> &auditorylab::library::LibraryStore {
+    fn store(&self) -> &auditorylab_app::storage::library::LibraryStore {
         &self
             .library
             .as_ref()
@@ -369,7 +373,9 @@ fn play_save_export_and_prompts_run_through_the_shared_workflow() {
         "Save publishes to the bound User Library"
     );
     h.wait_for_files();
-    let inventory = h.store().scan(&auditorylab::workflow::Cancel::default());
+    let inventory = h
+        .store()
+        .scan(&auditorylab_app::services::Cancel::default());
     assert_eq!(inventory.entries.len(), 1);
     assert!(h.store().load(&inventory.entries[0].key).is_ok());
     assert!(
@@ -459,7 +465,8 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
                 assert_eq!(shown.help, id.descriptor().help);
                 assert_eq!(
                     shown.has_slider,
-                    auditorylab::controls::range(id, Workspace::export_rates()[1]).is_some()
+                    auditorylab_app::document::controls::range(id, Workspace::export_rates()[1])
+                        .is_some()
                 );
                 ui.invoke_stage_parameter(binding.clone(), shown.key, "1x".into());
                 let field = h.adapter.inspect(parameter(0, id));
@@ -701,7 +708,7 @@ fn an_imported_recipe_is_scrolled_into_view() {
     let ui = h.ui();
     let directory = tempfile::tempdir().unwrap();
     for index in 0..24 {
-        let mut draft = auditorylab::editing::Draft::new().unwrap();
+        let mut draft = auditorylab_app::document::editing::Draft::new().unwrap();
         draft.set_title(format!("A earlier opened recipe {index:02}"));
         let path = directory.path().join(format!("earlier-{index}.toml"));
         std::fs::write(&path, draft.recipe().unwrap().to_toml().unwrap()).unwrap();
@@ -714,7 +721,7 @@ fn an_imported_recipe_is_scrolled_into_view() {
     let path = directory.path().join("imported.toml");
     std::fs::write(&path, {
         let mut recipe = crate::test_recipes::silent(1.0, 0.01).into_builder();
-        recipe.description = Some(auditorylab::core::Description {
+        recipe.description = Some(auditorylab_app::core::Description {
             title: "Imported probe".into(),
             notes: None,
         });
@@ -969,8 +976,8 @@ fn about_and_licenses_use_production_actions_and_reopen_without_losing_terms() {
         h.windows.about.get_identity().as_str(),
         format!(
             "Version {} (Build {})",
-            auditorylab::identity::BUILD_IDENTITY.version,
-            auditorylab::identity::BUILD_IDENTITY.build
+            auditorylab_app::presentation::build_info::BUILD_IDENTITY.version,
+            auditorylab_app::presentation::build_info::BUILD_IDENTITY.build
         )
     );
     h.windows.about.invoke_open_licenses();
@@ -1070,7 +1077,7 @@ fn tick_until(h: &Harness, condition: impl Fn() -> bool) {
 }
 
 fn controlled_harness() -> (Harness, tempfile::TempDir) {
-    let mut draft = auditorylab::editing::Draft::new().unwrap();
+    let mut draft = auditorylab_app::document::editing::Draft::new().unwrap();
     draft.set_duration_seconds(0.01);
     draft.set_fade_seconds(0.0);
     let h = Harness::with_catalog(vec![draft.snapshot().unwrap()], Capabilities::available());
@@ -1169,7 +1176,7 @@ fn assert_library_play_during_file(save: bool) {
     assert!(ui.get_can_play(), "Save/Import can coexist with audio");
     assert_eq!(
         ui.get_library_play_action(),
-        auditorylab::vocabulary::Action::library_play_labels()[0]
+        auditorylab_app::presentation::vocabulary::Action::library_play_labels()[0]
     );
     ui.invoke_play_recipe();
     assert!(
@@ -1179,7 +1186,7 @@ fn assert_library_play_during_file(save: bool) {
     let audio = take_job(&h, JobKind::Audio);
     assert_eq!(
         ui.get_library_play_action(),
-        auditorylab::vocabulary::Action::library_play_labels()[1]
+        auditorylab_app::presentation::vocabulary::Action::library_play_labels()[1]
     );
     finish_stopped_audio(&h, audio);
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
@@ -1219,7 +1226,7 @@ fn library_play_command_obeys_export_prompt_pending_and_capability_refusals() {
 fn library_play_command_obeys_unavailable_playback_capability() {
     let h = Harness::with_catalog(
         vec![
-            auditorylab::editing::Draft::new()
+            auditorylab_app::document::editing::Draft::new()
                 .unwrap()
                 .snapshot()
                 .unwrap(),
@@ -1278,7 +1285,7 @@ fn notes_return_stages_newlines_and_save_preserves_exact_multiline_text() {
     h.wait_for_files();
     let entry = h
         .store()
-        .scan(&auditorylab::workflow::Cancel::default())
+        .scan(&auditorylab_app::services::Cancel::default())
         .entries
         .remove(0);
     let saved = h.store().load(&entry.key).unwrap().snapshot;
@@ -1309,7 +1316,7 @@ fn monitor_presentation_waits_for_main_and_failures_are_visible_and_retryable() 
     // Exercise the requested monitor; startup now leaves it closed for discovery.
     windows.main.set_monitor_open(true);
     let (workspace, _library_directory, _store) = bound_workspace(
-        auditorylab::recipe::catalog().unwrap(),
+        auditorylab_app::storage::load::catalog().unwrap(),
         Capabilities::no_device_playback(),
     );
     let adapter = SlintAdapter::install(
@@ -1412,7 +1419,7 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
         );
         assert_eq!(
             w.selected().unwrap().origin(),
-            &auditorylab::recipe::Origin::BuiltIn("ioannou-2015-binaural-2-hz")
+            &auditorylab_app::document::recipe::Origin::BuiltIn("ioannou-2015-binaural-2-hz")
         );
     });
     ui.invoke_rhythm_filter(5, 6); // A steady carrier cannot borrow Gamma.
@@ -1533,30 +1540,32 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
 
 #[test]
 fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
-    let mut recipe = auditorylab::editing::Draft::new()
+    let mut recipe = auditorylab_app::document::editing::Draft::new()
         .unwrap()
         .recipe()
         .unwrap()
         .into_builder();
     recipe.sound.components = vec![
-        auditorylab::core::Component {
-            id: auditorylab::core::ComponentId::new(u32::MAX).unwrap(),
-            form: auditorylab::core::ComponentForm::BinauralPair(auditorylab::core::Pair {
+        auditorylab_app::core::Component {
+            id: auditorylab_app::core::ComponentId::new(u32::MAX).unwrap(),
+            form: auditorylab_app::core::ComponentForm::BinauralPair(auditorylab_app::core::Pair {
                 first_hz: 200.0,
                 offset_hz: 2.0,
                 first_peak_dbfs: -30.0,
                 second_peak_dbfs: -30.0,
             }),
         },
-        auditorylab::core::Component {
-            id: auditorylab::core::ComponentId::new(u32::MAX - 1).unwrap(),
-            form: auditorylab::core::ComponentForm::Voice(
-                auditorylab::controls::default_component(auditorylab::core::CarrierKind::Clicks),
+        auditorylab_app::core::Component {
+            id: auditorylab_app::core::ComponentId::new(u32::MAX - 1).unwrap(),
+            form: auditorylab_app::core::ComponentForm::Voice(
+                auditorylab_app::document::controls::default_component(
+                    auditorylab_app::core::CarrierKind::Clicks,
+                ),
             ),
         },
     ];
-    let snapshot = auditorylab::recipe::RecipeSnapshot::new(
-        auditorylab::recipe::Origin::Stream("large owners".into()),
+    let snapshot = auditorylab_app::document::recipe::RecipeSnapshot::new(
+        auditorylab_app::document::recipe::Origin::Stream("large owners".into()),
         recipe.build().unwrap(),
     );
     let h = Harness::with_catalog(vec![snapshot], Capabilities::no_device_playback());
@@ -1582,13 +1591,13 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
 
 #[test]
 fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identity() {
-    use auditorylab::library::{LibraryRoot, LibraryStore};
+    use auditorylab_app::storage::library::{LibraryRoot, LibraryStore};
     let temp = tempfile::tempdir().unwrap();
     let store =
         LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
     store.root().initialize().unwrap();
     let workspace = Workspace::with_library(
-        auditorylab::recipe::catalog().unwrap(),
+        auditorylab_app::storage::load::catalog().unwrap(),
         Capabilities::no_device_playback(),
         store.clone(),
     )
@@ -1615,7 +1624,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     assert!(!ui.get_dirty());
     assert!(ui.get_draft_location().starts_with("User Library"));
     let first = store
-        .scan(&auditorylab::workflow::Cancel::default())
+        .scan(&auditorylab_app::services::Cancel::default())
         .entries
         .remove(0);
     assert_eq!(first.title, "Native managed copy");
@@ -1698,7 +1707,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     h.wait_for_files();
     assert!(
         store
-            .scan(&auditorylab::workflow::Cancel::default())
+            .scan(&auditorylab_app::services::Cancel::default())
             .entries
             .is_empty()
     );
@@ -1706,14 +1715,14 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
 
 #[test]
 fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
-    use auditorylab::library::{LibraryRoot, LibraryStore};
+    use auditorylab_app::storage::library::{LibraryRoot, LibraryStore};
     let temp = tempfile::tempdir().unwrap();
     let store =
         LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
     store.root().initialize().unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
             store,
         )
@@ -1743,11 +1752,15 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
                 &w.catalog()
                     .iter()
                     .map(|s| {
-                        auditorylab::collection::EntrySummary::from_snapshot(
-                            auditorylab::library::LibraryKey::BuiltIn(match s.origin() {
-                                auditorylab::recipe::Origin::BuiltIn(id) => id.to_string(),
-                                _ => unreachable!(),
-                            }),
+                        auditorylab_app::discovery::collection::EntrySummary::from_snapshot(
+                            auditorylab_app::storage::library::LibraryKey::BuiltIn(
+                                match s.origin() {
+                                    auditorylab_app::document::recipe::Origin::BuiltIn(id) => {
+                                        id.to_string()
+                                    }
+                                    _ => unreachable!(),
+                                },
+                            ),
                             s,
                             None,
                         )
@@ -1843,12 +1856,14 @@ fn native_library_pointer_gesture_keeps_key_token_and_action_through_rebind() {
 #[test]
 fn persistent_native_transport_stays_inside_800_by_600_with_large_text() {
     let temp = tempfile::tempdir().unwrap();
-    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    let root =
+        auditorylab_app::storage::library::LibraryRoot::explicit(temp.path().join("library"))
+            .unwrap();
     root.initialize().unwrap();
-    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let store = auditorylab_app::storage::library::LibraryStore::new(root).unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
             store,
         )
@@ -1886,18 +1901,20 @@ fn persistent_native_transport_stays_inside_800_by_600_with_large_text() {
 #[test]
 fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_distinct() {
     let temp = tempfile::tempdir().unwrap();
-    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    let root =
+        auditorylab_app::storage::library::LibraryRoot::explicit(temp.path().join("library"))
+            .unwrap();
     root.initialize().unwrap();
-    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let store = auditorylab_app::storage::library::LibraryStore::new(root).unwrap();
     let file = temp.path().join("external.toml");
-    let mut draft = auditorylab::editing::Draft::new().unwrap();
+    let mut draft = auditorylab_app::document::editing::Draft::new().unwrap();
     draft.set_title("External original".into());
     let original = draft.recipe().unwrap();
     std::fs::write(&file, original.to_toml().unwrap()).unwrap();
     let initial_bytes = std::fs::read(&file).unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
             store.clone(),
         )
@@ -1915,7 +1932,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     assert_eq!(ui.get_collection_choice(), 3);
     assert!(
         store
-            .scan(&auditorylab::workflow::Cancel::default())
+            .scan(&auditorylab_app::services::Cancel::default())
             .entries
             .is_empty()
     );
@@ -1924,7 +1941,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     h.wait_for_files();
     assert_eq!(
         store
-            .scan(&auditorylab::workflow::Cancel::default())
+            .scan(&auditorylab_app::services::Cancel::default())
             .entries
             .len(),
         1
@@ -1946,18 +1963,20 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     ui.invoke_save_recipe();
     h.wait_for_files();
     assert_eq!(
-        auditorylab::recipe::load_file(&file).unwrap().title(),
+        auditorylab_app::storage::load::load_file(&file)
+            .unwrap()
+            .title(),
         "External edited"
     );
     assert_eq!(
         store
-            .scan(&auditorylab::workflow::Cancel::default())
+            .scan(&auditorylab_app::services::Cancel::default())
             .entries[0]
             .title,
         "External original"
     );
     assert!(!ui.get_dirty());
-    let mut other = auditorylab::recipe::load_file(&file)
+    let mut other = auditorylab_app::storage::load::load_file(&file)
         .unwrap()
         .recipe()
         .clone()
@@ -1974,7 +1993,9 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     assert!(ui.get_dirty());
     assert!(ui.get_status().contains("changed identity or bytes"));
     assert_eq!(
-        auditorylab::recipe::load_file(&file).unwrap().title(),
+        auditorylab_app::storage::load::load_file(&file)
+            .unwrap()
+            .title(),
         "Other application"
     );
     ui.invoke_save_copy();
@@ -1987,13 +2008,15 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     );
     assert_eq!(
         store
-            .scan(&auditorylab::workflow::Cancel::default())
+            .scan(&auditorylab_app::services::Cancel::default())
             .entries
             .len(),
         2
     );
     assert_eq!(
-        auditorylab::recipe::load_file(&file).unwrap().title(),
+        auditorylab_app::storage::load::load_file(&file)
+            .unwrap()
+            .title(),
         "Other application"
     );
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
@@ -2002,23 +2025,27 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
 #[test]
 fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_content() {
     let temp = tempfile::tempdir().unwrap();
-    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    let root =
+        auditorylab_app::storage::library::LibraryRoot::explicit(temp.path().join("library"))
+            .unwrap();
     root.initialize().unwrap();
-    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let store = auditorylab_app::storage::library::LibraryStore::new(root).unwrap();
     let raw = "Label \u{202e}User\u{001b}";
-    let mut draft = auditorylab::editing::Draft::new().unwrap();
+    let mut draft = auditorylab_app::document::editing::Draft::new().unwrap();
     draft.set_title(raw.into());
     let record = store
         .apply(
-            auditorylab::library::Mutation::Add(std::sync::Arc::new(draft.recipe().unwrap())),
-            &auditorylab::workflow::Cancel::default(),
+            auditorylab_app::storage::library::Mutation::Add(std::sync::Arc::new(
+                draft.recipe().unwrap(),
+            )),
+            &auditorylab_app::services::Cancel::default(),
         )
         .unwrap()
         .record
         .unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
             store.clone(),
         )
@@ -2057,12 +2084,14 @@ fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_co
 #[test]
 fn native_library_keyboard_has_one_tab_stop_and_keeps_selected_key_through_sort() {
     let temp = tempfile::tempdir().unwrap();
-    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    let root =
+        auditorylab_app::storage::library::LibraryRoot::explicit(temp.path().join("library"))
+            .unwrap();
     root.initialize().unwrap();
-    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let store = auditorylab_app::storage::library::LibraryStore::new(root).unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
             store,
         )
@@ -2130,12 +2159,14 @@ fn reveal_library_control(h: &Harness, prefix: &str) -> ItemRc {
 fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
     let temp = tempfile::tempdir().unwrap();
-    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    let root =
+        auditorylab_app::storage::library::LibraryRoot::explicit(temp.path().join("library"))
+            .unwrap();
     root.initialize().unwrap();
-    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let store = auditorylab_app::storage::library::LibraryStore::new(root).unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
             store,
         )
@@ -2225,7 +2256,7 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
         h.wait_for_files();
         assert_eq!(
             h.adapter.inspect(|w| w.catalog_query().sort),
-            auditorylab::collection::SortBy::Title
+            auditorylab_app::discovery::collection::SortBy::Title
         );
         assert_eq!(ui.get_collection_choice(), scope);
     }
@@ -2242,14 +2273,14 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
     use slint::private_unstable_api::re_exports::AccessibilityAction;
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("library");
-    let root = auditorylab::library::LibraryRoot::explicit(path.clone()).unwrap();
+    let root = auditorylab_app::storage::library::LibraryRoot::explicit(path.clone()).unwrap();
     root.initialize().unwrap();
-    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let store = auditorylab_app::storage::library::LibraryStore::new(root).unwrap();
     std::fs::rename(&path, temp.path().join("offline")).unwrap();
     std::fs::write(&path, "not a directory").unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
             store,
         )
@@ -2373,14 +2404,15 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
 fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
     let temp = tempfile::tempdir().unwrap();
-    let store = auditorylab::library::LibraryStore::new(
-        auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap(),
+    let store = auditorylab_app::storage::library::LibraryStore::new(
+        auditorylab_app::storage::library::LibraryRoot::explicit(temp.path().join("library"))
+            .unwrap(),
     )
     .unwrap();
     store.root().initialize().unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
             store,
         )
@@ -2477,14 +2509,14 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
 
 #[test]
 fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
-    use auditorylab::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation};
+    use auditorylab_app::storage::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation};
     use slint::private_unstable_api::re_exports::AccessibilityAction;
     let temp = tempfile::tempdir().unwrap();
     let store =
         LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
     store.root().initialize().unwrap();
-    let draft = auditorylab::editing::Draft::from_snapshot(
-        &auditorylab::recipe::builtin("ioannou-2015-binaural-2-hz").unwrap(),
+    let draft = auditorylab_app::document::editing::Draft::from_snapshot(
+        &auditorylab_app::storage::load::builtin("ioannou-2015-binaural-2-hz").unwrap(),
     )
     .unwrap();
     let mut recipe = draft.recipe().unwrap().into_builder();
@@ -2495,12 +2527,12 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     store
         .apply(
             Mutation::Add(std::sync::Arc::new(recipe.build().unwrap())),
-            &auditorylab::workflow::Cancel::default(),
+            &auditorylab_app::services::Cancel::default(),
         )
         .unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
             store,
         )
@@ -2514,10 +2546,9 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     assert!(
         row.contains("Edited: Unknown") && row.contains("Added here:") && row.contains("Created:")
     );
-    assert!(
-        ui.get_library_dates()
-            .contains(&auditorylab::calendar::local_timestamp(created))
-    );
+    assert!(ui.get_library_dates().contains(
+        &auditorylab_app::discovery::calendar::local_timestamp(created)
+    ));
     assert!(
         ui.get_library_dates_utc()
             .contains("2026-10-25T00:30:00.123456789Z")
@@ -2534,8 +2565,11 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     h.key(Key::Escape);
     h.adapter.inspect(|w| {
         let q = w.catalog_query();
-        assert_eq!(q.scope, auditorylab::collection::Scope::User);
-        assert_eq!(q.sort, auditorylab::collection::SortBy::Automatic);
+        assert_eq!(q.scope, auditorylab_app::discovery::collection::Scope::User);
+        assert_eq!(
+            q.sort,
+            auditorylab_app::discovery::collection::SortBy::Automatic
+        );
         assert!(q.direction.is_none());
         assert_eq!(q.search, "2");
     });
@@ -2559,12 +2593,14 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
 #[test]
 fn changing_display_vocabulary_preserves_typed_library_search() {
     let temp = tempfile::tempdir().unwrap();
-    let root = auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap();
+    let root =
+        auditorylab_app::storage::library::LibraryRoot::explicit(temp.path().join("library"))
+            .unwrap();
     root.initialize().unwrap();
-    let store = auditorylab::library::LibraryStore::new(root).unwrap();
+    let store = auditorylab_app::storage::library::LibraryStore::new(root).unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
             store,
         )
@@ -2602,18 +2638,21 @@ fn changing_display_vocabulary_preserves_typed_library_search() {
 
 #[test]
 fn filter_controls_map_to_independent_typed_queries() {
-    use auditorylab::collection::{CatalogQuery, DateRange, Direction, GroupBy, Scope, SortBy};
-    use auditorylab::core::rhythm::{Band, Method};
-    use auditorylab::query::RhythmQuery;
+    use auditorylab_app::core::rhythm::{Band, Method};
+    use auditorylab_app::discovery::collection::{
+        CatalogQuery, DateRange, Direction, GroupBy, Scope, SortBy,
+    };
+    use auditorylab_app::discovery::query::RhythmQuery;
     let temp = tempfile::tempdir().unwrap();
-    let store = auditorylab::library::LibraryStore::new(
-        auditorylab::library::LibraryRoot::explicit(temp.path().join("library")).unwrap(),
+    let store = auditorylab_app::storage::library::LibraryStore::new(
+        auditorylab_app::storage::library::LibraryRoot::explicit(temp.path().join("library"))
+            .unwrap(),
     )
     .unwrap();
     store.root().initialize().unwrap();
     let h = Harness::with_workspace(
         Workspace::with_library(
-            auditorylab::recipe::catalog().unwrap(),
+            auditorylab_app::storage::load::catalog().unwrap(),
             Capabilities::no_device_playback(),
             store,
         )
@@ -2699,25 +2738,25 @@ fn filter_controls_map_to_independent_typed_queries() {
     h.wait_for_files();
     let expected = CatalogQuery {
         studies: vec!["key:source".into()],
-        populations: vec![auditorylab::core::Population::Mouse],
-        roles: vec![auditorylab::core::ConditionRole::Comparison],
-        analysis: Some(auditorylab::core::rhythm::Completeness::Invalid),
+        populations: vec![auditorylab_app::core::Population::Mouse],
+        roles: vec![auditorylab_app::core::ConditionRole::Comparison],
+        analysis: Some(auditorylab_app::core::rhythm::Completeness::Invalid),
         direction: Some(Direction::Desc),
         group_by: GroupBy::Study,
-        created: auditorylab::calendar::local_range(
-            auditorylab::calendar::CalendarField::Created,
+        created: auditorylab_app::discovery::calendar::local_range(
+            auditorylab_app::discovery::calendar::CalendarField::Created,
             "2026-01-01",
             "2026-01-02",
         )
         .unwrap(),
-        modified: auditorylab::calendar::local_range(
-            auditorylab::calendar::CalendarField::Modified,
+        modified: auditorylab_app::discovery::calendar::local_range(
+            auditorylab_app::discovery::calendar::CalendarField::Modified,
             "2026-03-01",
             "2026-03-02",
         )
         .unwrap(),
-        added: auditorylab::calendar::local_range(
-            auditorylab::calendar::CalendarField::Added,
+        added: auditorylab_app::discovery::calendar::local_range(
+            auditorylab_app::discovery::calendar::CalendarField::Added,
             "2026-05-01",
             "2026-05-02",
         )
@@ -2762,7 +2801,7 @@ fn real_save_capture_and_delayed_completion_preserve_newer_edits_and_close_promp
     let finished = save.execute(|_| panic!("a save emits no preparation"));
     let saved = h
         .store()
-        .scan(&auditorylab::workflow::Cancel::default())
+        .scan(&auditorylab_app::services::Cancel::default())
         .entries
         .remove(0);
     assert_eq!(saved.title, "Captured by Save");
@@ -2788,7 +2827,7 @@ fn real_save_capture_and_delayed_completion_preserve_newer_edits_and_close_promp
 
 #[test]
 fn background_refresh_does_not_hide_a_failed_captured_save() {
-    use auditorylab::library::Mutation;
+    use auditorylab_app::storage::library::Mutation;
     let h = Harness::new();
     let ui = h.ui();
     h.workbench();
@@ -2801,7 +2840,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
     h.wait_for_files();
     let saved = h
         .store()
-        .scan(&auditorylab::workflow::Cancel::default())
+        .scan(&auditorylab_app::services::Cancel::default())
         .entries
         .remove(0);
     ui.invoke_commit_metadata(
@@ -2818,7 +2857,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
                 expect: saved.version_token,
                 title: "Other writer".into(),
             },
-            &auditorylab::workflow::Cancel::default(),
+            &auditorylab_app::services::Cancel::default(),
         )
         .unwrap();
     h.adapter.command(Workspace::refresh_library);
@@ -2937,7 +2976,7 @@ fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
 
 #[test]
 fn wide_library_navigation_uses_real_shared_filters_and_structured_cards() {
-    use auditorylab::core::rhythm::Band;
+    use auditorylab_app::core::rhythm::Band;
     use slint::private_unstable_api::re_exports::AccessibilityAction;
     let h = Harness::new();
     let ui = h.ui();
@@ -3097,7 +3136,7 @@ fn applied_filters_remain_readable_when_library_tools_are_closed() {
 fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
     let (workspace, _directory, _store) = bound_workspace(
-        auditorylab::recipe::catalog().unwrap(),
+        auditorylab_app::storage::load::catalog().unwrap(),
         Capabilities::no_device_playback(),
     );
     let h = Harness::with_startup_workspace(workspace);

@@ -5,7 +5,7 @@ Auditory Lab has a pure synthesis core, shared application capabilities, and CLI
 | Package | Responsibility |
 | --- | --- |
 | [`auditorylab-core`](../crates/core) | Portable recipes, validation, deterministic seekable/live synthesis, facts, timing models and waveform reduction; `no_std` with `alloc`. |
-| [`auditorylab`](../crates/app) | Snapshots, editing, library storage, file publication, playback sessions, reports, vocabulary, workspace coordination and its job runner. Core APIs are exposed through `auditorylab::core`. |
+| [`auditorylab-app`](../crates/app) | Snapshots, editing, library storage, file publication, playback sessions, reports, vocabulary, workspace coordination and its job runner. Core APIs are exposed through `auditorylab_app::core`. |
 | [`auditorylab-cli`](../crates/cli) | clap grammar, terminal layout, output encoding, interrupts and exit codes. |
 | [`auditorylab-gui`](../crates/gui) | Slint models/windows, native dialogs and platform integration, and driving workspace effects/completions. |
 | [`xtask`](../xtask) | Build identity, notices, native icons, archives and package checks. |

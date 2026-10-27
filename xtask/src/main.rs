@@ -53,7 +53,7 @@ fn metadata(target: Option<&str>) -> Result<Value> {
 fn version(metadata: &Value) -> Result<&str> {
     metadata["packages"]
         .as_array()
-        .and_then(|p| p.iter().find(|p| p["name"] == "auditorylab"))
+        .and_then(|p| p.iter().find(|p| p["name"] == "auditorylab-app"))
         .and_then(|p| p["version"].as_str())
         .ok_or_else(|| "workspace version missing".into())
 }
@@ -584,5 +584,16 @@ mod tests {
         let text = "## [Unreleased]\n\n## [1.0] - 2026-10-18\n\nA change.\n\n## [0.9]\nOlder.";
         assert_eq!(section(text, "1.0").unwrap().1, "A change.");
         assert!(section(text, "1.1").is_err());
+    }
+    #[test]
+    fn product_version_comes_from_the_renamed_application_package() {
+        let metadata = serde_json::json!({"packages": [
+            {"name": "auditorylab-core", "version": "9.0.0"},
+            {"name": "auditorylab-app", "version": "1.2.3"}
+        ]});
+        assert_eq!(super::version(&metadata).unwrap(), "1.2.3");
+        let retired_name =
+            serde_json::json!({"packages": [{"name": "auditorylab", "version": "1.2.3"}]});
+        assert!(super::version(&retired_name).is_err());
     }
 }

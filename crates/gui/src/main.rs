@@ -31,8 +31,8 @@ mod generated {
     slint::include_modules!();
 }
 use adapter::{Preferences, SlintAdapter, Windows};
-use auditorylab::vocabulary::{CommandProblem, InterfaceOperation};
-use auditorylab::workspace::{Capabilities, Workspace};
+use auditorylab_app::presentation::vocabulary::{CommandProblem, InterfaceOperation};
+use auditorylab_app::workspace::{Capabilities, Workspace};
 use generated::{DetailsWindow, MainWindow};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,7 +40,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "windows")]
     if let Err(error) = &result {
         let _ = rfd::MessageDialog::new()
-            .set_title(auditorylab::vocabulary::Caption::application_error_title())
+            .set_title(
+                auditorylab_app::presentation::vocabulary::Caption::application_error_title(),
+            )
             .set_description(InterfaceOperation::Application.failure(error))
             .set_level(rfd::MessageLevel::Error)
             .set_buttons(rfd::MessageButtons::Ok)
@@ -54,7 +56,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if args == ["--version"] {
         println!(
             "{}",
-            auditorylab::identity::BUILD_IDENTITY.version_line("auditorylab-gui")
+            auditorylab_app::presentation::build_info::BUILD_IDENTITY
+                .version_line("auditorylab-gui")
         );
         return Ok(());
     }
@@ -75,9 +78,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     selector.select()?;
     let windows = Windows::new()?;
     let workspace = Workspace::with_binding(
-        auditorylab::recipe::catalog()?,
+        auditorylab_app::storage::load::catalog()?,
         Capabilities::available(),
-        auditorylab::workspace::LibraryBinding::configured()?,
+        auditorylab_app::workspace::LibraryBinding::configured()?,
     )?;
     let adapter = SlintAdapter::install(
         &windows,

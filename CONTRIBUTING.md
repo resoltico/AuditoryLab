@@ -28,7 +28,7 @@ Workspace tests drive commands, emitted jobs and typed completions. Runner tests
 ## Callback cost check
 
 ```sh
-cargo test -p auditorylab --profile dist --locked callback_cost -- --ignored --nocapture
+cargo test -p auditorylab-app --profile dist --locked callback_cost -- --ignored --nocapture
 ```
 
 Run this once on the intended source after other builds/tests finish. Use the distribution profile so the gate measures the shipped thin-LTO/codegen settings. It opens no device. Each configuration warms up 100 callbacks and measures 3,000, with 16 distinct carrier/modulation schedules, full target replacements and up to 32 transition slots. Configurations cover 48/768 kHz, 64/256/1024/4096 frames and none/quantities/waveform monitoring. The median wall time must fit half the buffer period; p99 and maximum are reported without gating them. CI runs it on Linux x86_64 and macOS arm64. Investigate a failure rather than rerunning or changing the limit. Ordinary tests check allocation/free behavior, overflow, coherence and lifecycle authority; playback reports actual backend underruns.
@@ -46,7 +46,7 @@ Use `--re` or a bounded shard to select a small investigation. The [workflow mat
 
 ## Design and implementation
 
-Keep synthesis and validation in core; persistence, editing, playback, vocabulary and workspace policy in the application; terminal/window mechanics in frontends. The application exposes core through `auditorylab::core` and its own capabilities through named modules. Frontends render domain descriptions instead of composing alternatives. Search uses typed facts independently of captions.
+Keep synthesis and validation in core; persistence, editing, playback, vocabulary and workspace policy in the application; terminal/window mechanics in frontends. The application exposes core through `auditorylab_app::core` and its own capabilities through named modules. Frontends render domain descriptions instead of composing alternatives. Search uses typed facts independently of captions.
 
 Preserve sample determinism, catalog bytes, actual-rate validation, callback allocation/free/wait/I/O rules and terminal-outcome authority. Storage changes must preserve no-clobber behavior, opened-file identity/content checks, captured-save baselines and readable content through interrupted publication.
 

@@ -51,7 +51,7 @@ impl slint::winit_030::CustomApplicationHandler for ApplicationHandler {
 
     fn application_about_title(&self) -> Option<String> {
         Some(
-            auditorylab::vocabulary::Caption::AboutProduct
+            auditorylab_app::presentation::vocabulary::Caption::AboutProduct
                 .label()
                 .into(),
         )
@@ -69,14 +69,14 @@ pub(crate) fn reply_to_termination(request: TerminationRequest, approve: bool) {
     if let Err(error) = reply(request, approve) {
         eprintln!(
             "{}",
-            auditorylab::vocabulary::InterfaceOperation::Quit.failure(error)
+            auditorylab_app::presentation::vocabulary::InterfaceOperation::Quit.failure(error)
         );
     }
 }
 
 /// Instance state of the Stop target: the one session it may stop.
 struct StopTargetState {
-    control: auditorylab::session::PlaybackControl,
+    control: auditorylab_app::audio::session::PlaybackControl,
 }
 
 define_class!(
@@ -92,12 +92,12 @@ define_class!(
         fn stop_audio(&self, sender: &NSButton) {
             let requested = matches!(
                 self.ivars().control.request_stop(),
-                auditorylab::session::StopRequest::Accepted | auditorylab::session::StopRequest::AlreadyRequested
+                auditorylab_app::audio::session::StopRequest::Accepted | auditorylab_app::audio::session::StopRequest::AlreadyRequested
             );
             sender.setTitle(&NSString::from_str(if requested {
-                auditorylab::vocabulary::Status::StopInFilePanelRequested.label()
+                auditorylab_app::presentation::vocabulary::Status::StopInFilePanelRequested.label()
             } else {
-                auditorylab::vocabulary::Status::FilePanelAudioStopped.label()
+                auditorylab_app::presentation::vocabulary::Status::FilePanelAudioStopped.label()
             }));
             sender.setEnabled(false);
         }
@@ -111,7 +111,7 @@ impl StopTarget {
     )]
     fn new(
         mtm: MainThreadMarker,
-        control: auditorylab::session::PlaybackControl,
+        control: auditorylab_app::audio::session::PlaybackControl,
     ) -> Retained<Self> {
         let this = Self::alloc(mtm).set_ivars(StopTargetState { control });
         // SAFETY: NSObject's designated initializer on a freshly allocated instance.
@@ -131,26 +131,31 @@ pub(crate) async fn choose_file(
     ui: &crate::MainWindow,
     filename: Option<&str>,
     extension: &str,
-    control: Option<auditorylab::session::PlaybackControl>,
+    control: Option<auditorylab_app::audio::session::PlaybackControl>,
 ) -> Result<Option<std::path::PathBuf>, String> {
     use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use std::task::Poll;
-    let mtm = MainThreadMarker::new()
-        .ok_or(auditorylab::vocabulary::Caption::NativeFilePanelUnavailable.label())?;
+    let mtm = MainThreadMarker::new().ok_or(
+        auditorylab_app::presentation::vocabulary::Caption::NativeFilePanelUnavailable.label(),
+    )?;
     let owner = ui.window().window_handle();
     let raw = owner
         .window_handle()
         .map_err(|error| error.to_string())?
         .as_raw();
     let RawWindowHandle::AppKit(handle) = raw else {
-        return Err(auditorylab::vocabulary::Caption::NativeFilePanelUnavailable
-            .label()
-            .into());
+        return Err(
+            auditorylab_app::presentation::vocabulary::Caption::NativeFilePanelUnavailable
+                .label()
+                .into(),
+        );
     };
     // SAFETY: the Slint-owned AppKit handle is live for this entire main-thread future.
     let parent = unsafe { handle.ns_view.cast::<NSView>().as_ref() }
         .window()
-        .ok_or(auditorylab::vocabulary::Caption::NativeWindowUnavailable.label())?;
+        .ok_or(
+            auditorylab_app::presentation::vocabulary::Caption::NativeWindowUnavailable.label(),
+        )?;
     let panel = if let Some(name) = filename {
         let panel = NSSavePanel::savePanel(mtm);
         panel.setNameFieldStringValue(&NSString::from_str(name));
@@ -178,7 +183,9 @@ pub(crate) async fn choose_file(
         // void/object action signature.
         let button = unsafe {
             NSButton::buttonWithTitle_target_action(
-                &NSString::from_str(auditorylab::vocabulary::Action::StopInFilePanel.label()),
+                &NSString::from_str(
+                    auditorylab_app::presentation::vocabulary::Action::StopInFilePanel.label(),
+                ),
                 Some(target),
                 Some(sel!(stopAudio:)),
                 mtm,
@@ -201,7 +208,7 @@ pub(crate) async fn choose_file(
                 .and_then(|url| url.path())
                 .map(|path| Some(std::path::PathBuf::from(path.to_string())))
                 .ok_or_else(|| {
-                    auditorylab::vocabulary::Caption::NativeFilePathUnavailable
+                    auditorylab_app::presentation::vocabulary::Caption::NativeFilePathUnavailable
                         .label()
                         .to_owned()
                 })

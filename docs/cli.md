@@ -46,7 +46,7 @@ auditorylab library purge user:UUID --expect TOKEN --yes
 
 `library check [--format json]` reports malformed files, unknown artifacts, orphan membership timestamps and owned stages without changing them. Each write holds the exclusive library lock through reading, optional token checks, publication and verification. When an I/O result is ambiguous, the application re-reads the destination: candidate bytes mean saved with a warning; previous bytes mean not applied; other or unreadable content is an error naming the path. A confirmed purge is absence after unlink under that same lock. Completion-output failure cannot undo storage changes and is reported separately.
 
-Library layout **1**, defined by [`library::LIBRARY_LAYOUT`](../crates/app/src/library/root.rs), stores `library.toml` with `layout = 1`, `recipes/<uuid>.toml`, `trash/<uuid>.toml`, timestamp-only `membership.toml`, `.library.lock` and a private `.stage/` directory. Directory location decides active/Trash state; missing membership dates are Unknown. The recipe is published before its membership timestamps, so a crash can lose a timestamp without making the recipe unreadable. A locked write drops orphan timestamp rows and cleans only recognized owned stages. Unknown files are retained. Interrupted no-clobber moves can leave two names for one file: Trash remains authoritative for those same-inode links, and a locked write removes the redundant active link. Different files with the same UUID require explicit reconciliation and are never deleted automatically.
+Library layout **1**, defined by [`library::LIBRARY_LAYOUT`](../crates/app/src/storage/library/root.rs), stores `library.toml` with `layout = 1`, `recipes/<uuid>.toml`, `trash/<uuid>.toml`, timestamp-only `membership.toml`, `.library.lock` and a private `.stage/` directory. Directory location decides active/Trash state; missing membership dates are Unknown. The recipe is published before its membership timestamps, so a crash can lose a timestamp without making the recipe unreadable. A locked write drops orphan timestamp rows and cleans only recognized owned stages. Unknown files are retained. Interrupted no-clobber moves can leave two names for one file: Trash remains authoritative for those same-inode links, and a locked write removes the redundant active link. Different files with the same UUID require explicit reconciliation and are never deleted automatically.
 
 ## Shared queries
 
@@ -75,7 +75,7 @@ Automatic ordering is rate ascending for All/Built-in, modified descending for U
 
 ## Output and failures
 
-CLI JSON output **2**, defined by [`reports::OUTPUT_SCHEMA_VERSION`](../crates/app/src/reports.rs), uses numeric quantities, explicit null unknowns, normalized UTC instants, the effective query, unique entries, group-key references and diagnostics. Read-only partial inventories retain healthy rows with `complete:false`. IDs output accepts only reusable persistent selectors, rejects grouping/temporary inputs, and emits **no stdout IDs** when discovery is incomplete.
+CLI JSON output **2**, defined by [`reports::OUTPUT_SCHEMA_VERSION`](../crates/app/src/presentation/reports.rs), uses numeric quantities, explicit null unknowns, normalized UTC instants, the effective query, unique entries, group-key references and diagnostics. Read-only partial inventories retain healthy rows with `complete:false`. IDs output accepts only reusable persistent selectors, rejects grouping/temporary inputs, and emits **no stdout IDs** when discovery is incomplete.
 
 Human prose follows terminal width (78 columns when redirected); controls and bidi overrides are escaped. Raw recipe bytes remain unchanged. JSON escapes unsafe display controls without changing decoded data. Read-only broken pipes are quiet success; mutation reporting failure cannot undo publication and reports confirmed publication and an output warning on stderr.
 
@@ -101,7 +101,7 @@ During export/play the first Ctrl-C requests cancellation and the second exits i
 
 ### JSON report fields
 
-The application defines the serializable reports in [`reports`](../crates/app/src/reports.rs). Every envelope contains `output_schema_version`, `operation`, `complete`, `convention`, `query`, `unique_count`, `entries`, `groups`, and `diagnostics`.
+The application defines the serializable reports in [`reports`](../crates/app/src/presentation/reports.rs). Every envelope contains `output_schema_version`, `operation`, `complete`, `convention`, `query`, `unique_count`, `entries`, `groups`, and `diagnostics`.
 
 | Operation | Additional fields |
 | --- | --- |

@@ -5,17 +5,19 @@
 //! availability. Building a view evaluates through the editor's caches; an
 //! unchanged document is not evaluated again.
 use super::{FileKind, OutputView, Refusal, View, Workspace};
-use crate::editing::RowKey;
-use crate::editing::{EditRefusal, EditingField, FieldHandle, InputProblem, MetadataField};
-use crate::presentation::{AudioDetails, AudioErrorText, AudioSummary, ParameterText};
-use crate::recipe::RecipeSnapshot;
-use crate::session::{EndReason, PlaybackReport};
-use crate::vocabulary::NumberStyle;
-use crate::wav::Exported;
-use crate::waveform_view::{
+use crate::audio::session::{EndReason, PlaybackReport};
+use crate::document::editing::RowKey;
+use crate::document::editing::{
+    EditRefusal, EditingField, FieldHandle, InputProblem, MetadataField,
+};
+use crate::document::recipe::RecipeSnapshot;
+use crate::presentation::vocabulary::NumberStyle;
+use crate::presentation::waveform_view::{
     monitor_warning, output_monitor_state, output_underrun_warning, phase_text,
 };
-use crate::{controls, presentation};
+use crate::presentation::{AudioDetails, AudioErrorText, AudioSummary, ParameterText};
+use crate::storage::wav::Exported;
+use crate::{document::controls, presentation};
 use auditorylab_core::{CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, SampleRate};
 use std::path::Path;
 use std::sync::Arc;
@@ -402,7 +404,7 @@ pub(super) fn received_text(age: std::time::Duration, held: bool) -> String {
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct LibraryViewKey {
     revision: u64,
-    selected: Option<crate::recipe::SnapshotId>,
+    selected: Option<crate::document::recipe::SnapshotId>,
     rate: SampleRate,
 }
 
@@ -778,7 +780,7 @@ impl Workspace {
         let progress = self.export_progress();
         ActionView {
             can_play: play.is_ok(),
-            library_play_label: crate::vocabulary::Action::library_play_labels()
+            library_play_label: crate::presentation::vocabulary::Action::library_play_labels()
                 [usize::from(playing)],
             can_import: self.import_admission().is_ok(),
             can_new: self.start_allowed().is_ok(),
@@ -827,11 +829,11 @@ impl Workspace {
             exporting,
             transport_enabled: playing || play.is_ok(),
             transport_label: if playing {
-                crate::vocabulary::Action::StopAudio.label()
+                crate::presentation::vocabulary::Action::StopAudio.label()
             } else if self.view == View::Workbench {
-                crate::vocabulary::Action::PlayLive.label()
+                crate::presentation::vocabulary::Action::PlayLive.label()
             } else {
-                crate::vocabulary::Action::PlaySelectedSound.label()
+                crate::presentation::vocabulary::Action::PlaySelectedSound.label()
             }
             .into(),
             play_target: match self.view {
@@ -1007,7 +1009,9 @@ impl Workspace {
             let warning = monitor_warning(reader, span);
             view.warning = (
                 warning.map_or_else(String::new, |w| w.message().into()),
-                warning.is_some_and(crate::waveform_view::MonitorWarning::announces_changes),
+                warning.is_some_and(
+                    crate::presentation::waveform_view::MonitorWarning::announces_changes,
+                ),
             );
             view.backend_warning = output_underrun_warning(status.underruns);
             view.receipt_age = reader.age().map_or_else(
@@ -1066,7 +1070,8 @@ impl Workspace {
             view.monitor_state =
                 format!("{}\n{}", capture.caption(held, ended), view.monitor_state);
             if capture.clipped() {
-                let advisory = crate::waveform_view::MonitorWarning::FixedRangeExceeded;
+                let advisory =
+                    crate::presentation::waveform_view::MonitorWarning::FixedRangeExceeded;
                 if !view.warning.0.is_empty() {
                     view.warning.0.push('\n');
                 }

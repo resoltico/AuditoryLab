@@ -1,18 +1,18 @@
 //! Shared search and correlated query behavior for built-in and external origins.
-use auditorylab::presentation::AudioSummary;
+use auditorylab_app::presentation::AudioSummary;
 
-use auditorylab::recipe::{Origin, RecipeSnapshot};
+use auditorylab_app::document::recipe::{Origin, RecipeSnapshot};
 #[expect(
     clippy::unwrap_used,
     reason = "Controlled search fixture has no invalid date ranges"
 )]
 fn matches_search(snapshot: &RecipeSnapshot, search: &str) -> bool {
-    let entry = auditorylab::collection::EntrySummary::from_snapshot(
-        auditorylab::library::LibraryKey::BuiltIn("fixture".into()),
+    let entry = auditorylab_app::discovery::collection::EntrySummary::from_snapshot(
+        auditorylab_app::storage::library::LibraryKey::BuiltIn("fixture".into()),
         snapshot,
         None,
     );
-    !auditorylab::collection::CatalogQuery {
+    !auditorylab_app::discovery::collection::CatalogQuery {
         search: search.into(),
         ..Default::default()
     }
@@ -23,21 +23,21 @@ fn matches_search(snapshot: &RecipeSnapshot, search: &str) -> bool {
 }
 #[test]
 fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
-    let mut recipe = auditorylab::editing::Draft::new()
+    let mut recipe = auditorylab_app::document::editing::Draft::new()
         .unwrap()
         .recipe()
         .unwrap()
         .into_builder();
-    recipe.sound = auditorylab::core::Sound {
+    recipe.sound = auditorylab_app::core::Sound {
         duration_seconds: 60.0,
         fade_seconds: 0.1,
-        components: (vec![auditorylab::core::Voice {
-            ears: auditorylab::core::Ears::Both,
+        components: (vec![auditorylab_app::core::Voice {
+            ears: auditorylab_app::core::Ears::Both,
             peak_dbfs: -30.0,
-            carrier: auditorylab::core::Carrier::Tone {
+            carrier: auditorylab_app::core::Carrier::Tone {
                 frequency_hz: 200.0,
             },
-            modulation: Some(auditorylab::core::Modulation::Am {
+            modulation: Some(auditorylab_app::core::Modulation::Am {
                 rate_hz: 20.0,
                 depth: 1.0,
             }),
@@ -50,7 +50,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         })
         .collect(),
     };
-    recipe.description = Some(auditorylab::core::Description {
+    recipe.description = Some(auditorylab_app::core::Description {
         title: "Rīga reference 2015".into(),
         notes: Some("two words".into()),
     });
@@ -75,7 +75,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         assert!(!matches_search(&snapshot, search), "{search}");
     }
     let mut steady = snapshot.recipe().clone().into_builder();
-    if let auditorylab::core::ComponentForm::Voice(c) = &mut steady.sound.components[0].form {
+    if let auditorylab_app::core::ComponentForm::Voice(c) = &mut steady.sound.components[0].form {
         c.modulation = None;
     }
     let steady = RecipeSnapshot::new(Origin::Stream("steady".into()), steady.build().unwrap());
@@ -87,10 +87,10 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
 
 #[test]
 fn search_excludes_generated_labels_and_unknown_date_captions() {
-    use auditorylab::core::{
+    use auditorylab_app::core::{
         Carrier, Component, ComponentForm, ComponentId, Description, Ears, Voice,
     };
-    let mut recipe = auditorylab::editing::Draft::new()
+    let mut recipe = auditorylab_app::document::editing::Draft::new()
         .unwrap()
         .recipe()
         .unwrap()

@@ -7,11 +7,11 @@ use super::{
     tasks::{FileKind, WorkerFailure},
 };
 use crate::{
+    audio::session::{LiveUpdateError, PlaybackReport},
+    document::recipe::RecipeSnapshot,
     error::{Error, ErrorKind},
-    library::{LibraryDiagnostic, LibraryKey, MutationStatus},
-    recipe::RecipeSnapshot,
-    session::{LiveUpdateError, PlaybackReport},
-    wav::Exported,
+    storage::library::{LibraryDiagnostic, LibraryKey, MutationStatus},
+    storage::wav::Exported,
 };
 use std::{path::PathBuf, sync::Arc};
 

@@ -1,15 +1,17 @@
 //! Ordinary CLI discovery, selectors, structured output and managed lifecycle grammar.
 use super::{Source, output, prose, usage};
-use auditorylab::core::SampleRate;
-use auditorylab::presentation::DisplayText;
-use auditorylab::recipe::RecipeSnapshot;
-use auditorylab::reports::Report;
-use auditorylab::vocabulary::{Caption, CommandProblem, Status};
-use auditorylab::workflow::Cancel;
-use auditorylab::{
+use auditorylab_app::core::SampleRate;
+use auditorylab_app::document::recipe::RecipeSnapshot;
+use auditorylab_app::presentation::DisplayText;
+use auditorylab_app::presentation::reports::Report;
+use auditorylab_app::presentation::vocabulary::{Caption, CommandProblem, Status};
+use auditorylab_app::services::Cancel;
+use auditorylab_app::{
     self as lab,
-    collection::{CatalogQuery, DateRange, Direction, EntrySummary, GroupBy, Scope, SortBy},
-    library::{LibraryKey, LibraryRoot, LibraryStore, Mutation, VersionToken},
+    discovery::collection::{
+        CatalogQuery, DateRange, Direction, EntrySummary, GroupBy, Scope, SortBy,
+    },
+    storage::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation, VersionToken},
 };
 use clap::{Args, Subcommand, ValueEnum};
 use serde_json::Value;
@@ -73,7 +75,7 @@ pub(super) struct QueryArgs {
     analysis: Option<lab::core::rhythm::Completeness>,
     /// Special state: none, multiple, outside-bands or needs-review.
     #[arg(long)]
-    rhythms: Option<lab::query::RhythmState>,
+    rhythms: Option<lab::discovery::query::RhythmState>,
     /// Inclusive explicit-offset creation instant.
     #[arg(long)]
     created_from: Option<lab::core::Timestamp>,
@@ -111,7 +113,7 @@ impl QueryArgs {
             scope,
             include_external: false,
             search: self.search,
-            rhythm: lab::query::RhythmQuery {
+            rhythm: lab::discovery::query::RhythmQuery {
                 bands: self.band,
                 methods: self.method,
                 state: self.rhythms,
@@ -290,7 +292,7 @@ pub(super) fn resolve(source: Source, path: Option<&Path>) -> Result<Resolved> {
         let key: LibraryKey = selector.parse()?;
         match &key {
             LibraryKey::BuiltIn(id) => {
-                let snapshot = lab::recipe::builtin(id)?;
+                let snapshot = lab::storage::load::builtin(id)?;
                 let summary = EntrySummary::from_snapshot(key, &snapshot, None);
                 Ok(Resolved { snapshot, summary })
             }
@@ -306,24 +308,24 @@ pub(super) fn resolve(source: Source, path: Option<&Path>) -> Result<Resolved> {
         }
     } else {
         let snapshot = if let Some(file) = source.file {
-            lab::recipe::load_file(&file)?
+            lab::storage::load::load_file(&file)?
         } else {
             if io::stdin().is_terminal() {
                 eprintln!("{}", Caption::PasteRecipe.label());
             }
-            lab::recipe::load_reader(io::stdin().lock(), Caption::StandardInput.label())?
+            lab::storage::load::load_reader(io::stdin().lock(), Caption::StandardInput.label())?
         };
-        let key = LibraryKey::External(lab::library::ExternalId::allocate()?);
+        let key = LibraryKey::External(lab::storage::library::ExternalId::allocate()?);
         let summary = EntrySummary::from_snapshot(key, &snapshot, None);
         Ok(Resolved { snapshot, summary })
     }
 }
 fn builtins() -> Result<Vec<EntrySummary>> {
-    lab::recipe::catalog()?
+    lab::storage::load::catalog()?
         .into_iter()
         .map(|snapshot| {
             let key = match snapshot.origin() {
-                lab::recipe::Origin::BuiltIn(id) => LibraryKey::BuiltIn((*id).into()),
+                lab::document::recipe::Origin::BuiltIn(id) => LibraryKey::BuiltIn((*id).into()),
                 _ => return Err(usage(CommandProblem::CatalogOrigin.message())),
             };
             Ok(EntrySummary::from_snapshot(key, &snapshot, None))
@@ -364,15 +366,15 @@ pub(super) fn list(args: ListArgs, path: Option<&Path>) -> Result<u8> {
                 {
                     return Err(error);
                 }
-                lab::library::Inventory {
+                lab::storage::library::Inventory {
                     complete: false,
                     failure_kind: Some(lab::error::ErrorKind::IncompleteInventory),
-                    diagnostics: vec![lab::library::LibraryDiagnostic {
+                    diagnostics: vec![lab::storage::library::LibraryDiagnostic {
                         storage_id: Caption::ConfiguredRoot.label().into(),
                         code: "root_resolution".into(),
                         message: error.to_string(),
                     }],
-                    ..lab::library::Inventory::default()
+                    ..lab::storage::library::Inventory::default()
                 }
             }
         };
@@ -386,9 +388,9 @@ pub(super) fn list(args: ListArgs, path: Option<&Path>) -> Result<u8> {
     }
     query.include_external = !args.files.is_empty();
     for path in args.files {
-        let snapshot = lab::recipe::load_file(&path)?;
+        let snapshot = lab::storage::load::load_file(&path)?;
         entries.push(EntrySummary::from_snapshot(
-            LibraryKey::External(lab::library::ExternalId::allocate()?),
+            LibraryKey::External(lab::storage::library::ExternalId::allocate()?),
             &snapshot,
             None,
         ));
@@ -409,7 +411,7 @@ fn print_list(
     query: &CatalogQuery,
     entries: &[EntrySummary],
     complete: bool,
-    diagnostics: &[lab::library::LibraryDiagnostic],
+    diagnostics: &[lab::storage::library::LibraryDiagnostic],
     stages: &[String],
     format: ListFormat,
 ) -> Result<()> {
@@ -566,9 +568,9 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                     as_copy,
                     format,
                 } => {
-                    let snapshot = lab::recipe::load_file(&file)?;
+                    let snapshot = lab::storage::load::load_file(&file)?;
                     let recipe = if as_copy {
-                        let mut copy = lab::editing::Draft::from_snapshot(&snapshot)?;
+                        let mut copy = lab::document::editing::Draft::from_snapshot(&snapshot)?;
                         copy.set_title(snapshot.title());
                         copy.recipe()?
                     } else {
@@ -594,7 +596,9 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                         Mutation::Update {
                             key: selector,
                             expect,
-                            recipe: Arc::new(lab::recipe::load_file(&file)?.recipe().clone()),
+                            recipe: Arc::new(
+                                lab::storage::load::load_file(&file)?.recipe().clone(),
+                            ),
                         },
                         format,
                     )
@@ -803,10 +807,10 @@ mod query_mapping_tests {
                 scope,
                 include_external: false,
                 search: "actual text".into(),
-                rhythm: lab::query::RhythmQuery {
+                rhythm: lab::discovery::query::RhythmQuery {
                     bands: vec![lab::core::rhythm::Band::Theta],
                     methods: vec![lab::core::rhythm::Method::Monaural],
-                    state: Some(lab::query::RhythmState::OutsideBands),
+                    state: Some(lab::discovery::query::RhythmState::OutsideBands),
                 },
                 studies: vec!["key:source".into()],
                 roles: vec![lab::core::ConditionRole::Comparison],

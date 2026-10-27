@@ -11,12 +11,14 @@
 //! their diagnosis. A held capture is immutable: later navigation, edits,
 //! settings or sessions cannot relabel it.
 use super::View;
-use crate::editing::EditorSession;
+use crate::audio::session::MonitorReader;
+use crate::audio::session::SessionId;
+use crate::document::editing::EditorSession;
+use crate::document::recipe::{RecipeSnapshot, SnapshotId};
 use crate::presentation::AudioErrorText;
-use crate::recipe::{RecipeSnapshot, SnapshotId};
-use crate::session::MonitorReader;
-use crate::session::SessionId;
-use crate::waveform_view::{CaptureError, ModelSource, ModelView, WaveformCapture, WaveformScale};
+use crate::presentation::waveform_view::{
+    CaptureError, ModelSource, ModelView, WaveformCapture, WaveformScale,
+};
 use auditorylab_core::SampleRate;
 use std::sync::Arc;
 
@@ -35,7 +37,7 @@ pub enum MotionPreference {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SourceKey {
     Snapshot(SnapshotId),
-    Draft(crate::editing::DocumentId, u64),
+    Draft(crate::document::editing::DocumentId, u64),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,14 +122,15 @@ pub(crate) struct OutputState {
 impl OutputState {
     pub(crate) fn span_ms(&self) -> u32 {
         if self.span_ms == 0 {
-            crate::controls::DEFAULT_MONITOR_SPAN_MS
+            crate::document::controls::DEFAULT_MONITOR_SPAN_MS
         } else {
             self.span_ms
         }
     }
 
     pub(crate) fn scale(&self) -> WaveformScale {
-        self.scale.unwrap_or(crate::controls::DEFAULT_MONITOR_SCALE)
+        self.scale
+            .unwrap_or(crate::document::controls::DEFAULT_MONITOR_SCALE)
     }
 
     pub(crate) fn held(&self) -> bool {

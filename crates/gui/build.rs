@@ -2,7 +2,7 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let generated = std::path::PathBuf::from(std::env::var_os("OUT_DIR").ok_or("missing OUT_DIR")?);
     let mut vocabulary = String::from("export global Terms {\n");
-    for (property, label) in auditorylab::vocabulary::UI_TERMS {
+    for (property, label) in auditorylab_app::presentation::vocabulary::UI_TERMS {
         // Rust debug string escaping also satisfies Slint's string grammar.
         vocabulary.push_str(&format!(
             "    in-out property <string> {property}: {label:?};\n"

@@ -1,13 +1,15 @@
 //! Shared query counterexamples using actual authored classification and typed evidence.
-use auditorylab::core::{
+use auditorylab_app::core::{
     Carrier, Component, ComponentForm, ComponentId, DocumentIdentity, Ears, Pair, Recipe, Sound,
     Timestamp, Voice,
     rhythm::{Band, Method},
 };
-use auditorylab::recipe::{Origin, RecipeSnapshot};
-use auditorylab::{
-    collection::{CatalogQuery, DateRange, Direction, EntrySummary, GroupBy, Scope, SortBy},
-    library::LibraryKey,
+use auditorylab_app::document::recipe::{Origin, RecipeSnapshot};
+use auditorylab_app::{
+    discovery::collection::{
+        CatalogQuery, DateRange, Direction, EntrySummary, GroupBy, Scope, SortBy,
+    },
+    storage::library::LibraryKey,
 };
 #[expect(
     clippy::unwrap_used,
@@ -20,7 +22,7 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
         modified_at: modified.map(|s| s.parse().unwrap()),
     };
     let mut recipe = Recipe::builder(document);
-    recipe.description = Some(auditorylab::core::Description {
+    recipe.description = Some(auditorylab_app::core::Description {
         title: title.into(),
         notes: None,
     });
@@ -61,7 +63,7 @@ fn am(rate_hz: f64) -> Component {
             carrier: Carrier::Tone {
                 frequency_hz: 1000.0,
             },
-            modulation: Some(auditorylab::core::Modulation::Am {
+            modulation: Some(auditorylab_app::core::Modulation::Am {
                 rate_hz,
                 depth: 1.0,
             }),
@@ -128,7 +130,7 @@ fn evidence_filters_cannot_borrow_population_or_role_and_ancestors_never_assert_
     use auditorylab_core::{
         BibliographySource, ConditionRole as R, Evidence, EvidenceScope as S, Population as P,
     };
-    let mut recipe = auditorylab::editing::Draft::new()
+    let mut recipe = auditorylab_app::document::editing::Draft::new()
         .unwrap()
         .recipe()
         .unwrap()
@@ -240,7 +242,8 @@ fn automatic_defaults_follow_scope_but_explicit_sort_is_retained() {
     q.scope = Scope::BuiltIn;
     assert_eq!(q.effective_sort(), (SortBy::Title, Direction::Asc));
     let mut external = entry(4, "temporary", Vec::new(), None);
-    external.key = LibraryKey::External(auditorylab::library::ExternalId::allocate().unwrap());
+    external.key =
+        LibraryKey::External(auditorylab_app::storage::library::ExternalId::allocate().unwrap());
     let mut trashed = entry(5, "trash", Vec::new(), None);
     trashed.trashed = true;
     trashed.trashed_at = Some("2026-10-24T06:00:00Z".parse().unwrap());

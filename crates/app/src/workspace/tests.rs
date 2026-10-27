@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 struct TestWorkspace {
     inner: Workspace,
-    store: crate::library::LibraryStore,
+    store: crate::storage::library::LibraryStore,
     _root: tempfile::TempDir,
 }
 impl std::ops::Deref for TestWorkspace {
@@ -24,19 +24,22 @@ impl TestWorkspace {
         let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
         std::fs::create_dir_all(&base).unwrap();
         let root = tempfile::tempdir_in(base).unwrap();
-        let store = crate::library::LibraryStore::new(crate::library::LibraryRoot::explicit(
-            root.path().join("library"),
-        )?)?;
+        let store = crate::storage::library::LibraryStore::new(
+            crate::storage::library::LibraryRoot::explicit(root.path().join("library"))?,
+        )?;
         store.root().initialize()?;
         let open_files = !catalog.is_empty()
-            && catalog
-                .iter()
-                .all(|snapshot| !matches!(snapshot.origin(), crate::recipe::Origin::BuiltIn(_)));
+            && catalog.iter().all(|snapshot| {
+                !matches!(
+                    snapshot.origin(),
+                    crate::document::recipe::Origin::BuiltIn(_)
+                )
+            });
         let mut inner = Workspace::with_library(catalog, capabilities, store.clone())?;
         drain_files(&mut inner);
         if open_files {
-            inner.set_catalog_query(crate::collection::CatalogQuery {
-                scope: crate::collection::Scope::OpenFiles,
+            inner.set_catalog_query(crate::discovery::collection::CatalogQuery {
+                scope: crate::discovery::collection::Scope::OpenFiles,
                 ..Default::default()
             })?;
             drain_files(&mut inner);
@@ -85,7 +88,11 @@ fn drain_files(workspace: &mut Workspace) {
     }
 }
 fn workspace() -> TestWorkspace {
-    TestWorkspace::new(crate::recipe::catalog().unwrap(), Capabilities::available()).unwrap()
+    TestWorkspace::new(
+        crate::storage::load::catalog().unwrap(),
+        Capabilities::available(),
+    )
+    .unwrap()
 }
 fn document(ws: &mut Workspace, frequency: f64) -> (DocumentId, FieldHandle) {
     ws.set_view(View::Workbench);
@@ -270,7 +277,7 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
         .editor
         .session
         .handle(EditingField::Metadata(
-            crate::editing::MetadataField::Summary,
+            crate::document::editing::MetadataField::Summary,
         ))
         .unwrap();
     ws.stage(notes, &"🎧".repeat(Recipe::MAX_BYTES)).unwrap();
@@ -310,21 +317,21 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
     )
     .unwrap();
     let path = dir.path().join("original.toml");
-    let original = crate::recipe::catalog().unwrap().remove(0);
-    crate::editing::save_content(original.recipe(), &path, crate::workflow::Replace::Never)
+    let original = crate::storage::load::catalog().unwrap().remove(0);
+    crate::services::save_content(original.recipe(), &path, crate::services::Replace::Never)
         .unwrap();
-    let loaded = crate::recipe::load_file(&path).unwrap();
+    let loaded = crate::storage::load::load_file(&path).unwrap();
     let mut draft = Draft::from_snapshot(&loaded).unwrap();
     draft.set_summary("Own notes".into());
     let derivative = dir.path().join("derivative.toml");
-    crate::editing::save_content(
+    crate::services::save_content(
         &draft.recipe().unwrap(),
         &derivative,
-        crate::workflow::Replace::Never,
+        crate::services::Replace::Never,
     )
     .unwrap();
     std::fs::remove_file(path).unwrap();
-    let reopened = crate::recipe::load_file(&derivative).unwrap();
+    let reopened = crate::storage::load::load_file(&derivative).unwrap();
     let mut ws = workspace();
     ws.replace_document(Draft::from_snapshot(&reopened).unwrap());
     ws.show_based_on_source();
@@ -354,7 +361,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
 
 #[test]
 fn search_includes_own_notes_and_attributed_persisted_source_context() {
-    let source = crate::recipe::catalog().unwrap().remove(0);
+    let source = crate::storage::load::catalog().unwrap().remove(0);
     let citation = source
         .about()
         .unwrap()
@@ -367,7 +374,8 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
     let mut draft = Draft::from_snapshot(&source).unwrap();
     draft.set_summary("unique-own-notes-marker 🎧".into());
     let bytes = draft.to_toml().unwrap();
-    let reopened = crate::recipe::load_reader(bytes.as_bytes(), "reopened derivative").unwrap();
+    let reopened =
+        crate::storage::load::load_reader(bytes.as_bytes(), "reopened derivative").unwrap();
     let mut ws = TestWorkspace::new(vec![reopened], Capabilities::no_device_playback()).unwrap();
     for query in ["unique-own-notes-marker", &citation] {
         ws.set_query(query);
@@ -384,8 +392,8 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
     assert_eq!(ws.visible_count(), 1);
     ws.set_query("unique-own-notes-marker");
     assert_eq!(ws.visible_count(), 1);
-    ws.add_import(crate::recipe::RecipeSnapshot::new(
-        crate::recipe::Origin::Stream("reopened derivative".into()),
+    ws.add_import(crate::document::recipe::RecipeSnapshot::new(
+        crate::document::recipe::Origin::Stream("reopened derivative".into()),
         custom.recipe().unwrap(),
     ));
     ws.set_query("unique-own-notes-marker");
@@ -399,7 +407,7 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
 #[test]
 fn readiness_details_and_export_share_actual_snapshot_realizations_including_errors() {
     let mut ws = TestWorkspace::new(
-        crate::recipe::catalog().unwrap(),
+        crate::storage::load::catalog().unwrap(),
         Capabilities::no_device_playback(),
     )
     .unwrap();
@@ -448,8 +456,8 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
         snapshot.at(SampleRate::new(hz).unwrap()).unwrap_err();
     }
     assert_eq!(snapshot.cached_rates(), 2);
-    let replacement = crate::recipe::RecipeSnapshot::new(
-        crate::recipe::Origin::File("same.toml".into()),
+    let replacement = crate::document::recipe::RecipeSnapshot::new(
+        crate::document::recipe::Origin::File("same.toml".into()),
         selected.recipe().clone(),
     );
     let mut imported = TestWorkspace::new(
@@ -459,8 +467,8 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     .unwrap();
     imported.action_view();
     assert_eq!(replacement.realization_count(), 1);
-    let fresh = crate::recipe::RecipeSnapshot::new(
-        crate::recipe::Origin::File("same.toml".into()),
+    let fresh = crate::document::recipe::RecipeSnapshot::new(
+        crate::document::recipe::Origin::File("same.toml".into()),
         selected.recipe().clone(),
     );
     imported.add_import(fresh.clone());
@@ -480,10 +488,11 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
     let mut edited = Draft::from_snapshot(&original.snapshot().unwrap()).unwrap();
     edited.set_summary("current-own-notes-marker".into());
     let reopened =
-        crate::recipe::load_reader(edited.to_toml().unwrap().as_bytes(), "derivative").unwrap();
+        crate::storage::load::load_reader(edited.to_toml().unwrap().as_bytes(), "derivative")
+            .unwrap();
     let recipe = reopened.recipe().clone();
     let first = RecipeSnapshot::new(
-        crate::recipe::Origin::File("same.toml".into()),
+        crate::document::recipe::Origin::File("same.toml".into()),
         recipe.clone(),
     );
     let mut ws =
@@ -494,7 +503,7 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
     let mut changed = recipe.into_builder();
     changed.lineage[0].note = "reimport-source-marker".into();
     let replacement = RecipeSnapshot::new(
-        crate::recipe::Origin::File("same.toml".into()),
+        crate::document::recipe::Origin::File("same.toml".into()),
         changed.build().unwrap(),
     );
     ws.add_import(replacement.clone());
@@ -514,7 +523,7 @@ fn over_budget_copy_content_is_refused_before_becoming_a_snapshot() {
     candidate.sound.components = (0..17)
         .map(|i| crate::core::Component {
             id: ComponentId::numbered(i).unwrap(),
-            form: crate::core::ComponentForm::Voice(crate::controls::default_component(
+            form: crate::core::ComponentForm::Voice(crate::document::controls::default_component(
                 CarrierKind::Tone,
             )),
         })
@@ -531,7 +540,7 @@ fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
             carrier: crate::core::Carrier::Tone {
                 frequency_hz: f64::NAN,
             },
-            ..crate::controls::default_component(CarrierKind::Tone)
+            ..crate::document::controls::default_component(CarrierKind::Tone)
         }),
     });
     assert!(source.clone().build().is_err());
@@ -540,7 +549,7 @@ fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
         .write(auditorylab_core::ParameterId::ToneFrequency, 440.0);
     source.sound.duration_seconds = -1.0;
     let finite = RecipeSnapshot::new(
-        crate::recipe::Origin::Stream("finite invalid".into()),
+        crate::document::recipe::Origin::Stream("finite invalid".into()),
         source.build().unwrap(),
     );
     assert!(Workspace::copy_content_admission(&finite).is_ok());
@@ -556,7 +565,7 @@ fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
         16
     ];
     let full = RecipeSnapshot::new(
-        crate::recipe::Origin::Stream("full ancestry".into()),
+        crate::document::recipe::Origin::Stream("full ancestry".into()),
         full.build().unwrap(),
     );
     assert!(Workspace::copy_content_admission(&full).is_err());
@@ -570,7 +579,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
         .editor
         .session
         .handle(EditingField::Metadata(
-            crate::editing::MetadataField::Summary,
+            crate::document::editing::MetadataField::Summary,
         ))
         .unwrap();
     ws.stage(notes, &"Z".repeat(66000)).unwrap();
@@ -579,10 +588,10 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
     assert!(actions.operation_summary.contains("65536"));
     ws.files.status = FileStatus::Exported {
         path: PathBuf::from("capture.wav"),
-        exported: crate::wav::Exported {
+        exported: crate::storage::wav::Exported {
             frames: 100,
             sample_rate: SampleRate::DEFAULT,
-            container: crate::wav::Container::Riff,
+            container: crate::storage::wav::Container::Riff,
             warnings: Vec::new(),
         },
     };
@@ -602,17 +611,17 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
 
 #[test]
 fn nominal_listing_a_thousand_rows_does_not_compile_every_sound() {
-    let base = crate::recipe::builtin("ioannou-2015-binaural-2-hz").unwrap();
+    let base = crate::storage::load::builtin("ioannou-2015-binaural-2-hz").unwrap();
     let snapshots = (0..1000)
         .map(|i| {
             RecipeSnapshot::new(
-                crate::recipe::Origin::Stream(format!("fixture-{i}")),
+                crate::document::recipe::Origin::Stream(format!("fixture-{i}")),
                 base.recipe().clone(),
             )
         })
         .collect::<Vec<_>>();
     let mut ws = TestWorkspace::new(snapshots.clone(), Capabilities::no_device_playback()).unwrap();
-    ws.set_rhythm_query(crate::query::RhythmQuery {
+    ws.set_rhythm_query(crate::discovery::query::RhythmQuery {
         bands: vec![crate::core::rhythm::Band::Delta],
         ..Default::default()
     });
@@ -680,7 +689,7 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
     assert_ne!(current.id(), first_copy.id(), "same path, new identity");
     assert_eq!(
         ws.catalog().len(),
-        crate::recipe::catalog().unwrap().len() + 1,
+        crate::storage::load::catalog().unwrap().len() + 1,
         "row replaced in place"
     );
     ws.show_based_on_source();
@@ -798,7 +807,7 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
     assert!(workspace.file_busy());
     assert!(workspace.store.scan(&Cancel::default()).entries.is_empty());
     let response = execute_file(job);
-    let key = crate::library::LibraryKey::User(captured.document().id);
+    let key = crate::storage::library::LibraryKey::User(captured.document().id);
     let saved = workspace.store.load(&key).unwrap();
     assert_eq!(
         saved.snapshot.sound().components[0]
@@ -863,7 +872,9 @@ fn captured_save_completion_never_replaces_a_different_editor_document() {
     ));
     let saved = workspace
         .store
-        .load(&crate::library::LibraryKey::User(captured.document().id))
+        .load(&crate::storage::library::LibraryKey::User(
+            captured.document().id,
+        ))
         .unwrap();
     assert_eq!(
         saved.snapshot.sound().components[0]
@@ -895,7 +906,9 @@ fn save_before_close_waits_for_the_captured_job_completion() {
     assert!(
         workspace
             .store
-            .load(&crate::library::LibraryKey::User(captured.document().id))
+            .load(&crate::storage::library::LibraryKey::User(
+                captured.document().id
+            ))
             .is_ok()
     );
     for _ in 0..10 {
@@ -1041,10 +1054,10 @@ fn actual_import_completion_controls_dependent_close_and_never_runs_on_poll() {
         let directory = temporary_directory();
         let path = directory.path().join("chosen.toml");
         if exists {
-            crate::editing::save_content(
+            crate::services::save_content(
                 short_silent_source().recipe(),
                 &path,
-                crate::workflow::Replace::Never,
+                crate::services::Replace::Never,
             )
             .unwrap();
         }
@@ -1099,7 +1112,7 @@ fn portable_export_keeps_the_prompt_capture_and_does_not_advance_the_save_baseli
     let job = take_file_job(&mut workspace);
     workspace.commit_field(field, "880").unwrap();
     let response = execute_file(job);
-    let saved = crate::recipe::load_file(&path).unwrap();
+    let saved = crate::storage::load::load_file(&path).unwrap();
     assert_eq!(saved.recipe().document().id, identity);
     assert_eq!(
         saved.sound().components[0]
@@ -1222,7 +1235,7 @@ fn managed_save_can_run_beside_admitted_audio_and_stop_does_not_cancel_it() {
     assert!(
         workspace
             .store
-            .load(&crate::library::LibraryKey::User(identity))
+            .load(&crate::storage::library::LibraryKey::User(identity))
             .is_ok()
     );
     assert!(!workspace.editor().dirty());

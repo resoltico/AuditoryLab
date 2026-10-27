@@ -29,7 +29,7 @@ rtrb = "=0.4.0"
 triple_buffer = "=9.0.0"
 unicode-normalization = "0.1.25"
 allocation-counter = "0.8.1"
-auditorylab = { path = "crates/app" }
+auditorylab-app = { path = "crates/app" }
 auditorylab-core = { path = "crates/core" }
 cpal = "0.18.2"
 ctrlc = { version = "3.5.2", features = ["termination"] }

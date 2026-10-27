@@ -36,16 +36,18 @@ fn json(output: &std::process::Output) -> serde_json::Value {
     clippy::unwrap_used,
     reason = "A bounded external schema-4 fixture with unknown history must construct"
 )]
-fn input(path: &Path, title: &str) -> auditorylab::core::Recipe {
-    let mut draft = auditorylab::editing::Draft::new().unwrap();
+fn input(path: &Path, title: &str) -> auditorylab_app::core::Recipe {
+    let mut draft = auditorylab_app::document::editing::Draft::new().unwrap();
     draft.set_title(title.into());
-    draft.add(auditorylab::core::CarrierKind::Clicks).unwrap();
+    draft
+        .add(auditorylab_app::core::CarrierKind::Clicks)
+        .unwrap();
     let id = draft.components()[0].id;
-    let mut editor = auditorylab::editing::EditorSession::new(draft).unwrap();
+    let mut editor = auditorylab_app::document::editing::EditorSession::new(draft).unwrap();
     let field = editor
-        .handle(auditorylab::editing::EditingField::Parameter(
+        .handle(auditorylab_app::document::editing::EditingField::Parameter(
             id,
-            auditorylab::core::ParameterId::ClickRate,
+            auditorylab_app::core::ParameterId::ClickRate,
         ))
         .unwrap();
     editor.commit_field(field, "2").unwrap().unwrap();
@@ -201,7 +203,7 @@ fn native_cli_lifecycle_conflicts_dates_export_and_trash_are_shared_store_operat
     assert_eq!(json(&stale)["status"], "conflict");
     let export = cli(&root, &["recipe", &key]);
     assert!(export.status.success());
-    let exported = auditorylab::core::Recipe::from_bytes(&export.stdout).unwrap();
+    let exported = auditorylab_app::core::Recipe::from_bytes(&export.stdout).unwrap();
     assert_eq!(exported.document().id, original.document().id);
     assert!(exported.to_toml().unwrap().contains("A renamed sound"));
     assert!(!String::from_utf8_lossy(&export.stdout).contains("added_at"));
@@ -369,10 +371,10 @@ fn copy_of_reserved_builtin_is_explicit_and_machine_output_escapes_bidi_controls
     let root = temp.path().join("library");
     assert!(cli(&root, &["library", "init"]).status.success());
     let file = temp.path().join("builtin.toml");
-    let source = auditorylab::recipe::builtin("ioannou-2015-binaural-2-hz").unwrap();
+    let source = auditorylab_app::storage::load::builtin("ioannou-2015-binaural-2-hz").unwrap();
     fs::write(
         &file,
-        auditorylab::recipe::builtin_source("ioannou-2015-binaural-2-hz").unwrap(),
+        auditorylab_app::storage::load::builtin_source("ioannou-2015-binaural-2-hz").unwrap(),
     )
     .unwrap();
     let refused = cli(

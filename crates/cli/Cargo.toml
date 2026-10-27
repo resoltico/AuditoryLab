@@ -11,7 +11,7 @@ publish.workspace = true
 
 [dependencies]
 serde_json.workspace = true
-auditorylab.workspace = true
+auditorylab-app.workspace = true
 ctrlc.workspace = true
 clap.workspace = true
 textwrap.workspace = true
@@ -25,5 +25,5 @@ workspace = true
 [[bin]]
 name = "auditorylab"
 path = "src/main.rs"
-# The library owns the auditorylab API documentation output directory.
+# Rust API documentation lives in auditorylab-app; CLI usage is available through --help.
 doc = false

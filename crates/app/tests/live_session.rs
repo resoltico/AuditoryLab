@@ -1,11 +1,11 @@
 //! Public-library live generation without an audio device.
 mod common;
-use auditorylab::core::{
+use auditorylab_app::audio::session::{LiveGenerator, LiveUpdateError};
+use auditorylab_app::core::{
     Carrier, CarrierKind, ComponentId, Ears, ParameterId, SampleRate, Target, Voice,
 };
-use auditorylab::editing::Draft;
-use auditorylab::presentation::{AudioDetails, AudioSummary};
-use auditorylab::session::{LiveGenerator, LiveUpdateError};
+use auditorylab_app::document::editing::Draft;
+use auditorylab_app::presentation::{AudioDetails, AudioSummary};
 
 fn component(frequency_hz: f64, ears: Ears) -> Voice {
     Voice {
@@ -35,7 +35,7 @@ fn difference(generator: &LiveGenerator) -> f64 {
         .into_iter()
         .flatten()
         .filter_map(|voice| match voice.facts.carrier {
-            auditorylab::core::CarrierFacts::Tone(rate) => Some(rate.realized_hz),
+            auditorylab_app::core::CarrierFacts::Tone(rate) => Some(rate.realized_hz),
             _ => None,
         })
         .collect();
@@ -107,12 +107,12 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
         recipe.sound.components = voices
             .into_iter()
             .enumerate()
-            .map(|(index, voice)| auditorylab::core::Component {
-                id: auditorylab::core::ComponentId::numbered(index).unwrap(),
-                form: auditorylab::core::ComponentForm::Voice(voice),
+            .map(|(index, voice)| auditorylab_app::core::Component {
+                id: auditorylab_app::core::ComponentId::numbered(index).unwrap(),
+                form: auditorylab_app::core::ComponentForm::Voice(voice),
             })
             .collect();
-        let snapshot = auditorylab::recipe::load_reader(
+        let snapshot = auditorylab_app::storage::load::load_reader(
             recipe.build().unwrap().to_toml().unwrap().as_bytes(),
             "called binaural even if not a pair",
         )
@@ -120,7 +120,7 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
         let sound = snapshot.at(SampleRate::DEFAULT).unwrap();
         let observation = sound.signal().observation(0).unwrap();
         assert_eq!(
-            auditorylab::core::rhythm::realized(&observation)
+            auditorylab_app::core::rhythm::realized(&observation)
                 .interaural()
                 .is_some(),
             expected
@@ -130,7 +130,7 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
 
 #[test]
 fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint() {
-    use auditorylab::core::{Observation, SlotRole, VoiceObservation};
+    use auditorylab_app::core::{Observation, SlotRole, VoiceObservation};
 
     let check = auditorylab_core::Sound {
         duration_seconds: 1.0,
@@ -176,8 +176,8 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
 
 #[test]
 fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarget() {
-    use auditorylab::core::{Lane, PairKind};
-    use auditorylab::editing::{EditingField, EditorSession};
+    use auditorylab_app::core::{Lane, PairKind};
+    use auditorylab_app::document::editing::{EditingField, EditorSession};
     let mut editor = EditorSession::new(Draft::new().unwrap()).unwrap();
     let owner = editor
         .add_pair(editor.document_key(), PairKind::Binaural)
@@ -223,7 +223,7 @@ fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarg
     let revision = control.update(&target(editor.draft())).unwrap();
     let title = editor
         .handle(EditingField::Metadata(
-            auditorylab::editing::MetadataField::Title,
+            auditorylab_app::document::editing::MetadataField::Title,
         ))
         .unwrap();
     editor

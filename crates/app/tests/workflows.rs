@@ -1,19 +1,19 @@
 //! Public loading and publication contracts.
 #![cfg(test)]
 mod common;
-use auditorylab::core::SampleRate;
-use auditorylab::error::Error;
-use auditorylab::error::ErrorKind;
-use auditorylab::identity::BUILD_IDENTITY;
-use auditorylab::recipe::RecipeSnapshot;
-use auditorylab::recipe::Rendition;
-use auditorylab::recipe::catalog;
-use auditorylab::recipe::load_file;
-use auditorylab::recipe::load_reader;
-use auditorylab::workflow::Cancel;
-use auditorylab::workflow::Progress;
-use auditorylab::workflow::Replace;
-use auditorylab::workflow::export;
+use auditorylab_app::core::SampleRate;
+use auditorylab_app::document::recipe::RecipeSnapshot;
+use auditorylab_app::document::recipe::Rendition;
+use auditorylab_app::error::Error;
+use auditorylab_app::error::ErrorKind;
+use auditorylab_app::presentation::build_info::BUILD_IDENTITY;
+use auditorylab_app::services::Cancel;
+use auditorylab_app::services::Progress;
+use auditorylab_app::services::Replace;
+use auditorylab_app::services::export;
+use auditorylab_app::storage::load::catalog;
+use auditorylab_app::storage::load::load_file;
+use auditorylab_app::storage::load::load_reader;
 use std::{fs, path::Path};
 fn dir() -> tempfile::TempDir {
     let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
@@ -141,18 +141,18 @@ fn untitled_file_names_are_concise_and_origins_remain_complete() {
         ("/deep/line\nbreak.toml", "line\\nbreak", "line break.wav"),
         ("/deep/symlink.toml", "symlink", "symlink.wav"),
     ] {
-        let snapshot = auditorylab::recipe::RecipeSnapshot::new(
-            auditorylab::recipe::Origin::File(path.into()),
+        let snapshot = auditorylab_app::document::recipe::RecipeSnapshot::new(
+            auditorylab_app::document::recipe::Origin::File(path.into()),
             plain.clone(),
         );
         assert_eq!(snapshot.title(), name);
         assert_eq!(snapshot.suggested_output_name("wav"), suggested);
         assert!(
             snapshot
-                .details_at(auditorylab::core::SampleRate::DEFAULT)
+                .details_at(auditorylab_app::core::SampleRate::DEFAULT)
                 .contains("/deep/")
         );
-        let draft = auditorylab::editing::Draft::from_snapshot(&snapshot).unwrap();
+        let draft = auditorylab_app::document::editing::Draft::from_snapshot(&snapshot).unwrap();
         assert_eq!(draft.title(), format!("{name} (edited)"));
     }
 }

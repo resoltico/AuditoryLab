@@ -1,17 +1,17 @@
 //! Device integration using only component-free silence.
 #![cfg(test)]
 mod common;
-use auditorylab::device::{prepare_live, prepare_playback};
-use auditorylab::editing::Draft;
-use auditorylab::recipe::load_reader;
-use auditorylab::session::{EndReason, Preparation, Session, StopRequest};
+use auditorylab_app::audio::device::{prepare_live, prepare_playback};
+use auditorylab_app::audio::session::{EndReason, Preparation, Session, StopRequest};
+use auditorylab_app::document::editing::Draft;
+use auditorylab_app::storage::load::load_reader;
 use std::time::{Duration, Instant};
 
 fn silent(
     seconds: u32,
 ) -> (
-    auditorylab::device::PreparedPlayback,
-    auditorylab::session::PlaybackControl,
+    auditorylab_app::audio::device::PreparedPlayback,
+    auditorylab_app::audio::session::PlaybackControl,
 ) {
     let recipe = common::silent(f64::from(seconds), 0.0).to_toml().unwrap();
     let snapshot = load_reader(recipe.as_bytes(), "silence").unwrap();

@@ -1,5 +1,5 @@
 //! Recipes for behavior tests, independent of the portable text format.
-use auditorylab::core::{DocumentIdentity, DocumentUuid, Recipe};
+use auditorylab_app::core::{DocumentIdentity, DocumentUuid, Recipe};
 
 pub(crate) fn silent(seconds: f64, fade: f64) -> Recipe {
     let mut recipe = Recipe::builder(DocumentIdentity {

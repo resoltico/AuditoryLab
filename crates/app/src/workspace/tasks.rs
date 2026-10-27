@@ -3,12 +3,12 @@
 
 //! Immutable job captures and the application-owned thread runner.
 use super::{Response, Workspace};
-use crate::editing::{DocumentId, Draft};
+use crate::audio::session::{LiveControl, PlaybackControl, PlaybackReport, Session};
+use crate::document::editing::{DocumentId, Draft};
+use crate::document::recipe::{RecipeSnapshot, Rendition};
 use crate::error::{Error, ErrorKind};
-use crate::recipe::{RecipeSnapshot, Rendition};
-use crate::session::{LiveControl, PlaybackControl, PlaybackReport, Session};
-use crate::wav::Exported;
-use crate::workflow::{Cancel, Progress, Replace};
+use crate::services::{Cancel, Progress, Replace};
+use crate::storage::wav::Exported;
 use auditorylab_core::SampleRate;
 use std::{
     path::PathBuf,
@@ -42,7 +42,7 @@ pub(crate) enum AudioKind {
     /// Revalidate a managed selection on the worker before device preparation.
     Managed {
         snapshot: RecipeSnapshot,
-        store: crate::library::LibraryStore,
+        store: crate::storage::library::LibraryStore,
     },
     /// A document's committed components, live until stopped.
     Live(DocumentId),
@@ -84,7 +84,7 @@ pub enum FileOutcome {
     /// Managed library operation.
     Managed(Result<super::library::LibraryOutcome, Error>),
     /// Published portable bytes.
-    RecipeExported(Result<crate::workflow::SaveOutcome, Error>),
+    RecipeExported(Result<crate::services::SaveOutcome, Error>),
     /// Published audio export.
     Exported(Result<Exported, Error>),
 }
@@ -127,17 +127,17 @@ impl FileKind {
     pub(crate) fn execute(self) -> FileOutcome {
         match self {
             Self::ExportRecipe { text, path } => FileOutcome::RecipeExported(
-                crate::workflow::save_recipe_text(&text, &path, Replace::Allowed),
+                crate::services::save_recipe_text(&text, &path, Replace::Allowed),
             ),
             Self::Managed(job) => FileOutcome::Managed(job.execute()),
-            Self::Import(path) => FileOutcome::Imported(crate::recipe::load_file(&path)),
+            Self::Import(path) => FileOutcome::Imported(crate::storage::load::load_file(&path)),
             Self::Export {
                 path,
                 cancel,
                 progress,
                 sound,
                 ..
-            } => FileOutcome::Exported(crate::workflow::export(
+            } => FileOutcome::Exported(crate::services::export(
                 &sound,
                 &path,
                 Replace::Allowed,
@@ -150,15 +150,15 @@ impl FileKind {
 
 pub(super) fn revalidate_managed(
     snapshot: &RecipeSnapshot,
-    store: &crate::library::LibraryStore,
+    store: &crate::storage::library::LibraryStore,
 ) -> Result<RecipeSnapshot, Error> {
-    let crate::recipe::Origin::User { id, version } = snapshot.origin() else {
+    let crate::document::recipe::Origin::User { id, version } = snapshot.origin() else {
         return Err(Error::new(
             ErrorKind::InvalidArgument,
             "expected a captured User selection",
         ));
     };
-    let record = store.load(&crate::library::LibraryKey::User(*id))?;
+    let record = store.load(&crate::storage::library::LibraryKey::User(*id))?;
     if record.trashed || &record.version_token != version {
         return Err(Error::new(
             ErrorKind::Conflict,
@@ -303,8 +303,8 @@ fn execute_audio(
     prepared: &mut impl FnMut(Response),
 ) -> Result<PlaybackReport, Error> {
     use crate::{
-        device,
-        session::{MonitorDetail, Outcome, Preparation},
+        audio::device,
+        audio::session::{MonitorDetail, Outcome, Preparation},
     };
     if session.state().outcome() == Outcome::StopRequested {
         session.state().finish_drained(Outcome::Completed);
@@ -330,7 +330,7 @@ fn execute_audio(
                     .ok_or_else(|| {
                         Error::new(
                             ErrorKind::Device,
-                            crate::vocabulary::Caption::MonitorAlreadyInUse.label(),
+                            crate::presentation::vocabulary::Caption::MonitorAlreadyInUse.label(),
                         )
                     })?;
                 prepared(Response::Prepared {
@@ -351,7 +351,7 @@ fn execute_audio(
                     .ok_or_else(|| {
                         Error::new(
                             ErrorKind::Device,
-                            crate::vocabulary::Caption::MonitorAlreadyInUse.label(),
+                            crate::presentation::vocabulary::Caption::MonitorAlreadyInUse.label(),
                         )
                     })?;
                 prepared(Response::Prepared {

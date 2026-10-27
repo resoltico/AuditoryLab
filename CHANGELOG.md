@@ -6,6 +6,8 @@ Use concise bullets without category labels or subheadings, grouping related cha
 
 ## [Unreleased]
 
+- The Rust application package is `auditorylab-app`; APIs are grouped by document, discovery, services, storage, audio and presentation. Update dependencies and imports.
+
 - Recipes require schema 4: envelope settings move into `[sound]`; carrier/modulation kinds use `clicks`, `am` and `gate`. Rewrite schema-3 files before loading them.
 - CLI analysis uses `complete` or `invalid`; raw tones are independent steady tones unless authored as a pair. Classifier revision is 2.
 - CLI `--method am` replaces `--method amplitude-modulation`; JSON output uses schema 2. Update scripts and report consumers.

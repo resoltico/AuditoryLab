@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use crate::library::LibraryRoot;
+use crate::storage::library::LibraryRoot;
 
 fn fixture() -> (tempfile::TempDir, LibraryStore, Workspace) {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
@@ -12,7 +12,7 @@ fn fixture() -> (tempfile::TempDir, LibraryStore, Workspace) {
         LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
     store.root().initialize().unwrap();
     let mut workspace = Workspace::with_library(
-        crate::recipe::catalog().unwrap(),
+        crate::storage::load::catalog().unwrap(),
         Capabilities::no_device_playback(),
         store.clone(),
     )
@@ -48,7 +48,9 @@ fn title(w: &mut Workspace, text: &str) {
     let handle = w
         .editor
         .session
-        .handle(EditingField::Metadata(crate::editing::MetadataField::Title))
+        .handle(EditingField::Metadata(
+            crate::document::editing::MetadataField::Title,
+        ))
         .unwrap();
     w.editor.session.stage(handle, text).unwrap();
     w.editor.session.commit().unwrap();
@@ -63,7 +65,7 @@ fn user(w: &mut Workspace) {
 }
 #[test]
 fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replacement() {
-    use crate::collection::{DateRange, GroupBy, SortBy};
+    use crate::discovery::collection::{DateRange, GroupBy, SortBy};
     let (_temp, _store, mut w) = fixture();
     let from = "2026-03-28T22:00:00Z".parse().unwrap();
     let before = "2026-03-29T21:00:00Z".parse().unwrap();
@@ -73,10 +75,10 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
         populations: vec![crate::core::Population::Human],
         roles: vec![crate::core::ConditionRole::Comparison],
         analysis: Some(crate::core::rhythm::Completeness::Invalid),
-        rhythm: crate::query::RhythmQuery {
+        rhythm: crate::discovery::query::RhythmQuery {
             bands: vec![crate::core::rhythm::Band::Delta],
             methods: vec![crate::core::rhythm::Method::Binaural],
-            state: Some(crate::query::RhythmState::Multiple),
+            state: Some(crate::discovery::query::RhythmState::Multiple),
         },
         created: DateRange {
             from: Some(from),
@@ -122,7 +124,7 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
 
 #[test]
 fn summary_rows_show_real_sort_date_unknown_edit_and_added_without_loading_documents() {
-    use crate::collection::{Direction, SortBy};
+    use crate::discovery::collection::{Direction, SortBy};
     let (_temp, _store, mut w) = fixture();
     let p = &mut w.library;
     let mut unknown = p.entries[0].clone();
@@ -163,7 +165,7 @@ fn summary_rows_show_real_sort_date_unknown_edit_and_added_without_loading_docum
     assert_eq!(rows[0].key, unknown.key.to_string());
     assert!(rows[0].text.contains(&format!(
         "Created: {}",
-        crate::calendar::local_timestamp(unknown.created_at.unwrap())
+        crate::discovery::calendar::local_timestamp(unknown.created_at.unwrap())
     )));
     p.query.sort = SortBy::Added;
     p.query.direction = Some(Direction::Desc);
@@ -211,7 +213,7 @@ fn two_editors_conflict_even_for_noop_and_refresh_preserves_draft() {
     user(&mut w);
     w.edit_selected();
     let mut other = Workspace::with_library(
-        crate::recipe::catalog().unwrap(),
+        crate::storage::load::catalog().unwrap(),
         Capabilities::no_device_playback(),
         store.clone(),
     )
@@ -603,9 +605,9 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
             let mut recipe = workspace.editor().draft().recipe().unwrap().into_builder();
             recipe.sound.components = vec![crate::core::Component {
                 id: crate::core::ComponentId::new(1).unwrap(),
-                form: crate::core::ComponentForm::Voice(crate::controls::default_component(
-                    crate::core::CarrierKind::Tone,
-                )),
+                form: crate::core::ComponentForm::Voice(
+                    crate::document::controls::default_component(crate::core::CarrierKind::Tone),
+                ),
             }];
             recipe.sound.components.push(recipe.sound.components[0]);
             recipe
@@ -665,7 +667,7 @@ fn selected_users() -> (
         keys.push(result.key);
     }
     let mut workspace = Workspace::with_library(
-        crate::recipe::catalog().unwrap(),
+        crate::storage::load::catalog().unwrap(),
         Capabilities::available(),
         store.clone(),
     )
@@ -675,9 +677,9 @@ fn selected_users() -> (
         .set_catalog_query(CatalogQuery {
             scope: Scope::User,
             search: "Shared".into(),
-            sort: crate::collection::SortBy::Title,
-            direction: Some(crate::collection::Direction::Desc),
-            group_by: crate::collection::GroupBy::Collection,
+            sort: crate::discovery::collection::SortBy::Title,
+            direction: Some(crate::discovery::collection::Direction::Desc),
+            group_by: crate::discovery::collection::GroupBy::Collection,
             ..CatalogQuery::default()
         })
         .unwrap();

@@ -66,7 +66,7 @@ fn commands_sources_and_exit_codes() {
     );
     assert_eq!(
         cli(&["recipe", ID]).stdout,
-        auditorylab::recipe::builtin_source("chan-2022-clicks-40-hz")
+        auditorylab_app::storage::load::builtin_source("chan-2022-clicks-40-hz")
             .unwrap()
             .as_bytes()
     );
@@ -204,7 +204,9 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
 
 #[test]
 fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
-    use auditorylab::core::{Carrier, Component, ComponentForm, ComponentId, Ears, Pair, Voice};
+    use auditorylab_app::core::{
+        Carrier, Component, ComponentForm, ComponentId, Ears, Pair, Voice,
+    };
     let d = dir();
     let file = d.path().join("meaning.toml");
     let tone = |frequency_hz, ears, peak_dbfs| Voice {
@@ -312,18 +314,21 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
     let dir = dir();
     let path = dir.path().join("pulse.toml");
     let mut recipe = common::silent(0.05, 0.0).into_builder();
-    recipe.sound.components.push(auditorylab::core::Component {
-        id: auditorylab::core::ComponentId::new(1).unwrap(),
-        form: auditorylab::core::ComponentForm::Voice(auditorylab::core::Voice {
-            ears: auditorylab::core::Ears::Both,
-            peak_dbfs: -30.0,
-            carrier: auditorylab::core::Carrier::Clicks {
-                rate_hz: 40.0,
-                width_seconds: 0.0001,
-            },
-            modulation: None,
-        }),
-    });
+    recipe
+        .sound
+        .components
+        .push(auditorylab_app::core::Component {
+            id: auditorylab_app::core::ComponentId::new(1).unwrap(),
+            form: auditorylab_app::core::ComponentForm::Voice(auditorylab_app::core::Voice {
+                ears: auditorylab_app::core::Ears::Both,
+                peak_dbfs: -30.0,
+                carrier: auditorylab_app::core::Carrier::Clicks {
+                    rate_hz: 40.0,
+                    width_seconds: 0.0001,
+                },
+                modulation: None,
+            }),
+        });
     fs::write(&path, recipe.build().unwrap().to_toml().unwrap()).unwrap();
     let out = cli(&[
         "inspect",
@@ -365,17 +370,17 @@ fn unicode_notes_roundtrip_and_terminal_controls_are_escaped_at_display_boundary
     let dir = dir();
     let path = dir.path().join("notes.toml");
     let mut recipe =
-        auditorylab::core::Recipe::parse(std::str::from_utf8(silence().as_bytes()).unwrap())
+        auditorylab_app::core::Recipe::parse(std::str::from_utf8(silence().as_bytes()).unwrap())
             .unwrap()
             .into_builder();
-    recipe.description = Some(auditorylab::core::Description {
+    recipe.description = Some(auditorylab_app::core::Description {
         title: "Rīga \"🎧\"".into(),
         notes: Some("Line one\nLine two \u{1b}[31m \u{202e}reverse".into()),
     });
     let recipe = recipe.build().unwrap();
     let text = recipe.to_toml().unwrap();
     fs::write(&path, &text).unwrap();
-    assert_eq!(auditorylab::core::Recipe::parse(&text).unwrap(), recipe);
+    assert_eq!(auditorylab_app::core::Recipe::parse(&text).unwrap(), recipe);
     for command in ["describe", "inspect"] {
         let out = cli(&[command, "--file", path.to_str().unwrap()]);
         assert!(out.status.success(), "{out:?}");

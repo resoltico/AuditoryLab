@@ -6,8 +6,8 @@ use std::{fs, process::Command};
 #[ignore = "subprocess fixture, explicitly invoked by native_calendar_uses_actual_timezone_database"]
 fn calendar_child() {
     let date = std::env::var("AUDITORYLAB_CALENDAR_TEST_DATE").unwrap();
-    let range = auditorylab::calendar::local_range(
-        auditorylab::calendar::CalendarField::Created,
+    let range = auditorylab_app::discovery::calendar::local_range(
+        auditorylab_app::discovery::calendar::CalendarField::Created,
         &date,
         &date,
     )
@@ -19,9 +19,9 @@ fn calendar_child() {
         "2026-10-25T01:30:00Z",
     ]
     .into_iter()
-    .map(|s| auditorylab::calendar::local_timestamp(s.parse().unwrap()))
+    .map(|s| auditorylab_app::discovery::calendar::local_timestamp(s.parse().unwrap()))
     .collect();
-    fs::write(std::env::var_os("AUDITORYLAB_CALENDAR_TEST_RESULT").unwrap(),serde_json::to_vec(&serde_json::json!({"from":range.from,"before":range.before,"context":auditorylab::calendar::local_context(),"shown":shown})).unwrap()).unwrap();
+    fs::write(std::env::var_os("AUDITORYLAB_CALENDAR_TEST_RESULT").unwrap(),serde_json::to_vec(&serde_json::json!({"from":range.from,"before":range.before,"context":auditorylab_app::discovery::calendar::local_context(),"shown":shown})).unwrap()).unwrap();
 }
 #[test]
 fn native_calendar_uses_actual_timezone_database() {
@@ -66,8 +66,10 @@ fn native_calendar_uses_actual_timezone_database() {
                 "2026-10-25 03:30:00 UTC+02:00",
             ])
         );
-        let start: auditorylab::core::Timestamp = value["from"].as_str().unwrap().parse().unwrap();
-        let end: auditorylab::core::Timestamp = value["before"].as_str().unwrap().parse().unwrap();
+        let start: auditorylab_app::core::Timestamp =
+            value["from"].as_str().unwrap().parse().unwrap();
+        let end: auditorylab_app::core::Timestamp =
+            value["before"].as_str().unwrap().parse().unwrap();
         assert_eq!(end.unix_seconds() - start.unix_seconds(), hours * 3600);
     }
 }

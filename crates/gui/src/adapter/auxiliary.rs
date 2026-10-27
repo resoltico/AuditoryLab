@@ -82,7 +82,7 @@ pub(super) fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
     });
     windows
         .about
-        .on_open_source(|| open_web(auditorylab::identity::SOURCE_URL));
+        .on_open_source(|| open_web(auditorylab_app::presentation::build_info::SOURCE_URL));
     let licenses = windows.licenses.as_weak();
     windows.about.on_open_licenses(move || {
         if let Some(window) = licenses.upgrade() {
@@ -90,7 +90,8 @@ pub(super) fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
                 Ok(()) => window.invoke_focus_start(),
                 Err(error) => eprintln!(
                     "{}",
-                    auditorylab::vocabulary::InterfaceOperation::Licenses.failure(error)
+                    auditorylab_app::presentation::vocabulary::InterfaceOperation::Licenses
+                        .failure(error)
                 ),
             }
         }
@@ -108,14 +109,14 @@ pub(super) fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
                 Ok(path) => match path.to_str() {
                     Some(path) => {
                         window.set_notice(
-                            auditorylab::vocabulary::Caption::BundledNoticesHelp
+                            auditorylab_app::presentation::vocabulary::Caption::BundledNoticesHelp
                                 .label()
                                 .into(),
                         );
                         open_web(path);
                     }
                     None => window.set_notice(
-                        auditorylab::vocabulary::Caption::NoticesPathError
+                        auditorylab_app::presentation::vocabulary::Caption::NoticesPathError
                             .label()
                             .into(),
                     ),

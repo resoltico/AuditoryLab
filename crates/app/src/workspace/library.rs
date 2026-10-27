@@ -4,13 +4,13 @@
 //! Managed-library state and immutable worker requests. Only selected User content
 //! is retained in full; index rows are disposable summaries.
 use super::*;
-use crate::collection::{CatalogQuery, EntrySummary, Scope};
-use crate::library::{
+use crate::discovery::collection::{CatalogQuery, EntrySummary, Scope};
+use crate::presentation::vocabulary::{NumberStyle, Term};
+use crate::presentation::{AudioSummary, DisplayText};
+use crate::storage::library::{
     Inventory, LibraryKey, LibraryStore, LoadedRecord, Mutation, MutationKind, VersionToken,
     WriteOutcome,
 };
-use crate::presentation::{AudioSummary, DisplayText};
-use crate::vocabulary::{NumberStyle, Term};
 
 /// A real configured library capability or a typed configuration failure.
 #[derive(Debug)]
@@ -18,7 +18,7 @@ pub enum LibraryBinding {
     /// A persistent store whose filesystem work is performed by jobs.
     Store(LibraryStore),
     /// Invalid/unavailable configuration; Built-ins remain usable.
-    Unavailable(crate::library::LibraryDiagnostic),
+    Unavailable(crate::storage::library::LibraryDiagnostic),
 }
 impl LibraryBinding {
     /// Resolve native configuration outside the sans-IO coordinator.
@@ -26,13 +26,15 @@ impl LibraryBinding {
     /// # Errors
     /// Refuses invalid shipped identity metadata while retaining configuration failures as data.
     pub fn configured() -> Result<Self, Error> {
-        match crate::library::LibraryRoot::resolve(None) {
+        match crate::storage::library::LibraryRoot::resolve(None) {
             Ok(root) => LibraryStore::new(root).map(Self::Store),
-            Err(error) => Ok(Self::Unavailable(crate::library::LibraryDiagnostic {
-                storage_id: "configured root".into(),
-                code: "configuration".into(),
-                message: error.to_string(),
-            })),
+            Err(error) => Ok(Self::Unavailable(
+                crate::storage::library::LibraryDiagnostic {
+                    storage_id: "configured root".into(),
+                    code: "configuration".into(),
+                    message: error.to_string(),
+                },
+            )),
         }
     }
     pub(super) fn store(&self) -> Option<&LibraryStore> {
@@ -41,7 +43,7 @@ impl LibraryBinding {
             Self::Unavailable(_) => None,
         }
     }
-    pub(super) fn problem(&self) -> Option<&crate::library::LibraryDiagnostic> {
+    pub(super) fn problem(&self) -> Option<&crate::storage::library::LibraryDiagnostic> {
         match self {
             Self::Unavailable(problem) => Some(problem),
             Self::Store(_) => None,
@@ -56,7 +58,7 @@ pub(super) struct LibraryState {
     #[cfg(test)]
     pub(super) evaluations: std::cell::Cell<u64>,
     entries: Vec<EntrySummary>,
-    snapshots: Vec<(LibraryKey, crate::recipe::SnapshotId)>,
+    snapshots: Vec<(LibraryKey, crate::document::recipe::SnapshotId)>,
     pub(super) query: CatalogQuery,
     visible: Vec<LibraryKey>,
     selection: Option<LibraryKey>,
@@ -64,7 +66,7 @@ pub(super) struct LibraryState {
     refresh: bool,
     load_attempted: Option<LibraryKey>,
     inventory: Arc<InventoryStatus>,
-    read_failure: Option<crate::library::LibraryDiagnostic>,
+    read_failure: Option<crate::storage::library::LibraryDiagnostic>,
     filter_error: Option<Error>,
     unreadable: std::collections::BTreeSet<LibraryKey>,
     stale: std::collections::BTreeSet<LibraryKey>,
@@ -123,7 +125,7 @@ impl LibraryState {
                 }
                 _ => job.store.root().path().display().to_string(),
             };
-            self.read_failure = Some(crate::library::LibraryDiagnostic {
+            self.read_failure = Some(crate::storage::library::LibraryDiagnostic {
                 storage_id,
                 code: "read_failure".into(),
                 message,
@@ -136,9 +138,9 @@ impl LibraryState {
     }
     fn register(&mut self, snapshot: &RecipeSnapshot) -> Result<(), Error> {
         let key = match snapshot.origin() {
-            crate::recipe::Origin::BuiltIn(id) => LibraryKey::BuiltIn((*id).into()),
-            crate::recipe::Origin::User { .. } => return Ok(()),
-            _ => crate::library::ExternalId::allocate().map(LibraryKey::External)?,
+            crate::document::recipe::Origin::BuiltIn(id) => LibraryKey::BuiltIn((*id).into()),
+            crate::document::recipe::Origin::User { .. } => return Ok(()),
+            _ => crate::storage::library::ExternalId::allocate().map(LibraryKey::External)?,
         };
         // Reopening a path replaces its temporary snapshot without changing other keys.
         self.snapshots.push((key.clone(), snapshot.id()));
@@ -206,7 +208,7 @@ impl LibraryState {
     }
     pub(super) fn rows(&self) -> (Vec<LibraryRowView>, Option<usize>) {
         let label = |e: &EntrySummary| {
-            use crate::collection::SortBy;
+            use crate::discovery::collection::SortBy;
             let sort = self.query.effective_sort().0;
             let (date_label, date) = match sort {
                 SortBy::Created => ("Created", e.created_at),
@@ -218,7 +220,10 @@ impl LibraryState {
                 _ => ("Created", e.created_at),
             };
             let shown = |date: Option<crate::core::Timestamp>| {
-                date.map_or_else(|| "Unknown".into(), crate::calendar::local_timestamp)
+                date.map_or_else(
+                    || "Unknown".into(),
+                    crate::discovery::calendar::local_timestamp,
+                )
             };
             let mut dates = format!("{date_label}: {}", shown(date));
             if matches!(e.key, LibraryKey::User(_)) {
@@ -367,7 +372,7 @@ enum Operation {
     },
     ExternalSave {
         document: DocumentId,
-        expected: crate::external::ObservedFile,
+        expected: crate::storage::external::ObservedFile,
         recipe: Arc<Recipe>,
     },
 
@@ -384,7 +389,7 @@ pub enum LibraryOutcome {
     /// Bounded storage inventory.
     Inventory(Inventory),
     /// Confirmed external save.
-    ExternalWritten(Box<crate::external::ExternalOutcome>),
+    ExternalWritten(Box<crate::storage::external::ExternalOutcome>),
     /// Captured selected record.
     Loaded(Box<LoadedRecord>),
     /// Verified managed mutation.
@@ -428,7 +433,7 @@ impl LibraryJob {
         let record_matches = |record: &LoadedRecord, key: &LibraryKey| {
             record.key == *key
                 && matches!(key,LibraryKey::User(id) if record.snapshot.recipe().document().id==*id)
-                && matches!(record.snapshot.origin(),crate::recipe::Origin::User {id,version} if key==&LibraryKey::User(*id) && version==&record.version_token)
+                && matches!(record.snapshot.origin(),crate::document::recipe::Origin::User {id,version} if key==&LibraryKey::User(*id) && version==&record.version_token)
         };
         let written_matches = |outcome: &WriteOutcome, key: &LibraryKey, kind: MutationKind| {
             outcome.key == *key
@@ -495,7 +500,7 @@ impl LibraryJob {
                 .map(|r| LibraryOutcome::Written(Box::new(r))),
             Operation::ExternalSave {
                 expected, recipe, ..
-            } => crate::external::ExternalWriter
+            } => crate::storage::external::ExternalWriter
                 .save(&expected, recipe, &Cancel::default())
                 .map(|r| LibraryOutcome::ExternalWritten(Box::new(r))),
             Operation::Scan => Ok(LibraryOutcome::Inventory(
@@ -507,7 +512,7 @@ impl LibraryJob {
                 inventory
                     .diagnostics
                     .extend(initialized.warnings.into_iter().map(|message| {
-                        crate::library::LibraryDiagnostic {
+                        crate::storage::library::LibraryDiagnostic {
                             storage_id: "library.toml".into(),
                             code: "initialization_warning".into(),
                             message,
@@ -566,7 +571,7 @@ impl Workspace {
         let key = if let Some((key, _)) = p.snapshots.iter().find(|(_, id)| *id == snapshot.id()) {
             key.clone()
         } else {
-            let key = match crate::library::ExternalId::allocate() {
+            let key = match crate::storage::library::ExternalId::allocate() {
                 Ok(id) => LibraryKey::External(id),
                 Err(error) => {
                     self.files.status = FileStatus::Failed(error);
@@ -591,7 +596,7 @@ impl Workspace {
         p.refilter();
         p.select(Some(key));
         self.library.query.search.clear();
-        self.library.query.rhythm = crate::query::RhythmQuery::default();
+        self.library.query.rhythm = crate::discovery::query::RhythmQuery::default();
         self.view = View::Library;
         self.effects.push(Effect::ShowView(View::Library));
         self.files.status = FileStatus::Notice(FileNotice::RetainedSource);
@@ -607,7 +612,7 @@ impl Workspace {
     #[must_use]
     pub fn library_facets(&self) -> (Vec<LibraryFacetView>, Vec<String>) {
         use crate::core::rhythm::{Band, Method};
-        use crate::query::RhythmState;
+        use crate::discovery::query::RhythmState;
         let facet = |query: &CatalogQuery, label: String, detail: &str| {
             let count = query.count(&self.library.entries).unwrap_or(0);
             let count = if self.library.inventory.complete {
@@ -735,7 +740,7 @@ impl Workspace {
                     if let Some(value) = value {
                         restrictions.push(format!(
                             "{name} {label}: {} · UTC {value}",
-                            crate::calendar::local_timestamp(value)
+                            crate::discovery::calendar::local_timestamp(value)
                         ));
                     }
                 }
@@ -752,7 +757,7 @@ impl Workspace {
     /// Explain an empty result without treating an incomplete scan as an empty collection.
     #[must_use]
     pub fn library_empty_message(&self) -> &'static str {
-        use crate::vocabulary::Status;
+        use crate::presentation::vocabulary::Status;
         if !self.library.visible.is_empty() {
             return "";
         }
@@ -919,7 +924,7 @@ impl Workspace {
         self.import_admission()?;
         let content = self.prepare_recipe()?;
         let snapshot = RecipeSnapshot::new(
-            crate::recipe::Origin::Draft(self.editor.session.draft().title().into()),
+            crate::document::recipe::Origin::Draft(self.editor.session.draft().title().into()),
             (*content).clone(),
         );
         let draft =
@@ -956,7 +961,7 @@ impl Workspace {
         let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
         if !matches!(
             snapshot.origin(),
-            crate::recipe::Origin::File(_) | crate::recipe::Origin::Stream(_)
+            crate::document::recipe::Origin::File(_) | crate::document::recipe::Origin::Stream(_)
         ) {
             return Err(Refusal::Document(
                 "Select an Open file to add; use Edit a copy for Built-in content.".into(),
@@ -1127,7 +1132,7 @@ impl Workspace {
         p.refilter();
         p.select(Some(key));
         self.library.query.search.clear();
-        self.library.query.rhythm = crate::query::RhythmQuery::default();
+        self.library.query.rhythm = crate::discovery::query::RhythmQuery::default();
         self.load_library_selection();
         self.changed();
         true
@@ -1188,7 +1193,7 @@ impl Workspace {
                         if utc {
                             d.to_string()
                         } else {
-                            crate::calendar::local_timestamp(d)
+                            crate::discovery::calendar::local_timestamp(d)
                         }
                     },
                 )
@@ -1206,13 +1211,12 @@ impl Workspace {
                     "\nTrashed here: {}",
                     shown(Some(d))
                 )),
-                self.selected()
-                    .map_or(String::new(), |s| crate::library::history_warnings(
-                        s.recipe()
-                    )
-                    .iter()
-                    .map(|w| format!("\n{w}"))
-                    .collect::<String>())
+                self.selected().map_or(String::new(), |s| {
+                    crate::storage::library::history_warnings(s.recipe())
+                        .iter()
+                        .map(|w| format!("\n{w}"))
+                        .collect::<String>()
+                })
             )
         })
     }
@@ -1500,7 +1504,7 @@ impl Workspace {
     fn accept_external_outcome(
         &mut self,
         document: Option<DocumentId>,
-        outcome: crate::external::ExternalOutcome,
+        outcome: crate::storage::external::ExternalOutcome,
     ) -> (FileStatus, Option<bool>) {
         let Some(document) = document else {
             return (

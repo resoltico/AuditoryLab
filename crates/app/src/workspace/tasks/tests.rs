@@ -3,13 +3,13 @@
 
 //! Physical worker ownership and coordinator protocol tests without a device.
 use super::*;
-use crate::core::{CarrierKind, ParameterId, SampleRate};
-use crate::editing::{EditingField, FieldHandle};
-use crate::library::{LibraryRoot, LibraryStore, Mutation};
-use crate::session::{
+use crate::audio::session::{
     EndReason, LiveGenerator, MonitorDetail, Outcome, OutputInfo, PlaybackMonitor, SampleFormat,
     SessionDescriptor,
 };
+use crate::core::{CarrierKind, ParameterId, SampleRate};
+use crate::document::editing::{EditingField, FieldHandle};
+use crate::storage::library::{LibraryRoot, LibraryStore, Mutation};
 use crate::workspace::status::{AudioStatus, FileStatus};
 use crate::workspace::{
     Capabilities, Effect, PromptAnswer, ResponseDisposition, View, WorkerFailure,
@@ -25,7 +25,7 @@ fn fixture() -> (tempfile::TempDir, LibraryStore, Workspace) {
         .unwrap();
     store.root().initialize().unwrap();
     let mut workspace = Workspace::with_library(
-        crate::recipe::catalog().unwrap(),
+        crate::storage::load::catalog().unwrap(),
         Capabilities::available(),
         store.clone(),
     )
@@ -149,7 +149,7 @@ fn prepared(job: &Job, rate: SampleRate) -> Result<(Response, LiveGenerator), Er
         SessionDescriptor {
             id: session.id(),
             title: "unit output".into(),
-            origin: crate::recipe::Origin::Stream("unit capture".into()),
+            origin: crate::document::recipe::Origin::Stream("unit capture".into()),
             output: OutputInfo {
                 name: None,
                 channels: 2,
@@ -509,7 +509,7 @@ fn wrong_library_identity_or_kind_cannot_mark_a_clean_draft_saved_or_close_it() 
                     .apply(Mutation::Create(Arc::new(other)), &Cancel::default())
                     .unwrap();
             }
-            1 => outcome.kind = crate::library::MutationKind::Rename,
+            1 => outcome.kind = crate::storage::library::MutationKind::Rename,
             _ => {
                 let mut recipe = outcome
                     .record
@@ -521,7 +521,7 @@ fn wrong_library_identity_or_kind_cannot_mark_a_clean_draft_saved_or_close_it() 
                     .into_builder();
                 recipe.document.id = Draft::new().unwrap().recipe().unwrap().document().id;
                 outcome.record.as_mut().unwrap().snapshot = RecipeSnapshot::new(
-                    crate::recipe::Origin::Stream("wrong record".into()),
+                    crate::document::recipe::Origin::Stream("wrong record".into()),
                     recipe.build().unwrap(),
                 );
             }
@@ -550,14 +550,16 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
     idle_files(&mut workspace);
     let a = store.scan(&Cancel::default()).entries[0].key.clone();
     workspace
-        .set_catalog_query(crate::collection::CatalogQuery {
-            scope: crate::collection::Scope::User,
+        .set_catalog_query(crate::discovery::collection::CatalogQuery {
+            scope: crate::discovery::collection::Scope::User,
             ..Default::default()
         })
         .unwrap();
     idle_files(&mut workspace);
     assert_eq!(
-        crate::library::LibraryKey::User(workspace.selected().unwrap().recipe().document().id),
+        crate::storage::library::LibraryKey::User(
+            workspace.selected().unwrap().recipe().document().id
+        ),
         a
     );
     let first = store.load(&a).unwrap();
@@ -634,7 +636,7 @@ fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
         .into_builder();
     let component = crate::core::Component {
         id: crate::core::ComponentId::new(1).unwrap(),
-        form: crate::core::ComponentForm::Voice(crate::controls::default_component(
+        form: crate::core::ComponentForm::Voice(crate::document::controls::default_component(
             CarrierKind::Tone,
         )),
     };

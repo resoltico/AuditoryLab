@@ -1,24 +1,24 @@
 //! Public shared interpretation and capture contracts, independent of UI widgets.
-use auditorylab::core::Carrier;
-use auditorylab::core::CarrierFacts;
-use auditorylab::core::CarrierKind;
-use auditorylab::core::ComponentId;
-use auditorylab::core::Ears;
-use auditorylab::core::Modulation;
-use auditorylab::core::ModulationKind;
-use auditorylab::core::ParameterId;
-use auditorylab::core::SampleRate;
-use auditorylab::core::Voice;
-use auditorylab::core::rhythm::Method;
-use auditorylab::core::rhythm::Structure;
-use auditorylab::presentation::{AudioDetails, AudioSummary, ParameterText};
-use auditorylab::vocabulary::NumberStyle;
+use auditorylab_app::core::Carrier;
+use auditorylab_app::core::CarrierFacts;
+use auditorylab_app::core::CarrierKind;
+use auditorylab_app::core::ComponentId;
+use auditorylab_app::core::Ears;
+use auditorylab_app::core::Modulation;
+use auditorylab_app::core::ModulationKind;
+use auditorylab_app::core::ParameterId;
+use auditorylab_app::core::SampleRate;
+use auditorylab_app::core::Voice;
+use auditorylab_app::core::rhythm::Method;
+use auditorylab_app::core::rhythm::Structure;
+use auditorylab_app::presentation::vocabulary::NumberStyle;
+use auditorylab_app::presentation::{AudioDetails, AudioSummary, ParameterText};
 
-use auditorylab::waveform_view::CaptureError;
-use auditorylab::waveform_view::ModelSource;
-use auditorylab::waveform_view::ModelView;
-use auditorylab::waveform_view::WaveformCapture;
-use auditorylab::waveform_view::WaveformScale;
+use auditorylab_app::presentation::waveform_view::CaptureError;
+use auditorylab_app::presentation::waveform_view::ModelSource;
+use auditorylab_app::presentation::waveform_view::ModelView;
+use auditorylab_app::presentation::waveform_view::WaveformCapture;
+use auditorylab_app::presentation::waveform_view::WaveformScale;
 fn tone(hz: f64, ears: Ears) -> Voice {
     Voice {
         ears,
@@ -35,13 +35,13 @@ fn summary(components: &[Voice]) -> Structure {
     let components = components
         .iter()
         .enumerate()
-        .map(|(i, c)| auditorylab::core::Component {
+        .map(|(i, c)| auditorylab_app::core::Component {
             id: ComponentId::numbered(i).unwrap(),
-            form: auditorylab::core::ComponentForm::Voice(*c),
+            form: auditorylab_app::core::ComponentForm::Voice(*c),
         })
         .collect();
-    auditorylab::core::rhythm::realized(
-        &auditorylab::core::Sound {
+    auditorylab_app::core::rhythm::realized(
+        &auditorylab_app::core::Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
             components,
@@ -87,31 +87,31 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
         assert!(!structure.summary().contains("Unison"));
     }
     for binaural in [true, false] {
-        let pair = auditorylab::core::Pair {
+        let pair = auditorylab_app::core::Pair {
             first_hz: 380.0,
             offset_hz: 40.0,
             first_peak_dbfs: -40.0,
             second_peak_dbfs: -40.0,
         };
         let form = if binaural {
-            auditorylab::core::ComponentForm::BinauralPair(pair)
+            auditorylab_app::core::ComponentForm::BinauralPair(pair)
         } else {
-            auditorylab::core::ComponentForm::MonauralPair {
+            auditorylab_app::core::ComponentForm::MonauralPair {
                 pair,
                 ears: Ears::Both,
             }
         };
-        let target = auditorylab::core::Sound {
+        let target = auditorylab_app::core::Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
-            components: vec![auditorylab::core::Component {
+            components: vec![auditorylab_app::core::Component {
                 id: ComponentId::new(1).unwrap(),
                 form,
             }],
         }
         .target(SampleRate::DEFAULT)
         .unwrap();
-        let structure = auditorylab::core::rhythm::realized(&target);
+        let structure = auditorylab_app::core::rhythm::realized(&target);
         assert_eq!(structure.pairs.len(), 1);
         assert!(structure.summary().contains(if binaural {
             "40 Hz interaural difference"
@@ -256,12 +256,12 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
         },
         ..tone(440.0, Ears::Both)
     };
-    let t = auditorylab::core::Sound {
+    let t = auditorylab_app::core::Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
-        components: vec![auditorylab::core::Component {
+        components: vec![auditorylab_app::core::Component {
             id: ComponentId::new(9).unwrap(),
-            form: auditorylab::core::ComponentForm::Voice(c),
+            form: auditorylab_app::core::ComponentForm::Voice(c),
         }],
     }
     .target(SampleRate::new(44100).unwrap())
