@@ -80,6 +80,7 @@ pub enum LibraryCommand {
     SetFacets(Vec<(QueryFacet, String)>),
     SetFilters(Box<FilterInput>),
     ClearFilters,
+    ClearRhythmFilters,
     ResetSort,
     Search(String),
     SetRhythm(RhythmQuery),
@@ -174,6 +175,10 @@ impl Workspace {
                     self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))?;
                     self.effects.push(Effect::ResetLibraryInputs);
                     Ok(())
+                }
+                LibraryCommand::ClearRhythmFilters => {
+                    let query = self.catalog_query().cleared_rhythm();
+                    self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))
                 }
                 LibraryCommand::ResetSort => {
                     let query = self.catalog_query().reset_sort();

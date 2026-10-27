@@ -139,36 +139,39 @@ fn heading_row(text: String) -> LibraryRowText {
 pub fn facets(
     counts: &auditorylab_app::workspace::FacetCounts,
 ) -> (Vec<LibraryFacetText>, Vec<String>) {
-    use auditorylab_app::workspace::FacetKind;
-    let facet = |facet: &auditorylab_app::workspace::LibraryFacetView| {
-        let (label, detail) = match facet.kind {
-            FacetKind::AllSounds => (auditorylab_core::vocabulary::ALL_SOUNDS.label.into(), ""),
-            FacetKind::AllMethods => (auditorylab_core::vocabulary::ALL_METHODS.label.into(), ""),
-            FacetKind::Band(band) => (band.to_string(), band.interval()),
-            FacetKind::State(state) => (state.label().into(), ""),
-            FacetKind::Method(method) => (method.label().into(), ""),
-        };
-        let count = if facet.complete {
-            facet.count.to_string()
-        } else {
-            format!("{} observed", facet.count)
-        };
-        let text = if detail.is_empty() {
-            format!("{label} · {count}")
-        } else {
-            format!("{label} · {detail} · {count}")
-        };
-        LibraryFacetText {
-            label,
-            detail: detail.into(),
-            count,
-            text,
-        }
-    };
     (
         counts.bands.iter().map(facet).collect(),
         counts.methods.iter().map(|f| facet(f).text).collect(),
     )
+}
+/// Render one counted navigation membership without assigning its control position.
+#[must_use]
+pub fn facet(facet: &auditorylab_app::workspace::LibraryFacetView) -> LibraryFacetText {
+    use auditorylab_app::workspace::FacetKind;
+
+    let (label, detail) = match facet.kind {
+        FacetKind::AllSounds => (auditorylab_core::vocabulary::ALL_SOUNDS.label.into(), ""),
+        FacetKind::AllMethods => (auditorylab_core::vocabulary::ALL_METHODS.label.into(), ""),
+        FacetKind::Band(band) => (band.to_string(), band.interval()),
+        FacetKind::State(state) => (state.label().into(), ""),
+        FacetKind::Method(method) => (method.label().into(), ""),
+    };
+    let count = if facet.complete {
+        facet.count.to_string()
+    } else {
+        format!("{} observed", facet.count)
+    };
+    let text = if detail.is_empty() {
+        format!("{label} · {count}")
+    } else {
+        format!("{label} · {detail} · {count}")
+    };
+    LibraryFacetText {
+        label,
+        detail: detail.into(),
+        count,
+        text,
+    }
 }
 pub(crate) fn overview(query: &CatalogQuery, visible: usize, complete: bool) -> String {
     let q = query;

@@ -37,6 +37,37 @@ impl Executor for DeterministicExecutor {
     }
 }
 impl SlintAdapter {
+    pub(crate) fn reverse_rendered_choices(&self) {
+        use auditorylab_app::workspace::QueryFacet;
+        let workspace = self.workspace.borrow();
+        let workspace = workspace.as_ref().unwrap();
+        let choices = [
+            QueryFacet::Scope,
+            QueryFacet::Sort,
+            QueryFacet::Direction,
+            QueryFacet::Group,
+            QueryFacet::Band,
+            QueryFacet::Method,
+            QueryFacet::Population,
+            QueryFacet::Role,
+            QueryFacet::Analysis,
+        ]
+        .into_iter()
+        .map(|facet| {
+            let mut view = workspace.library_choices(facet);
+            view.options.reverse();
+            (facet, view)
+        })
+        .collect();
+        let updating = self.updating.replace(true);
+        self.project_choice_models(
+            &self.main.upgrade().unwrap(),
+            &workspace.library_facets(),
+            choices,
+        );
+        self.updating.set(updating);
+    }
+
     pub(crate) fn timer_running(&self) -> bool {
         self.timer.running()
     }

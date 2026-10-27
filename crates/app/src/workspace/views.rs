@@ -125,6 +125,8 @@ pub enum LibraryRowView {
 /// Query results and selected immutable source at one export rate.
 #[derive(Debug, Clone)]
 pub struct LibraryView {
+    /// Captured query semantics, independent of frontend option ordering.
+    pub query: crate::discovery::collection::CatalogQuery,
     /// Semantic rows in result order.
     pub rows: Vec<LibraryRowView>,
     /// Selected row position, when visible.
@@ -499,6 +501,7 @@ impl Workspace {
     fn build_library_view(&self) -> LibraryView {
         let (rows, selected) = self.library.rows();
         LibraryView {
+            query: self.library.query.clone(),
             rows,
             selected,
             snapshot: self.selected().cloned(),

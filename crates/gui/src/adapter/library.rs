@@ -1,6 +1,6 @@
 //! Library model updates depend only on an immutable library projection.
 use super::*;
-use auditorylab_app::workspace::{ChoiceView, QueryFacet};
+use auditorylab_app::workspace::{ChoiceView, FacetCounts, QueryFacet};
 use auditorylab_presentation::DisplayText;
 use auditorylab_presentation::LibraryPresentation;
 struct EntryHandles(Vec<Option<auditorylab_app::workspace::EntryHandle>>);
@@ -55,6 +55,112 @@ pub(super) fn select_choice(ui: &MainWindow, facet: QueryFacet, view: &ChoiceVie
     }
 }
 impl SlintAdapter {
+    /// Both navigation and combo rows address the same actual rendered options.
+    pub(super) fn project_choice_models(
+        &self,
+        ui: &MainWindow,
+        counts: &FacetCounts,
+        choices: Vec<(QueryFacet, ChoiceView)>,
+    ) {
+        let strings = |labels: Vec<String>| {
+            ModelRc::new(VecModel::from(
+                labels
+                    .into_iter()
+                    .map(SharedString::from)
+                    .collect::<Vec<_>>(),
+            ))
+        };
+        let bands = counts
+            .bands
+            .iter()
+            .map(|count| {
+                (
+                    count.kind.key(),
+                    auditorylab_presentation::library_text::facet(count),
+                )
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let methods = counts
+            .methods
+            .iter()
+            .map(|count| {
+                (
+                    count.kind.key(),
+                    auditorylab_presentation::library_text::facet(count).text,
+                )
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        for (facet, view) in &choices {
+            let labels = strings(
+                view.options
+                    .iter()
+                    .map(|option| option.label.to_string())
+                    .collect(),
+            );
+            let app_selection_changed = self
+                .choices
+                .borrow()
+                .iter()
+                .find(|(kind, _)| kind == facet)
+                .is_none_or(|(_, old)| old != view);
+            match facet {
+                QueryFacet::Scope => ui.set_collection_labels(labels),
+                QueryFacet::Sort => ui.set_sort_labels(labels),
+                QueryFacet::Direction => ui.set_direction_labels(labels),
+                QueryFacet::Group => ui.set_group_labels(labels),
+                QueryFacet::Population => ui.set_population_labels(labels),
+                QueryFacet::Role => ui.set_role_labels(labels),
+                QueryFacet::Analysis => ui.set_analysis_labels(labels),
+                QueryFacet::Method => ui.set_method_labels(strings(
+                    view.options
+                        .iter()
+                        .map(|option| {
+                            methods
+                                .get(option.key)
+                                .cloned()
+                                .unwrap_or_else(|| option.label.into())
+                        })
+                        .collect(),
+                )),
+                QueryFacet::Band => {
+                    let navigation = view
+                        .options
+                        .iter()
+                        .enumerate()
+                        .map(|(index, option)| {
+                            let text = bands.get(option.key);
+                            crate::generated::LibraryFacet {
+                                choice_index: i32::try_from(index).unwrap_or(-1),
+                                selected: option.selected,
+                                label: text.map_or(option.label, |text| text.label.as_str()).into(),
+                                detail: text.map_or("", |text| text.detail.as_str()).into(),
+                                count: text
+                                    .map_or(
+                                        auditorylab_app::core::vocabulary::Status::Unknown.label(),
+                                        |text| text.count.as_str(),
+                                    )
+                                    .into(),
+                                text: text.map_or(option.label, |text| text.text.as_str()).into(),
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    ui.set_band_labels(strings(
+                        navigation.iter().map(|row| row.text.to_string()).collect(),
+                    ));
+                    ui.set_band_navigation(ModelRc::new(VecModel::from(navigation)));
+                }
+            }
+            if app_selection_changed
+                || matches!(
+                    facet,
+                    QueryFacet::Scope | QueryFacet::Sort | QueryFacet::Band | QueryFacet::Method
+                )
+            {
+                select_choice(ui, *facet, view);
+            }
+        }
+        *self.choices.borrow_mut() = choices;
+    }
     pub(super) fn facet_key(&self, facet: QueryFacet, index: i32) -> Option<String> {
         self.choices
             .borrow()
@@ -111,6 +217,17 @@ impl SlintAdapter {
                 .unwrap_or(-1),
         });
         let library = auditorylab_presentation::workspace_text::library_view(&source);
+        ui.set_library_heading(read_only(&library.heading));
+        ui.set_rhythm_filtered(source.query.rhythm_filtered());
+        ui.set_open_files_scope(
+            source.query.scope == auditorylab_app::core::query::Scope::OpenFiles,
+        );
+        ui.set_show_built_in_dates(matches!(
+            source.sort,
+            auditorylab_app::core::query::SortBy::Created
+                | auditorylab_app::core::query::SortBy::Modified
+                | auditorylab_app::core::query::SortBy::Added
+        ));
         self.counts
             .library_projections
             .set(self.counts.library_projections.get() + 1);
@@ -155,42 +272,6 @@ impl SlintAdapter {
             ui.set_library_filters_active(
                 *w.catalog_query() != w.catalog_query().cleared_filters(),
             );
-            let strings = |labels: Vec<String>| {
-                ModelRc::new(VecModel::from(
-                    labels
-                        .into_iter()
-                        .map(SharedString::from)
-                        .collect::<Vec<_>>(),
-                ))
-            };
-            let counts = w.library_facets();
-            let (bands, methods) = auditorylab_presentation::library_text::facets(&counts);
-            let band_text = counts
-                .bands
-                .iter()
-                .zip(&bands)
-                .map(|(count, text)| (count.kind.key(), text.text.clone()))
-                .collect::<std::collections::BTreeMap<_, _>>();
-            let method_text = counts
-                .methods
-                .iter()
-                .zip(&methods)
-                .map(|(count, text)| (count.kind.key(), text.clone()))
-                .collect::<std::collections::BTreeMap<_, _>>();
-            ui.set_band_navigation(ModelRc::new(VecModel::from(
-                bands
-                    .into_iter()
-                    .map(|band| crate::generated::LibraryFacet {
-                        label: band.label.into(),
-                        detail: band.detail.into(),
-                        count: band.count.into(),
-                        text: band.text.into(),
-                    })
-                    .collect::<Vec<_>>(),
-            )));
-            ui.set_calendar_context(
-                auditorylab_presentation::calendar_text::local_context().into(),
-            );
             let choices = [
                 QueryFacet::Scope,
                 QueryFacet::Sort,
@@ -204,72 +285,11 @@ impl SlintAdapter {
             ]
             .into_iter()
             .map(|facet| (facet, w.library_choices(facet)))
-            .collect::<Vec<_>>();
-            for (facet, view) in &choices {
-                let labels = strings(
-                    view.options
-                        .iter()
-                        .map(|option| option.label.to_string())
-                        .collect(),
-                );
-                let app_selection_changed = self
-                    .choices
-                    .borrow()
-                    .iter()
-                    .find(|(kind, _)| kind == facet)
-                    .is_none_or(|(_, old)| old != view);
-                match facet {
-                    QueryFacet::Scope => {
-                        ui.set_collection_labels(labels);
-                    }
-                    QueryFacet::Sort => {
-                        ui.set_sort_labels(labels);
-                    }
-                    QueryFacet::Direction => ui.set_direction_labels(labels),
-                    QueryFacet::Group => ui.set_group_labels(labels),
-                    QueryFacet::Band => {
-                        ui.set_band_labels(strings(
-                            view.options
-                                .iter()
-                                .map(|option| {
-                                    band_text
-                                        .get(option.key)
-                                        .cloned()
-                                        .unwrap_or_else(|| option.label.into())
-                                })
-                                .collect(),
-                        ));
-                    }
-                    QueryFacet::Method => {
-                        ui.set_method_labels(strings(
-                            view.options
-                                .iter()
-                                .map(|option| {
-                                    method_text
-                                        .get(option.key)
-                                        .cloned()
-                                        .unwrap_or_else(|| option.label.into())
-                                })
-                                .collect(),
-                        ));
-                    }
-                    QueryFacet::Population => ui.set_population_labels(labels),
-                    QueryFacet::Role => ui.set_role_labels(labels),
-                    QueryFacet::Analysis => ui.set_analysis_labels(labels),
-                }
-                if app_selection_changed
-                    || matches!(
-                        facet,
-                        QueryFacet::Scope
-                            | QueryFacet::Sort
-                            | QueryFacet::Band
-                            | QueryFacet::Method
-                    )
-                {
-                    select_choice(ui, *facet, view);
-                }
-            }
-            *self.choices.borrow_mut() = choices;
+            .collect();
+            self.project_choice_models(ui, &w.library_facets(), choices);
+            ui.set_calendar_context(
+                auditorylab_presentation::calendar_text::local_context().into(),
+            );
         }
         // Virtual group/diagnostic rows do not create a selectable sound.
         let has_results = source.rows.iter().any(|row| {

@@ -104,6 +104,11 @@ export component MainWindow inherits Window {
     min-width: 680px;
     min-height: 600px;
     in property <[CatalogRow]> catalog;
+    in property <string> library-heading;
+    in property <bool> rhythm-filtered;
+    in property <bool> show-built-in-dates;
+    in property <bool> open-files-scope;
+    callback clear-rhythm-filters();
     in property <[LibraryFacet]> band-navigation;
     in property <string> library-classification;
     in property <string> library-ownership;
@@ -422,6 +427,11 @@ export component MainWindow inherits Window {
                 band-choice <=> root.band-choice;
                 band-labels: root.band-labels;
                 band-navigation: root.band-navigation;
+                library-heading: root.library-heading;
+                rhythm-filtered: root.rhythm-filtered;
+                show-built-in-dates: root.show-built-in-dates;
+                open-files-scope: root.open-files-scope;
+                clear-rhythm-filters() => {root.clear-rhythm-filters();}
                 can-add-to-library: root.can-add-to-library;
                 can-copy: root.can-copy;
                 can-export: root.can-export;

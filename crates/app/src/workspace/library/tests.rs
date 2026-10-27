@@ -984,11 +984,61 @@ fn keyed_query_edits_reject_unknown_options_atomically() {
             .options
             .iter()
             .map(|option| option.key)
-            .collect::<Vec<_>>(),
+            .collect::<std::collections::BTreeSet<_>>(),
         counts
             .bands
             .iter()
             .map(|count| count.kind.key())
-            .collect::<Vec<_>>()
+            .collect::<std::collections::BTreeSet<_>>()
     );
+}
+
+#[test]
+fn clear_rhythm_command_retains_every_non_rhythm_query_field() {
+    use crate::discovery::collection::DateRange;
+    for scope in [Scope::All, Scope::BuiltIn] {
+        let (_root, _store, mut workspace) = fixture();
+        let query = CatalogQuery {
+            scope,
+            include_external: scope == Scope::All,
+            search: "40".into(),
+            studies: vec!["key:source".into()],
+            populations: vec![crate::core::Population::Human],
+            roles: vec![crate::core::ConditionRole::Test],
+            analysis: Some(crate::core::rhythm::Completeness::Complete),
+            created: DateRange {
+                from: Some("2026-01-01T00:00:00Z".parse().unwrap()),
+                before: Some("2026-02-01T00:00:00Z".parse().unwrap()),
+            },
+            modified: DateRange {
+                from: Some("2026-03-01T00:00:00Z".parse().unwrap()),
+                before: Some("2026-04-01T00:00:00Z".parse().unwrap()),
+            },
+            added: DateRange {
+                from: Some("2026-05-01T00:00:00Z".parse().unwrap()),
+                before: Some("2026-06-01T00:00:00Z".parse().unwrap()),
+            },
+            direction: Some(Direction::Desc),
+            sort: SortBy::Added,
+            group_by: GroupBy::Study,
+            rhythm: crate::discovery::query::RhythmQuery {
+                bands: vec![crate::core::rhythm::Band::Gamma],
+                methods: vec![crate::core::rhythm::Method::Am],
+                state: Some(crate::core::query::RhythmState::OutsideBands),
+            },
+        };
+        workspace
+            .apply(Command::Library(LibraryCommand::SetQuery(Box::new(
+                query.clone(),
+            ))))
+            .unwrap();
+        assert!(workspace.catalog_query().rhythm_filtered());
+        workspace
+            .apply(Command::Library(LibraryCommand::ClearRhythmFilters))
+            .unwrap();
+        let mut expected = query;
+        expected.rhythm = crate::discovery::query::RhythmQuery::default();
+        assert_eq!(workspace.catalog_query(), &expected);
+        assert!(!workspace.catalog_query().rhythm_filtered());
+    }
 }

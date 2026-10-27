@@ -80,6 +80,9 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             ui.invoke_close_library_filters();
         }
     });
+    on!(on_clear_rhythm_filters, |a| a.command(|w| w.apply(
+        Command::Library(LibraryCommand::ClearRhythmFilters)
+    )));
     on!(on_clear_library_filters, |a| a.command(
         |w| w.apply(Command::Library(LibraryCommand::ClearFilters))
     ));

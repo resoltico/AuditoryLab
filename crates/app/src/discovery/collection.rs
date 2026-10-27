@@ -266,6 +266,20 @@ pub struct FacetCounts {
     pub methods: Vec<(rhythm::Method, usize)>,
 }
 impl CatalogQuery {
+    /// Whether any nominal rhythm restriction is active.
+    #[must_use]
+    pub fn rhythm_filtered(&self) -> bool {
+        self.rhythm != query::RhythmQuery::default()
+    }
+    /// Clear only nominal rhythm restrictions, retaining all other query state.
+    #[must_use]
+    pub fn cleared_rhythm(&self) -> Self {
+        Self {
+            rhythm: Self::default().rhythm,
+            ..self.clone()
+        }
+    }
+
     /// Retain restrictions while restoring query-owned ordering defaults.
     #[must_use]
     pub fn reset_sort(&self) -> Self {
@@ -517,6 +531,7 @@ impl CatalogQuery {
                     }
                 }
                 GroupBy::Collection => {
+                    // Group identities are wire data; render captions from GroupLabel.
                     let key = match entry.collection() {
                         Collection::BuiltIn => "Built-in",
                         Collection::User => "User",
@@ -557,10 +572,9 @@ impl CatalogQuery {
             });
         }
         if self.group_by == GroupBy::Collection {
-            groups.sort_by_key(|group| match group.key.as_str() {
-                "Built-in" => 0,
-                "User" => 1,
-                _ => 2,
+            groups.sort_by_key(|group| match group.label {
+                GroupLabel::Collection(collection) => collection,
+                _ => unreachable!("collection grouping emits only collection labels"),
             });
         }
         groups

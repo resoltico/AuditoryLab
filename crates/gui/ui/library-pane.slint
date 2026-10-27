@@ -11,6 +11,11 @@ export component LibraryPane inherits Rectangle {
     callback add-to-library(EntryAddress);
     in-out property <int> band-choice;
     in property <[string]> band-labels;
+    in property <string> library-heading;
+    in property <bool> rhythm-filtered;
+    in property <bool> show-built-in-dates;
+    in property <bool> open-files-scope;
+    callback clear-rhythm-filters();
     in property <[LibraryFacet]> band-navigation;
     in property <bool> can-add-to-library;
     in property <bool> can-copy;
@@ -146,10 +151,10 @@ export component LibraryPane inherits Rectangle {
                             }
                             Rectangle {height:1px;background:Palette.border;vertical-stretch:0;}
                             Text {text:Terms.caption-browse-rhythm;font-weight:600;vertical-stretch:0;}
-                            for facet[index] in root.band-navigation: LibraryNavigationItem {
+                            for facet in root.band-navigation: LibraryNavigationItem {
                                 label:facet.label;detail:facet.detail;count:facet.count;description:facet.text;
-                                selected:root.band-choice==index;text-size:root.ui-size;
-                                activated=>{root.rhythm-filter(index,root.method-choice);}
+                                selected:facet.selected;text-size:root.ui-size;
+                                activated=>{root.rhythm-filter(facet.choice-index,root.method-choice);}
                             }
                             Rectangle {vertical-stretch:1;}
                         }
@@ -209,13 +214,9 @@ export component LibraryPane inherits Rectangle {
                             selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
                         }
                         }
-                        if root.band-choice != 0 || root.method-choice != 0: Button {
+                        if root.rhythm-filtered: Button {
                             text: Terms.action-clear-rhythm-filters;
-                            triggered => {
-                                root.band-choice = 0;
-                                root.method-choice = 0;
-                                root.rhythm-filter(0, 0);
-                            }
+                            triggered => {root.clear-rhythm-filters();}
                         }
 
                         if root.query != "": Button {
@@ -229,7 +230,7 @@ export component LibraryPane inherits Rectangle {
                         }
                         if root.library-wide: VerticalBox {
                             vertical-stretch:0;padding:12px;spacing:8px;
-                            Text {text:root.band-choice!=0 || root.collection-choice==0 ? root.band-navigation[root.band-choice].label : root.collection-labels[root.collection-choice];font-size:root.ui-size*1.4;font-weight:700;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
+                            Text {text:root.library-heading;font-size:root.ui-size*1.4;font-weight:700;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
 
 
                         }
@@ -316,7 +317,7 @@ export component LibraryPane inherits Rectangle {
 
                                         if item.summary != "": Text {text:item.summary;min-width:0px;wrap:word-wrap;color:Palette.control-foreground;}
                                         if item.duration != "": Text {text:item.duration;min-width:0px;wrap:word-wrap;color:Palette.control-foreground;}
-                                        if item.dates != "" && (!item.built-in || root.sort-choice==3 || root.sort-choice==4 || root.sort-choice==5): Text {text:item.dates;min-width:0px;wrap:word-wrap;font-size:root.ui-size*0.9;color:Palette.control-foreground;}
+                                        if item.dates != "" && (!item.built-in || root.show-built-in-dates): Text {text:item.dates;min-width:0px;wrap:word-wrap;font-size:root.ui-size*0.9;color:Palette.control-foreground;}
                                     }
                                     focus := FocusScope {
                                         enabled:item.binding != "";
@@ -497,9 +498,9 @@ export component LibraryPane inherits Rectangle {
                                 }
                                 if root.library-token != "" && !root.library-trashed: BoundButton {enabled:root.can-new;text:Terms.operation-edit-saved-recipe;entry:root.library-entry;activated(entry)=>{root.edit-saved(entry);}}
                                 Button {text:(Terms.operation-export-recipe + "…");enabled:root.can-export-recipe;triggered =>{root.export-recipe();}}
-                                if root.collection-choice == 3: BoundButton {text:Terms.operation-close-open-file;entry:root.library-entry;activated(entry)=>{root.close-open-file(entry);}}
-                                if root.collection-choice == 3: BoundButton {enabled:root.can-new;text:Terms.operation-edit-external-file;entry:root.library-entry;activated(entry)=>{root.edit-saved(entry);}}
-                                if root.collection-choice == 3: BoundButton {enabled:root.can-add-to-library;text:Terms.operation-library-add;entry:root.library-entry;activated(entry)=>{root.add-to-library(entry);}}
+                                if root.open-files-scope: BoundButton {text:Terms.operation-close-open-file;entry:root.library-entry;activated(entry)=>{root.close-open-file(entry);}}
+                                if root.open-files-scope: BoundButton {enabled:root.can-new;text:Terms.operation-edit-external-file;entry:root.library-entry;activated(entry)=>{root.edit-saved(entry);}}
+                                if root.open-files-scope: BoundButton {enabled:root.can-add-to-library;text:Terms.operation-library-add;entry:root.library-entry;activated(entry)=>{root.add-to-library(entry);}}
                                 if root.library-token != "": VerticalBox { vertical-stretch:0;
                                     if !root.library-trashed: BoundTitleEdit {enabled:root.can-manage-library;entry:root.library-entry;placeholder-text:Terms.caption-new-title;accessible-label:Terms.operation-library-rename;rename(entry,value)=>{root.library-action(entry,LibraryMutationAction.rename,value);} }
                                     BoundButton {enabled:root.library-trashed ? root.can-manage-library : root.can-request-trash;text:root.library-trashed ? Terms.operation-library-restore : Terms.operation-library-trash;entry:root.library-entry;action:root.library-trashed ? LibraryMutationAction.restore : LibraryMutationAction.trash;dispatch(entry,action)=>{root.library-action(entry,action,"");}}

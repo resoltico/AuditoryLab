@@ -1944,6 +1944,24 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
         .respond(prompt, PromptAnswer::Path(Some(file.clone())));
     h.wait_for_files();
     assert_eq!(ui.get_collection_choice(), 3);
+    h.adapter.reverse_rendered_choices();
+    h.settle();
+    assert_ne!(ui.get_collection_choice(), 3);
+    assert!(ui.get_open_files_scope());
+    for label in [
+        "Close open file",
+        "Edit external file",
+        "Add to User Library",
+    ] {
+        assert!(
+            find_control(ui, |item| item
+                .accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref()
+                == Some(label))
+            .is_some(),
+            "Open-files action {label} survives scope reordering"
+        );
+    }
     assert!(
         store
             .scan(&auditorylab_app::job::Cancel::default())
@@ -3710,4 +3728,122 @@ fn app_facet_selections_project_without_overwriting_pending_native_filter_edits(
         assert_eq!(workspace.catalog_query().group_by, GroupBy::Study);
         assert_eq!(workspace.catalog_query().direction, None);
     });
+}
+
+#[test]
+fn runtime_query_controls_keep_semantics_when_rendered_options_are_reordered() {
+    use auditorylab_app::core::rhythm::Band;
+    use auditorylab_app::discovery::collection::CatalogQuery;
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    ui.window().set_size(slint::LogicalSize::new(800.0, 600.0));
+    h.settle();
+    h.adapter.reverse_rendered_choices();
+    h.settle();
+    assert_ne!(
+        ui.get_band_choice(),
+        0,
+        "any is deliberately not at index zero"
+    );
+    assert!(!ui.get_rhythm_filtered());
+    assert_eq!(ui.get_library_heading(), "All sounds");
+    assert!(
+        find_control(ui, |item| item
+            .accessible_string_property(AccessibleStringProperty::Label)
+            .as_deref()
+            == Some("Clear rhythm filters"))
+        .is_none()
+    );
+    ui.window()
+        .set_size(slint::LogicalSize::new(1440.0, 1000.0));
+    h.settle();
+    h.adapter.reverse_rendered_choices();
+    h.settle();
+    let gamma = ui
+        .get_band_navigation()
+        .iter()
+        .find(|row| row.label == "Gamma")
+        .unwrap();
+    assert_ne!(
+        gamma.choice_index, 5,
+        "the navigation must not rely on canonical band positions"
+    );
+    labelled(ui, &gamma.text).accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    h.adapter
+        .inspect(|workspace| assert_eq!(workspace.catalog_query().rhythm.bands, vec![Band::Gamma]));
+    assert_eq!(ui.get_library_heading(), "Gamma");
+    let mut query = h
+        .adapter
+        .inspect(|workspace| workspace.catalog_query().clone());
+    query.scope = Scope::BuiltIn;
+    query.sort = SortBy::Title;
+    query.direction = Some(Direction::Desc);
+    h.adapter.command(|workspace| {
+        workspace.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))
+    });
+    h.adapter.reverse_rendered_choices();
+    h.settle();
+    assert_eq!(
+        ui.get_sort_choice(),
+        5,
+        "Title is deliberately at a formerly date-specific position"
+    );
+    assert!(!ui.get_show_built_in_dates());
+    assert!(
+        find_control(ui, |item| item
+            .accessible_string_property(AccessibleStringProperty::Label)
+            .is_some_and(|label| label.starts_with("Created:")))
+        .is_none()
+    );
+    let added = ui
+        .get_sort_labels()
+        .iter()
+        .position(|label| label == SortBy::Added.label())
+        .unwrap();
+    ui.invoke_collection_filter(ui.get_collection_choice(), i32::try_from(added).unwrap());
+    h.settle();
+    h.adapter.reverse_rendered_choices();
+    h.settle();
+    assert_eq!(
+        ui.get_sort_choice(),
+        2,
+        "Added is deliberately outside the old date-sort positions"
+    );
+    assert!(ui.get_show_built_in_dates());
+    assert!(labelled(ui, "Added here:").is_visible());
+    ui.window().set_size(slint::LogicalSize::new(800.0, 600.0));
+    h.settle();
+    h.adapter.reverse_rendered_choices();
+    h.settle();
+    let before = h
+        .adapter
+        .inspect(|workspace| workspace.catalog_query().clone());
+    labelled(ui, "Clear rhythm filters").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    let expected = CatalogQuery {
+        rhythm: Default::default(),
+        ..before
+    };
+    h.adapter
+        .inspect(|workspace| assert_eq!(workspace.catalog_query(), &expected));
+    assert!(!ui.get_rhythm_filtered());
+    assert_eq!(ui.get_library_heading(), Scope::BuiltIn.label());
+    ui.window()
+        .set_size(slint::LogicalSize::new(1440.0, 1000.0));
+    h.settle();
+    h.adapter.reverse_rendered_choices();
+    h.settle();
+    assert_ne!(ui.get_band_choice(), 0);
+    // Select the actual enlarged heading, not the same caption on a navigation row.
+    assert!(
+        find_control(ui, |item| item
+            .accessible_string_property(AccessibleStringProperty::Label)
+            .as_deref()
+            == Some(Scope::BuiltIn.label())
+            && item.geometry().size.height > ui.get_ui_size() * 1.5)
+        .is_some()
+    );
 }

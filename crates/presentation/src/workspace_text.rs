@@ -640,6 +640,8 @@ pub struct LibraryFacetText {
 /// The library and the selected recipe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryText {
+    /// Current scope or rhythm heading, independent of control indexes.
+    pub heading: String,
     /// Selected title.
     pub title: String,
     /// Selected structure at the export rate.
@@ -665,10 +667,30 @@ pub struct LibraryText {
 pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryText {
     use crate::AudioSummary;
     use crate::vocabulary::NumberStyle;
+    let heading = data
+        .query
+        .rhythm
+        .bands
+        .first()
+        .map(ToString::to_string)
+        .or_else(|| {
+            data.query
+                .rhythm
+                .state
+                .map(|state| state.label().to_owned())
+        })
+        .unwrap_or_else(|| {
+            if data.query.scope == auditorylab_core::query::Scope::All {
+                auditorylab_core::vocabulary::ALL_SOUNDS.label.to_owned()
+            } else {
+                data.query.scope.label().to_owned()
+            }
+        });
     let snapshot = data.snapshot.as_ref();
     let rate = data.rate;
     let Some(snapshot) = snapshot else {
         return LibraryText {
+            heading,
             title: String::new(),
             structure: String::new(),
             classification: String::new(),
@@ -687,6 +709,7 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryTe
         .map(|row| super::library_text::row(row, data.sort).collection)
         .unwrap_or_default();
     LibraryText {
+        heading,
         title: snapshot.title(),
         classification: format!(
             "{}\nReference: {}. This describes the sound, not measured brain activity.",
