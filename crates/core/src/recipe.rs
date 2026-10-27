@@ -398,6 +398,18 @@ impl Recipe {
         self.document == other.document && self.same_editable_content(other)
     }
 
+    /// Whether the flat ancestry has room for an independent copy.
+    ///
+    /// # Errors
+    /// Returns the exact capacity failure before a caller allocates a new identity.
+    pub fn copy_readiness(&self) -> Result<(), ContractError> {
+        if self.lineage.len() >= crate::provenance::MAX_LINEAGE {
+            return Err(ContractError::CopyLineageFull {
+                count: self.lineage.len(),
+            });
+        }
+        Ok(())
+    }
     /// Fork under a new supplied identity; retain bibliography and scoped ancestry.
     ///
     /// # Errors
@@ -412,11 +424,7 @@ impl Recipe {
                 id: document.id,
             }));
         }
-        if self.lineage.len() >= crate::provenance::MAX_LINEAGE {
-            return Err(RecipeError::Contract(ContractError::CopyLineageFull {
-                count: self.lineage.len(),
-            }));
-        }
+        self.copy_readiness().map_err(RecipeError::Contract)?;
         let mut copy = self.clone();
         copy.document = document;
         copy.lineage.push(Lineage {

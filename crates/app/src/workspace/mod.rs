@@ -16,7 +16,15 @@
 //! export affects only the export. A task's slot stays occupied until its
 //! thread has exited and been joined, and an action waiting for a task runs
 //! only after that join.
+mod audio;
+mod editor;
+mod file;
 mod library;
+mod prompts;
+use audio::{AudioRequest, AudioState};
+use editor::{DocumentLocation, EditorState};
+use file::FileState;
+use prompts::{PromptState, Prompts};
 mod operations;
 pub(crate) mod output;
 pub(crate) mod status;
@@ -40,7 +48,6 @@ use crate::document::editing::{DocumentId, Draft, EditorSession};
 use crate::document::recipe::file_name;
 use crate::document::recipe::{RecipeSnapshot, Rendition};
 use crate::error::{OperationError as Error, Outcome};
-use crate::presentation::waveform_view::WaveformScale;
 use crate::services::{Cancel, Progress};
 use auditorylab_core::{CarrierKind, Ears, ModulationKind, Recipe, SampleRate};
 use output::OutputState;
@@ -266,18 +273,6 @@ enum DocumentAction {
 }
 
 #[derive(Debug, Clone)]
-enum AudioRequest {
-    Finite {
-        snapshot: Box<RecipeSnapshot>,
-        store: Option<crate::services::library::Library>,
-    },
-    Live {
-        document: DocumentId,
-        candidate: Arc<crate::document::editing::Candidate>,
-    },
-}
-
-#[derive(Debug, Clone)]
 enum Action {
     /// Perform a document action once its dependencies are joined.
     Document(DocumentAction),
@@ -318,93 +313,14 @@ struct Pending {
     saved: Option<bool>,
 }
 
-#[derive(Debug)]
-enum PromptState {
-    Unsaved(DocumentAction),
-    Purge {
-        key: crate::storage::library::LibraryKey,
-        expect: crate::storage::library::VersionToken,
-    },
-    Import,
-    Export(Rendition),
-    ExportRecipe(Arc<str>),
-}
-
-#[derive(Debug)]
-struct Prompt {
-    id: PromptId,
-    state: PromptState,
-}
-
-#[derive(Debug, Clone, Default)]
-enum DocumentLocation {
-    #[default]
-    Unsaved,
-    Managed {
-        key: crate::storage::library::LibraryKey,
-        token: crate::storage::library::VersionToken,
-    },
-    External(crate::storage::external::ObservedFile),
-    Detached(crate::storage::library::LibraryKey),
-}
-impl DocumentLocation {
-    fn managed(
-        &self,
-    ) -> Option<(
-        &crate::storage::library::LibraryKey,
-        crate::storage::library::VersionToken,
-    )> {
-        match self {
-            Self::Managed { key, token } => Some((key, *token)),
-            _ => None,
-        }
-    }
-    fn detached(&self) -> Option<&crate::storage::library::LibraryKey> {
-        match self {
-            Self::Detached(key) => Some(key),
-            _ => None,
-        }
-    }
-    fn external(&self) -> Option<&crate::storage::external::ObservedFile> {
-        match self {
-            Self::External(file) => Some(file),
-            _ => None,
-        }
-    }
-    fn saved_token(
-        &self,
-        key: &crate::storage::library::LibraryKey,
-    ) -> Option<crate::storage::library::VersionToken> {
-        self.managed()
-            .filter(|(saved, _)| *saved == key)
-            .map(|(_, token)| token)
-    }
-}
-struct EditorState {
-    session: EditorSession,
-    export_rate: SampleRate,
-    status: EditStatus,
-    location: DocumentLocation,
-}
-struct AudioState {
-    slot: Option<AudioTask>,
-    status: AudioStatus,
-    output: OutputState,
-    capabilities: Capabilities,
-}
-struct FilesState {
-    slot: Option<FileTask>,
-    status: FileStatus,
-}
-
 /// Interactive application state for one window of work.
 pub struct Workspace {
     library: library::LibraryState,
     view: View,
     editor: EditorState,
     audio: AudioState,
-    files: FilesState,
-    prompt: Option<Prompt>,
+    files: FileState,
+    prompts: Prompts,
     pending: Option<Pending>,
     closing: bool,
     exiting: bool,
@@ -438,23 +354,10 @@ impl Workspace {
         let mut workspace = Self {
             library,
             view: View::Library,
-            editor: EditorState {
-                session: EditorSession::new(Draft::new()?)?,
-                export_rate: SampleRate::DEFAULT,
-                status: EditStatus::Idle,
-                location: DocumentLocation::Unsaved,
-            },
-            audio: AudioState {
-                slot: None,
-                status: AudioStatus::Idle,
-                output: OutputState::default(),
-                capabilities,
-            },
-            files: FilesState {
-                slot: None,
-                status: FileStatus::Idle,
-            },
-            prompt: None,
+            editor: EditorState::new()?,
+            audio: AudioState::new(capabilities),
+            files: FileState::default(),
+            prompts: Prompts::default(),
             pending: None,
             closing: false,
             exiting: false,
@@ -488,54 +391,16 @@ impl Workspace {
         std::mem::take(&mut self.effects)
     }
 
-    /// The capabilities in effect.
-    #[must_use]
-    pub const fn capabilities(&self) -> Capabilities {
-        self.audio.capabilities
-    }
-
-    /// The open document's editor.
-    #[must_use]
-    pub const fn editor(&self) -> &EditorSession {
-        &self.editor.session
-    }
-
     /// The current view.
     #[must_use]
     pub const fn view(&self) -> View {
         self.view
     }
 
-    /// The selected inspection and export rate; device rates are separate.
-    #[must_use]
-    pub const fn export_rate(&self) -> SampleRate {
-        self.editor.export_rate
-    }
-
-    /// Loaded in-memory Built-in and temporary snapshots. Managed User summaries
-    /// appear in `library_view`; only selected User content is loaded in full.
-    #[must_use]
-    pub fn catalog(&self) -> &[RecipeSnapshot] {
-        &self.library.catalog
-    }
-
-    /// The selected recipe, when the search shows it. A search that hides
-    /// every recipe leaves nothing selected.
-    #[must_use]
-    pub fn selected(&self) -> Option<&RecipeSnapshot> {
-        self.library.selected()
-    }
-
-    /// The search text.
-    #[must_use]
-    pub fn query(&self) -> &str {
-        &self.library.query.search
-    }
-
     /// Whether a prompt is open.
     #[must_use]
     pub const fn prompt_open(&self) -> bool {
-        self.prompt.is_some()
+        self.prompts.is_open()
     }
 
     /// Whether an action is waiting for tasks.
@@ -544,55 +409,7 @@ impl Workspace {
         self.pending.is_some()
     }
 
-    /// Whether an audio task occupies its slot.
-    #[must_use]
-    pub const fn audio_busy(&self) -> bool {
-        self.audio.slot.is_some()
-    }
-
-    /// Whether a file task occupies its slot.
-    #[must_use]
-    pub const fn file_busy(&self) -> bool {
-        self.files.slot.is_some()
-    }
-
-    /// Whether the running file task is an export.
-    #[must_use]
-    pub fn exporting(&self) -> bool {
-        self.files
-            .slot
-            .as_ref()
-            .is_some_and(|task| matches!(task.kind, FileKind::Export { .. }))
-    }
-
     // ---- library ----
-
-    fn refilter(&mut self) {
-        self.library.refilter();
-    }
-
-    /// Search titles, IDs, research text and component meaning. When the
-    /// selection stops matching, the first match is selected.
-    pub fn set_query(&mut self, query: &str) {
-        self.library.query.search = query.into();
-        self.refilter();
-        self.load_library_selection();
-        self.changed();
-    }
-
-    /// Change nominal facets without rebinding any playback or editor snapshot.
-    pub fn set_rhythm_query(&mut self, query: crate::discovery::query::RhythmQuery) {
-        self.library.query.rhythm = query;
-        self.refilter();
-        self.load_library_selection();
-        self.changed();
-    }
-
-    /// Current shared nominal restrictions, retained when text search changes.
-    #[must_use]
-    pub const fn rhythm_query(&self) -> &crate::discovery::query::RhythmQuery {
-        &self.library.query.rhythm
-    }
 
     /// Switch between the library and the open document.
     pub fn set_view(&mut self, view: View) {
@@ -602,291 +419,20 @@ impl Workspace {
         }
     }
 
-    /// Select the inspection and export rate. A device's actual rate is
-    /// unaffected.
-    pub fn set_export_rate(&mut self, rate: SampleRate) {
-        if self.editor.export_rate != rate {
-            self.editor.export_rate = rate;
-            self.changed();
-        }
-    }
-
-    /// Show the recipe the open document was copied from, by its retained
-    /// snapshot rather than by its path.
-    pub fn show_based_on_source(&mut self) {
-        if let Some(source) = self.editor.session.draft().based_on().cloned() {
-            self.reveal_retained_source(source);
-        }
-    }
-
     // ---- editing ----
-
-    fn editing_allowed(&self) -> Result<(), Refusal> {
-        if self.prompt.is_some() {
-            return Err(Refusal::PromptOpen);
-        }
-        if self.pending.is_some() {
-            return Err(Refusal::ActionPending);
-        }
-        if self
-            .files
-            .slot
-            .as_ref()
-            .is_some_and(|t| matches!(t.kind, FileKind::Export { .. } | FileKind::Import(_)))
-        {
-            return Err(Refusal::FileBusy);
-        }
-        Ok(())
-    }
-
-    /// Whether editing commands are accepted now.
-    #[must_use]
-    pub fn can_edit(&self) -> bool {
-        self.editing_allowed().is_ok()
-    }
-
-    fn after_edit(&mut self, result: Result<(), Refusal>) -> Result<(), Refusal> {
-        // Field diagnostics already explain input problems; other refusals
-        // are reported until the next accepted edit.
-        self.editor.status = match &result {
-            Ok(()) => {
-                self.submit_live();
-                EditStatus::Idle
-            }
-            Err(Refusal::Input(_)) => EditStatus::Idle,
-            Err(refusal) => EditStatus::Refused(refusal.clone()),
-        };
-        self.changed();
-        result
-    }
-
-    /// Stage typed text. Staging changes diagnostics and readiness only.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale handles or while editing is blocked.
-    pub fn stage(&mut self, handle: FieldHandle, text: &str) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self
-            .editor
-            .session
-            .stage(handle, text)
-            .map_err(Refusal::Edit);
-        self.changed();
-        result
-    }
-
-    /// Discard a field's staged text; returns its committed text.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale handles.
-    pub fn restore(&mut self, handle: FieldHandle) -> Result<String, Refusal> {
-        let result = self.editor.session.restore(handle).map_err(Refusal::Edit);
-        self.changed();
-        result
-    }
-
-    /// Stage a field's text and commit the whole candidate.
-    ///
-    /// # Errors
-    /// Returns the refusal, including every field that kept the candidate
-    /// staged.
-    pub fn commit_field(&mut self, handle: FieldHandle, text: &str) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = match self.editor.session.commit_field(handle, text) {
-            Err(refusal) => Err(Refusal::Edit(refusal)),
-            Ok(Err(CommitRefusal { problems })) => Err(Refusal::Input(problems)),
-            Ok(Ok(_)) => Ok(()),
-        };
-        self.after_edit(result)
-    }
-
-    /// Commit the whole candidate.
-    ///
-    /// # Errors
-    /// Returns every field that kept the candidate staged.
-    pub fn commit(&mut self) -> Result<(), Refusal> {
-        let result = self
-            .editor
-            .session
-            .commit()
-            .map(|_| ())
-            .map_err(|CommitRefusal { problems }| Refusal::Input(problems));
-        self.after_edit(result)
-    }
-
-    /// Apply a slider gesture: the shared comfortable span and gesture
-    /// rounding give the value, which is staged and committed.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale handles or a blocked commit.
-    pub fn slide(&mut self, handle: FieldHandle, position: f64) -> Result<(), Refusal> {
-        let EditingField::Parameter(_, parameter) = handle.field else {
-            return Err(Refusal::Edit(EditRefusal::Inapplicable));
-        };
-        let Some(value) = controls::slider_value(parameter, self.diagnostic_rate(), position)
-        else {
-            return Err(Refusal::Edit(EditRefusal::Inapplicable));
-        };
-        self.commit_field(handle, &value.to_string())
-    }
-
-    /// Route a component to other ears.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale identities or while editing is blocked.
-    pub fn set_ears(&mut self, row: RowKey, ears: Ears) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self
-            .editor
-            .session
-            .set_ears(row, ears)
-            .map_err(Refusal::Edit);
-        self.after_edit(result)
-    }
-
-    /// Change a component's carrier kind.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale identities or while editing is blocked.
-    pub fn set_carrier(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self
-            .editor
-            .session
-            .set_carrier(row, kind)
-            .map_err(Refusal::Edit);
-        self.after_edit(result)
-    }
-
-    /// Change a component's modulation kind, or remove its modulation.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale identities or while editing is blocked.
-    pub fn set_modulation(
-        &mut self,
-        row: RowKey,
-        kind: Option<ModulationKind>,
-    ) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let rate = self.diagnostic_rate();
-        let result = self
-            .editor
-            .session
-            .set_modulation(row, kind, rate)
-            .map_err(Refusal::Edit);
-        self.after_edit(result)
-    }
-
-    /// Add a default component.
-    ///
-    /// # Errors
-    /// Returns the refusal at the component limit or while editing is blocked.
-    pub fn add_component(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self
-            .editor
-            .session
-            .add_component(row, kind)
-            .map(|_| ())
-            .map_err(Refusal::Edit);
-        self.after_edit(result)
-    }
-
-    /// Add a complete pair as one committed edit/live target submission.
-    ///
-    /// # Errors
-    /// Refuses stale documents, busy editing or the expanded voice budget.
-    pub fn add_pair(
-        &mut self,
-        row: RowKey,
-        kind: auditorylab_core::PairKind,
-    ) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self
-            .editor
-            .session
-            .add_pair(row, kind)
-            .map(|_| ())
-            .map_err(Refusal::Edit);
-        self.after_edit(result)
-    }
-
-    /// Remove a component.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale identities or while editing is blocked.
-    pub fn remove_component(&mut self, row: RowKey) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self
-            .editor
-            .session
-            .remove_component(row)
-            .map_err(Refusal::Edit);
-        self.after_edit(result)
-    }
-
-    /// Put the most recently removed component back where it was.
-    ///
-    /// # Errors
-    /// Returns the refusal when nothing was removed, at the component limit
-    /// or while editing is blocked.
-    pub fn restore_component(&mut self, row: RowKey) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self
-            .editor
-            .session
-            .restore_removed(row)
-            .map(|_| ())
-            .map_err(Refusal::Edit);
-        self.after_edit(result)
-    }
-
-    /// The live session's actual rate, when a live task is bound to the open
-    /// document; otherwise the selected export rate. Field diagnostics use it.
-    #[must_use]
-    pub fn diagnostic_rate(&self) -> SampleRate {
-        self.live_rate().unwrap_or(self.editor.export_rate)
-    }
-
-    /// The bound live session's actual device rate, if any.
-    #[must_use]
-    pub fn live_rate(&self) -> Option<SampleRate> {
-        self.audio.slot
-            .as_ref()
-            .filter(|t| matches!(t.kind, AudioKind::Live(document) if document == self.editor.session.document()))
-            .and_then(|t| t.rate)
-    }
 
     /// Send the committed document to a bound live session, compiled at the
     /// session's actual rate. Invalid committed values keep the last valid
     /// accepted target; staged text is never sent.
     fn submit_live(&mut self) {
-        let Some(task) = self.audio.slot.as_ref() else {
-            return;
-        };
-        let (AudioKind::Live(document), Some(live), Some(rate)) =
-            (&task.kind, &task.live, task.rate)
-        else {
-            return;
-        };
-        if *document != self.editor.session.document() {
-            return;
-        }
-        let live = live.clone();
-        let analysis = self.editor.session.committed_analysis(rate);
-        if let Some(target) = analysis.target()
-            && let Err(error) = live.update(target)
-            && error != crate::audio::session::LiveUpdateError::SessionClosed
-        {
-            self.audio.status = AudioStatus::LiveUpdate(error);
-        }
+        self.audio.submit_live(&mut self.editor.session);
     }
 
     // ---- prompts and document actions ----
 
     fn prompt(&mut self, state: PromptState) -> PromptId {
         let id = PromptId(self.next_id());
-        self.prompt = Some(Prompt { id, state });
+        self.prompts.open(id, state);
         id
     }
 
@@ -903,14 +449,16 @@ impl Workspace {
 
     /// Open an editable copy of the selected recipe.
     pub fn copy_selected(&mut self) {
-        if let Some(snapshot) = self.selected().cloned() {
-            if let Err(refusal) = Self::copy_content_admission(&snapshot) {
-                self.files.status = FileStatus::Refused(refusal.clone());
-                self.changed();
-            } else {
-                self.request(DocumentAction::Copy(snapshot));
-            }
+        if let Err(refusal) = self.copy_admission() {
+            self.files.status = FileStatus::Refused(refusal);
+            self.changed();
+            return;
         }
+        let snapshot = self
+            .selected()
+            .cloned()
+            .unwrap_or_else(|| unreachable!("copy admission retains the selected snapshot"));
+        self.request(DocumentAction::Copy(snapshot));
     }
 
     /// Request closing the application. Every close entry point uses this
@@ -927,15 +475,8 @@ impl Workspace {
 
     fn request(&mut self, action: DocumentAction) {
         let closes = matches!(action, DocumentAction::Close);
-        if self.prompt.is_some() || self.pending.is_some() {
-            self.files.status = FileStatus::Refused(
-                (if self.prompt.is_some() {
-                    &Refusal::PromptOpen
-                } else {
-                    &Refusal::ActionPending
-                })
-                .clone(),
-            );
+        if let Err(refusal) = self.start_allowed() {
+            self.files.status = FileStatus::Refused(refusal);
             self.deny(closes);
             self.changed();
             return;
@@ -946,7 +487,7 @@ impl Workspace {
             return;
         }
         // Commit staged text when it can be; anything left staged is unsaved.
-        let _ = self.editor.session.commit();
+        let _ = self.editor.commit();
         self.submit_live();
         if self.editor.session.dirty() {
             let id = self.prompt(PromptState::Unsaved(action));
@@ -962,14 +503,9 @@ impl Workspace {
         let mut rejected = false;
         match response {
             Response::Prompt { prompt, answer } => {
-                if self
-                    .prompt
-                    .as_ref()
-                    .is_none_or(|current| current.id != prompt)
-                {
+                if !self.respond_prompt(prompt, answer) {
                     return ResponseDisposition::Ignored;
                 }
-                self.respond_prompt(prompt, answer);
             }
             Response::Prepared {
                 job,
@@ -980,37 +516,19 @@ impl Workspace {
                 if self.exiting {
                     return ResponseDisposition::Ignored;
                 }
-                let Some(task) = self.audio.slot.as_mut().filter(|task| task.id == job) else {
-                    return ResponseDisposition::Ignored;
-                };
-                if task.rate.is_some()
-                    || task.protocol_failed
-                    || reader.descriptor().id != task.control.session()
-                    || reader.descriptor().output.sample_rate != rate
-                    || matches!(task.kind, AudioKind::Live(_)) != live.is_some()
-                    || live.as_ref().is_some_and(|control| {
-                        control.session() != task.control.session() || control.sample_rate() != rate
-                    })
-                {
-                    task.protocol_failed = true;
-                    task.control.request_stop();
-                    self.audio.status = AudioStatus::WorkerFailed(WorkerFailure::InvalidOutcome);
-                    self.changed();
-                    return ResponseDisposition::Rejected;
+                match self.audio.accept_prepared(job, *reader, rate, live) {
+                    ResponseDisposition::Ignored => return ResponseDisposition::Ignored,
+                    ResponseDisposition::Rejected => {
+                        self.changed();
+                        return ResponseDisposition::Rejected;
+                    }
+                    ResponseDisposition::Applied => {}
                 }
-                task.rate = Some(rate);
-                task.live = live;
-                self.audio.output.bind(*reader);
                 self.submit_live();
                 self.changed();
             }
             Response::Finished { job, outcome } => {
-                if self.audio.slot.as_ref().is_some_and(|task| task.id == job) {
-                    let task = self
-                        .audio
-                        .slot
-                        .take()
-                        .unwrap_or_else(|| unreachable!("matched audio slot"));
+                if let Some(task) = self.audio.take_finished(job) {
                     rejected = task.protocol_failed || matches!(outcome, JobOutcome::File(_));
                     self.finish_audio(
                         task,
@@ -1020,12 +538,7 @@ impl Workspace {
                             JobOutcome::File(_) => Err(WorkerFailure::InvalidOutcome),
                         },
                     );
-                } else if self.files.slot.as_ref().is_some_and(|task| task.id == job) {
-                    let task = self
-                        .files
-                        .slot
-                        .take()
-                        .unwrap_or_else(|| unreachable!("matched file slot"));
+                } else if let Some(task) = self.files.take_finished(job) {
                     rejected = match &outcome {
                         JobOutcome::File(result) => !task.kind.accepts(result),
                         JobOutcome::Audio(_) => true,
@@ -1052,12 +565,9 @@ impl Workspace {
         }
     }
 
-    fn respond_prompt(&mut self, prompt: PromptId, response: PromptAnswer) {
-        if self.prompt.as_ref().is_none_or(|p| p.id != prompt) {
-            return;
-        }
-        let Some(Prompt { state, .. }) = self.prompt.take() else {
-            return;
+    fn respond_prompt(&mut self, prompt: PromptId, response: PromptAnswer) -> bool {
+        let Some(state) = self.prompts.take(prompt) else {
+            return false;
         };
         if matches!(response, PromptAnswer::Path(Some(_)))
             && (self.files.slot.is_some() || self.pending.is_some())
@@ -1065,7 +575,7 @@ impl Workspace {
             self.files.status = FileStatus::Refused(Refusal::FileBusy);
             self.deny(matches!(state, PromptState::Unsaved(DocumentAction::Close)));
             self.changed();
-            return;
+            return true;
         }
         match (state, response) {
             (PromptState::Purge { key, expect }, PromptAnswer::Confirm) => {
@@ -1080,10 +590,10 @@ impl Workspace {
                 let closes = matches!(action, DocumentAction::Close);
                 match self.prepare_save() {
                     Ok(content) => {
-                        if let Err(CommitRefusal { problems }) = self.editor.session.commit() {
-                            self.files.status = FileStatus::Refused(Refusal::Input(problems));
+                        if let Err(refusal) = self.editor.commit() {
+                            self.files.status = FileStatus::Refused(refusal);
                             self.deny(closes);
-                            return;
+                            return true;
                         }
                         self.submit_live();
                         let document = self.editor.session.document();
@@ -1139,6 +649,7 @@ impl Workspace {
             }
         }
         self.changed();
+        true
     }
 
     /// Queue an action behind the tasks it depends on, asking them to finish:
@@ -1156,16 +667,11 @@ impl Workspace {
             } => (true, true),
             _ => (false, true),
         };
-        if audio && let Some(task) = &self.audio.slot {
-            task.control.request_stop();
+        if audio {
+            let _ = self.audio.stop();
         }
-        if file
-            && let Some(FileTask {
-                kind: FileKind::Export { cancel, .. },
-                ..
-            }) = &self.files.slot
-        {
-            cancel.request();
+        if file {
+            let _ = self.files.cancel_export();
         }
         let pending = Pending {
             audio: if audio {
@@ -1286,9 +792,7 @@ impl Workspace {
     }
 
     fn install_document(&mut self, editor: EditorSession) {
-        self.editor.session = editor;
-        self.editor.location = DocumentLocation::Unsaved;
-        self.editor.status = EditStatus::Idle;
+        self.editor.install(editor);
         self.view = View::Workbench;
         self.effects.push(Effect::ShowView(View::Workbench));
         self.files.status = FileStatus::Idle;
@@ -1297,273 +801,20 @@ impl Workspace {
     // ---- tasks ----
 
     fn start_allowed(&self) -> Result<(), Refusal> {
-        if self.prompt.is_some() {
-            return Err(Refusal::PromptOpen);
-        }
-        if self.pending.is_some() {
-            return Err(Refusal::ActionPending);
-        }
-        Ok(())
+        self.prompts.admit_start(self.pending.is_some())
     }
 
     fn start_file(&mut self, kind: FileKind) -> TaskId {
         let id = TaskId(self.next_id());
-        if !kind.background_read() {
-            self.files.status = FileStatus::Running(FileActivity::from_kind(&kind));
-        }
-        self.effects.push(Effect::Run(Job::file(id, kind.clone())));
-        self.files.slot = Some(FileTask { id, kind });
+        let job = self.files.start(id, kind);
+        self.effects.push(Effect::Run(job));
         id
     }
 
-    /// Choose a recipe file to open. Opening may run beside audio.
-    ///
-    /// # Errors
-    /// Returns the admission refusal.
-    pub fn import(&mut self) -> Result<(), Refusal> {
-        self.import_admission()?;
-        let id = self.prompt(PromptState::Import);
-        self.effects.push(Effect::ChoosePath {
-            prompt: id,
-            purpose: PathPurpose::OpenRecipe,
-            suggested_name: None,
-        });
-        self.changed();
-        Ok(())
-    }
-
-    /// Commit and capture the open document, then choose where to save it.
-    /// The captured content is what is written, whatever is edited later.
-    ///
-    /// # Errors
-    /// Returns the admission or readiness refusal.
-    pub fn save(&mut self) -> Result<(), Refusal> {
-        let result = self.save_inner();
-        if let Err(refusal) = &result {
-            self.files.status = FileStatus::Refused((refusal).clone());
-        }
-        self.changed();
-        result
-    }
-
-    fn save_inner(&mut self) -> Result<(), Refusal> {
-        let content = self.prepare_save()?;
-        self.editor
-            .session
-            .commit()
-            .map_err(|CommitRefusal { problems }| Refusal::Input(problems))?;
-        self.submit_live();
-        self.start_managed_save(self.editor.session.document(), content)?;
-        Ok(())
-    }
-
-    /// Export captured portable content without saving or forking the document.
-    ///
-    /// # Errors
-    /// Refuses occupied slots or an unserializable draft; no playback is started.
-    pub fn export_recipe(&mut self) -> Result<(), Refusal> {
-        self.import_admission()?;
-        let (text, title): (Arc<str>, String) = match self.view {
-            View::Workbench => {
-                let recipe = self.prepare_recipe()?;
-                (
-                    Arc::from(
-                        recipe
-                            .to_toml()
-                            .map_err(|e| Refusal::Document(Box::new(e.into())))?,
-                    ),
-                    self.editor.session.draft().title().into(),
-                )
-            }
-            View::Library => {
-                let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
-                let text = match snapshot.origin() {
-                    crate::document::recipe::Origin::BuiltIn(id) => Arc::from(
-                        crate::services::builtin_source(id)
-                            .map_err(|e| Refusal::Document(Box::new(e.into())))?,
-                    ),
-                    crate::document::recipe::Origin::User { .. } => {
-                        self.library.selected_text().ok_or(Refusal::NoSelection)?
-                    }
-                    _ => Arc::from(
-                        snapshot
-                            .recipe()
-                            .to_toml()
-                            .map_err(|e| Refusal::Document(Box::new(e.into())))?,
-                    ),
-                };
-                (text, snapshot.title())
-            }
-        };
-        let prompt = self.prompt(PromptState::ExportRecipe(text));
-        self.effects.push(Effect::ChoosePath {
-            prompt,
-            purpose: PathPurpose::ExportRecipe,
-            suggested_name: Some(file_name(&title, "toml")),
-        });
-        self.changed();
-        Ok(())
-    }
-    /// Validate the current source at the selected export rate, then choose
-    /// where to write it. Export needs idle audio and an idle file slot.
-    ///
-    /// # Errors
-    /// Returns the admission or validity refusal.
-    pub fn export(&mut self) -> Result<(), Refusal> {
-        let result = self.export_inner();
-        if let Err(refusal) = &result {
-            self.files.status = FileStatus::Refused((refusal).clone());
-        }
-        self.changed();
-        result
-    }
-
-    fn export_inner(&mut self) -> Result<(), Refusal> {
-        let prepared = self.prepare_export()?;
-        if self.view == View::Workbench {
-            self.editor
-                .session
-                .commit()
-                .map_err(|CommitRefusal { problems }| Refusal::Input(problems))?;
-            self.submit_live();
-        }
-        let (sound, name) = prepared.capture();
-        let id = self.prompt(PromptState::Export(sound));
-        self.effects.push(Effect::ChoosePath {
-            prompt: id,
-            purpose: PathPurpose::ExportWav,
-            suggested_name: Some(name),
-        });
-        Ok(())
-    }
-
-    /// Cancel the running export. Audio is unaffected.
-    ///
-    /// # Errors
-    /// Returns [`Refusal::NoExport`] when no export runs.
-    pub fn cancel_export(&mut self) -> Result<(), Refusal> {
-        match &self.files.slot {
-            Some(FileTask {
-                kind: FileKind::Export { cancel, .. },
-                ..
-            }) => {
-                cancel.request();
-                Ok(())
-            }
-            _ => Err(Refusal::NoExport),
-        }
-    }
-
-    /// Request Stop of the current audio session. Files are unaffected, and
-    /// Stop stays available while prompts are open.
-    ///
-    /// # Errors
-    /// Returns [`Refusal::NoAudio`] when nothing plays.
-    pub fn stop(&mut self) -> Result<StopRequest, Refusal> {
-        let result = self
-            .audio
-            .slot
-            .as_ref()
-            .map(|task| task.control.request_stop())
-            .ok_or(Refusal::NoAudio);
-        self.changed();
-        result
-    }
-
-    /// Play what the current view shows: the selected recipe to its end, or
-    /// the open document live. Playing replaces current audio after it
-    /// stops. Preparation is requested from fully parsed finite values; the
-    /// definitive check happens at the device's actual rate before the
-    /// stream starts, independently of the export rate.
-    ///
-    /// # Errors
-    /// Returns the admission or input refusal.
-    pub fn play(&mut self) -> Result<(), Refusal> {
-        let result = self.play_inner();
-        self.audio.status = match &result {
-            Ok(()) => AudioStatus::Idle,
-            Err(refusal) => AudioStatus::Refused(refusal.clone()),
-        };
-        self.changed();
-        result
-    }
-
-    /// Invoke the persistent transport action for the current workspace.
-    ///
-    /// # Errors
-    /// Returns the same admission refusal as Stop or Play.
-    pub fn play_stop(&mut self) -> Result<(), Refusal> {
-        if self.audio_busy() {
-            self.stop().map(|_| ())
-        } else {
-            self.play()
-        }
-    }
-
-    fn play_inner(&mut self) -> Result<(), Refusal> {
-        let request = self.audio_request()?;
-        if self.audio.slot.is_some() {
-            self.schedule(Action::StartAudio(request));
-        } else {
-            self.start_audio(request);
-        }
-        Ok(())
-    }
-
-    fn audio_request(&mut self) -> Result<AudioRequest, Refusal> {
-        let request = self.prepare_audio()?;
-        if matches!(request, AudioRequest::Live { .. }) {
-            self.editor
-                .session
-                .commit()
-                .map_err(|CommitRefusal { problems }| Refusal::Input(problems))?;
-        }
-        Ok(request)
-    }
-
-    /// Whether Play has a complete candidate and admission, before device discovery.
-    pub(crate) fn play_readiness(&mut self) -> Result<(), Refusal> {
-        self.prepare_audio().map(|_| ())
-    }
-
     fn start_audio(&mut self, request: AudioRequest) {
-        let session = Session::new();
-        let control = session.control();
-        let (kind, title, draft) = match request {
-            AudioRequest::Finite { snapshot, store } => {
-                let title = snapshot.title();
-                let kind = match store {
-                    Some(store) => AudioKind::Managed {
-                        snapshot: *snapshot,
-                        store,
-                    },
-                    None => AudioKind::Finite(*snapshot),
-                };
-                (kind, title, None)
-            }
-            AudioRequest::Live {
-                document,
-                candidate,
-            } => (
-                AudioKind::Live(document),
-                candidate.draft().title().to_owned(),
-                Some(candidate.draft().clone()),
-            ),
-        };
         let id = TaskId(self.next_id());
-        self.audio.output.unbind();
-        self.audio.status = AudioStatus::Idle;
-        self.effects
-            .push(Effect::Run(Job::audio(id, session, kind.clone(), draft)));
-        self.audio.slot = Some(AudioTask {
-            id,
-            kind,
-            title,
-            control,
-            live: None,
-            rate: None,
-            protocol_failed: false,
-        });
+        let job = self.audio.start(id, request);
+        self.effects.push(Effect::Run(job));
     }
 
     // ---- polling ----
@@ -1607,29 +858,8 @@ impl Workspace {
         task: AudioTask,
         result: Result<Result<crate::audio::session::PlaybackReport, Error>, WorkerFailure>,
     ) {
-        let failed = task.protocol_failed || !matches!(&result, Ok(Ok(_)));
-        self.audio.status = match result {
-            Ok(Ok(report)) if !task.protocol_failed => AudioStatus::Ended {
-                report,
-                monitored: self.audio.output.reader().is_some(),
-            },
-            Ok(Err(error)) => AudioStatus::Failed(error),
-            Err(error) => AudioStatus::WorkerFailed(error),
-            Ok(Ok(_)) => AudioStatus::WorkerFailed(WorkerFailure::InvalidOutcome),
-        };
-        if failed {
-            self.audio.output.mark_failed(&task.title);
-        }
-        self.conclude(
-            task.id,
-            true,
-            if failed {
-                Conclusion::Failed
-            } else {
-                Conclusion::Succeeded
-            },
-            None,
-        );
+        let conclusion = self.audio.finish(&task, result);
+        self.conclude(task.id, true, conclusion, None);
         self.changed();
     }
 
@@ -1653,7 +883,7 @@ impl Workspace {
                 return;
             }
         };
-        let conclusion = outcome.conclusion();
+        let mut conclusion = outcome.conclusion();
         let mut saved = None;
         let status = match (&task.kind, outcome) {
             (FileKind::Managed(job), FileOutcome::Managed(result)) => {
@@ -1661,13 +891,16 @@ impl Workspace {
                 saved = confirmed;
                 status
             }
-            (_, FileOutcome::Imported(Ok(snapshot))) => {
-                self.add_import(snapshot.clone());
-                FileStatus::Imported {
+            (_, FileOutcome::Imported(Ok(snapshot))) => match self.add_import(snapshot.clone()) {
+                Ok(()) => FileStatus::Imported {
                     snapshot,
                     hidden: self.selected().is_none(),
+                },
+                Err(error) => {
+                    conclusion = Conclusion::Failed;
+                    FileStatus::Failed(error)
                 }
-            }
+            },
             (FileKind::ExportRecipe { path, .. }, FileOutcome::RecipeExported(Ok(outcome))) => {
                 FileStatus::RecipeExported {
                     path: path.clone(),
@@ -1703,20 +936,8 @@ impl Workspace {
         self.changed();
     }
 
-    fn add_import(&mut self, snapshot: RecipeSnapshot) {
-        self.register_external(&snapshot);
-        if let Some(index) = self
-            .library
-            .catalog
-            .iter()
-            .position(|existing| existing.origin() == snapshot.origin())
-        {
-            self.library.catalog[index] = snapshot;
-        } else {
-            self.library.catalog.push(snapshot);
-        }
-        self.library.query.search.clear();
-        self.refilter();
+    fn add_import(&mut self, snapshot: RecipeSnapshot) -> Result<(), Error> {
+        self.library.import(snapshot)
     }
 
     fn conclude(&mut self, task: TaskId, audio: bool, conclusion: Conclusion, saved: Option<bool>) {
@@ -1765,18 +986,10 @@ impl Workspace {
     fn prepare_shutdown(&mut self) {
         self.exiting = true;
         self.pending = None;
-        self.prompt = None;
+        self.prompts.clear();
         self.closing = false;
-        if let Some(task) = &self.audio.slot {
-            task.control.request_stop();
-        }
-        if let Some(FileTask {
-            kind: FileKind::Export { cancel, .. },
-            ..
-        }) = &self.files.slot
-        {
-            cancel.request();
-        }
+        let _ = self.audio.stop();
+        let _ = self.files.cancel_export();
     }
     fn job_context(&self, job: TaskId) -> String {
         if let Some(task) = self.files.slot.as_ref().filter(|task| task.id == job) {
@@ -1795,62 +1008,6 @@ impl Workspace {
     }
 
     // ---- display policy ----
-
-    /// Record the platform's reduced-motion preference.
-    pub fn set_motion_preference(&mut self, preference: MotionPreference) {
-        if self.audio.output.set_motion(preference) {
-            self.changed();
-        }
-    }
-
-    /// Hold or release the displayed capture, overriding the platform
-    /// preference until [`Workspace::follow_motion`].
-    pub fn set_hold(&mut self, held: bool) {
-        self.audio.output.set_override(Some(held));
-        self.changed();
-    }
-
-    /// Follow the platform's motion preference again.
-    pub fn follow_motion(&mut self) {
-        self.audio.output.set_override(None);
-        self.changed();
-    }
-
-    /// Choose the waveform span in milliseconds and its display scale.
-    pub fn set_waveform(&mut self, span_ms: u32, scale: WaveformScale) {
-        if self.audio.output.set_waveform(span_ms, scale) {
-            self.changed();
-        }
-    }
-
-    /// Stop showing the last session's output and preview the current source.
-    pub fn preview_current(&mut self) {
-        if self.audio.slot.is_none() {
-            self.audio.output.unbind();
-            self.changed();
-        }
-    }
-
-    /// The timing model of what the current view explains: the open
-    /// document's accepted live revision, its committed content, or the
-    /// selected recipe. `None` when that source is not valid.
-    #[must_use]
-    pub fn model_view(&self) -> Option<Arc<crate::presentation::waveform_view::ModelView>> {
-        self.audio.output.model().cloned()
-    }
-
-    /// Stop control of the current audio session, for a native control that
-    /// must stop exactly that session.
-    #[must_use]
-    pub fn audio_control(&self) -> Option<PlaybackControl> {
-        self.audio.slot.as_ref().map(|task| task.control.clone())
-    }
-
-    /// Phase of the current audio session, if one is bound.
-    #[must_use]
-    pub fn audio_phase(&self) -> Option<PlaybackPhase> {
-        self.audio.slot.as_ref().map(|t| t.control.phase())
-    }
 }
 
 #[cfg(test)]

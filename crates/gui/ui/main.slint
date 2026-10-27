@@ -148,10 +148,15 @@ export component MainWindow inherits Window {
     in property <bool> can-play;
     in property <string> library-play-action;
     in property <bool> can-import;
+    in property <bool> can-manage-library;
+    in property <bool> can-add-to-library;
+    in property <bool> can-request-trash;
     in property <bool> can-new;
     in property <bool> can-copy;
     in property <bool> can-preview;
     in property <bool> can-save;
+    in property <bool> can-save-copy;
+    in property <bool> can-export-recipe;
     in property <bool> dirty;
     in property <string> based-on;
     in property <string> based-on-title;
@@ -300,8 +305,8 @@ export component MainWindow inherits Window {
                     root.save-recipe();
                 }
             }
-            MenuItem {title:Terms.action-save-independent-copy;enabled:root.can-edit && root.tab-index==1;activated=>{root.save-copy();}}
-            MenuItem {title:Terms.action-export-portable-recipe-dialog;enabled:root.tab-index==0 ? root.has-results : root.can-save;activated=>{root.export-recipe();}}
+            MenuItem {title:Terms.action-save-independent-copy;enabled:root.can-save-copy && root.tab-index==1;activated=>{root.save-copy();}}
+            MenuItem {title:Terms.action-export-portable-recipe-dialog;enabled:root.can-export-recipe;activated=>{root.export-recipe();}}
             MenuItem {
                 title: Terms.action-export-wav-dialog;
                 enabled: root.can-export;
@@ -412,7 +417,7 @@ export component MainWindow inherits Window {
                 Button {text:Terms.action-clear-all-filters;clicked=>{root.clear-applied-filters();}}
                 Disclosure {label:Terms.caption-library-storage-and-recovery;expanded <=> root.storage-open;}
                 if root.storage-open: Text {text:root.library-status;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                if root.storage-open: Button {text:Terms.action-initialize-configured-library;clicked=>{root.initialize-library();}}
+                if root.storage-open: Button {enabled:root.can-manage-library;text:Terms.action-initialize-configured-library;clicked=>{root.initialize-library();}}
                 Button {text:Terms.action-close;clicked=>{library-options.close();}}
             }}
         }
@@ -867,15 +872,15 @@ export component MainWindow inherits Window {
                                 if utc-dates.expanded: TextEdit {text:root.library-dates-utc;read-only:true;wrap:word-wrap;accessible-label:Terms.facet-exact-utc-recipe-and-membership-dates;min-width:0px;height:root.ui-size*8;vertical-stretch:0;}
                                 if root.library-key != "": Text {text:root.library-key;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
                                 }
-                                if root.library-token != "" && !root.library-trashed: BoundButton {text:Terms.action-edit-saved-user-recipe;key:root.library-key;token:root.library-token;activated(k,t)=>{root.edit-saved(k,t);}}
-                                Button {text:Terms.action-export-portable-recipe-dialog;enabled:root.has-results;clicked=>{root.export-recipe();}}
+                                if root.library-token != "" && !root.library-trashed: BoundButton {enabled:root.can-new;text:Terms.action-edit-saved-user-recipe;key:root.library-key;token:root.library-token;activated(k,t)=>{root.edit-saved(k,t);}}
+                                Button {text:Terms.action-export-portable-recipe-dialog;enabled:root.can-export-recipe;clicked=>{root.export-recipe();}}
                                 if root.collection-choice == 3: BoundButton {text:Terms.action-close-open-file;key:root.library-key;token:"";activated(k,t)=>{root.close-open-file(k);}}
-                                if root.collection-choice == 3: BoundButton {text:Terms.action-edit-external-file;key:root.library-key;token:"";activated(k,t)=>{root.edit-saved(k,t);}}
-                                if root.collection-choice == 3: BoundButton {text:Terms.action-add-to-user-library;key:root.library-key;token:"";activated(k,t)=>{root.add-to-library(k);}}
+                                if root.collection-choice == 3: BoundButton {enabled:root.can-new;text:Terms.action-edit-external-file;key:root.library-key;token:"";activated(k,t)=>{root.edit-saved(k,t);}}
+                                if root.collection-choice == 3: BoundButton {enabled:root.can-add-to-library;text:Terms.action-add-to-user-library;key:root.library-key;token:"";activated(k,t)=>{root.add-to-library(k);}}
                                 if root.library-token != "": VerticalBox { vertical-stretch:0;
-                                    if !root.library-trashed: BoundTitleEdit {key:root.library-key;token:root.library-token;placeholder-text:Terms.caption-new-title;accessible-label:Terms.action-rename-saved-recipe;rename(k,t,value)=>{root.library-action(k,t,Terms.action-rename,value);} }
-                                    BoundButton {text:root.library-trashed ? Terms.action-restore-from-trash : Terms.action-move-saved-entry-to-trash;key:root.library-key;token:root.library-token;action:root.library-trashed ? Terms.action-restore : Terms.action-trash;dispatch(k,t,action)=>{root.library-action(k,t,action,"");}}
-                                    if root.library-trashed: BoundButton {text:Terms.action-permanently-delete-dialog;key:root.library-key;token:root.library-token;activated(k,t)=>{root.library-action(k,t,Terms.action-purge,"");}}
+                                    if !root.library-trashed: BoundTitleEdit {enabled:root.can-manage-library;key:root.library-key;token:root.library-token;placeholder-text:Terms.caption-new-title;accessible-label:Terms.action-rename-saved-recipe;rename(k,t,value)=>{root.library-action(k,t,Terms.action-rename,value);} }
+                                    BoundButton {enabled:root.library-trashed ? root.can-manage-library : root.can-request-trash;text:root.library-trashed ? Terms.action-restore-from-trash : Terms.action-move-saved-entry-to-trash;key:root.library-key;token:root.library-token;action:root.library-trashed ? Terms.action-restore : Terms.action-trash;dispatch(k,t,action)=>{root.library-action(k,t,action,"");}}
+                                    if root.library-trashed: BoundButton {enabled:root.can-manage-library;text:Terms.action-permanently-delete-dialog;key:root.library-key;token:root.library-token;activated(k,t)=>{root.library-action(k,t,Terms.action-purge,"");}}
                                 }
                                 Disclosure {label:Terms.caption-research-citation-and-sound-adaptations;expanded <=> root.research;}
                                 if root.research && root.can-open-study: Button {text:Terms.action-open-study-source;clicked=>{root.open-study();}}
@@ -1079,7 +1084,7 @@ export component MainWindow inherits Window {
                         vertical-stretch:0;
                         Text {text:root.draft-location-details;min-width:0px;wrap:word-wrap;vertical-stretch:0;}
 
-                        Button {text:Terms.action-export-portable-draft-recipe-dialog;enabled:root.can-save;clicked=>{root.export-recipe();}}
+                        Button {text:Terms.action-export-portable-draft-recipe-dialog;enabled:root.can-export-recipe;clicked=>{root.export-recipe();}}
 
                         HorizontalLayout {
                             Button {

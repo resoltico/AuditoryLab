@@ -250,7 +250,7 @@ impl Report {
         let (source, text, history) = description.into_parts();
         let mut entry = EntryReport::from(source.summary());
         entry.history_warnings = Some(history);
-        entry.recipe_toml = Some(text);
+        entry.recipe_toml = Some(text.to_string());
         Self::new("describe", true).with_entries(vec![entry])
     }
     /// Render the service’s captured rate validation, including invalid-content diagnostics.

@@ -5,8 +5,8 @@
 //! availability. Building a view evaluates through the editor's caches; an
 //! unchanged document is not evaluated again.
 use super::{FileKind, OutputView, Refusal, View, Workspace};
+use crate::document::editing::FieldHandle;
 use crate::document::editing::RowKey;
-use crate::document::editing::{EditRefusal, FieldHandle};
 use crate::document::recipe::RecipeSnapshot;
 use crate::presentation::workspace_text::refusal_text;
 use crate::{document::controls, presentation};
@@ -173,6 +173,12 @@ pub struct ActionView {
     pub library_play_label: &'static str,
     /// A file import may be requested.
     pub can_import: bool,
+    /// The library worker can accept an operation at this configured destination.
+    pub can_manage_library: bool,
+    /// The selected opened input can be explicitly imported.
+    pub can_add_to_library: bool,
+    /// Trash can start or queue the current managed draft decision.
+    pub can_request_trash: bool,
     /// A document replacement/copy may be requested (possibly queued).
     pub can_new: bool,
     /// The current selection can be copied.
@@ -191,6 +197,10 @@ pub struct ActionView {
     pub play_reason: String,
     /// Save is admitted.
     pub can_save: bool,
+    /// A complete independent copy can be created and saved.
+    pub can_save_copy: bool,
+    /// Current portable content can be captured for an external export.
+    pub can_export_recipe: bool,
     /// Why Save is not admitted.
     pub save_reason: String,
     /// Export is admitted.
@@ -212,7 +222,7 @@ pub struct ActionView {
     pub removed_component: String,
     /// Undo remove is admitted.
     pub can_restore_component: bool,
-    /// A file task or prompt is active; command availability remains operation-specific.
+    /// A file task occupies its joined slot; prompt admission is separate.
     pub file_busy: bool,
     /// An audio task occupies its slot.
     pub playback_busy: bool,
@@ -359,6 +369,8 @@ impl Workspace {
     pub fn action_view(&mut self) -> ActionView {
         let play = self.play_readiness();
         let save = self.prepare_save();
+        let save_copy = self.prepare_save_copy();
+        let export_recipe = self.prepare_export_recipe();
         let export = self.prepare_export();
         let copy = self.copy_admission();
         let refusal = match self.view {
@@ -403,12 +415,10 @@ impl Workspace {
         } else {
             String::new()
         };
-        let draft = self.editor.session.draft();
-        let component_add = draft.check_addition(auditorylab_core::ComponentForm::Voice(
-            controls::default_component(CarrierKind::Tone),
-        ));
-        let pair_add =
-            draft.check_addition(controls::default_pair(auditorylab_core::PairKind::Binaural));
+        let row = self.editor.session.document_key();
+        let component_add = self.component_add_admission(row, CarrierKind::Tone);
+        let pair_add = self.pair_add_admission(row, crate::core::PairKind::Binaural);
+        let restore_component = self.restore_component_admission(row);
         let playing = self.audio.slot.is_some();
         let exporting = self.exporting();
         let progress = self.export_progress();
@@ -417,28 +427,38 @@ impl Workspace {
             library_play_label: crate::presentation::vocabulary::Action::library_play_labels()
                 [usize::from(playing)],
             can_import: self.import_admission().is_ok(),
+            can_manage_library: self.library_job_admission().is_ok(),
+            can_add_to_library: self.prepare_add_to_library().is_ok(),
+            can_request_trash: self
+                .library
+                .selected_key()
+                .is_some_and(|key| self.trash_request_admission(key).is_ok()),
             can_new: self.start_allowed().is_ok(),
             can_copy: copy.is_ok(),
             copy_reason: copy.err().as_ref().map(refusal_text).unwrap_or_default(),
             operation_summary,
             operation_outcome,
             operation_details,
-            can_preview: !playing,
+            can_preview: self.preview_admission().is_ok(),
             play_reason: play.as_ref().err().map(refusal_text).unwrap_or_default(),
             can_save: save.is_ok(),
+            can_save_copy: save_copy.is_ok(),
+            can_export_recipe: export_recipe.is_ok(),
             save_reason: save.err().as_ref().map(refusal_text).unwrap_or_default(),
             can_export: export.is_ok(),
             export_reason: export.err().as_ref().map(refusal_text).unwrap_or_default(),
             can_edit: self.can_edit(),
-            can_add_component: self.can_edit() && component_add.is_ok(),
-            can_add_pair: self.can_edit() && pair_add.is_ok(),
+            can_add_component: component_add.is_ok(),
+            can_add_pair: pair_add.is_ok(),
             pair_add_reason: pair_add
                 .err()
-                .map(EditRefusal::description)
+                .as_ref()
+                .map(refusal_text)
                 .unwrap_or_default(),
             add_component_reason: component_add
                 .err()
-                .map(EditRefusal::description)
+                .as_ref()
+                .map(refusal_text)
                 .unwrap_or_default(),
             removed_component: self
                 .editor
@@ -448,16 +468,11 @@ impl Workspace {
                     presentation::workspace_text::removed_component(component.form, index)
                 })
                 .unwrap_or_default(),
-            can_restore_component: self.can_edit()
-                && self
-                    .editor
-                    .session
-                    .removed()
-                    .is_some_and(|(_, component)| draft.check_addition(component.form).is_ok()),
-            file_busy: self.files.slot.is_some() || self.prompt.is_some(),
+            can_restore_component: restore_component.is_ok(),
+            file_busy: self.file_busy(),
             playback_busy: playing,
             exporting,
-            transport_enabled: playing || play.is_ok(),
+            transport_enabled: self.audio.stop_admission().is_ok() || play.is_ok(),
             transport_label: if playing {
                 crate::presentation::vocabulary::Action::StopAudio.label()
             } else if self.view == View::Workbench {

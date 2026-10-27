@@ -355,7 +355,7 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
             .iter()
             .any(|row| row.text.contains("Needs review"))
     );
-    assert!(w.selected_unreadable());
+    assert!(w.library.selected_unreadable());
     assert!(w.library_status().contains("incomplete"));
     assert_eq!(w.editor.session.draft().title(), "Untitled sound");
 }
@@ -572,7 +572,7 @@ fn refresh_reloads_membership_state_even_when_recipe_sha_is_unchanged() {
         .unwrap();
     workspace.refresh_library();
     idle(&mut workspace);
-    assert!(workspace.selected_trashed());
+    assert!(workspace.library.selected_trashed());
     let loaded = &workspace.library.loaded.as_ref().unwrap();
     assert!(loaded.trashed);
     assert_eq!(loaded.trashed_at, None);
@@ -819,4 +819,51 @@ fn a_load_completed_after_navigation_cannot_own_the_cache_or_suppress_later_read
     complete_file(&mut workspace, later);
     assert!(!workspace.file_busy());
     selected_ready(&mut workspace, &other, "Shared B", &query);
+}
+
+#[test]
+fn retained_user_source_exports_its_captured_portable_text_without_reloading_user() {
+    let (_temp, store, mut workspace) = fixture();
+    workspace.save().unwrap();
+    idle(&mut workspace);
+    user(&mut workspace);
+    let original = workspace.selected().unwrap().clone();
+    workspace.copy_selected();
+    let key = LibraryKey::User(original.recipe().document().id);
+    let record = store.load(&key).unwrap();
+    store
+        .rename(
+            key,
+            Some(record.version_token),
+            "Current saved version".into(),
+            &Cancel::default(),
+        )
+        .unwrap();
+    workspace.show_based_on_source();
+    assert_eq!(workspace.catalog_query().scope, Scope::OpenFiles);
+    assert!(!workspace.library.selected_user());
+    let next = workspace.next_id;
+    for _ in 0..20 {
+        assert!(workspace.action_view().can_export_recipe);
+    }
+    assert_eq!(workspace.next_id, next);
+    let first = workspace.prepare_export_recipe().unwrap().0;
+    let second = workspace.prepare_export_recipe().unwrap().0;
+    assert!(
+        Arc::ptr_eq(&first, &second),
+        "immutable captured text is reused by readiness and execution"
+    );
+    workspace.export_recipe().unwrap();
+    let Some(prompt) = workspace.prompts.current.as_ref() else {
+        panic!("portable export prompt");
+    };
+    let PromptState::ExportRecipe(text) = &prompt.state else {
+        panic!("captured portable text");
+    };
+    assert!(
+        crate::core::Recipe::parse(text)
+            .unwrap()
+            .same_document(original.recipe())
+    );
+    assert!(!text.contains("Current saved version"));
 }

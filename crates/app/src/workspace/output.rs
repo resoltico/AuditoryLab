@@ -10,7 +10,7 @@
 //! only for a new publication, span or scale. Invalid sources are cached as
 //! their diagnosis. A held capture is immutable: later navigation, edits,
 //! settings or sessions cannot relabel it.
-use super::View;
+use super::{View, Workspace};
 use crate::audio::session::MonitorReader;
 use crate::audio::session::SessionId;
 use crate::document::editing::EditorSession;
@@ -411,5 +411,51 @@ impl OutputState {
                 _ => None,
             };
         }
+    }
+}
+
+impl OutputState {
+    pub(super) fn preview_admission(audio: &super::AudioState) -> Result<(), super::Refusal> {
+        audio.idle_admission()
+    }
+}
+
+impl Workspace {
+    /// Record the platform's reduced-motion preference.
+    pub fn set_motion_preference(&mut self, preference: MotionPreference) {
+        if self.audio.output.set_motion(preference) {
+            self.changed();
+        }
+    }
+    /// Hold or release the displayed capture, overriding the platform
+    /// preference until [`Workspace::follow_motion`].
+    pub fn set_hold(&mut self, held: bool) {
+        self.audio.output.set_override(Some(held));
+        self.changed();
+    }
+    /// Follow the platform's motion preference again.
+    pub fn follow_motion(&mut self) {
+        self.audio.output.set_override(None);
+        self.changed();
+    }
+    /// Choose the waveform span in milliseconds and its display scale.
+    pub fn set_waveform(&mut self, span_ms: u32, scale: WaveformScale) {
+        if self.audio.output.set_waveform(span_ms, scale) {
+            self.changed();
+        }
+    }
+    /// Stop showing the last session's output and preview the current source.
+    pub fn preview_current(&mut self) {
+        if self.preview_admission().is_ok() {
+            self.audio.output.unbind();
+            self.changed();
+        }
+    }
+    /// The timing model of what the current view explains: the open
+    /// document's accepted live revision, its committed content, or the
+    /// selected recipe. `None` when that source is not valid.
+    #[must_use]
+    pub fn model_view(&self) -> Option<Arc<crate::presentation::waveform_view::ModelView>> {
+        self.audio.output.model().cloned()
     }
 }

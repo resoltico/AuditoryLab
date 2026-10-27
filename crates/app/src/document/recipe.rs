@@ -63,6 +63,7 @@ pub struct RecipeSnapshot {
     about: Arc<Option<About>>,
     realizations: Arc<std::sync::Mutex<Realizations>>,
     nominal: Arc<auditorylab_core::rhythm::Analysis>,
+    canonical_text: Arc<std::sync::OnceLock<Result<Arc<str>, auditorylab_core::RecipeError>>>,
 }
 
 /// Two rates per immutable snapshot cover inspection/export and device use.
@@ -87,6 +88,7 @@ impl RecipeSnapshot {
         let about = Arc::new(recipe.display_about());
         Self {
             nominal,
+            canonical_text: Arc::new(std::sync::OnceLock::new()),
             about,
             id: SnapshotId::next(),
             origin,
@@ -120,6 +122,11 @@ impl RecipeSnapshot {
         &self.origin
     }
 
+    pub(crate) fn canonical_text(&self) -> Result<Arc<str>, auditorylab_core::RecipeError> {
+        self.canonical_text
+            .get_or_init(|| self.recipe.to_toml().map(Arc::<str>::from))
+            .clone()
+    }
     /// The captured document.
     #[must_use]
     pub fn recipe(&self) -> &Recipe {

@@ -1,5 +1,6 @@
 //! Coordinator semantics with real persistent stores and directly executed file jobs.
 use super::*;
+use crate::presentation::waveform_view::WaveformScale;
 use auditorylab_core::{ComponentId, ParameterId};
 use std::sync::Arc;
 
@@ -385,7 +386,7 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
     assert!((ws.visible_count() == 0));
     let mut custom = Draft::new().unwrap();
     custom.set_summary("custom-notes-marker".into());
-    ws.add_import(custom.snapshot().unwrap());
+    ws.add_import(custom.snapshot().unwrap()).unwrap();
     ws.set_query("custom-notes-marker");
     assert_eq!(ws.visible_count(), 1);
     ws.set_query("unique-own-notes-marker");
@@ -393,7 +394,8 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
     ws.add_import(crate::document::recipe::RecipeSnapshot::new(
         crate::document::recipe::Origin::Stream("reopened derivative".into()),
         custom.recipe().unwrap(),
-    ));
+    ))
+    .unwrap();
     ws.set_query("unique-own-notes-marker");
     // A reimport under the same origin must remove stale search text.
     assert_eq!(ws.visible_count(), 0);
@@ -424,7 +426,7 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     }
     assert_eq!(selected.realization_count(), count);
     ws.export().unwrap();
-    let prompt = ws.prompt.as_ref().unwrap().id;
+    let prompt = ws.prompts.current.as_ref().unwrap().id;
     ws.respond(Response::Prompt {
         prompt,
         answer: PromptAnswer::Path(None),
@@ -469,7 +471,7 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
         crate::document::recipe::Origin::File("same.toml".into()),
         selected.recipe().clone(),
     );
-    imported.add_import(fresh.clone());
+    imported.add_import(fresh.clone()).unwrap();
     imported.action_view();
     assert_eq!(
         fresh.realization_count(),
@@ -504,7 +506,7 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
         crate::document::recipe::Origin::File("same.toml".into()),
         changed.build().unwrap(),
     );
-    ws.add_import(replacement.clone());
+    ws.add_import(replacement.clone()).unwrap();
     ws.set_query("original-custom-note-marker");
     assert!(ws.library_view().rows.is_empty());
     ws.set_query("reimport-source-marker");
@@ -1357,3 +1359,6 @@ fn staged_envelope_failures_render_quantities_and_rate_in_metadata() {
         "Duration 0 s must last from one sample (1/48000 s) to 16.6 days at 48000 Hz"
     );
 }
+
+#[path = "tests/admissions.rs"]
+mod admissions;

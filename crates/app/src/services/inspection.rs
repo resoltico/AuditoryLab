@@ -9,11 +9,11 @@ use crate::{
 #[derive(Debug)]
 pub struct Description<'a> {
     pub(super) source: &'a Resolved,
-    pub(super) text: String,
+    pub(super) text: std::sync::Arc<str>,
     pub(super) history: Vec<String>,
 }
 impl<'a> Description<'a> {
-    pub(crate) fn into_parts(self) -> (&'a Resolved, String, Vec<String>) {
+    pub(crate) fn into_parts(self) -> (&'a Resolved, std::sync::Arc<str>, Vec<String>) {
         (self.source, self.text, self.history)
     }
     /// Captured source and correlated ownership.
@@ -39,7 +39,7 @@ impl<'a> Description<'a> {
 pub fn describe(source: &Resolved) -> Result<Description<'_>, OperationError> {
     Ok(Description {
         source,
-        text: source.snapshot.recipe().to_toml()?,
+        text: source.snapshot.canonical_text()?,
         history: crate::storage::library::history_warnings(source.snapshot.recipe()),
     })
 }

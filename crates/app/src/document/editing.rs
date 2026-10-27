@@ -339,6 +339,15 @@ impl Draft {
             Ok(())
         }
     }
+    pub(crate) fn admit_new_component(
+        &self,
+        form: auditorylab_core::ComponentForm,
+    ) -> Result<ComponentId, EditRefusal> {
+        self.check_addition(form)?;
+        self.next_id
+            .and_then(ComponentId::new)
+            .ok_or(EditRefusal::IdentitiesExhausted)
+    }
     /// Add an atomic authored form, including a two-voice pair.
     ///
     /// # Errors
@@ -347,11 +356,9 @@ impl Draft {
         &mut self,
         form: auditorylab_core::ComponentForm,
     ) -> Result<ComponentId, EditRefusal> {
-        self.check_addition(form)?;
+        let id = self.admit_new_component(form)?;
         let components = &mut self.content.sound.components;
-        let next = self.next_id.ok_or(EditRefusal::IdentitiesExhausted)?;
-        let id = ComponentId::new(next).ok_or(EditRefusal::IdentitiesExhausted)?;
-        self.next_id = next.checked_add(1);
+        self.next_id = id.get().checked_add(1);
         components.push(auditorylab_core::Component { id, form });
         self.demote_evidence();
         Ok(id)
@@ -723,7 +730,7 @@ pub struct EditorSession {
     nominal: Option<(u64, Arc<crate::core::rhythm::Analysis>)>,
     analyses: Vec<(AnalysisKey, Arc<Analysis>)>,
     candidate: Option<(u64, u64, Arc<Candidate>)>,
-    save_check: Option<(u64, u64, Result<(), SaveRefusal>)>,
+    save_check: Option<(u64, u64, Result<Arc<str>, SaveRefusal>)>,
     removed: Option<Removed>,
     #[cfg(test)]
     evaluations: u64,
@@ -867,7 +874,7 @@ impl EditorSession {
     fn admit_component(&self, row: RowKey) -> Result<ComponentId, EditRefusal> {
         self.admit_row(row)?.ok_or(EditRefusal::Inapplicable)
     }
-    fn admit_document(&self, row: RowKey) -> Result<(), EditRefusal> {
+    pub(crate) fn admit_document(&self, row: RowKey) -> Result<(), EditRefusal> {
         if self.admit_row(row)?.is_some() {
             Err(EditRefusal::Inapplicable)
         } else {
@@ -1209,6 +1216,16 @@ impl EditorSession {
         self.removed.as_ref().map(|r| (r.index, &r.component))
     }
 
+    pub(crate) fn restore_admission(&self, row: RowKey) -> Result<u64, EditRefusal> {
+        self.admit_document(row)?;
+        let removed = self.removed.as_ref().ok_or(EditRefusal::NothingRemoved)?;
+        let generation = removed
+            .generation
+            .checked_add(1)
+            .ok_or(EditRefusal::IdentitiesExhausted)?;
+        self.draft.check_addition(removed.component.form)?;
+        Ok(generation)
+    }
     /// Put the most recently removed component back where it was, with its
     /// identity and the text that was staged for it.
     ///
@@ -1217,12 +1234,11 @@ impl EditorSession {
     /// removed, or at the component limit, which keeps the component for a
     /// later restore.
     pub fn restore_removed(&mut self, row: RowKey) -> Result<ComponentId, EditRefusal> {
-        self.admit_document(row)?;
-        let removed = self.removed.take().ok_or(EditRefusal::NothingRemoved)?;
-        let Some(generation) = removed.generation.checked_add(1) else {
-            self.removed = Some(removed);
-            return Err(EditRefusal::IdentitiesExhausted);
-        };
+        let generation = self.restore_admission(row)?;
+        let removed = self
+            .removed
+            .take()
+            .unwrap_or_else(|| unreachable!("restore admission keeps the removed component"));
         let complete_undo = Arc::ptr_eq(&removed.saved, &self.saved)
             && self.draft.content.same_editable_content(&removed.after);
         if let Err(refusal) = self.draft.restore(removed.index, removed.component) {
@@ -1322,6 +1338,9 @@ impl EditorSession {
     /// # Errors
     /// Returns the reason it cannot.
     pub fn save_readiness(&mut self) -> Result<(), SaveRefusal> {
+        self.serialized_candidate().map(|_| ())
+    }
+    pub(crate) fn serialized_candidate(&mut self) -> Result<Arc<str>, SaveRefusal> {
         if let Some((draft, input, result)) = &self.save_check
             && *draft == self.draft_revision
             && *input == self.input_revision
@@ -1337,7 +1356,7 @@ impl EditorSession {
             candidate
                 .draft
                 .to_toml()
-                .map(|_| ())
+                .map(Arc::<str>::from)
                 .map_err(SaveRefusal::Document)
         } else {
             Err(SaveRefusal::Input(candidate.problems.clone()))

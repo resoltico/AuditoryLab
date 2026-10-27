@@ -1,177 +1,108 @@
-//! Side-effect-free operation preparation shared by actions and execution.
+//! Cross-state operation preparation delegates policy to the owning substate.
 use super::*;
+impl Workspace {
+    pub(super) fn copy_admission(&self) -> Result<(), Refusal> {
+        self.start_allowed()?;
+        self.library.copy_admission()
+    }
+    pub(super) fn copy_content_admission(snapshot: &RecipeSnapshot) -> Result<(), Refusal> {
+        library::LibraryState::copy_recipe_admission(snapshot.recipe())
+    }
+    pub(super) fn import_admission(&self) -> Result<(), Refusal> {
+        self.files
+            .idle_admission(&self.prompts, self.pending.is_some())
+    }
+    pub(super) fn prepare_save(&mut self) -> Result<Arc<Recipe>, Refusal> {
+        self.library.save_destination_admission()?;
+        self.import_admission()?;
+        self.editor.prepare_save()
+    }
+    pub(super) fn prepare_save_copy(&mut self) -> Result<Arc<Recipe>, Refusal> {
+        self.library.save_destination_admission()?;
+        self.import_admission()?;
+        let recipe = self.editor.prepare_recipe()?;
+        library::LibraryState::copy_recipe_admission(&recipe)?;
+        Ok(recipe)
+    }
 
-pub(super) enum PreparedExport {
-    Library(Rendition, String),
-    Draft {
-        origin: crate::document::recipe::Origin,
-        recipe: Recipe,
-        signal: Arc<auditorylab_core::Signal>,
-        name: String,
-    },
-}
-
-impl PreparedExport {
-    pub(super) fn capture(self) -> (Rendition, String) {
-        match self {
-            Self::Library(sound, name) => (sound, name),
-            Self::Draft {
-                origin,
-                recipe,
-                signal,
-                name,
-            } => (
-                Rendition::from_parts(RecipeSnapshot::new(origin, recipe), signal),
-                name,
-            ),
+    pub(super) fn prepare_export(&mut self) -> Result<file::PreparedExport, Refusal> {
+        self.import_admission()?;
+        self.audio.idle_admission()?;
+        match self.view {
+            View::Library => self.library.prepare_export(self.editor.export_rate),
+            View::Workbench => self.editor.prepare_export(),
         }
+    }
+    pub(super) fn prepare_export_recipe(&mut self) -> Result<(Arc<str>, String), Refusal> {
+        self.import_admission()?;
+        match self.view {
+            View::Library => self.library.prepare_recipe_text(),
+            View::Workbench => self.editor.prepare_recipe_text(),
+        }
+    }
+    pub(super) fn prepare_audio(&mut self) -> Result<AudioRequest, Refusal> {
+        self.audio
+            .play_admission(&self.prompts, self.pending.is_some(), &self.files)?;
+        match self.view {
+            View::Library => self.library.prepare_audio(),
+            View::Workbench => self.editor.prepare_live(),
+        }
+    }
+    pub(super) fn preview_admission(&self) -> Result<(), Refusal> {
+        OutputState::preview_admission(&self.audio)
+    }
+    pub(super) fn component_add_admission(
+        &self,
+        row: RowKey,
+        kind: CarrierKind,
+    ) -> Result<(), Refusal> {
+        self.editor.addition_admission(
+            row,
+            crate::core::ComponentForm::Voice(controls::default_component(kind)),
+            &self.prompts,
+            self.pending.is_some(),
+            &self.files,
+        )
+    }
+    pub(super) fn pair_add_admission(
+        &self,
+        row: RowKey,
+        kind: crate::core::PairKind,
+    ) -> Result<(), Refusal> {
+        self.editor.addition_admission(
+            row,
+            controls::default_pair(kind),
+            &self.prompts,
+            self.pending.is_some(),
+            &self.files,
+        )
+    }
+    pub(super) fn restore_component_admission(&self, row: RowKey) -> Result<(), Refusal> {
+        self.editor
+            .restore_admission(row, &self.prompts, self.pending.is_some(), &self.files)
     }
 }
 
 impl Workspace {
-    pub(super) fn copy_admission(&self) -> Result<(), Refusal> {
-        self.start_allowed()?;
-        Self::copy_content_admission(self.selected().ok_or(Refusal::NoSelection)?)
+    pub(super) fn library_job_admission(&self) -> Result<(), Refusal> {
+        self.import_admission()?;
+        self.library.save_destination_admission()
     }
-
-    pub(super) fn copy_content_admission(snapshot: &RecipeSnapshot) -> Result<(), Refusal> {
-        if snapshot.recipe().lineage().len() >= auditorylab_core::provenance::MAX_LINEAGE {
-            return Err(Refusal::Document(Box::new(
-                crate::core::RecipeError::Contract(crate::core::ContractError::CopyLineageFull {
-                    count: snapshot.recipe().lineage().len(),
-                })
-                .into(),
-            )));
-        }
-        Ok(())
+    pub(super) fn prepare_add_to_library(&self) -> Result<Arc<Recipe>, Refusal> {
+        let recipe = self.library.prepare_add()?;
+        self.library_job_admission()?;
+        Ok(recipe)
     }
-
-    pub(super) fn import_admission(&self) -> Result<(), Refusal> {
-        self.start_allowed()?;
-        if self.files.slot.is_some() {
-            return Err(Refusal::FileBusy);
-        }
-        Ok(())
-    }
-
-    pub(super) fn prepare_save(&mut self) -> Result<Arc<Recipe>, Refusal> {
-        if let Some(problem) = self.library.binding.problem() {
-            return Err(Refusal::LibraryUnavailable(problem.clone()));
-        }
-        self.start_allowed()?;
-        if self.files.slot.is_some() {
-            return Err(Refusal::FileBusy);
-        }
-        if let Some(key) = self.editor.location.detached() {
-            return Err(Refusal::DetachedDraft(key.clone()));
-        }
-
-        self.prepare_recipe()
-    }
-    pub(super) fn prepare_recipe(&mut self) -> Result<Arc<Recipe>, Refusal> {
-        self.editor
-            .session
-            .save_readiness()
-            .map_err(|refusal| match refusal {
-                SaveRefusal::Input(problems) => Refusal::Input(problems),
-                SaveRefusal::Document(error) => Refusal::Document(Box::new(error.into())),
-            })?;
-        self.editor
-            .session
-            .candidate()
-            .draft()
-            .recipe()
-            .map(Arc::new)
-            .map_err(|error| Refusal::Document(Box::new(error.into())))
-    }
-
-    pub(super) fn prepare_export(&mut self) -> Result<PreparedExport, Refusal> {
-        self.start_allowed()?;
-        if self.files.slot.is_some() {
-            return Err(Refusal::FileBusy);
-        }
-        if self.audio.slot.is_some() {
-            return Err(Refusal::AudioPlaying);
-        }
-        let rate = self.editor.export_rate;
-        match self.view {
-            View::Library => {
-                let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
-                let name = snapshot.suggested_output_name("wav");
-                let sound = snapshot.realize(rate).map_err(|error| Refusal::Invalid {
-                    title: snapshot.title(),
-                    rate,
-                    error: Some(error),
-                })?;
-                Ok(PreparedExport::Library(sound, name))
-            }
-            View::Workbench => {
-                let candidate = self.editor.session.candidate();
-                if !candidate.is_complete() {
-                    return Err(Refusal::Input(candidate.problems().to_vec()));
-                }
-                let analysis = self.editor.session.candidate_analysis(rate);
-                let signal = analysis.signal().cloned().ok_or_else(|| Refusal::Invalid {
-                    title: candidate.draft().title().to_owned(),
-                    rate,
-                    error: analysis.finite_error().cloned(),
-                })?;
-                let name = file_name(candidate.draft().title(), "wav");
-                Ok(PreparedExport::Draft {
-                    origin: crate::document::recipe::Origin::Draft(
-                        candidate.draft().title().into(),
-                    ),
-                    recipe: candidate
-                        .draft()
-                        .recipe()
-                        .map_err(|error| Refusal::Document(Box::new(error.into())))?,
-                    signal,
-                    name,
-                })
-            }
-        }
-    }
-
-    pub(super) fn prepare_audio(&mut self) -> Result<AudioRequest, Refusal> {
-        if !self.audio.capabilities.device_playback {
-            return Err(Refusal::DevicePlaybackUnavailable);
-        }
-        self.start_allowed()?;
-        if self.exporting() {
-            return Err(Refusal::Exporting);
-        }
-        match self.view {
-            View::Library => {
-                if self.selected_unreadable() {
-                    return Err(Refusal::SavedEntryUnreadable);
-                }
-                if self.selected_trashed() {
-                    return Err(Refusal::RestoreBeforePlayback);
-                }
-                let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
-                if snapshot.sound().nonfinite().next().is_some() {
-                    return Err(Refusal::NotFinite);
-                }
-                let store = if self.library.selected_user() {
-                    self.library.store_clone()
-                } else {
-                    None
-                };
-                Ok(AudioRequest::Finite {
-                    snapshot: Box::new(snapshot.clone()),
-                    store,
-                })
-            }
-            View::Workbench => {
-                let candidate = self.editor.session.candidate();
-                if !candidate.is_complete() {
-                    return Err(Refusal::Input(candidate.problems().to_vec()));
-                }
-                Ok(AudioRequest::Live {
-                    document: self.editor.session.document(),
-                    candidate,
-                })
-            }
+    pub(super) fn trash_request_admission(
+        &self,
+        key: &crate::services::library::LibraryKey,
+    ) -> Result<(), Refusal> {
+        key.require_user()
+            .map_err(|error| Refusal::Document(Box::new(error.into())))?;
+        if self.editor.dirty_managed(key) {
+            self.start_allowed()
+        } else {
+            self.library_job_admission()
         }
     }
 }

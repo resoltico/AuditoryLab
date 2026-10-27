@@ -747,6 +747,9 @@ impl SlintAdapter {
         ui.set_can_play(actions.can_play);
         ui.set_library_play_action(actions.library_play_label.into());
         ui.set_can_import(actions.can_import);
+        ui.set_can_manage_library(actions.can_manage_library);
+        ui.set_can_add_to_library(actions.can_add_to_library);
+        ui.set_can_request_trash(actions.can_request_trash);
         ui.set_can_new(actions.can_new);
         ui.set_can_copy(actions.can_copy);
         ui.set_copy_reason(read_only(&actions.copy_reason));
@@ -755,6 +758,8 @@ impl SlintAdapter {
         ui.set_can_preview(actions.can_preview);
         ui.set_play_reason(read_only(&actions.play_reason));
         ui.set_can_save(actions.can_save);
+        ui.set_can_save_copy(actions.can_save_copy);
+        ui.set_can_export_recipe(actions.can_export_recipe);
         ui.set_save_reason(read_only(&actions.save_reason));
         ui.set_can_export(actions.can_export);
         ui.set_export_reason(read_only(&actions.export_reason));
