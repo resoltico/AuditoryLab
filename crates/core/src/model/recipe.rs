@@ -435,6 +435,7 @@ impl RecipeBuilder {
     }
 }
 #[cfg(test)]
+#[path = "recipe/tests.rs"]
 mod tests;
 
 /// Title used for an untitled authored sound.

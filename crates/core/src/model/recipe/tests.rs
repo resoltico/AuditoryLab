@@ -217,7 +217,7 @@ fn all_owned_proposed_examples_roundtrip_and_all_rejection_examples_fail() {
 #[test]
 fn copies_keep_scoped_sources_and_refuse_capacity_without_dropping_ancestry() {
     let original = Recipe::parse(include_str!(
-        "../../tests/fixtures/recipes/custom-derived-pair.toml"
+        "../../../tests/fixtures/recipes/custom-derived-pair.toml"
     ))
     .unwrap();
     let document = DocumentIdentity {
@@ -262,7 +262,7 @@ fn copies_keep_scoped_sources_and_refuse_capacity_without_dropping_ancestry() {
 }
 #[test]
 fn bibliography_graph_has_strict_scopes_unique_keys_and_no_recursive_sources() {
-    let valid = include_str!("../../tests/fixtures/recipes/custom-derived-pair.toml");
+    let valid = include_str!("../../../tests/fixtures/recipes/custom-derived-pair.toml");
     for invalid in [
         valid.replace("scope = \"ancestor\"", "scope = \"verified\""),
         valid.replace("source = \"ioannou-2015\"", "source = \"missing\""),
@@ -404,8 +404,8 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
 #[test]
 fn documented_toml_examples_are_actual_supported_inputs() {
     let guides = [
-        include_str!("../../../../docs/recipes.md"),
-        include_str!("../../../../docs/formats.md"),
+        include_str!("../../../../../docs/recipes.md"),
+        include_str!("../../../../../docs/formats.md"),
     ];
     let mut count = 0;
     for block in guides
@@ -430,7 +430,7 @@ fn documented_toml_examples_are_actual_supported_inputs() {
 #[test]
 fn metadata_capacity_checks_are_independent_and_never_drop_records() {
     let original = Recipe::parse(include_str!(
-        "../../tests/fixtures/recipes/custom-derived-pair.toml"
+        "../../../tests/fixtures/recipes/custom-derived-pair.toml"
     ))
     .unwrap();
     let mut sources = original.clone().into_builder();
@@ -528,7 +528,7 @@ fn sound_is_required_for_silence_and_root_envelopes_are_rejected() {
 #[test]
 fn canonical_tables_follow_document_description_sound_and_attribution_order() {
     let recipe = Recipe::parse(include_str!(
-        "../../tests/fixtures/recipes/custom-derived-pair.toml"
+        "../../../tests/fixtures/recipes/custom-derived-pair.toml"
     ))
     .unwrap();
     let text = recipe.to_toml().unwrap();
@@ -578,7 +578,7 @@ fn the_builder_separates_portable_contracts_from_acoustic_validity() {
 
 #[test]
 fn nonfinite_format_errors_locate_the_actual_component_and_modulation_fields() {
-    let offset = include_str!("../../tests/fixtures/invalid/nonfinite-offset.toml");
+    let offset = include_str!("../../../tests/fixtures/invalid/nonfinite-offset.toml");
     let tone = PAIR.replace("frequency_hz = 250.0", "frequency_hz = nan");
     let am = format!("{PAIR}\n[sound.component.modulation]\nkind='am'\nrate_hz=4.0\ndepth=nan\n");
     let gate = format!(

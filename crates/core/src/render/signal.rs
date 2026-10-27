@@ -1,7 +1,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::{SampleRate, SoundError, Target, VoiceFacts, VoiceId, numeric};
+use crate::{SampleRate, SoundError, Target, VoiceFacts, VoiceId, conversion};
 use core::f64::consts::PI;
 
 /// The length of a session and its per-frame gain. A positive resolved
@@ -56,7 +56,8 @@ impl Envelope {
         if depth >= self.fade_frames {
             return 1.0;
         }
-        let position = numeric::frames_to_f64(depth) / numeric::frames_to_f64(self.fade_frames);
+        let position =
+            conversion::frames_to_f64(depth) / conversion::frames_to_f64(self.fade_frames);
         0.5 - 0.5 * libm::cos(PI * position)
     }
 }

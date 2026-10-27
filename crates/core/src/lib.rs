@@ -12,35 +12,59 @@
 extern crate alloc;
 #[cfg(test)]
 extern crate std;
+#[path = "model/authored.rs"]
 pub mod authored;
+#[path = "model/catalog.rs"]
 pub mod catalog;
+#[path = "model/catalog_id.rs"]
 mod catalog_id;
+#[path = "render/compiled.rs"]
 mod compiled;
+#[path = "model/contract.rs"]
 mod contract;
+#[path = "analysis/query.rs"]
 pub mod query;
+#[path = "model/vocabulary.rs"]
 pub mod vocabulary;
 pub use contract::{ContractError, ReferenceOwner};
+#[path = "analysis/facts.rs"]
 mod facts;
 #[path = "render/finite_source.rs"]
 pub mod finite_source;
+#[path = "model/history.rs"]
 mod history;
+#[path = "render/live.rs"]
 pub mod live;
+#[path = "analysis/rhythm.rs"]
 pub mod rhythm;
+#[path = "model/validity.rs"]
 mod validity;
 pub use validity::{ValueIssue, ValueRule};
+#[path = "model/finite.rs"]
+mod finite;
+#[path = "render/modulation.rs"]
 mod modulation;
-mod number;
 pub use modulation::Modulation;
-mod numeric;
-pub use number::Finite;
+#[path = "render/conversion.rs"]
+mod conversion;
+pub use finite::Finite;
+#[path = "model/parameter.rs"]
 mod parameter;
+#[path = "model/provenance.rs"]
 pub mod provenance;
+#[path = "render/rate.rs"]
 mod rate;
+#[path = "model/recipe.rs"]
 mod recipe;
+#[path = "render/signal.rs"]
 mod signal;
+#[path = "render/synthesis.rs"]
 mod synthesis;
+#[path = "analysis/timing.rs"]
 pub mod timing;
+#[path = "render/voice.rs"]
 mod voice;
+#[path = "render/waveform.rs"]
 pub mod waveform;
 pub use authored::{
     Component, ComponentForm, Pair, PairError, PairIssue, PairKind, Sound, StructureError,

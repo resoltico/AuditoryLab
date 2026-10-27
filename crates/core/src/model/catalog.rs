@@ -50,4 +50,5 @@ pub fn find(name: &str) -> Option<&'static Entry> {
 }
 
 #[cfg(test)]
+#[path = "catalog/tests.rs"]
 mod tests;

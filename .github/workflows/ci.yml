@@ -231,39 +231,39 @@ jobs:
         # Split the larger selections without dropping mutants. Each runner
         # keeps one worker/build directory, rather than competing for disk/CPU.
         include:
-          - source: synthesis
+          - source: render/synthesis
             shard: 0/2
-          - source: synthesis
+          - source: render/synthesis
             shard: 1/2
-          - source: live
+          - source: render/live
             shard: 0/2
-          - source: live
+          - source: render/live
             shard: 1/2
-          - source: timing
+          - source: analysis/timing
             shard: 0/2
-          - source: timing
+          - source: analysis/timing
             shard: 1/2
-          - source: authored
+          - source: model/authored
             shard: 0/2
-          - source: authored
+          - source: model/authored
             shard: 1/2
-          - source: compiled
+          - source: render/compiled
             shard: 0/1
-          - source: facts
+          - source: analysis/facts
             shard: 0/1
-          - source: rhythm
+          - source: analysis/rhythm
             shard: 0/1
-          - source: validity
+          - source: model/validity
             shard: 0/1
-          - source: number
+          - source: model/finite
             shard: 0/1
-          - source: catalog_id
+          - source: model/catalog_id
             shard: 0/1
-          - source: voice
+          - source: render/voice
             shard: 0/1
           - source: render/finite_source
             shard: 0/1
-          - source: waveform
+          - source: render/waveform
             shard: 0/1
     needs: [lint, icons]
     if: github.event_name != 'schedule' && (inputs.release || needs.lint.outputs.core-changed == 'true')
@@ -295,7 +295,7 @@ jobs:
           args=(--file "crates/core/src/${MUTATION_SOURCE}.rs" --package auditorylab-core
                 --test-workspace=false --jobs 1 --shard "$MUTATION_SHARD"
                 --timeout 60 --cargo-arg=--locked --output target/mutations)
-          if [[ "$MUTATION_SOURCE" == synthesis ]]; then
+          if [[ "$MUTATION_SOURCE" == render/synthesis ]]; then
             # Bit 52 is clear in the fraction; OR and XOR are equivalent.
             # At the step shift boundary both branches return 1.
             # The times_at_most enclosing != guard excludes equality.

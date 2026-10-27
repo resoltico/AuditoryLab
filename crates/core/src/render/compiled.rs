@@ -11,7 +11,7 @@
 use crate::synthesis::GeneratorVoice;
 use crate::{
     Ear, SampleRate, Signal, SlotRole, Sound, SoundError, VoiceError, VoiceFacts, VoiceId,
-    VoiceObservation, numeric, signal::Envelope,
+    VoiceObservation, conversion, signal::Envelope,
 };
 use alloc::vec::Vec;
 
@@ -134,7 +134,7 @@ impl Target {
     /// Each ear's summed amplitude bound in dBFS; silence is negative infinity.
     #[must_use]
     pub fn peak_dbfs(&self) -> [f64; 2] {
-        self.mix.peak.map(numeric::dbfs)
+        self.mix.peak.map(conversion::dbfs)
     }
 
     /// Whether `other` generates the same audio: the same identities in the
@@ -305,4 +305,5 @@ impl TargetCheck {
 }
 
 #[cfg(test)]
+#[path = "compiled/tests.rs"]
 mod tests;

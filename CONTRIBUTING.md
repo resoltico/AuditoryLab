@@ -44,11 +44,11 @@ This opens no device. It warms up 100 callbacks and measures 3,000 per configura
 Keep local runs short, scoped to one file, with a timeout and output under `target/`:
 
 ```sh
-TMPDIR="$PWD/target/tmp" cargo mutants --file crates/core/src/synthesis.rs \
+TMPDIR="$PWD/target/tmp" cargo mutants --file crates/core/src/render/synthesis.rs \
   --timeout 60 --cargo-arg=--locked --output target/mutations
 ```
 
-Use `--re` or a bounded shard for the question being investigated. Each selected shard checks its unmutated baseline. Keep Nyquist/pulse-width guards under mutation. Equivalent exclusions use operator/function names with a reason, without line/column numbers. Update CI scopes when code moves; `number.rs` owns finite-value invariants and `catalog_id.rs` owns catalog-name grammar. Lint capping is disabled, so unsafe-code policies still apply to generated mutants. Each worker adds a compiler directory; parallel work needs explicit authorization and a concrete benefit.
+Use `--re` or a bounded shard for the question being investigated. Each selected shard checks its unmutated baseline. Keep Nyquist/pulse-width guards under mutation. Equivalent exclusions use operator/function names with a reason, without line/column numbers. Update CI scopes when code moves; `model/finite.rs` owns finite-value invariants and `model/catalog_id.rs` owns catalog-name grammar. Lint capping is disabled, so unsafe-code policies still apply to generated mutants. Each worker adds a compiler directory; parallel work needs explicit authorization and a concrete benefit.
 
 ## Ownership and implementation
 

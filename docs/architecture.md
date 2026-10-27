@@ -29,7 +29,7 @@ flowchart TD
 
 ## Owners
 
-[Core](../crates/core/src/lib.rs) is `no_std + alloc`. It owns `Recipe`, bitwise-equal `RecipeContent` and `Finite`, checked `Sound`, flat authored `ComponentForm`, owner/lane identities, the shared vocabulary and pure validation, rhythm, compilation, synthesis, timing and reduction. `ComponentId` identifies an authored owner; `VoiceId` adds a generator lane. The private lowered `Voice` is a generator definition rather than another authored model.
+[Core](../crates/core/src/lib.rs) is `no_std + alloc`. It owns `Recipe`, bitwise-equal `RecipeContent` and `Finite`, checked `Sound`, flat authored `ComponentForm`, owner/lane identities, the shared vocabulary and pure validation, rhythm, compilation, synthesis, timing and reduction. `ComponentId` identifies an authored owner; `VoiceId` adds a generator lane. The private lowered `Voice` is a generator definition rather than another authored model. Source directories group authored contracts under `model/`, classification and timing under `analysis/`, and compilation and sample generation under `render/`; types and established module entry points are exported at the crate root.
 
 [Clock](../crates/app/src/clock.rs), [identity](../crates/app/src/identity.rs), [outcome](../crates/app/src/outcome.rs) and [job controls](../crates/app/src/job.rs) are app leaves. They own observed time, identity allocation/build metadata, frontend-independent result categories and cancellation/progress/replacement policy. Product display metadata comes from the workspace manifest; legal text remains in LICENSE.
 
@@ -49,9 +49,9 @@ flowchart TD
 
 ## Invariants and checks
 
-- Authored numbers are finite, and equality/hash preserve signed-zero bits: [rejects_nonfinite_values_and_preserves_finite_bits](../crates/core/src/number.rs#L65).
-- Sound construction and mutation preserve unique positive owners and both budgets: [raw_component_budget_and_duplicate_owners_are_checked_at_the_authored_boundary](../crates/core/src/authored/tests.rs#L1170).
-- Nonfinite TOML fails at the actual field key with line/column context; unknown/duplicate fields remain rejected: [nonfinite_format_errors_locate_the_actual_component_and_modulation_fields](../crates/core/src/recipe/tests.rs#L580) and [strict format checks](../crates/core/src/recipe/tests.rs).
+- Authored numbers are finite, and equality/hash preserve signed-zero bits: [rejects_nonfinite_values_and_preserves_finite_bits](../crates/core/src/model/finite.rs#L65).
+- Sound construction and mutation preserve unique positive owners and both budgets: [raw_component_budget_and_duplicate_owners_are_checked_at_the_authored_boundary](../crates/core/src/model/authored/tests.rs#L1170).
+- Nonfinite TOML fails at the actual field key with line/column context; unknown/duplicate fields remain rejected: [nonfinite_format_errors_locate_the_actual_component_and_modulation_fields](../crates/core/src/model/recipe/tests.rs#L580) and [strict format checks](../crates/core/src/model/recipe/tests.rs).
 - Seeking and finite/live rendering preserve the defined sample bits: [every_kind_of_component_renders_the_same_bits_on_every_platform](../crates/core/tests/determinism.rs#L117), [seek properties](../crates/core/tests/seek.rs), and [every_builtin_matches_bit_for_bit_after_both_startup_envelopes](../crates/core/tests/live_equivalence.rs#L7) with its different-carrier negative control.
 - Committing a candidate is atomic across staged fields: [commit_is_atomic_over_the_whole_candidate](../crates/app/src/document/editing/tests.rs#L76). An unedited display callback preserves model bits even when unit conversion has no exact binary64 inverse: [committing_an_unedited_display_preserves_unrepresentable_finite_model_bits](../crates/app/src/document/editing/tests.rs#L1094).
 - A row handle binds document, authored owner and UI generation; removed/restored controls cannot accept retired callbacks: [retired_component_callbacks_stay_retired_after_undo](../crates/gui/src/adapter_tests.rs#L1018).
@@ -68,7 +68,7 @@ Generated frames, backend-submitted frames and estimated output position are dis
 
 ### Add a component kind
 
-Define its finite authored fields, strict serialization and `get`/`set` quantities in core's [authored model](../crates/core/src/authored.rs). Define lowering, validation and voice facts, then classification/timing where applicable. Preserve authored order, owner/lane identity and serialization field order. Add independent structure/sample/rejection cases. Workspace chooses applicable controls and typed diagnostics; presentation supplies descriptions, while the GUI maps the resulting rows.
+Define its finite authored fields, strict serialization and `get`/`set` quantities in core's [authored model](../crates/core/src/model/authored.rs). Define lowering, validation and voice facts, then classification/timing where applicable. Preserve authored order, owner/lane identity and serialization field order. Add independent structure/sample/rejection cases. Workspace chooses applicable controls and typed diagnostics; presentation supplies descriptions, while the GUI maps the resulting rows.
 
 ### Add a CLI command
 

@@ -410,7 +410,7 @@ fn builtins_have_unique_curated_identities_and_do_not_invent_creation_dates() {
 }
 
 // Compile the build script's pure ordering test as part of this integration target.
-#[path = "../../build.rs"]
+#[path = "../../../build.rs"]
 #[expect(
     dead_code,
     reason = "The integration test imports the real catalog build module to check catalog inputs; its unused Cargo build-script main is not executed by that test"

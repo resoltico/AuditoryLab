@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::synthesis::{self, Carrier as Generator, GeneratorVoice, Modulator, Pulse};
-use crate::{Modulation, ParameterId, SampleRate, VoiceId, numeric};
+use crate::{Modulation, ParameterId, SampleRate, VoiceId, conversion};
 use core::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
@@ -120,7 +120,7 @@ impl Voice {
         Ok(GeneratorVoice {
             left: ears.hears(Ear::Left),
             right: ears.hears(Ear::Right),
-            amplitude: numeric::amplitude(peak_dbfs),
+            amplitude: conversion::amplitude(peak_dbfs),
             carrier,
             modulation,
         })
@@ -348,4 +348,5 @@ crate::vocabulary::vocabulary! { Ear,"ear" {
 }}
 
 #[cfg(test)]
+#[path = "voice/tests.rs"]
 mod tests;

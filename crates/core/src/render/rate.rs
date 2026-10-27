@@ -1,7 +1,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::{Signal, numeric};
+use crate::{Signal, conversion};
 use core::fmt::{self, Display, Formatter};
 
 /// Frames per second, from [`SampleRate::MIN_HZ`] to [`SampleRate::MAX_HZ`].
@@ -65,13 +65,13 @@ impl SampleRate {
     pub(crate) fn frames_in(self, seconds: f64) -> Option<u64> {
         let frames = libm::round(seconds * self.as_f64());
         // NaN fails both comparisons, so the accepted range is stated positively.
-        (seconds >= 0.0 && frames <= numeric::frames_to_f64(Signal::MAX_FRAMES))
-            .then(|| numeric::whole_to_frames(frames))
+        (seconds >= 0.0 && frames <= conversion::frames_to_f64(Signal::MAX_FRAMES))
+            .then(|| conversion::whole_to_frames(frames))
     }
 
     /// The duration of `frames` in seconds, for presentation; division can round.
     pub fn seconds_in(self, frames: u64) -> f64 {
-        numeric::frames_to_f64(frames) / self.as_f64()
+        conversion::frames_to_f64(frames) / self.as_f64()
     }
 }
 

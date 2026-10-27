@@ -73,7 +73,7 @@ pub(crate) fn generated_recipe(
 }
 
 #[cfg(not(test))]
-#[path = "src/catalog_id.rs"]
+#[path = "src/model/catalog_id.rs"]
 mod catalog_id;
 #[cfg(test)]
 use crate::catalog_id;

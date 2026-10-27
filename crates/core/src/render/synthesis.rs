@@ -145,7 +145,7 @@ impl Pulse {
 )]
 pub(crate) fn pulse(width_seconds: f64, rate_hz: f64, fs: u32) -> Option<Pulse> {
     let frames = libm::round(width_seconds * f64::from(fs));
-    if !(frames >= 1.0 && frames <= crate::numeric::frames_to_f64(crate::Signal::MAX_FRAMES)) {
+    if !(frames >= 1.0 && frames <= crate::conversion::frames_to_f64(crate::Signal::MAX_FRAMES)) {
         return None;
     }
     let frames = frames as u64;
@@ -450,7 +450,7 @@ mod pulses {
     }
     #[test]
     fn widths_beyond_the_longest_signal_are_rejected() {
-        let longest = crate::numeric::frames_to_f64(crate::Signal::MAX_FRAMES);
+        let longest = crate::conversion::frames_to_f64(crate::Signal::MAX_FRAMES);
         // One frame per second: the width in seconds is the width in frames.
         let slow = 1.0 / (longest + 1.0);
         assert!(pulse(longest, slow, 1).is_some());
