@@ -3,31 +3,40 @@
 ## [Unreleased]
 
 - Recipes require schema 4: put duration, fade and components in `[sound]`; use `clicks`, `am` and `gate`. Rewrite custom files against the [format](docs/formats.md#recipe-schema).
-- Schema-3 User files stay unchanged; discovery is incomplete and `list` exits 5. Rewrite or move them outside the library; see [recovery](docs/formats.md#unsupported-and-unreadable-recipes).
-- CLI `--method am` replaces `amplitude-modulation`; `--analysis` accepts only `complete` or `invalid`. Plain tones remain independent; author pairs explicitly.
-- CLI JSON schema 2 exposes generator lanes under `voices`; diagnostics and warnings contain stable `code` and human `message` fields. Update consumers.
-- Classifier revision 2 uses expanded owner/lane identities and removes inferred raw-tone pairings.
-- The Rust app package is `auditorylab-app`, exposing core as `auditorylab_app::core`. Call typed services/workspace views; native storage/audio adapters are private.
-- `auditorylab-presentation` owns research/About views, parameter help and reports through extension traits. `Recipe::fork` requires an explicit attribution note.
-- Rust authored numbers use `Finite`; `Sound` fields are private with checked constructors/mutators enforcing unique owners and both budgets.
-- `Finite` equality preserves signed-zero bits; `RecipeContent`/`Recipe` equality replace manual content/document comparisons. `Recipe` fields use checked builders/accessors.
+- Discovery that includes schema-3 User files is incomplete (`list` exits 5); rewrite or move them out. See [recovery](docs/formats.md#unsupported-and-unreadable-recipes).
+- CLI values use snake_case, including `steady_tone`, `outside_bands` and `needs_review`; update scripts. `--method am` replaces `amplitude-modulation`; `--analysis` is `complete` or `invalid`.
+- CLI JSON schema 2 exposes expanded generator lanes under `voices`; update consumers of schema-1 reports. Operation values use shared snake_case keys.
+- Diagnostic `code` values are fixed identifiers; captured values move to optional `params`, including `storage_id`. Update scripts that extract values from codes.
+- The Rust app package is `auditorylab-app`, exposing core as `auditorylab_app::core`. Native storage/audio adapters are private; use typed services and workspace APIs.
+- Workspace mutations use `apply(Command)` and typed responses. Library row actions require app-issued `EntryHandle` values; superseded or foreign listing handles are refused.
+- Library services take one resolved `LibraryContext`; actions recheck current filesystem state. `export_rendition` exports the exact inspected rendition.
+- Core `interpretation` and `nominal` APIs move to `rhythm`; `rhythm::Method` replaces `ComponentRole`. Headings choose Gate, active AM, Clicks or Steady tone.
+- Rust authored numbers, including pair fields, use `Finite`. `Sound` fields are private; checked constructors and mutators enforce unique owners and both budgets.
+- `Recipe` fields use accessors and checked builders; replace its `with_*` methods with `into_builder()` edits and `build()`. `Recipe::fork` requires an explicit attribution note.
+- `Finite` equality preserves signed-zero bits; use `RecipeContent`/`Recipe` equality instead of manual content/document comparisons.
 - `ComponentForm` replaces `Node` with flat tone/click/pair variants; `Voice` is private. Build forms with `Finite` values and use `get`/`set`.
 - `Clicks`, `Am` and `Gate` replace `Click`, `Sinusoidal` and `Rectangular`; update Rust matches and recipe generation.
-- Core uses `SoundError`/`VoiceError` instead of `StimulusError`/`ComponentError`; `SoundError::Voice` identifies the authored owner and lane.
-- Rust `ComponentFacts` is `VoiceFacts`; target/signal `voices()` expose generator lanes, and target `observations()` returns origin-zero observations.
+- Core uses `StructureError`/`SoundError`/`VoiceError` in place of `LoweringError`/`StimulusError`/`ComponentError`; `SoundError::Voice` identifies the owner/lane.
+- `ComponentFacts` becomes `VoiceFacts`; target/signal `voices()` expose generator lanes, and target `observations()` returns origin-zero observations.
 - `ComponentId` is nonzero; expanded generators use `VoiceId { component, lane }`. Update constructors and consumers of generator identities.
-- App origin keys/tokens live in `document::origin`, job controls in `job` and outcome categories in `outcome`. Shared vocabulary and query choices belong to core.
+- App origin keys/tokens live in `document::origin`, job controls in `job` and outcome categories in `outcome`. Core owns shared vocabulary, operation terms and query choices.
+- Use `Code::code` and `params` for machine diagnostics and presentation renderers for human text. App device errors retain opaque native causes without exposing CPAL types.
+- `auditorylab-presentation` owns research/About views, help and reports. App owns the sole typed view tree; presentation returns string-only render bundles.
 - Editable number text belongs to `document::input`; monitor/control models and typed views belong to workspace. Update app/presentation imports.
-- App errors/warnings retain typed causes and display stable codes; use presentation explanations/renderers for human text and update error matches.
-- Workspace jobs run through `Executor`; `Runner::shutdown` returns typed failures with captured context after joining workers.
-- Nonfinite TOML numbers fail at their key with line/column format diagnostics; finite but acoustically invalid documents remain savable for repair.
-- Components are named by authored ID, including a pair's second tone; removal keeps references stable. Method group captions use shared vocabulary labels.
+- Classifier revision 2 uses expanded owner/lane identities and removes inferred raw-tone pairings. Plain tones remain independent; author pairs explicitly.
+- Nonfinite TOML fails at its field key with line/column diagnostics; finite but acoustically invalid documents remain savable for repair.
+- Components are named by authored ID, including a pair’s second tone; removal keeps references stable. Method group captions use the owning vocabulary.
 - Unedited numeric fields retain exact model bits. Explicit numeric input uses displayed units, whose binary64 conversions can round.
-- Core users can drive finite playback and Stop fading through `FiniteSource` without the native app adapters.
-- Workbench preview, copy, restore and export controls share operation admission. Stale selections, save failures and newer edits retain their captured context.
-- App-owned buttons guard disabled actions; authenticated toolkit patches include archive lockfiles and require verification during dependency maintenance.
-- GUI vocabulary generation builds core without app/audio build dependencies; product display identity is declared in workspace metadata.
-- Local compiler hygiene warns; CI denies workspace Clippy/doc warnings. Missing-documentation warnings apply only to core.
+- Core users can drive finite playback and Stop fading through `finite_source::FiniteSource` without native app adapters.
+- Runtime facet models provide semantic keys and explicit any/automatic options. App query commands validate advanced filters atomically and own clear/reset defaults.
+- Workers and preference changes wake the GUI through coalesced events; the redraw timer runs only for bound audio or a visible monitor. macOS motion uses native notifications.
+- `Runner` joins actual workers before completion notification and slot release; shutdown joins completion observers and reports typed failures with captured context.
+- Workbench preview, copy, restore and export controls share admission. Stale selections, save failures and newer edits retain their captured context.
+- App-owned buttons guard disabled actions. Toolkit patches include authenticated archive lockfiles and require verification during dependency maintenance.
+- Component codecs, quantity metadata and GUI parameter bindings derive from one schema; extend that owner when adding component fields.
+- Presentation tests run as a normal crate over the public app API. Shared behavioral fixtures use core’s dev-only `test-support` feature; app has no presentation dependency.
+- GUI vocabulary generation builds core without app/audio build dependencies; product display identity comes from workspace metadata.
+- Local hygiene warns; CI denies workspace Clippy/doc warnings. Core warns on missing documentation. Diagnostic and vocabulary reference tables are checked against their owners.
 
 ## [0.6.0] - 2026-10-26
 
