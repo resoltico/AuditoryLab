@@ -3,20 +3,20 @@ use auditorylab_app::core::Recipe;
 use auditorylab_app::document::editing::Draft;
 use auditorylab_app::error::Outcome;
 use auditorylab_app::services::Cancel;
-use auditorylab_app::storage::library::{
-    LibraryKey, LibraryRoot, LibraryStore, Mutation, MutationStatus, VersionToken,
+use auditorylab_app::services::library::{
+    Library, LibraryKey, Mutation, MutationStatus, VersionToken,
 };
 use std::{fs, path::PathBuf, sync::Arc};
 #[expect(
     clippy::unwrap_used,
     reason = "A fixture setup failure must fail its calling native store test"
 )]
-fn fixture() -> (tempfile::TempDir, PathBuf, LibraryStore) {
+fn fixture() -> (tempfile::TempDir, PathBuf, Library) {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
     fs::create_dir_all(&base).unwrap();
     let temp = tempfile::tempdir_in(base).unwrap();
     let path = temp.path().join("library");
-    let store = LibraryStore::new(LibraryRoot::explicit(path.clone()).unwrap()).unwrap();
+    let store = auditorylab_app::services::library::Library::at_path(path.clone()).unwrap();
     (temp, path, store)
 }
 #[expect(
@@ -31,7 +31,7 @@ fn recipe(title: &str) -> Recipe {
 #[test]
 fn readonly_discovery_and_builtin_refusals_never_initialize_a_root() {
     let (_temp, path, store) = fixture();
-    let info = store.root().inspect().unwrap();
+    let info = store.inspect().unwrap();
     assert!(!info.exists && !info.initialized);
     assert!(!path.exists());
     let scan = store.scan(&Cancel::default());
@@ -50,7 +50,7 @@ fn readonly_discovery_and_builtin_refusals_never_initialize_a_root() {
         .unwrap_err();
     assert_eq!(error.outcome(), Outcome::ReadOnlyBuiltIn);
     assert!(!path.exists());
-    let builtin = auditorylab_app::storage::load::builtin("ioannou-2015-binaural-2-hz").unwrap();
+    let builtin = auditorylab_app::services::builtin("ioannou-2015-binaural-2-hz").unwrap();
     let error = store
         .apply(
             Mutation::Add(Arc::new(builtin.recipe().clone())),
@@ -72,8 +72,8 @@ fn readonly_discovery_and_builtin_refusals_never_initialize_a_root() {
 #[test]
 fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent() {
     let (temp, path, store) = fixture();
-    store.root().initialize().unwrap();
-    assert!(!store.root().initialize().unwrap().created);
+    store.initialize().unwrap();
+    assert!(!store.initialize().unwrap().created);
     let original = recipe("Imported unknown history");
     let id = original.document().id;
     let key = LibraryKey::User(id);
@@ -277,7 +277,7 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
 #[test]
 fn new_creation_dates_are_assigned_only_to_the_confirmed_snapshot_and_noops_keep_bytes() {
     let (_temp, path, store) = fixture();
-    store.root().initialize().unwrap();
+    store.initialize().unwrap();
     let provisional = recipe("New sound");
     let id = provisional.document().id;
     assert_eq!(provisional.document().created_at, None);
@@ -316,7 +316,7 @@ fn new_creation_dates_are_assigned_only_to_the_confirmed_snapshot_and_noops_keep
 #[test]
 fn exact_byte_digest_detects_manual_whitespace_edits() {
     let (_temp, path, store) = fixture();
-    store.root().initialize().unwrap();
+    store.initialize().unwrap();
     let result = store
         .apply(Mutation::Add(Arc::new(recipe("bytes"))), &Cancel::default())
         .unwrap();
@@ -351,7 +351,7 @@ fn exact_byte_digest_detects_manual_whitespace_edits() {
 fn managed_descendant_symlinks_and_nonregular_entries_never_read_external_content() {
     use std::os::unix::fs::symlink;
     let (temp, path, store) = fixture();
-    store.root().initialize().unwrap();
+    store.initialize().unwrap();
     let external = temp.path().join("outside");
     fs::write(&external, b"secret outside bytes").unwrap();
     let bad = path.join("recipes/00000000-0000-4000-8000-000000000001.toml");
@@ -380,7 +380,7 @@ fn managed_descendant_symlinks_and_nonregular_entries_never_read_external_conten
 #[test]
 fn lock_contention_is_nonblocking_and_closure_releases_the_same_persistent_lock() {
     let (_temp, path, store) = fixture();
-    store.root().initialize().unwrap();
+    store.initialize().unwrap();
     let lock = fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -401,13 +401,13 @@ fn initialization_refuses_unknown_data_and_records_without_a_marker() {
     let (_temp, path, store) = fixture();
     fs::create_dir_all(&path).unwrap();
     fs::write(path.join("unrelated.txt"), b"keep").unwrap();
-    assert!(store.root().initialize().is_err());
+    assert!(store.initialize().is_err());
     assert!(!path.join("library.toml").exists());
     assert_eq!(fs::read(path.join("unrelated.txt")).unwrap(), b"keep");
     fs::remove_file(path.join("unrelated.txt")).unwrap();
     fs::create_dir(path.join("recipes")).unwrap();
     fs::write(path.join("recipes/arbitrary.toml"), b"keep record").unwrap();
-    assert!(store.root().initialize().is_err());
+    assert!(store.initialize().is_err());
     assert_eq!(
         fs::read(path.join("recipes/arbitrary.toml")).unwrap(),
         b"keep record"
@@ -418,7 +418,7 @@ fn initialization_refuses_unknown_data_and_records_without_a_marker() {
 #[test]
 fn corrupt_plain_files_and_owned_stages_are_reported_without_read_side_repairs() {
     let (_temp, path, store) = fixture();
-    store.root().initialize().unwrap();
+    store.initialize().unwrap();
     let record = store
         .apply(
             Mutation::Add(Arc::new(recipe("healthy"))),
@@ -463,7 +463,7 @@ fn corrupt_plain_files_and_owned_stages_are_reported_without_read_side_repairs()
 #[test]
 fn unknown_membership_dates_remain_visible_in_human_descriptions() {
     let (_temp, path, store) = fixture();
-    store.root().initialize().unwrap();
+    store.initialize().unwrap();
     let record = store
         .apply(
             Mutation::Add(Arc::new(recipe("Missing local dates"))),

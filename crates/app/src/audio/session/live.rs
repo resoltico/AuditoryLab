@@ -1,5 +1,7 @@
 //! Live generation from accepted, revisioned targets.
-use super::{SessionId, SessionState, StopRequest};
+#[cfg(test)]
+use super::StopRequest;
+use super::{SessionId, SessionState};
 use auditorylab_core::{Observation, SampleRate, Target, live::Engine};
 use std::sync::{Arc, Mutex};
 
@@ -106,7 +108,7 @@ impl LiveControl {
 /// An open-ended live generator for a validated target, usable without an
 /// audio device. Dropping it closes every surviving control.
 #[derive(Debug)]
-pub struct LiveGenerator {
+pub(crate) struct LiveGenerator {
     engine: Engine,
     mailbox: Mailbox,
     state: Arc<SessionState>,
@@ -116,7 +118,8 @@ impl LiveGenerator {
     /// Prepare a generator for an initial target at the target's rate.
     /// Allocation happens here, never while rendering.
     #[must_use]
-    pub fn new(target: Target) -> Self {
+    #[cfg(test)]
+    pub(crate) fn new(target: Target) -> Self {
         Self::with_state(target, SessionState::new())
     }
 
@@ -142,7 +145,7 @@ impl LiveGenerator {
 
     /// A handle for accepted changes.
     #[must_use]
-    pub fn control(&self) -> LiveControl {
+    pub(crate) fn control(&self) -> LiveControl {
         LiveControl {
             state: Arc::clone(&self.state),
             mailbox: Arc::clone(&self.mailbox),
@@ -156,20 +159,21 @@ impl LiveGenerator {
 
     /// The generator's sample rate.
     #[must_use]
-    pub const fn sample_rate(&self) -> SampleRate {
+    pub(crate) const fn sample_rate(&self) -> SampleRate {
         self.engine.sample_rate()
     }
 
     /// Frames generated so far.
     #[must_use]
-    pub const fn frame(&self) -> u64 {
+    pub(crate) const fn frame(&self) -> u64 {
         self.engine.frame()
     }
 
     /// Generate the next frames: observe Stop or take the newest waiting
     /// target once, then render. Takes one nonblocking mailbox lock attempt
     /// and allocates nothing. Returns the active frames before the end.
-    pub fn render(&mut self, out: &mut [[f64; 2]]) -> usize {
+    #[cfg(test)]
+    pub(crate) fn render(&mut self, out: &mut [[f64; 2]]) -> usize {
         let stop = self.state.outcome() == super::Outcome::StopRequested;
         self.begin_buffer(stop);
         self.render_buffer(out)
@@ -201,20 +205,21 @@ impl LiveGenerator {
 
     /// Last-generated-frame state, without advancing the generator.
     #[must_use]
-    pub const fn observation(&self) -> Option<Observation> {
+    pub(crate) const fn observation(&self) -> Option<Observation> {
         self.engine.observation()
     }
 
     /// Request Stop: the generator finishes its current transition, fades
     /// to silence and ends. Updates are closed from now on. Stopping after
     /// generation ended is harmless.
-    pub fn stop(&mut self) -> StopRequest {
+    #[cfg(test)]
+    pub(crate) fn stop(&mut self) -> StopRequest {
         self.state.request_stop()
     }
 
     /// Whether generation has ended: after Stop's fade, or at the frame limit.
     #[must_use]
-    pub const fn is_finished(&self) -> bool {
+    pub(crate) const fn is_finished(&self) -> bool {
         self.engine.is_finished()
     }
 }

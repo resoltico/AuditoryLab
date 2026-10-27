@@ -17,11 +17,11 @@ use std::{
 };
 
 /// Maximum recipe candidates examined in one scan.
-pub const MAX_SCAN_RECORDS: usize = 10_000;
+pub(crate) const MAX_SCAN_RECORDS: usize = 10_000;
 /// Maximum exact recipe bytes consumed in one scan.
-pub const MAX_SCAN_RAW_BYTES: usize = 256 * 1024 * 1024;
+pub(crate) const MAX_SCAN_RAW_BYTES: usize = 256 * 1024 * 1024;
 /// Maximum decoded recipe bytes admitted in one scan.
-pub const MAX_SCAN_DECODED_BYTES: usize = 128 * 1024 * 1024;
+pub(crate) const MAX_SCAN_DECODED_BYTES: usize = 128 * 1024 * 1024;
 const MEMBERSHIP: &str = "membership.toml";
 const MAX_MEMBERSHIP_BYTES: usize = 4 * 1024 * 1024;
 /// A nonfatal inventory notice or a typed operation failure.
@@ -312,7 +312,7 @@ struct Memberships {
 }
 /// Rooted native store shared by both frontends.
 #[derive(Debug, Clone)]
-pub struct LibraryStore {
+pub(crate) struct LibraryStore {
     root: LibraryRoot,
     reserved: Arc<BTreeSet<DocumentUuid>>,
 }
@@ -336,7 +336,7 @@ impl LibraryStore {
     ///
     /// # Errors
     /// Refuses corrupt or duplicate built-in identities without filesystem mutation.
-    pub fn new(root: LibraryRoot) -> Result<Self, Error> {
+    pub(crate) fn new(root: LibraryRoot) -> Result<Self, Error> {
         let mut reserved = BTreeSet::new();
         for entry in crate::core::catalog::ENTRIES {
             let recipe =
@@ -354,7 +354,7 @@ impl LibraryStore {
     }
     /// Configured root and its provenance.
     #[must_use]
-    pub const fn root(&self) -> &LibraryRoot {
+    pub(crate) const fn root(&self) -> &LibraryRoot {
         &self.root
     }
     fn reserved(&self, id: DocumentUuid) -> Result<(), Error> {
@@ -368,7 +368,7 @@ impl LibraryStore {
     ///
     /// # Errors
     /// Reports missing, malformed, conflicting or unsafe entries and lock failures.
-    pub fn load(&self, key: &LibraryKey) -> Result<LoadedRecord, Error> {
+    pub(crate) fn load(&self, key: &LibraryKey) -> Result<LoadedRecord, Error> {
         let id = key.require_user()?;
         self.reserved(id)?;
         (|| {
@@ -389,7 +389,7 @@ impl LibraryStore {
     }
     /// Stream bounded summaries without changing any files.
     #[must_use]
-    pub fn scan(&self, cancel: &Cancel) -> Inventory {
+    pub(crate) fn scan(&self, cancel: &Cancel) -> Inventory {
         self.scan_limited(cancel, ScanLimits::default())
     }
     fn scan_limited(&self, cancel: &Cancel, limits: ScanLimits) -> Inventory {
@@ -621,7 +621,7 @@ impl LibraryStore {
     ///
     /// # Errors
     /// Rejects invalid/stale intent before publication, and names the path if a failed I/O result cannot be verified.
-    pub fn apply(&self, mutation: Mutation, cancel: &Cancel) -> Result<WriteOutcome, Error> {
+    pub(crate) fn apply(&self, mutation: Mutation, cancel: &Cancel) -> Result<WriteOutcome, Error> {
         let (key, kind, expected) = match &mutation {
             Mutation::Create(recipe) => (
                 LibraryKey::User(recipe.document().id),

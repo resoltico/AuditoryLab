@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 struct TestWorkspace {
     inner: Workspace,
-    store: crate::storage::library::LibraryStore,
+    store: crate::services::library::Library,
     _root: tempfile::TempDir,
 }
 impl std::ops::Deref for TestWorkspace {
@@ -24,10 +24,8 @@ impl TestWorkspace {
         let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
         std::fs::create_dir_all(&base).unwrap();
         let root = tempfile::tempdir_in(base).unwrap();
-        let store = crate::storage::library::LibraryStore::new(
-            crate::storage::library::LibraryRoot::explicit(root.path().join("library"))?,
-        )?;
-        store.root().initialize()?;
+        let store = crate::services::library::Library::at_path(root.path().join("library"))?;
+        store.initialize()?;
         let open_files = !catalog.is_empty()
             && catalog.iter().all(|snapshot| {
                 !matches!(
@@ -89,7 +87,7 @@ fn drain_files(workspace: &mut Workspace) {
 }
 fn workspace() -> TestWorkspace {
     TestWorkspace::new(
-        crate::storage::load::catalog().unwrap(),
+        crate::services::catalog().unwrap(),
         Capabilities::available(),
     )
     .unwrap()
@@ -317,7 +315,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
     )
     .unwrap();
     let path = dir.path().join("original.toml");
-    let original = crate::storage::load::catalog().unwrap().remove(0);
+    let original = crate::services::catalog().unwrap().remove(0);
     crate::services::save_content(original.recipe(), &path, crate::services::Replace::Never)
         .unwrap();
     let loaded = crate::storage::load::load_file(&path).unwrap();
@@ -361,7 +359,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
 
 #[test]
 fn search_includes_own_notes_and_attributed_persisted_source_context() {
-    let source = crate::storage::load::catalog().unwrap().remove(0);
+    let source = crate::services::catalog().unwrap().remove(0);
     let citation = source
         .about()
         .unwrap()
@@ -407,7 +405,7 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
 #[test]
 fn readiness_details_and_export_share_actual_snapshot_realizations_including_errors() {
     let mut ws = TestWorkspace::new(
-        crate::storage::load::catalog().unwrap(),
+        crate::services::catalog().unwrap(),
         Capabilities::no_device_playback(),
     )
     .unwrap();
@@ -617,7 +615,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
 
 #[test]
 fn nominal_listing_a_thousand_rows_does_not_compile_every_sound() {
-    let base = crate::storage::load::builtin("ioannou-2015-binaural-2-hz").unwrap();
+    let base = crate::services::builtin("ioannou-2015-binaural-2-hz").unwrap();
     let snapshots = (0..1000)
         .map(|i| {
             RecipeSnapshot::new(
@@ -695,7 +693,7 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
     assert_ne!(current.id(), first_copy.id(), "same path, new identity");
     assert_eq!(
         ws.catalog().len(),
-        crate::storage::load::catalog().unwrap().len() + 1,
+        crate::services::catalog().unwrap().len() + 1,
         "row replaced in place"
     );
     ws.show_based_on_source();
@@ -948,7 +946,6 @@ fn failed_captured_save_denies_close_and_preserves_foreign_storage() {
     let job = take_file_job(&mut workspace);
     let path = workspace
         .store
-        .root()
         .path()
         .join("recipes")
         .join(format!("{}.toml", captured.document().id));

@@ -1,3 +1,3 @@
 //! Application audio responsibilities.
-pub mod device;
-pub mod session;
+pub(crate) mod device;
+pub(crate) mod session;

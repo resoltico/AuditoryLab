@@ -824,6 +824,9 @@ impl RecipeSnapshot {
     /// default rate, labelled with that rate.
     #[must_use]
     pub fn description(&self) -> String {
+        self.description_with_history(&crate::services::history_warnings(self.recipe()))
+    }
+    pub(crate) fn description_with_history(&self, warnings: &[String]) -> String {
         let snapshot = self;
         let s = snapshot.sound();
         let mut out = format!(
@@ -834,7 +837,7 @@ impl RecipeSnapshot {
             human_duration(s.fade_seconds)
         );
         out.push_str(&document_notes(snapshot));
-        for warning in crate::storage::library::history_warnings(snapshot.recipe()) {
+        for warning in warnings {
             out.push_str(&format!("{warning}\n"));
         }
         for (label, value) in (snapshot).research() {
@@ -1015,6 +1018,16 @@ pub fn rhythm_diagnostic(issue: &auditorylab_core::rhythm::Issue) -> String {
                 }
             )
         }
+    }
+}
+
+impl crate::services::Description<'_> {
+    /// Human description from the same captured data used by structured output.
+    #[must_use]
+    pub fn description(&self) -> String {
+        self.source()
+            .snapshot()
+            .description_with_history(self.history_warnings())
     }
 }
 

@@ -1,6 +1,7 @@
-//! Public-library live generation without an audio device.
-mod common;
-use auditorylab_app::audio::session::{LiveGenerator, LiveUpdateError};
+//! Native live generation through the production adapter without an audio device.
+use crate as auditorylab_app;
+use crate::audio::session::{LiveGenerator, LiveUpdateError};
+use crate::test_recipes as common;
 use auditorylab_app::core::{
     Carrier, CarrierKind, ComponentId, Ears, ParameterId, SampleRate, Target, Voice,
 };
@@ -23,14 +24,10 @@ fn target(draft: &Draft) -> Target {
         .unwrap_or_else(|e| panic!("{e}"))
 }
 
-#[expect(
-    clippy::unwrap_used,
-    reason = "Fixture helper inspects two known generated tones directly, independently of classification"
-)]
 fn difference(generator: &LiveGenerator) -> f64 {
     let rates: Vec<_> = generator
         .observation()
-        .unwrap()
+        .unwrap_or_else(|| panic!("rendered fixture must have an observation"))
         .voices
         .into_iter()
         .flatten()
@@ -112,7 +109,7 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
                 form: auditorylab_app::core::ComponentForm::Voice(voice),
             })
             .collect();
-        let snapshot = auditorylab_app::storage::load::load_reader(
+        let snapshot = auditorylab_app::services::read_source(
             recipe.build().unwrap().to_toml().unwrap().as_bytes(),
             "called binaural even if not a pair",
         )

@@ -2,7 +2,7 @@
 use auditorylab_app::document::editing::Draft;
 use auditorylab_app::error::Outcome;
 use auditorylab_app::services::Cancel;
-use auditorylab_app::storage::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation};
+use auditorylab_app::services::library::{Library, LibraryKey, Mutation};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -17,15 +17,15 @@ use std::{
 fn fixture() -> (
     tempfile::TempDir,
     PathBuf,
-    LibraryStore,
-    auditorylab_app::storage::library::LoadedRecord,
+    Library,
+    auditorylab_app::services::library::LoadedRecord,
 ) {
     let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
     fs::create_dir_all(&base).unwrap();
     let temp = tempfile::tempdir_in(base).unwrap();
     let root = temp.path().join("library");
-    let store = LibraryStore::new(LibraryRoot::explicit(root.clone()).unwrap()).unwrap();
-    store.root().initialize().unwrap();
+    let store = auditorylab_app::services::library::Library::at_path(root.clone()).unwrap();
+    store.initialize().unwrap();
     let mut draft = Draft::new().unwrap();
     draft.set_title("Initial".into());
     let record = store
@@ -47,7 +47,7 @@ fn child(
     mode: &str,
     ready: &Path,
     go: &Path,
-    record: &auditorylab_app::storage::library::LoadedRecord,
+    record: &auditorylab_app::services::library::LoadedRecord,
     result: &Path,
 ) -> Child {
     Command::new(std::env::current_exe().unwrap())
@@ -111,12 +111,12 @@ fn controlled_child() {
         drop(lock);
         return;
     }
-    let store = LibraryStore::new(LibraryRoot::explicit(root).unwrap()).unwrap();
+    let store = auditorylab_app::services::library::Library::at_path(root).unwrap();
     let key: LibraryKey = std::env::var("AUDITORYLAB_STORE_TEST_KEY")
         .unwrap()
         .parse()
         .unwrap();
-    let expect: auditorylab_app::storage::library::VersionToken =
+    let expect: auditorylab_app::services::library::VersionToken =
         std::env::var("AUDITORYLAB_STORE_TEST_EXPECT")
             .unwrap()
             .parse()

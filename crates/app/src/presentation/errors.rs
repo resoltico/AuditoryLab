@@ -1,4 +1,5 @@
 //! Human sentences for typed operation failures.
+use super::DisplayText;
 use super::core_errors::{recipe_error, structure_error};
 use crate::error::{
     EditorError, ExportError, FileError, IdentityError, IdentityScope, IoFailure, IoOperation,
@@ -6,7 +7,7 @@ use crate::error::{
 };
 use std::{error::Error as StdError, fmt};
 fn path_text(path: &std::path::Path) -> String {
-    path.to_string_lossy().into_owned()
+    path.to_string_lossy().display_scalar()
 }
 fn io_text(error: &IoFailure) -> String {
     let action = match error.action {
@@ -108,6 +109,8 @@ fn file_text(error: &FileError) -> String {
 }
 fn load_text(error: &LoadError) -> String {
     match error {
+        LoadError::TemporarySelector { .. } => "temporary entries have no reusable selector".into(),
+        LoadError::Identity(error) => identity_text(error),
         LoadError::UnknownBuiltin { id } => format!("unknown built-in recipe \"{id}\""),
         LoadError::Recipe { origin, error } => format!("{origin}: {}", recipe_error(error)),
         LoadError::Read { origin, cause } => format!("cannot read {origin}: {cause}"),
@@ -193,9 +196,13 @@ fn save_text(error: &SaveError) -> String {
 fn export_text(error: &ExportError) -> String {
     match error {
         ExportError::File { error } => file_text(error),
-        ExportError::Sound { title, rate, error } => {
+        ExportError::Sound {
+            origin,
+            rate,
+            error,
+        } => {
             format!(
-                "{title} at {} Hz: {}",
+                "{origin} at {} Hz: {}",
                 rate.hz(),
                 super::acoustic_errors::sound_error(error)
             )
@@ -204,6 +211,9 @@ fn export_text(error: &ExportError) -> String {
 }
 fn playback_text(error: &PlaybackError) -> String {
     match error {
+        PlaybackError::Trashed { .. } => {
+            "trashed recipes can be inspected/exported; restore before playback".into()
+        }
         PlaybackError::Device(error) => error.to_string(),
         PlaybackError::Sound { title, rate, error } => {
             format!(
@@ -223,6 +233,9 @@ fn playback_text(error: &PlaybackError) -> String {
 }
 fn query_text(error: &QueryError) -> String {
     match error {
+        QueryError::TemporaryFilesScope { .. } => {
+            "temporary inputs require the All collection".into()
+        }
         QueryError::RangeOrder { .. } => "date range requires before strictly after from".into(),
         QueryError::Study { .. } => {
             "study must be a nonempty source key or valid DOI identity".into()
@@ -267,7 +280,8 @@ impl StdError for LoadError {
             Self::File(error) => Some(error),
             Self::Library(error) => Some(error),
             Self::Sound { error, .. } => Some(error),
-            Self::UnknownBuiltin { .. } => None,
+            Self::UnknownBuiltin { .. } | Self::TemporarySelector { .. } => None,
+            Self::Identity(error) => Some(error),
         }
     }
 }
@@ -459,8 +473,8 @@ impl std::fmt::Display for crate::document::recipe::Origin {
         match self {
             Self::BuiltIn(id) => write!(f, "{id}"),
             Self::User { id, .. } => write!(f, "user:{id}"),
-            Self::File(path) => write!(f, "{}", path.display()),
-            Self::Stream(label) | Self::Draft(label) => write!(f, "{label}"),
+            Self::File(path) => f.write_str(&path_text(path)),
+            Self::Stream(label) | Self::Draft(label) => f.write_str(&label.display_scalar()),
         }
     }
 }

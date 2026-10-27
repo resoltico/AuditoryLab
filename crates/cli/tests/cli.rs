@@ -66,7 +66,7 @@ fn commands_sources_and_exit_codes() {
     );
     assert_eq!(
         cli(&["recipe", ID]).stdout,
-        auditorylab_app::storage::load::builtin_source("chan-2022-clicks-40-hz")
+        auditorylab_app::services::builtin_source("chan-2022-clicks-40-hz")
             .unwrap()
             .as_bytes()
     );

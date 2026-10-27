@@ -17,12 +17,16 @@ pub(crate) mod source;
 pub(crate) mod supervisor;
 pub(crate) mod transport;
 
-pub use live::{LiveControl, LiveGenerator, LiveUpdateError};
+pub(crate) use live::LiveGenerator;
+pub use live::{LiveControl, LiveUpdateError};
+pub(crate) use monitor::sample_meters;
 pub use monitor::{
     GeneratedStatus, Meter, MonitorDetail, MonitorReader, ObservationFreshness, PlaybackMonitor,
-    SessionDescriptor, sample_meters,
+    SessionDescriptor,
 };
 pub use output::{OutputInfo, SampleFormat};
+#[cfg(test)]
+mod live_tests;
 
 use std::sync::{
     Arc,

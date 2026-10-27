@@ -40,7 +40,7 @@ impl FileActivity {
             },
             FileKind::Managed(job) => Self {
                 kind: FileAction::Library,
-                path: job.store.root().path().into(),
+                path: job.store.path().into(),
                 title: None,
                 may_publish: job.may_publish(),
             },

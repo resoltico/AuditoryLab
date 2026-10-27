@@ -5,16 +5,16 @@
 //! is retained in full; index rows are disposable summaries.
 use super::*;
 use crate::discovery::collection::{CatalogQuery, EntrySummary, Scope};
+use crate::services::library::Library;
 use crate::storage::library::{
-    Inventory, LibraryKey, LibraryStore, LoadedRecord, Mutation, MutationKind, VersionToken,
-    WriteOutcome,
+    Inventory, LibraryKey, LoadedRecord, Mutation, MutationKind, VersionToken, WriteOutcome,
 };
 
 /// A real configured library capability or a typed configuration failure.
 #[derive(Debug)]
 pub enum LibraryBinding {
     /// A persistent store whose filesystem work is performed by jobs.
-    Store(LibraryStore),
+    Store(Library),
     /// Invalid/unavailable configuration; Built-ins remain usable.
     Unavailable(crate::storage::library::LibraryDiagnostic),
 }
@@ -24,8 +24,12 @@ impl LibraryBinding {
     /// # Errors
     /// Refuses invalid shipped identity metadata while retaining configuration failures as data.
     pub fn configured() -> Result<Self, crate::error::LibraryError> {
-        match crate::storage::library::LibraryRoot::resolve(None) {
-            Ok(root) => LibraryStore::new(root).map(Self::Store),
+        match crate::services::library::Library::resolve(None) {
+            Ok(library) => Ok(Self::Store(library)),
+            Err(
+                error @ (crate::error::LibraryError::InvalidBuiltin { .. }
+                | crate::error::LibraryError::DuplicateBuiltin { .. }),
+            ) => Err(error),
             Err(error) => Ok(Self::Unavailable(
                 crate::storage::library::LibraryDiagnostic {
                     storage_id: "configured root".into(),
@@ -37,7 +41,7 @@ impl LibraryBinding {
             )),
         }
     }
-    pub(super) fn store(&self) -> Option<&LibraryStore> {
+    pub(super) fn store(&self) -> Option<&Library> {
         match self {
             Self::Store(store) => Some(store),
             Self::Unavailable(_) => None,
@@ -123,7 +127,7 @@ impl LibraryState {
                     self.unreadable.insert(key.clone());
                     key.to_string()
                 }
-                _ => job.store.root().path().display().to_string(),
+                _ => job.store.path().display().to_string(),
             };
             self.read_failure = Some(crate::storage::library::LibraryDiagnostic {
                 storage_id,
@@ -161,7 +165,7 @@ impl LibraryState {
     pub(super) fn selected_user(&self) -> bool {
         matches!(self.selection, Some(LibraryKey::User(_)))
     }
-    pub(super) fn store_clone(&self) -> Option<LibraryStore> {
+    pub(super) fn store_clone(&self) -> Option<Library> {
         self.binding.store().cloned()
     }
     pub(super) fn selected_text(&self) -> Option<Arc<str>> {
@@ -231,7 +235,7 @@ impl LibraryState {
 
 #[derive(Debug, Clone)]
 pub(crate) struct LibraryJob {
-    pub(super) store: LibraryStore,
+    pub(super) store: Library,
     operation: Operation,
 }
 #[derive(Debug, Clone)]
@@ -287,7 +291,7 @@ impl LibraryJob {
         };
         let path = match &self.operation {
             Operation::ExternalSave { expected, .. } => expected.path().to_owned(),
-            _ => self.store.root().path().to_owned(),
+            _ => self.store.path().to_owned(),
         };
         status::LibraryContext { path, selector }
     }
@@ -375,15 +379,14 @@ impl LibraryJob {
                 .map_err(Error::from),
             Operation::ExternalSave {
                 expected, recipe, ..
-            } => crate::storage::external::ExternalWriter
-                .save(&expected, recipe, &Cancel::default())
+            } => crate::services::save_external(&expected, recipe, &Cancel::default())
                 .map(|r| LibraryOutcome::ExternalWritten(Box::new(r)))
                 .map_err(Error::from),
             Operation::Scan => Ok(LibraryOutcome::Inventory(
                 self.store.scan(&Cancel::default()),
             )),
             Operation::Initialize => {
-                let initialized = self.store.root().initialize()?;
+                let initialized = self.store.initialize()?;
                 let mut inventory = self.store.scan(&Cancel::default());
                 inventory
                     .diagnostics
@@ -429,7 +432,7 @@ impl Workspace {
     pub fn with_library(
         catalog: Vec<RecipeSnapshot>,
         capabilities: Capabilities,
-        store: LibraryStore,
+        store: Library,
     ) -> Result<Self, Error> {
         Self::with_binding(catalog, capabilities, LibraryBinding::Store(store))
     }
@@ -877,7 +880,7 @@ impl Workspace {
         match &self.library.binding {
             LibraryBinding::Store(store) => format!(
                 "{}\n{}{}",
-                store.root().path().display(),
+                store.path().display(),
                 self.library.inventory.description(),
                 self.library
                     .read_failure

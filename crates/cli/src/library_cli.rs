@@ -2,24 +2,20 @@
 use super::{Source, output, prose, usage};
 use crate::cli_text::CommandProblem;
 use auditorylab_app::core::SampleRate;
-use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::presentation::DisplayText;
 use auditorylab_app::presentation::reports::Report;
 use auditorylab_app::presentation::vocabulary::{Caption, Status};
 use auditorylab_app::services::Cancel;
 use auditorylab_app::{
     self as lab,
-    discovery::collection::{
-        CatalogQuery, DateRange, Direction, EntrySummary, GroupBy, Scope, SortBy,
-    },
-    storage::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation, VersionToken},
+    discovery::collection::{CatalogQuery, DateRange, Direction, GroupBy, Scope, SortBy},
+    services::library::{Library, LibraryKey, VersionToken},
 };
 use clap::{Args, Subcommand, ValueEnum};
 use serde_json::Value;
 use std::{
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
-    sync::Arc,
 };
 type Result<T> = std::result::Result<T, super::CliError>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -280,168 +276,73 @@ fn parse_analysis(text: &str) -> std::result::Result<lab::core::rhythm::Complete
         _ => Err(CommandProblem::AnalysisCoverage.message().into()),
     }
 }
-pub(super) fn store(path: Option<&Path>) -> Result<LibraryStore> {
-    Ok(LibraryStore::new(LibraryRoot::resolve(path)?)?)
+pub(super) fn open_library(path: Option<&Path>) -> Result<Library> {
+    Ok(Library::resolve(path)?)
 }
-/// Source resolution captures immutable saved content before any export/device work.
-pub(super) struct Resolved {
-    pub(super) snapshot: RecipeSnapshot,
-    pub(super) summary: EntrySummary,
-}
+use lab::services::Resolved;
 pub(super) fn resolve(source: Source, path: Option<&Path>) -> Result<Resolved> {
-    if let Some(selector) = source.selector {
-        let key: LibraryKey = selector.parse()?;
-        match &key {
-            LibraryKey::BuiltIn(id) => {
-                let snapshot = lab::storage::load::builtin(id)?;
-                let summary = EntrySummary::from_snapshot(key, &snapshot, None);
-                Ok(Resolved { snapshot, summary })
-            }
-            LibraryKey::User(_) => {
-                let record = store(path)?.load(&key)?;
-                let summary = record.summary();
-                Ok(Resolved {
-                    snapshot: record.snapshot,
-                    summary,
-                })
-            }
-            LibraryKey::External(_) => Err(usage(CommandProblem::TemporarySelector.message())),
-        }
+    let request = if let Some(selector) = source.selector {
+        lab::services::Source::Selector(selector.parse()?)
+    } else if let Some(file) = source.file {
+        lab::services::Source::File(file)
     } else {
-        let snapshot = if let Some(file) = source.file {
-            lab::storage::load::load_file(&file)?
-        } else {
-            if io::stdin().is_terminal() {
-                eprintln!("{}", crate::cli_text::Caption::PasteRecipe.label());
-            }
-            lab::storage::load::load_reader(
-                io::stdin().lock(),
-                crate::cli_text::Caption::StandardInput.label(),
-            )?
-        };
-        let key = LibraryKey::External(lab::storage::library::ExternalId::allocate()?);
-        let summary = EntrySummary::from_snapshot(key, &snapshot, None);
-        Ok(Resolved { snapshot, summary })
-    }
-}
-fn builtins() -> Result<Vec<EntrySummary>> {
-    lab::storage::load::catalog()?
-        .into_iter()
-        .map(|snapshot| {
-            let key = match snapshot.origin() {
-                lab::document::recipe::Origin::BuiltIn(id) => LibraryKey::BuiltIn((*id).into()),
-                _ => return Err(usage(CommandProblem::CatalogOrigin.message())),
-            };
-            Ok(EntrySummary::from_snapshot(key, &snapshot, None))
-        })
-        .collect()
+        if io::stdin().is_terminal() {
+            eprintln!("{}", crate::cli_text::Caption::PasteRecipe.label());
+        }
+        return Ok(lab::services::resolve(
+            lab::services::Source::Stream {
+                reader: &mut io::stdin().lock(),
+                label: crate::cli_text::Caption::StandardInput.label(),
+            },
+            path,
+        )?);
+    };
+    Ok(lab::services::resolve(request, path)?)
 }
 pub(super) fn list(args: ListArgs, path: Option<&Path>) -> Result<u8> {
-    let scope = args.collection.scope();
-    if !args.files.is_empty() && scope != Scope::All {
-        return Err(usage(CommandProblem::RestrictedTemporaryInput.message()));
-    }
-    let (mut query, format) = args.query.query(scope)?;
+    let (query, format) = args.query.query(args.collection.scope())?;
     if format == ListFormat::Ids && !args.files.is_empty() {
         return Err(usage(CommandProblem::TemporaryIds.message()));
     }
-    let mut entries = if scope == Scope::User {
-        Vec::new()
-    } else {
-        builtins()?
-    };
-    let mut complete = true;
-    let mut diagnostics = Vec::new();
-    let mut stages = Vec::new();
-    let mut exit = 0;
-    if scope != Scope::BuiltIn {
-        let inventory = match store(path) {
-            Ok(store) => store.scan(&Cancel::default()),
-            Err(error) => {
-                if matches!(
-                    error.outcome(),
-                    lab::error::Outcome::InvalidArgument | lab::error::Outcome::InvalidRecipe
-                ) {
-                    return Err(error);
-                }
-                lab::storage::library::Inventory {
-                    complete: false,
-                    failure_kind: Some(lab::error::Outcome::IncompleteInventory),
-                    diagnostics: vec![lab::storage::library::LibraryDiagnostic {
-                        storage_id: crate::cli_text::Caption::ConfiguredRoot.label().into(),
-                        code: "root_resolution".into(),
-                        detail: lab::storage::library::DiagnosticDetail::Notice(error.to_string()),
-                    }],
-                    ..lab::storage::library::Inventory::default()
-                }
-            }
-        };
-        complete = inventory.complete;
-        exit = inventory.failure_kind.map_or(0, super::exit_code);
-        entries.extend(inventory.entries);
-        diagnostics = inventory.diagnostics;
-        stages = inventory.stages;
-    }
-    query.include_external = !args.files.is_empty();
-    for path in args.files {
-        let snapshot = lab::storage::load::load_file(&path)?;
-        entries.push(EntrySummary::from_snapshot(
-            LibraryKey::External(lab::storage::library::ExternalId::allocate()?),
-            &snapshot,
-            None,
-        ));
-    }
-    print_list(
-        "list",
-        &query,
-        &entries,
-        complete,
-        &diagnostics,
-        &stages,
-        format,
+    let listing = lab::services::list(
+        lab::services::ListRequest {
+            query,
+            files: args.files,
+        },
+        path,
+        &Cancel::default(),
     )?;
-    Ok(exit)
+    print_list("list", &listing, format)?;
+    Ok(listing.outcome().map_or(0, super::exit_code))
 }
-fn print_list(
-    operation: &str,
-    query: &CatalogQuery,
-    entries: &[EntrySummary],
-    complete: bool,
-    diagnostics: &[lab::storage::library::LibraryDiagnostic],
-    stages: &[String],
-    format: ListFormat,
-) -> Result<()> {
-    let result = query.execute(entries)?;
+fn print_list(operation: &str, listing: &lab::services::Listing, format: ListFormat) -> Result<()> {
     match format {
         ListFormat::Ids => {
-            if complete {
-                let ids = result
-                    .entries
+            if listing.complete() {
+                let ids = listing
+                    .entries()
                     .iter()
-                    .map(|e| e.key.to_string())
+                    .map(|entry| entry.key.to_string())
                     .collect::<Vec<_>>()
                     .join("\n");
                 if !ids.is_empty() {
                     output(format!("{ids}\n").as_bytes())?;
                 }
             } else {
-                for diagnostic in diagnostics {
+                for diagnostic in listing.diagnostics() {
                     eprintln!("{}", prose(&diagnostic.message()));
                 }
             }
         }
-        ListFormat::Json => {
-            let value = Report::listing(operation, query, &result, complete, diagnostics, stages);
-            print_json(&value)?;
-        }
+        ListFormat::Json => print_json(&Report::listing(operation, listing))?,
         ListFormat::Text => {
-            for entry in &result.entries {
+            for entry in listing.entries() {
                 output(entry.list_description().as_bytes())?;
             }
-            if !complete {
+            if !listing.complete() {
                 eprintln!("{}", Status::InventoryIncomplete.label());
             }
-            for diagnostic in diagnostics {
+            for diagnostic in listing.diagnostics() {
                 eprintln!(
                     "{}: {}",
                     diagnostic.storage_id.display_scalar(),
@@ -453,40 +354,35 @@ fn print_list(
     Ok(())
 }
 pub(super) fn describe(resolved: &Resolved, format: ReadFormat) -> Result<()> {
+    let description = lab::services::describe(resolved)?;
     if format == ReadFormat::Json {
-        print_json(&Report::describe(&resolved.summary, &resolved.snapshot)?)?;
+        print_json(&Report::describe(description))?;
     } else {
-        let extra = resolved.summary.membership_description();
-        output(
-            format!(
-                "{}{}\n",
-                prose(&resolved.snapshot.description()),
-                prose(&extra)
-            )
-            .as_bytes(),
-        )?;
+        let extra = resolved.summary().membership_description();
+        output(format!("{}{}\n", prose(&description.description()), prose(&extra)).as_bytes())?;
     }
     Ok(())
 }
 pub(super) fn inspect(resolved: &Resolved, rate: SampleRate, format: ReadFormat) -> Result<u8> {
+    let inspection = lab::services::inspect(resolved, rate);
     if format == ReadFormat::Text {
-        let sound = resolved.snapshot.at(rate);
-        output(format!("{}\n", prose(&sound?.inspection())).as_bytes())?;
-        return Ok(0);
+        let sound = inspection.sound().map_err(Clone::clone)?;
+        output(format!("{}\n", prose(&sound.inspection())).as_bytes())?;
+    } else {
+        print_json(&Report::inspect(&inspection))?;
     }
-    let (report, code) = Report::inspect(&resolved.summary, &resolved.snapshot, rate);
-    print_json(&report)?;
-    Ok(code.map_or(0, super::exit_code))
+    Ok(inspection.outcome().map_or(0, super::exit_code))
 }
 pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8> {
     let operation = command.operation();
     match command {
         LibraryCommand::Path { format } => {
-            let root = LibraryRoot::resolve(path)?;
-            let info = match root.inspect() {
+            let inspection = lab::services::library::path(path)?;
+            let root = inspection.location;
+            let info = match inspection.result {
                 Ok(info) => info,
                 Err(error) => {
-                    let exists = root.path().try_exists().ok();
+                    let exists = inspection.exists;
                     if format == ReadFormat::Json {
                         print_json(&Report::unavailable_path(operation, &root, exists, &error))?;
                     } else {
@@ -512,7 +408,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
             Ok(0)
         }
         LibraryCommand::Init { format } => {
-            let initialized = store(path)?.root().initialize()?;
+            let initialized = open_library(path)?.initialize()?;
             if format == ReadFormat::Json {
                 print_mutation_json(&Report::initialized(operation, &initialized))?;
             } else {
@@ -522,20 +418,19 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
         }
         LibraryCommand::ListTrash(args) => {
             let (query, format) = args.query(Scope::Trash)?;
-            let inventory = store(path)?.scan(&Cancel::default());
-            print_list(
-                operation,
-                &query,
-                &inventory.entries,
-                inventory.complete,
-                &inventory.diagnostics,
-                &inventory.stages,
-                format,
+            let listing = lab::services::list(
+                lab::services::ListRequest {
+                    query,
+                    files: Vec::new(),
+                },
+                path,
+                &Cancel::default(),
             )?;
-            Ok(inventory.failure_kind.map_or(0, super::exit_code))
+            print_list(operation, &listing, format)?;
+            Ok(listing.outcome().map_or(0, super::exit_code))
         }
         LibraryCommand::Check { format } => {
-            let inventory = store(path)?.scan(&Cancel::default());
+            let inventory = open_library(path)?.scan(&Cancel::default());
             if format == ReadFormat::Json {
                 print_json(&Report::inventory(operation, &inventory))?;
             } else {
@@ -554,131 +449,72 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
             Ok(inventory.failure_kind.map_or(0, super::exit_code))
         }
         command => {
-            let (mutation, format) = match command {
+            if matches!(&command, LibraryCommand::Purge { yes: false, .. }) {
+                return Err(usage(CommandProblem::PurgeConfirmation.message()));
+            }
+            let cancel = Cancel::default();
+            let stop = cancel.clone();
+            super::on_interrupt(move || stop.request())?;
+            let library = open_library(path)?;
+            let (outcome, format) = match command {
                 LibraryCommand::Add {
                     file,
                     as_copy,
                     format,
-                } => {
-                    let snapshot = lab::storage::load::load_file(&file)?;
-                    let recipe = if as_copy {
-                        let mut copy = lab::document::editing::Draft::from_snapshot(&snapshot)?;
-                        copy.set_title(snapshot.title());
-                        copy.recipe()?
-                    } else {
-                        snapshot.recipe().clone()
-                    };
-                    (
-                        if as_copy {
-                            Mutation::Create(Arc::new(recipe))
-                        } else {
-                            Mutation::Add(Arc::new(recipe))
-                        },
-                        format,
-                    )
-                }
+                } => (library.add_file(&file, as_copy, &cancel)?, format),
                 LibraryCommand::Update {
                     selector,
                     file,
                     expect,
                     format,
-                } => {
-                    selector.require_user()?;
-                    (
-                        Mutation::Update {
-                            key: selector,
-                            expect,
-                            recipe: Arc::new(
-                                lab::storage::load::load_file(&file)?.recipe().clone(),
-                            ),
-                        },
-                        format,
-                    )
-                }
+                } => (
+                    library.update_file(selector, expect, &file, &cancel)?,
+                    format,
+                ),
                 LibraryCommand::Rename {
                     selector,
                     title,
                     expect,
                     format,
-                } => (
-                    Mutation::Rename {
-                        key: selector,
-                        expect,
-                        title,
-                    },
-                    format,
-                ),
+                } => (library.rename(selector, expect, title, &cancel)?, format),
                 LibraryCommand::Trash {
                     selector,
                     expect,
                     format,
-                } => (
-                    Mutation::Trash {
-                        key: selector,
-                        expect,
-                    },
-                    format,
-                ),
+                } => (library.trash(selector, expect, &cancel)?, format),
                 LibraryCommand::Restore {
                     selector,
                     expect,
                     format,
-                } => (
-                    Mutation::Restore {
-                        key: selector,
-                        expect,
-                    },
-                    format,
-                ),
+                } => (library.restore(selector, expect, &cancel)?, format),
                 LibraryCommand::Purge {
                     selector,
                     expect,
                     yes,
                     format,
-                } => {
-                    if !yes {
-                        return Err(usage(CommandProblem::PurgeConfirmation.message()));
-                    }
-                    (
-                        Mutation::Purge {
-                            key: selector,
-                            expect,
-                            confirmed: yes,
-                        },
-                        format,
-                    )
-                }
+                } => (library.purge(selector, expect, yes, &cancel)?, format),
                 _ => unreachable!("read-only library commands handled above"),
             };
-            let cancel = Cancel::default();
-            let stop = cancel.clone();
-            super::on_interrupt(move || stop.request())?;
-            apply_and_report_mutation(
-                &store(path)?,
-                mutation,
+            report_mutation(
+                &outcome,
                 operation,
                 format,
-                &cancel,
                 &mut io::stdout().lock(),
                 &mut io::stderr().lock(),
             )
         }
     }
 }
-// The command and native fault tests share the complete apply/report boundary.
-// Publication truth is established before any fallible terminal output.
-fn apply_and_report_mutation(
-    store: &LibraryStore,
-    mutation: Mutation,
+// The service establishes publication truth before any fallible terminal output.
+fn report_mutation(
+    outcome: &lab::services::library::WriteOutcome,
     operation: &str,
     format: ReadFormat,
-    cancel: &Cancel,
     stdout: &mut impl Write,
     stderr: &mut impl Write,
 ) -> Result<u8> {
-    let outcome = store.apply(mutation, cancel)?;
     let mut bytes = if format == ReadFormat::Json {
-        json_bytes(&Report::mutation(operation, &outcome))?
+        json_bytes(&Report::mutation(operation, outcome))?
     } else {
         outcome.description().display_text().into_bytes()
     };

@@ -4,7 +4,7 @@ use crate::core::Timestamp;
 use crate::discovery::collection::EntrySummary;
 use crate::document::recipe::Rendition;
 use crate::presentation::vocabulary::{Caption, NumberStyle, Status};
-use crate::storage::library::{Initialization, Inventory, LibraryRoot, RootInfo};
+use crate::storage::library::{Initialization, Inventory, RootInfo};
 use crate::storage::wav::Exported;
 use std::path::Path;
 
@@ -60,7 +60,7 @@ impl RootInfo {
         )
     }
 }
-impl LibraryRoot {
+impl crate::services::library::Location {
     /// An inspection failure preserves what is known and marks initialization unverified.
     #[must_use]
     pub fn inspection_failure(

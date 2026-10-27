@@ -10,10 +10,10 @@ use auditorylab_app::presentation::build_info::BUILD_IDENTITY;
 use auditorylab_app::services::Cancel;
 use auditorylab_app::services::Progress;
 use auditorylab_app::services::Replace;
+use auditorylab_app::services::catalog;
 use auditorylab_app::services::export;
-use auditorylab_app::storage::load::catalog;
-use auditorylab_app::storage::load::load_file;
-use auditorylab_app::storage::load::load_reader;
+use auditorylab_app::services::open_file;
+use auditorylab_app::services::read_source;
 use std::{fs, path::Path};
 fn dir() -> tempfile::TempDir {
     let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
@@ -27,10 +27,10 @@ fn silence() -> String {
 fn bounded_input_and_regular_file_admission() {
     let mut bytes = silence().as_bytes().to_vec();
     bytes.resize(65_536, b' ');
-    assert!(load_reader(&bytes[..], "limit").is_ok());
+    assert!(read_source(&bytes[..], "limit").is_ok());
     bytes.push(b' ');
     assert_eq!(
-        load_reader(&bytes[..], "limit").unwrap_err().outcome(),
+        read_source(&bytes[..], "limit").unwrap_err().outcome(),
         Outcome::InvalidRecipe
     );
     for bytes in [
@@ -40,24 +40,24 @@ fn bounded_input_and_regular_file_admission() {
         b"schema_version=4\nunknown=1",
     ] {
         assert_eq!(
-            load_reader(bytes, "bad").unwrap_err().outcome(),
+            read_source(bytes, "bad").unwrap_err().outcome(),
             Outcome::InvalidRecipe
         );
     }
     let dir = dir();
     assert_eq!(
-        load_file(dir.path()).unwrap_err().outcome(),
+        open_file(dir.path()).unwrap_err().outcome(),
         Outcome::Unreadable
     );
     let path = dir.path().join("sound.toml");
     fs::write(&path, silence()).unwrap();
-    assert!(load_file(&path).is_ok());
+    assert!(open_file(&path).is_ok());
     #[cfg(unix)]
     {
         use std::os::unix::fs::symlink;
         let link = dir.path().join("link");
         symlink(&path, &link).unwrap();
-        assert!(load_file(&link).is_ok());
+        assert!(open_file(&link).is_ok());
         let fifo = dir.path().join("fifo");
         assert!(
             std::process::Command::new("mkfifo")
@@ -66,32 +66,48 @@ fn bounded_input_and_regular_file_admission() {
                 .unwrap()
                 .success()
         );
-        assert_eq!(load_file(&fifo).unwrap_err().outcome(), Outcome::Unreadable);
+        assert_eq!(open_file(&fifo).unwrap_err().outcome(), Outcome::Unreadable);
     }
 }
 #[test]
 fn public_export_progress_no_clobber_replace_and_cancellation() {
     let dir = dir();
     let path = dir.path().join("silence.wav");
-    let sound = load_reader(silence().as_bytes(), "silence")
+    let sound = read_source(silence().as_bytes(), "silence")
         .unwrap()
         .at(SampleRate::DEFAULT)
         .unwrap();
     let progress = Progress::default();
-    let result = export(&sound, &path, Replace::Never, &Cancel::default(), &progress).unwrap();
+    let result = export(
+        sound.snapshot(),
+        sound.signal().sample_rate(),
+        &path,
+        Replace::Never,
+        &Cancel::default(),
+        &progress,
+    )
+    .unwrap();
     assert_eq!(result.frames, 480);
     assert_eq!(progress.frames(), 480);
     let original = fs::read(&path).unwrap();
     assert_eq!(
-        export(&sound, &path, Replace::Never, &Cancel::default(), &progress)
-            .unwrap_err()
-            .outcome(),
+        export(
+            sound.snapshot(),
+            sound.signal().sample_rate(),
+            &path,
+            Replace::Never,
+            &Cancel::default(),
+            &progress
+        )
+        .unwrap_err()
+        .outcome(),
         Outcome::DestinationExists
     );
     assert_eq!(fs::read(&path).unwrap(), original);
     fs::write(&path, b"old").unwrap();
     export(
-        &sound,
+        sound.snapshot(),
+        sound.signal().sample_rate(),
         &path,
         Replace::Allowed,
         &Cancel::default(),
@@ -103,9 +119,16 @@ fn public_export_progress_no_clobber_replace_and_cancellation() {
     cancelled.request();
     let other = dir.path().join("cancelled.wav");
     assert_eq!(
-        export(&sound, &other, Replace::Never, &cancelled, &progress)
-            .unwrap_err()
-            .outcome(),
+        export(
+            sound.snapshot(),
+            sound.signal().sample_rate(),
+            &other,
+            Replace::Never,
+            &cancelled,
+            &progress
+        )
+        .unwrap_err()
+        .outcome(),
         Outcome::Cancelled
     );
     assert!(!other.exists());

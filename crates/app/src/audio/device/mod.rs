@@ -163,7 +163,7 @@ pub struct PreparedPlayback {
 /// Returns [`Error::Device`] for discovery failures and
 /// [`Error::Sound`] when the snapshot is not valid at the device
 /// rate. The session's outcome becomes a preparation failure.
-pub fn prepare_playback(
+pub(crate) fn prepare_playback(
     session: Session,
     snapshot: &RecipeSnapshot,
 ) -> Result<Preparation<PreparedPlayback>, Error> {
@@ -216,7 +216,12 @@ impl PreparedPlayback {
             .clone()
     }
 
-    /// The default output snapshot.
+    /// The captured source validated at the native output rate.
+    #[must_use]
+    pub const fn rendition(&self) -> &Rendition {
+        &self.sound
+    }
+    /// Metadata of the selected native output.
     #[must_use]
     pub const fn output(&self) -> &OutputInfo {
         &self.output.description
@@ -264,7 +269,10 @@ pub struct PreparedLive {
 /// Returns [`Error::Device`] for discovery failures and
 /// [`Error::Sound`] when the components are not valid at the
 /// device rate. The session's outcome becomes a preparation failure.
-pub fn prepare_live(session: Session, draft: &Draft) -> Result<Preparation<PreparedLive>, Error> {
+pub(crate) fn prepare_live(
+    session: Session,
+    draft: &Draft,
+) -> Result<Preparation<PreparedLive>, Error> {
     if let Some(report) = stopped_before_start(&session) {
         return Ok(Preparation::Stopped(report));
     }
@@ -363,7 +371,7 @@ impl PreparedLive {
 
 /// Publish an early Stopped report when Stop was accepted before stream
 /// start was admitted.
-fn stopped_before_start(session: &Session) -> Option<PlaybackReport> {
+pub(crate) fn stopped_before_start(session: &Session) -> Option<PlaybackReport> {
     let state = session.state();
     match state.outcome() {
         Outcome::Running => None,
@@ -375,7 +383,7 @@ fn stopped_before_start(session: &Session) -> Option<PlaybackReport> {
     }
 }
 
-fn failed(session: &Session, error: Error) -> Error {
+pub(crate) fn failed(session: &Session, error: Error) -> Error {
     session.state().finish(Outcome::PreparationFailed);
     error
 }

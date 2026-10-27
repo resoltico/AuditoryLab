@@ -283,7 +283,7 @@ error_data! {
         /// Filesystem publication failed.
         File { error: FileError },
         /// The selected rate cannot realize the captured sound.
-        Sound { title: String, rate: SampleRate, error: SoundError },
+        Sound { origin: Box<crate::document::recipe::Origin>, rate: SampleRate, error: SoundError },
     }
 }
 impl ExportError {
@@ -304,6 +304,11 @@ impl From<FileError> for ExportError {
 /// Device playback could not prepare or complete.
 #[derive(Debug, Clone)]
 pub enum PlaybackError {
+    /// A captured Trash record must be restored before playback.
+    Trashed {
+        /// Requested managed identity.
+        key: crate::storage::library::LibraryKey,
+    },
     /// The native device adapter failed.
     Device(crate::audio::device::DeviceError),
     /// The sound is invalid at the actual device rate.
@@ -332,6 +337,7 @@ impl PlaybackError {
     pub fn outcome(&self) -> Outcome {
         match self {
             Self::Sound { .. } | Self::MissingDocument => Outcome::InvalidSound,
+            Self::Trashed { .. } => Outcome::InvalidArgument,
             Self::Library(error) => error.outcome(),
             Self::Load(error) => error.outcome(),
             Self::Device(_) | Self::MissingTerminalOutcome | Self::MonitorInUse => Outcome::Device,
@@ -346,6 +352,8 @@ impl From<LibraryError> for PlaybackError {
 error_data! {
     /// A discovery filter or local-date range is invalid.
     QueryError {
+        /// Explicit temporary inputs require the All collection.
+        TemporaryFilesScope { scope: crate::discovery::collection::Scope },
         /// The exclusive upper bound is not after the lower bound.
         RangeOrder { from: crate::core::Timestamp, before: crate::core::Timestamp },
         /// A study identity is empty or malformed.

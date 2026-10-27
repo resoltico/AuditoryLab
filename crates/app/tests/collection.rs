@@ -9,7 +9,7 @@ use auditorylab_app::{
     discovery::collection::{
         CatalogQuery, DateRange, Direction, EntrySummary, GroupBy, Scope, SortBy,
     },
-    storage::library::LibraryKey,
+    services::library::LibraryKey,
 };
 #[expect(
     clippy::unwrap_used,
@@ -243,7 +243,7 @@ fn automatic_defaults_follow_scope_but_explicit_sort_is_retained() {
     assert_eq!(q.effective_sort(), (SortBy::Title, Direction::Asc));
     let mut external = entry(4, "temporary", Vec::new(), None);
     external.key =
-        LibraryKey::External(auditorylab_app::storage::library::ExternalId::allocate().unwrap());
+        LibraryKey::External(auditorylab_app::services::library::ExternalId::allocate().unwrap());
     let mut trashed = entry(5, "trash", Vec::new(), None);
     trashed.trashed = true;
     trashed.trashed_at = Some("2026-10-24T06:00:00Z".parse().unwrap());

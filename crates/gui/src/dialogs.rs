@@ -148,7 +148,7 @@ async fn file_path(
     ui: &crate::MainWindow,
     filename: Option<&str>,
     extension: &str,
-    control: Option<auditorylab_app::audio::session::PlaybackControl>,
+    control: Option<auditorylab_app::services::playback::PlaybackControl>,
 ) -> Result<Option<std::path::PathBuf>, String> {
     #[cfg(target_os = "macos")]
     {

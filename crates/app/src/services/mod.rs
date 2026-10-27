@@ -1,10 +1,21 @@
-//! File export and recipe publication workflows.
+//! Shared source, discovery, playback and publication operations.
+mod discovery;
+mod inspection;
+pub mod library;
+pub mod playback;
+mod sources;
 use crate::core::Recipe;
-use crate::document::recipe::Rendition;
+use crate::core::SampleRate;
+use crate::document::recipe::{RecipeSnapshot, Rendition};
 use crate::error::{ExportError, FileError, IoFailure, IoOperation, SaveError};
-use crate::storage::load::builtin_source;
-use crate::storage::wav::Exported;
+pub use crate::storage::external::{ExternalOutcome, ObservedFile};
+pub use crate::storage::library::history_warnings;
+
+pub use crate::storage::wav::{Container, Exported};
 use crate::{storage::publish, storage::wav};
+pub use discovery::{ListRequest, Listing, list};
+pub use inspection::{Description, Inspection, describe, inspect};
+pub use sources::{Resolved, Source, builtin, builtin_source, catalog, portable_text, resolve};
 use std::{
     path::Path,
     sync::{
@@ -66,6 +77,21 @@ impl Progress {
 /// # Errors
 /// Preserves typed filesystem, cancellation and verification failures.
 pub fn export(
+    snapshot: &RecipeSnapshot,
+    rate: SampleRate,
+    path: &Path,
+    replace: Replace,
+    cancel: &Cancel,
+    progress: &Progress,
+) -> Result<Exported, ExportError> {
+    let sound = snapshot.realize(rate).map_err(|error| ExportError::Sound {
+        origin: Box::new(snapshot.origin().clone()),
+        rate,
+        error,
+    })?;
+    export_rendition(&sound, path, replace, cancel, progress)
+}
+fn export_rendition(
     sound: &Rendition,
     path: &Path,
     replace: Replace,
@@ -139,3 +165,37 @@ fn publish_text(text: &str, path: &Path, replace: Replace) -> Result<SaveOutcome
     })
     .map_err(SaveError::from)
 }
+
+/// Open one bounded regular portable input without adding it to the User Library.
+///
+/// # Errors
+/// Preserves input admission, encoding, schema and contract failures.
+pub fn open_file(
+    path: &Path,
+) -> Result<crate::document::recipe::RecipeSnapshot, crate::error::LoadError> {
+    crate::storage::load::load_file(path)
+}
+/// Read one bounded portable stream under an explicit captured attribution.
+///
+/// # Errors
+/// Preserves stream, encoding, schema and portable-contract failures.
+pub fn read_source(
+    reader: impl std::io::Read,
+    label: &str,
+) -> Result<crate::document::recipe::RecipeSnapshot, crate::error::LoadError> {
+    crate::storage::load::load_reader(reader, label)
+}
+/// Save a captured external version with identity, bytes and history checked at publication.
+///
+/// # Errors
+/// Preserves captured-version conflicts and truthful publication/cleanup failures.
+pub fn save_external(
+    expected: &ObservedFile,
+    recipe: Arc<Recipe>,
+    cancel: &Cancel,
+) -> Result<crate::storage::external::ExternalOutcome, SaveError> {
+    crate::storage::external::ExternalWriter.save(expected, recipe, cancel)
+}
+
+#[cfg(test)]
+mod tests;

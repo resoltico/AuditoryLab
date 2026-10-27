@@ -371,10 +371,10 @@ fn copy_of_reserved_builtin_is_explicit_and_machine_output_escapes_bidi_controls
     let root = temp.path().join("library");
     assert!(cli(&root, &["library", "init"]).status.success());
     let file = temp.path().join("builtin.toml");
-    let source = auditorylab_app::storage::load::builtin("ioannou-2015-binaural-2-hz").unwrap();
+    let source = auditorylab_app::services::builtin("ioannou-2015-binaural-2-hz").unwrap();
     fs::write(
         &file,
-        auditorylab_app::storage::load::builtin_source("ioannou-2015-binaural-2-hz").unwrap(),
+        auditorylab_app::services::builtin_source("ioannou-2015-binaural-2-hz").unwrap(),
     )
     .unwrap();
     let refused = cli(

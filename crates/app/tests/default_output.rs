@@ -1,24 +1,32 @@
 //! Device integration using only component-free silence.
 #![cfg(test)]
 mod common;
-use auditorylab_app::audio::device::{prepare_live, prepare_playback};
-use auditorylab_app::audio::session::{EndReason, Preparation, Session, StopRequest};
 use auditorylab_app::document::editing::Draft;
-use auditorylab_app::storage::load::load_reader;
+use auditorylab_app::services::playback::{EndReason, Preparation, Session, StopRequest};
+use auditorylab_app::services::playback::{prepare_live, prepare_playback};
+use auditorylab_app::services::{Source, resolve};
 use std::time::{Duration, Instant};
 
 fn silent(
     seconds: u32,
 ) -> (
-    auditorylab_app::audio::device::PreparedPlayback,
-    auditorylab_app::audio::session::PlaybackControl,
+    auditorylab_app::services::playback::PreparedPlayback,
+    auditorylab_app::services::playback::PlaybackControl,
 ) {
     let recipe = common::silent(f64::from(seconds), 0.0).to_toml().unwrap();
-    let snapshot = load_reader(recipe.as_bytes(), "silence").unwrap();
+    let resolved = resolve(
+        Source::Stream {
+            reader: &mut recipe.as_bytes(),
+            label: "silence",
+        },
+        None,
+    )
+    .unwrap();
+    let snapshot = resolved.snapshot();
     assert!(snapshot.sound().components.is_empty());
     let session = Session::new();
     let control = session.control();
-    let Preparation::Ready(playback) = prepare_playback(session, &snapshot).unwrap() else {
+    let Preparation::Ready(playback) = prepare_playback(session, &resolved).unwrap() else {
         panic!("no Stop was requested");
     };
     assert_eq!(playback.signal().peak_dbfs(), [f64::NEG_INFINITY; 2]);
@@ -101,14 +109,18 @@ fn live_silence_stops() {
 #[test]
 #[ignore = "opens the default output without playing"]
 fn stop_before_preparation_returns_an_early_report() {
-    let snapshot = load_reader(
-        common::silent(1.0, 0.0).to_toml().unwrap().as_bytes(),
-        "silence",
+    let recipe = common::silent(1.0, 0.0).to_toml().unwrap();
+    let resolved = resolve(
+        Source::Stream {
+            reader: &mut recipe.as_bytes(),
+            label: "silence",
+        },
+        None,
     )
     .unwrap();
     let session = Session::new();
     session.control().request_stop();
-    let Preparation::Stopped(report) = prepare_playback(session, &snapshot).unwrap() else {
+    let Preparation::Stopped(report) = prepare_playback(session, &resolved).unwrap() else {
         panic!("Stop before discovery must not create a stream");
     };
     assert_eq!(report.generated_frames, 0);

@@ -21,10 +21,10 @@ use crate::generated::{
 };
 use crate::{details_parent, motion, scope, typography};
 use actions::install_actions;
-use auditorylab_app::audio::session::PlaybackPhase;
 use auditorylab_app::core::{CarrierKind, Ears, ModulationKind, ParameterId};
 use auditorylab_app::document::editing::{EditingField, FieldHandle, MetadataField, RowKey};
 use auditorylab_app::presentation::waveform_view::{ModelView, WaveformCapture};
+use auditorylab_app::services::playback::PlaybackPhase;
 use auditorylab_app::workspace::{
     ComponentView, EditorView, Effect, MetadataView, MotionPreference, ParameterView, PathPurpose,
     PromptAnswer, PromptId, Response, Runner, View, Workspace,
@@ -454,7 +454,9 @@ impl SlintAdapter {
 
     /// The current audio session's Stop control, for a native control bound
     /// to exactly that session.
-    pub(crate) fn audio_control(&self) -> Option<auditorylab_app::audio::session::PlaybackControl> {
+    pub(crate) fn audio_control(
+        &self,
+    ) -> Option<auditorylab_app::services::playback::PlaybackControl> {
         self.workspace
             .borrow()
             .as_ref()

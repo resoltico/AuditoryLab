@@ -78,13 +78,13 @@ impl ExternalOutcome {
 }
 /// Stateless external writer using the shared publication primitive.
 #[derive(Debug, Clone, Default)]
-pub struct ExternalWriter;
+pub(crate) struct ExternalWriter;
 impl ExternalWriter {
     /// Save a captured recipe only while the opened file's identity and bytes still match.
     ///
     /// # Errors
     /// Rejects stale observations, history changes and invalid content; ambiguous I/O is verified before returning.
-    pub fn save(
+    pub(crate) fn save(
         &self,
         expected: &ObservedFile,
         recipe: Arc<Recipe>,

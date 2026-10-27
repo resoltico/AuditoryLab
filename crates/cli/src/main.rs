@@ -3,11 +3,10 @@
 use auditorylab_app::presentation::DisplayText;
 mod cli_text;
 mod library_cli;
-use auditorylab_app::audio::session::{EndReason, PlaybackControl, Preparation, Session};
 use auditorylab_app::core::SampleRate;
-use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::error::Outcome;
 use auditorylab_app::presentation::vocabulary::Caption;
+use auditorylab_app::services::playback::{EndReason, PlaybackControl, Preparation, Session};
 use auditorylab_app::services::{Cancel, Progress, Replace};
 use auditorylab_app::{self as lab};
 use clap::{Args, CommandFactory, Parser, Subcommand};
@@ -279,14 +278,14 @@ enum Ended {
     Stopped,
     Code(u8),
 }
-fn play(snapshot: &RecipeSnapshot) -> Result<Ended, CliError> {
+fn play(resolved: &lab::services::Resolved) -> Result<Ended, CliError> {
     let session = Session::new();
     let control: PlaybackControl = session.control();
     let stop = control.clone();
     on_interrupt(move || {
         stop.request_stop();
     })?;
-    let mut playback = match lab::audio::device::prepare_playback(session, snapshot)? {
+    let mut playback = match lab::services::playback::prepare_playback(session, resolved)? {
         Preparation::Ready(playback) => playback,
         Preparation::Stopped(report) => {
             eprintln!("{}", prose(&report.description()));
@@ -295,21 +294,26 @@ fn play(snapshot: &RecipeSnapshot) -> Result<Ended, CliError> {
     };
     eprintln!(
         "{}\n{}",
-        prose(&(snapshot).playback_preamble(playback.output(), playback.signal())),
+        prose(
+            &playback
+                .rendition()
+                .snapshot()
+                .playback_preamble(playback.output(), playback.signal())
+        ),
         crate::cli_text::Caption::StopKeyboardHint.label()
     );
-    let sound = snapshot.at(playback.output().sample_rate)?;
+    let sound = playback.rendition();
     eprintln!("{}", prose(&sound.description(false)));
     let report = if io::stderr().is_terminal() {
         let mut reader = playback
-            .monitor(lab::audio::session::MonitorDetail::Quantities)
+            .monitor(lab::services::playback::MonitorDetail::Quantities)
             .reader()
             .ok_or_else(|| {
                 std::io::Error::other(crate::cli_text::Caption::MonitorAlreadyInUse.label())
             })?;
         let done = std::sync::atomic::AtomicBool::new(false);
         std::thread::scope(
-            |scope| -> Result<lab::audio::session::PlaybackReport, CliError> {
+            |scope| -> Result<lab::services::playback::PlaybackReport, CliError> {
                 let printer = scope.spawn(|| {
                     let mut terminal = StatusLine { active: false };
                     while !done.load(std::sync::atomic::Ordering::Acquire) {
@@ -357,21 +361,11 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             selector,
             output: path,
         }) => {
-            let key: lab::storage::library::LibraryKey = selector.parse()?;
-            let text = match &key {
-                lab::storage::library::LibraryKey::BuiltIn(id) => {
-                    lab::storage::load::builtin_source(id)?.to_owned()
-                }
-                lab::storage::library::LibraryKey::User(_) => {
-                    library_cli::store(cli.library_dir.as_deref())?
-                        .load(&key)?
-                        .recipe_toml
-                        .to_string()
-                }
-                lab::storage::library::LibraryKey::External(_) => {
-                    return Err(usage(CommandProblem::TemporaryRecipeSelector.message()));
-                }
-            };
+            let key: lab::services::library::LibraryKey = selector.parse()?;
+            if matches!(key, lab::services::library::LibraryKey::External(_)) {
+                return Err(usage(CommandProblem::TemporaryRecipeSelector.message()));
+            }
+            let text = lab::services::portable_text(&key, cli.library_dir.as_deref())?;
             if let Some(path) = path {
                 let saved = lab::services::save_recipe_text(&text, &path, Replace::Never)?;
                 for warning in saved.warnings {
@@ -402,14 +396,16 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             output: path,
             sample_rate,
         }) => {
-            let snapshot = library_cli::resolve(source, cli.library_dir.as_deref())?.snapshot;
-            let sound = snapshot.at(sample_rate)?;
+            let resolved = library_cli::resolve(source, cli.library_dir.as_deref())?;
+            let inspection = lab::services::inspect(&resolved, sample_rate);
+            let sound = inspection.sound().map_err(Clone::clone)?;
             let cancel = Cancel::default();
             let request = cancel.clone();
             on_interrupt(move || request.request())?;
             eprintln!("{}", prose(&sound.export_preamble(&path)));
             let result = lab::services::export(
-                &sound,
+                resolved.snapshot(),
+                sample_rate,
                 &path,
                 Replace::Never,
                 &cancel,
@@ -422,10 +418,7 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
         }
         Some(Command::Play(source)) => {
             let resolved = library_cli::resolve(source, cli.library_dir.as_deref())?;
-            if resolved.summary.trashed {
-                return Err(usage(CommandProblem::TrashedPlayback.message()));
-            }
-            return play(&resolved.snapshot);
+            return play(&resolved);
         }
     }
     Ok(Ended::Normally)

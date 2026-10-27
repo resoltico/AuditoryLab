@@ -8,16 +8,17 @@ pub(crate) mod store;
 use crate::core::DocumentUuid;
 use crate::error::{IdentityError, IdentityScope, LibraryError as Error};
 pub use record::{Fingerprint, VersionToken};
-pub use root::{Initialization, LIBRARY_LAYOUT, LibraryRoot, RootInfo, RootSource};
+pub(crate) use root::LibraryRoot;
+pub use root::{Initialization, LIBRARY_LAYOUT, RootInfo, RootSource};
 use serde::{Serialize, Serializer};
 use std::{
     fmt,
     str::FromStr,
     sync::atomic::{AtomicU64, Ordering},
 };
+pub(crate) use store::LibraryStore;
 pub use store::{
-    DiagnosticDetail, Inventory, LibraryDiagnostic, LibraryStore, LoadedRecord,
-    MAX_SCAN_DECODED_BYTES, MAX_SCAN_RAW_BYTES, MAX_SCAN_RECORDS, Mutation, MutationKind,
+    DiagnosticDetail, Inventory, LibraryDiagnostic, LoadedRecord, Mutation, MutationKind,
     MutationStatus, WriteOutcome, history_warnings,
 };
 

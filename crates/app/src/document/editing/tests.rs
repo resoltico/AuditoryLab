@@ -400,10 +400,9 @@ fn saved_baselines_compare_content_and_belong_to_one_document() {
     );
     editor.stage(title, "C").unwrap();
     assert!(editor.dirty(), "staged text is unsaved");
-    let copy = EditorSession::new(
-        Draft::from_snapshot(&crate::storage::load::catalog().unwrap()[0]).unwrap(),
-    )
-    .unwrap();
+    let copy =
+        EditorSession::new(Draft::from_snapshot(&crate::services::catalog().unwrap()[0]).unwrap())
+            .unwrap();
     assert!(copy.dirty(), "a copy needs saving");
 }
 
@@ -476,7 +475,7 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
 
 #[test]
 fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids() {
-    let snapshot = crate::storage::load::catalog().unwrap().remove(0);
+    let snapshot = crate::services::catalog().unwrap().remove(0);
     let d = Draft::from_snapshot(&snapshot).unwrap();
     assert_eq!(d.title(), format!("{} (edited)", snapshot.title()));
     assert_eq!(d.based_on().unwrap().id(), snapshot.id());
@@ -552,7 +551,7 @@ fn save_round_trips_and_keeps_existing_destinations() {
 
 #[test]
 fn derivatives_reopen_with_full_scoped_graph_and_bounded_flat_ancestry() {
-    let source = crate::storage::load::catalog().unwrap().remove(0);
+    let source = crate::services::catalog().unwrap().remove(0);
     let original = source.recipe().clone();
     let mut draft = Draft::from_snapshot(&source).unwrap();
     draft.set_summary("Rīga \"quoted\" 🎧\nsecond line".into());
@@ -584,7 +583,7 @@ fn derivatives_reopen_with_full_scoped_graph_and_bounded_flat_ancestry() {
 
 #[test]
 fn the_entire_document_including_unicode_anchor_has_exact_byte_neighbours() {
-    let source = crate::storage::load::catalog().unwrap().remove(0);
+    let source = crate::services::catalog().unwrap().remove(0);
     let mut draft = Draft::from_snapshot(&source).unwrap();
     draft.set_summary("é🎧".into());
     let remaining = Recipe::MAX_BYTES - draft.to_toml().unwrap().len();
@@ -691,7 +690,7 @@ fn nominal_cache_and_saved_memberships_follow_distinct_committed_snapshots() {
 
 #[test]
 fn committed_sound_edits_never_repromote_evidence_by_merely_retuning_back() {
-    let source = crate::storage::load::builtin("ioannou-2015-binaural-2-hz").unwrap();
+    let source = crate::services::builtin("ioannou-2015-binaural-2-hz").unwrap();
     let mut editor = EditorSession::new(Draft::from_recipe(source.recipe().clone())).unwrap();
     editor.record_saved(editor.document(), source.recipe());
     let title = metadata(&editor, MetadataField::Title);
@@ -714,7 +713,7 @@ fn committed_sound_edits_never_repromote_evidence_by_merely_retuning_back() {
 }
 #[test]
 fn complete_remove_undo_restores_full_metadata_but_partial_or_published_undo_cannot() {
-    let source = crate::storage::load::builtin("ioannou-2015-binaural-2-hz").unwrap();
+    let source = crate::services::builtin("ioannou-2015-binaural-2-hz").unwrap();
     for intervening in [0, 1, 2] {
         let mut editor = EditorSession::new(Draft::from_recipe(source.recipe().clone())).unwrap();
         let doc = editor.document();

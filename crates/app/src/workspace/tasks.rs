@@ -6,7 +6,7 @@ use super::{Response, Workspace};
 use crate::audio::session::{LiveControl, PlaybackControl, PlaybackReport, Session};
 use crate::document::editing::{DocumentId, Draft};
 use crate::document::recipe::{RecipeSnapshot, Rendition};
-use crate::error::{ExportError, LibraryError, LoadError, PlaybackError, SaveError};
+use crate::error::{ExportError, LoadError, PlaybackError, SaveError};
 use crate::error::{OperationError as Error, Outcome};
 use crate::services::{Cancel, Progress, Replace};
 use crate::storage::wav::Exported;
@@ -43,7 +43,7 @@ pub(crate) enum AudioKind {
     /// Revalidate a managed selection on the worker before device preparation.
     Managed {
         snapshot: RecipeSnapshot,
-        store: crate::storage::library::LibraryStore,
+        store: crate::services::library::Library,
     },
     /// A document's committed components, live until stopped.
     Live(DocumentId),
@@ -131,7 +131,7 @@ impl FileKind {
                 crate::services::save_recipe_text(&text, &path, Replace::Allowed),
             ),
             Self::Managed(job) => FileOutcome::Managed(job.execute()),
-            Self::Import(path) => FileOutcome::Imported(crate::storage::load::load_file(&path)),
+            Self::Import(path) => FileOutcome::Imported(crate::services::open_file(&path)),
             Self::Export {
                 path,
                 cancel,
@@ -139,7 +139,8 @@ impl FileKind {
                 sound,
                 ..
             } => FileOutcome::Exported(crate::services::export(
-                &sound,
+                sound.snapshot(),
+                sound.signal().sample_rate(),
                 &path,
                 Replace::Allowed,
                 &cancel,
@@ -149,19 +150,8 @@ impl FileKind {
     }
 }
 
-pub(super) fn revalidate_managed(
-    snapshot: &RecipeSnapshot,
-    store: &crate::storage::library::LibraryStore,
-) -> Result<RecipeSnapshot, LibraryError> {
-    let crate::document::recipe::Origin::User { id, version } = snapshot.origin() else {
-        return Err(LibraryError::ExpectedUser);
-    };
-    let record = store.load(&crate::storage::library::LibraryKey::User(*id))?;
-    if record.trashed || &record.version_token != version {
-        return Err(LibraryError::StalePlayback);
-    }
-    Ok(record.snapshot)
-}
+#[cfg(test)]
+use crate::services::playback::revalidate_managed;
 
 /// An immutable admitted operation. Audio captures own their unique Session.
 pub struct Job {
@@ -293,8 +283,8 @@ fn execute_audio(
     prepared: &mut impl FnMut(Response),
 ) -> Result<PlaybackReport, PlaybackError> {
     use crate::{
-        audio::device,
         audio::session::{MonitorDetail, Outcome as TransportOutcome, Preparation},
+        services::playback as device,
     };
     if session.state().outcome() == TransportOutcome::StopRequested {
         session.state().finish_drained(TransportOutcome::Completed);
@@ -303,11 +293,9 @@ fn execute_audio(
             .report()
             .ok_or(PlaybackError::MissingTerminalOutcome);
     }
-    let kind = match kind {
-        AudioKind::Managed { snapshot, store } => {
-            AudioKind::Finite(revalidate_managed(&snapshot, &store)?)
-        }
-        kind => kind,
+    let (kind, library) = match kind {
+        AudioKind::Managed { snapshot, store } => (AudioKind::Finite(snapshot), Some(store)),
+        kind => (kind, None),
     };
     match (kind, draft) {
         (AudioKind::Live(_), Some(draft)) => match device::prepare_live(session, &draft)? {
@@ -326,22 +314,24 @@ fn execute_audio(
             }
             Preparation::Stopped(report) => Ok(report),
         },
-        (AudioKind::Finite(snapshot), _) => match device::prepare_playback(session, &snapshot)? {
-            Preparation::Ready(mut output) => {
-                let reader = output
-                    .monitor(MonitorDetail::Waveform)
-                    .reader()
-                    .ok_or(PlaybackError::MonitorInUse)?;
-                prepared(Response::Prepared {
-                    job: id,
-                    reader: Box::new(reader),
-                    rate: output.output().sample_rate,
-                    live: None,
-                });
-                output.play()
+        (AudioKind::Finite(snapshot), _) => {
+            match device::prepare_captured(session, &snapshot, library.as_ref())? {
+                Preparation::Ready(mut output) => {
+                    let reader = output
+                        .monitor(MonitorDetail::Waveform)
+                        .reader()
+                        .ok_or(PlaybackError::MonitorInUse)?;
+                    prepared(Response::Prepared {
+                        job: id,
+                        reader: Box::new(reader),
+                        rate: output.output().sample_rate,
+                        live: None,
+                    });
+                    output.play()
+                }
+                Preparation::Stopped(report) => Ok(report),
             }
-            Preparation::Stopped(report) => Ok(report),
-        },
+        }
         (AudioKind::Managed { .. }, _) => {
             unreachable!("managed content resolved before device preparation")
         }

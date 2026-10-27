@@ -81,7 +81,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     selector.select()?;
     let windows = Windows::new()?;
     let workspace = Workspace::with_binding(
-        auditorylab_app::storage::load::catalog()?,
+        auditorylab_app::services::catalog()?,
         Capabilities::available(),
         auditorylab_app::workspace::LibraryBinding::configured()?,
     )?;

@@ -69,7 +69,7 @@ pub(crate) fn reply_to_termination(request: TerminationRequest, approve: bool) {
 
 /// Instance state of the Stop target: the one session it may stop.
 struct StopTargetState {
-    control: auditorylab_app::audio::session::PlaybackControl,
+    control: auditorylab_app::services::playback::PlaybackControl,
 }
 
 define_class!(
@@ -85,7 +85,7 @@ define_class!(
         fn stop_audio(&self, sender: &NSButton) {
             let requested = matches!(
                 self.ivars().control.request_stop(),
-                auditorylab_app::audio::session::StopRequest::Accepted | auditorylab_app::audio::session::StopRequest::AlreadyRequested
+                auditorylab_app::services::playback::StopRequest::Accepted | auditorylab_app::services::playback::StopRequest::AlreadyRequested
             );
             sender.setTitle(&NSString::from_str(if requested {
                 crate::terms::Status::StopInFilePanelRequested.label()
@@ -104,7 +104,7 @@ impl StopTarget {
     )]
     fn new(
         mtm: MainThreadMarker,
-        control: auditorylab_app::audio::session::PlaybackControl,
+        control: auditorylab_app::services::playback::PlaybackControl,
     ) -> Retained<Self> {
         let this = Self::alloc(mtm).set_ivars(StopTargetState { control });
         // SAFETY: NSObject's designated initializer on a freshly allocated instance.
@@ -124,7 +124,7 @@ pub(crate) async fn choose_file(
     ui: &crate::MainWindow,
     filename: Option<&str>,
     extension: &str,
-    control: Option<auditorylab_app::audio::session::PlaybackControl>,
+    control: Option<auditorylab_app::services::playback::PlaybackControl>,
 ) -> Result<Option<std::path::PathBuf>, String> {
     use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use std::task::Poll;

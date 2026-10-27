@@ -1,15 +1,13 @@
 //! Typed machine-readable application reports.
 use crate::{
-    core::{ComponentFacts, DocumentUuid, SampleRate, Timestamp, VoiceId, rhythm},
+    core::{ComponentFacts, DocumentUuid, Timestamp, VoiceId, rhythm},
     discovery::collection::{
-        CatalogQuery, Collection, Direction, EntrySummary, EvidenceFacet, QueryResult, ResultGroup,
-        SortBy,
+        CatalogQuery, Collection, Direction, EntrySummary, EvidenceFacet, ResultGroup, SortBy,
     },
-    document::recipe::RecipeSnapshot,
-    error::{OperationError as Error, Outcome},
+    error::Outcome,
     storage::library::{
-        Initialization, Inventory, LibraryDiagnostic, LibraryKey, LibraryRoot, MutationStatus,
-        RootInfo, RootSource, VersionToken, WriteOutcome,
+        Initialization, Inventory, LibraryDiagnostic, LibraryKey, MutationStatus, RootInfo,
+        RootSource, VersionToken, WriteOutcome,
     },
 };
 use serde::Serialize;
@@ -230,53 +228,37 @@ impl Report {
     }
     /// Query results with the exact typed query and storage diagnostics.
     #[must_use]
-    pub fn listing(
-        operation: &str,
-        query: &CatalogQuery,
-        result: &QueryResult<'_>,
-        complete: bool,
-        diagnostics: &[LibraryDiagnostic],
-        stages: &[String],
-    ) -> Self {
-        let mut report = Self::new(operation, complete).with_entries(
-            result
-                .entries
-                .iter()
-                .map(|e| EntryReport::from(*e))
-                .collect(),
-        );
+    pub fn listing(operation: &str, listing: &crate::services::Listing) -> Self {
+        let query = listing.query();
+        let mut report = Self::new(operation, listing.complete())
+            .with_entries(listing.entries().iter().map(EntryReport::from).collect());
         report.query = Some(query.clone());
         report.effective_sort = Some(query.effective_sort());
         report.classifier_revision = Some(rhythm::CLASSIFIER_REVISION);
-        report.groups = result.groups.clone();
-        report.diagnostics = diagnostics
+        report.groups = listing.groups().to_vec();
+        report.diagnostics = listing
+            .diagnostics()
             .iter()
             .cloned()
             .map(Diagnostic::Library)
             .collect();
-        report.stages = Some(stages.to_vec());
+        report.stages = Some(listing.stages().to_vec());
         report
     }
     /// Full portable content and declared-history diagnostics.
-    ///
-    /// # Errors
-    /// Returns a recipe serialization error for invalid portable content.
-    pub fn describe(summary: &EntrySummary, snapshot: &RecipeSnapshot) -> Result<Self, Error> {
-        let mut entry = EntryReport::from(summary);
-        entry.history_warnings = Some(crate::storage::library::history_warnings(snapshot.recipe()));
-        entry.recipe_toml = Some(snapshot.recipe().to_toml().map_err(Error::Recipe)?);
-        Ok(Self::new("describe", true).with_entries(vec![entry]))
+    pub fn describe(description: crate::services::Description<'_>) -> Self {
+        let (source, text, history) = description.into_parts();
+        let mut entry = EntryReport::from(source.summary());
+        entry.history_warnings = Some(history);
+        entry.recipe_toml = Some(text);
+        Self::new("describe", true).with_entries(vec![entry])
     }
-    /// Compile the captured document at the requested rate and retain invalid-content diagnostics.
+    /// Render the service’s captured rate validation, including invalid-content diagnostics.
     #[must_use]
-    pub fn inspect(
-        summary: &EntrySummary,
-        snapshot: &RecipeSnapshot,
-        rate: SampleRate,
-    ) -> (Self, Option<Outcome>) {
-        let mut entry = EntryReport::from(summary);
-        let mut outcome = None;
-        entry.validation = match snapshot.at(rate) {
+    pub fn inspect(inspection: &crate::services::Inspection<'_>) -> Self {
+        let rate = inspection.rate();
+        let mut entry = EntryReport::from(inspection.source().summary());
+        entry.validation = match inspection.sound() {
             Ok(sound) => Validation::Valid {
                 sample_rate_hz: rate.hz(),
                 frames: sound.signal().frames(),
@@ -288,18 +270,12 @@ impl Report {
                     .map(|(id, facts)| ComponentReport { id, facts: *facts })
                     .collect(),
             },
-            Err(error) => {
-                outcome = Some(error.outcome());
-                Validation::Invalid {
-                    sample_rate_hz: rate.hz(),
-                    diagnostics: vec![error.to_string()],
-                }
-            }
+            Err(error) => Validation::Invalid {
+                sample_rate_hz: rate.hz(),
+                diagnostics: vec![error.to_string()],
+            },
         };
-        (
-            Self::new("inspect", true).with_entries(vec![entry]),
-            outcome,
-        )
+        Self::new("inspect", true).with_entries(vec![entry])
     }
     /// A successful root inspection.
     #[must_use]
@@ -312,7 +288,7 @@ impl Report {
     #[must_use]
     pub fn unavailable_path(
         operation: &str,
-        root: &LibraryRoot,
+        root: &crate::services::library::Location,
         exists: Option<bool>,
         error: &crate::error::LibraryError,
     ) -> Self {

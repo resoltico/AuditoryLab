@@ -29,7 +29,7 @@ pub enum RootSource {
 }
 /// Resolved configuration; construction performs no directory/file creation.
 #[derive(Debug, Clone)]
-pub struct LibraryRoot {
+pub(crate) struct LibraryRoot {
     path: PathBuf,
     source: RootSource,
 }
@@ -38,7 +38,7 @@ impl LibraryRoot {
     ///
     /// # Errors
     /// Rejects relative/empty explicit roots or unavailable native data resolution.
-    pub fn resolve(explicit: Option<&Path>) -> Result<Self, Error> {
+    pub(crate) fn resolve(explicit: Option<&Path>) -> Result<Self, Error> {
         let (path, source) = if let Some(path) = explicit {
             (path.to_owned(), RootSource::CommandLine)
         } else if let Some(path) = std::env::var_os("AUDITORYLAB_LIBRARY_DIR") {
@@ -57,7 +57,7 @@ impl LibraryRoot {
     ///
     /// # Errors
     /// Rejects paths that are not absolute; never falls back to another directory.
-    pub fn explicit(path: PathBuf) -> Result<Self, Error> {
+    pub(crate) fn explicit(path: PathBuf) -> Result<Self, Error> {
         Self::configured(path, RootSource::CommandLine)
     }
     fn configured(path: PathBuf, source: RootSource) -> Result<Self, Error> {
@@ -73,12 +73,12 @@ impl LibraryRoot {
     }
     /// Resolved path, never a cache, bundle or checkout-relative location.
     #[must_use]
-    pub fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.path
     }
     /// Selected override/default source.
     #[must_use]
-    pub const fn source(&self) -> RootSource {
+    pub(crate) const fn source(&self) -> RootSource {
         self.source
     }
     pub(super) fn missing_is_empty(&self) -> bool {
@@ -88,7 +88,7 @@ impl LibraryRoot {
     ///
     /// # Errors
     /// Reports busy locks, unsupported markers and unsafe/incomplete directories.
-    pub fn inspect(&self) -> Result<RootInfo, Error> {
+    pub(crate) fn inspect(&self) -> Result<RootInfo, Error> {
         let Some(lease) = self.lock(false, false)? else {
             return Ok(RootInfo {
                 path: self.path.clone(),
@@ -114,7 +114,7 @@ impl LibraryRoot {
     ///
     /// # Errors
     /// Refuses unknown existing content, symlinks, unsupported layouts and lock failures.
-    pub fn initialize(&self) -> Result<Initialization, Error> {
+    pub(crate) fn initialize(&self) -> Result<Initialization, Error> {
         let lease = self.lock(true, true)?.ok_or(Error::RootDisappeared)?;
         if lease.dir.symlink_metadata(MARKER).is_ok() {
             validate_marker(&lease.dir)?;

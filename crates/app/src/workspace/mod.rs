@@ -269,7 +269,7 @@ enum DocumentAction {
 enum AudioRequest {
     Finite {
         snapshot: Box<RecipeSnapshot>,
-        store: Option<crate::storage::library::LibraryStore>,
+        store: Option<crate::services::library::Library>,
     },
     Live {
         document: DocumentId,
@@ -1379,7 +1379,7 @@ impl Workspace {
                 let snapshot = self.selected().ok_or(Refusal::NoSelection)?;
                 let text = match snapshot.origin() {
                     crate::document::recipe::Origin::BuiltIn(id) => Arc::from(
-                        crate::storage::load::builtin_source(id)
+                        crate::services::builtin_source(id)
                             .map_err(|e| Refusal::Document(Box::new(e.into())))?,
                     ),
                     crate::document::recipe::Origin::User { .. } => {

@@ -430,7 +430,7 @@ pub struct Meter {
     reason = "RMS normalization divides by a positive slice length; binary64 count rounding is acceptable for the reported meter and never changes generated samples"
 )]
 #[must_use]
-pub fn sample_meters(samples: &[[f64; 2]]) -> [Meter; 2] {
+pub(crate) fn sample_meters(samples: &[[f64; 2]]) -> [Meter; 2] {
     let mut peak = [0.0_f64; 2];
     for frame in samples {
         for ear in 0..2 {

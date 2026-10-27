@@ -20,24 +20,16 @@ impl InterfaceOperation {
 pub(crate) enum CommandProblem {
     /// ID output cannot represent grouped rows.
     GroupedIds,
-    /// A temporary entry has no reusable persistent selector.
-    TemporarySelector,
     /// Raw recipe output requires a persistent selector or file input.
     TemporaryRecipeSelector,
-    /// Temporary inputs require the inclusive collection.
-    RestrictedTemporaryInput,
     /// ID output cannot represent temporary entries.
     TemporaryIds,
     /// Only known nominal coverage values are accepted.
     AnalysisCoverage,
-    /// A selected trashed entry cannot be played.
-    TrashedPlayback,
     /// Purging requires explicit confirmation and an observed version.
     PurgeConfirmation,
     /// The root must be explicit rather than silently falling back.
     RelativeLibraryRoot,
-    /// A catalog adapter returned an entry with the wrong capability.
-    CatalogOrigin,
 }
 impl CommandProblem {
     /// User-facing explanation for the rejected request.
@@ -45,21 +37,11 @@ impl CommandProblem {
     pub(crate) const fn message(self) -> &'static str {
         match self {
             Self::GroupedIds => "--format ids cannot be combined with grouping",
-            Self::TemporarySelector => {
-                "temporary selectors are not reusable; use --file or --stdin"
-            }
             Self::TemporaryRecipeSelector => "temporary selectors are not reusable; use --file",
-            Self::RestrictedTemporaryInput => {
-                "temporary --file inputs cannot be combined with a restrictive --collection"
-            }
             Self::TemporaryIds => "--format ids cannot emit temporary inputs; omit --file",
             Self::AnalysisCoverage => "expected complete or invalid",
-            Self::TrashedPlayback => {
-                "trashed recipes can be inspected/exported; restore before playback"
-            }
             Self::PurgeConfirmation => "permanent deletion requires --yes",
             Self::RelativeLibraryRoot => "--library-dir must be absolute; no fallback is used",
-            Self::CatalogOrigin => "catalog returned a non-builtin origin",
         }
     }
 }
@@ -74,7 +56,6 @@ pub(crate) enum Caption {
     StopKeyboardHint,
     PasteRecipe,
     StandardInput,
-    ConfiguredRoot,
     MonitorAlreadyInUse,
 }
 impl Caption {
@@ -85,7 +66,6 @@ impl Caption {
                 "Paste a UTF-8 TOML recipe, then end input with Ctrl-D (Unix) or Ctrl-Z followed by Enter (Windows)."
             }
             Self::StandardInput => "standard input",
-            Self::ConfiguredRoot => "configured root",
             Self::MonitorAlreadyInUse => "Output monitoring is already in use.",
         }
     }

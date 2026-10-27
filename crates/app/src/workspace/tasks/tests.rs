@@ -9,7 +9,7 @@ use crate::audio::session::{
 };
 use crate::core::{CarrierKind, ParameterId, SampleRate};
 use crate::document::editing::{EditingField, FieldHandle};
-use crate::storage::library::{LibraryRoot, LibraryStore, Mutation};
+use crate::services::library::{Library, Mutation};
 use crate::workspace::status::{AudioStatus, FileStatus};
 use crate::workspace::{
     Capabilities, Effect, PromptAnswer, ResponseDisposition, View, WorkerFailure,
@@ -17,15 +17,15 @@ use crate::workspace::{
 use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant};
 
-fn fixture() -> (tempfile::TempDir, LibraryStore, Workspace) {
+fn fixture() -> (tempfile::TempDir, Library, Workspace) {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
     std::fs::create_dir_all(&base).unwrap();
     let directory = tempfile::tempdir_in(base).unwrap();
-    let store = LibraryStore::new(LibraryRoot::explicit(directory.path().join("library")).unwrap())
-        .unwrap();
-    store.root().initialize().unwrap();
+    let store =
+        crate::services::library::Library::at_path(directory.path().join("library")).unwrap();
+    store.initialize().unwrap();
     let mut workspace = Workspace::with_library(
-        crate::storage::load::catalog().unwrap(),
+        crate::services::catalog().unwrap(),
         Capabilities::available(),
         store.clone(),
     )
@@ -240,7 +240,7 @@ fn a_panic_after_actual_publication_retains_dirty_state_and_denies_close() {
     let outcome = workspace.action_view().operation_details;
     assert!(outcome.contains("thread failed"));
     assert!(outcome.contains("does not establish that storage was unchanged"));
-    assert!(outcome.contains(&store.root().path().display().to_string()));
+    assert!(outcome.contains(&store.path().display().to_string()));
 }
 #[test]
 fn launch_failure_is_a_typed_completion_and_blocks_dependent_close() {
@@ -737,7 +737,6 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
             )
             .unwrap();
         let path = store
-            .root()
             .path()
             .join("recipes")
             .join(format!("{}.toml", observed.snapshot.recipe().document().id));
@@ -765,7 +764,7 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
         );
         assert!(notice.contains(&format!("Selector: {key}")), "{notice}");
         assert!(
-            notice.contains(&format!("Location: {}", store.root().path().display())),
+            notice.contains(&format!("Location: {}", store.path().display())),
             "{notice}"
         );
         assert!(
@@ -813,7 +812,7 @@ fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct()
             error: captured_error(kind),
             publishing,
             context: super::super::status::LibraryContext {
-                path: store.root().path().into(),
+                path: store.path().into(),
                 selector: Some(key.clone()),
             },
         });
@@ -841,7 +840,7 @@ fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct()
             assert!(notice.starts_with("Library read conflict"), "{notice}");
         }
         assert!(
-            notice.contains(&store.root().path().display().to_string()),
+            notice.contains(&store.path().display().to_string()),
             "{notice}"
         );
     }
@@ -854,7 +853,7 @@ fn captured_error(outcome: crate::error::Outcome) -> crate::error::OperationErro
         FileError, IdentityError, IdentityScope, IoCause, LibraryError, LoadError, OperationError,
         Outcome,
     };
-    let id = crate::storage::load::catalog().unwrap()[0]
+    let id = crate::services::catalog().unwrap()[0]
         .recipe()
         .document()
         .id;

@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use crate::storage::library::LibraryRoot;
+use crate::services::library::Library;
 
-fn fixture() -> (tempfile::TempDir, LibraryStore, Workspace) {
+fn fixture() -> (tempfile::TempDir, Library, Workspace) {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
     std::fs::create_dir_all(&base).unwrap();
     let temp = tempfile::tempdir_in(base).unwrap();
-    let store =
-        LibraryStore::new(LibraryRoot::explicit(temp.path().join("library")).unwrap()).unwrap();
-    store.root().initialize().unwrap();
+    let store = crate::services::library::Library::at_path(temp.path().join("library")).unwrap();
+    store.initialize().unwrap();
     let mut workspace = Workspace::with_library(
-        crate::storage::load::catalog().unwrap(),
+        crate::services::catalog().unwrap(),
         Capabilities::no_device_playback(),
         store.clone(),
     )
@@ -213,7 +212,7 @@ fn two_editors_conflict_even_for_noop_and_refresh_preserves_draft() {
     user(&mut w);
     w.edit_selected();
     let mut other = Workspace::with_library(
-        crate::storage::load::catalog().unwrap(),
+        crate::services::catalog().unwrap(),
         Capabilities::no_device_playback(),
         store.clone(),
     )
@@ -334,7 +333,6 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
     let record = store.load(&key.parse().unwrap()).unwrap();
     std::fs::write(
         store
-            .root()
             .path()
             .join("recipes")
             .join(format!("{}.toml", record.snapshot.recipe().document().id)),
@@ -443,7 +441,7 @@ fn managed_playback_worker_refuses_changed_or_trashed_observation() {
     idle(&mut w);
     user(&mut w);
     let captured = w.selected().unwrap().clone();
-    assert!(tasks::revalidate_managed(&captured, &store).is_ok());
+    assert!(crate::services::playback::revalidate_managed(&captured, &store).is_ok());
     let record = store.load(&w.library_binding().0.parse().unwrap()).unwrap();
     store
         .apply(
@@ -454,9 +452,9 @@ fn managed_playback_worker_refuses_changed_or_trashed_observation() {
             &Cancel::default(),
         )
         .unwrap();
-    std::fs::remove_file(store.root().path().join("membership.toml")).unwrap();
+    std::fs::remove_file(store.path().join("membership.toml")).unwrap();
     assert_eq!(
-        tasks::revalidate_managed(&captured, &store)
+        crate::services::playback::revalidate_managed(&captured, &store)
             .unwrap_err()
             .outcome(),
         crate::error::Outcome::Conflict
@@ -565,7 +563,7 @@ fn refresh_reloads_membership_state_even_when_recipe_sha_is_unchanged() {
             &Cancel::default(),
         )
         .unwrap();
-    std::fs::remove_file(store.root().path().join("membership.toml")).unwrap();
+    std::fs::remove_file(store.path().join("membership.toml")).unwrap();
     workspace
         .set_catalog_query(CatalogQuery {
             scope: Scope::Trash,
@@ -647,7 +645,7 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
 
 fn selected_users() -> (
     tempfile::TempDir,
-    LibraryStore,
+    Library,
     Workspace,
     LibraryKey,
     LibraryKey,
@@ -666,7 +664,7 @@ fn selected_users() -> (
         keys.push(result.key);
     }
     let mut workspace = Workspace::with_library(
-        crate::storage::load::catalog().unwrap(),
+        crate::services::catalog().unwrap(),
         Capabilities::available(),
         store.clone(),
     )

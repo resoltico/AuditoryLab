@@ -7,6 +7,13 @@ use crate::{
 /// A recipe or rendition could not be loaded.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LoadError {
+    /// Temporary process-local identities are not reusable selectors.
+    TemporarySelector {
+        /// Requested ephemeral identity.
+        key: crate::storage::library::LibraryKey,
+    },
+    /// A temporary source identity could not be allocated.
+    Identity(super::IdentityError),
     /// The built-in selector is unknown.
     UnknownBuiltin {
         /// Requested catalog ID.
@@ -46,6 +53,8 @@ impl LoadError {
     pub fn outcome(&self) -> Outcome {
         match self {
             Self::UnknownBuiltin { .. } => Outcome::UnknownRecipe,
+            Self::TemporarySelector { .. } => Outcome::InvalidArgument,
+            Self::Identity(error) => error.outcome(),
             Self::Recipe { .. } => Outcome::InvalidRecipe,
             Self::Read { .. } => Outcome::Unreadable,
             Self::File(FileError::Io(_) | FileError::NotRegular { .. }) => Outcome::Unreadable,
