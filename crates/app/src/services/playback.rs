@@ -1,17 +1,15 @@
 //! Playback preparation shares captured-source and Trash policy across frontends.
 use super::{Resolved, library::Library};
+pub use crate::audio::PlaybackError;
 pub use crate::audio::device::{DeviceError, PreparedLive, PreparedPlayback};
 pub use crate::audio::session::{
     EndReason, GeneratedStatus, LiveControl, LiveUpdateError, Meter, MonitorDetail, MonitorReader,
     ObservationFreshness, OutputInfo, PlaybackControl, PlaybackMonitor, PlaybackPhase,
     PlaybackReport, Preparation, SampleFormat, Session, SessionDescriptor, SessionId, StopRequest,
 };
-use crate::{
-    document::{
-        editing::Draft,
-        recipe::{Origin, RecipeSnapshot},
-    },
-    error::{LibraryError, PlaybackError},
+use {
+    crate::document::editing::Draft, crate::document::recipe::Origin,
+    crate::document::recipe::RecipeSnapshot, crate::storage::library::LibraryError,
 };
 /// Prepare one resolved source at the actual output rate, refusing Trash before device access.
 ///
@@ -43,7 +41,7 @@ pub(crate) fn revalidate_managed(
     let Origin::User { id, version } = snapshot.origin() else {
         return Err(LibraryError::ExpectedUser);
     };
-    let record = library.load(&super::library::LibraryKey::User(*id))?;
+    let record = library.load(&crate::document::origin::LibraryKey::User(*id))?;
     if record.trashed || &record.version_token != version {
         return Err(LibraryError::StalePlayback);
     }

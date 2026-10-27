@@ -1,19 +1,19 @@
+//! Typed operation state. Only projections format these values for display.
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-//! Typed operation state. Only projections format these values for display.
 use super::{
     Refusal,
     tasks::{FileKind, WorkerFailure},
 };
-use crate::{
-    audio::session::{LiveUpdateError, PlaybackReport},
-    document::recipe::RecipeSnapshot,
-    error::OperationError as Error,
-    storage::library::{LibraryDiagnostic, LibraryKey, MutationStatus},
-    storage::wav::Exported,
-};
+use crate::document::origin::LibraryKey;
 use std::{path::PathBuf, sync::Arc};
+use {
+    crate::audio::session::LiveUpdateError, crate::audio::session::PlaybackReport,
+    crate::document::recipe::RecipeSnapshot, crate::services::OperationError as Error,
+    crate::storage::library::LibraryDiagnostic, crate::storage::library::MutationStatus,
+    crate::storage::wav::Exported,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum FileAction {
@@ -72,10 +72,10 @@ pub(crate) struct InventoryStatus {
 pub(crate) enum SaveFeedback {
     InvalidAtRate {
         rate: crate::core::SampleRate,
-        error: crate::error::LoadError,
+        error: crate::document::error::RenditionError,
     },
-    EditorRefresh(crate::error::EditorError),
-    EditorReset(crate::error::EditorError),
+    EditorRefresh(crate::document::error::EditorError),
+    EditorReset(crate::document::error::EditorError),
 }
 
 /// Location and identity captured by the immutable library request.
@@ -157,7 +157,7 @@ impl FileStatus {
             operation
         }
     }
-    pub(crate) fn editor_reset_error(&self) -> Option<&crate::error::EditorError> {
+    pub(crate) fn editor_reset_error(&self) -> Option<&crate::document::error::EditorError> {
         if let Self::Library(LibraryStatus::Written { feedback, .. }) = self {
             feedback.iter().find_map(|item| match item {
                 SaveFeedback::EditorReset(error) => Some(error),

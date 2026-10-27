@@ -1,7 +1,7 @@
 //! Native calendar ranges normalized to the shared half-open instant query.
 use crate::core::Timestamp;
 use crate::discovery::collection::DateRange;
-use crate::error::QueryError as Error;
+use crate::discovery::query::QueryError as Error;
 use chrono::{Local, NaiveDate, TimeZone};
 
 /// The visible calendar-date field pair being edited.

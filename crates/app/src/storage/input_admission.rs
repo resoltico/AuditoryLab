@@ -1,7 +1,7 @@
+//! Admission of document handles, distinct from intentionally streaming readers.
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-//! Admission of document handles, distinct from intentionally streaming readers.
 use std::{
     fs::{File, OpenOptions},
     io,
@@ -74,7 +74,7 @@ mod tests {
             .write_all(&vec![b' '; 65_537])
             .unwrap();
         let error = crate::storage::load::load_reader(file, "grown recipe").unwrap_err();
-        assert_eq!(error.outcome(), crate::error::Outcome::InvalidRecipe);
+        assert_eq!(error.outcome(), crate::outcome::Outcome::InvalidRecipe);
     }
 
     #[test]

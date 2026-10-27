@@ -40,7 +40,9 @@ fn input(path: &Path, title: &str) -> auditorylab_app::core::Recipe {
     let mut draft = auditorylab_app::document::editing::Draft::new().unwrap();
     draft.set_title(title.into());
     draft
-        .add(auditorylab_app::core::CarrierKind::Clicks)
+        .add_node(auditorylab_app::workspace::controls::default_component(
+            auditorylab_app::core::CarrierKind::Clicks,
+        ))
         .unwrap();
     let id = draft.components()[0].id;
     let mut editor = auditorylab_app::document::editing::EditorSession::new(draft).unwrap();

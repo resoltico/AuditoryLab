@@ -1,11 +1,9 @@
 //! Shared persistent/temporary collection summaries; no target compilation or I/O.
 use crate::core::query::{Direction, GroupBy, Scope, SortBy};
 use crate::core::{DocumentUuid, Timestamp, rhythm};
+use crate::discovery::query::{self, SearchIndex};
+use crate::document::origin::{LibraryKey, VersionToken};
 use crate::document::recipe::RecipeSnapshot;
-use crate::{
-    discovery::query::{self, SearchIndex},
-    storage::library::{LibraryKey, VersionToken},
-};
 use auditorylab_core::{ConditionRole, EvidenceScope, Measure, Population};
 use serde::Serialize;
 
@@ -143,11 +141,11 @@ impl DateRange {
     ///
     /// # Errors
     /// Rejects before <= from.
-    pub fn validate(&self) -> Result<(), crate::error::QueryError> {
+    pub fn validate(&self) -> Result<(), crate::discovery::query::QueryError> {
         if let Some((from, before)) = self.from.zip(self.before)
             && before <= from
         {
-            Err(crate::error::QueryError::RangeOrder { from, before })
+            Err(crate::discovery::query::QueryError::RangeOrder { from, before })
         } else {
             Ok(())
         }
@@ -266,7 +264,7 @@ impl CatalogQuery {
     ///
     /// # Errors
     /// Rejects inverse dates or malformed/empty study selectors.
-    pub fn validate(&self) -> Result<(), crate::error::QueryError> {
+    pub fn validate(&self) -> Result<(), crate::discovery::query::QueryError> {
         self.created.validate()?;
         self.modified.validate()?;
         self.added.validate()?;
@@ -279,7 +277,7 @@ impl CatalogQuery {
                     || study.starts_with("doi:"))
                     && auditorylab_core::provenance::normalize_doi(study).is_none()
             {
-                return Err(crate::error::QueryError::Study {
+                return Err(crate::discovery::query::QueryError::Study {
                     value: study.clone(),
                 });
             }
@@ -354,7 +352,7 @@ impl CatalogQuery {
     pub fn execute<'a>(
         &self,
         input: &'a [EntrySummary],
-    ) -> Result<QueryResult<'a>, crate::error::QueryError> {
+    ) -> Result<QueryResult<'a>, crate::discovery::query::QueryError> {
         self.validate()?;
         let mut seen = std::collections::BTreeSet::new();
         let mut entries = input
@@ -390,7 +388,10 @@ impl CatalogQuery {
     ///
     /// # Errors
     /// Rejects the same invalid ranges/tokens as result execution.
-    pub fn count(&self, input: &[EntrySummary]) -> Result<usize, crate::error::QueryError> {
+    pub fn count(
+        &self,
+        input: &[EntrySummary],
+    ) -> Result<usize, crate::discovery::query::QueryError> {
         self.validate()?;
         Ok(input
             .iter()

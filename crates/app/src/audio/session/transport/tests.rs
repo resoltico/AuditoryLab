@@ -4,9 +4,9 @@
 use super::*;
 use crate::audio::session::live::LiveGenerator;
 use crate::audio::session::source::FiniteSource;
-use crate::audio::session::{Outcome, SessionState};
 use auditorylab_core::{ComponentForm, ComponentId, Ears, SampleRate, Signal, Sound, Target};
 use proptest::{prelude::*, test_runner::TestRunner};
+use {crate::audio::session::Outcome, crate::audio::session::SessionState};
 
 fn rate(hz: u32) -> SampleRate {
     SampleRate::new(hz).unwrap()
@@ -934,9 +934,9 @@ fn a_stalled_monitor_reader_cannot_postpone_generation_end_or_admission_closure(
     );
     assert!(reader.status().gaps > 0);
     assert!(
-        crate::presentation::waveform_view::WaveformCapture::monitored(
+        crate::workspace::monitor::WaveformCapture::monitored(
             &reader,
-            crate::presentation::waveform_view::WaveformScale::Fit
+            crate::workspace::monitor::WaveformScale::Fit
         )
         .unwrap()
         .is_none()

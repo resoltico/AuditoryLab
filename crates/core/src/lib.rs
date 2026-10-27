@@ -13,6 +13,7 @@ extern crate alloc;
 extern crate std;
 pub mod authored;
 pub mod catalog;
+mod catalog_id;
 mod compiled;
 mod contract;
 pub mod query;
@@ -57,7 +58,7 @@ pub use provenance::{
     Population,
 };
 pub use rate::{SampleRate, SampleRateError};
-pub use recipe::{Recipe, RecipeBuilder, RecipeContent, RecipeError};
+pub use recipe::{Recipe, RecipeBuilder, RecipeContent, RecipeError, UNTITLED_SOUND, copy_title};
 pub use signal::Signal;
 pub use voice::{Carrier, Ear, Ears, SoundError, VoiceError};
 pub use waveform::Extent;

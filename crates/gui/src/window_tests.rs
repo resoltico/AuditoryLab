@@ -3,6 +3,7 @@
 use crate::generated::{AudioControlsWindow, MainWindow, MonitorWindow};
 use crate::test_platform::install;
 use crate::typography;
+use auditorylab_app::presentation::waveform_view::*;
 use slint::ComponentHandle;
 use std::{
     cell::{Cell, RefCell},
@@ -13,7 +14,7 @@ use std::{
 /// produces, shown on the window under test.
 fn sync_monitor_warnings(
     ui: &MainWindow,
-    warning: Option<auditorylab_app::presentation::waveform_view::MonitorWarning>,
+    warning: Option<auditorylab_app::workspace::monitor::MonitorWarning>,
     capture_error: Option<&str>,
     underruns: u64,
     clipped: bool,
@@ -23,16 +24,14 @@ fn sync_monitor_warnings(
         str::to_owned,
     );
     let live = capture_error.is_some()
-        || warning.is_some_and(
-            auditorylab_app::presentation::waveform_view::MonitorWarning::announces_changes,
-        );
+        || warning
+            .is_some_and(auditorylab_app::workspace::monitor::MonitorWarning::announces_changes);
     if clipped {
         if !text.is_empty() {
             text.push('\n');
         }
         text.push_str(
-            auditorylab_app::presentation::waveform_view::MonitorWarning::FixedRangeExceeded
-                .message(),
+            auditorylab_app::workspace::monitor::MonitorWarning::FixedRangeExceeded.message(),
         );
     }
     ui.set_monitor_warning(text.into());
@@ -164,13 +163,17 @@ fn assert_monitor_layout_survives_warning_changes(ui: &MainWindow) {
                 observed_fallback |= !fits;
                 for (warning, underruns, clipped) in [
                     (
-                        Some(auditorylab_app::presentation::waveform_view::MonitorWarning::IncompleteCoverage),
+                        Some(
+                            auditorylab_app::workspace::monitor::MonitorWarning::IncompleteCoverage,
+                        ),
                         0,
                         false,
                     ),
                     (None, 1, false),
                     (
-                        Some(auditorylab_app::presentation::waveform_view::MonitorWarning::IncompleteCoverage),
+                        Some(
+                            auditorylab_app::workspace::monitor::MonitorWarning::IncompleteCoverage,
+                        ),
                         1,
                         true,
                     ),
@@ -754,8 +757,7 @@ fn assert_monitor_warning_accessibility(ui: &MainWindow) {
         Some("polite")
     );
     for _ in 0..10 {
-        let partial =
-            auditorylab_app::presentation::waveform_view::MonitorWarning::IncompleteCoverage;
+        let partial = auditorylab_app::workspace::monitor::MonitorWarning::IncompleteCoverage;
         sync_monitor_warnings(ui, Some(partial), None, 1, false);
         window.set_data(ui.get_monitor_data());
         reveal_warnings(window.window());
@@ -778,7 +780,7 @@ fn assert_monitor_warning_accessibility(ui: &MainWindow) {
         assert!(find(backend_text).is_some_and(|item| item == backend));
     }
     {
-        let critical = auditorylab_app::presentation::waveform_view::MonitorWarning::Stale;
+        let critical = auditorylab_app::workspace::monitor::MonitorWarning::Stale;
         sync_monitor_warnings(ui, Some(critical), None, 1, false);
         window.set_data(ui.get_monitor_data());
         reveal_warnings(window.window());

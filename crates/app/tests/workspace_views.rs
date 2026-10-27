@@ -11,13 +11,14 @@ use auditorylab_app::core::SampleRate;
 use auditorylab_app::core::rhythm::Method;
 use auditorylab_app::core::rhythm::Structure;
 use auditorylab_app::presentation::vocabulary::NumberStyle;
+use auditorylab_app::presentation::waveform_view::*;
 use auditorylab_app::presentation::{AudioDetails, AudioSummary, ParameterText};
 
-use auditorylab_app::presentation::waveform_view::CaptureError;
-use auditorylab_app::presentation::waveform_view::ModelSource;
-use auditorylab_app::presentation::waveform_view::ModelView;
-use auditorylab_app::presentation::waveform_view::WaveformCapture;
-use auditorylab_app::presentation::waveform_view::WaveformScale;
+use auditorylab_app::workspace::monitor::CaptureError;
+use auditorylab_app::workspace::monitor::ModelSource;
+use auditorylab_app::workspace::monitor::ModelView;
+use auditorylab_app::workspace::monitor::WaveformCapture;
+use auditorylab_app::workspace::monitor::WaveformScale;
 fn tone(hz: f64, ears: Ears) -> ComponentForm {
     ComponentForm::Tone {
         frequency_hz: finite(hz),
@@ -261,7 +262,7 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
     assert_eq!(NumberStyle::Compact.format(39.0625123456789), "≈39.0625");
     let exact = 39.0625123456789;
     assert_eq!(
-        (ParameterId::ToneFrequency).input_text(exact),
+        auditorylab_app::document::input::parameter_text(ParameterId::ToneFrequency, exact),
         "39.0625123456789"
     );
     let c = {
@@ -387,7 +388,7 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
         );
         assert!(detail.contains(&format!("at {hz} Hz")), "{detail}");
         assert_eq!(
-            (ParameterId::ClickWidth).input_text(requested),
+            auditorylab_app::document::input::parameter_text(ParameterId::ClickWidth, requested),
             (requested * 1000.0).to_string()
         );
     }

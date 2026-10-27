@@ -1,6 +1,3 @@
-// Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
-
 //! Filling backend buffers from a source, estimating output position and
 //! deciding when queued output has drained.
 //!
@@ -10,11 +7,14 @@
 //! G while S keeps advancing through silence. The backend states, for each
 //! buffer, when the callback runs and when its first frame plays. Time is
 //! measured from the stream's own origin.
+// Copyright 2026 Ervins Strauhmanis
+// SPDX-License-Identifier: MPL-2.0
+
 use super::monitor::{MonitorWriter, PlaybackMonitor};
 use super::source::Source;
-use super::{Outcome, SessionState};
 use std::sync::Arc;
 use std::time::Duration;
+use {super::Outcome, super::SessionState};
 
 /// Signal frames rendered at a time within one device buffer.
 const SCRATCH_FRAMES: usize = 1_024;

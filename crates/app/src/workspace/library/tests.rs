@@ -457,7 +457,7 @@ fn managed_playback_worker_refuses_changed_or_trashed_observation() {
         crate::services::playback::revalidate_managed(&captured, &store)
             .unwrap_err()
             .outcome(),
-        crate::error::Outcome::Conflict
+        crate::outcome::Outcome::Conflict
     );
     assert!(!w.audio_busy());
     assert_eq!(captured.title(), "Untitled sound");
@@ -603,11 +603,11 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
             Recipe::parse(include_str!(
                 "../../../../core/tests/fixtures/invalid/duplicate-id.toml"
             ))
-            .map_err(crate::error::EditorError::Recipe)
+            .map_err(crate::document::error::EditorError::Recipe)
             .and_then(|recipe| EditorSession::new(Draft::from_recipe(recipe)))
         } else {
-            Err(crate::error::EditorError::Identity(
-                crate::error::IdentityError::Entropy(getrandom::Error::UNSUPPORTED),
+            Err(crate::document::error::EditorError::Identity(
+                crate::identity::IdentityError::Entropy(getrandom::Error::UNSUPPORTED),
             ))
         };
         assert!(replacement.is_err());

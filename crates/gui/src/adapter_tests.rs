@@ -8,7 +8,9 @@ use crate::test_platform::{install, settle};
 use auditorylab_app::core::ParameterId;
 use auditorylab_app::core::query::{Direction, GroupBy, Scope, SortBy};
 use auditorylab_app::document::editing::{EditingField, MetadataField};
+use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::presentation::ParameterText;
+use auditorylab_app::presentation::recipe_text::SnapshotText;
 use auditorylab_app::workspace::{
     Capabilities, Job, JobKind, PathPurpose, PromptAnswer, PromptId, View, Workspace,
 };
@@ -372,9 +374,7 @@ fn play_save_export_and_prompts_run_through_the_shared_workflow() {
         "Save publishes to the bound User Library"
     );
     h.wait_for_files();
-    let inventory = h
-        .store()
-        .scan(&auditorylab_app::services::Cancel::default());
+    let inventory = h.store().scan(&auditorylab_app::job::Cancel::default());
     assert_eq!(inventory.entries.len(), 1);
     assert!(h.store().load(&inventory.entries[0].key).is_ok());
     assert!(
@@ -464,7 +464,7 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
                 assert_eq!(shown.help, id.help());
                 assert_eq!(
                     shown.has_slider,
-                    auditorylab_app::document::controls::range(id, Workspace::export_rates()[1])
+                    auditorylab_app::workspace::controls::range(id, Workspace::export_rates()[1])
                         .is_some()
                 );
                 ui.invoke_stage_parameter(binding.clone(), shown.key, "1x".into());
@@ -1284,7 +1284,7 @@ fn notes_return_stages_newlines_and_save_preserves_exact_multiline_text() {
     h.wait_for_files();
     let entry = h
         .store()
-        .scan(&auditorylab_app::services::Cancel::default())
+        .scan(&auditorylab_app::job::Cancel::default())
         .entries
         .remove(0);
     let saved = h.store().load(&entry.key).unwrap().snapshot;
@@ -1559,7 +1559,7 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
             },
             auditorylab_app::core::Component {
                 id: auditorylab_app::core::ComponentId::new(u32::MAX - 1).unwrap(),
-                form: auditorylab_app::document::controls::default_component(
+                form: auditorylab_app::workspace::controls::default_component(
                     auditorylab_app::core::CarrierKind::Clicks,
                 ),
             },
@@ -1625,7 +1625,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     assert!(!ui.get_dirty());
     assert!(ui.get_draft_location().starts_with("User Library"));
     let first = store
-        .scan(&auditorylab_app::services::Cancel::default())
+        .scan(&auditorylab_app::job::Cancel::default())
         .entries
         .remove(0);
     assert_eq!(first.title, "Native managed copy");
@@ -1708,7 +1708,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     h.wait_for_files();
     assert!(
         store
-            .scan(&auditorylab_app::services::Cancel::default())
+            .scan(&auditorylab_app::job::Cancel::default())
             .entries
             .is_empty()
     );
@@ -1753,10 +1753,10 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
                     .iter()
                     .map(|s| {
                         auditorylab_app::discovery::collection::EntrySummary::from_snapshot(
-                            auditorylab_app::services::library::LibraryKey::BuiltIn(
+                            auditorylab_app::document::origin::LibraryKey::BuiltIn(
                                 match s.origin() {
                                     auditorylab_app::document::recipe::Origin::BuiltIn(id) => {
-                                        id.to_string()
+                                        auditorylab_app::core::catalog::CatalogId::new(id).unwrap()
                                     }
                                     _ => unreachable!(),
                                 },
@@ -1930,7 +1930,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     assert_eq!(ui.get_collection_choice(), 3);
     assert!(
         store
-            .scan(&auditorylab_app::services::Cancel::default())
+            .scan(&auditorylab_app::job::Cancel::default())
             .entries
             .is_empty()
     );
@@ -1939,7 +1939,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     h.wait_for_files();
     assert_eq!(
         store
-            .scan(&auditorylab_app::services::Cancel::default())
+            .scan(&auditorylab_app::job::Cancel::default())
             .entries
             .len(),
         1
@@ -1965,10 +1965,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
         "External edited"
     );
     assert_eq!(
-        store
-            .scan(&auditorylab_app::services::Cancel::default())
-            .entries[0]
-            .title,
+        store.scan(&auditorylab_app::job::Cancel::default()).entries[0].title,
         "External original"
     );
     assert!(!ui.get_dirty());
@@ -2002,7 +1999,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     );
     assert_eq!(
         store
-            .scan(&auditorylab_app::services::Cancel::default())
+            .scan(&auditorylab_app::job::Cancel::default())
             .entries
             .len(),
         2
@@ -2029,7 +2026,7 @@ fn native_readonly_labels_escape_controls_and_bidi_without_rewriting_editable_co
             auditorylab_app::services::library::Mutation::Add(std::sync::Arc::new(
                 draft.recipe().unwrap(),
             )),
-            &auditorylab_app::services::Cancel::default(),
+            &auditorylab_app::job::Cancel::default(),
         )
         .unwrap()
         .record
@@ -2494,7 +2491,7 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
 
 #[test]
 fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
-    use auditorylab_app::services::library::{LibraryKey, Mutation};
+    use auditorylab_app::services::library::Mutation;
     use slint::private_unstable_api::re_exports::AccessibilityAction;
     let temp = tempfile::tempdir().unwrap();
     let store =
@@ -2512,7 +2509,7 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     store
         .apply(
             Mutation::Add(std::sync::Arc::new(recipe.build().unwrap())),
-            &auditorylab_app::services::Cancel::default(),
+            &auditorylab_app::job::Cancel::default(),
         )
         .unwrap();
     let h = Harness::with_workspace(
@@ -2781,7 +2778,7 @@ fn real_save_capture_and_delayed_completion_preserve_newer_edits_and_close_promp
     let finished = save.execute(|_| panic!("a save emits no preparation"));
     let saved = h
         .store()
-        .scan(&auditorylab_app::services::Cancel::default())
+        .scan(&auditorylab_app::job::Cancel::default())
         .entries
         .remove(0);
     assert_eq!(saved.title, "Captured by Save");
@@ -2820,7 +2817,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
     h.wait_for_files();
     let saved = h
         .store()
-        .scan(&auditorylab_app::services::Cancel::default())
+        .scan(&auditorylab_app::job::Cancel::default())
         .entries
         .remove(0);
     ui.invoke_commit_metadata(
@@ -2837,7 +2834,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
                 expect: saved.version_token,
                 title: "Other writer".into(),
             },
-            &auditorylab_app::services::Cancel::default(),
+            &auditorylab_app::job::Cancel::default(),
         )
         .unwrap();
     h.adapter.command(Workspace::refresh_library);

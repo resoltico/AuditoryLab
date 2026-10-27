@@ -1,16 +1,18 @@
 //! Complete list composition and query execution, shared by both frontends.
 use super::{
     Cancel,
-    library::{DiagnosticDetail, Library, LibraryDiagnostic, LibraryKey},
+    library::{DiagnosticDetail, Library, LibraryDiagnostic},
 };
 use crate::core::query::Scope;
-use crate::{
-    discovery::collection::{CatalogQuery, EntrySummary, ResultGroup},
-    error::{OperationError, Outcome, QueryError},
-};
+use crate::document::origin::LibraryKey;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+};
+use {
+    crate::discovery::collection::CatalogQuery, crate::discovery::collection::EntrySummary,
+    crate::discovery::collection::ResultGroup, crate::discovery::query::QueryError,
+    crate::outcome::Outcome, crate::services::OperationError,
 };
 /// Explicit query and temporary input files. No discovery read initializes a root.
 #[derive(Debug)]
@@ -80,7 +82,7 @@ pub fn list(
 ) -> Result<Listing, OperationError> {
     request.query.validate()?;
     if cancel.is_requested() {
-        return Err(crate::error::LibraryError::Cancelled.into());
+        return Err(crate::storage::library::LibraryError::Cancelled.into());
     }
     if !request.files.is_empty() && request.query.scope != Scope::All {
         return Err(QueryError::TemporaryFilesScope {
@@ -97,7 +99,14 @@ pub fn list(
                 let crate::document::recipe::Origin::BuiltIn(id) = snapshot.origin() else {
                     unreachable!("catalog loader retains each embedded Built-in origin")
                 };
-                EntrySummary::from_snapshot(LibraryKey::BuiltIn((*id).into()), &snapshot, None)
+                EntrySummary::from_snapshot(
+                    LibraryKey::BuiltIn(
+                        crate::core::catalog::CatalogId::new(id)
+                            .unwrap_or_else(|| unreachable!("validated catalog name")),
+                    ),
+                    &snapshot,
+                    None,
+                )
             })
             .collect()
     };
@@ -114,8 +123,8 @@ pub fn list(
                 stages = inventory.stages;
             }
             Err(
-                error @ (crate::error::LibraryError::InvalidBuiltin { .. }
-                | crate::error::LibraryError::DuplicateBuiltin { .. }),
+                error @ (crate::storage::library::LibraryError::InvalidBuiltin { .. }
+                | crate::storage::library::LibraryError::DuplicateBuiltin { .. }),
             ) => return Err(error.into()),
             Err(error) => {
                 complete = false;
@@ -123,7 +132,7 @@ pub fn list(
                 diagnostics.push(LibraryDiagnostic {
                     storage_id: "configured root".into(),
                     code: "root_resolution".into(),
-                    detail: DiagnosticDetail::Failure(Box::new(error.into())),
+                    detail: DiagnosticDetail::Failure(Box::new(error)),
                 });
             }
         }

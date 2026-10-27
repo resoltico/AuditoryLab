@@ -1,7 +1,7 @@
+//! Plain descriptions of an output stream's configuration.
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-//! Plain descriptions of an output stream's configuration.
 use auditorylab_core::SampleRate;
 use std::fmt::{Display, Formatter};
 

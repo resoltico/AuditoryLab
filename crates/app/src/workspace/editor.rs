@@ -5,31 +5,31 @@ pub(super) enum DocumentLocation {
     #[default]
     Unsaved,
     Managed {
-        key: crate::storage::library::LibraryKey,
-        token: crate::storage::library::VersionToken,
+        key: crate::document::origin::LibraryKey,
+        token: crate::document::origin::VersionToken,
     },
-    External(crate::storage::external::ObservedFile),
-    Detached(crate::storage::library::LibraryKey),
+    External(crate::document::origin::ObservedFile),
+    Detached(crate::document::origin::LibraryKey),
 }
 impl DocumentLocation {
     pub(super) fn managed(
         &self,
     ) -> Option<(
-        &crate::storage::library::LibraryKey,
-        crate::storage::library::VersionToken,
+        &crate::document::origin::LibraryKey,
+        crate::document::origin::VersionToken,
     )> {
         match self {
             Self::Managed { key, token } => Some((key, *token)),
             _ => None,
         }
     }
-    pub(super) fn detached(&self) -> Option<&crate::storage::library::LibraryKey> {
+    pub(super) fn detached(&self) -> Option<&crate::document::origin::LibraryKey> {
         match self {
             Self::Detached(key) => Some(key),
             _ => None,
         }
     }
-    pub(super) fn external(&self) -> Option<&crate::storage::external::ObservedFile> {
+    pub(super) fn external(&self) -> Option<&crate::document::origin::ObservedFile> {
         match self {
             Self::External(file) => Some(file),
             _ => None,
@@ -37,8 +37,8 @@ impl DocumentLocation {
     }
     pub(super) fn saved_token(
         &self,
-        key: &crate::storage::library::LibraryKey,
-    ) -> Option<crate::storage::library::VersionToken> {
+        key: &crate::document::origin::LibraryKey,
+    ) -> Option<crate::document::origin::VersionToken> {
         self.managed()
             .filter(|(saved, _)| *saved == key)
             .map(|(_, token)| token)
@@ -51,7 +51,7 @@ pub(super) struct EditorState {
     pub(super) location: DocumentLocation,
 }
 impl EditorState {
-    pub(super) fn new() -> Result<Self, crate::error::EditorError> {
+    pub(super) fn new() -> Result<Self, crate::document::error::EditorError> {
         Ok(Self {
             session: EditorSession::new(Draft::new()?)?,
             export_rate: SampleRate::DEFAULT,
@@ -108,7 +108,9 @@ impl EditorState {
         self.session.set_ears(row, ears).map_err(Refusal::Edit)
     }
     pub(super) fn set_carrier(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
-        self.session.set_carrier(row, kind).map_err(Refusal::Edit)
+        self.session
+            .set_carrier(row, super::controls::default_component(kind))
+            .map_err(Refusal::Edit)
     }
     pub(super) fn set_modulation(
         &mut self,
@@ -117,12 +119,15 @@ impl EditorState {
         rate: SampleRate,
     ) -> Result<(), Refusal> {
         self.session
-            .set_modulation(row, kind, rate)
+            .set_modulation(
+                row,
+                kind.map(|kind| super::controls::default_modulation(kind, rate)),
+            )
             .map_err(Refusal::Edit)
     }
     pub(super) fn add_component(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
         self.session
-            .add_component(row, kind)
+            .add_component(row, super::controls::default_component(kind))
             .map(|_| ())
             .map_err(Refusal::Edit)
     }
@@ -132,7 +137,7 @@ impl EditorState {
         kind: auditorylab_core::PairKind,
     ) -> Result<(), Refusal> {
         self.session
-            .add_pair(row, kind)
+            .add_component(row, super::controls::default_pair(kind))
             .map(|_| ())
             .map_err(Refusal::Edit)
     }
@@ -243,7 +248,7 @@ impl EditorState {
     pub(super) fn record_managed(
         &mut self,
         document: Option<DocumentId>,
-        key: &crate::services::library::LibraryKey,
+        key: &crate::document::origin::LibraryKey,
         kind: crate::services::library::MutationKind,
         record: &crate::services::library::LoadedRecord,
         feedback: &mut Vec<SaveFeedback>,
@@ -486,7 +491,7 @@ impl Workspace {
 }
 
 impl EditorState {
-    pub(super) fn dirty_managed(&self, key: &crate::services::library::LibraryKey) -> bool {
+    pub(super) fn dirty_managed(&self, key: &crate::document::origin::LibraryKey) -> bool {
         self.session.dirty()
             && self
                 .location

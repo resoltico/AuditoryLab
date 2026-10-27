@@ -1,6 +1,5 @@
 //! Root resolution, private initialization and stable cooperative filesystem locks.
-use crate::error::{FileError, IoCause, IoFailure, IoOperation, LibraryError as Error};
-use crate::services::Cancel;
+use crate::job::Cancel;
 use crate::storage::publish::{self, Policy};
 use cap_fs_ext::{DirExt, FollowSymlinks, OpenOptionsFollowExt};
 use cap_std::fs::{Dir, OpenOptions};
@@ -10,6 +9,11 @@ use std::{
     fs::File,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
+};
+use {
+    crate::storage::error::FileError, crate::storage::error::IoCause,
+    crate::storage::error::IoFailure, crate::storage::error::IoOperation,
+    crate::storage::library::LibraryError as Error,
 };
 
 const LOCK: &str = ".library.lock";

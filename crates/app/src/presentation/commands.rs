@@ -31,7 +31,7 @@ impl EntrySummary {
     /// Membership details shown next to the selected portable description.
     #[must_use]
     pub fn membership_description(&self) -> String {
-        if !matches!(self.key, crate::storage::library::LibraryKey::User(_)) {
+        if !matches!(self.key, crate::document::origin::LibraryKey::User(_)) {
             return String::new();
         }
         format!(
@@ -67,7 +67,7 @@ impl crate::services::library::Location {
     pub fn inspection_failure(
         &self,
         exists: Option<bool>,
-        error: &crate::error::LibraryError,
+        error: &crate::storage::library::LibraryError,
     ) -> String {
         format!(
             "{}\nExists: {} · Initialized: unverified · Source: {}\n{}\n",

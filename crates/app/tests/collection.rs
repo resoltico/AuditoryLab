@@ -6,7 +6,7 @@ use auditorylab_app::core::{
 use auditorylab_app::document::recipe::{Origin, RecipeSnapshot};
 use auditorylab_app::{
     discovery::collection::{CatalogQuery, DateRange, EntrySummary},
-    services::library::LibraryKey,
+    document::origin::LibraryKey,
 };
 use auditorylab_core::query::{Direction, GroupBy, Scope, SortBy};
 #[expect(
@@ -236,7 +236,7 @@ fn automatic_defaults_follow_scope_but_explicit_sort_is_retained() {
     assert_eq!(q.effective_sort(), (SortBy::Title, Direction::Asc));
     let mut external = entry(4, "temporary", Vec::new(), None);
     external.key =
-        LibraryKey::External(auditorylab_app::services::library::ExternalId::allocate().unwrap());
+        LibraryKey::External(auditorylab_app::document::origin::ExternalId::allocate().unwrap());
     let mut trashed = entry(5, "trash", Vec::new(), None);
     trashed.trashed = true;
     trashed.trashed_at = Some("2026-10-24T06:00:00Z".parse().unwrap());

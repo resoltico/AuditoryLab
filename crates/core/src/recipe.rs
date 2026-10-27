@@ -6,6 +6,7 @@ use crate::{
     EvidenceScope, Finite, Lineage, Sound, StructureError,
 };
 use alloc::{
+    format,
     string::{String, ToString},
     vec::Vec,
 };
@@ -435,3 +436,21 @@ impl RecipeBuilder {
 }
 #[cfg(test)]
 mod tests;
+
+/// Title used for an untitled authored sound.
+pub const UNTITLED_SOUND: &str = "Untitled sound";
+/// Default title of an independent editable copy.
+#[must_use]
+pub fn copy_title(title: &str) -> String {
+    format!("{title} (edited)")
+}
+impl Recipe {
+    /// Attribution content written into an independent copy.
+    #[must_use]
+    pub fn copy_note(&self) -> String {
+        self.description().and_then(|d| d.notes.as_deref()).filter(|s| !s.is_empty()).map_or_else(
+        || "Attributed copy; source findings concern the ancestor, not this sound.".into(),
+        |notes| format!("Attributed copy; source findings concern the ancestor, not this sound. Ancestor notes: {notes}"),
+    )
+    }
+}

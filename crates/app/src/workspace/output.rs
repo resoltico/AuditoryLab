@@ -1,6 +1,3 @@
-// Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
-
 //! The output view: a static preview of the current source, or the bound
 //! session's monitored capture, and the hold policy.
 //!
@@ -10,16 +7,21 @@
 //! only for a new publication, span or scale. Invalid sources are cached as
 //! their diagnosis. A held capture is immutable: later navigation, edits,
 //! settings or sessions cannot relabel it.
+// Copyright 2026 Ervins Strauhmanis
+// SPDX-License-Identifier: MPL-2.0
+
 use super::{View, Workspace};
 use crate::audio::session::MonitorReader;
 use crate::audio::session::SessionId;
 use crate::document::editing::EditorSession;
 use crate::document::recipe::{RecipeSnapshot, SnapshotId};
-use crate::presentation::waveform_view::{
-    CaptureError, ModelSource, ModelView, WaveformCapture, WaveformScale,
-};
 use auditorylab_core::SampleRate;
 use std::sync::Arc;
+use {
+    crate::workspace::monitor::CaptureError, crate::workspace::monitor::ModelSource,
+    crate::workspace::monitor::ModelView, crate::workspace::monitor::WaveformCapture,
+    crate::workspace::monitor::WaveformScale,
+};
 
 /// The platform's reduced-motion preference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -74,7 +76,7 @@ pub struct OutputView {
 }
 
 pub(crate) enum PreviewIssue {
-    Snapshot(crate::error::LoadError),
+    Snapshot(crate::document::error::RenditionError),
     Acoustic {
         title: String,
         rate: SampleRate,
@@ -105,7 +107,7 @@ pub(crate) struct OutputState {
 impl OutputState {
     pub(crate) fn span_ms(&self) -> u32 {
         if self.span_ms == 0 {
-            crate::document::controls::DEFAULT_MONITOR_SPAN_MS
+            crate::workspace::controls::DEFAULT_MONITOR_SPAN_MS
         } else {
             self.span_ms
         }
@@ -113,7 +115,7 @@ impl OutputState {
 
     pub(crate) fn scale(&self) -> WaveformScale {
         self.scale
-            .unwrap_or(crate::document::controls::DEFAULT_MONITOR_SCALE)
+            .unwrap_or(crate::workspace::controls::DEFAULT_MONITOR_SCALE)
     }
 
     pub(crate) fn held(&self) -> bool {
@@ -455,7 +457,7 @@ impl Workspace {
     /// document's accepted live revision, its committed content, or the
     /// selected recipe. `None` when that source is not valid.
     #[must_use]
-    pub fn model_view(&self) -> Option<Arc<crate::presentation::waveform_view::ModelView>> {
+    pub fn model_view(&self) -> Option<Arc<crate::workspace::monitor::ModelView>> {
         self.audio.output.model().cloned()
     }
 }

@@ -29,7 +29,7 @@ pub(crate) fn encode(
     session: &Signal,
     output: &mut impl Write,
     cancel: &AtomicBool,
-    progress: &crate::services::Progress,
+    progress: &crate::job::Progress,
 ) -> Result<Exported, ExportError> {
     let frames = session.frames();
     let sample_rate = session.sample_rate();
@@ -57,7 +57,7 @@ fn write(
     header: &[u8],
     signal: &Signal,
     cancel: &AtomicBool,
-    progress: &crate::services::Progress,
+    progress: &crate::job::Progress,
 ) -> Result<(), ExportError> {
     output.write_all(header)?;
     let mut samples = vec![[0.0; 2]; BLOCK_FRAMES];
@@ -181,7 +181,7 @@ mod quantization {
             &session,
             &mut bytes,
             &AtomicBool::new(false),
-            &crate::services::Progress::default(),
+            &crate::job::Progress::default(),
         )
         .unwrap();
         let encoded = f32::from_le_bytes(bytes[66..70].try_into().unwrap());
@@ -214,7 +214,7 @@ mod quantization {
             &session,
             &mut bytes,
             &AtomicBool::new(false),
-            &crate::services::Progress::default(),
+            &crate::job::Progress::default(),
         )
         .unwrap();
         for sample in bytes[58..].as_chunks::<4>().0 {

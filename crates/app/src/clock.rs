@@ -1,5 +1,5 @@
 //! One observed UTC clock for document and membership publication.
-use crate::{core::Timestamp, error::ClockError};
+use crate::core::Timestamp;
 pub(crate) fn observed_now() -> Result<Timestamp, ClockError> {
     from_system_time(std::time::SystemTime::now())
 }
@@ -23,6 +23,12 @@ fn from_system_time(observed: std::time::SystemTime) -> Result<Timestamp, ClockE
     Timestamp::from_unix(seconds, nanos).ok_or_else(invalid)
 }
 
+/// The exact observed system clock was outside the supported timestamp profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClockError {
+    /// Exact observation used for the attempted action.
+    pub observed: std::time::SystemTime,
+}
 #[cfg(test)]
 mod tests {
     use super::*;

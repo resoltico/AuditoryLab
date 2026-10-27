@@ -1,24 +1,16 @@
 //! External Save with observed identity and exact-byte checks immediately before publication.
 use crate::core::Recipe;
+use crate::document::origin::{Fingerprint, ObservedFile};
 use crate::document::recipe::RecipeSnapshot;
-use crate::error::{FileError, IoFailure, IoOperation, SaveError as Error};
-use crate::services::Cancel;
-use crate::storage::library::{Fingerprint, MutationStatus};
+use crate::job::Cancel;
+use crate::storage::library::MutationStatus;
 use crate::storage::publish::{self, Policy};
 use cap_std::fs::Dir;
-use std::{
-    fs::File,
-    io::Write,
-    path::{Path, PathBuf},
-    sync::Arc,
+use std::{fs::File, io::Write, path::Path, sync::Arc};
+use {
+    crate::storage::error::FileError, crate::storage::error::IoFailure,
+    crate::storage::error::IoOperation, crate::storage::error::SaveError as Error,
 };
-/// Exact opened-file observation retained by an editable external snapshot.
-#[derive(Debug, Clone)]
-pub struct ObservedFile {
-    path: PathBuf,
-    fingerprint: Fingerprint,
-    handle: Arc<same_file::Handle>,
-}
 impl ObservedFile {
     pub(crate) fn capture(path: &Path, file: File, bytes: &[u8]) -> Result<Self, FileError> {
         let path =
@@ -35,21 +27,6 @@ impl ObservedFile {
             fingerprint: Fingerprint::of(bytes),
             handle: Arc::new(handle),
         })
-    }
-    /// Canonical file path displayed before Save.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-    /// Hash of exact portable bytes observed while opening.
-    #[must_use]
-    pub const fn fingerprint(&self) -> Fingerprint {
-        self.fingerprint
-    }
-    pub(crate) fn matches(&self, other: &Self) -> bool {
-        self.path == other.path
-            && self.fingerprint == other.fingerprint
-            && self.handle == other.handle
     }
 }
 /// Confirmed external Save result; no retained recovery state is needed.

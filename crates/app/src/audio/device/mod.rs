@@ -1,6 +1,3 @@
-// Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
-
 //! Default-device playback through CPAL.
 //!
 //! Preparation discovers the default output, validates the source at the
@@ -8,18 +5,16 @@
 //! when Stop was accepted before stream start was admitted. Playback runs on
 //! the calling thread until the session reaches a terminal outcome; the
 //! stream is torn down before its report is read.
+// Copyright 2026 Ervins Strauhmanis
+// SPDX-License-Identifier: MPL-2.0
+
 mod error;
 
+use crate::audio::PlaybackError as Error;
 use crate::audio::session::supervisor::{POLL_INTERVAL, STALL_LIMIT, Supervision, time_limit};
 use crate::audio::session::transport::{BufferTime, Transport};
-use crate::audio::session::{
-    LiveControl, LiveGenerator, MonitorDetail, Outcome, OutputInfo, PlaybackControl,
-    PlaybackMonitor, PlaybackReport, Preparation, SampleFormat, Session, SessionDescriptor,
-    source::{FiniteSource, Source},
-};
 use crate::document::editing::Draft;
 use crate::document::recipe::{Origin, RecipeSnapshot, Rendition};
-use crate::error::PlaybackError as Error;
 use auditorylab_core::{SampleRate, Signal};
 use cpal::{
     OutputCallbackInfo, Sample, SizedSample, Stream, StreamConfig, StreamInstant,
@@ -30,6 +25,15 @@ use error::Diagnostics;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
+use {
+    crate::audio::session::LiveControl, crate::audio::session::LiveGenerator,
+    crate::audio::session::MonitorDetail, crate::audio::session::Outcome,
+    crate::audio::session::OutputInfo, crate::audio::session::PlaybackControl,
+    crate::audio::session::PlaybackMonitor, crate::audio::session::PlaybackReport,
+    crate::audio::session::Preparation, crate::audio::session::SampleFormat,
+    crate::audio::session::Session, crate::audio::session::SessionDescriptor,
+    crate::audio::session::source::FiniteSource, crate::audio::session::source::Source,
+};
 
 // ALSA checks missed fault notifications when its poll expires. Give recovery
 // time before the no-progress watchdog; other backends use this argument for

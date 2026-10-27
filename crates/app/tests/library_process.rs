@@ -1,8 +1,9 @@
 //! Actual independent processes: lock lifetime, lost updates and killed native writers.
 use auditorylab_app::document::editing::Draft;
-use auditorylab_app::error::Outcome;
-use auditorylab_app::services::Cancel;
-use auditorylab_app::services::library::{Library, LibraryKey, Mutation};
+use auditorylab_app::document::origin::LibraryKey;
+use auditorylab_app::job::Cancel;
+use auditorylab_app::outcome::Outcome;
+use auditorylab_app::services::library::{Library, Mutation};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -116,7 +117,7 @@ fn controlled_child() {
         .unwrap()
         .parse()
         .unwrap();
-    let expect: auditorylab_app::services::library::VersionToken =
+    let expect: auditorylab_app::document::origin::VersionToken =
         std::env::var("AUDITORYLAB_STORE_TEST_EXPECT")
             .unwrap()
             .parse()

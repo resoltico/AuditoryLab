@@ -99,7 +99,7 @@ impl SearchIndex {
             facts.push(serde_json::to_string(&evidence.measures).unwrap_or_default());
         }
         for method in &snapshot.nominal().methods {
-            facts.push(crate::presentation::vocabulary::method_search_terms(*method).into());
+            facts.push(method_search_terms(*method).into());
         }
         for band in &snapshot.nominal().bands {
             facts.push(band.key().into());
@@ -197,4 +197,61 @@ fn numeric_terms(text: &str) -> Vec<f64> {
         number.is_finite().then_some(number)
     })
     .collect()
+}
+
+use crate::outcome::Outcome;
+/// A discovery filter or local-date range is invalid.
+#[derive(Debug, Clone, PartialEq)]
+pub enum QueryError {
+    /// Explicit temporary inputs require the All collection.
+    TemporaryFilesScope {
+        /// Captured scope.
+        scope: crate::core::query::Scope,
+    },
+    /// The exclusive upper bound is not after the lower bound.
+    RangeOrder {
+        /// Captured from.
+        from: crate::core::Timestamp,
+        /// Captured before.
+        before: crate::core::Timestamp,
+    },
+    /// A study identity is empty or malformed.
+    Study {
+        /// Captured value.
+        value: String,
+    },
+    /// A local date or midnight cannot be resolved uniquely.
+    LocalDate {
+        /// Captured value.
+        value: String,
+    },
+    /// A local through date predates its from date.
+    LocalOrder {
+        /// Captured field.
+        field: crate::discovery::calendar::CalendarField,
+        /// Captured from.
+        from: String,
+        /// Captured through.
+        through: String,
+    },
+}
+impl QueryError {
+    /// Failure category.
+    #[must_use]
+    pub const fn outcome(&self) -> Outcome {
+        Outcome::InvalidArgument
+    }
+}
+
+/// Structural search terms, independent of labels and explanatory prose.
+#[must_use]
+const fn method_search_terms(method: Method) -> &'static str {
+    match method {
+        Method::Binaural => "binaural interaural pair",
+        Method::Monaural => "monaural pair",
+        Method::Clicks => "click clicks",
+        Method::Gate => "gate gated rectangular",
+        Method::Am => "am amplitude modulation sinusoidal",
+        Method::SteadyTone => "steady-tone steady tone",
+    }
 }

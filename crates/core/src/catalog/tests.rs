@@ -416,3 +416,15 @@ fn builtins_have_unique_curated_identities_and_do_not_invent_creation_dates() {
     reason = "The integration test imports the real catalog build module to check catalog inputs; its unused Cargo build-script main is not executed by that test"
 )]
 mod catalog_build;
+
+#[test]
+fn catalog_identity_validates_grammar_without_claiming_resolution() {
+    for invalid in ["", "UPPER", "a_b", "a/b", "builtin:a", "é", " a"] {
+        assert!(super::CatalogId::new(invalid).is_none(), "{invalid:?}");
+    }
+    for valid in ["a", "0", "a-9", "unknown-recipe"] {
+        let id = super::CatalogId::new(valid).unwrap();
+        assert_eq!(id.as_str(), valid);
+    }
+    assert!(super::find("unknown-recipe").is_none());
+}

@@ -1,11 +1,15 @@
 //! Human sentences for typed operation failures.
 use super::DisplayText;
 use super::core_errors::recipe_error;
-use crate::error::{
-    EditorError, ExportError, FileError, IdentityError, IdentityScope, IoFailure, IoOperation,
-    LibraryError, LoadError, PlaybackError, QueryError, SaveError,
-};
 use std::{error::Error as StdError, fmt};
+use {
+    crate::audio::PlaybackError, crate::discovery::query::QueryError,
+    crate::document::error::EditorError, crate::identity::IdentityError,
+    crate::identity::IdentityScope, crate::services::ExportError, crate::storage::error::FileError,
+    crate::storage::error::IoFailure, crate::storage::error::IoOperation,
+    crate::storage::error::SaveError, crate::storage::library::LibraryError,
+    crate::storage::load::LoadError,
+};
 fn path_text(path: &std::path::Path) -> String {
     path.to_string_lossy().display_scalar()
 }
@@ -73,7 +77,9 @@ fn file_text(error: &FileError) -> String {
             confirmation,
             cause,
         } => {
-            use crate::error::{Confirmation as C, MutationPhase as P};
+            use {
+                crate::storage::error::Confirmation as C, crate::storage::error::MutationPhase as P,
+            };
             let explanation = match (phase, confirmation) {
                 (P::Publish, C::Unchanged) => "publication failed; previous content remains".into(),
                 (P::Publish, C::Different) => "publication failed and destination differs from both previous and candidate bytes; inspect this path before retrying".into(),
@@ -129,7 +135,7 @@ fn load_text(error: &LoadError) -> String {
 }
 fn library_text(error: &LibraryError) -> String {
     use LibraryError as E;
-    match error {
+    match error { E::Origin {error}=>origin_error(error),
         E::File { error } => file_text(error), E::Read { error } => io_text(error),
         E::IncompleteRead { error } => library_text(error),
         E::RecipeUtf8 { path, .. } => format!("{}: recipe is not UTF-8", path_text(path)),
@@ -303,6 +309,7 @@ impl StdError for EditorError {
 impl StdError for LibraryError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
+            Self::Origin { error } => Some(error),
             Self::File { error } | Self::RecordRead { error, .. } => Some(error),
             Self::Read { error } => Some(error.cause.error()),
             Self::IncompleteRead { error } => Some(error.as_ref()),
@@ -351,9 +358,9 @@ impl StdError for PlaybackError {
 }
 impl StdError for QueryError {}
 
-impl fmt::Display for crate::error::OperationError {
+impl fmt::Display for crate::services::OperationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::error::OperationError as E;
+        use crate::services::OperationError as E;
         match self {
             E::Load(error) => error.fmt(f),
             E::Library(error) => error.fmt(f),
@@ -368,9 +375,9 @@ impl fmt::Display for crate::error::OperationError {
         }
     }
 }
-impl StdError for crate::error::OperationError {
+impl StdError for crate::services::OperationError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        use crate::error::OperationError as E;
+        use crate::services::OperationError as E;
         Some(match self {
             E::Load(error) => error,
             E::Library(error) => error,
@@ -386,14 +393,14 @@ impl StdError for crate::error::OperationError {
     }
 }
 
-impl fmt::Display for crate::error::ClockError {
+impl fmt::Display for crate::clock::ClockError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("observed system time is outside the supported UTC timestamp range")
     }
 }
-impl StdError for crate::error::ClockError {}
+impl StdError for crate::clock::ClockError {}
 
-impl crate::storage::library::LibraryDiagnostic {
+impl<E: fmt::Display> crate::storage::library::LibraryDiagnostic<E> {
     /// Render the retained typed cause or inventory notice.
     #[must_use]
     pub fn message(&self) -> String {
@@ -403,7 +410,7 @@ impl crate::storage::library::LibraryDiagnostic {
         }
     }
 }
-impl serde::Serialize for crate::storage::library::LibraryDiagnostic {
+impl<E: fmt::Display> serde::Serialize for crate::storage::library::LibraryDiagnostic<E> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
         let mut output = serializer.serialize_struct("LibraryDiagnostic", 3)?;
@@ -474,5 +481,36 @@ impl std::fmt::Display for crate::document::recipe::Origin {
             Self::File(path) => f.write_str(&path_text(path)),
             Self::Stream(label) | Self::Draft(label) => f.write_str(&label.display_scalar()),
         }
+    }
+}
+
+/// Explain a canonical source-selector or exact-byte-token failure.
+#[must_use]
+pub(crate) fn origin_error(error: &crate::document::origin::OriginError) -> String {
+    use crate::document::origin::OriginError;
+    match error {
+        OriginError::InvalidSelector { value } => library_text(&LibraryError::InvalidSelector {
+            value: value.clone(),
+        }),
+        OriginError::InvalidFingerprint { value } => {
+            library_text(&LibraryError::InvalidFingerprint {
+                value: value.clone(),
+            })
+        }
+    }
+}
+
+impl std::fmt::Display for crate::document::error::RenditionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&load_text(&LoadError::Sound {
+            origin: self.origin.clone(),
+            rate: self.rate,
+            error: self.error.clone(),
+        }))
+    }
+}
+impl std::error::Error for crate::document::error::RenditionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
     }
 }

@@ -14,7 +14,7 @@ fn export(
         &session,
         &mut fs::File::create(path).unwrap(),
         cancel,
-        &crate::services::Progress::default(),
+        &crate::job::Progress::default(),
     )
 }
 use std::fs;
@@ -263,7 +263,7 @@ fn cancellation_requested_by_the_writer_stops_before_the_next_sample_block() {
             &tone_session(20_000, rate()),
             &mut writer,
             &cancel,
-            &crate::services::Progress::default(),
+            &crate::job::Progress::default(),
         );
         assert!(matches!(
             result,
@@ -308,7 +308,7 @@ fn writer_failures_in_the_header_and_payload_keep_the_original_error() {
             &tone_session(20000, rate()),
             &mut writer,
             &never(),
-            &crate::services::Progress::default(),
+            &crate::job::Progress::default(),
         )
         .unwrap_err();
         assert!(

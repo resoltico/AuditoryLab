@@ -1,10 +1,9 @@
-// Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
-
 //! The bytes that precede the samples of a 32-bit float WAV file.
 //!
 //! A session's length is known before its first sample, so the header is
 //! written once, complete, and the file needs no later correction.
+// Copyright 2026 Ervins Strauhmanis
+// SPDX-License-Identifier: MPL-2.0
 
 use auditorylab_core::{SampleRate, Signal};
 use std::fmt::{Display, Formatter};

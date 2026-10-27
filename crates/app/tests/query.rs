@@ -8,7 +8,9 @@ use auditorylab_app::document::recipe::{Origin, RecipeSnapshot};
 )]
 fn matches_search(snapshot: &RecipeSnapshot, search: &str) -> bool {
     let entry = auditorylab_app::discovery::collection::EntrySummary::from_snapshot(
-        auditorylab_app::services::library::LibraryKey::BuiltIn("fixture".into()),
+        auditorylab_app::document::origin::LibraryKey::BuiltIn(
+            auditorylab_core::catalog::CatalogId::new("fixture").unwrap(),
+        ),
         snapshot,
         None,
     );

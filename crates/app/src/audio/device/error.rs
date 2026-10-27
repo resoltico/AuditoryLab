@@ -1,10 +1,10 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::audio::session::{Outcome, SessionState};
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
+use {crate::audio::session::Outcome, crate::audio::session::SessionState};
 
 /// Why device playback did not start or did not finish normally.
 #[derive(Debug, Clone)]

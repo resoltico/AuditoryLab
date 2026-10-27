@@ -7,6 +7,31 @@
 //! named by its file stem. Parse it with [`Recipe::parse`](crate::Recipe::parse);
 //! the text includes the comments that explain the recipe.
 
+/// A canonical catalog name. Existence is checked separately during resolution.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CatalogId(alloc::string::String);
+impl CatalogId {
+    /// Validate lowercase ASCII letters, digits and hyphens; names cannot be empty.
+    #[must_use]
+    pub fn new(value: &str) -> Option<Self> {
+        crate::catalog_id::valid(value).then(|| Self(value.into()))
+    }
+    /// Canonical name without a selector prefix.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+impl core::fmt::Display for CatalogId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl serde::Serialize for CatalogId {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.0)
+    }
+}
 /// One built-in recipe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Entry {

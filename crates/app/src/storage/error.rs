@@ -1,5 +1,5 @@
 //! Filesystem adapter failures carry operations, paths and original causes.
-use super::{IoCause, Outcome};
+use crate::outcome::Outcome;
 use std::path::PathBuf;
 /// The filesystem operation that failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,7 +93,7 @@ pub enum FileError {
     /// Native filesystem operation failed.
     Io(IoFailure),
     /// An exclusive stage identity could not be allocated.
-    Identity(super::IdentityError),
+    Identity(crate::identity::IdentityError),
     /// Opened object is not a regular file.
     NotRegular {
         /// Affected path.
@@ -196,8 +196,94 @@ impl FileError {
     }
 }
 
-impl From<super::IdentityError> for FileError {
-    fn from(error: super::IdentityError) -> Self {
+impl From<crate::identity::IdentityError> for FileError {
+    fn from(error: crate::identity::IdentityError) -> Self {
         Self::Identity(error)
+    }
+}
+
+use std::{error::Error, fmt, io, sync::Arc};
+/// A captured I/O cause. Clones retain the same cause identity.
+#[derive(Debug, Clone)]
+pub struct IoCause(Arc<io::Error>);
+impl IoCause {
+    pub(crate) fn new(error: io::Error) -> Self {
+        Self(Arc::new(error))
+    }
+    /// The original I/O cause.
+    pub fn error(&self) -> &io::Error {
+        self.0.as_ref()
+    }
+}
+impl PartialEq for IoCause {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for IoCause {}
+impl fmt::Display for IoCause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+impl Error for IoCause {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.0.as_ref())
+    }
+}
+
+use crate::core::RecipeError;
+/// Portable content could not be saved or published.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SaveError {
+    /// Static portable source resolution failed.
+    Load {
+        /// Captured error.
+        error: crate::storage::load::LoadError,
+    },
+    /// The observed clock is outside the portable timestamp profile.
+    Clock {
+        /// Captured error.
+        error: crate::clock::ClockError,
+    },
+    /// Filesystem publication or observation failed.
+    File {
+        /// Captured error.
+        error: FileError,
+    },
+    /// Portable content failed validation or serialization.
+    Recipe {
+        /// Captured error.
+        error: RecipeError,
+    },
+    /// Saving would replace identity or creation history.
+    HistoryReplacement,
+}
+impl SaveError {
+    /// Failure category.
+    #[must_use]
+    pub fn outcome(&self) -> Outcome {
+        match self {
+            Self::File { error } => error.outcome(),
+            Self::Recipe { .. } => Outcome::InvalidRecipe,
+            Self::HistoryReplacement => Outcome::HistoryConflict,
+            Self::Load { error } => error.outcome(),
+            Self::Clock { .. } => Outcome::Write,
+        }
+    }
+}
+impl From<FileError> for SaveError {
+    fn from(error: FileError) -> Self {
+        Self::File { error }
+    }
+}
+impl From<RecipeError> for SaveError {
+    fn from(error: RecipeError) -> Self {
+        Self::Recipe { error }
+    }
+}
+impl From<crate::clock::ClockError> for SaveError {
+    fn from(error: crate::clock::ClockError) -> Self {
+        Self::Clock { error }
     }
 }

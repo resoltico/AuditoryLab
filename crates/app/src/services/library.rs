@@ -1,19 +1,19 @@
 //! Managed-library operations shared by terminal and interactive jobs.
 use super::Cancel;
+use crate::document::origin::{LibraryKey, VersionToken};
+pub use crate::storage::library::LibraryError;
 pub use crate::storage::library::{
-    DiagnosticDetail, ExternalId, Fingerprint, Initialization, Inventory, LIBRARY_LAYOUT,
-    LibraryDiagnostic, LibraryKey, LoadedRecord, Mutation, MutationKind, MutationStatus, RootInfo,
-    RootSource, VersionToken, WriteOutcome,
-};
-use crate::{
-    core::Recipe,
-    document::{editing::Draft, recipe::RecipeSnapshot},
-    error::{LibraryError, OperationError},
-    storage::library::{LibraryRoot, LibraryStore},
+    DiagnosticDetail, Initialization, Inventory, LIBRARY_LAYOUT, LibraryDiagnostic, LoadedRecord,
+    Mutation, MutationKind, MutationStatus, RootInfo, RootSource, WriteOutcome,
 };
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
+};
+use {
+    crate::core::Recipe, crate::document::editing::Draft, crate::document::recipe::RecipeSnapshot,
+    crate::services::OperationError, crate::storage::library::LibraryRoot,
+    crate::storage::library::LibraryStore,
 };
 
 /// An explicitly configured library service. Construction never initializes storage.
@@ -133,7 +133,7 @@ impl Library {
         path: &Path,
         cancel: &Cancel,
     ) -> Result<WriteOutcome, OperationError> {
-        key.require_user()?;
+        crate::storage::library::require_user(&key)?;
         let recipe = super::open_file(path)?.recipe().clone();
         Ok(self.update(key, expect, recipe, cancel)?)
     }

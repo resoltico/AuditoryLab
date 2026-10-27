@@ -15,10 +15,12 @@ pub mod reports;
 pub(crate) mod status_text;
 pub mod vocabulary;
 pub mod waveform_view;
-pub(crate) mod workspace_text;
+pub mod workspace_text;
 use crate::core::vocabulary::Status;
 use crate::document::recipe::{RecipeSnapshot, Rendition};
+use crate::presentation::recipe_text::SnapshotText;
 use crate::presentation::vocabulary::NumberStyle;
+use crate::presentation::waveform_view::*;
 use auditorylab_core::{
     CarrierFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate, PulseFacts,
     SampleRate, Sound, SoundError, VoiceFacts, VoiceObservation, rhythm::Method, rhythm::Structure,
@@ -446,7 +448,7 @@ fn document_notes(snapshot: &RecipeSnapshot) -> String {
     );
     if let Some(notes) = snapshot
         .about()
-        .and_then(|a| a.summary.as_deref())
+        .and_then(|a| a.summary)
         .filter(|s| !s.is_empty())
     {
         text.push_str(&format!("Sound notes: {notes}\n"));
@@ -561,9 +563,6 @@ pub trait AudioDetails {
 pub trait ParameterText {
     /// Explain the quantity in shared user-facing text.
     fn help(self) -> &'static str;
-    /// Exact round-tripping text in the parameter's displayed unit.
-    #[must_use]
-    fn input_text(self, model: f64) -> String;
     /// Field label and displayed unit.
     #[must_use]
     fn input_label(self) -> String;
@@ -683,25 +682,6 @@ impl ParameterText for ParameterId {
         }
     }
 
-    /// The shortest text, in the quantity's displayed unit, that enters exactly
-    /// the given model value again. Entered values are never rounded.
-    fn input_text(self, model: f64) -> String {
-        let id = self;
-        let unit = id.descriptor().unit;
-        let display = unit.to_display(model);
-        if !display.is_finite() {
-            return display.to_string();
-        }
-        for digits in 1..=17 {
-            let text = format!("{display:.*e}", digits - 1);
-            if let Ok(value) = text.parse::<f64>()
-                && unit.to_model(value).to_bits() == model.to_bits()
-            {
-                return value.to_string();
-            }
-        }
-        display.to_string()
-    }
     /// A quantity's label with its unit, as on an input.
     fn input_label(self) -> String {
         let id = self;
@@ -734,10 +714,10 @@ impl Rendition {
         let sound = self;
         let mut text = (sound).brief();
         if detail {
-            let model = crate::presentation::waveform_view::ModelView::new(
+            let model = crate::workspace::monitor::ModelView::new(
                 *sound.signal().target(),
                 sound.snapshot().title(),
-                crate::presentation::waveform_view::ModelSource::Recipe,
+                crate::workspace::monitor::ModelSource::Recipe,
             );
             text.push_str(&format!("\n{}", model.caption()));
         }
@@ -778,22 +758,20 @@ impl Rendition {
 impl RecipeSnapshot {
     /// The research text of a snapshot in its shared display order.
     #[must_use]
-    pub fn research(&self) -> Vec<(&'static str, &str)> {
-        let snapshot = self;
-        snapshot
-            .about()
-            .and_then(|a| a.research.as_ref())
+    pub fn research(&self) -> Vec<(&'static str, String)> {
+        self.about()
+            .and_then(|a| a.research)
             .map_or_else(Vec::new, |a| {
                 [
-                    ("Studied for", &a.studied_for),
-                    ("Summary", &a.summary),
-                    ("Citation", &a.citation),
-                    ("Source", &a.source_url),
-                    ("Study", &a.study),
-                    ("Adaptation", &a.adaptation),
+                    ("Studied for", a.studied_for),
+                    ("Summary", a.summary),
+                    ("Citation", a.citation),
+                    ("Source", a.source_url),
+                    ("Study", a.study),
+                    ("Adaptation", a.adaptation),
                 ]
                 .into_iter()
-                .filter_map(|(label, value)| value.as_deref().map(|text| (label, text)))
+                .filter_map(|(label, value)| value.map(|text| (label, text)))
                 .collect()
             })
     }
@@ -821,9 +799,9 @@ impl RecipeSnapshot {
             structure,
             snapshot
                 .about()
-                .and_then(|a| a.research.as_ref())
-                .and_then(|a| a.studied_for.as_deref())
-                .unwrap_or("Custom recipe"),
+                .and_then(|a| a.research)
+                .and_then(|a| a.studied_for)
+                .unwrap_or_else(|| "Custom recipe".into()),
             human_duration(snapshot.sound().duration_seconds().get())
         )
     }
@@ -977,17 +955,17 @@ impl crate::audio::session::PlaybackReport {
         text
     }
 }
-impl crate::presentation::waveform_view::CaptureError {
+impl crate::workspace::monitor::CaptureError {
     /// A monitored window that cannot be drawn truthfully.
     #[must_use]
     pub fn description(self) -> String {
         let error = self;
         match error {
-            crate::presentation::waveform_view::CaptureError::NonFiniteSample => {
+            crate::workspace::monitor::CaptureError::NonFiniteSample => {
                 "Invalid waveform capture (non-finite samples); retaining the last valid window"
                     .into()
             }
-            crate::presentation::waveform_view::CaptureError::InvalidSpan => {
+            crate::workspace::monitor::CaptureError::InvalidSpan => {
                 "Invalid waveform capture (inconsistent span); retaining the last valid window"
                     .into()
             }
@@ -1076,11 +1054,6 @@ impl crate::services::Description<'_> {
     }
 }
 
-pub(crate) const UNTITLED_SOUND: &str = "Untitled sound";
-pub(crate) fn edited_title(title: &str) -> String {
-    format!("{title} (edited)")
-}
-
 #[cfg(test)]
 const fn finite(value: f64) -> auditorylab_core::Finite {
     match auditorylab_core::Finite::new(value) {
@@ -1123,7 +1096,7 @@ mod tests {
 
     #[test]
     fn expanded_pair_structure_counts_voices_instead_of_authored_components() {
-        use crate::document::controls;
+        use crate::workspace::controls;
         use auditorylab_core::{Component, ComponentId, PairKind};
         let sound = Sound::new(
             finite(1.0),
@@ -1208,14 +1181,26 @@ mod tests {
     fn editable_numbers_enter_the_same_model_value_again() {
         // 29 % is 0.29, whose naive display is 28.999999999999996.
         assert_eq!(0.29 * 100.0, 28.999999999999996);
-        assert_eq!((ParameterId::AmDepth).input_text(0.29), "29");
-        assert_eq!((ParameterId::ClickWidth).input_text(0.0011), "1.1");
         assert_eq!(
-            (ParameterId::ToneFrequency).input_text(39.0625123456789),
+            crate::document::input::parameter_text(ParameterId::AmDepth, 0.29),
+            "29"
+        );
+        assert_eq!(
+            crate::document::input::parameter_text(ParameterId::ClickWidth, 0.0011),
+            "1.1"
+        );
+        assert_eq!(
+            crate::document::input::parameter_text(ParameterId::ToneFrequency, 39.0625123456789),
             "39.0625123456789"
         );
-        assert_eq!((ParameterId::PeakLevel).input_text(-30.0), "-30");
-        assert_eq!((ParameterId::Duration).input_text(f64::NAN), "NaN");
+        assert_eq!(
+            crate::document::input::parameter_text(ParameterId::PeakLevel, -30.0),
+            "-30"
+        );
+        assert_eq!(
+            crate::document::input::parameter_text(ParameterId::Duration, f64::NAN),
+            "NaN"
+        );
         // Every value entered as displayed text is shown so that it enters the
         // same model value again.
         for id in ParameterId::ALL {
@@ -1230,7 +1215,7 @@ mod tests {
                 "1e-9",
             ] {
                 let model = id.descriptor().unit.to_model(typed.parse().unwrap());
-                let text = (id).input_text(model);
+                let text = crate::document::input::parameter_text(id, model);
                 let back = id.descriptor().unit.to_model(text.parse().unwrap());
                 assert_eq!(back.to_bits(), model.to_bits(), "{id:?} {typed} {text}");
             }

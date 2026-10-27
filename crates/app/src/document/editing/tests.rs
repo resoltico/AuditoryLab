@@ -1,14 +1,19 @@
+use crate::workspace::controls;
+use auditorylab_core::{CarrierKind, ModulationKind};
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
+use crate::presentation::recipe_text::SnapshotText;
 use crate::services::save_content;
 use auditorylab_core::{Component, ComponentForm};
 
 fn editor_with(components: &[ComponentForm]) -> EditorSession {
     let mut draft = Draft::new().unwrap();
     for component in components {
-        let id = draft.add(CarrierKind::Tone).unwrap();
+        let id = draft
+            .add_node(controls::default_component(CarrierKind::Tone))
+            .unwrap();
         assert!(draft.replace(id, *component).unwrap());
     }
     EditorSession::new(draft).unwrap()
@@ -122,8 +127,12 @@ fn staged_nonfinite_values_block_commit_save_until_repaired() {
         "nonfinite portable files are rejected"
     );
     let mut draft = Draft::new().unwrap();
-    draft.add(CarrierKind::Tone).unwrap();
-    draft.add(CarrierKind::Tone).unwrap();
+    draft
+        .add_node(controls::default_component(CarrierKind::Tone))
+        .unwrap();
+    draft
+        .add_node(controls::default_component(CarrierKind::Tone))
+        .unwrap();
     let mut editor = EditorSession::new(draft).unwrap();
     let other = field(&editor, 1, ParameterId::PeakLevel);
     let broken = field(&editor, 0, ParameterId::ToneFrequency);
@@ -175,7 +184,10 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
     editor.stage(level, "also bad").unwrap();
     editor.stage(other, "660").unwrap();
     editor
-        .set_carrier(editor.component_key(first).unwrap(), CarrierKind::Clicks)
+        .set_carrier(
+            editor.component_key(first).unwrap(),
+            controls::default_component(CarrierKind::Clicks),
+        )
         .unwrap();
     assert_eq!(
         editor.staged(frequency.field),
@@ -200,8 +212,10 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
     editor
         .set_modulation(
             editor.component_key(first).unwrap(),
-            Some(ModulationKind::Gate),
-            SampleRate::DEFAULT,
+            Some(controls::default_modulation(
+                ModulationKind::Gate,
+                SampleRate::DEFAULT,
+            )),
         )
         .unwrap();
     let gate = editor
@@ -209,11 +223,7 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
         .unwrap();
     editor.stage(gate, "2").unwrap();
     editor
-        .set_modulation(
-            editor.component_key(first).unwrap(),
-            None,
-            SampleRate::DEFAULT,
-        )
+        .set_modulation(editor.component_key(first).unwrap(), None)
         .unwrap();
     assert_eq!(editor.staged(gate.field), None);
     assert_eq!(editor.restore(level).unwrap(), "-30");
@@ -310,7 +320,10 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     );
     while editor.draft().components().len() < Sound::MAX_COMPONENTS {
         editor
-            .add_component(editor.document_key(), CarrierKind::Tone)
+            .add_component(
+                editor.document_key(),
+                controls::default_component(CarrierKind::Tone),
+            )
             .unwrap();
     }
     assert_eq!(
@@ -425,10 +438,16 @@ fn evaluations_are_cached_by_revision_and_rate_including_invalid_results() {
 #[test]
 fn identities_are_never_reused_and_the_limit_is_shared() {
     let mut d = Draft::new().unwrap();
-    let a = d.add(CarrierKind::Tone).unwrap();
-    let b = d.add(CarrierKind::Clicks).unwrap();
+    let a = d
+        .add_node(controls::default_component(CarrierKind::Tone))
+        .unwrap();
+    let b = d
+        .add_node(controls::default_component(CarrierKind::Clicks))
+        .unwrap();
     assert!(d.remove(a).is_some());
-    let c = d.add(CarrierKind::Tone).unwrap();
+    let c = d
+        .add_node(controls::default_component(CarrierKind::Tone))
+        .unwrap();
     assert_ne!(a, c);
     assert!(
         d.replace(b, {
@@ -443,10 +462,11 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
             .unwrap()
     );
     while d.components().len() < Sound::MAX_COMPONENTS {
-        d.add(CarrierKind::Tone).unwrap();
+        d.add_node(controls::default_component(CarrierKind::Tone))
+            .unwrap();
     }
     assert_eq!(
-        d.add(CarrierKind::Clicks),
+        d.add_node(controls::default_component(CarrierKind::Clicks)),
         Err(EditRefusal::BudgetExceeded {
             components: 16,
             voices: 16,
@@ -456,7 +476,7 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
     let mut exhausted = Draft::new().unwrap();
     exhausted.next_id = None;
     assert_eq!(
-        exhausted.add(CarrierKind::Tone),
+        exhausted.add_node(controls::default_component(CarrierKind::Tone)),
         Err(EditRefusal::IdentitiesExhausted)
     );
 }
@@ -500,28 +520,25 @@ fn save_round_trips_and_keeps_existing_destinations() {
     let dir = tempfile::tempdir_in(base).unwrap();
     let path = dir.path().join("recipe.toml");
     let mut d = Draft::new().unwrap();
-    d.add(CarrierKind::Clicks).unwrap();
+    d.add_node(controls::default_component(CarrierKind::Clicks))
+        .unwrap();
     d.set_title("Quotes \" 🎧".into());
-    save_content(&d.recipe().unwrap(), &path, crate::services::Replace::Never).unwrap();
+    save_content(&d.recipe().unwrap(), &path, crate::job::Replace::Never).unwrap();
     let bytes = std::fs::read(&path).unwrap();
     let loaded = crate::storage::load::load_file(&path).unwrap();
     assert_eq!(loaded.sound(), &d.sound());
     assert_eq!(
-        save_content(&d.recipe().unwrap(), &path, crate::services::Replace::Never)
+        save_content(&d.recipe().unwrap(), &path, crate::job::Replace::Never)
             .unwrap_err()
             .outcome(),
-        crate::error::Outcome::DestinationExists
+        crate::outcome::Outcome::DestinationExists
     );
     d.set_title("🎧".repeat(Recipe::MAX_BYTES));
     assert_eq!(
-        save_content(
-            &d.recipe().unwrap(),
-            &path,
-            crate::services::Replace::Allowed
-        )
-        .unwrap_err()
-        .outcome(),
-        crate::error::Outcome::InvalidRecipe
+        save_content(&d.recipe().unwrap(), &path, crate::job::Replace::Allowed)
+            .unwrap_err()
+            .outcome(),
+        crate::outcome::Outcome::InvalidRecipe
     );
     d.set_title("Small".into());
     let nonfinite = d
@@ -530,9 +547,9 @@ fn save_round_trips_and_keeps_existing_destinations() {
         .replace("duration_seconds = 60.0", "duration_seconds = nan");
     assert!(
         Recipe::parse(&nonfinite)
-            .map_err(crate::error::OperationError::from)
+            .map_err(crate::services::OperationError::from)
             .and_then(
-                |recipe| save_content(&recipe, &path, crate::services::Replace::Allowed)
+                |recipe| save_content(&recipe, &path, crate::job::Replace::Allowed)
                     .map_err(Into::into)
             )
             .is_err()
@@ -594,7 +611,7 @@ fn the_entire_document_including_unicode_anchor_has_exact_byte_neighbours() {
         save_content(
             &draft.recipe().unwrap(),
             &path,
-            crate::services::Replace::Allowed
+            crate::job::Replace::Allowed
         )
         .is_err()
     );
@@ -604,7 +621,7 @@ fn the_entire_document_including_unicode_anchor_has_exact_byte_neighbours() {
         save_content(
             &draft.recipe().unwrap(),
             &absent,
-            crate::services::Replace::Never
+            crate::job::Replace::Never
         )
         .is_err()
     );
@@ -845,11 +862,17 @@ fn the_application_rejects_retired_field_and_structural_callbacks_after_undo() {
         Err(EditRefusal::StaleRow)
     );
     assert_eq!(
-        editor.set_carrier(current, CarrierKind::Clicks),
+        editor.set_carrier(current, controls::default_component(CarrierKind::Clicks)),
         Err(EditRefusal::StaleRow)
     );
     assert_eq!(
-        editor.set_modulation(current, Some(ModulationKind::Am), SampleRate::DEFAULT),
+        editor.set_modulation(
+            current,
+            Some(controls::default_modulation(
+                ModulationKind::Am,
+                SampleRate::DEFAULT
+            ))
+        ),
         Err(EditRefusal::StaleRow)
     );
     assert_eq!(editor.remove_component(current), Err(EditRefusal::StaleRow));
@@ -883,8 +906,12 @@ fn unknown_or_cross_row_field_requests_cannot_acquire_another_lifetime() {
         Err(EditRefusal::UnknownComponent)
     );
     let document = editor.document_key();
-    let first = editor.add_component(document, CarrierKind::Tone).unwrap();
-    let second = editor.add_component(document, CarrierKind::Tone).unwrap();
+    let first = editor
+        .add_component(document, controls::default_component(CarrierKind::Tone))
+        .unwrap();
+    let second = editor
+        .add_component(document, controls::default_component(CarrierKind::Tone))
+        .unwrap();
     let first_key = editor.component_key(first).unwrap();
     let crossed = FieldHandle {
         row: first_key,
@@ -900,7 +927,7 @@ fn unknown_or_cross_row_field_requests_cannot_acquire_another_lifetime() {
         Err(EditRefusal::Inapplicable)
     );
     assert_eq!(
-        editor.add_component(first_key, CarrierKind::Tone),
+        editor.add_component(first_key, controls::default_component(CarrierKind::Tone)),
         Err(EditRefusal::Inapplicable)
     );
     assert_eq!(
@@ -948,7 +975,9 @@ fn row_generation_storage_is_bounded_and_exhaustion_never_wraps_or_drops_undo() 
 #[test]
 fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_acoustics() {
     let mut draft = Draft::new().unwrap();
-    draft.add(CarrierKind::Tone).unwrap();
+    draft
+        .add_node(controls::default_component(CarrierKind::Tone))
+        .unwrap();
     let recipe = draft.recipe().unwrap();
     assert!(ComponentId::new(0).is_none());
     let mut duplicate = recipe.clone().into_builder();
@@ -1058,5 +1087,43 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
     match auditorylab_core::Finite::new(value) {
         Some(value) => value,
         None => panic!("nonfinite fixture value"),
+    }
+}
+
+#[test]
+fn committing_an_unedited_display_preserves_unrepresentable_finite_model_bits() {
+    for width in [f64::from_bits(0x3f1a36e2eb1c4340), f64::MAX] {
+        let mut draft = Draft::new().unwrap();
+        draft
+            .add_node(ComponentForm::Clicks {
+                ears: Ears::Both,
+                rate_hz: finite(40.0),
+                width_seconds: finite(width),
+                peak_dbfs: finite(-30.0),
+                modulation: None,
+            })
+            .unwrap();
+        let mut editor = EditorSession::new(draft).unwrap();
+        let field = field(&editor, 0, ParameterId::ClickWidth);
+        let before = editor.draft().to_toml().unwrap();
+        let shown = editor.text(field.field);
+        assert_eq!(editor.commit_field(field, &shown), Ok(Ok(false)));
+        assert_eq!(
+            editor.draft().value(field.field).unwrap().to_bits(),
+            width.to_bits()
+        );
+        assert_eq!(editor.draft().to_toml().unwrap(), before);
+        assert!(!editor.has_staged());
+        if shown == "inf" {
+            editor.stage(field, &shown).unwrap();
+            assert_eq!(
+                editor.commit().unwrap_err().problems,
+                [(field.field, InputProblem::Nonfinite)]
+            );
+            assert_eq!(
+                editor.draft().value(field.field).unwrap().to_bits(),
+                width.to_bits()
+            );
+        }
     }
 }

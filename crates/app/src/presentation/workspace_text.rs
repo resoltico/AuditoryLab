@@ -2,6 +2,8 @@
 use crate::audio::session::{EndReason, PlaybackReport};
 use crate::core::ParameterId;
 use crate::document::editing::{EditingField, InputProblem, MetadataField};
+use crate::presentation::recipe_text::SnapshotText;
+use crate::presentation::waveform_view::*;
 use crate::presentation::{self, AudioErrorText};
 use crate::storage::wav::Exported;
 use crate::workspace::Refusal;
@@ -166,146 +168,147 @@ pub(crate) fn sound_diagnostic(error: &auditorylab_core::SoundError, context: &s
     }
 }
 
-/// Rendering context captured from the coordinator's current rates and playback binding.
-pub(crate) struct EditorViewContext {
-    pub(crate) rate: crate::core::SampleRate,
-    pub(crate) live: bool,
-    pub(crate) retained_warning: String,
+/// One editable quantity of a component.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParameterView {
+    /// The field this row edits, bound to its document.
+    pub handle: crate::document::editing::FieldHandle,
+    /// The quantity.
+    pub parameter: ParameterId,
+    /// Label with unit.
+    pub label: String,
+    /// One plain sentence about the quantity.
+    pub help: &'static str,
+    /// Staged text, or the committed value in the displayed unit.
+    pub text: String,
+    /// Whether the text is staged and not committed.
+    pub staged: bool,
+    /// The slider position, for quantities with a slider.
+    pub slider: Option<f64>,
+    /// What is wrong with this field, if anything.
+    pub diagnostic: String,
 }
-pub(crate) fn editor_view(
-    editor: &crate::document::editing::EditorSession,
-    candidate: &crate::document::editing::Candidate,
-    analysis: &crate::document::editing::Analysis,
-    committed_analysis: &crate::document::editing::Analysis,
-    nominal: &crate::core::rhythm::Analysis,
-    rendering: EditorViewContext,
-) -> crate::workspace::EditorView {
-    use crate::document::controls;
+
+/// One component of the open document.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ComponentView {
+    /// Opaque identity of this rendered component lifetime.
+    pub key: crate::document::editing::RowKey,
+    /// The authored component identity.
+    pub id: crate::core::ComponentId,
+    /// Ear routing.
+    pub ears: crate::core::Ears,
+    /// False for separate-ear pairs whose routes are part of their construction.
+    pub routing_editable: bool,
+    /// Carrier kind.
+    pub carrier: Option<crate::core::CarrierKind>,
+    /// Modulation kind, if any.
+    pub modulation: Option<crate::core::ModulationKind>,
+    /// The component's role.
+    pub heading: &'static str,
+    /// Accessible name: role and position.
+    pub name: String,
+    /// The component's generated quantities at the diagnostic rate, or its error.
+    pub context: String,
+    /// Every problem of this component.
+    pub error: String,
+    /// The quantities this component has, in display order.
+    pub parameters: Vec<ParameterView>,
+}
+
+/// A recipe-wide field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MetadataView {
+    /// The field, bound to its document.
+    pub handle: crate::document::editing::FieldHandle,
+    /// Label, with unit for quantities.
+    pub label: String,
+    /// Staged text, or the committed value.
+    pub text: String,
+    /// Whether the text is staged and not committed.
+    pub staged: bool,
+    /// What is wrong with the field, if anything.
+    pub diagnostic: String,
+}
+
+/// The open document.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EditorView {
+    /// Opaque identity of the rendered document lifetime.
+    pub key: crate::document::editing::RowKey,
+    /// Title, notes, duration and fade.
+    pub metadata: [MetadataView; 4],
+    /// Components in order.
+    pub components: Vec<ComponentView>,
+    /// Whether the document differs from what was saved.
+    pub dirty: bool,
+    /// The candidate's structure in one line, or why it has none.
+    pub brief: String,
+    /// The candidate's peak bounds or global error, with its rate context.
+    pub peak: String,
+    /// Recipe-wide problems: duration, fade and unparseable metadata.
+    pub metadata_error: String,
+    /// Short attribution to the copied source.
+    pub based_on_title: String,
+    /// Attribution with the source's citation and summary.
+    pub based_on: String,
+    /// Edits not applied to the playing sound, and why.
+    pub retained_warning: String,
+}
+
+/// Render a typed editor projection without changing its admission or applicability.
+#[must_use]
+pub fn editor_view(view: &crate::workspace::EditorView) -> EditorView {
     use crate::presentation::vocabulary::NumberStyle;
     use crate::presentation::{AudioSummary, ParameterText};
-    use crate::workspace::{ComponentView, EditorView, MetadataView, ParameterView};
-    let rate = rendering.rate;
-    let problem = |field: EditingField| {
-        candidate
-            .problems()
-            .iter()
-            .find(|(f, _)| *f == field)
-            .map(|(f, p)| problem_text(*f, *p))
-    };
-    let context = if rendering.live {
+    use crate::workspace::FieldDiagnostic;
+    let rate = view.rate;
+    let context = if view.live {
         format!("at the live device rate of {} Hz", rate.hz())
     } else {
         format!("at the {} Hz export rate", rate.hz())
     };
-    let metadata = MetadataField::ALL.map(|field| {
-        let editing = EditingField::Metadata(field);
-        let diagnostic = problem(editing).unwrap_or_else(|| {
-            field
-                .parameter()
-                .and_then(|p| {
-                    analysis
-                        .envelope()
-                        .err()
-                        .filter(|e| e.parameters().contains(&p))
-                        .map(presentation::acoustic_errors::sound_error)
-                })
-                .unwrap_or_default()
-        });
-        MetadataView {
-            handle: editor
-                .handle(editing)
-                .unwrap_or_else(|_| unreachable!("metadata views use existing fields")),
-            label: match field.parameter() {
-                Some(p) => (p).input_label(),
-                None => field_label(editing),
-            },
-            text: editor.text(editing),
-            staged: editor.staged(editing).is_some(),
-            diagnostic,
-        }
+    let diagnostic = |cause: &FieldDiagnostic| match cause {
+        FieldDiagnostic::Input(field, problem) => problem_text(*field, *problem),
+        FieldDiagnostic::Voice(error) => component_diagnostic(error, &context),
+        FieldDiagnostic::Sound(error) => sound_diagnostic(error, &context),
+    };
+    let metadata = view.metadata.clone().map(|field| MetadataView {
+        handle: field.handle,
+        label: field.field.parameter().map_or_else(
+            || field_label(EditingField::Metadata(field.field)),
+            ParameterText::input_label,
+        ),
+        text: field.text,
+        staged: field.staged,
+        diagnostic: field
+            .diagnostic
+            .as_ref()
+            .map(|cause| match cause {
+                FieldDiagnostic::Sound(error) => presentation::acoustic_errors::sound_error(error),
+                _ => diagnostic(cause),
+            })
+            .unwrap_or_default(),
     });
-    let components = editor
-        .draft()
-        .components()
-        .iter()
-        .map(|component| {
-            let (id,committed)=(&component.id,&component.form);
-            let shown = candidate
-                .draft()
-                .component(*id)
-                .copied()
-                .unwrap_or(*committed);
-            let own = analysis.check().voice((*id).into());
-            let acoustic = own.and_then(|r| r.as_ref().err());
-            let second=analysis.check().voice(id.with_lane(auditorylab_core::Lane::Secondary)).and_then(|r|r.as_ref().err());
-            let coupled=analysis.check().result().err().filter(|error|match error {auditorylab_core::SoundError::Pair(auditorylab_core::PairError {id:owner,..})=>owner.get()==id.get(),auditorylab_core::SoundError::PairCarrier {id:owner,..}=>owner.component==*id,_=>false});
-            let parameters = ParameterId::COMPONENT
-                .into_iter()
-                .filter(|p| committed.get(*p).is_some())
-                .map(|parameter| {
-                    let field = EditingField::Parameter(*id, parameter);
-                    let diagnostic = problem(field).unwrap_or_else(|| {
-                        coupled.filter(|e|e.parameters().contains(&parameter)).map(|e| sound_diagnostic(e, &context)).unwrap_or_else(|| {
-                        let error=match parameter {ParameterId::PairSecondLevel=>second,_=>acoustic};
-                        error
-                            .filter(|e| e.parameters().contains(&parameter) || matches!(parameter,ParameterId::PairFirstLevel|ParameterId::PairSecondLevel) && matches!(e,auditorylab_core::VoiceError::PeakDbfs {..}))
-                            .map(|error| component_diagnostic(error, &context))
-                            .unwrap_or_default()})
-                    });
-                    ParameterView {
-                        handle: editor.handle(field).unwrap_or_else(|_| unreachable!("parameter views use existing fields")),
-                        parameter,
-                        label: (parameter).input_label(),
-                        help: match parameter {
-                            ParameterId::Duration => "The length of saved recipes and exported audio; live playback continues until stopped.",
-                            ParameterId::Fade => "The raised-cosine fade at each edge of saved recipes and exported audio.",
-                            _ => parameter.help(),
-                        },
-                        text: editor.text(field),
-                        staged: editor.staged(field).is_some(),
-                        slider: committed
-                            .get(parameter)
-                            .and_then(|v| controls::slider_position(parameter, rate, v.get())),
-                        diagnostic,
-                    }
-                })
-                .collect::<Vec<_>>();
-            let mut errors: Vec<String> = candidate
-                .problems()
-                .iter()
-                .filter(|(f, _)| matches!(f, EditingField::Parameter(owner, _) if owner == id))
-                .map(|(f, p)| problem_text(*f, *p))
-                .collect();
-            for error in [acoustic,second].into_iter().flatten() {errors.push(component_diagnostic(error, &context));}
-            if let Some(error)=coupled {errors.push(sound_diagnostic(error, &context));}
-            errors.retain(|error| !parameters.iter().any(|parameter| parameter.diagnostic == *error));
-            errors.dedup();
-            ComponentView {
-                key: editor.component_key(*id).unwrap_or_else(|| unreachable!("an active component has a rendered lifetime")),
-                id: *id,
-                ears: committed.route().unwrap_or(crate::core::Ears::Both),
-                routing_editable: committed.route().is_some(),
-                carrier: committed.primitive_kind(),
-                modulation: committed.modulation_kind(),
-                heading: shown.heading(),
-                name: format!("{} · Component {id}", shown.heading()),
-                context: if let Some(pair)=shown.pair() {
-                    format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz+pair.offset_hz,pair.offset_hz.abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)
-                } else {match own {
-                    Some(Ok(facts)) => (facts).summary(),
-                    // The error line states it, with its rate.
-                    Some(Err(_)) | None => String::new(),
-                }},
-                error: errors.join("; "),
-                parameters,
-            }
-        })
-        .collect();
-    let pending = editor.has_staged();
-    let peak = match analysis.check().result() {
+    let components = view.components.iter().map(|component| {
+        let parameters = component.parameters.iter().map(|field| ParameterView {
+            handle:field.handle,parameter:field.parameter,label:field.parameter.input_label(),help:field.parameter.help(),
+            text:field.text.clone(), staged:field.staged,slider:field.slider,diagnostic:field.diagnostic.as_ref().map(diagnostic).unwrap_or_default(),
+        }).collect::<Vec<_>>();
+        let mut errors:Vec<_> = component.diagnostics.iter().map(diagnostic).collect();
+        errors.retain(|e|!parameters.iter().any(|p|p.diagnostic==*e));errors.dedup();
+        ComponentView {
+            key:component.key,id:component.id,ears:component.committed.route().unwrap_or(crate::core::Ears::Both),
+            routing_editable:component.committed.route().is_some(),carrier:component.committed.primitive_kind(),modulation:component.committed.modulation_kind(),
+            heading:component.shown.heading(),name:format!("{} · Component {}",component.shown.heading(),component.id),
+            context:component.shown.pair().map_or_else(||component.facts.as_ref().map(AudioSummary::summary).unwrap_or_default(),|pair| format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz+pair.offset_hz,pair.offset_hz.abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)),
+            error:errors.join("; "),parameters,
+        }
+    }).collect();
+    let peak = match &view.target {
         Ok(target) => format!(
             "{}Peak bounds: {} / {} dBFS {context}",
-            if pending {
+            if view.pending {
                 "Pending validation · "
             } else {
                 ""
@@ -319,36 +322,35 @@ pub(crate) fn editor_view(
         ),
         Err(_) => format!("Correct the highlighted fields to apply this sound {context}."),
     };
-    let metadata_error = metadata
-        .iter()
-        .map(|m| m.diagnostic.as_str())
-        .filter(|d| !d.is_empty())
-        .collect::<Vec<_>>();
     let mut deduped: Vec<String> = Vec::new();
-    for item in metadata_error {
-        if !deduped.iter().any(|d| d == item) {
-            deduped.push(item.to_owned());
+    for field in &metadata {
+        if !field.diagnostic.is_empty() && !deduped.contains(&field.diagnostic) {
+            deduped.push(field.diagnostic.clone());
         }
     }
-    let generated_brief = committed_analysis.target().map_or_else(
+    let generated_brief = view.committed.as_ref().map_or_else(
         || "No valid sound model; correct the fields".into(),
-        |t| crate::core::rhythm::realized(t).summary(),
+        AudioSummary::summary,
     );
     let brief = format!(
         "{} classification · {}\nSaved version · {}\n{}",
-        if pending { "Last committed" } else { "Draft" },
-        nominal.summary(),
-        editor
-            .saved_nominal()
-            .map_or_else(|| "Not saved".into(), AudioSummary::summary),
+        if view.pending {
+            "Last committed"
+        } else {
+            "Draft"
+        },
+        view.nominal.summary(),
+        view.saved
+            .as_ref()
+            .map_or_else(|| "Not saved".into(), |a| a.summary()),
         generated_brief
     );
-    let based_on = editor.draft().based_on();
+    let based_on = view.based_on.as_ref();
     EditorView {
-        key: editor.document_key(),
+        key: view.key,
         metadata,
         components,
-        dirty: editor.dirty(),
+        dirty: view.dirty,
         brief,
         peak,
         metadata_error: deduped.join("; "),
@@ -359,14 +361,17 @@ pub(crate) fn editor_view(
             )
         }),
         based_on: based_on.map_or_else(String::new, |p| {
+            let about = p.about();
             format!(
                 "Based on “{}” · {}\n{}\nResearch findings describe the source recipe.",
                 p.title(),
-                p.about()
+                about
+                    .as_ref()
                     .and_then(|a| a.research.as_ref())
                     .and_then(|a| a.citation.as_deref())
                     .unwrap_or("source recipe"),
-                p.about()
+                about
+                    .as_ref()
                     .and_then(|a| a
                         .summary
                         .as_deref()
@@ -374,7 +379,12 @@ pub(crate) fn editor_view(
                     .unwrap_or("")
             )
         }),
-        retained_warning: rendering.retained_warning,
+        retained_warning: retained_warning(
+            view.pending,
+            view.target.is_err(),
+            view.live,
+            view.unrelated_title.as_deref(),
+        ),
     }
 }
 
@@ -401,11 +411,13 @@ pub(crate) fn transport_view(
     view_kind: crate::workspace::View,
 ) -> crate::workspace::TransportView {
     use crate::presentation::vocabulary::NumberStyle;
-    use crate::presentation::waveform_view::{
-        monitor_warning, output_monitor_state, output_underrun_warning, phase_text,
-    };
     use crate::presentation::{AudioDetails, AudioSummary};
     use crate::workspace::{MotionPreference, TransportView, View};
+    use {
+        crate::presentation::waveform_view::output_underrun_warning,
+        crate::presentation::waveform_view::phase_text, crate::workspace::monitor::monitor_warning,
+        crate::workspace::monitor::output_monitor_state,
+    };
 
     let output = output_state.view();
     let reader = output_state.reader();
@@ -507,8 +519,7 @@ pub(crate) fn transport_view(
         let warning = monitor_warning(reader, span);
         view.warning = (
             warning.map_or_else(String::new, |w| w.message().into()),
-            warning
-                .is_some_and(crate::presentation::waveform_view::MonitorWarning::announces_changes),
+            warning.is_some_and(crate::workspace::monitor::MonitorWarning::announces_changes),
         );
         view.backend_warning = output_underrun_warning(status.underruns);
         view.receipt_age = reader.age().map_or_else(
@@ -566,7 +577,7 @@ pub(crate) fn transport_view(
         view.caption = capture.label(held, ended);
         view.monitor_state = format!("{}\n{}", capture.caption(held, ended), view.monitor_state);
         if capture.clipped() {
-            let advisory = crate::presentation::waveform_view::MonitorWarning::FixedRangeExceeded;
+            let advisory = crate::workspace::monitor::MonitorWarning::FixedRangeExceeded;
             if !view.warning.0.is_empty() {
                 view.warning.0.push('\n');
             }
@@ -624,6 +635,7 @@ pub(crate) fn library_view(
             .at(rate)
             .map_or_else(|e| e.to_string(), |s| s.brief()),
         studied: about
+            .as_ref()
             .and_then(|a| a.research.as_ref())
             .and_then(|a| a.studied_for.clone())
             .unwrap_or_default(),
@@ -633,6 +645,7 @@ pub(crate) fn library_view(
             NumberStyle::Duration.format(snapshot.sound().fade_seconds().get())
         ),
         summary: about
+            .as_ref()
             .and_then(|a| {
                 a.summary
                     .clone()
@@ -641,6 +654,7 @@ pub(crate) fn library_view(
             .unwrap_or_default(),
         details: (snapshot).details_at(rate),
         study_url: about
+            .as_ref()
             .and_then(|a| a.research.as_ref())
             .and_then(|a| a.source_url.clone())
             .filter(|url| url.starts_with("https://") || url.starts_with("http://")),

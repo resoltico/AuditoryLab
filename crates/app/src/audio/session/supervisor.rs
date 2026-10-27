@@ -1,12 +1,12 @@
+//! Waiting for a stream's terminal outcome, with a stall watchdog, an
+//! overall allowance for finite sources and a bounded wait after Stop.
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-//! Waiting for a stream's terminal outcome, with a stall watchdog, an
-//! overall allowance for finite sources and a bounded wait after Stop.
 use super::transport::{Rounding, frame_duration};
-use super::{Outcome, SessionState};
 use auditorylab_core::SampleRate;
 use std::time::Duration;
+use {super::Outcome, super::SessionState};
 
 pub(crate) const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// How long a stream may go without progress, and how long playback may take

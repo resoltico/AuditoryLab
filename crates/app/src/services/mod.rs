@@ -1,4 +1,13 @@
 //! Shared source, discovery, playback and publication operations.
+mod error;
+pub use self::error::{ExportError, OperationError};
+use crate::document::origin::ObservedFile;
+pub use {
+    crate::storage::error::Confirmation, crate::storage::error::FileError,
+    crate::storage::error::IoCause, crate::storage::error::IoFailure,
+    crate::storage::error::IoOperation, crate::storage::error::MutationPhase,
+    crate::storage::error::SaveError, crate::storage::load::LoadError,
+};
 mod discovery;
 mod inspection;
 pub mod library;
@@ -7,8 +16,9 @@ mod sources;
 use crate::core::Recipe;
 use crate::core::SampleRate;
 use crate::document::recipe::{RecipeSnapshot, Rendition};
-use crate::error::{ExportError, FileError, IoFailure, IoOperation, SaveError};
-pub use crate::storage::external::{ExternalOutcome, ObservedFile};
+
+use crate::job::{Cancel, Progress, Replace};
+pub use crate::storage::external::ExternalOutcome;
 pub use crate::storage::library::history_warnings;
 
 pub use crate::storage::wav::{Container, Exported};
@@ -16,13 +26,7 @@ use crate::{storage::publish, storage::wav};
 pub use discovery::{ListRequest, Listing, list};
 pub use inspection::{Description, Inspection, describe, inspect};
 pub use sources::{Resolved, Source, builtin, builtin_source, catalog, portable_text, resolve};
-use std::{
-    path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
-    },
-};
+use std::{path::Path, sync::Arc};
 
 /// Confirmed recipe-file publication and any durability or cleanup warnings.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -30,48 +34,6 @@ pub struct SaveOutcome {
     /// Warnings do not undo successful publication or prevent advancing a saved baseline.
     pub warnings: Vec<String>,
 }
-/// Whether publication may replace an existing destination.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Replace {
-    /// Keep existing files untouched.
-    Never,
-    /// Atomically replace, after the person confirmed it.
-    Allowed,
-}
-
-/// A file export's cancellation request; audio sessions have their own Stop.
-#[derive(Clone, Default, Debug)]
-pub struct Cancel(Arc<AtomicBool>);
-
-impl Cancel {
-    /// Request cancellation.
-    pub fn request(&self) {
-        self.0.store(true, Ordering::Relaxed);
-    }
-
-    /// Whether cancellation was requested.
-    #[must_use]
-    pub fn is_requested(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
-    }
-}
-
-/// A file export's written frame count.
-#[derive(Clone, Default, Debug)]
-pub struct Progress(Arc<AtomicU64>);
-
-impl Progress {
-    /// Frames written so far.
-    #[must_use]
-    pub fn frames(&self) -> u64 {
-        self.0.load(Ordering::Relaxed)
-    }
-
-    pub(crate) fn set(&self, n: u64) {
-        self.0.store(n, Ordering::Relaxed);
-    }
-}
-
 /// Export a captured rendition with staged no-clobber or confirmed replacement.
 ///
 /// # Errors
@@ -99,7 +61,7 @@ fn export_rendition(
     progress: &Progress,
 ) -> Result<Exported, ExportError> {
     publish::publish(path, replace, cancel, |file| {
-        wav::encode(sound.signal(), file, &cancel.0, progress).map_err(|error| match error {
+        wav::encode(sound.signal(), file, cancel.flag(), progress).map_err(|error| match error {
             wav::ExportError::Cancelled => FileError::Cancelled {
                 path: Some(path.to_owned()),
             },
@@ -172,7 +134,7 @@ fn publish_text(text: &str, path: &Path, replace: Replace) -> Result<SaveOutcome
 /// Preserves input admission, encoding, schema and contract failures.
 pub fn open_file(
     path: &Path,
-) -> Result<crate::document::recipe::RecipeSnapshot, crate::error::LoadError> {
+) -> Result<crate::document::recipe::RecipeSnapshot, crate::storage::load::LoadError> {
     crate::storage::load::load_file(path)
 }
 /// Read one bounded portable stream under an explicit captured attribution.
@@ -182,7 +144,7 @@ pub fn open_file(
 pub fn read_source(
     reader: impl std::io::Read,
     label: &str,
-) -> Result<crate::document::recipe::RecipeSnapshot, crate::error::LoadError> {
+) -> Result<crate::document::recipe::RecipeSnapshot, crate::storage::load::LoadError> {
     crate::storage::load::load_reader(reader, label)
 }
 /// Save a captured external version with identity, bytes and history checked at publication.

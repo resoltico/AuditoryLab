@@ -1,11 +1,12 @@
 //! Service boundaries use real files and captured state; no test starts audio.
 use super::*;
 use crate::core::query::Scope;
-use crate::{
-    discovery::collection::CatalogQuery,
-    error::{LibraryError, OperationError, Outcome, PlaybackError},
+use crate::document::origin::LibraryKey;
+use library::{DiagnosticDetail, Library};
+use {
+    crate::audio::PlaybackError, crate::discovery::collection::CatalogQuery,
+    crate::outcome::Outcome, crate::storage::library::LibraryError,
 };
-use library::{DiagnosticDetail, Library, LibraryKey};
 
 fn directory() -> tempfile::TempDir {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
@@ -34,7 +35,7 @@ fn unavailable_root_keeps_builtin_rows_and_its_typed_failure() {
             .all(|entry| matches!(entry.key, LibraryKey::BuiltIn(_)))
     );
     assert!(
-        matches!(&listing.diagnostics()[0].detail, DiagnosticDetail::Failure(error) if matches!(error.as_ref(), OperationError::Library(LibraryError::RelativeRoot { path }) if path == unavailable))
+        matches!(&listing.diagnostics()[0].detail, DiagnosticDetail::Failure(error) if matches!(error.as_ref(), LibraryError::RelativeRoot { path } if path == unavailable))
     );
     let builtin = list(
         ListRequest {
@@ -194,7 +195,7 @@ fn source_errors_keep_raw_path_data_and_escape_it_only_for_display() {
     std::fs::write(&path, &bytes).unwrap();
     let error = open_file(&path).unwrap_err();
     assert!(
-        matches!(&error, crate::error::LoadError::Recipe { origin: crate::document::recipe::Origin::File(original), .. } if original == &path)
+        matches!(&error, crate::storage::load::LoadError::Recipe { origin: crate::document::recipe::Origin::File(original), .. } if original == &path)
     );
     let text = error.to_string();
     assert!(

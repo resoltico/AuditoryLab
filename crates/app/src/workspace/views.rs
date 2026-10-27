@@ -1,104 +1,108 @@
-// Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
-
 //! What a frontend renders: semantic rows, shared wording and action
 //! availability. Building a view evaluates through the editor's caches; an
 //! unchanged document is not evaluated again.
+// Copyright 2026 Ervins Strauhmanis
+// SPDX-License-Identifier: MPL-2.0
+
 use super::{FileKind, OutputView, Refusal, View, Workspace};
 use crate::document::editing::FieldHandle;
 use crate::document::editing::RowKey;
 use crate::document::recipe::RecipeSnapshot;
 use crate::presentation::workspace_text::refusal_text;
-use crate::{document::controls, presentation};
-use auditorylab_core::{CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, SampleRate};
+use crate::{presentation, workspace::controls};
+use auditorylab_core::{CarrierKind, ComponentId, ParameterId, SampleRate};
 use std::sync::Arc;
 
-/// One editable quantity of a component.
+/// A field diagnostic selected against the current candidate.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldDiagnostic {
+    /// Input remains staged and correctable.
+    Input(
+        crate::document::editing::EditingField,
+        crate::document::editing::InputProblem,
+    ),
+    /// One generator lane is invalid at the diagnostic rate.
+    Voice(auditorylab_core::VoiceError),
+    /// An envelope or coupled constraint is invalid.
+    Sound(auditorylab_core::SoundError),
+}
+/// One applicable component quantity and its current input state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParameterView {
-    /// The field this row edits, bound to its document.
+    /// Captured document and component lifetime.
     pub handle: FieldHandle,
-    /// The quantity.
+    /// Domain quantity.
     pub parameter: ParameterId,
-    /// Label with unit.
-    pub label: String,
-    /// One plain sentence about the quantity.
-    pub help: &'static str,
-    /// Staged text, or the committed value in the displayed unit.
+    /// Staged input or committed input grammar.
     pub text: String,
-    /// Whether the text is staged and not committed.
+    /// Whether input has been staged.
     pub staged: bool,
-    /// The slider position, for quantities with a slider.
+    /// Display-only slider position.
     pub slider: Option<f64>,
-    /// What is wrong with this field, if anything.
-    pub diagnostic: String,
+    /// Selected cause, without wording.
+    pub diagnostic: Option<FieldDiagnostic>,
 }
-
-/// One component of the open document.
+/// Authored component and applicable editable quantities.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentView {
-    /// Opaque identity of this rendered component lifetime.
+    /// Captured component lifetime.
     pub key: RowKey,
-    /// The authored component identity.
+    /// Authored owner.
     pub id: ComponentId,
-    /// Ear routing.
-    pub ears: Ears,
-    /// False for separate-ear pairs whose routes are part of their construction.
-    pub routing_editable: bool,
-    /// Carrier kind.
-    pub carrier: Option<CarrierKind>,
-    /// Modulation kind, if any.
-    pub modulation: Option<ModulationKind>,
-    /// The component's role.
-    pub heading: &'static str,
-    /// Accessible name: role and position.
-    pub name: String,
-    /// The component's generated quantities at the diagnostic rate, or its error.
-    pub context: String,
-    /// Every problem of this component.
-    pub error: String,
-    /// The quantities this component has, in display order.
+    /// Committed structure, which owns the applicable fields.
+    pub committed: auditorylab_core::ComponentForm,
+    /// Candidate quantities where input can be parsed.
+    pub shown: auditorylab_core::ComponentForm,
+    /// Evaluated primary lane.
+    pub facts: Option<auditorylab_core::VoiceFacts>,
+    /// Component causes, before presentation deduplication.
+    pub diagnostics: Vec<FieldDiagnostic>,
+    /// Applicable fields in domain order.
     pub parameters: Vec<ParameterView>,
 }
-
-/// A recipe-wide field.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MetadataView {
-    /// The field, bound to its document.
-    pub handle: FieldHandle,
-    /// Label, with unit for quantities.
-    pub label: String,
-    /// Staged text, or the committed value.
-    pub text: String,
-    /// Whether the text is staged and not committed.
-    pub staged: bool,
-    /// What is wrong with the field, if anything.
-    pub diagnostic: String,
-}
-
-/// The open document.
+/// Recipe-wide input and its selected cause.
 #[derive(Debug, Clone, PartialEq)]
+pub struct MetadataView {
+    /// Captured document lifetime.
+    pub handle: FieldHandle,
+    /// Domain metadata field.
+    pub field: crate::document::editing::MetadataField,
+    /// Staged input or committed content.
+    pub text: String,
+    /// Whether input has been staged.
+    pub staged: bool,
+    /// Selected cause, without wording.
+    pub diagnostic: Option<FieldDiagnostic>,
+}
+/// Current document inputs and cached analysis, without rendered wording.
+#[derive(Debug, Clone)]
 pub struct EditorView {
-    /// Opaque identity of the rendered document lifetime.
+    /// Captured document lifetime.
     pub key: RowKey,
     /// Title, notes, duration and fade.
     pub metadata: [MetadataView; 4],
-    /// Components in order.
+    /// Authored components in order.
     pub components: Vec<ComponentView>,
-    /// Whether the document differs from what was saved.
+    /// Whether content differs from the saved baseline.
     pub dirty: bool,
-    /// The candidate's structure in one line, or why it has none.
-    pub brief: String,
-    /// The candidate's peak bounds or global error, with its rate context.
-    pub peak: String,
-    /// Recipe-wide problems: duration, fade and unparseable metadata.
-    pub metadata_error: String,
-    /// Short attribution to the copied source.
-    pub based_on_title: String,
-    /// Attribution with the source's citation and summary.
-    pub based_on: String,
-    /// Edits not applied to the playing sound, and why.
-    pub retained_warning: String,
+    /// Whether any input remains staged.
+    pub pending: bool,
+    /// Diagnostic sample rate.
+    pub rate: SampleRate,
+    /// Whether diagnostics use a bound live device.
+    pub live: bool,
+    /// Candidate target result.
+    pub target: Result<auditorylab_core::Target, auditorylab_core::SoundError>,
+    /// Committed generated structure.
+    pub committed: Option<auditorylab_core::rhythm::Structure>,
+    /// Current committed nominal classification.
+    pub nominal: Arc<auditorylab_core::rhythm::Analysis>,
+    /// Saved nominal classification, when a baseline exists.
+    pub saved: Option<auditorylab_core::rhythm::Analysis>,
+    /// Copied source retained as authored context.
+    pub based_on: Option<RecipeSnapshot>,
+    /// An unrelated currently playing source.
+    pub unrelated_title: Option<String>,
 }
 
 /// A rendered catalog item. Empty keys are headings/diagnostics, never sounds.
@@ -296,40 +300,163 @@ impl Workspace {
         let analysis = self.editor.session.candidate_analysis(rate);
         let committed_analysis = self.editor.session.committed_analysis(rate);
         let nominal = self.editor.session.nominal();
-        let context = presentation::workspace_text::EditorViewContext {
+        let input = |field| {
+            candidate
+                .problems()
+                .iter()
+                .find(|(f, _)| *f == field)
+                .map(|(f, p)| FieldDiagnostic::Input(*f, *p))
+        };
+        let metadata = crate::document::editing::MetadataField::ALL.map(|field| {
+            let editing = crate::document::editing::EditingField::Metadata(field);
+            MetadataView {
+                handle: self
+                    .editor
+                    .session
+                    .handle(editing)
+                    .unwrap_or_else(|_| unreachable!("existing metadata")),
+                field,
+                text: self.editor.session.text(editing),
+                staged: self.editor.session.staged(editing).is_some(),
+                diagnostic: input(editing).or_else(|| {
+                    field.parameter().and_then(|p| {
+                        analysis
+                            .envelope()
+                            .err()
+                            .filter(|e| e.parameters().contains(&p))
+                            .cloned()
+                            .map(FieldDiagnostic::Sound)
+                    })
+                }),
+            }
+        });
+        let components =
+            self.editor
+                .session
+                .draft()
+                .components()
+                .iter()
+                .map(|component| {
+                    use crate::document::editing::EditingField;
+                    let id = component.id;
+                    let committed = component.form;
+                    let shown = candidate
+                        .draft()
+                        .component(id)
+                        .copied()
+                        .unwrap_or(committed);
+                    let own = analysis.check().voice(id.into());
+                    let acoustic = own.and_then(|r| r.as_ref().err());
+                    let second = analysis
+                        .check()
+                        .voice(id.with_lane(auditorylab_core::Lane::Secondary))
+                        .and_then(|r| r.as_ref().err());
+                    let coupled = analysis.check().result().err().filter(|error| match error {
+                        auditorylab_core::SoundError::Pair(auditorylab_core::PairError {
+                            id: owner,
+                            ..
+                        }) => *owner == id,
+                        auditorylab_core::SoundError::PairCarrier { id: owner, .. } => {
+                            owner.component == id
+                        }
+                        _ => false,
+                    });
+                    let parameters =
+                        ParameterId::COMPONENT
+                            .into_iter()
+                            .filter(|p| committed.get(*p).is_some())
+                            .map(|parameter| {
+                                let field = EditingField::Parameter(id, parameter);
+                                let diagnostic = input(field)
+                                    .or_else(|| {
+                                        coupled
+                                            .filter(|e| e.parameters().contains(&parameter))
+                                            .cloned()
+                                            .map(FieldDiagnostic::Sound)
+                                    })
+                                    .or_else(|| {
+                                        let error = if parameter == ParameterId::PairSecondLevel {
+                                            second
+                                        } else {
+                                            acoustic
+                                        };
+                                        error
+                                    .filter(|e| {
+                                        e.parameters().contains(&parameter)
+                                            || matches!(
+                                                parameter,
+                                                ParameterId::PairFirstLevel
+                                                    | ParameterId::PairSecondLevel
+                                            ) && matches!(
+                                                e,
+                                                auditorylab_core::VoiceError::PeakDbfs { .. }
+                                            )
+                                    })
+                                    .cloned()
+                                    .map(FieldDiagnostic::Voice)
+                                    });
+                                ParameterView {
+                                    handle: self.editor.session.handle(field).unwrap_or_else(
+                                        |_| unreachable!("existing component field"),
+                                    ),
+                                    parameter,
+                                    text: self.editor.session.text(field),
+                                    staged: self.editor.session.staged(field).is_some(),
+                                    slider: committed.get(parameter).and_then(|v| {
+                                        controls::slider_position(parameter, rate, v.get())
+                                    }),
+                                    diagnostic,
+                                }
+                            })
+                            .collect();
+                    let diagnostics = candidate
+                        .problems()
+                        .iter()
+                        .filter(|(f, _)| matches!(f,EditingField::Parameter(owner,_) if *owner==id))
+                        .map(|(f, p)| FieldDiagnostic::Input(*f, *p))
+                        .chain(
+                            [acoustic, second]
+                                .into_iter()
+                                .flatten()
+                                .cloned()
+                                .map(FieldDiagnostic::Voice),
+                        )
+                        .chain(coupled.cloned().map(FieldDiagnostic::Sound))
+                        .collect();
+                    ComponentView {
+                        key: self
+                            .editor
+                            .session
+                            .component_key(id)
+                            .unwrap_or_else(|| unreachable!("existing component lifetime")),
+                        id,
+                        committed,
+                        shown,
+                        facts: own.and_then(|r| r.as_ref().ok()).copied(),
+                        diagnostics,
+                        parameters,
+                    }
+                })
+                .collect();
+        let unrelated = self.audio.slot.as_ref().filter(|task| self.view == View::Workbench
+            && !matches!(task.kind, super::AudioKind::Live(d) if d == self.editor.session.document()));
+        EditorView {
+            key: self.editor.session.document_key(),
+            metadata,
+            components,
+            dirty: self.editor.session.dirty(),
+            pending: self.editor.session.has_staged(),
             rate,
             live: self.live_rate().is_some(),
-            retained_warning: self.retained_warning(
-                self.editor.session.has_staged(),
-                analysis.target().is_none(),
-            ),
-        };
-        presentation::workspace_text::editor_view(
-            &self.editor.session,
-            &candidate,
-            &analysis,
-            &committed_analysis,
-            &nominal,
-            context,
-        )
-    }
-
-    fn retained_warning(&self, pending: bool, invalid: bool) -> String {
-        let unrelated = self.audio.slot.as_ref().is_some_and(|t| {
-            self.view == View::Workbench
-                && !matches!(t.kind, super::AudioKind::Live(d) if d == self.editor.session.document())
-        });
-        presentation::workspace_text::retained_warning(
-            pending,
-            invalid,
-            self.live_rate().is_some(),
-            unrelated.then(|| {
-                self.audio
-                    .slot
-                    .as_ref()
-                    .map_or("", |task| task.title.as_str())
-            }),
-        )
+            target: analysis.check().result().copied().map_err(Clone::clone),
+            committed: committed_analysis
+                .target()
+                .map(auditorylab_core::rhythm::realized),
+            nominal,
+            saved: self.editor.session.saved_nominal().cloned(),
+            based_on: self.editor.session.draft().based_on().cloned(),
+            unrelated_title: unrelated.map(|t| t.title.clone()),
+        }
     }
 
     /// The library rows and the selected recipe at the export rate.

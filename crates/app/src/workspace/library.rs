@@ -1,15 +1,14 @@
+//! Managed-library state and immutable worker requests. Only selected User content
+//! is retained in full; index rows are disposable summaries.
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-//! Managed-library state and immutable worker requests. Only selected User content
-//! is retained in full; index rows are disposable summaries.
 use super::*;
 use crate::core::query::Scope;
 use crate::discovery::collection::{CatalogQuery, EntrySummary};
+use crate::document::origin::{LibraryKey, VersionToken};
 use crate::services::library::Library;
-use crate::storage::library::{
-    Inventory, LibraryKey, LoadedRecord, Mutation, MutationKind, VersionToken, WriteOutcome,
-};
+use crate::storage::library::{Inventory, LoadedRecord, Mutation, MutationKind, WriteOutcome};
 
 /// A real configured library capability or a typed configuration failure.
 #[derive(Debug)]
@@ -24,20 +23,18 @@ impl LibraryBinding {
     ///
     /// # Errors
     /// Refuses invalid shipped identity metadata while retaining configuration failures as data.
-    pub fn configured() -> Result<Self, crate::error::LibraryError> {
+    pub fn configured() -> Result<Self, crate::storage::library::LibraryError> {
         match crate::services::library::Library::resolve(None) {
             Ok(library) => Ok(Self::Store(library)),
             Err(
-                error @ (crate::error::LibraryError::InvalidBuiltin { .. }
-                | crate::error::LibraryError::DuplicateBuiltin { .. }),
+                error @ (crate::storage::library::LibraryError::InvalidBuiltin { .. }
+                | crate::storage::library::LibraryError::DuplicateBuiltin { .. }),
             ) => Err(error),
             Err(error) => Ok(Self::Unavailable(
                 crate::storage::library::LibraryDiagnostic {
                     storage_id: "configured root".into(),
                     code: "configuration".into(),
-                    detail: crate::storage::library::DiagnosticDetail::Failure(Box::new(
-                        error.into(),
-                    )),
+                    detail: crate::storage::library::DiagnosticDetail::Failure(Box::new(error)),
                 },
             )),
         }
@@ -71,8 +68,8 @@ pub(super) struct LibraryState {
     refresh: bool,
     load_attempted: Option<LibraryKey>,
     inventory: Arc<InventoryStatus>,
-    read_failure: Option<crate::storage::library::LibraryDiagnostic>,
-    filter_error: Option<crate::error::QueryError>,
+    read_failure: Option<crate::storage::library::LibraryDiagnostic<Error>>,
+    filter_error: Option<crate::discovery::query::QueryError>,
     unreadable: std::collections::BTreeSet<LibraryKey>,
     stale: std::collections::BTreeSet<LibraryKey>,
     root_unavailable: bool,
@@ -147,9 +144,12 @@ impl LibraryState {
     }
     fn entry_key(snapshot: &RecipeSnapshot) -> Result<Option<LibraryKey>, Error> {
         Ok(match snapshot.origin() {
-            crate::document::recipe::Origin::BuiltIn(id) => Some(LibraryKey::BuiltIn((*id).into())),
+            crate::document::recipe::Origin::BuiltIn(id) => Some(LibraryKey::BuiltIn(
+                crate::core::catalog::CatalogId::new(id)
+                    .unwrap_or_else(|| unreachable!("catalog names are validated at build")),
+            )),
             crate::document::recipe::Origin::User { .. } => None,
-            _ => Some(crate::services::library::ExternalId::allocate().map(LibraryKey::External)?),
+            _ => Some(crate::document::origin::ExternalId::allocate().map(LibraryKey::External)?),
         })
     }
     fn register_as(&mut self, snapshot: &RecipeSnapshot, key: LibraryKey) {
@@ -261,7 +261,7 @@ enum Operation {
     },
     ExternalSave {
         document: DocumentId,
-        expected: crate::storage::external::ObservedFile,
+        expected: crate::document::origin::ObservedFile,
         recipe: Arc<Recipe>,
     },
 
@@ -452,7 +452,7 @@ impl Workspace {
         let key = if let Some((key, _)) = p.snapshots.iter().find(|(_, id)| *id == snapshot.id()) {
             key.clone()
         } else {
-            let key = match crate::storage::library::ExternalId::allocate() {
+            let key = match crate::document::origin::ExternalId::allocate() {
                 Ok(id) => LibraryKey::External(id),
                 Err(error) => {
                     self.files.status = FileStatus::Failed(error.into());
@@ -484,7 +484,7 @@ impl Workspace {
         self.changed();
     }
     /// Surface a native filter error while retaining the prior valid query.
-    pub fn library_filter_error(&mut self, error: crate::error::QueryError) {
+    pub fn library_filter_error(&mut self, error: crate::discovery::query::QueryError) {
         self.library.filter_error = Some(error);
         self.library.revision += 1;
         self.changed();
@@ -539,7 +539,7 @@ impl Workspace {
     pub fn set_catalog_query(
         &mut self,
         query: CatalogQuery,
-    ) -> Result<(), crate::error::QueryError> {
+    ) -> Result<(), crate::discovery::query::QueryError> {
         self.library.set_query(query)?;
         self.load_library_selection();
         self.changed();
@@ -720,12 +720,17 @@ impl Workspace {
     ) -> Result<(), Refusal> {
         let key: LibraryKey = key
             .parse()
-            .map_err(|e: crate::error::LibraryError| Refusal::Document(Box::new(e.into())))?;
-        key.require_user()
+            .map_err(|e: crate::document::origin::OriginError| {
+                Refusal::Document(Box::new(e.into()))
+            })?;
+        crate::storage::library::require_user(&key)
             .map_err(|e| Refusal::Document(Box::new(e.into())))?;
-        let expect: VersionToken = token
-            .parse()
-            .map_err(|e: crate::error::LibraryError| Refusal::Document(Box::new(e.into())))?;
+        let expect: VersionToken =
+            token
+                .parse()
+                .map_err(|e: crate::document::origin::OriginError| {
+                    Refusal::Document(Box::new(e.into()))
+                })?;
         if action == "trash" {
             self.trash_request_admission(&key)?;
         }
@@ -1040,7 +1045,7 @@ impl Workspace {
     fn finish_discard_reset(
         &mut self,
         mut result: (FileStatus, Option<bool>),
-        editor: Result<EditorSession, crate::error::EditorError>,
+        editor: Result<EditorSession, crate::document::error::EditorError>,
     ) -> (FileStatus, Option<bool>) {
         match editor {
             Ok(editor) => self.install_document(editor),
@@ -1208,7 +1213,7 @@ impl LibraryState {
         // Selection authority, rather than retained provenance, chooses exact managed text.
         let text = match self.selection.as_ref().ok_or(Refusal::NoSelection)? {
             LibraryKey::BuiltIn(id) => Arc::from(
-                crate::services::builtin_source(id)
+                crate::services::builtin_source(id.as_str())
                     .map_err(|error| Refusal::Document(Box::new(error.into())))?,
             ),
             LibraryKey::User(_) => self.selected_text().ok_or(Refusal::NoSelection)?,
@@ -1235,7 +1240,7 @@ impl LibraryState {
     pub(super) fn set_query(
         &mut self,
         query: CatalogQuery,
-    ) -> Result<(), crate::error::QueryError> {
+    ) -> Result<(), crate::discovery::query::QueryError> {
         query.execute(&self.entries)?;
         self.filter_error = None;
         self.query = query;

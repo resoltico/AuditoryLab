@@ -1,6 +1,3 @@
-// Copyright 2026 Ervins Strauhmanis
-// SPDX-License-Identifier: MPL-2.0
-
 //! The interactive application state shared by desktop frontends.
 //!
 //! A [`Workspace`] owns the recipe library and its selection, one open
@@ -16,11 +13,15 @@
 //! export affects only the export. A task's slot stays occupied until its
 //! thread has exited and been joined, and an action waiting for a task runs
 //! only after that join.
+// Copyright 2026 Ervins Strauhmanis
+// SPDX-License-Identifier: MPL-2.0
+
 mod audio;
 mod editor;
 mod file;
 mod library;
 mod prompts;
+use crate::job::{Cancel, Progress};
 use audio::{AudioRequest, AudioState};
 use editor::{DocumentLocation, EditorState};
 use file::FileState;
@@ -35,20 +36,17 @@ pub use library::{LibraryBinding, LibraryOutcome};
 pub use output::{MotionPreference, OutputView};
 pub use tasks::{FileOutcome, Job, JobKind, JobOutcome, Runner, TaskId, WorkerFailure};
 pub use views::{
-    ActionView, ComponentView, EditorView, LibraryFacetView, LibraryRowView, LibraryView,
-    MetadataView, ParameterView, TransportView,
+    ActionView, ComponentView, EditorView, FieldDiagnostic, LibraryFacetView, LibraryRowView,
+    LibraryView, MetadataView, ParameterView, TransportView,
 };
 
 use crate::audio::session::{PlaybackControl, PlaybackPhase, Session, StopRequest};
-use crate::document::controls;
 use crate::document::editing::{
     CommitRefusal, EditRefusal, EditingField, FieldHandle, InputProblem, RowKey, SaveRefusal,
 };
 use crate::document::editing::{DocumentId, Draft, EditorSession};
 use crate::document::recipe::file_name;
 use crate::document::recipe::{RecipeSnapshot, Rendition};
-use crate::error::{OperationError as Error, Outcome};
-use crate::services::{Cancel, Progress};
 use auditorylab_core::{CarrierKind, Ears, ModulationKind, Recipe, SampleRate};
 use output::OutputState;
 use status::{
@@ -58,6 +56,7 @@ use status::{
 use std::path::PathBuf;
 use std::sync::Arc;
 use tasks::{AudioKind, AudioTask, Conclusion, FileKind, FileTask};
+use {crate::outcome::Outcome, crate::services::OperationError as Error};
 
 /// Which part of the workspace the person is using; it decides what Play,
 /// Export and the preview act on.
@@ -237,7 +236,7 @@ pub enum Refusal {
     /// A request named no supported managed action.
     UnknownLibraryAction(String),
     /// A detached draft must not recreate its old saved identity.
-    DetachedDraft(crate::storage::library::LibraryKey),
+    DetachedDraft(crate::document::origin::LibraryKey),
     /// A draft UUID already belongs to a saved entry.
     ExistingSavedIdentity(crate::core::DocumentUuid),
     /// Retained unreadable saved content is inspection-only.
@@ -266,8 +265,8 @@ enum DocumentAction {
     EditManaged(crate::storage::library::LoadedRecord),
     EditExternal(RecipeSnapshot),
     TrashSaved {
-        key: crate::storage::library::LibraryKey,
-        expect: crate::storage::library::VersionToken,
+        key: crate::document::origin::LibraryKey,
+        expect: crate::document::origin::VersionToken,
     },
     Close,
 }
@@ -1012,3 +1011,8 @@ impl Workspace {
 
 #[cfg(test)]
 mod tests;
+
+pub mod monitor;
+
+/// Editing gestures and display defaults.
+pub mod controls;

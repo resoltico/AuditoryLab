@@ -11,8 +11,8 @@ pub const MONITOR_SPANS_MS: [u32; 4] = [2, 10, 40, 100];
 /// Initial waveform span.
 pub const DEFAULT_MONITOR_SPAN_MS: u32 = 40;
 /// Initial waveform scale.
-pub const DEFAULT_MONITOR_SCALE: crate::presentation::waveform_view::WaveformScale =
-    crate::presentation::waveform_view::WaveformScale::Fit;
+pub const DEFAULT_MONITOR_SCALE: crate::workspace::monitor::WaveformScale =
+    crate::workspace::monitor::WaveformScale::Fit;
 
 /// Mapping from a slider position to a value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

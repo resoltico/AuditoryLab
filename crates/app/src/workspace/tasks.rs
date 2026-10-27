@@ -1,14 +1,12 @@
+//! Immutable job captures and the application-owned thread runner.
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-//! Immutable job captures and the application-owned thread runner.
 use super::{Response, Workspace};
 use crate::audio::session::{LiveControl, PlaybackControl, PlaybackReport, Session};
 use crate::document::editing::{DocumentId, Draft};
 use crate::document::recipe::{RecipeSnapshot, Rendition};
-use crate::error::{ExportError, LoadError, PlaybackError, SaveError};
-use crate::error::{OperationError as Error, Outcome};
-use crate::services::{Cancel, Progress, Replace};
+use crate::job::{Cancel, Progress, Replace};
 use crate::storage::wav::Exported;
 use auditorylab_core::SampleRate;
 use std::{
@@ -16,6 +14,11 @@ use std::{
     sync::mpsc::{self, Receiver},
     thread::{self, JoinHandle},
 };
+use {
+    crate::audio::PlaybackError, crate::services::ExportError, crate::storage::error::SaveError,
+    crate::storage::load::LoadError,
+};
+use {crate::outcome::Outcome, crate::services::OperationError as Error};
 
 /// Process-local identity of an admitted job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -282,9 +285,9 @@ fn execute_audio(
     draft: Option<Draft>,
     prepared: &mut impl FnMut(Response),
 ) -> Result<PlaybackReport, PlaybackError> {
-    use crate::{
-        audio::session::{MonitorDetail, Outcome as TransportOutcome, Preparation},
-        services::playback as device,
+    use {
+        crate::audio::session::MonitorDetail, crate::audio::session::Outcome as TransportOutcome,
+        crate::audio::session::Preparation, crate::services::playback as device,
     };
     if session.state().outcome() == TransportOutcome::StopRequested {
         session.state().finish_drained(TransportOutcome::Completed);

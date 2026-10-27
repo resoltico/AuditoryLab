@@ -1,9 +1,8 @@
 //! Captured portable descriptions and rate-dependent inspections, independent of output format.
 use super::Resolved;
-use crate::{
-    core::SampleRate,
-    document::recipe::Rendition,
-    error::{LoadError, OperationError, Outcome},
+use {
+    crate::core::SampleRate, crate::document::recipe::Rendition, crate::outcome::Outcome,
+    crate::services::OperationError, crate::storage::load::LoadError,
 };
 /// Complete portable content and chronology diagnostics for one captured source.
 #[derive(Debug)]
@@ -80,6 +79,6 @@ pub fn inspect(source: &Resolved, rate: SampleRate) -> Inspection<'_> {
     Inspection {
         source,
         rate,
-        result: source.snapshot.at(rate),
+        result: source.snapshot.at(rate).map_err(Into::into),
     }
 }

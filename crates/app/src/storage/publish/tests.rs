@@ -1,4 +1,5 @@
 use super::*;
+use crate::document::origin::LibraryKey;
 use std::{
     fs,
     process::{Child, Command, Stdio},
@@ -37,7 +38,7 @@ fn policies_have_accepted_and_rejected_neighbors() {
         put(&dir, &path, Policy::CreateNew, b"bad")
             .unwrap_err()
             .outcome(),
-        crate::error::Outcome::DestinationExists
+        crate::outcome::Outcome::DestinationExists
     );
     assert_eq!(fs::read(&path).unwrap(), b"first");
     put(&dir, &path, Policy::Replace, b"second").unwrap();
@@ -55,7 +56,7 @@ fn policies_have_accepted_and_rejected_neighbors() {
         )
         .unwrap_err()
         .outcome(),
-        crate::error::Outcome::Conflict
+        crate::outcome::Outcome::Conflict
     );
     put(
         &dir,
@@ -84,7 +85,7 @@ fn policies_have_accepted_and_rejected_neighbors() {
         )
         .unwrap_err()
         .outcome(),
-        crate::error::Outcome::Conflict
+        crate::outcome::Outcome::Conflict
     );
     assert_eq!(fs::read(&path).unwrap(), b"third");
     fs::remove_file(&path).unwrap();
@@ -173,7 +174,7 @@ fn no_clobber_race_and_cleanup_failure_preserve_publication_truth() {
         },
     )
     .unwrap_err();
-    assert_eq!(error.outcome(), crate::error::Outcome::DestinationExists);
+    assert_eq!(error.outcome(), crate::outcome::Outcome::DestinationExists);
     assert_eq!(fs::read(path).unwrap(), b"foreign");
     let (temp, dir, path) = fixture();
     inject(&[FaultPoint::Cleanup]);
@@ -220,7 +221,7 @@ fn purge_failures_distinguish_existing_destination_and_confirmed_absence() {
 fn process_child() {
     use crate::{
         document::editing::Draft,
-        storage::library::{LibraryKey, LibraryRoot, LibraryStore, Mutation},
+        storage::library::{LibraryRoot, LibraryStore, Mutation},
     };
     let root = PathBuf::from(std::env::var_os("AUDITORYLAB_PUBLISH_ROOT").unwrap());
     let mode = std::env::var("AUDITORYLAB_PUBLISH_MODE").unwrap();
@@ -377,7 +378,7 @@ fn killed_recipe_writers_leave_old_or_complete_bytes_and_no_stage_is_promoted() 
 }
 #[test]
 fn killed_creation_between_recipe_and_membership_keeps_readable_content_with_unknown_added_time() {
-    use crate::storage::library::{LibraryKey, Mutation};
+    use crate::storage::library::Mutation;
     let (temp, store, _record) = store_fixture();
     let id = "00000000-0000-4000-8000-000000000099";
     let ready = temp.path().join("ready");
@@ -534,7 +535,7 @@ fn killed_purge_never_recreates_the_removed_identity() {
             )
             .unwrap_err()
             .outcome(),
-        crate::error::Outcome::Conflict
+        crate::outcome::Outcome::Conflict
     );
 }
 
@@ -590,7 +591,7 @@ fn unreadable_publication_verification_never_guesses_the_destination_state() {
         let cause = std::error::Error::source(&error).unwrap();
         assert!(cause.to_string().contains("injected"));
         let message = error.to_string();
-        assert_eq!(error.outcome(), crate::error::Outcome::Write);
+        assert_eq!(error.outcome(), crate::outcome::Outcome::Write);
         assert!(message.contains(&path.display().to_string()));
         assert!(message.contains("publication outcome is unconfirmed"));
         assert!(message.contains("destination could not be verified"));
@@ -648,7 +649,7 @@ fn precommit_hashing_checks_cancellation_between_blocks() {
         HASH_BLOCK.with(|slot| *slot.borrow_mut() = None);
         assert_eq!(
             result.unwrap_err().outcome(),
-            crate::error::Outcome::Cancelled,
+            crate::outcome::Outcome::Cancelled,
             "{phase}"
         );
         assert_eq!(
@@ -751,7 +752,7 @@ fn relocation_flushes_the_source_without_changing_bytes_or_file_identity() {
         relocate(&from, &to, name, &source, &destination, &Cancel::default())
             .unwrap_err()
             .outcome(),
-        crate::error::Outcome::Conflict
+        crate::outcome::Outcome::Conflict
     );
     assert_eq!(fs::read(&source).unwrap(), bytes);
     assert_eq!(fs::read(&destination).unwrap(), b"foreign destination");

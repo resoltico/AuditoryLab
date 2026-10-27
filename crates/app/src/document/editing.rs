@@ -9,13 +9,10 @@
 //! is committed even when it is not acoustically valid, so it can be saved and
 //! repaired. Audio sessions own accepted and generated targets; the editor
 //! only supplies candidates.
-use crate::document::controls;
 use crate::document::recipe::{Origin, RecipeSnapshot};
-use crate::error::{EditorError as Error, IdentityError, IdentityScope};
-use crate::presentation::ParameterText;
 use auditorylab_core::{
-    CarrierKind, ComponentId, Ears, Finite, ModulationKind, ParameterId, Recipe, RecipeBuilder,
-    SampleRate, Signal, Sound, SoundError, StructureError, Target, TargetCheck,
+    ComponentId, Ears, Finite, ParameterId, Recipe, RecipeBuilder, SampleRate, Signal, Sound,
+    SoundError, StructureError, Target, TargetCheck,
 };
 use std::{
     collections::BTreeMap,
@@ -23,6 +20,10 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
+};
+use {
+    crate::document::error::EditorError as Error, crate::identity::IdentityError,
+    crate::identity::IdentityScope,
 };
 
 /// The process-local identity of one editor document. Identities are never
@@ -235,7 +236,7 @@ impl Draft {
     fn empty(document: auditorylab_core::DocumentIdentity) -> Self {
         let mut content = Recipe::builder(document);
         content.content.description = Some(auditorylab_core::Description {
-            title: crate::presentation::UNTITLED_SOUND.into(),
+            title: crate::core::UNTITLED_SOUND.into(),
             notes: Some(String::new()),
         });
         Self {
@@ -277,11 +278,11 @@ impl Draft {
             .fork(
                 crate::identity::fresh_document()?,
                 catalog,
-                crate::presentation::recipe_text::copy_note(snapshot.recipe()),
+                snapshot.recipe().copy_note(),
             )
             .map_err(Error::Recipe)?;
         let mut draft = Self::from_recipe(content);
-        draft.set_title(crate::presentation::edited_title(&snapshot.title()));
+        draft.set_title(crate::core::copy_title(&snapshot.title()));
         draft.based_on = Some(snapshot.clone());
         Ok(draft)
     }
@@ -301,13 +302,6 @@ impl Draft {
         self.recipe.content.sound.component(id).map(|c| &c.form)
     }
 
-    /// Add one default primitive, checking authored and expanded budgets.
-    ///
-    /// # Errors
-    /// Refuses full budgets or exhausted nonreused owner identities.
-    pub fn add(&mut self, kind: CarrierKind) -> Result<ComponentId, EditRefusal> {
-        self.add_node(controls::default_component(kind))
-    }
     /// Check the authored and expanded capacity for one additional component.
     ///
     /// # Errors
@@ -415,7 +409,7 @@ impl Draft {
             .content
             .description
             .as_ref()
-            .map_or(crate::presentation::UNTITLED_SOUND, |d| d.title.as_str())
+            .map_or(crate::core::UNTITLED_SOUND, |d| d.title.as_str())
     }
     /// Set current title; a title edit does not change research scope.
     pub fn set_title(&mut self, title: String) {
@@ -903,13 +897,16 @@ impl EditorSession {
         match field {
             EditingField::Metadata(MetadataField::Title) => self.draft.title().to_owned(),
             EditingField::Metadata(MetadataField::Summary) => self.draft.summary().to_owned(),
-            EditingField::Parameter(_, parameter) => self
-                .draft
-                .value(field)
-                .map_or_else(String::new, |value| (parameter).input_text(value)),
+            EditingField::Parameter(_, parameter) => {
+                self.draft.value(field).map_or_else(String::new, |value| {
+                    crate::document::input::parameter_text(parameter, value)
+                })
+            }
             EditingField::Metadata(metadata) => {
                 match (metadata.parameter(), self.draft.value(field)) {
-                    (Some(parameter), Some(value)) => (parameter).input_text(value),
+                    (Some(parameter), Some(value)) => {
+                        crate::document::input::parameter_text(parameter, value)
+                    }
                     _ => String::new(),
                 }
             }
@@ -1018,6 +1015,12 @@ impl EditorSession {
         handle: FieldHandle,
         text: &str,
     ) -> Result<Result<bool, CommitRefusal>, EditRefusal> {
+        self.admit_field(handle)?;
+        // No text-edited event means an unchanged representation is not a new number.
+        // Display-unit conversion is not invertible for every finite model value.
+        if self.staged(handle.field).is_none() && text == self.committed_text(handle.field) {
+            return Ok(self.commit());
+        }
         self.stage(handle, text)?;
         Ok(self.commit())
     }
@@ -1078,12 +1081,17 @@ impl EditorSession {
     ///
     /// # Errors
     /// Returns [`EditRefusal`] for a stale component lifetime or unknown component.
-    pub fn set_carrier(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), EditRefusal> {
+    pub fn set_carrier(
+        &mut self,
+        row: RowKey,
+        template: auditorylab_core::ComponentForm,
+    ) -> Result<(), EditRefusal> {
+        let kind = template.primitive_kind().ok_or(EditRefusal::Inapplicable)?;
         self.structural(row, |form| {
             if form.primitive_kind() == Some(kind) {
                 return;
             }
-            let mut replacement = controls::default_component(kind);
+            let mut replacement = template;
             if form.primitive_kind().is_some() {
                 let ears = form
                     .route()
@@ -1111,8 +1119,7 @@ impl EditorSession {
     pub fn set_modulation(
         &mut self,
         row: RowKey,
-        kind: Option<ModulationKind>,
-        rate: SampleRate,
+        modulation: Option<auditorylab_core::Modulation>,
     ) -> Result<(), EditRefusal> {
         let id = self.admit_component(row)?;
         if self
@@ -1123,8 +1130,8 @@ impl EditorSession {
             return Err(EditRefusal::Inapplicable);
         }
         self.structural(row, |form| {
-            if form.modulation_kind() != kind {
-                form.set_modulation(kind.map(|kind| controls::default_modulation(kind, rate)));
+            if form.modulation_kind() != modulation.map(|value| value.kind()) {
+                form.set_modulation(modulation);
             }
         })
     }
@@ -1137,26 +1144,10 @@ impl EditorSession {
     pub fn add_component(
         &mut self,
         row: RowKey,
-        kind: CarrierKind,
+        form: auditorylab_core::ComponentForm,
     ) -> Result<ComponentId, EditRefusal> {
         self.admit_document(row)?;
-        let id = self.draft.add(kind)?;
-        self.row_generations.insert(id, 0);
-        self.draft_revision += 1;
-        Ok(id)
-    }
-
-    /// Add both lanes of an explicit pair in one committed editor revision.
-    ///
-    /// # Errors
-    /// Refuses stale documents, owner exhaustion or either voice budget.
-    pub fn add_pair(
-        &mut self,
-        row: RowKey,
-        kind: auditorylab_core::PairKind,
-    ) -> Result<ComponentId, EditRefusal> {
-        self.admit_document(row)?;
-        let id = self.draft.add_node(controls::default_pair(kind))?;
+        let id = self.draft.add_node(form)?;
         self.row_generations.insert(id, 0);
         self.draft_revision += 1;
         Ok(id)

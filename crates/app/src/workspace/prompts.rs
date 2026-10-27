@@ -4,8 +4,8 @@ use super::*;
 pub(super) enum PromptState {
     Unsaved(DocumentAction),
     Purge {
-        key: crate::storage::library::LibraryKey,
-        expect: crate::storage::library::VersionToken,
+        key: crate::document::origin::LibraryKey,
+        expect: crate::document::origin::VersionToken,
     },
     Import,
     Export(Rendition),

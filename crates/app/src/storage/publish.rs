@@ -1,9 +1,6 @@
 //! Exclusive adjacent staging, atomic publication and verification of ambiguous I/O results.
-use crate::error::{
-    Confirmation, FileError as Error, IoCause, IoFailure, IoOperation, MutationPhase,
-};
-use crate::services::{Cancel, Replace};
-use crate::storage::library::Fingerprint;
+use crate::document::origin::Fingerprint;
+use crate::job::{Cancel, Replace};
 use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt};
 use cap_std::fs::{Dir, OpenOptions};
 use sha2::{Digest, Sha256};
@@ -11,6 +8,11 @@ use std::{
     fs::File,
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
+};
+use {
+    crate::storage::error::Confirmation, crate::storage::error::FileError as Error,
+    crate::storage::error::IoCause, crate::storage::error::IoFailure,
+    crate::storage::error::IoOperation, crate::storage::error::MutationPhase,
 };
 
 #[derive(Clone, Copy)]

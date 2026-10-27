@@ -1,55 +1,44 @@
-//! Typed operation failures and frontend-independent outcome categories.
-mod clock;
-mod families;
-mod file;
-mod load;
-mod native;
-pub use clock::ClockError;
-pub use families::{
-    EditorError, ExportError, IdentityError, IdentityScope, LibraryError, PlaybackError,
-    QueryError, SaveError,
+//! Aggregate operation and export failures.
+use {
+    crate::audio::PlaybackError, crate::core::SampleRate, crate::core::SoundError,
+    crate::discovery::query::QueryError, crate::document::error::EditorError,
+    crate::identity::IdentityError, crate::outcome::Outcome, crate::storage::error::FileError,
+    crate::storage::error::SaveError, crate::storage::library::LibraryError,
+    crate::storage::load::LoadError,
 };
-pub use file::{Confirmation, FileError, IoFailure, IoOperation, MutationPhase};
-pub use load::LoadError;
-pub use native::IoCause;
-/// A failure category for frontend exit codes and presentation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Outcome {
-    /// Unknown built-in recipe ID.
-    UnknownRecipe,
-    /// Input could not be read.
-    Unreadable,
-    /// Invalid recipe document: format, schema, non-finite numbers or size.
-    InvalidRecipe,
-    /// Invalid signal parameters.
-    InvalidSound,
-    /// Secure portable identity generation failed; no fallback identity is invented.
-    Identity,
-    /// Device failure.
-    Device,
-    /// Destination was left untouched.
-    DestinationExists,
-    /// Publication failure.
-    Write,
-    /// Invalid command/configuration argument.
-    InvalidArgument,
-    /// A selected built-in cannot be mutated.
-    ReadOnlyBuiltIn,
-    /// Expected record content/revision no longer matches.
-    Conflict,
-    /// Incoming creation history differs from the stored identity's history.
-    HistoryConflict,
-    /// A cooperating reader/writer currently owns the root lock.
-    Busy,
-    /// Required filesystem locking assurance is unavailable.
-    LockUnavailable,
-    /// Discovery or a requested managed record cannot be read completely.
-    IncompleteInventory,
-    /// A file operation was cancelled before publication.
-    Cancelled,
+/// A WAV export could not complete.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExportError {
+    /// Filesystem publication failed.
+    File {
+        /// Captured error.
+        error: FileError,
+    },
+    /// The selected rate cannot realize the captured sound.
+    Sound {
+        /// Captured origin.
+        origin: Box<crate::document::recipe::Origin>,
+        /// Captured rate.
+        rate: SampleRate,
+        /// Captured error.
+        error: SoundError,
+    },
 }
-
+impl ExportError {
+    /// Failure category.
+    #[must_use]
+    pub fn outcome(&self) -> Outcome {
+        match self {
+            Self::File { error } => error.outcome(),
+            Self::Sound { .. } => Outcome::InvalidSound,
+        }
+    }
+}
+impl From<FileError> for ExportError {
+    fn from(error: FileError) -> Self {
+        Self::File { error }
+    }
+}
 /// A typed completion failure for code coordinating several operation families.
 #[derive(Debug, Clone)]
 pub enum OperationError {
@@ -107,3 +96,9 @@ macro_rules! operation_from {
     ($($ty:ty => $variant:ident),* $(,)?) => { $(impl From<$ty> for OperationError { fn from(error: $ty) -> Self { Self::$variant(error) } })* };
 }
 operation_from! { LoadError => Load, LibraryError => Library, ExportError => Export, PlaybackError => Playback, SaveError => Save, EditorError => Editor, IdentityError => Identity, QueryError => Query, FileError => File, crate::core::RecipeError => Recipe }
+
+impl From<crate::document::origin::OriginError> for OperationError {
+    fn from(error: crate::document::origin::OriginError) -> Self {
+        Self::Library(LibraryError::from(error))
+    }
+}

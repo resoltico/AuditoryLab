@@ -1,6 +1,6 @@
 //! Immutable loaded recipes, their provenance and identity.
-use crate::error::LoadError as Error;
-use crate::presentation::recipe_text::About;
+use crate::document::error::RenditionError as Error;
+use crate::document::origin::ObservedFile;
 use auditorylab_core::{Recipe, SampleRate, Signal, Sound};
 use std::{
     path::PathBuf,
@@ -20,7 +20,7 @@ pub enum Origin {
         /// Portable User identity.
         id: auditorylab_core::DocumentUuid,
         /// Exact observed managed-record version.
-        version: crate::storage::library::VersionToken,
+        version: crate::document::origin::VersionToken,
     },
     /// A recipe file, by the path it was read from.
     File(PathBuf),
@@ -59,9 +59,8 @@ impl SnapshotId {
 pub struct RecipeSnapshot {
     id: SnapshotId,
     origin: Origin,
-    external: Option<crate::storage::external::ObservedFile>,
+    external: Option<ObservedFile>,
     recipe: Arc<Recipe>,
-    about: Arc<Option<About>>,
     realizations: Arc<std::sync::Mutex<Realizations>>,
     nominal: Arc<auditorylab_core::rhythm::Analysis>,
     canonical_text: Arc<std::sync::OnceLock<Result<Arc<str>, auditorylab_core::RecipeError>>>,
@@ -84,11 +83,9 @@ impl RecipeSnapshot {
     #[must_use]
     pub fn new(origin: Origin, recipe: Recipe) -> Self {
         let nominal = Arc::new(auditorylab_core::rhythm::nominal(recipe.sound()));
-        let about = Arc::new(crate::presentation::recipe_text::about(&recipe));
         Self {
             nominal,
             canonical_text: Arc::new(std::sync::OnceLock::new()),
-            about,
             id: SnapshotId::next(),
             origin,
             external: None,
@@ -97,16 +94,13 @@ impl RecipeSnapshot {
         }
     }
 
-    pub(crate) fn with_external(
-        mut self,
-        external: crate::storage::external::ObservedFile,
-    ) -> Self {
+    pub(crate) fn with_external(mut self, external: ObservedFile) -> Self {
         self.external = Some(external);
         self
     }
     /// Exact external file observation captured from the same opened content.
     #[must_use]
-    pub const fn external_file(&self) -> Option<&crate::storage::external::ObservedFile> {
+    pub const fn external_file(&self) -> Option<&ObservedFile> {
         self.external.as_ref()
     }
     /// The snapshot's identity.
@@ -138,22 +132,16 @@ impl RecipeSnapshot {
         &self.nominal
     }
 
-    /// Research and listening description.
-    #[must_use]
-    pub fn about(&self) -> Option<&About> {
-        self.about.as_ref().as_ref()
-    }
-
     /// The recipe's title, or its origin when it has none.
     #[must_use]
     pub fn title(&self) -> String {
-        self.about().map_or_else(
+        self.recipe.description().map_or_else(
             || match &self.origin {
                 Origin::File(path) => path
                     .file_stem()
                     .filter(|name| !name.is_empty())
                     .map_or_else(
-                        || "Untitled sound".into(),
+                        || crate::core::UNTITLED_SOUND.into(),
                         |name| {
                             name.to_string_lossy()
                                 .chars()
@@ -167,10 +155,11 @@ impl RecipeSnapshot {
                                 .collect()
                         },
                     ),
-                Origin::User { .. } => "Untitled sound".into(),
-                other => other.to_string(),
+                Origin::User { .. } => crate::core::UNTITLED_SOUND.into(),
+                Origin::BuiltIn(id) => id.to_string(),
+                Origin::Stream(label) | Origin::Draft(label) => label.clone(),
             },
-            |a| a.title.clone(),
+            |description| description.title.clone(),
         )
     }
 
@@ -179,7 +168,7 @@ impl RecipeSnapshot {
     pub fn suggested_output_name(&self, extension: &str) -> String {
         match self.origin() {
             Origin::BuiltIn(id) => file_name(id, extension),
-            Origin::File(path) if self.about().is_none() => file_name(
+            Origin::File(path) if self.recipe.description().is_none() => file_name(
                 &path
                     .file_stem()
                     .map_or_else(|| "sound".into(), |name| name.to_string_lossy()),
@@ -198,10 +187,10 @@ impl RecipeSnapshot {
     /// Validate the recipe and realize it at a sample rate.
     ///
     /// # Errors
-    /// Returns [`Error::Sound`] naming the origin and the first
+    /// Returns [`Error`] naming the origin and the first
     /// failure at that rate.
     pub fn at(&self, rate: SampleRate) -> Result<Rendition, Error> {
-        self.realize(rate).map_err(|error| Error::Sound {
+        self.realize(rate).map_err(|error| Error {
             origin: self.origin.clone(),
             rate,
             error,

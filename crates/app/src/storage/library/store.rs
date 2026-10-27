@@ -1,11 +1,11 @@
 //! Bounded plain-recipe inventory and locked single-entry mutations.
-use super::{LibraryKey, LibraryRoot, VersionToken, root};
+use super::{LibraryRoot, root};
 use crate::clock::observed_now;
 use crate::core::{DocumentUuid, Recipe, Timestamp};
 use crate::discovery::collection::EntrySummary;
+use crate::document::origin::{LibraryKey, VersionToken};
 use crate::document::recipe::{Origin, RecipeSnapshot};
-use crate::error::{FileError, IoFailure, IoOperation, LibraryError as Error, Outcome};
-use crate::services::Cancel;
+use crate::job::Cancel;
 use crate::storage::publish::{self, Policy};
 use cap_std::fs::Dir;
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,10 @@ use std::{
     io::Write,
     path::Path,
     sync::Arc,
+};
+use {
+    crate::outcome::Outcome, crate::storage::error::FileError, crate::storage::error::IoFailure,
+    crate::storage::error::IoOperation, crate::storage::library::LibraryError as Error,
 };
 
 /// Maximum recipe candidates examined in one scan.
@@ -26,11 +30,11 @@ const MEMBERSHIP: &str = "membership.toml";
 const MAX_MEMBERSHIP_BYTES: usize = 4 * 1024 * 1024;
 /// A nonfatal inventory notice or a typed operation failure.
 #[derive(Debug, Clone)]
-pub enum DiagnosticDetail {
+pub enum DiagnosticDetail<E = Error> {
     /// A descriptive inventory notice.
     Notice(String),
     /// A failure with its exact typed cause.
-    Failure(Box<crate::error::OperationError>),
+    Failure(Box<E>),
 }
 impl From<String> for DiagnosticDetail {
     fn from(value: String) -> Self {
@@ -44,7 +48,7 @@ impl From<&str> for DiagnosticDetail {
 }
 impl From<Error> for DiagnosticDetail {
     fn from(value: Error) -> Self {
-        Self::Failure(Box::new(value.into()))
+        Self::Failure(Box::new(value))
     }
 }
 impl From<FileError> for DiagnosticDetail {
@@ -52,20 +56,15 @@ impl From<FileError> for DiagnosticDetail {
         Self::Failure(Box::new(value.into()))
     }
 }
-impl From<crate::error::OperationError> for DiagnosticDetail {
-    fn from(error: crate::error::OperationError) -> Self {
-        Self::Failure(Box::new(error))
-    }
-}
 /// One storage diagnostic retains its cause separately from human rendering.
 #[derive(Debug, Clone)]
-pub struct LibraryDiagnostic {
+pub struct LibraryDiagnostic<E = Error> {
     /// Root or relative storage identifier.
     pub storage_id: String,
     /// Inventory diagnostic category.
     pub code: String,
     /// Exact notice or operation failure.
-    pub detail: DiagnosticDetail,
+    pub detail: DiagnosticDetail<E>,
 }
 /// Disposable bounded index; incomplete never means an empty library.
 #[derive(Debug, Clone)]
@@ -367,7 +366,7 @@ impl LibraryStore {
     /// # Errors
     /// Reports missing, malformed, conflicting or unsafe entries and lock failures.
     pub(crate) fn load(&self, key: &LibraryKey) -> Result<LoadedRecord, Error> {
-        let id = key.require_user()?;
+        let id = crate::storage::library::require_user(key)?;
         self.reserved(id)?;
         (|| {
             let lease = self.root.lock(false, false)?.ok_or(Error::NotInitialized)?;
@@ -637,7 +636,7 @@ impl LibraryStore {
             Mutation::Restore { key, expect } => (key.clone(), MutationKind::Restore, *expect),
             Mutation::Purge { key, expect, .. } => (key.clone(), MutationKind::Purge, *expect),
         };
-        let id = key.require_user()?;
+        let id = crate::storage::library::require_user(&key)?;
         self.reserved(id)?;
         if let Mutation::Create(recipe) | Mutation::Add(recipe) | Mutation::Update { recipe, .. } =
             &mutation
@@ -915,9 +914,7 @@ fn persist_memberships(
 fn refresh_membership(lease: &root::Lease, record: &mut LoadedRecord, warnings: &mut Vec<String>) {
     match read_memberships(&lease.dir) {
         Ok(memberships) => {
-            let membership = record
-                .key
-                .require_user()
+            let membership = crate::storage::library::require_user(&record.key)
                 .ok()
                 .and_then(|id| memberships.entries.get(&id));
             record.added_at = membership.and_then(|m| m.added_at);

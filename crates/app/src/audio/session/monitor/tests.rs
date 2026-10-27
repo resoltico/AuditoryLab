@@ -1,3 +1,4 @@
+use crate::presentation::waveform_view::WaveformCaptureText;
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
@@ -5,9 +6,9 @@ use super::*;
 use crate::audio::session::live::LiveGenerator;
 use crate::audio::session::source::{FiniteSource, Source};
 use crate::audio::session::transport::{BufferTime, Transport};
-use crate::audio::session::{Outcome, SampleFormat};
 use crate::core::{ComponentForm, Ears, Sound};
 use crate::document::recipe::Origin;
+use {crate::audio::session::Outcome, crate::audio::session::SampleFormat};
 fn descriptor(hz: u32) -> SessionDescriptor {
     SessionDescriptor {
         id: SessionState::new().id(),
@@ -109,9 +110,9 @@ fn real_callback_samples_match_history_and_finite_stop() {
             .map(|f| [f[0], f[1]])
             .collect::<Vec<_>>()
     );
-    let frozen = crate::presentation::waveform_view::WaveformCapture::monitored(
+    let frozen = crate::workspace::monitor::WaveformCapture::monitored(
         &reader,
-        crate::presentation::waveform_view::WaveformScale::Fit,
+        crate::workspace::monitor::WaveformScale::Fit,
     )
     .unwrap()
     .unwrap();
@@ -145,9 +146,9 @@ fn real_callback_samples_match_history_and_finite_stop() {
     assert_eq!(x, y);
     reader.poll(100);
     assert_eq!(reader.status().phase, PlaybackPhase::Stopped);
-    let latest = crate::presentation::waveform_view::WaveformCapture::monitored(
+    let latest = crate::workspace::monitor::WaveformCapture::monitored(
         &reader,
-        crate::presentation::waveform_view::WaveformScale::Fixed,
+        crate::workspace::monitor::WaveformScale::Fixed,
     )
     .unwrap()
     .unwrap();
@@ -159,7 +160,7 @@ fn real_callback_samples_match_history_and_finite_stop() {
     assert_eq!(frozen.session().unwrap().id, captured_id);
     assert_eq!(
         frozen.scale(),
-        crate::presentation::waveform_view::WaveformScale::Fit
+        crate::workspace::monitor::WaveformScale::Fit
     );
 }
 #[test]
@@ -371,9 +372,9 @@ fn a_real_stalled_reader_never_blocks_callback_completion() {
     );
     assert!(!reader.has_current_window());
     assert!(
-        crate::presentation::waveform_view::WaveformCapture::monitored(
+        crate::workspace::monitor::WaveformCapture::monitored(
             &reader,
-            crate::presentation::waveform_view::WaveformScale::Fit
+            crate::workspace::monitor::WaveformScale::Fit
         )
         .unwrap()
         .is_none()
@@ -545,9 +546,11 @@ fn callback_cost() {
 
 #[test]
 fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity() {
-    use crate::presentation::waveform_view::{
-        OutputMonitorState as State, WaveformCapture, WaveformScale, monitor_warning,
-        output_monitor_state,
+    use {
+        crate::workspace::monitor::OutputMonitorState as State,
+        crate::workspace::monitor::WaveformCapture, crate::workspace::monitor::WaveformScale,
+        crate::workspace::monitor::monitor_warning,
+        crate::workspace::monitor::output_monitor_state,
     };
     let monitor = PlaybackMonitor::new(
         descriptor(48000),
@@ -575,7 +578,7 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
     );
     assert_eq!(
         monitor_warning(&reader, 40),
-        Some(crate::presentation::waveform_view::MonitorWarning::IncompleteCoverage)
+        Some(crate::workspace::monitor::MonitorWarning::IncompleteCoverage)
     );
     // A missed span is history; enough subsequent contiguous data repairs current coverage.
     {
@@ -602,7 +605,7 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
     );
     assert_eq!(
         monitor_warning(&reader, 40),
-        Some(crate::presentation::waveform_view::MonitorWarning::Stale)
+        Some(crate::workspace::monitor::MonitorWarning::Stale)
     );
     let prior = held.caption(true, false);
     let another = PlaybackMonitor::new(
@@ -659,8 +662,9 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
 }
 #[test]
 fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
-    use crate::presentation::waveform_view::{
-        MonitorWarning, monitor_warning, output_underrun_warning,
+    use {
+        crate::presentation::waveform_view::output_underrun_warning,
+        crate::workspace::monitor::MonitorWarning, crate::workspace::monitor::monitor_warning,
     };
     let rate = SampleRate::DEFAULT;
     let state = SessionState::new();
@@ -775,20 +779,20 @@ fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
             } else {
                 assert_ne!(reader.samples(), before);
             }
-            let capture = crate::presentation::waveform_view::WaveformCapture::monitored(
+            let capture = crate::workspace::monitor::WaveformCapture::monitored(
                 &reader,
-                crate::presentation::waveform_view::WaveformScale::Fixed,
+                crate::workspace::monitor::WaveformScale::Fixed,
             )
             .unwrap()
             .unwrap();
             assert_eq!(
-                crate::presentation::waveform_view::output_monitor_state(
+                crate::workspace::monitor::output_monitor_state(
                     Some(&reader),
                     Some(&capture),
                     false,
                     false
                 ),
-                crate::presentation::waveform_view::OutputMonitorState::Live
+                crate::workspace::monitor::OutputMonitorState::Live
             );
         }
     }
@@ -913,9 +917,9 @@ fn sample_prefix_waits_for_its_coherent_state_publication() {
     assert!(!reader.has_current_window());
     assert_eq!(reader.freshness(), ObservationFreshness::Waiting);
     assert!(
-        crate::presentation::waveform_view::WaveformCapture::monitored(
+        crate::workspace::monitor::WaveformCapture::monitored(
             &reader,
-            crate::presentation::waveform_view::WaveformScale::Fit
+            crate::workspace::monitor::WaveformScale::Fit
         )
         .unwrap()
         .is_none()
@@ -925,9 +929,9 @@ fn sample_prefix_waits_for_its_coherent_state_publication() {
     assert!(reader.has_current_window());
     assert_eq!(reader.freshness(), ObservationFreshness::Current);
     assert!(
-        crate::presentation::waveform_view::WaveformCapture::monitored(
+        crate::workspace::monitor::WaveformCapture::monitored(
             &reader,
-            crate::presentation::waveform_view::WaveformScale::Fit
+            crate::workspace::monitor::WaveformScale::Fit
         )
         .unwrap()
         .is_some()

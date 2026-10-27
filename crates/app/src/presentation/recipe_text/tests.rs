@@ -1,5 +1,6 @@
 use super::*;
 use crate::core::catalog;
+use crate::presentation::recipe_text::SnapshotText;
 use std::collections::BTreeMap;
 
 #[test]
@@ -31,9 +32,8 @@ fn display_about_uses_population_and_condition_labels_for_every_declaration() {
                 crate::document::recipe::Origin::Stream("test".into()),
                 builder.build().unwrap(),
             );
-            let text = snapshot
-                .about()
-                .unwrap()
+            let about = snapshot.about().unwrap();
+            let text = about
                 .research
                 .as_ref()
                 .unwrap()

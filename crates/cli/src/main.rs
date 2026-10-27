@@ -1,13 +1,13 @@
 //! Command-line interface to Auditory Lab.
 #![forbid(unsafe_code)]
+use auditorylab_app::job::{Cancel, Progress, Replace};
 use auditorylab_app::presentation::DisplayText;
 mod cli_text;
 mod library_cli;
 use auditorylab_app::core::SampleRate;
-use auditorylab_app::error::Outcome;
+use auditorylab_app::outcome::Outcome;
 
 use auditorylab_app::services::playback::{EndReason, PlaybackControl, Preparation, Session};
-use auditorylab_app::services::{Cancel, Progress, Replace};
 use auditorylab_app::{self as lab};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use cli_text::{CommandProblem, InterfaceOperation};
@@ -107,7 +107,7 @@ impl std::error::Error for Usage {}
 #[derive(Debug)]
 enum CliError {
     Usage(Usage),
-    Operation(Box<lab::error::OperationError>),
+    Operation(Box<auditorylab_app::services::OperationError>),
     Io(io::Error),
     Interrupt(ctrlc::Error),
     Json(serde_json::Error),
@@ -159,7 +159,12 @@ impl std::error::Error for CliError {
 macro_rules! operation_errors {
     ($($ty:ty),* $(,)?) => { $(impl From<$ty> for CliError { fn from(error: $ty) -> Self { Self::Operation(Box::new(error.into())) } })* };
 }
-operation_errors! { lab::error::OperationError, lab::error::LoadError, lab::error::LibraryError, lab::error::SaveError, lab::error::ExportError, lab::error::PlaybackError, lab::error::EditorError, lab::error::IdentityError, lab::error::QueryError, lab::core::RecipeError }
+operation_errors! { auditorylab_app::services::OperationError, auditorylab_app::services::LoadError, auditorylab_app::services::library::LibraryError, auditorylab_app::services::SaveError, auditorylab_app::services::ExportError, auditorylab_app::services::playback::PlaybackError, auditorylab_app::document::error::EditorError, auditorylab_app::identity::IdentityError, auditorylab_app::discovery::query::QueryError, lab::core::RecipeError }
+impl From<lab::document::origin::OriginError> for CliError {
+    fn from(error: lab::document::origin::OriginError) -> Self {
+        Self::Operation(Box::new(error.into()))
+    }
+}
 impl From<io::Error> for CliError {
     fn from(error: io::Error) -> Self {
         Self::Io(error)
@@ -363,8 +368,11 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             selector,
             output: path,
         }) => {
-            let key: lab::services::library::LibraryKey = selector.parse()?;
-            if matches!(key, lab::services::library::LibraryKey::External(_)) {
+            let key: auditorylab_app::document::origin::LibraryKey = selector.parse()?;
+            if matches!(
+                key,
+                auditorylab_app::document::origin::LibraryKey::External(_)
+            ) {
                 return Err(usage(CommandProblem::TemporaryRecipeSelector.message()));
             }
             let text = lab::services::portable_text(&key, cli.library_dir.as_deref())?;

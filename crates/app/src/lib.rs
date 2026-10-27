@@ -6,11 +6,12 @@
 #![forbid(unsafe_code)]
 pub use auditorylab_core as core;
 pub(crate) mod audio;
-mod clock;
+pub mod clock;
 pub mod discovery;
 pub mod document;
-pub mod error;
-mod identity;
+pub mod identity;
+pub mod job;
+pub mod outcome;
 pub mod presentation;
 pub mod services;
 pub(crate) mod storage;

@@ -1,5 +1,5 @@
 //! Shared status and refusal sentences for interactive frontends.
-use crate::error::Outcome;
+use crate::outcome::Outcome;
 use crate::presentation::AudioErrorText;
 use crate::workspace::WorkerFailure;
 use crate::workspace::output::PreviewIssue;
@@ -236,6 +236,9 @@ impl PreviewIssue {
     }
 }
 
-pub(crate) fn shutdown_reset_failure(error: &crate::error::EditorError, context: &str) -> String {
+pub(crate) fn shutdown_reset_failure(
+    error: &crate::document::error::EditorError,
+    context: &str,
+) -> String {
     format!("Trash confirmed; editor reset failed: {error}{context}")
 }

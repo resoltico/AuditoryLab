@@ -66,15 +66,6 @@ pub fn about(recipe: &Recipe) -> Option<About> {
     })
 }
 
-/// Attribution text stored on a newly independent copy.
-#[must_use]
-pub fn copy_note(recipe: &Recipe) -> String {
-    recipe.description().and_then(|d| d.notes.as_deref()).filter(|s| !s.is_empty()).map_or_else(
-        || "Attributed copy; source findings concern the ancestor, not this sound.".into(),
-        |notes| format!("Attributed copy; source findings concern the ancestor, not this sound. Ancestor notes: {notes}"),
-    )
-}
-
 /// Describe one authored component without compiling it at a sample rate.
 #[must_use]
 pub fn component(component: &Component) -> String {
@@ -142,3 +133,14 @@ fn voice(form: ComponentForm) -> String {
 
 #[cfg(test)]
 mod tests;
+
+/// Derived descriptions of immutable snapshot content.
+pub trait SnapshotText {
+    /// Research and listening description, without retaining wording in document state.
+    fn about(&self) -> Option<About>;
+}
+impl SnapshotText for crate::document::recipe::RecipeSnapshot {
+    fn about(&self) -> Option<About> {
+        about(self.recipe())
+    }
+}

@@ -1,6 +1,7 @@
 //! Coordinator semantics with real persistent stores and directly executed file jobs.
 use super::*;
-use crate::presentation::waveform_view::WaveformScale;
+use crate::presentation::recipe_text::SnapshotText;
+use crate::workspace::monitor::WaveformScale;
 use auditorylab_core::{ComponentId, ParameterId};
 use std::sync::Arc;
 
@@ -111,7 +112,7 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     let mut ws = workspace();
     document(&mut ws, 440.0);
     ws.poll();
-    let view = ws.editor_view();
+    let view = crate::presentation::workspace_text::editor_view(&ws.editor_view());
     let actions = ws.action_view();
     let previews = ws.audio.output.previews;
     let models = ws.audio.output.models;
@@ -135,7 +136,10 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     assert!(Arc::ptr_eq(&model, &ws.model_view().unwrap()));
     assert_eq!(ws.revision(), revision);
     assert!(Arc::ptr_eq(&capture, &ws.output_view().capture.unwrap()));
-    assert_eq!(ws.editor_view(), view);
+    assert_eq!(
+        crate::presentation::workspace_text::editor_view(&ws.editor_view()),
+        view
+    );
     assert_eq!(
         ws.editor.session.evaluations(),
         evaluations,
@@ -293,7 +297,7 @@ fn library_dependencies_exclude_editor_and_telemetry_but_include_selection_query
     let (_, field) = document(&mut ws, 440.0);
     ws.stage(field, "880").unwrap();
     ws.action_view();
-    ws.editor_view();
+    let _ = crate::presentation::workspace_text::editor_view(&ws.editor_view());
     ws.poll();
     assert_eq!(ws.library_view(), initial);
     assert_eq!(ws.library.evaluations.get(), evaluations);
@@ -317,8 +321,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
     .unwrap();
     let path = dir.path().join("original.toml");
     let original = crate::services::catalog().unwrap().remove(0);
-    crate::services::save_content(original.recipe(), &path, crate::services::Replace::Never)
-        .unwrap();
+    crate::services::save_content(original.recipe(), &path, crate::job::Replace::Never).unwrap();
     let loaded = crate::storage::load::load_file(&path).unwrap();
     let mut draft = Draft::from_snapshot(&loaded).unwrap();
     draft.set_summary("Own notes".into());
@@ -326,7 +329,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
     crate::services::save_content(
         &draft.recipe().unwrap(),
         &derivative,
-        crate::services::Replace::Never,
+        crate::job::Replace::Never,
     )
     .unwrap();
     std::fs::remove_file(path).unwrap();
@@ -523,7 +526,7 @@ fn over_budget_copy_content_is_refused_before_becoming_a_snapshot() {
     let components = (0..17)
         .map(|i| crate::core::Component {
             id: ComponentId::numbered(i).unwrap(),
-            form: crate::document::controls::default_component(CarrierKind::Tone),
+            form: crate::workspace::controls::default_component(CarrierKind::Tone),
         })
         .collect();
     assert!(
@@ -545,7 +548,7 @@ fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
         .sound
         .push(crate::core::Component {
             id: ComponentId::new(1).unwrap(),
-            form: crate::document::controls::default_component(CarrierKind::Tone),
+            form: crate::workspace::controls::default_component(CarrierKind::Tone),
         })
         .unwrap();
     source.content.sound.set_duration(finite(-1.0));
@@ -602,9 +605,9 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
     assert!(actions.operation_summary.chars().count() <= 181);
     ws.editor.session.restore(notes).unwrap();
     ws.files.status = FileStatus::Failed(
-        crate::error::ExportError::File {
-            error: crate::error::FileError::Io(crate::error::IoFailure::new(
-                crate::error::IoOperation::Write,
+        crate::services::ExportError::File {
+            error: crate::storage::error::FileError::Io(crate::storage::error::IoFailure::new(
+                crate::storage::error::IoOperation::Write,
                 Some(std::path::PathBuf::from("deep/path/".repeat(50))),
                 std::io::Error::other("disk full"),
             )),
@@ -814,7 +817,7 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
     assert!(workspace.file_busy());
     assert!(workspace.store.scan(&Cancel::default()).entries.is_empty());
     let response = execute_file(job);
-    let key = crate::storage::library::LibraryKey::User(captured.document().id);
+    let key = crate::document::origin::LibraryKey::User(captured.document().id);
     let saved = workspace.store.load(&key).unwrap();
     assert_eq!(
         saved.snapshot.sound().components()[0]
@@ -879,7 +882,7 @@ fn captured_save_completion_never_replaces_a_different_editor_document() {
     ));
     let saved = workspace
         .store
-        .load(&crate::storage::library::LibraryKey::User(
+        .load(&crate::document::origin::LibraryKey::User(
             captured.document().id,
         ))
         .unwrap();
@@ -913,7 +916,7 @@ fn save_before_close_waits_for_the_captured_job_completion() {
     assert!(
         workspace
             .store
-            .load(&crate::storage::library::LibraryKey::User(
+            .load(&crate::document::origin::LibraryKey::User(
                 captured.document().id
             ))
             .is_ok()
@@ -1062,7 +1065,7 @@ fn actual_import_completion_controls_dependent_close_and_never_runs_on_poll() {
             crate::services::save_content(
                 short_silent_source().recipe(),
                 &path,
-                crate::services::Replace::Never,
+                crate::job::Replace::Never,
             )
             .unwrap();
         }
@@ -1240,7 +1243,7 @@ fn managed_save_can_run_beside_admitted_audio_and_stop_does_not_cancel_it() {
     assert!(
         workspace
             .store
-            .load(&crate::storage::library::LibraryKey::User(identity))
+            .load(&crate::document::origin::LibraryKey::User(identity))
             .is_ok()
     );
     assert!(!workspace.editor().dirty());
@@ -1264,11 +1267,11 @@ fn committed_brief_never_borrows_pending_pair_facts() {
         .unwrap();
     ws.commit_field(first, "317").unwrap();
     ws.commit_field(offset, "-7").unwrap();
-    let original = ws.editor_view().brief;
+    let original = crate::presentation::workspace_text::editor_view(&ws.editor_view()).brief;
     assert!(original.contains("7 Hz") && original.contains("317") && original.contains("310"));
     for text in ["40", "NaN"] {
         ws.stage(offset, text).unwrap();
-        let view = ws.editor_view();
+        let view = crate::presentation::workspace_text::editor_view(&ws.editor_view());
         assert_eq!(
             view.brief,
             original.replace("Draft classification", "Last committed classification")
@@ -1283,11 +1286,14 @@ fn committed_brief_never_borrows_pending_pair_facts() {
             -7.0
         );
         assert_eq!(ws.restore(offset).unwrap(), "-7");
-        assert_eq!(ws.editor_view().brief, original);
+        assert_eq!(
+            crate::presentation::workspace_text::editor_view(&ws.editor_view()).brief,
+            original
+        );
     }
     ws.stage(offset, "40").unwrap();
     ws.commit().unwrap();
-    let committed = ws.editor_view().brief;
+    let committed = crate::presentation::workspace_text::editor_view(&ws.editor_view()).brief;
     assert!(committed.contains("40 Hz") && committed.contains("357"));
     assert!(!committed.contains("Last committed"));
 }
@@ -1349,7 +1355,7 @@ fn staged_envelope_failures_render_quantities_and_rate_in_metadata() {
         ))
         .unwrap();
     workspace.stage(handle, "0").unwrap();
-    let view = workspace.editor_view();
+    let view = crate::presentation::workspace_text::editor_view(&workspace.editor_view());
     let duration = view
         .metadata
         .iter()

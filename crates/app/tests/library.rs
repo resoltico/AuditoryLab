@@ -1,11 +1,10 @@
 //! Native filesystem lifecycle and strict managed-record behavior through shared APIs.
 use auditorylab_app::core::Recipe;
 use auditorylab_app::document::editing::Draft;
-use auditorylab_app::error::Outcome;
-use auditorylab_app::services::Cancel;
-use auditorylab_app::services::library::{
-    Library, LibraryKey, Mutation, MutationStatus, VersionToken,
-};
+use auditorylab_app::document::origin::{LibraryKey, VersionToken};
+use auditorylab_app::job::Cancel;
+use auditorylab_app::outcome::Outcome;
+use auditorylab_app::services::library::{Library, Mutation, MutationStatus};
 use std::{fs, path::PathBuf, sync::Arc};
 #[expect(
     clippy::unwrap_used,
@@ -41,7 +40,10 @@ fn readonly_discovery_and_builtin_refusals_never_initialize_a_root() {
     let error = store
         .apply(
             Mutation::Rename {
-                key: LibraryKey::BuiltIn("ioannou-2015-binaural-2-hz".into()),
+                key: LibraryKey::BuiltIn(
+                    auditorylab_core::catalog::CatalogId::new("ioannou-2015-binaural-2-hz")
+                        .unwrap(),
+                ),
                 expect: Some(token),
                 title: "cannot change shipped".into(),
             },

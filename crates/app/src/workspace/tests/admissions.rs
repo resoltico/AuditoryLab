@@ -337,7 +337,7 @@ fn fixture(case: Case) -> TestWorkspace {
                     storage_id: "configured root".into(),
                     code: "configuration".into(),
                     detail: crate::services::library::DiagnosticDetail::Failure(Box::new(
-                        crate::error::LibraryError::NativeRootUnavailable.into(),
+                        crate::storage::library::LibraryError::NativeRootUnavailable,
                     )),
                 });
         }

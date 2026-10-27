@@ -1,4 +1,8 @@
 //! Application document responsibilities.
-pub mod controls;
 pub mod editing;
+pub mod input;
 pub mod recipe;
+
+pub mod origin;
+
+pub mod error;

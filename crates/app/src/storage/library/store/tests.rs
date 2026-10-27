@@ -25,7 +25,7 @@ fn recipe_files_are_exact_portable_toml_and_tokens_are_exact_byte_hashes() {
     assert_eq!(bytes, record.recipe_toml.as_bytes());
     assert_eq!(
         record.version_token.to_string(),
-        crate::storage::library::Fingerprint::of(&bytes).to_string()
+        crate::document::origin::Fingerprint::of(&bytes).to_string()
     );
     let custom = format!("# manual formatting retained\\n{}", record.recipe_toml)
         .replace("retained\\n", "retained\n");

@@ -10,7 +10,11 @@
 //! replacement document or a restored component lifetime.
 use auditorylab_app::presentation::DisplayText;
 use auditorylab_app::presentation::vocabulary::NumberStyle;
-use auditorylab_app::presentation::waveform_view::WaveformScale;
+use auditorylab_app::presentation::waveform_view::*;
+use auditorylab_app::presentation::workspace_text::{
+    ComponentView, EditorView, MetadataView, ParameterView,
+};
+use auditorylab_app::workspace::monitor::WaveformScale;
 mod actions;
 mod auxiliary;
 mod editing;
@@ -23,11 +27,10 @@ use crate::{details_parent, motion, scope, typography};
 use actions::install_actions;
 use auditorylab_app::core::{CarrierKind, Ears, ModulationKind, ParameterId};
 use auditorylab_app::document::editing::{EditingField, FieldHandle, MetadataField, RowKey};
-use auditorylab_app::presentation::waveform_view::{ModelView, WaveformCapture};
 use auditorylab_app::services::playback::PlaybackPhase;
 use auditorylab_app::workspace::{
-    ComponentView, EditorView, Effect, MetadataView, MotionPreference, ParameterView, PathPurpose,
-    PromptAnswer, PromptId, Response, Runner, View, Workspace,
+    Effect, MotionPreference, PathPurpose, PromptAnswer, PromptId, Response, Runner, View,
+    Workspace,
 };
 #[cfg(test)]
 use auditorylab_app::workspace::{Job, JobKind};
@@ -40,8 +43,12 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use {
+    auditorylab_app::workspace::monitor::ModelView,
+    auditorylab_app::workspace::monitor::WaveformCapture,
+};
 
-use auditorylab_app::document::controls::MONITOR_SPANS_MS as SPANS_MS;
+use auditorylab_app::workspace::controls::MONITOR_SPANS_MS as SPANS_MS;
 /// Tick intervals while work is running and while idle.
 const ACTIVE_TICK: Duration = Duration::from_millis(50);
 const IDLE_TICK: Duration = Duration::from_millis(200);
@@ -225,11 +232,11 @@ impl SlintAdapter {
         set_choices(ui, &windows.monitor);
         ui.set_window_index(index_of(
             &SPANS_MS,
-            &auditorylab_app::document::controls::DEFAULT_MONITOR_SPAN_MS,
+            &auditorylab_app::workspace::controls::DEFAULT_MONITOR_SPAN_MS,
         ));
         ui.set_scale_index(index_of(
             &WaveformScale::ALL,
-            &auditorylab_app::document::controls::DEFAULT_MONITOR_SCALE,
+            &auditorylab_app::workspace::controls::DEFAULT_MONITOR_SCALE,
         ));
         ui.set_components(ModelRc::from(adapter.components.clone()));
         ui.set_catalog(ModelRc::from(adapter.catalog.clone()));
@@ -695,7 +702,7 @@ impl SlintAdapter {
             .set(self.counts.document_projections.get() + 1);
         let views = self.workspace.borrow_mut().as_mut().map(|w| {
             (
-                w.editor_view(),
+                auditorylab_app::presentation::workspace_text::editor_view(&w.editor_view()),
                 w.library_view(),
                 w.action_view(),
                 w.export_rate(),

@@ -1,12 +1,8 @@
+//! Physical worker ownership and coordinator protocol tests without a device.
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-//! Physical worker ownership and coordinator protocol tests without a device.
 use super::*;
-use crate::audio::session::{
-    EndReason, LiveGenerator, MonitorDetail, Outcome, OutputInfo, PlaybackMonitor, SampleFormat,
-    SessionDescriptor,
-};
 use crate::core::{CarrierKind, ParameterId, SampleRate};
 use crate::document::editing::{EditingField, FieldHandle};
 use crate::services::library::{Library, Mutation};
@@ -16,6 +12,12 @@ use crate::workspace::{
 };
 use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant};
+use {
+    crate::audio::session::EndReason, crate::audio::session::LiveGenerator,
+    crate::audio::session::MonitorDetail, crate::audio::session::Outcome,
+    crate::audio::session::OutputInfo, crate::audio::session::PlaybackMonitor,
+    crate::audio::session::SampleFormat, crate::audio::session::SessionDescriptor,
+};
 
 fn fixture() -> (tempfile::TempDir, Library, Workspace) {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
@@ -119,7 +121,7 @@ fn closed(workspace: &mut Workspace, approved: bool) -> bool {
 fn prepared(
     job: &Job,
     rate: SampleRate,
-) -> Result<(Response, LiveGenerator), crate::error::PlaybackError> {
+) -> Result<(Response, LiveGenerator), crate::audio::PlaybackError> {
     let Work::Audio {
         session,
         kind,
@@ -131,7 +133,7 @@ fn prepared(
     let target =
         match (kind, draft) {
             (AudioKind::Live(_), Some(draft)) => draft.check(rate).into_result().map_err(|error| {
-                crate::error::PlaybackError::Sound {
+                crate::audio::PlaybackError::Sound {
                     title: "unit capture".into(),
                     rate,
                     error,
@@ -338,7 +340,7 @@ fn device_rate_validation_is_independent_of_export_rate() {
         Err(error) => error,
         Ok(_) => panic!("invalid at actual rate"),
     };
-    assert_eq!(error.outcome(), crate::error::Outcome::InvalidSound);
+    assert_eq!(error.outcome(), crate::outcome::Outcome::InvalidSound);
     workspace.respond(Response::Finished {
         job: job.id(),
         outcome: JobOutcome::Audio(Err(error)),
@@ -568,7 +570,7 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
         .unwrap();
     idle_files(&mut workspace);
     assert_eq!(
-        crate::storage::library::LibraryKey::User(
+        crate::document::origin::LibraryKey::User(
             workspace.selected().unwrap().recipe().document().id
         ),
         a
@@ -647,7 +649,7 @@ fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
         .into_builder();
     let component = crate::core::Component {
         id: crate::core::ComponentId::new(1).unwrap(),
-        form: crate::document::controls::default_component(CarrierKind::Tone),
+        form: crate::workspace::controls::default_component(CarrierKind::Tone),
     };
     assert!(
         crate::core::Sound::new(
@@ -712,7 +714,8 @@ fn shutdown_reports_wrong_kind_success_after_coordinator_validation() {
 #[test]
 fn shutdown_does_not_reclassify_a_historical_resolved_failure() {
     let (_directory, _store, mut workspace) = fixture();
-    workspace.files.status = FileStatus::Failed(crate::error::FileError::MissingFilename.into());
+    workspace.files.status =
+        FileStatus::Failed(crate::storage::error::FileError::MissingFilename.into());
     workspace.audio.status = AudioStatus::WorkerFailed(WorkerFailure::Panicked);
     assert!(Runner::new().shutdown(workspace).is_ok());
 }
@@ -791,26 +794,31 @@ fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct()
     idle_files(&mut workspace);
     let key = store.scan(&Cancel::default()).entries[0].key.clone();
     for (kind, publishing, inspect, replacement) in [
-        (crate::error::Outcome::HistoryConflict, true, false, true),
-        (crate::error::Outcome::Conflict, false, false, false),
-        (crate::error::Outcome::HistoryConflict, false, false, false),
-        (crate::error::Outcome::Write, true, true, false),
-        (crate::error::Outcome::Unreadable, true, true, false),
+        (crate::outcome::Outcome::HistoryConflict, true, false, true),
+        (crate::outcome::Outcome::Conflict, false, false, false),
         (
-            crate::error::Outcome::IncompleteInventory,
+            crate::outcome::Outcome::HistoryConflict,
+            false,
+            false,
+            false,
+        ),
+        (crate::outcome::Outcome::Write, true, true, false),
+        (crate::outcome::Outcome::Unreadable, true, true, false),
+        (
+            crate::outcome::Outcome::IncompleteInventory,
             true,
             true,
             false,
         ),
-        (crate::error::Outcome::Write, false, false, false),
-        (crate::error::Outcome::Busy, true, false, false),
-        (crate::error::Outcome::LockUnavailable, true, false, false),
-        (crate::error::Outcome::Cancelled, true, false, false),
-        (crate::error::Outcome::ReadOnlyBuiltIn, true, false, false),
-        (crate::error::Outcome::InvalidRecipe, true, false, false),
-        (crate::error::Outcome::InvalidSound, true, false, false),
-        (crate::error::Outcome::InvalidArgument, true, false, false),
-        (crate::error::Outcome::Identity, true, false, false),
+        (crate::outcome::Outcome::Write, false, false, false),
+        (crate::outcome::Outcome::Busy, true, false, false),
+        (crate::outcome::Outcome::LockUnavailable, true, false, false),
+        (crate::outcome::Outcome::Cancelled, true, false, false),
+        (crate::outcome::Outcome::ReadOnlyBuiltIn, true, false, false),
+        (crate::outcome::Outcome::InvalidRecipe, true, false, false),
+        (crate::outcome::Outcome::InvalidSound, true, false, false),
+        (crate::outcome::Outcome::InvalidArgument, true, false, false),
+        (crate::outcome::Outcome::Identity, true, false, false),
     ] {
         let status = FileStatus::Library(super::super::status::LibraryStatus::Failed {
             error: captured_error(kind),
@@ -838,7 +846,7 @@ fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct()
         if !publishing
             && matches!(
                 kind,
-                crate::error::Outcome::Conflict | crate::error::Outcome::HistoryConflict
+                crate::outcome::Outcome::Conflict | crate::outcome::Outcome::HistoryConflict
             )
         {
             assert!(notice.starts_with("Library read conflict"), "{notice}");
@@ -852,10 +860,12 @@ fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct()
 
 // Real typed representatives for the presentation policy matrix below. No
 // production failure can be constructed from a category and an arbitrary sentence.
-fn captured_error(outcome: crate::error::Outcome) -> crate::error::OperationError {
-    use crate::error::{
-        FileError, IdentityError, IdentityScope, IoCause, LibraryError, LoadError, OperationError,
-        Outcome,
+fn captured_error(outcome: crate::outcome::Outcome) -> crate::services::OperationError {
+    use {
+        crate::identity::IdentityError, crate::identity::IdentityScope, crate::outcome::Outcome,
+        crate::services::OperationError, crate::storage::error::FileError,
+        crate::storage::error::IoCause, crate::storage::library::LibraryError,
+        crate::storage::load::LoadError,
     };
     let id = crate::services::catalog().unwrap()[0]
         .recipe()

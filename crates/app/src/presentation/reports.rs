@@ -1,16 +1,18 @@
 //! Typed machine-readable application reports.
 use crate::core::query::{Direction, SortBy};
-use crate::{
-    core::{DocumentUuid, Timestamp, VoiceFacts, VoiceId, rhythm},
-    discovery::collection::{CatalogQuery, Collection, EntrySummary, EvidenceFacet, ResultGroup},
-    error::Outcome,
-    storage::library::{
-        Initialization, Inventory, LibraryDiagnostic, LibraryKey, MutationStatus, RootInfo,
-        RootSource, VersionToken, WriteOutcome,
-    },
-};
+use crate::document::origin::{LibraryKey, VersionToken};
 use serde::Serialize;
 use std::path::PathBuf;
+use {
+    crate::core::DocumentUuid, crate::core::Timestamp, crate::core::VoiceFacts,
+    crate::core::VoiceId, crate::core::rhythm, crate::discovery::collection::CatalogQuery,
+    crate::discovery::collection::Collection, crate::discovery::collection::EntrySummary,
+    crate::discovery::collection::EvidenceFacet, crate::discovery::collection::ResultGroup,
+    crate::outcome::Outcome, crate::storage::library::Initialization,
+    crate::storage::library::Inventory, crate::storage::library::LibraryDiagnostic,
+    crate::storage::library::MutationStatus, crate::storage::library::RootInfo,
+    crate::storage::library::RootSource, crate::storage::library::WriteOutcome,
+};
 
 /// Version of the command-line JSON report envelope.
 pub const OUTPUT_SCHEMA_VERSION: u32 = 2;
@@ -289,7 +291,7 @@ impl Report {
         operation: &str,
         root: &crate::services::library::Location,
         exists: Option<bool>,
-        error: &crate::error::LibraryError,
+        error: &crate::storage::library::LibraryError,
     ) -> Self {
         let mut report = Self::new(operation, false);
         report.root = Some(RootReport::Unavailable(UnavailableRoot {

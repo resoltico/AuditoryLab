@@ -1,19 +1,5 @@
 //! Presentation number styles and operation wording.
-use crate::core::rhythm::Method;
 use crate::presentation::DisplayText;
-
-/// Structural search terms, independent of labels and explanatory prose.
-#[must_use]
-pub const fn method_search_terms(method: Method) -> &'static str {
-    match method {
-        Method::Binaural => "binaural interaural pair",
-        Method::Monaural => "monaural pair",
-        Method::Clicks => "click clicks",
-        Method::Gate => "gate gated rectangular",
-        Method::Am => "am amplitude modulation sinusoidal",
-        Method::SteadyTone => "steady-tone steady tone",
-    }
-}
 
 use crate::core::vocabulary::Action;
 /// Incomplete discovery cannot establish an empty library.
@@ -59,7 +45,7 @@ pub fn unsaved_description(title: &str) -> String {
 pub fn add_component(kind: crate::core::CarrierKind) -> String {
     format!(
         "Add {}",
-        crate::document::controls::default_component(kind)
+        crate::workspace::controls::default_component(kind)
             .heading()
             .to_lowercase()
     )

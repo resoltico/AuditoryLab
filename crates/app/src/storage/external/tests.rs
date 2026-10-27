@@ -1,6 +1,7 @@
 use super::*;
 use crate::{document::editing::Draft, storage::load::load_file};
 use std::fs;
+use std::path::PathBuf;
 fn fixture() -> (tempfile::TempDir, PathBuf, RecipeSnapshot) {
     let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
     fs::create_dir_all(&base).unwrap();
@@ -84,7 +85,7 @@ fn stale_bytes_or_same_bytes_in_a_new_file_refuse_even_noop_save() {
                 )
                 .unwrap_err()
                 .outcome(),
-            crate::error::Outcome::Conflict
+            crate::outcome::Outcome::Conflict
         );
         assert_eq!(fs::read(path).unwrap(), before);
     }
@@ -105,7 +106,7 @@ fn history_change_and_cancel_are_refused_without_a_stage_or_file_replacement() {
             )
             .unwrap_err()
             .outcome(),
-        crate::error::Outcome::HistoryConflict
+        crate::outcome::Outcome::HistoryConflict
     );
     let cancel = Cancel::default();
     cancel.request();
@@ -114,7 +115,7 @@ fn history_change_and_cancel_are_refused_without_a_stage_or_file_replacement() {
             .save(expected, Arc::new(snapshot.recipe().clone()), &cancel)
             .unwrap_err()
             .outcome(),
-        crate::error::Outcome::Cancelled
+        crate::outcome::Outcome::Cancelled
     );
     assert_eq!(fs::read(path).unwrap(), before);
     assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);

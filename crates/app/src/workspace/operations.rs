@@ -95,9 +95,9 @@ impl Workspace {
     }
     pub(super) fn trash_request_admission(
         &self,
-        key: &crate::services::library::LibraryKey,
+        key: &crate::document::origin::LibraryKey,
     ) -> Result<(), Refusal> {
-        key.require_user()
+        crate::storage::library::require_user(key)
             .map_err(|error| Refusal::Document(Box::new(error.into())))?;
         if self.editor.dirty_managed(key) {
             self.start_allowed()

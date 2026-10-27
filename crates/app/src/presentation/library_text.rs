@@ -1,9 +1,10 @@
 //! Shared collection rows, query descriptions and document-location wording.
 use crate::core::query::Scope;
 use crate::discovery::collection::{CatalogQuery, EntrySummary};
+use crate::document::origin::LibraryKey;
 use crate::document::recipe::RecipeSnapshot;
 use crate::presentation::{AudioSummary, DisplayText, vocabulary::NumberStyle};
-use crate::storage::library::{LibraryDiagnostic, LibraryKey};
+use crate::storage::library::LibraryDiagnostic;
 use crate::workspace::{LibraryFacetView, LibraryRowView};
 pub(crate) fn rows(
     query: &CatalogQuery,
@@ -307,8 +308,8 @@ pub(crate) fn empty_message(
 }
 pub(crate) fn alert(
     problem: Option<&LibraryDiagnostic>,
-    filter_error: Option<&crate::error::QueryError>,
-    read_failure: Option<&LibraryDiagnostic>,
+    filter_error: Option<&crate::discovery::query::QueryError>,
+    read_failure: Option<&LibraryDiagnostic<crate::services::OperationError>>,
     complete: bool,
 ) -> String {
     let mut notices = Vec::new();
@@ -373,8 +374,8 @@ pub(crate) fn dates(
 pub(crate) fn document_location(
     problem: Option<&LibraryDiagnostic>,
     detached: Option<&LibraryKey>,
-    external: Option<&crate::storage::external::ObservedFile>,
-    managed: Option<(&LibraryKey, crate::storage::library::VersionToken)>,
+    external: Option<&crate::document::origin::ObservedFile>,
+    managed: Option<(&LibraryKey, crate::document::origin::VersionToken)>,
 ) -> (&'static str, String) {
     if let Some(error) = problem {
         return (
@@ -434,7 +435,7 @@ pub(crate) const DUPLICATE_IDENTITY: &str =
 pub(crate) fn orphan_membership(id: crate::core::DocumentUuid) -> String {
     format!("membership for {id} has no recipe; the next locked write will drop it")
 }
-pub(crate) fn unavailable_history_clock(error: &crate::error::ClockError) -> String {
+pub(crate) fn unavailable_history_clock(error: &crate::clock::ClockError) -> String {
     format!("Cannot compare declared history with the observed clock: {error}")
 }
 
@@ -464,10 +465,10 @@ impl crate::storage::library::WriteOutcome {
 pub(crate) fn removed_memberships(removed: usize) -> String {
     format!("Removed {removed} orphan membership timestamp rows")
 }
-pub(crate) fn membership_update_failed(error: &crate::error::LibraryError) -> String {
+pub(crate) fn membership_update_failed(error: &crate::storage::library::LibraryError) -> String {
     format!("Saved; membership timestamps could not be updated: {error}")
 }
-pub(crate) fn membership_read_failed(error: &crate::error::LibraryError) -> String {
+pub(crate) fn membership_read_failed(error: &crate::storage::library::LibraryError) -> String {
     format!("Saved; membership dates are Unknown because their state could not be read: {error}")
 }
 pub(crate) fn recovered_move(name: &std::ffi::OsStr) -> String {

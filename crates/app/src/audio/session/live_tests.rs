@@ -2,6 +2,7 @@
 use crate as auditorylab_app;
 use crate::audio::session::{LiveGenerator, LiveUpdateError};
 use crate::test_recipes as common;
+use crate::workspace::controls;
 use auditorylab_app::core::{
     CarrierKind, ComponentForm, ComponentId, Ears, ParameterId, SampleRate, Target,
 };
@@ -43,8 +44,12 @@ fn difference(generator: &LiveGenerator) -> f64 {
 #[test]
 fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarget() {
     let mut draft = Draft::new().unwrap();
-    let left = draft.add(CarrierKind::Tone).unwrap();
-    let right = draft.add(CarrierKind::Tone).unwrap();
+    let left = draft
+        .add_node(controls::default_component(CarrierKind::Tone))
+        .unwrap();
+    let right = draft
+        .add_node(controls::default_component(CarrierKind::Tone))
+        .unwrap();
     draft.replace(left, component(380.0, Ears::Left)).unwrap();
     draft.replace(right, component(420.0, Ears::Right)).unwrap();
     let mut generator = LiveGenerator::new(target(&draft));
@@ -185,7 +190,10 @@ fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarg
     use auditorylab_app::document::editing::{EditingField, EditorSession};
     let mut editor = EditorSession::new(Draft::new().unwrap()).unwrap();
     let owner = editor
-        .add_pair(editor.document_key(), PairKind::Binaural)
+        .add_component(
+            editor.document_key(),
+            controls::default_pair(PairKind::Binaural),
+        )
         .unwrap();
     let mut generator = LiveGenerator::new(target(editor.draft()));
     let control = generator.control();

@@ -72,6 +72,11 @@ pub(crate) fn generated_recipe(
     Ok(toml::to_string(&document)?)
 }
 
+#[cfg(not(test))]
+#[path = "src/catalog_id.rs"]
+mod catalog_id;
+#[cfg(test)]
+use crate::catalog_id;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=catalog");
     println!("cargo:rerun-if-changed=studies");
@@ -85,11 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .to_str()
                 .ok_or("non-UTF8 stem")?
                 .to_owned();
-            if id.is_empty()
-                || !id
-                    .bytes()
-                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
-            {
+            if !catalog_id::valid(&id) {
                 return Err(format!("invalid catalog ID {id}").into());
             }
             ids.push(id);

@@ -1,10 +1,11 @@
 //! Source resolution captures complete provenance before rendering or device work.
-use super::library::{ExternalId, Library, LibraryKey};
-use crate::{
-    discovery::collection::EntrySummary, document::recipe::RecipeSnapshot, error::LoadError,
-    storage::load,
-};
+use super::library::Library;
+use crate::document::origin::{ExternalId, LibraryKey};
 use std::{io::Read, path::PathBuf};
+use {
+    crate::discovery::collection::EntrySummary, crate::document::recipe::RecipeSnapshot,
+    crate::storage::load, crate::storage::load::LoadError,
+};
 
 /// One explicit source; a stream's label belongs to its frontend.
 pub enum Source<'a> {
@@ -55,7 +56,7 @@ pub fn resolve(
     let snapshot = match source {
         Source::Selector(key) => match &key {
             LibraryKey::BuiltIn(id) => {
-                let snapshot = builtin(id)?;
+                let snapshot = builtin(id.as_str())?;
                 let summary = EntrySummary::from_snapshot(key, &snapshot, None);
                 return Ok(Resolved {
                     snapshot,
@@ -94,7 +95,7 @@ pub fn portable_text(
     root_override: Option<&std::path::Path>,
 ) -> Result<String, LoadError> {
     match key {
-        LibraryKey::BuiltIn(id) => Ok(builtin_source(id)?.into()),
+        LibraryKey::BuiltIn(id) => Ok(builtin_source(id.as_str())?.into()),
         LibraryKey::User(_) => Ok(Library::resolve(root_override)?
             .load(key)?
             .recipe_toml

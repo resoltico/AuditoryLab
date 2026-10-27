@@ -3,13 +3,14 @@ use super::{Source, output, prose, usage};
 use crate::cli_text::CommandProblem;
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::core::query::{Direction, GroupBy, Scope, SortBy};
+use auditorylab_app::document::origin::{LibraryKey, VersionToken};
+use auditorylab_app::job::Cancel;
 use auditorylab_app::presentation::DisplayText;
 use auditorylab_app::presentation::reports::Report;
-use auditorylab_app::services::Cancel;
 use auditorylab_app::{
     self as lab,
     discovery::collection::{CatalogQuery, DateRange},
-    services::library::{Library, LibraryKey, VersionToken},
+    services::library::Library,
 };
 use clap::{Args, Subcommand, ValueEnum};
 use std::{
@@ -416,7 +417,8 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                     return Ok(
                         if matches!(
                             error.outcome(),
-                            lab::error::Outcome::Busy | lab::error::Outcome::LockUnavailable
+                            auditorylab_app::outcome::Outcome::Busy
+                                | auditorylab_app::outcome::Outcome::LockUnavailable
                         ) {
                             4
                         } else {
