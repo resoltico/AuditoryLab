@@ -1,17 +1,20 @@
 # Changelog
 
-`Unreleased` summarizes implemented changes intended for the next release, including relevant uncommitted work, cumulatively against the preceding published non-prerelease version; the first release describes implemented scope. Verify actual publication rather than inferring it from headings, tags or workflow status; public prereleases do not reset this baseline. Check claims and material omissions against implementation, contracts, tests and documentation; commits and plans are leads. Describe consequences for users, operators, integrators or contributors, preserving material compatibility effects, limitations and required action, including for prerelease users. Exclude development chronology, superseded changes and verification logs.
+## [Unreleased]
 
-Use concise bullets without category labels or subheadings, grouping related changes and putting breaking changes and required actions first. Each bullet occupies one physical line, at most 200 characters including Markdown but excluding its `- ` marker: a ceiling, not a target. Shorten or split without losing material consequences. Use technical names when helpful; link to existing relevant documentation, without assuming paths or creating documents merely to satisfy this rule. Keep `## [Unreleased]
-
-- Recipes require schema 4: move duration/fades and components into `[sound]`, and use `clicks`, `am` and `gate`. Rewrite schema-3 files using the [format reference](docs/formats.md#recipe-schema).
-- Schema-3 files stay unchanged; User discovery is incomplete and `list` exits 5. Rewrite or remove them; see [recovery](docs/formats.md#unsupported-recipes-and-schema-3-libraries).
-- CLI `--method am` replaces `amplitude-modulation`; `--analysis` accepts `complete` or `invalid`. Plain tones stay independent unless authored as explicit pairs.
-- CLI JSON output is schema 2 and nominal classifier revision is 2. Update consumers for expanded owner/lane identities and removal of inferred tone relationships.
-- The Rust app package is `auditorylab-app`, exposing core as `auditorylab_app::core`. Frontends use shared services; native storage/audio adapters are private.
-- Rust recipes use checked builders and typed contract/operation errors. Update construction, error matches and imports for `Sound`, `ComponentForm`, `Clicks`, `Am` and `Gate`.
-- Action availability shares workspace admission, including preview, new-identity limits, restore, portable export and independent-copy saving. Newer edits and captured destinations remain protected.
-- Application buttons gate disabled activation while retaining toolkit rendering/focus. TextEdit uses shaped cursor geometry; native toolkit archives retain their lockfiles.
+- Recipes require schema 4: put duration, fade and components in `[sound]`; use `clicks`, `am` and `gate`. Rewrite custom files against the [format](docs/formats.md#recipe-schema).
+- Schema-3 User files stay unchanged; discovery is incomplete and `list` exits 5. Rewrite or move them outside the library; see [recovery](docs/formats.md#unsupported-and-unreadable-recipes).
+- CLI `--method am` replaces `amplitude-modulation`; `--analysis` accepts only `complete` or `invalid`. Plain tones remain independent; author pairs explicitly.
+- CLI JSON output is schema 2 and classifier revision is 2. Update consumers for expanded owner/lane identities and removal of inferred tone relationships.
+- The Rust app package is `auditorylab-app`, exposing core as `auditorylab_app::core`. Call shared services; native storage/audio adapters are private.
+- Rust `Recipe` fields are private; use checked builders and accessors. Contract and operation errors are typed; update error matches.
+- `ComponentForm`, `Clicks`, `Am` and `Gate` replace `Node`, `Click`, `Sinusoidal` and `Rectangular`; update Rust matches and recipe generation.
+- Core errors use `SoundError` and `VoiceError`; update `StimulusError`/`ComponentError` imports and matches.
+- `ComponentId` is nonzero; expanded generators use `VoiceId { component, lane }`. Update constructors and consumers of generator identities.
+- `About`/`Research` views and parameter help live in app presentation; `Recipe::fork` accepts an attribution note. Update Rust consumers.
+- Core users can drive finite playback and Stop fading through `FiniteSource` without the native app adapters.
+- Workbench preview, copy, restore and export controls share operation admission. Stale selections, save failures and newer edits retain their captured context.
+- Toolkit button overrides move into the app; patched packages include archive lockfiles. Keep vendored-source verification in dependency maintenance.
 
 ## [0.6.0] - 2026-10-26
 
