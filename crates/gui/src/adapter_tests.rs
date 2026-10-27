@@ -1036,7 +1036,7 @@ fn retired_component_callbacks_stay_retired_after_undo() {
                 .draft()
                 .component(identity)
                 .unwrap()
-                .read(ParameterId::ToneFrequency)),
+                .get(ParameterId::ToneFrequency)),
             Some(440.0)
         );
         previous = current;
@@ -1513,7 +1513,7 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
     let value = h.adapter.inspect(|w| {
         w.editor().draft().components()[0]
             .form
-            .read(ParameterId::PairFirstFrequency)
+            .get(ParameterId::PairFirstFrequency)
             .unwrap()
     });
     assert_eq!(
@@ -1546,19 +1546,17 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
     recipe.sound.components = vec![
         auditorylab_app::core::Component {
             id: auditorylab_app::core::ComponentId::new(u32::MAX).unwrap(),
-            form: auditorylab_app::core::ComponentForm::BinauralPair(auditorylab_app::core::Pair {
-                first_hz: 200.0,
+            form: auditorylab_app::core::ComponentForm::BinauralPair {
+                left_hz: 200.0,
                 offset_hz: 2.0,
-                first_peak_dbfs: -30.0,
-                second_peak_dbfs: -30.0,
-            }),
+                left_peak_dbfs: -30.0,
+                right_peak_dbfs: -30.0,
+            },
         },
         auditorylab_app::core::Component {
             id: auditorylab_app::core::ComponentId::new(u32::MAX - 1).unwrap(),
-            form: auditorylab_app::core::ComponentForm::Voice(
-                auditorylab_app::document::controls::default_component(
-                    auditorylab_app::core::CarrierKind::Clicks,
-                ),
+            form: auditorylab_app::document::controls::default_component(
+                auditorylab_app::core::CarrierKind::Clicks,
             ),
         },
     ];
@@ -1582,7 +1580,7 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
     assert_eq!(
         h.adapter.inspect(|w| w.editor().draft().components()[1]
             .form
-            .read(ParameterId::ClickRate)),
+            .get(ParameterId::ClickRate)),
         Some(40.0)
     );
 }

@@ -97,7 +97,7 @@ pub(crate) struct SearchIndex {
 }
 impl SearchIndex {
     pub(crate) fn from_snapshot(snapshot: &crate::document::recipe::RecipeSnapshot) -> Self {
-        use crate::core::{Carrier, ComponentForm, Ears, Modulation, ParameterId};
+        use crate::core::{Ears, Modulation, ParameterId};
         let recipe = snapshot.recipe();
         let mut facts = vec![recipe.document().id.to_string()];
         facts.extend(recipe.document().created_at.iter().map(ToString::to_string));
@@ -157,47 +157,48 @@ impl SearchIndex {
         }
         let mut numbers = vec![recipe.sound().duration_seconds, recipe.sound().fade_seconds];
         for component in &recipe.sound().components {
-            let ears = match component.form {
-                ComponentForm::Voice(voice) => {
+            let form = component.form;
+            if let Some(kind) = form.primitive_kind() {
+                facts.push(
+                    match kind {
+                        crate::core::CarrierKind::Tone => "tone carrier frequency",
+                        crate::core::CarrierKind::Clicks => "click clicks rate width",
+                    }
+                    .into(),
+                );
+                if let Some(modulation) = form.modulation() {
                     facts.push(
-                        match voice.carrier {
-                            Carrier::Tone { .. } => "tone carrier frequency",
-                            Carrier::Clicks { .. } => "click clicks rate width",
+                        match modulation {
+                            Modulation::Am { .. } => {
+                                "sinusoidal amplitude modulation am depth rate"
+                            }
+                            Modulation::Gate { .. } => "rectangular gate rate width",
                         }
                         .into(),
                     );
-                    if let Some(modulation) = voice.modulation {
-                        facts.push(
-                            match modulation {
-                                Modulation::Am { .. } => {
-                                    "sinusoidal amplitude modulation am depth rate"
-                                }
-                                Modulation::Gate { .. } => "rectangular gate rate width",
-                            }
-                            .into(),
-                        );
+                }
+            } else {
+                facts.push(
+                    if form.route().is_none() {
+                        "pair left right"
+                    } else {
+                        "pair"
                     }
-                    voice.ears
-                }
-                ComponentForm::BinauralPair(_) => {
-                    facts.push("pair left right".into());
-                    Ears::Left
-                }
-                ComponentForm::MonauralPair { ears, .. } => {
-                    facts.push("pair".into());
-                    ears
-                }
-            };
-            facts.push(
-                match ears {
-                    Ears::Left => "left",
-                    Ears::Right => "right",
-                    Ears::Both => "both ears",
-                }
-                .into(),
-            );
+                    .into(),
+                );
+            }
+            if let Some(ears) = form.route() {
+                facts.push(
+                    match ears {
+                        Ears::Left => "left",
+                        Ears::Right => "right",
+                        Ears::Both => "both ears",
+                    }
+                    .into(),
+                );
+            }
             for parameter in ParameterId::COMPONENT {
-                if let Some(value) = component.form.read(parameter) {
+                if let Some(value) = component.form.get(parameter) {
                     numbers.extend([value, parameter.descriptor().unit.to_display(value)]);
                 }
             }

@@ -127,8 +127,7 @@ impl Action {
         format!(
             "Add {}",
             crate::document::controls::default_component(kind)
-                .role()
-                .label()
+                .heading()
                 .to_lowercase()
         )
     }

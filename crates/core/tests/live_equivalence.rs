@@ -1,7 +1,6 @@
 //! Steady live output and seekable finite output share the exact sample contract.
 use auditorylab_core::{
-    Carrier, Component, ComponentForm, ComponentId, Ears, Recipe, SampleRate, Sound, Voice,
-    catalog, live::Engine,
+    Component, ComponentForm, ComponentId, Ears, Recipe, SampleRate, Sound, catalog, live::Engine,
 };
 
 #[test]
@@ -42,12 +41,12 @@ fn a_different_carrier_is_detected_by_the_same_bit_comparison() {
         fade_seconds: 0.0,
         components: vec![Component {
             id: ComponentId::new(1).unwrap(),
-            form: ComponentForm::Voice(Voice {
+            form: ComponentForm::Tone {
+                frequency_hz,
                 ears: Ears::Both,
                 peak_dbfs: -20.0,
-                carrier: Carrier::Tone { frequency_hz },
                 modulation: None,
-            }),
+            },
         }],
     };
     let signal = sound(200.0).signal(rate).unwrap();

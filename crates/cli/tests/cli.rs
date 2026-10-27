@@ -204,30 +204,21 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
 
 #[test]
 fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
-    use auditorylab_app::core::{
-        Carrier, Component, ComponentForm, ComponentId, Ears, Pair, Voice,
-    };
+    use auditorylab_app::core::{Component, ComponentForm, ComponentId, Ears, Pair};
     let d = dir();
     let file = d.path().join("meaning.toml");
-    let tone = |frequency_hz, ears, peak_dbfs| Voice {
+    let tone = |frequency_hz, ears, peak_dbfs| ComponentForm::Tone {
+        frequency_hz,
         ears,
         peak_dbfs,
-        carrier: Carrier::Tone { frequency_hz },
         modulation: None,
     };
-    let forms = |voices: Vec<Voice>| {
-        voices
-            .into_iter()
-            .map(ComponentForm::Voice)
-            .collect::<Vec<_>>()
-    };
-    let click = Voice {
+    let forms = |voices: Vec<ComponentForm>| voices.into_iter().collect::<Vec<_>>();
+    let click = ComponentForm::Clicks {
+        rate_hz: 40.0,
+        width_seconds: 0.001,
         ears: Ears::Both,
         peak_dbfs: -40.0,
-        carrier: Carrier::Clicks {
-            rate_hz: 40.0,
-            width_seconds: 0.001,
-        },
         modulation: None,
     };
     let pair = Pair {
@@ -267,14 +258,26 @@ fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
             "monaural",
         ),
         (
-            vec![ComponentForm::BinauralPair(pair)],
+            vec![{
+                ComponentForm::BinauralPair {
+                    left_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    left_peak_dbfs: pair.first_peak_dbfs,
+                    right_peak_dbfs: pair.second_peak_dbfs,
+                }
+            }],
             "40 Hz interaural difference",
             "monaural",
         ),
         (
-            vec![ComponentForm::MonauralPair {
-                pair,
-                ears: Ears::Both,
+            vec![{
+                ComponentForm::MonauralPair {
+                    ears: Ears::Both,
+                    first_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    first_peak_dbfs: pair.first_peak_dbfs,
+                    second_peak_dbfs: pair.second_peak_dbfs,
+                }
             }],
             "40 Hz monaural",
             "interaural",
@@ -319,15 +322,13 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
         .components
         .push(auditorylab_app::core::Component {
             id: auditorylab_app::core::ComponentId::new(1).unwrap(),
-            form: auditorylab_app::core::ComponentForm::Voice(auditorylab_app::core::Voice {
+            form: auditorylab_app::core::ComponentForm::Clicks {
+                rate_hz: 40.0,
+                width_seconds: 0.0001,
                 ears: auditorylab_app::core::Ears::Both,
                 peak_dbfs: -30.0,
-                carrier: auditorylab_app::core::Carrier::Clicks {
-                    rate_hz: 40.0,
-                    width_seconds: 0.0001,
-                },
                 modulation: None,
-            }),
+            },
         });
     fs::write(&path, recipe.build().unwrap().to_toml().unwrap()).unwrap();
     let out = cli(&[

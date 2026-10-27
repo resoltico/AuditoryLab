@@ -1,7 +1,7 @@
 //! Timing-model oracles use integer rationals, never the projection's pulse helper.
 use auditorylab_core::{
-    Carrier, Component, ComponentForm, ComponentId, Ears, Modulation, SampleRate, Sound,
-    SoundError, Target, Voice, live::Engine, timing::ModelKind,
+    Component, ComponentForm, ComponentId, Ears, Modulation, SampleRate, Sound, SoundError, Target,
+    live::Engine, timing::ModelKind,
 };
 
 #[expect(
@@ -11,7 +11,7 @@ use auditorylab_core::{
 fn id(n: u32) -> ComponentId {
     ComponentId::new(n).unwrap()
 }
-fn target(rate: SampleRate, voices: &[(ComponentId, Voice)]) -> Result<Target, SoundError> {
+fn target(rate: SampleRate, voices: &[(ComponentId, ComponentForm)]) -> Result<Target, SoundError> {
     Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
@@ -19,20 +19,18 @@ fn target(rate: SampleRate, voices: &[(ComponentId, Voice)]) -> Result<Target, S
             .iter()
             .map(|(id, voice)| Component {
                 id: *id,
-                form: ComponentForm::Voice(*voice),
+                form: *voice,
             })
             .collect(),
     }
     .target(rate)
 }
-fn clicks(hz: f64, width: f64) -> Voice {
-    Voice {
+fn clicks(hz: f64, width: f64) -> ComponentForm {
+    ComponentForm::Clicks {
+        rate_hz: hz,
+        width_seconds: width,
         ears: Ears::Both,
         peak_dbfs: -30.0,
-        carrier: Carrier::Clicks {
-            rate_hz: hz,
-            width_seconds: width,
-        },
         modulation: None,
     }
 }
@@ -82,15 +80,17 @@ fn every_column_contains_all_rational_pulses_including_single_frame_impulses() {
 #[test]
 fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
     let rate = SampleRate::new(48000).unwrap();
-    let component = Voice {
-        carrier: Carrier::Tone {
+    let component = {
+        let base = clicks(40.0, 0.001);
+        ComponentForm::Tone {
             frequency_hz: 1000.0,
-        },
-        modulation: Some(Modulation::Gate {
-            rate_hz: 40.0,
-            width_seconds: 1.0 / 48000.0,
-        }),
-        ..clicks(40.0, 0.001)
+            ears: base.route().unwrap(),
+            peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+            modulation: Some(Modulation::Gate {
+                rate_hz: 40.0,
+                width_seconds: 1.0 / 48000.0,
+            }),
+        }
     };
     let model = target(rate, &[(id(1), component)]).unwrap().timing_model(1);
     assert_eq!(model.lanes[0].kind, ModelKind::Gate);
@@ -107,7 +107,7 @@ fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                form: auditorylab_core::ComponentForm::Voice(voice),
+                form: voice,
             })
             .collect(),
     }
@@ -127,13 +127,11 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
     let c = clicks(0.1, 0.001);
     let muted = target(
         rate,
-        &[(
-            id(1),
-            Voice {
-                peak_dbfs: -10000.0,
-                ..c
-            },
-        )],
+        &[(id(1), {
+            let mut form = c;
+            form.set(auditorylab_core::ParameterId::PeakLevel, -10000.0);
+            form
+        })],
     )
     .unwrap()
     .timing_model(512);
@@ -146,12 +144,13 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
     assert_eq!(m.lanes[0].columns.len(), 512);
     let t = target(rate, &[(id(1), clicks(8.0, 0.001))]).unwrap();
     assert_eq!(t.timing_model(256).frames, 24000);
-    let c = Voice {
-        modulation: Some(Modulation::Am {
+    let c = {
+        let mut form = clicks(40.0, 0.001);
+        form.set_modulation(Some(Modulation::Am {
             rate_hz: 39.0625,
             depth: 1.0,
-        }),
-        ..clicks(40.0, 0.001)
+        }));
+        form
     };
     let t = target(rate, &[(id(1), c)]).unwrap();
     let m = t.timing_model(256);
@@ -187,15 +186,17 @@ fn am_bounds_contain_independent_sine_samples_and_depth_zero_is_steady() {
     for fs in [44100, 48000, 768000] {
         for depth in [0.0, 0.5, 1.0] {
             let rate = SampleRate::new(fs).unwrap();
-            let c = Voice {
-                carrier: Carrier::Tone {
+            let c = {
+                let base = clicks(40.0, 0.001);
+                ComponentForm::Tone {
                     frequency_hz: 1000.0,
-                },
-                modulation: Some(Modulation::Am {
-                    rate_hz: 39.0625,
-                    depth,
-                }),
-                ..clicks(40.0, 0.001)
+                    ears: base.route().unwrap(),
+                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                    modulation: Some(Modulation::Am {
+                        rate_hz: 39.0625,
+                        depth,
+                    }),
+                }
             };
             let m = target(rate, &[(id(1), c)]).unwrap().timing_model(257);
             if depth == 0.0 {
@@ -220,12 +221,13 @@ fn am_bounds_contain_independent_sine_samples_and_depth_zero_is_steady() {
 #[test]
 fn maximum_rate_projection_has_fixed_storage_and_measured_cost() {
     let rate = SampleRate::new(768000).unwrap();
-    let c = Voice {
-        modulation: Some(Modulation::Am {
+    let c = {
+        let mut form = clicks(383999.0, 1.0 / 768000.0);
+        form.set_modulation(Some(Modulation::Am {
             rate_hz: 383999.0,
             depth: 1.0,
-        }),
-        ..clicks(383999.0, 1.0 / 768000.0)
+        }));
+        form
     };
     let voices: Vec<_> = (1..=16).map(|n| (id(n), c)).collect();
     let t = target(rate, &voices).unwrap();
@@ -246,11 +248,14 @@ fn maximum_rate_projection_has_fixed_storage_and_measured_cost() {
 #[test]
 fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
     let rate = SampleRate::new(48000).unwrap();
-    let tone = Voice {
-        carrier: Carrier::Tone {
+    let tone = {
+        let base = clicks(40.0, 0.001);
+        ComponentForm::Tone {
             frequency_hz: 1000.0,
-        },
-        ..clicks(40.0, 0.001)
+            ears: base.route().unwrap(),
+            peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+            modulation: base.modulation(),
+        }
     };
     for modulation in [
         Modulation::Gate {
@@ -264,13 +269,11 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
     ] {
         let model = target(
             rate,
-            &[(
-                id(1),
-                Voice {
-                    modulation: Some(modulation),
-                    ..tone
-                },
-            )],
+            &[(id(1), {
+                let mut form = tone;
+                form.set_modulation(Some(modulation));
+                form
+            })],
         )
         .unwrap()
         .timing_model(17);
@@ -287,16 +290,14 @@ fn span_uses_active_modulation_and_flags_only_incomplete_cycles() {
     }
     let model = target(
         rate,
-        &[(
-            id(1),
-            Voice {
-                modulation: Some(Modulation::Am {
-                    rate_hz: 0.1,
-                    depth: 0.0,
-                }),
-                ..tone
-            },
-        )],
+        &[(id(1), {
+            let mut form = tone;
+            form.set_modulation(Some(Modulation::Am {
+                rate_hz: 0.1,
+                depth: 0.0,
+            }));
+            form
+        })],
     )
     .unwrap()
     .timing_model(17);
@@ -312,12 +313,13 @@ fn envelope_bounds_match_endpoints_and_quarter_cycle_extrema() {
     // Eight cycles/second gives quarter-cycle extrema exactly every 1500 frames.
     // Independent rational phases also constrain partial columns, not just inclusion.
     for depth in [0.5, 1.0] {
-        let component = Voice {
-            modulation: Some(Modulation::Am {
+        let component = {
+            let mut form = clicks(40.0, 0.001);
+            form.set_modulation(Some(Modulation::Am {
                 rate_hz: 8.0,
                 depth,
-            }),
-            ..clicks(40.0, 0.001)
+            }));
+            form
         };
         let model = target(rate, &[(id(1), component)])
             .unwrap()

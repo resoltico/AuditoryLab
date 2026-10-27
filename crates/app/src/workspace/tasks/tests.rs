@@ -647,9 +647,7 @@ fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
         .into_builder();
     let component = crate::core::Component {
         id: crate::core::ComponentId::new(1).unwrap(),
-        form: crate::core::ComponentForm::Voice(crate::document::controls::default_component(
-            CarrierKind::Tone,
-        )),
+        form: crate::document::controls::default_component(CarrierKind::Tone),
     };
     candidate.sound.components = vec![component; 2];
     assert!(candidate.build().is_err());
@@ -751,7 +749,7 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
             assert_eq!(
                 workspace.editor().draft().components()[0]
                     .form
-                    .read(ParameterId::ToneFrequency),
+                    .get(ParameterId::ToneFrequency),
                 Some(880.0)
             );
             assert!(closed(&mut workspace, false));

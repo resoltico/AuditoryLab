@@ -3,16 +3,16 @@ use crate as auditorylab_app;
 use crate::audio::session::{LiveGenerator, LiveUpdateError};
 use crate::test_recipes as common;
 use auditorylab_app::core::{
-    Carrier, CarrierKind, ComponentId, Ears, ParameterId, SampleRate, Target, Voice,
+    CarrierKind, ComponentForm, ComponentId, Ears, ParameterId, SampleRate, Target,
 };
 use auditorylab_app::document::editing::Draft;
 use auditorylab_app::presentation::{AudioDetails, AudioSummary};
 
-fn component(frequency_hz: f64, ears: Ears) -> Voice {
-    Voice {
+fn component(frequency_hz: f64, ears: Ears) -> ComponentForm {
+    ComponentForm::Tone {
+        frequency_hz,
         ears,
         peak_dbfs: -30.0,
-        carrier: Carrier::Tone { frequency_hz },
         modulation: None,
     }
 }
@@ -106,7 +106,7 @@ fn generated_interaural_structure_ignores_titles_and_rejects_other_mixtures() {
             .enumerate()
             .map(|(index, voice)| auditorylab_app::core::Component {
                 id: auditorylab_app::core::ComponentId::numbered(index).unwrap(),
-                form: auditorylab_app::core::ComponentForm::Voice(voice),
+                form: voice,
             })
             .collect();
         let snapshot = auditorylab_app::services::read_source(
@@ -136,7 +136,7 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,
-                form: auditorylab_core::ComponentForm::Voice(*voice),
+                form: *voice,
             })
             .collect(),
     }

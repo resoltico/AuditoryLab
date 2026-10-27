@@ -31,12 +31,10 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
     recipe.sound = auditorylab_app::core::Sound {
         duration_seconds: 60.0,
         fade_seconds: 0.1,
-        components: (vec![auditorylab_app::core::Voice {
+        components: (vec![auditorylab_app::core::ComponentForm::Tone {
+            frequency_hz: 200.0,
             ears: auditorylab_app::core::Ears::Both,
             peak_dbfs: -30.0,
-            carrier: auditorylab_app::core::Carrier::Tone {
-                frequency_hz: 200.0,
-            },
             modulation: Some(auditorylab_app::core::Modulation::Am {
                 rate_hz: 20.0,
                 depth: 1.0,
@@ -46,7 +44,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         .enumerate()
         .map(|(index, voice)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-            form: auditorylab_core::ComponentForm::Voice(voice),
+            form: voice,
         })
         .collect(),
     };
@@ -75,9 +73,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         assert!(!matches_search(&snapshot, search), "{search}");
     }
     let mut steady = snapshot.recipe().clone().into_builder();
-    if let auditorylab_app::core::ComponentForm::Voice(c) = &mut steady.sound.components[0].form {
-        c.modulation = None;
-    }
+    steady.sound.components[0].form.set_modulation(None);
     let steady = RecipeSnapshot::new(Origin::Stream("steady".into()), steady.build().unwrap());
     assert!(
         !matches_search(&steady, "20"),
@@ -87,9 +83,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
 
 #[test]
 fn search_excludes_generated_labels_and_unknown_date_captions() {
-    use auditorylab_app::core::{
-        Carrier, Component, ComponentForm, ComponentId, Description, Ears, Voice,
-    };
+    use auditorylab_app::core::{Component, ComponentForm, ComponentId, Description, Ears};
     let mut recipe = auditorylab_app::document::editing::Draft::new()
         .unwrap()
         .recipe()
@@ -103,14 +97,12 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
     });
     recipe.sound.components = vec![Component {
         id: ComponentId::new(1).unwrap(),
-        form: ComponentForm::Voice(Voice {
+        form: ComponentForm::Tone {
+            frequency_hz: 200.0,
             ears: Ears::Both,
             peak_dbfs: -30.0,
-            carrier: Carrier::Tone {
-                frequency_hz: 200.0,
-            },
             modulation: None,
-        }),
+        },
     }];
     let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe.build().unwrap());
     // These captions are deliberately present in display output, not authored facts.

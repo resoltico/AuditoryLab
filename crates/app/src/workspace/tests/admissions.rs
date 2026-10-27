@@ -292,18 +292,16 @@ fn fixture(case: Case) -> TestWorkspace {
                         },
                     )
                     .unwrap(),
-                    form: crate::core::ComponentForm::Voice(crate::core::Voice {
+                    form: crate::core::ComponentForm::Tone {
+                        frequency_hz: if matches!(case, Case::AcousticInvalid) {
+                            30000.0
+                        } else {
+                            440.0
+                        },
                         ears: crate::core::Ears::Both,
                         peak_dbfs: -40.0,
-                        carrier: crate::core::Carrier::Tone {
-                            frequency_hz: if matches!(case, Case::AcousticInvalid) {
-                                30000.0
-                            } else {
-                                440.0
-                            },
-                        },
                         modulation: None,
-                    }),
+                    },
                 })
                 .collect();
             if matches!(case, Case::FullLineage) {

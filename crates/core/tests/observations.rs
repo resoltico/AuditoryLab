@@ -1,14 +1,13 @@
 //! Independent generated-state, attribution and revision oracles.
 use auditorylab_core::{
-    Carrier, CarrierFacts, Component, ComponentForm, ComponentId, Ears, Modulation,
-    ModulationFacts, SampleRate, SlotRole, Sound, SoundError, StructureError, Target, Voice,
-    VoiceFacts, live::Engine,
+    CarrierFacts, Component, ComponentForm, ComponentId, Ears, Modulation, ModulationFacts,
+    SampleRate, SlotRole, Sound, SoundError, StructureError, Target, VoiceFacts, live::Engine,
 };
-fn tone(hz: f64, ears: Ears) -> Voice {
-    Voice {
+fn tone(hz: f64, ears: Ears) -> ComponentForm {
+    ComponentForm::Tone {
+        frequency_hz: hz,
         ears,
         peak_dbfs: -30.0,
-        carrier: Carrier::Tone { frequency_hz: hz },
         modulation: None,
     }
 }
@@ -16,13 +15,13 @@ fn tone(hz: f64, ears: Ears) -> Voice {
     clippy::unwrap_used,
     reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
 )]
-fn target(rate: SampleRate, component: Voice) -> Target {
+fn target(rate: SampleRate, component: ComponentForm) -> Target {
     Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
         components: vec![Component {
             id: ComponentId::new(7).unwrap(),
-            form: ComponentForm::Voice(component),
+            form: component,
         }],
     }
     .target(rate)
@@ -32,7 +31,7 @@ fn target(rate: SampleRate, component: Voice) -> Target {
     clippy::unwrap_used,
     reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
 )]
-fn facts(component: Voice, rate: SampleRate) -> VoiceFacts {
+fn facts(component: ComponentForm, rate: SampleRate) -> VoiceFacts {
     let check = auditorylab_core::Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
@@ -40,7 +39,7 @@ fn facts(component: Voice, rate: SampleRate) -> VoiceFacts {
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,
-                form: auditorylab_core::ComponentForm::Voice(*voice),
+                form: *voice,
             })
             .collect(),
     }
@@ -109,12 +108,15 @@ fn glide_reports_the_increment_used_for_the_last_sample() {
 #[test]
 fn changed_pulses_preserve_both_real_rates_and_roles() {
     let rate = SampleRate::new(48000).unwrap();
-    let clicks = |hz| Voice {
-        carrier: Carrier::Clicks {
+    let clicks = |hz| {
+        let base = tone(440.0, Ears::Both);
+        ComponentForm::Clicks {
             rate_hz: hz,
             width_seconds: 0.001,
-        },
-        ..tone(440.0, Ears::Both)
+            ears: base.route().unwrap(),
+            peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+            modulation: base.modulation(),
+        }
     };
     let mut e = Engine::new(rate);
     e.set(&target(rate, clicks(40.0)));
@@ -145,11 +147,11 @@ fn changed_pulses_preserve_both_real_rates_and_roles() {
             components: vec![
                 Component {
                     id: ComponentId::new(1).unwrap(),
-                    form: ComponentForm::Voice(clicks(40.0))
+                    form: clicks(40.0)
                 },
                 Component {
                     id: ComponentId::new(1).unwrap(),
-                    form: ComponentForm::Voice(clicks(80.0))
+                    form: clicks(80.0)
                 },
             ],
         }
@@ -186,12 +188,13 @@ fn latest_revision_wins_and_stop_does_not_claim_the_skipped_target() {
 fn realized_rates_widths_depth_and_tiny_frequencies_are_explicit() {
     for hz in [44100, 48000, 768000] {
         let rate = SampleRate::new(hz).unwrap();
-        let c = Voice {
-            modulation: Some(Modulation::Am {
+        let c = {
+            let mut form = tone(1000.0, Ears::Both);
+            form.set_modulation(Some(Modulation::Am {
                 rate_hz: 39.0625,
                 depth: 0.0,
-            }),
-            ..tone(1000.0, Ears::Both)
+            }));
+            form
         };
         let f = facts(c, rate);
         let CarrierFacts::Tone(t) = f.carrier else {

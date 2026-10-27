@@ -145,7 +145,7 @@ mod tests {
                 .enumerate()
                 .map(|(index, voice)| crate::Component {
                     id: crate::ComponentId::numbered(index).unwrap(),
-                    form: crate::ComponentForm::Voice(voice),
+                    form: crate::test_support::form(voice),
                 })
                 .collect(),
             }

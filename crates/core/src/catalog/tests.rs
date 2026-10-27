@@ -285,7 +285,7 @@ fn every_entry_has_its_independently_written_recipe() {
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                form: auditorylab_core::ComponentForm::Voice(voice),
+                form: crate::test_support::form(voice),
             })
             .collect(),
         };
@@ -294,9 +294,7 @@ fn every_entry_has_its_independently_written_recipe() {
         assert_eq!(sound.components.len(), parts.len(), "{name}");
         for (component, (ears, kind, hz, level, modulation)) in sound.components.iter().zip(*parts)
         {
-            let auditorylab_core::ComponentForm::Voice(component) = component.form else {
-                panic!("voice fixture")
-            };
+            let component = component.form.primitive().unwrap();
             assert_eq!(component.ears, *ears, "{name}");
             assert_eq!(component.peak_dbfs, *level, "{name}");
             assert_eq!(
@@ -356,7 +354,7 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
                 .enumerate()
                 .map(|(index, voice)| auditorylab_core::Component {
                     id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                    form: auditorylab_core::ComponentForm::Voice(voice),
+                    form: crate::test_support::form(voice),
                 })
                 .collect(),
             };
@@ -365,9 +363,7 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
             sound.fade_seconds = 0.0;
             let signal = sound.signal(SampleRate::new(hz).unwrap()).unwrap();
             if let [part] = &sound.components[..] {
-                let auditorylab_core::ComponentForm::Voice(part) = part.form else {
-                    panic!("voice fixture")
-                };
+                let part = part.form.primitive().unwrap();
                 let pulse_rate = match part.carrier {
                     Carrier::Clicks { rate_hz, .. } => Some(rate_hz),
                     _ => match part.modulation {

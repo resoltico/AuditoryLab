@@ -109,12 +109,10 @@ fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
 fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
     use crate::core::{ComponentId, DocumentIdentity, Ears, Pair, SampleRate, Sound};
     use crate::document::recipe::{Origin, RecipeSnapshot};
-    let plain = Voice {
+    let plain = ComponentForm::Tone {
+        frequency_hz: 437.0,
         ears: Ears::Left,
         peak_dbfs: -24.0,
-        carrier: Carrier::Tone {
-            frequency_hz: 437.0,
-        },
         modulation: None,
     };
     let pair = Pair {
@@ -124,61 +122,79 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
         second_peak_dbfs: -30.0,
     };
     for (form, expected) in [
+        (plain, "tone 437 Hz, peak -24 dBFS, left ear"),
         (
-            ComponentForm::Voice(plain),
-            "tone 437 Hz, peak -24 dBFS, left ear",
-        ),
-        (
-            ComponentForm::Voice(Voice {
-                modulation: Some(Modulation::Am {
+            {
+                let mut form = plain;
+                form.set_modulation(Some(Modulation::Am {
                     rate_hz: 7.0,
                     depth: 0.5,
-                }),
-                ..plain
-            }),
+                }));
+                form
+            },
             "tone 437 Hz, peak -24 dBFS, left ear, AM 7 Hz, depth 0.5",
         ),
         (
-            ComponentForm::Voice(Voice {
-                modulation: Some(Modulation::Gate {
+            {
+                let mut form = plain;
+                form.set_modulation(Some(Modulation::Gate {
                     rate_hz: 7.0,
                     width_seconds: 0.01,
-                }),
-                ..plain
-            }),
+                }));
+                form
+            },
             "tone 437 Hz, peak -24 dBFS, left ear, gate 7 Hz, 0.01 s open",
         ),
         (
-            ComponentForm::Voice(Voice {
-                carrier: Carrier::Clicks {
+            {
+                let base = plain;
+                ComponentForm::Clicks {
                     rate_hz: 7.0,
                     width_seconds: 0.01,
-                },
-                ..plain
-            }),
+                    ears: base.route().unwrap(),
+                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                    modulation: base.modulation(),
+                }
+            },
             "clicks 7 Hz, 0.01 s wide, peak -24 dBFS, left ear",
         ),
         (
-            ComponentForm::BinauralPair(pair),
+            {
+                ComponentForm::BinauralPair {
+                    left_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    left_peak_dbfs: pair.first_peak_dbfs,
+                    right_peak_dbfs: pair.second_peak_dbfs,
+                }
+            },
             "binaural pair, first 200 Hz, signed offset -6 Hz, second 194 Hz, peaks -20 / -30 dBFS",
         ),
         (
-            ComponentForm::MonauralPair {
-                ears: Ears::Right,
-                pair: Pair {
+            {
+                let pair = Pair {
                     offset_hz: 6.0,
                     ..pair
-                },
+                };
+                ComponentForm::MonauralPair {
+                    ears: Ears::Right,
+                    first_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    first_peak_dbfs: pair.first_peak_dbfs,
+                    second_peak_dbfs: pair.second_peak_dbfs,
+                }
             },
             "monaural pair, first 200 Hz, signed offset 6 Hz, second 206 Hz, peaks -20 / -30 dBFS",
         ),
         (
-            ComponentForm::Voice(Voice {
-                carrier: Carrier::Tone {
+            {
+                let base = plain;
+                ComponentForm::Tone {
                     frequency_hz: -437.0,
-                },
-                ..plain
-            }),
+                    ears: base.route().unwrap(),
+                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                    modulation: base.modulation(),
+                }
+            },
             "tone -437 Hz, peak -24 dBFS, left ear",
         ),
     ] {

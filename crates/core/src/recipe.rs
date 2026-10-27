@@ -304,7 +304,7 @@ impl Recipe {
                         Some(component.id),
                         component
                             .form
-                            .read(parameter)
+                            .get(parameter)
                             .unwrap_or_else(|| unreachable!("enumerated quantity")),
                     )
                 }

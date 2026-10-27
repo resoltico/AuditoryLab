@@ -8,15 +8,15 @@ use serde::{Deserialize, Serialize};
 
 /// One carrier routed to one or both ears.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Voice {
+pub(crate) struct Voice {
     /// Ear routing.
-    pub ears: Ears,
+    pub(crate) ears: Ears,
     /// Peak amplitude in dBFS.
-    pub peak_dbfs: f64,
+    pub(crate) peak_dbfs: f64,
     /// Periodic sound source.
-    pub carrier: Carrier,
+    pub(crate) carrier: Carrier,
     /// Optional amplitude modulation.
-    pub modulation: Option<Modulation>,
+    pub(crate) modulation: Option<Modulation>,
 }
 /// A periodic sound source.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -90,13 +90,6 @@ impl Ears {
 }
 
 impl Voice {
-    pub(crate) fn intrinsic_issues(&self) -> impl Iterator<Item = crate::ValueIssue> + '_ {
-        ParameterId::COMPONENT.into_iter().filter_map(|parameter| {
-            parameter
-                .read(self)
-                .and_then(|value| crate::validity::check_value(parameter, value).err())
-        })
-    }
     /// Check every value at `rate` and build the generator.
     pub(crate) fn voice(&self, rate: SampleRate) -> Result<GeneratorVoice, VoiceError> {
         let peak_dbfs = self.peak_dbfs;

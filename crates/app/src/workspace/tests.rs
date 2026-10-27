@@ -523,9 +523,7 @@ fn over_budget_copy_content_is_refused_before_becoming_a_snapshot() {
     candidate.sound.components = (0..17)
         .map(|i| crate::core::Component {
             id: ComponentId::numbered(i).unwrap(),
-            form: crate::core::ComponentForm::Voice(crate::document::controls::default_component(
-                CarrierKind::Tone,
-            )),
+            form: crate::document::controls::default_component(CarrierKind::Tone),
         })
         .collect();
     assert!(candidate.build().is_err());
@@ -536,17 +534,20 @@ fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
     let mut source = Draft::new().unwrap().recipe().unwrap().into_builder();
     source.sound.components.push(crate::core::Component {
         id: ComponentId::new(1).unwrap(),
-        form: crate::core::ComponentForm::Voice(crate::core::Voice {
-            carrier: crate::core::Carrier::Tone {
+        form: {
+            let base = crate::document::controls::default_component(CarrierKind::Tone);
+            crate::core::ComponentForm::Tone {
                 frequency_hz: f64::NAN,
-            },
-            ..crate::document::controls::default_component(CarrierKind::Tone)
-        }),
+                ears: base.route().unwrap(),
+                peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                modulation: base.modulation(),
+            }
+        },
     });
     assert!(source.clone().build().is_err());
     source.sound.components[0]
         .form
-        .write(auditorylab_core::ParameterId::ToneFrequency, 440.0);
+        .set(auditorylab_core::ParameterId::ToneFrequency, 440.0);
     source.sound.duration_seconds = -1.0;
     let finite = RecipeSnapshot::new(
         crate::document::recipe::Origin::Stream("finite invalid".into()),
@@ -818,7 +819,7 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
     assert_eq!(
         saved.snapshot.sound().components[0]
             .form
-            .read(ParameterId::ToneFrequency),
+            .get(ParameterId::ToneFrequency),
         Some(440.0)
     );
     assert!(
@@ -836,7 +837,7 @@ fn captured_managed_save_is_sans_io_and_later_edits_stay_dirty() {
     assert_eq!(
         workspace.editor().draft().components()[0]
             .form
-            .read(ParameterId::ToneFrequency),
+            .get(ParameterId::ToneFrequency),
         Some(880.0)
     );
     assert_eq!(
@@ -885,7 +886,7 @@ fn captured_save_completion_never_replaces_a_different_editor_document() {
     assert_eq!(
         saved.snapshot.sound().components[0]
             .form
-            .read(ParameterId::ToneFrequency),
+            .get(ParameterId::ToneFrequency),
         Some(440.0)
     );
 }
@@ -1121,7 +1122,7 @@ fn portable_export_keeps_the_prompt_capture_and_does_not_advance_the_save_baseli
     assert_eq!(
         saved.sound().components[0]
             .form
-            .read(ParameterId::ToneFrequency),
+            .get(ParameterId::ToneFrequency),
         Some(440.0)
     );
     assert!(workspace.file_busy());

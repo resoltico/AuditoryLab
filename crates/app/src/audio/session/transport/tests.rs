@@ -5,7 +5,7 @@ use super::*;
 use crate::audio::session::live::LiveGenerator;
 use crate::audio::session::source::FiniteSource;
 use crate::audio::session::{Outcome, SessionState};
-use auditorylab_core::{ComponentId, Ears, SampleRate, Signal, Sound, Target, Voice};
+use auditorylab_core::{ComponentForm, ComponentId, Ears, SampleRate, Signal, Sound, Target};
 use proptest::{prelude::*, test_runner::TestRunner};
 
 fn rate(hz: u32) -> SampleRate {
@@ -16,19 +16,17 @@ fn signal(frames: u64, hz: u32) -> Signal {
     Sound {
         duration_seconds: f64::from(u32::try_from(frames).unwrap()) / f64::from(hz),
         fade_seconds: 0.0,
-        components: (vec![Voice {
+        components: (vec![ComponentForm::Tone {
+            frequency_hz: 100.0,
             ears: Ears::Both,
             peak_dbfs: -20.0,
             modulation: None,
-            carrier: crate::core::Carrier::Tone {
-                frequency_hz: 100.0,
-            },
         }])
         .into_iter()
         .enumerate()
         .map(|(index, voice)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-            form: auditorylab_core::ComponentForm::Voice(voice),
+            form: voice,
         })
         .collect(),
     }
@@ -471,14 +469,12 @@ fn mailbox_is_polled_once_per_buffer_and_updates_wait_for_the_next_buffer() {
         fade_seconds: 0.0,
         components: vec![crate::core::Component {
             id: ComponentId::new(1).unwrap(),
-            form: crate::core::ComponentForm::Voice(Voice {
+            form: ComponentForm::Tone {
+                frequency_hz: 440.0,
                 ears: Ears::Both,
                 peak_dbfs: -30.0,
-                carrier: crate::core::Carrier::Tone {
-                    frequency_hz: 440.0,
-                },
                 modulation: None,
-            }),
+            },
         }],
     }
     .target(rate(8_000))
@@ -547,29 +543,25 @@ fn routed(frames: u32) -> Signal {
         duration_seconds: f64::from(frames) / 8_000.0,
         fade_seconds: 0.0,
         components: (vec![
-            Voice {
+            ComponentForm::Tone {
+                frequency_hz: 257.3,
                 ears: Ears::Left,
                 peak_dbfs: -20.0,
                 modulation: None,
-                carrier: crate::core::Carrier::Tone {
-                    frequency_hz: 257.3,
-                },
             },
-            Voice {
+            ComponentForm::Clicks {
+                rate_hz: 37.0,
+                width_seconds: 0.001,
                 ears: Ears::Right,
                 peak_dbfs: -14.0,
                 modulation: None,
-                carrier: crate::core::Carrier::Clicks {
-                    rate_hz: 37.0,
-                    width_seconds: 0.001,
-                },
             },
         ])
         .into_iter()
         .enumerate()
         .map(|(index, voice)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-            form: auditorylab_core::ComponentForm::Voice(voice),
+            form: voice,
         })
         .collect(),
     }

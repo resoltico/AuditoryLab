@@ -7,7 +7,7 @@
 #![cfg(test)]
 
 mod common;
-use auditorylab_core::{Carrier, Ears, Modulation, SampleRate, Voice};
+use auditorylab_core::{ComponentForm, Ears, Modulation, SampleRate};
 
 /// FNV-1a over the little-endian bytes of every sample.
 fn digest(frames: &[[f64; 2]]) -> u64 {
@@ -23,7 +23,7 @@ fn digest(frames: &[[f64; 2]]) -> u64 {
 }
 
 /// Two faded seconds at 48,000 Hz, rendered in buffers of uneven length.
-fn rendered(components: &[Voice]) -> Vec<[f64; 2]> {
+fn rendered(components: &[ComponentForm]) -> Vec<[f64; 2]> {
     let session = common::recipe(2.0, 0.1, components)
         .sound()
         .clone()
@@ -42,23 +42,19 @@ fn rendered(components: &[Voice]) -> Vec<[f64; 2]> {
     frames
 }
 
-const CASES: [(&str, &[Voice]); 5] = [
+const CASES: [(&str, &[ComponentForm]); 5] = [
     (
         "separate-ear tones",
         &[
-            Voice {
+            ComponentForm::Tone {
+                frequency_hz: 250.0,
                 ears: Ears::Left,
-                carrier: Carrier::Tone {
-                    frequency_hz: 250.0,
-                },
                 peak_dbfs: -20.0,
                 modulation: None,
             },
-            Voice {
+            ComponentForm::Tone {
+                frequency_hz: 256.0,
                 ears: Ears::Right,
-                carrier: Carrier::Tone {
-                    frequency_hz: 256.0,
-                },
                 peak_dbfs: -20.0,
                 modulation: None,
             },
@@ -67,19 +63,15 @@ const CASES: [(&str, &[Voice]); 5] = [
     (
         "summed tones",
         &[
-            Voice {
+            ComponentForm::Tone {
+                frequency_hz: 396.5,
                 ears: Ears::Both,
-                carrier: Carrier::Tone {
-                    frequency_hz: 396.5,
-                },
                 peak_dbfs: -23.0103,
                 modulation: None,
             },
-            Voice {
+            ComponentForm::Tone {
+                frequency_hz: 403.5,
                 ears: Ears::Both,
-                carrier: Carrier::Tone {
-                    frequency_hz: 403.5,
-                },
                 peak_dbfs: -23.0103,
                 modulation: None,
             },
@@ -87,11 +79,9 @@ const CASES: [(&str, &[Voice]); 5] = [
     ),
     (
         "modulated tone",
-        &[Voice {
+        &[ComponentForm::Tone {
+            frequency_hz: 1000.0,
             ears: Ears::Left,
-            carrier: Carrier::Tone {
-                frequency_hz: 1000.0,
-            },
             peak_dbfs: -20.0,
             modulation: Some(Modulation::Am {
                 rate_hz: 39.0625,
@@ -101,11 +91,9 @@ const CASES: [(&str, &[Voice]); 5] = [
     ),
     (
         "gated tone",
-        &[Voice {
+        &[ComponentForm::Tone {
+            frequency_hz: 5000.0,
             ears: Ears::Both,
-            carrier: Carrier::Tone {
-                frequency_hz: 5000.0,
-            },
             peak_dbfs: -20.0,
             modulation: Some(Modulation::Gate {
                 rate_hz: 40.0,
@@ -115,12 +103,10 @@ const CASES: [(&str, &[Voice]); 5] = [
     ),
     (
         "clicks",
-        &[Voice {
+        &[ComponentForm::Clicks {
+            rate_hz: 40.0,
+            width_seconds: 0.001,
             ears: Ears::Both,
-            carrier: Carrier::Clicks {
-                rate_hz: 40.0,
-                width_seconds: 0.001,
-            },
             peak_dbfs: -20.0,
             modulation: None,
         }],

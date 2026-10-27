@@ -144,23 +144,21 @@ mod quantization {
     }
     #[test]
     fn actual_encoded_peaks_can_round_above_the_binary64_generation_bound() {
-        use auditorylab_core::{Ears, Sound, Voice};
+        use auditorylab_core::{ComponentForm, Ears, Sound};
         let session = Sound {
             duration_seconds: 4.0 / 8_000.0,
             fade_seconds: 0.0,
-            components: (vec![Voice {
+            components: (vec![ComponentForm::Tone {
+                frequency_hz: 2_000.0,
                 ears: Ears::Left,
                 peak_dbfs: -20.0,
                 modulation: None,
-                carrier: crate::core::Carrier::Tone {
-                    frequency_hz: 2_000.0,
-                },
             }])
             .into_iter()
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                form: auditorylab_core::ComponentForm::Voice(voice),
+                form: voice,
             })
             .collect(),
         }
@@ -185,19 +183,17 @@ mod quantization {
         let session = Sound {
             duration_seconds: 4.0 / 8_000.0,
             fade_seconds: 0.0,
-            components: (vec![Voice {
+            components: (vec![ComponentForm::Tone {
+                frequency_hz: 2_000.0,
                 ears: Ears::Both,
                 peak_dbfs: -1_000.0,
                 modulation: None,
-                carrier: crate::core::Carrier::Tone {
-                    frequency_hz: 2_000.0,
-                },
             }])
             .into_iter()
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                form: auditorylab_core::ComponentForm::Voice(voice),
+                form: voice,
             })
             .collect(),
         }

@@ -1,9 +1,9 @@
 //! Checked recipe construction for behavioral tests; no serialization or sample oracle.
 use auditorylab_core::{
-    Component, ComponentForm, ComponentId, DocumentIdentity, DocumentUuid, Recipe, Sound, Voice,
+    Component, ComponentForm, ComponentId, DocumentIdentity, DocumentUuid, Recipe, Sound,
 };
 
-pub(crate) fn recipe(duration_seconds: f64, fade_seconds: f64, voices: &[Voice]) -> Recipe {
+pub(crate) fn recipe(duration_seconds: f64, fade_seconds: f64, voices: &[ComponentForm]) -> Recipe {
     let sound = Sound {
         duration_seconds,
         fade_seconds,
@@ -15,7 +15,7 @@ pub(crate) fn recipe(duration_seconds: f64, fade_seconds: f64, voices: &[Voice])
                     Some(id) => id,
                     None => panic!("behavioral fixture exceeds the owner range"),
                 },
-                form: ComponentForm::Voice(*voice),
+                form: *voice,
             })
             .collect(),
     };

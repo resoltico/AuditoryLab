@@ -1,7 +1,6 @@
 //! Shared query counterexamples using actual authored classification and typed evidence.
 use auditorylab_app::core::{
-    Carrier, Component, ComponentForm, ComponentId, DocumentIdentity, Ears, Pair, Recipe, Sound,
-    Timestamp, Voice,
+    Component, ComponentForm, ComponentId, DocumentIdentity, Ears, Recipe, Sound, Timestamp,
     rhythm::{Band, Method},
 };
 use auditorylab_app::document::recipe::{Origin, RecipeSnapshot};
@@ -42,12 +41,12 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
 fn pair(offset_hz: f64) -> Component {
     Component {
         id: ComponentId::new(7).unwrap(),
-        form: ComponentForm::BinauralPair(Pair {
-            first_hz: 200.0,
+        form: ComponentForm::BinauralPair {
+            left_hz: 200.0,
             offset_hz,
-            first_peak_dbfs: -30.0,
-            second_peak_dbfs: -30.0,
-        }),
+            left_peak_dbfs: -30.0,
+            right_peak_dbfs: -30.0,
+        },
     }
 }
 #[expect(
@@ -57,17 +56,15 @@ fn pair(offset_hz: f64) -> Component {
 fn am(rate_hz: f64) -> Component {
     Component {
         id: ComponentId::new(90).unwrap(),
-        form: ComponentForm::Voice(Voice {
+        form: ComponentForm::Tone {
+            frequency_hz: 1000.0,
             ears: Ears::Both,
             peak_dbfs: -30.0,
-            carrier: Carrier::Tone {
-                frequency_hz: 1000.0,
-            },
             modulation: Some(auditorylab_app::core::Modulation::Am {
                 rate_hz,
                 depth: 1.0,
             }),
-        }),
+        },
     }
 }
 #[test]

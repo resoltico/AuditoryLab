@@ -192,20 +192,18 @@ mod tests {
     use super::*;
     #[test]
     fn excessive_width_names_the_signal_frame_limit() {
-        let component = crate::core::Voice {
+        let component = crate::core::ComponentForm::Clicks {
+            rate_hz: 1e-12,
+            width_seconds: 68_719_476_737.0 / 48_000.0,
             ears: crate::core::Ears::Both,
             peak_dbfs: -30.0,
-            carrier: crate::core::Carrier::Clicks {
-                rate_hz: 1e-12,
-                width_seconds: 68_719_476_737.0 / 48_000.0,
-            },
             modulation: None,
         };
         let message = sound_error(
             &crate::core::Sound {
                 components: vec![crate::core::Component {
                     id: crate::core::ComponentId::new(1).unwrap(),
-                    form: crate::core::ComponentForm::Voice(component),
+                    form: component,
                 }],
                 duration_seconds: 1.0,
                 fade_seconds: 0.0,

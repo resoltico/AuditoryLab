@@ -2,8 +2,8 @@
 //! change facts and revisions, never generated samples, ramps or phases.
 //! Expected samples come from engines that never received those edits.
 use auditorylab_core::{
-    Carrier, CarrierFacts, Component, ComponentForm, ComponentId, Ears, Observation, SampleRate,
-    SlotRole, Sound, Target, Voice, live::Engine,
+    CarrierFacts, Component, ComponentForm, ComponentId, Ears, Observation, SampleRate, SlotRole,
+    Sound, Target, live::Engine,
 };
 
 const fn rate() -> SampleRate {
@@ -13,14 +13,12 @@ const fn rate() -> SampleRate {
     }
 }
 
-fn clicks(rate_hz: f64, width_seconds: f64) -> Voice {
-    Voice {
+fn clicks(rate_hz: f64, width_seconds: f64) -> ComponentForm {
+    ComponentForm::Clicks {
+        rate_hz,
+        width_seconds,
         ears: Ears::Both,
         peak_dbfs: -20.0,
-        carrier: Carrier::Clicks {
-            rate_hz,
-            width_seconds,
-        },
         modulation: None,
     }
 }
@@ -29,13 +27,13 @@ fn clicks(rate_hz: f64, width_seconds: f64) -> Voice {
     clippy::unwrap_used,
     reason = "Fixture helper panics if its fixed component stops validating, failing the calling test"
 )]
-fn target(component: Voice) -> Target {
+fn target(component: ComponentForm) -> Target {
     Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
         components: vec![Component {
             id: ComponentId::new(1).unwrap(),
-            form: ComponentForm::Voice(component),
+            form: component,
         }],
     }
     .target(rate())
@@ -57,11 +55,18 @@ fn b_prime() -> Target {
     target(clicks(80.0, 0.000_11))
 }
 fn c() -> Target {
-    target(Voice {
-        carrier: Carrier::Tone {
+    target({
+        let base = clicks(1.0, 0.1);
+        ComponentForm::Tone {
             frequency_hz: 120.0,
-        },
-        ..clicks(1.0, 0.1)
+            ears: base
+                .route()
+                .unwrap_or_else(|| panic!("primitive fixture route")),
+            peak_dbfs: base
+                .get(auditorylab_core::ParameterId::PeakLevel)
+                .unwrap_or_else(|| panic!("primitive fixture level")),
+            modulation: base.modulation(),
+        }
     })
 }
 

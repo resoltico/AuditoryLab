@@ -6,7 +6,7 @@ use crate::audio::session::live::LiveGenerator;
 use crate::audio::session::source::{FiniteSource, Source};
 use crate::audio::session::transport::{BufferTime, Transport};
 use crate::audio::session::{Outcome, SampleFormat};
-use crate::core::{Carrier, Ears, Sound, Voice};
+use crate::core::{ComponentForm, Ears, Sound};
 use crate::document::recipe::Origin;
 fn descriptor(hz: u32) -> SessionDescriptor {
     SessionDescriptor {
@@ -23,13 +23,13 @@ fn descriptor(hz: u32) -> SessionDescriptor {
         target: Target::silence(SampleRate::new(hz).unwrap()),
     }
 }
-fn numbered(rate: SampleRate, components: &[Voice]) -> Target {
+fn numbered(rate: SampleRate, components: &[ComponentForm]) -> Target {
     let components = components
         .iter()
         .enumerate()
         .map(|(i, c)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(i).unwrap(),
-            form: auditorylab_core::ComponentForm::Voice(*c),
+            form: *c,
         })
         .collect();
     Sound {
@@ -47,19 +47,17 @@ fn signal(hz: u32) -> crate::core::Signal {
     Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
-        components: (vec![Voice {
+        components: (vec![ComponentForm::Tone {
+            frequency_hz: 100.0,
             ears: Ears::Left,
             peak_dbfs: -20.0,
-            carrier: Carrier::Tone {
-                frequency_hz: 100.0,
-            },
             modulation: None,
         }])
         .into_iter()
         .enumerate()
         .map(|(index, voice)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-            form: auditorylab_core::ComponentForm::Voice(voice),
+            form: voice,
         })
         .collect(),
     }
@@ -266,24 +264,25 @@ fn digital_meters_and_extrema_use_the_entire_window() {
 #[test]
 fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
     let rate = SampleRate::DEFAULT;
-    let tones: Vec<Voice> = (0..16)
-        .map(|n| Voice {
+    let tones: Vec<ComponentForm> = (0..16)
+        .map(|n| ComponentForm::Tone {
+            frequency_hz: 200.0 + f64::from(n) * 20.0,
             ears: Ears::Both,
             peak_dbfs: -30.0,
-            carrier: Carrier::Tone {
-                frequency_hz: 200.0 + f64::from(n) * 20.0,
-            },
             modulation: None,
         })
         .collect();
-    let clicks: Vec<Voice> = tones
+    let clicks: Vec<ComponentForm> = tones
         .iter()
-        .map(|c| Voice {
-            carrier: Carrier::Clicks {
+        .map(|c| {
+            let base = *c;
+            ComponentForm::Clicks {
                 rate_hz: 40.0,
                 width_seconds: 0.001,
-            },
-            ..*c
+                ears: base.route().unwrap(),
+                peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                modulation: base.modulation(),
+            }
         })
         .collect();
     let monitored = SessionState::new();
@@ -439,13 +438,11 @@ fn callback_cost() {
                 Some(MonitorDetail::Waveform),
             ] {
                 let rate = SampleRate::new(hz).unwrap();
-                let components: Vec<Voice> = (0..16)
-                    .map(|n| Voice {
+                let components: Vec<ComponentForm> = (0..16)
+                    .map(|n| ComponentForm::Tone {
+                        frequency_hz: 200.0 + f64::from(n) * 20.0,
                         ears: Ears::Both,
                         peak_dbfs: -30.0,
-                        carrier: Carrier::Tone {
-                            frequency_hz: 200.0 + f64::from(n) * 20.0,
-                        },
                         modulation: Some(crate::core::Modulation::Am {
                             rate_hz: 23.0 + f64::from(n) * 0.75,
                             depth: 1.0,
@@ -458,12 +455,17 @@ fn callback_cost() {
                     &components
                         .iter()
                         .enumerate()
-                        .map(|(n, c)| Voice {
-                            carrier: Carrier::Clicks {
+                        .map(|(n, c)| {
+                            let base = *c;
+                            ComponentForm::Clicks {
                                 rate_hz: 40.0 + f64::from(u32::try_from(n).unwrap()),
                                 width_seconds: 0.001,
-                            },
-                            ..*c
+                                ears: base.route().unwrap(),
+                                peak_dbfs: base
+                                    .get(auditorylab_core::ParameterId::PeakLevel)
+                                    .unwrap(),
+                                modulation: base.modulation(),
+                            }
                         })
                         .collect::<Vec<_>>(),
                 );
@@ -726,17 +728,17 @@ fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
         let signal = Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
-            components: (vec![Voice {
+            components: (vec![ComponentForm::Tone {
+                frequency_hz: hz,
                 ears: Ears::Both,
                 peak_dbfs: -15.3,
-                carrier: Carrier::Tone { frequency_hz: hz },
                 modulation: None,
             }])
             .into_iter()
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                form: auditorylab_core::ComponentForm::Voice(voice),
+                form: voice,
             })
             .collect(),
         }
@@ -796,12 +798,10 @@ fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
 fn maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots() {
     let rate = SampleRate::new(768_000).unwrap();
     let voices: Vec<_> = (0..16)
-        .map(|n| Voice {
+        .map(|n| ComponentForm::Tone {
+            frequency_hz: 200.0 + f64::from(n) * 20.0,
             ears: Ears::Both,
             peak_dbfs: -30.0,
-            carrier: Carrier::Tone {
-                frequency_hz: 200.0 + f64::from(n) * 20.0,
-            },
             modulation: Some(crate::core::Modulation::Am {
                 rate_hz: 23.0 + f64::from(n) * 0.75,
                 depth: 1.0,
@@ -813,12 +813,15 @@ fn maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots() {
         rate,
         &voices
             .iter()
-            .map(|voice| Voice {
-                carrier: Carrier::Clicks {
+            .map(|voice| {
+                let base = *voice;
+                ComponentForm::Clicks {
                     rate_hz: 40.0,
                     width_seconds: 0.001,
-                },
-                ..*voice
+                    ears: base.route().unwrap(),
+                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                    modulation: base.modulation(),
+                }
             })
             .collect::<Vec<_>>(),
     );

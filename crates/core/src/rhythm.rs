@@ -1,8 +1,7 @@
 //! Shared structural rhythm rules for authored content and realized generators.
 use crate::{
-    Carrier, CarrierFacts, Component, ComponentForm, Lane, Modulation, ModulationFacts,
-    Observation, PairError, PairKind, ParameterId, SlotRole, StructureError, Target, Voice,
-    VoiceId, VoiceObservation,
+    Carrier, CarrierFacts, Component, Lane, Modulation, ModulationFacts, Observation, PairError,
+    PairKind, ParameterId, SlotRole, StructureError, Target, VoiceId, VoiceObservation,
     validity::{self, ValueIssue},
 };
 use alloc::vec::Vec;
@@ -293,7 +292,8 @@ impl Analysis {
 struct Input {
     owner: VoiceId,
     role: SlotRole,
-    voice: Voice,
+    carrier: Carrier,
+    modulation: Option<Modulation>,
     pair: Option<(PairKind, Option<f64>)>,
 }
 // Both public entry points normalize to this function. Carrier frequencies
@@ -315,11 +315,11 @@ fn describe(input: Input, rhythms: &mut Vec<Descriptor>, methods: &mut Vec<Metho
         add(Method::of_pair(kind), rate);
         return;
     }
-    match input.voice.carrier {
+    match input.carrier {
         Carrier::Clicks { rate_hz, .. } => add(Method::Clicks, Some(rate_hz)),
         Carrier::Tone { .. }
             if matches!(
-                input.voice.modulation,
+                input.modulation,
                 None | Some(Modulation::Am { depth: 0.0, .. })
             ) =>
         {
@@ -327,7 +327,7 @@ fn describe(input: Input, rhythms: &mut Vec<Descriptor>, methods: &mut Vec<Metho
         }
         Carrier::Tone { .. } => {}
     }
-    match input.voice.modulation {
+    match input.modulation {
         Some(Modulation::Am { rate_hz, depth }) if depth > 0.0 => add(Method::Am, Some(rate_hz)),
         Some(Modulation::Gate { rate_hz, .. }) => add(Method::Gate, Some(rate_hz)),
         _ => {}
@@ -349,16 +349,18 @@ pub fn nominal(components: &[Component]) -> Analysis {
     };
     for component in components {
         let owner = component.id.into();
-        let (voice, pair) = match component.form {
-            ComponentForm::Voice(voice) => {
+        let (carrier, modulation, pair) = match component.form.primitive() {
+            Some(voice) => {
                 result.diagnostics.extend(
-                    voice
+                    component
+                        .form
                         .intrinsic_issues()
                         .map(|issue| Issue::Value { owner, issue }),
                 );
-                (voice, None)
+                (voice.carrier, voice.modulation, None)
             }
-            form => {
+            None => {
+                let form = component.form;
                 let pair = form.pair().unwrap_or_else(|| unreachable!("pair form"));
                 let kind = form
                     .pair_kind()
@@ -386,14 +388,10 @@ pub fn nominal(components: &[Component]) -> Analysis {
                     result.diagnostics.push(Issue::Pair(error));
                 }
                 (
-                    Voice {
-                        ears: form.ears(),
-                        peak_dbfs: pair.first_peak_dbfs,
-                        carrier: Carrier::Tone {
-                            frequency_hz: pair.first_hz,
-                        },
-                        modulation: None,
+                    Carrier::Tone {
+                        frequency_hz: pair.first_hz,
                     },
+                    None,
                     Some((kind, Some(pair.offset_hz.abs()))),
                 )
             }
@@ -402,7 +400,8 @@ pub fn nominal(components: &[Component]) -> Analysis {
             Input {
                 owner,
                 role: SlotRole::Continuing,
-                voice,
+                carrier,
+                modulation,
                 pair,
             },
             &mut result.rhythms,
@@ -557,12 +556,8 @@ pub(crate) fn classify(
             Input {
                 owner: value.id,
                 role: value.role,
-                voice: Voice {
-                    ears: value.facts.ears,
-                    peak_dbfs: value.facts.peak_dbfs,
-                    carrier,
-                    modulation,
-                },
+                carrier,
+                modulation,
                 pair,
             },
             &mut result.rhythms,

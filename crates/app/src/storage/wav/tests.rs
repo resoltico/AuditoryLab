@@ -4,7 +4,7 @@
 // Independently decode caller-owned encoded streams and test writer boundaries.
 
 use crate::storage::wav::{Container, Exported, encode};
-use auditorylab_core::{Ears, Recipe, SampleRate, Signal, Sound, Voice, catalog};
+use auditorylab_core::{ComponentForm, Ears, Recipe, SampleRate, Signal, Sound, catalog};
 fn export(
     session: Signal,
     path: &Path,
@@ -29,19 +29,17 @@ fn tone_session(frames: u32, sample_rate: SampleRate) -> Signal {
     Sound {
         duration_seconds: f64::from(frames) / f64::from(sample_rate.hz()),
         fade_seconds: 0.001,
-        components: (vec![Voice {
+        components: (vec![ComponentForm::Tone {
+            frequency_hz: 500.0,
             ears: Ears::Both,
             peak_dbfs: -20.0,
             modulation: None,
-            carrier: crate::core::Carrier::Tone {
-                frequency_hz: 500.0,
-            },
         }])
         .into_iter()
         .enumerate()
         .map(|(index, voice)| auditorylab_core::Component {
             id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-            form: auditorylab_core::ComponentForm::Voice(voice),
+            form: voice,
         })
         .collect(),
     }
@@ -131,7 +129,7 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                form: auditorylab_core::ComponentForm::Voice(voice),
+                form: voice,
             })
             .collect(),
     }

@@ -1,13 +1,12 @@
 //! Offline rendering cost at 48 kHz: `cargo run -p auditorylab-core --example render_cost --release`.
 //! Each case renders twenty seconds. No audio device is opened.
 use auditorylab_core::{
-    Carrier, Component, ComponentForm, ComponentId, Ears, Modulation, SampleRate, Sound, Voice,
-    live::Engine,
+    Component, ComponentForm, ComponentId, Ears, Modulation, SampleRate, Sound, live::Engine,
 };
 use std::{error::Error, hint::black_box, time::Instant};
 const RATE: u32 = 48_000;
 const FRAMES: u32 = RATE * 20;
-fn measure(components: Vec<Voice>) -> Result<[f64; 3], Box<dyn Error>> {
+fn measure(components: Vec<ComponentForm>) -> Result<[f64; 3], Box<dyn Error>> {
     let rate = SampleRate::new(RATE)?;
     let sound = Sound {
         duration_seconds: f64::from(FRAMES) / f64::from(RATE),
@@ -18,7 +17,7 @@ fn measure(components: Vec<Voice>) -> Result<[f64; 3], Box<dyn Error>> {
             .map(|(index, voice)| {
                 Ok(Component {
                     id: ComponentId::numbered(index).ok_or("too many component identities")?,
-                    form: ComponentForm::Voice(voice),
+                    form: voice,
                 })
             })
             .collect::<Result<_, &str>>()?,
@@ -74,20 +73,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     let tones = [Ears::Left, Ears::Right]
         .into_iter()
         .zip([250.0, 256.0])
-        .map(|(ears, frequency_hz)| Voice {
+        .map(|(ears, frequency_hz)| ComponentForm::Tone {
+            frequency_hz,
             ears,
             peak_dbfs: -20.0,
-            carrier: Carrier::Tone { frequency_hz },
             modulation: None,
         })
         .collect();
     let am = (0..16)
-        .map(|i| Voice {
+        .map(|i| ComponentForm::Tone {
+            frequency_hz: 200.0 + 50.0 * f64::from(i),
             ears: Ears::Both,
             peak_dbfs: -30.0,
-            carrier: Carrier::Tone {
-                frequency_hz: 200.0 + 50.0 * f64::from(i),
-            },
             modulation: Some(Modulation::Am {
                 rate_hz: 40.0,
                 depth: 1.0,

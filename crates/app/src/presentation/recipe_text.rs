@@ -1,5 +1,5 @@
 //! Shared descriptions of authored content and its research context.
-use crate::core::{Carrier, Component, ComponentForm, EvidenceScope, Modulation, Recipe, Voice};
+use crate::core::{Component, ComponentForm, EvidenceScope, Modulation, Recipe};
 
 /// Derived presentation of current title/notes and a primary current condition.
 /// This is a view, not a second persisted metadata authority.
@@ -78,44 +78,50 @@ pub fn copy_note(recipe: &Recipe) -> String {
 /// Describe one authored component without compiling it at a sample rate.
 #[must_use]
 pub fn component(component: &Component) -> String {
-    match component.form {
-        ComponentForm::Voice(v) => voice(v),
-        ComponentForm::BinauralPair(pair) | ComponentForm::MonauralPair { pair, .. } => {
-            let kind = match component.form {
-                ComponentForm::BinauralPair(_) => crate::core::PairKind::Binaural,
-                _ => crate::core::PairKind::Monaural,
-            };
-            format!(
-                "{}, first {} Hz, signed offset {} Hz, second {} Hz, peaks {} / {} dBFS",
-                kind.phrase(),
-                pair.first_hz,
-                pair.offset_hz,
-                pair.first_hz + pair.offset_hz,
-                pair.first_peak_dbfs,
-                pair.second_peak_dbfs
-            )
-        }
+    let form = component.form;
+    if let Some(pair) = form.pair() {
+        let kind = form
+            .pair_kind()
+            .unwrap_or_else(|| unreachable!("pair kind"));
+        format!(
+            "{}, first {} Hz, signed offset {} Hz, second {} Hz, peaks {} / {} dBFS",
+            kind.phrase(),
+            pair.first_hz,
+            pair.offset_hz,
+            pair.first_hz + pair.offset_hz,
+            pair.first_peak_dbfs,
+            pair.second_peak_dbfs
+        )
+    } else {
+        voice(form)
     }
 }
-fn voice(voice: Voice) -> String {
-    let carrier = match voice.carrier {
-        Carrier::Tone { frequency_hz } => {
-            format!("{} {frequency_hz} Hz", voice.carrier.kind().phrase())
-        }
-        Carrier::Clicks {
+
+fn voice(form: ComponentForm) -> String {
+    let carrier = match form {
+        ComponentForm::Tone { frequency_hz, .. } => format!(
+            "{} {frequency_hz} Hz",
+            crate::core::CarrierKind::Tone.phrase()
+        ),
+        ComponentForm::Clicks {
             rate_hz,
             width_seconds,
+            ..
         } => format!(
             "{} {rate_hz} Hz, {width_seconds} s wide",
-            voice.carrier.kind().phrase()
+            crate::core::CarrierKind::Clicks.phrase()
         ),
+        _ => unreachable!("primitive description"),
     };
     let mut text = format!(
         "{carrier}, peak {} dBFS, {}",
-        voice.peak_dbfs,
-        voice.ears.phrase()
+        form.get(crate::core::ParameterId::PeakLevel)
+            .unwrap_or_else(|| unreachable!("primitive level")),
+        form.route()
+            .unwrap_or_else(|| unreachable!("primitive route"))
+            .phrase()
     );
-    if let Some(modulation) = voice.modulation {
+    if let Some(modulation) = form.modulation() {
         text.push_str(&format!(
             ", {}",
             match modulation {

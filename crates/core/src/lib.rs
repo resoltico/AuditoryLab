@@ -2,7 +2,7 @@
 //!
 //! A [`Recipe`] is a portable document containing a [`Sound`] and attributed
 //! research. A Sound contains identified [`Component`]s, each a [`ComponentForm`] built
-//! from a [`Voice`] or an explicit pair. [`Sound::check`] retains diagnostics at
+//! from a primitive form or an explicit pair. [`Sound::check`] retains diagnostics at
 //! one [`SampleRate`]; [`Sound::target`] returns a validated [`Target`]. A
 //! [`Signal`] adds the finite envelope. [`live::Engine`] renders targets as an
 //! open-ended stream, and an [`Observation`] states the facts of a generated frame.
@@ -53,8 +53,10 @@ pub use provenance::{
 pub use rate::{SampleRate, SampleRateError};
 pub use recipe::{Recipe, RecipeBuilder, RecipeError};
 pub use signal::Signal;
-pub use voice::{Carrier, Ear, Ears, Modulation, SoundError, Voice, VoiceError};
+pub use voice::{Carrier, Ear, Ears, Modulation, SoundError, VoiceError};
 pub use waveform::Extent;
 
 #[cfg(test)]
 mod test_support;
+
+pub(crate) use voice::Voice;

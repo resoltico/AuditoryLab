@@ -282,43 +282,6 @@ impl ParameterId {
         !matches!(self, Self::Duration | Self::Fade)
     }
 
-    /// The component's value of this quantity in model units, or `None` when
-    /// its carrier or modulation does not have it.
-    #[must_use]
-    pub fn read(self, component: &Voice) -> Option<f64> {
-        match (self, component.carrier, component.modulation) {
-            (Self::PeakLevel, _, _) => Some(component.peak_dbfs),
-            (Self::ToneFrequency, Carrier::Tone { frequency_hz }, _) => Some(frequency_hz),
-            (Self::ClickRate, Carrier::Clicks { rate_hz, .. }, _) => Some(rate_hz),
-            (Self::ClickWidth, Carrier::Clicks { width_seconds, .. }, _) => Some(width_seconds),
-            (Self::AmRate, _, Some(Modulation::Am { rate_hz, .. }))
-            | (Self::GateRate, _, Some(Modulation::Gate { rate_hz, .. })) => Some(rate_hz),
-            (Self::AmDepth, _, Some(Modulation::Am { depth, .. })) => Some(depth),
-            (Self::GateWidth, _, Some(Modulation::Gate { width_seconds, .. })) => {
-                Some(width_seconds)
-            }
-            _ => None,
-        }
-    }
-
-    /// Set the component's value of this quantity in model units. Returns
-    /// `false`, changing nothing, when the component does not have it.
-    pub fn write(self, component: &mut Voice, value: f64) -> bool {
-        let slot = match (self, &mut component.carrier, &mut component.modulation) {
-            (Self::PeakLevel, _, _) => &mut component.peak_dbfs,
-            (Self::ToneFrequency, Carrier::Tone { frequency_hz }, _) => frequency_hz,
-            (Self::ClickRate, Carrier::Clicks { rate_hz, .. }, _) => rate_hz,
-            (Self::ClickWidth, Carrier::Clicks { width_seconds, .. }, _) => width_seconds,
-            (Self::AmRate, _, Some(Modulation::Am { rate_hz, .. }))
-            | (Self::GateRate, _, Some(Modulation::Gate { rate_hz, .. })) => rate_hz,
-            (Self::AmDepth, _, Some(Modulation::Am { depth, .. })) => depth,
-            (Self::GateWidth, _, Some(Modulation::Gate { width_seconds, .. })) => width_seconds,
-            _ => return false,
-        };
-        *slot = value;
-        true
-    }
-
     /// The sound's value of [`ParameterId::Duration`] or [`ParameterId::Fade`].
     #[must_use]
     pub const fn read_envelope(self, sound: &Sound) -> Option<f64> {
@@ -465,7 +428,7 @@ impl ComponentRole {
 impl Voice {
     /// The component's role; active modulation is never hidden.
     #[must_use]
-    pub fn role(&self) -> ComponentRole {
+    pub(crate) fn role(&self) -> ComponentRole {
         match self.modulation {
             Some(Modulation::Gate { .. }) => ComponentRole::GateRhythm,
             Some(Modulation::Am { depth, .. }) if depth > 0.0 => ComponentRole::AmEnvelope,
@@ -474,13 +437,6 @@ impl Voice {
                 Carrier::Tone { .. } => ComponentRole::SteadyTone,
             },
         }
-    }
-
-    /// The component's quantities that are not finite numbers.
-    pub fn nonfinite(&self) -> impl Iterator<Item = ParameterId> + '_ {
-        ParameterId::COMPONENT
-            .into_iter()
-            .filter(|id| id.read(self).is_some_and(|value| !value.is_finite()))
     }
 }
 
@@ -524,16 +480,16 @@ mod tests {
 
     #[test]
     fn every_component_quantity_reads_back_what_was_written_and_nothing_else() {
-        for shape in every_shape() {
+        for shape in every_shape().into_iter().map(crate::test_support::form) {
             for id in ParameterId::COMPONENT {
                 let mut changed = shape;
-                let applies = id.read(&shape).is_some();
-                assert_eq!(id.write(&mut changed, 0.25), applies, "{id:?}");
+                let applies = shape.get(id).is_some();
+                assert_eq!(changed.set(id, 0.25), applies, "{id:?}");
                 if applies {
-                    assert_eq!(id.read(&changed), Some(0.25));
+                    assert_eq!(changed.get(id), Some(0.25));
                     for other in ParameterId::COMPONENT {
                         if other != id {
-                            assert_eq!(other.read(&changed), other.read(&shape));
+                            assert_eq!(changed.get(other), shape.get(other));
                         }
                     }
                 } else {
@@ -542,10 +498,10 @@ mod tests {
             }
         }
         // Independently: a gated tone has frequency, level, gate rate and width.
-        let gated = every_shape()[2];
+        let gated = crate::test_support::form(every_shape()[2]);
         let present: Vec<_> = ParameterId::COMPONENT
             .into_iter()
-            .filter(|id| id.read(&gated).is_some())
+            .filter(|id| gated.get(*id).is_some())
             .collect();
         assert_eq!(
             present,
@@ -589,7 +545,12 @@ mod tests {
         assert_eq!(c.role(), ComponentRole::SteadyTone);
         c.peak_dbfs = f64::NAN;
         assert_eq!(
-            c.nonfinite().collect::<Vec<_>>(),
+            crate::ParameterId::COMPONENT
+                .into_iter()
+                .filter(|p| crate::test_support::form(c)
+                    .get(*p)
+                    .is_some_and(|v| !v.is_finite()))
+                .collect::<Vec<_>>(),
             [ParameterId::PeakLevel, ParameterId::AmRate]
         );
         assert_eq!(ComponentId::numbered(0), ComponentId::new(1));

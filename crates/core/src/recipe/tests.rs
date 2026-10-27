@@ -4,8 +4,7 @@
 use super::{Recipe, RecipeError};
 use crate::ContractError;
 use crate::{
-    Carrier, Component, ComponentForm, ComponentId, Description, DocumentIdentity, Pair, Sound,
-    Voice,
+    Carrier, Component, ComponentForm, ComponentId, Description, DocumentIdentity, Sound, Voice,
 };
 use alloc::{format, vec, vec::Vec};
 const PAIR: &str = r#"# Two raw tones retain their source order and authored identities.
@@ -316,14 +315,14 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                     components: vec![Component {
                         id: ComponentId::new(91).unwrap(),
                         form: if compound {
-                            ComponentForm::BinauralPair(Pair {
-                                first_hz: base,
+                            ComponentForm::BinauralPair {
+                                left_hz: base,
                                 offset_hz: offset,
-                                first_peak_dbfs: left,
-                                second_peak_dbfs: right,
-                            })
+                                left_peak_dbfs: left,
+                                right_peak_dbfs: right,
+                            }
                         } else {
-                            ComponentForm::Voice(Voice {
+                            crate::test_support::form(Voice {
                                 ears: crate::Ears::Both,
                                 peak_dbfs: left,
                                 carrier: Carrier::Clicks {
@@ -344,16 +343,20 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                     let s = &recipe.sound;
                     let mut values = vec![s.duration_seconds.to_bits(), s.fade_seconds.to_bits()];
                     match s.components[0].form {
-                        ComponentForm::BinauralPair(p) => values.extend(
-                            [
-                                p.first_hz,
-                                p.offset_hz,
-                                p.first_peak_dbfs,
-                                p.second_peak_dbfs,
-                            ]
-                            .map(f64::to_bits),
-                        ),
-                        ComponentForm::Voice(c) => {
+                        form @ ComponentForm::BinauralPair { .. } => {
+                            let p = form.pair().unwrap();
+                            values.extend(
+                                [
+                                    p.first_hz,
+                                    p.offset_hz,
+                                    p.first_peak_dbfs,
+                                    p.second_peak_dbfs,
+                                ]
+                                .map(f64::to_bits),
+                            );
+                        }
+                        form @ ComponentForm::Clicks { .. } => {
+                            let c = form.primitive().unwrap();
                             values.push(c.peak_dbfs.to_bits());
                             if let Carrier::Clicks {
                                 rate_hz,

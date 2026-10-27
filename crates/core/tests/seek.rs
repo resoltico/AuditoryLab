@@ -1,6 +1,6 @@
 //! Seekability, bounds, fades and trace extrema against independent oracles.
 mod common;
-use auditorylab_core::{Carrier, Ears, Modulation, Recipe, SampleRate, Voice, catalog, waveform};
+use auditorylab_core::{ComponentForm, Ears, Modulation, Recipe, SampleRate, catalog, waveform};
 use proptest::prelude::*;
 proptest! {
     #![proptest_config(ProptestConfig { cases: 64, max_shrink_iters: 128, failure_persistence: None, .. ProptestConfig::default() })]
@@ -20,12 +20,10 @@ fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
     let signal = common::recipe(
         1.25,
         0.0,
-        &[Voice {
+        &[ComponentForm::Clicks {
+            rate_hz: 3.0,
+            width_seconds: 0.000125,
             ears: Ears::Left,
-            carrier: Carrier::Clicks {
-                rate_hz: 3.0,
-                width_seconds: 0.000125,
-            },
             peak_dbfs: -20.0,
             modulation: None,
         }],
@@ -95,11 +93,9 @@ fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
     let signal = common::recipe(
         1431655.7653333333,
         0.0,
-        &[Voice {
+        &[ComponentForm::Tone {
+            frequency_hz: 8000.0,
             ears: Ears::Both,
-            carrier: Carrier::Tone {
-                frequency_hz: 8000.0,
-            },
             peak_dbfs: -20.0,
             modulation: Some(Modulation::Am {
                 rate_hz: 39.0625,
@@ -132,12 +128,10 @@ fn raised_cosine_is_symmetric_and_matches_sine_squared() {
     let signal = common::recipe(
         0.125125,
         0.008,
-        &[Voice {
+        &[ComponentForm::Clicks {
+            rate_hz: 0.5,
+            width_seconds: 0.25,
             ears: Ears::Both,
-            carrier: Carrier::Clicks {
-                rate_hz: 0.5,
-                width_seconds: 0.25,
-            },
             peak_dbfs: 0.0,
             modulation: None,
         }],
@@ -174,12 +168,10 @@ fn public_signals_preserve_slow_onsets_and_widths_longer_than_a_second() {
         common::recipe(
             3.0,
             0.0,
-            &[Voice {
+            &[ComponentForm::Clicks {
+                rate_hz: rate,
+                width_seconds: width,
                 ears: Ears::Both,
-                carrier: Carrier::Clicks {
-                    rate_hz: rate,
-                    width_seconds: width,
-                },
                 peak_dbfs: -20.0,
                 modulation: None,
             }],

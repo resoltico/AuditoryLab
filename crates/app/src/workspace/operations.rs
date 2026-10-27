@@ -58,7 +58,7 @@ impl Workspace {
     ) -> Result<(), Refusal> {
         self.editor.addition_admission(
             row,
-            crate::core::ComponentForm::Voice(controls::default_component(kind)),
+            controls::default_component(kind),
             &self.prompts,
             self.pending.is_some(),
             &self.files,

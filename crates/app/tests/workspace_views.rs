@@ -1,14 +1,13 @@
 //! Public shared interpretation and capture contracts, independent of UI widgets.
-use auditorylab_app::core::Carrier;
 use auditorylab_app::core::CarrierFacts;
 use auditorylab_app::core::CarrierKind;
+use auditorylab_app::core::ComponentForm;
 use auditorylab_app::core::ComponentId;
 use auditorylab_app::core::Ears;
 use auditorylab_app::core::Modulation;
 use auditorylab_app::core::ModulationKind;
 use auditorylab_app::core::ParameterId;
 use auditorylab_app::core::SampleRate;
-use auditorylab_app::core::Voice;
 use auditorylab_app::core::rhythm::Method;
 use auditorylab_app::core::rhythm::Structure;
 use auditorylab_app::presentation::vocabulary::NumberStyle;
@@ -19,11 +18,11 @@ use auditorylab_app::presentation::waveform_view::ModelSource;
 use auditorylab_app::presentation::waveform_view::ModelView;
 use auditorylab_app::presentation::waveform_view::WaveformCapture;
 use auditorylab_app::presentation::waveform_view::WaveformScale;
-fn tone(hz: f64, ears: Ears) -> Voice {
-    Voice {
+fn tone(hz: f64, ears: Ears) -> ComponentForm {
+    ComponentForm::Tone {
+        frequency_hz: hz,
         ears,
         peak_dbfs: -40.0,
-        carrier: Carrier::Tone { frequency_hz: hz },
         modulation: None,
     }
 }
@@ -31,13 +30,13 @@ fn tone(hz: f64, ears: Ears) -> Voice {
     clippy::unwrap_used,
     reason = "Test fixture helper deliberately panics if an enumerated component ID or specified target is invalid, causing its calling presentation test to fail"
 )]
-fn summary(components: &[Voice]) -> Structure {
+fn summary(components: &[ComponentForm]) -> Structure {
     let components = components
         .iter()
         .enumerate()
         .map(|(i, c)| auditorylab_app::core::Component {
             id: ComponentId::numbered(i).unwrap(),
-            form: auditorylab_app::core::ComponentForm::Voice(*c),
+            form: *c,
         })
         .collect();
     auditorylab_app::core::rhythm::realized(
@@ -52,12 +51,15 @@ fn summary(components: &[Voice]) -> Structure {
 }
 #[test]
 fn physical_meaning_has_positive_and_rejected_neighbors() {
-    let click = Voice {
-        carrier: Carrier::Clicks {
+    let click = {
+        let base = tone(440.0, Ears::Both);
+        ComponentForm::Clicks {
             rate_hz: 40.0,
             width_seconds: 0.001,
-        },
-        ..tone(440.0, Ears::Both)
+            ears: base.route().unwrap(),
+            peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+            modulation: base.modulation(),
+        }
     };
     let s = summary(&[click, tone(440.0, Ears::Both)]);
     assert_eq!(s.rhythms.len(), 1);
@@ -94,11 +96,23 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
             second_peak_dbfs: -40.0,
         };
         let form = if binaural {
-            auditorylab_app::core::ComponentForm::BinauralPair(pair)
+            {
+                auditorylab_app::core::ComponentForm::BinauralPair {
+                    left_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    left_peak_dbfs: pair.first_peak_dbfs,
+                    right_peak_dbfs: pair.second_peak_dbfs,
+                }
+            }
         } else {
-            auditorylab_app::core::ComponentForm::MonauralPair {
-                pair,
-                ears: Ears::Both,
+            {
+                auditorylab_app::core::ComponentForm::MonauralPair {
+                    ears: Ears::Both,
+                    first_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    first_peak_dbfs: pair.first_peak_dbfs,
+                    second_peak_dbfs: pair.second_peak_dbfs,
+                }
             }
         };
         let target = auditorylab_app::core::Sound {
@@ -119,33 +133,36 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
             "40 Hz monaural beat"
         }));
     }
-    let gate = Voice {
-        modulation: Some(Modulation::Gate {
+    let gate = {
+        let mut form = tone(10000.0, Ears::Both);
+        form.set_modulation(Some(Modulation::Gate {
             rate_hz: 8.0,
             width_seconds: 0.001,
-        }),
-        ..tone(10000.0, Ears::Both)
+        }));
+        form
     };
     let s = summary(&[gate, click]);
     assert_eq!(s.rhythms.len(), 2);
     assert!(s.summary().contains("8 Hz gate") && s.summary().contains("40 Hz clicks"));
-    let active = Voice {
-        modulation: Some(Modulation::Am {
+    let active = {
+        let mut form = a;
+        form.set_modulation(Some(Modulation::Am {
             rate_hz: 39.0625,
             depth: 0.5,
-        }),
-        ..a
+        }));
+        form
     };
     let am = summary(&[active]);
     assert_eq!(am.rhythms.len(), 1);
     assert_eq!(am.rhythms[0].method, Method::Am);
     assert!(am.summary().contains("39.0625") && am.summary().contains("50%"));
-    let inactive = Voice {
-        modulation: Some(Modulation::Am {
+    let inactive = {
+        let mut form = a;
+        form.set_modulation(Some(Modulation::Am {
             rate_hz: 39.0625,
             depth: 0.0,
-        }),
-        ..a
+        }));
+        form
     };
     assert!(summary(&[inactive]).rhythms.is_empty());
 }
@@ -249,19 +266,22 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
         (ParameterId::ToneFrequency).input_text(exact),
         "39.0625123456789"
     );
-    let c = Voice {
-        carrier: Carrier::Clicks {
+    let c = {
+        let base = tone(440.0, Ears::Both);
+        ComponentForm::Clicks {
             rate_hz: 40.0,
             width_seconds: 0.001,
-        },
-        ..tone(440.0, Ears::Both)
+            ears: base.route().unwrap(),
+            peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+            modulation: base.modulation(),
+        }
     };
     let t = auditorylab_app::core::Sound {
         duration_seconds: 1.0,
         fade_seconds: 0.0,
         components: vec![auditorylab_app::core::Component {
             id: ComponentId::new(9).unwrap(),
-            form: auditorylab_app::core::ComponentForm::Voice(c),
+            form: c,
         }],
     }
     .target(SampleRate::new(44100).unwrap())
@@ -276,7 +296,7 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
 
 #[test]
 fn a_carrier_is_named_in_sentence_case() {
-    let describe = |component: Voice| {
+    let describe = |component: ComponentForm| {
         let check = auditorylab_core::Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
@@ -284,23 +304,27 @@ fn a_carrier_is_named_in_sentence_case() {
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
-                    form: auditorylab_core::ComponentForm::Voice(*voice),
+                    form: *voice,
                 })
                 .collect(),
         }
         .check(SampleRate::DEFAULT);
         check.voices()[0].1.clone().unwrap().summary()
     };
-    let modulated = |modulation| Voice {
-        modulation: Some(modulation),
-        ..tone(440.0, Ears::Both)
+    let modulated = |modulation| {
+        let mut form = tone(440.0, Ears::Both);
+        form.set_modulation(Some(modulation));
+        form
     };
-    let clicks = Voice {
-        carrier: Carrier::Clicks {
+    let clicks = {
+        let base = tone(440.0, Ears::Both);
+        ComponentForm::Clicks {
             rate_hz: 40.0,
             width_seconds: 0.001,
-        },
-        ..tone(440.0, Ears::Both)
+            ears: base.route().unwrap(),
+            peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+            modulation: base.modulation(),
+        }
     };
     let plain = describe(tone(440.0, Ears::Both));
     assert!(plain.starts_with("Tone 440 Hz"), "{plain}");
@@ -326,12 +350,15 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
         (44_100, 0.001, 44, "≈0.997732"),
     ] {
         let rate = SampleRate::new(hz).unwrap();
-        let component = Voice {
-            carrier: Carrier::Clicks {
+        let component = {
+            let base = tone(440.0, Ears::Both);
+            ComponentForm::Clicks {
                 rate_hz: 40.0,
                 width_seconds: requested,
-            },
-            ..tone(440.0, Ears::Both)
+                ears: base.route().unwrap(),
+                peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                modulation: base.modulation(),
+            }
         };
         let check = auditorylab_core::Sound {
             duration_seconds: 1.0,
@@ -340,7 +367,7 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
-                    form: auditorylab_core::ComponentForm::Voice(*voice),
+                    form: *voice,
                 })
                 .collect(),
         }
@@ -375,7 +402,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
             format!("{} ({})", d.label, d.unit.symbol())
         );
     }
-    let check = |c: Voice| {
+    let check = |c: ComponentForm| {
         auditorylab_core::Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
@@ -383,7 +410,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
-                    form: auditorylab_core::ComponentForm::Voice(*voice),
+                    form: *voice,
                 })
                 .collect(),
         }
@@ -399,41 +426,47 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         check(tone(30000.0, Ears::Both)),
         [ParameterId::ToneFrequency]
     );
-    let clicks = Voice {
-        carrier: Carrier::Clicks {
+    let clicks = {
+        let base = tone(440.0, Ears::Both);
+        ComponentForm::Clicks {
             rate_hz: 160.0,
             width_seconds: 0.010,
-        },
-        ..tone(440.0, Ears::Both)
+            ears: base.route().unwrap(),
+            peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+            modulation: base.modulation(),
+        }
     };
     assert_eq!(
         check(clicks),
         [ParameterId::ClickRate, ParameterId::ClickWidth]
     );
-    let sideband = Voice {
-        modulation: Some(Modulation::Am {
+    let sideband = {
+        let mut form = tone(16000.0, Ears::Both);
+        form.set_modulation(Some(Modulation::Am {
             rate_hz: 10000.0,
             depth: 0.5,
-        }),
-        ..tone(16000.0, Ears::Both)
+        }));
+        form
     };
     assert_eq!(
         check(sideband),
         [ParameterId::ToneFrequency, ParameterId::AmRate]
     );
     assert_eq!(
-        check(Voice {
-            peak_dbfs: 1.0,
-            ..tone(440.0, Ears::Both)
+        check({
+            let mut form = tone(440.0, Ears::Both);
+            form.set(auditorylab_core::ParameterId::PeakLevel, 1.0);
+            form
         }),
         [ParameterId::PeakLevel]
     );
-    let depth = Voice {
-        modulation: Some(Modulation::Am {
+    let depth = {
+        let mut form = tone(440.0, Ears::Both);
+        form.set_modulation(Some(Modulation::Am {
             rate_hz: 40.0,
             depth: 1.5,
-        }),
-        ..tone(440.0, Ears::Both)
+        }));
+        form
     };
     let error = auditorylab_core::Sound {
         duration_seconds: 1.0,
@@ -442,7 +475,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
             .iter()
             .map(|(id, voice)| auditorylab_core::Component {
                 id: *id,
-                form: auditorylab_core::ComponentForm::Voice(*voice),
+                form: *voice,
             })
             .collect(),
     }
@@ -471,19 +504,19 @@ fn raw_tone_timing_uses_only_explicit_active_modulation() {
     for (ears, interaural) in [(Ears::Both, false), (Ears::Left, true)] {
         let a = tone(200.0, ears);
         let mut b = tone(202.0, if interaural { Ears::Right } else { ears });
-        b.peak_dbfs = -41.0;
-        b.modulation = Some(Modulation::Am {
+        b.set(ParameterId::PeakLevel, -41.0);
+        b.set_modulation(Some(Modulation::Am {
             rate_hz: 40.0,
             depth: 0.0,
-        });
+        }));
         let s = summary(&[a, b]);
         assert_eq!(s.slowest_rate(), None);
         assert!(s.rhythms.is_empty());
         assert!(s.interaural().is_none());
-        b.modulation = Some(Modulation::Am {
+        b.set_modulation(Some(Modulation::Am {
             rate_hz: 40.0,
             depth: 0.001,
-        });
+        }));
         assert!(summary(&[a, b]).pairs.is_empty());
         assert!((summary(&[a, b]).slowest_rate().unwrap() - 40.0).abs() < 1e-10);
         assert_eq!(summary(&[a, a]).slowest_rate(), None);

@@ -12,7 +12,7 @@ pub(crate) fn check(rate: SampleRate, voices: &[(ComponentId, Voice)]) -> Target
             .iter()
             .map(|(id, voice)| Component {
                 id: *id,
-                form: ComponentForm::Voice(*voice),
+                form: crate::test_support::form(*voice),
             })
             .collect::<Vec<_>>(),
     };
@@ -34,4 +34,31 @@ pub(crate) fn lower(
         voices.extend(crate::authored::lower(component).map_err(SoundError::Pair)?);
     }
     Ok(voices)
+}
+
+pub(crate) fn form(voice: Voice) -> ComponentForm {
+    let Voice {
+        ears,
+        peak_dbfs,
+        carrier,
+        modulation,
+    } = voice;
+    match carrier {
+        crate::Carrier::Tone { frequency_hz } => ComponentForm::Tone {
+            ears,
+            frequency_hz,
+            peak_dbfs,
+            modulation,
+        },
+        crate::Carrier::Clicks {
+            rate_hz,
+            width_seconds,
+        } => ComponentForm::Clicks {
+            ears,
+            rate_hz,
+            width_seconds,
+            peak_dbfs,
+            modulation,
+        },
+    }
 }

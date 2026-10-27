@@ -2,9 +2,7 @@
 //!
 //! This is control convenience, not validation: typed values outside a
 //! slider's span are kept exactly and validated by the core.
-use auditorylab_core::{
-    Carrier, CarrierKind, Ears, Modulation, ModulationKind, ParameterId, SampleRate, Voice,
-};
+use auditorylab_core::{CarrierKind, Ears, Modulation, ModulationKind, ParameterId, SampleRate};
 
 /// Waveform spans offered by application monitors, in milliseconds.
 pub const MONITOR_SPANS_MS: [u32; 4] = [2, 10, 40, 100];
@@ -94,49 +92,49 @@ pub fn range(id: ParameterId, rate: SampleRate) -> Option<Range> {
 
 /// A quiet unmodulated component, routed to both ears.
 #[must_use]
-pub fn default_component(kind: CarrierKind) -> Voice {
-    Voice {
-        ears: Ears::Both,
-        peak_dbfs: model_default(ParameterId::PeakLevel),
-        carrier: default_carrier(kind),
-        modulation: None,
+pub fn default_component(kind: CarrierKind) -> auditorylab_core::ComponentForm {
+    let ears = Ears::Both;
+    let peak_dbfs = model_default(ParameterId::PeakLevel);
+    let modulation = None;
+    match kind {
+        CarrierKind::Tone => auditorylab_core::ComponentForm::Tone {
+            ears,
+            peak_dbfs,
+            modulation,
+            frequency_hz: model_default(ParameterId::ToneFrequency),
+        },
+        CarrierKind::Clicks => auditorylab_core::ComponentForm::Clicks {
+            ears,
+            peak_dbfs,
+            modulation,
+            rate_hz: model_default(ParameterId::ClickRate),
+            width_seconds: model_default(ParameterId::ClickWidth),
+        },
     }
 }
 
 /// Default explicit pair: 200 Hz first carrier, +6 Hz offset and quiet levels.
 #[must_use]
 pub fn default_pair(kind: auditorylab_core::PairKind) -> auditorylab_core::ComponentForm {
-    let pair = auditorylab_core::Pair {
-        first_hz: 200.0,
-        offset_hz: 6.0,
-        first_peak_dbfs: -30.0,
-        second_peak_dbfs: -30.0,
-    };
     match kind {
-        auditorylab_core::PairKind::Binaural => auditorylab_core::ComponentForm::BinauralPair(pair),
+        auditorylab_core::PairKind::Binaural => auditorylab_core::ComponentForm::BinauralPair {
+            left_hz: 200.0,
+            offset_hz: 6.0,
+            left_peak_dbfs: -30.0,
+            right_peak_dbfs: -30.0,
+        },
         auditorylab_core::PairKind::Monaural => auditorylab_core::ComponentForm::MonauralPair {
             ears: Ears::Both,
-            pair,
+            first_hz: 200.0,
+            offset_hz: 6.0,
+            first_peak_dbfs: -30.0,
+            second_peak_dbfs: -30.0,
         },
     }
 }
 
 fn model_default(id: ParameterId) -> f64 {
     range(id, SampleRate::DEFAULT).map_or(0.0, |r| id.descriptor().unit.to_model(r.default))
-}
-
-/// The default carrier of a kind, in model units.
-#[must_use]
-pub fn default_carrier(kind: CarrierKind) -> Carrier {
-    match kind {
-        CarrierKind::Tone => Carrier::Tone {
-            frequency_hz: model_default(ParameterId::ToneFrequency),
-        },
-        CarrierKind::Clicks => Carrier::Clicks {
-            rate_hz: model_default(ParameterId::ClickRate),
-            width_seconds: model_default(ParameterId::ClickWidth),
-        },
-    }
 }
 
 /// Default parameters for a modulation kind, in model units.
@@ -210,9 +208,10 @@ pub fn slider_position(id: ParameterId, rate: SampleRate, model: f64) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auditorylab_core::ComponentForm;
     use auditorylab_core::ComponentId;
 
-    fn valid(component: Voice, rate: SampleRate) -> bool {
+    fn valid(component: ComponentForm, rate: SampleRate) -> bool {
         auditorylab_core::Sound {
             duration_seconds: 1.0,
             fade_seconds: 0.0,
@@ -220,7 +219,7 @@ mod tests {
                 .iter()
                 .map(|(id, voice)| auditorylab_core::Component {
                     id: *id,
-                    form: auditorylab_core::ComponentForm::Voice(*voice),
+                    form: *voice,
                 })
                 .collect(),
         }
@@ -301,7 +300,7 @@ mod tests {
                 for modulation in ModulationKind::ALL {
                     let mut component = default_component(kind);
                     assert!(valid(component, rate));
-                    component.modulation = Some(default_modulation(modulation, rate));
+                    component.set_modulation(Some(default_modulation(modulation, rate)));
                     assert!(valid(component, rate), "{kind:?} {modulation:?}");
                 }
             }
@@ -323,7 +322,7 @@ mod tests {
                         auditorylab_core::PairKind::Monaural,
                     ] {
                         let mut form = default_pair(kind);
-                        assert!(form.write(id, id.descriptor().unit.to_model(r.default)));
+                        assert!(form.set(id, id.descriptor().unit.to_model(r.default)));
                         let authored = [auditorylab_core::Component {
                             id: ComponentId::new(1).unwrap(),
                             form,
@@ -346,12 +345,12 @@ mod tests {
                     component = default_component(CarrierKind::Clicks);
                 }
                 if matches!(id, ParameterId::AmRate | ParameterId::AmDepth) {
-                    component.modulation = Some(default_modulation(ModulationKind::Am, rate));
+                    component.set_modulation(Some(default_modulation(ModulationKind::Am, rate)));
                 }
                 if matches!(id, ParameterId::GateRate | ParameterId::GateWidth) {
-                    component.modulation = Some(default_modulation(ModulationKind::Gate, rate));
+                    component.set_modulation(Some(default_modulation(ModulationKind::Gate, rate)));
                 }
-                assert!(id.write(&mut component, id.descriptor().unit.to_model(r.default)));
+                assert!(component.set(id, id.descriptor().unit.to_model(r.default)));
                 assert!(valid(component, rate), "{id:?} default at {hz}");
             }
         }
@@ -359,11 +358,14 @@ mod tests {
             let rate = SampleRate::new(hz).unwrap();
             let r = range(ParameterId::ToneFrequency, rate).unwrap();
             assert!(r.min > 0.0 && r.min < r.max && r.max < 0.5 * f64::from(hz));
-            let component = Voice {
-                carrier: Carrier::Tone {
+            let component = {
+                let base = default_component(CarrierKind::Tone);
+                ComponentForm::Tone {
                     frequency_hz: r.default,
-                },
-                ..default_component(CarrierKind::Tone)
+                    ears: base.route().unwrap(),
+                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                    modulation: base.modulation(),
+                }
             };
             assert!(valid(component, rate));
         }

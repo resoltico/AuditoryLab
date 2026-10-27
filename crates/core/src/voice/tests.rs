@@ -29,7 +29,7 @@ fn sound(components: Vec<Voice>) -> Sound {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                form: crate::ComponentForm::Voice(voice),
+                form: crate::test_support::form(voice),
             })
             .collect(),
     }
@@ -181,27 +181,37 @@ fn durations_and_fades_must_give_whole_frames_that_fit() {
 fn guards_accept_and_reject_neighbours() {
     let mut s = sound(vec![tone(Ears::Both, 1000.0, -20.0)]);
     for hz in [0.0, -1.0, f64::NAN, f64::INFINITY, 24_000.0] {
-        first_voice(&mut s).carrier = Carrier::Tone { frequency_hz: hz };
+        edit_first(&mut s, |voice| {
+            voice.carrier = Carrier::Tone { frequency_hz: hz }
+        });
         assert!(s.signal(rate(48_000)).is_err());
     }
     for hz in [f64::from_bits(1), 24_000.0_f64.next_down()] {
-        first_voice(&mut s).carrier = Carrier::Tone { frequency_hz: hz };
+        edit_first(&mut s, |voice| {
+            voice.carrier = Carrier::Tone { frequency_hz: hz }
+        });
         assert!(s.signal(rate(48_000)).is_ok());
     }
-    first_voice(&mut s).carrier = Carrier::Tone {
-        frequency_hz: 1000.0,
-    };
+    edit_first(&mut s, |voice| {
+        voice.carrier = Carrier::Tone {
+            frequency_hz: 1000.0,
+        }
+    });
     for depth in [0.0, 1.0] {
-        first_voice(&mut s).modulation = Some(Modulation::Am {
-            rate_hz: 40.0,
-            depth,
+        edit_first(&mut s, |voice| {
+            voice.modulation = Some(Modulation::Am {
+                rate_hz: 40.0,
+                depth,
+            })
         });
         assert!(s.signal(rate(48_000)).is_ok());
     }
     for depth in [-f64::EPSILON, 1.0_f64.next_up(), f64::NAN] {
-        first_voice(&mut s).modulation = Some(Modulation::Am {
-            rate_hz: 40.0,
-            depth,
+        edit_first(&mut s, |voice| {
+            voice.modulation = Some(Modulation::Am {
+                rate_hz: 40.0,
+                depth,
+            })
         });
         assert!(s.signal(rate(48_000)).is_err());
     }
@@ -211,21 +221,27 @@ fn guards_accept_and_reject_neighbours() {
             (23_960.0, false),
             (23_999.0, false),
         ] {
-            first_voice(&mut s).carrier = Carrier::Tone {
-                frequency_hz: frequency,
-            };
-            first_voice(&mut s).modulation = Some(Modulation::Am {
-                rate_hz: 40.0,
-                depth,
+            edit_first(&mut s, |voice| {
+                voice.carrier = Carrier::Tone {
+                    frequency_hz: frequency,
+                }
+            });
+            edit_first(&mut s, |voice| {
+                voice.modulation = Some(Modulation::Am {
+                    rate_hz: 40.0,
+                    depth,
+                })
             });
             assert_eq!(s.signal(rate(48_000)).is_ok(), depth == 0.0 || active_valid);
         }
     }
     // Inactivity does not excuse an invalid stored rate.
     for rate_hz in [0.0, -1.0, 24_000.0, f64::INFINITY, f64::NAN] {
-        first_voice(&mut s).modulation = Some(Modulation::Am {
-            rate_hz,
-            depth: 0.0,
+        edit_first(&mut s, |voice| {
+            voice.modulation = Some(Modulation::Am {
+                rate_hz,
+                depth: 0.0,
+            })
         });
         assert!(s.signal(rate(48_000)).is_err());
     }
@@ -233,7 +249,7 @@ fn guards_accept_and_reject_neighbours() {
     assert!(s.signal(rate(48_000)).is_ok());
     s.components.push(crate::Component {
         id: ComponentId::new(2).unwrap(),
-        form: crate::ComponentForm::Voice(tone(Ears::Both, 1000.0, -20.0)),
+        form: crate::test_support::form(tone(Ears::Both, 1000.0, -20.0)),
     });
     assert!(matches!(
         s.signal(rate(48_000)),
@@ -264,7 +280,7 @@ fn peak_and_pulse_width_guards_reject_invalid_values() {
         f64::NEG_INFINITY,
         f64::MIN_POSITIVE,
     ] {
-        first_voice(&mut s).peak_dbfs = peak;
+        edit_first(&mut s, |voice| voice.peak_dbfs = peak);
         assert!(matches!(
             s.signal(rate(48000)),
             Err(SoundError::Voice {
@@ -273,12 +289,14 @@ fn peak_and_pulse_width_guards_reject_invalid_values() {
             })
         ));
     }
-    first_voice(&mut s).peak_dbfs = -20.0;
+    edit_first(&mut s, |voice| voice.peak_dbfs = -20.0);
     for width in [f64::NAN, f64::INFINITY, -1.0, 0.0, 0.4 / 48000.0] {
-        first_voice(&mut s).carrier = Carrier::Clicks {
-            rate_hz: 40.0,
-            width_seconds: width,
-        };
+        edit_first(&mut s, |voice| {
+            voice.carrier = Carrier::Clicks {
+                rate_hz: 40.0,
+                width_seconds: width,
+            }
+        });
         assert!(matches!(
             s.signal(rate(48000)),
             Err(SoundError::Voice {
@@ -287,10 +305,12 @@ fn peak_and_pulse_width_guards_reject_invalid_values() {
             })
         ));
     }
-    first_voice(&mut s).carrier = Carrier::Clicks {
-        rate_hz: 40.0,
-        width_seconds: 0.5 / 48000.0,
-    };
+    edit_first(&mut s, |voice| {
+        voice.carrier = Carrier::Clicks {
+            rate_hz: 40.0,
+            width_seconds: 0.5 / 48000.0,
+        }
+    });
     assert!(s.signal(rate(48000)).is_ok());
 }
 
@@ -315,10 +335,12 @@ fn click_nyquist_rejection_is_not_masked_by_the_closed_frame_rule() {
             ..
         })
     ));
-    first_voice(&mut s).carrier = Carrier::Clicks {
-        rate_hz: 24000.0_f64.next_down(),
-        width_seconds: 1.0 / 48000.0,
-    };
+    edit_first(&mut s, |voice| {
+        voice.carrier = Carrier::Clicks {
+            rate_hz: 24000.0_f64.next_down(),
+            width_seconds: 1.0 / 48000.0,
+        }
+    });
     assert!(s.signal(rate(48000)).is_ok());
 }
 
@@ -474,7 +496,7 @@ mod validate {
                     .enumerate()
                     .map(|(index, voice)| crate::Component {
                         id: crate::ComponentId::numbered(index).unwrap(),
-                        form: crate::ComponentForm::Voice(voice),
+                        form: crate::test_support::form(voice),
                     })
                     .collect(),
             }
@@ -501,9 +523,8 @@ mod validate {
     }
 }
 
-fn first_voice(sound: &mut Sound) -> &mut Voice {
-    let crate::ComponentForm::Voice(voice) = &mut sound.components[0].form else {
-        panic!("fixture must be a voice")
-    };
-    voice
+fn edit_first(sound: &mut Sound, edit: impl FnOnce(&mut Voice)) {
+    let mut voice = sound.components[0].form.primitive().unwrap();
+    edit(&mut voice);
+    sound.components[0].form = crate::test_support::form(voice);
 }

@@ -15,7 +15,7 @@ use crate::error::{EditorError as Error, IdentityError, IdentityScope};
 use crate::presentation::ParameterText;
 use auditorylab_core::{
     CarrierKind, ComponentId, Ears, ModulationKind, ParameterId, Recipe, RecipeBuilder, SampleRate,
-    Signal, Sound, SoundError, Target, TargetCheck, Voice,
+    Signal, Sound, SoundError, Target, TargetCheck,
 };
 use std::{
     collections::BTreeMap,
@@ -317,9 +317,7 @@ impl Draft {
     /// # Errors
     /// Refuses full budgets or exhausted nonreused owner identities.
     pub fn add(&mut self, kind: CarrierKind) -> Result<ComponentId, EditRefusal> {
-        self.add_node(auditorylab_core::ComponentForm::Voice(
-            controls::default_component(kind),
-        ))
+        self.add_node(controls::default_component(kind))
     }
     /// Check the authored and expanded capacity for one additional component.
     ///
@@ -368,11 +366,10 @@ impl Draft {
         Ok(id)
     }
     /// Replace one primitive while preserving its authored owner.
-    pub fn replace(&mut self, id: ComponentId, component: Voice) -> bool {
+    pub fn replace(&mut self, id: ComponentId, form: auditorylab_core::ComponentForm) -> bool {
         let Some(before) = self.component(id).copied() else {
             return false;
         };
-        let form = auditorylab_core::ComponentForm::Voice(component);
         if !before.same_content(form) {
             self.demote_evidence();
         }
@@ -468,7 +465,7 @@ impl Draft {
     #[must_use]
     pub fn value(&self, field: EditingField) -> Option<f64> {
         match field {
-            EditingField::Parameter(id, p) => self.component(id)?.read(p),
+            EditingField::Parameter(id, p) => self.component(id)?.get(p),
             EditingField::Metadata(MetadataField::Duration) => Some(self.duration_seconds()),
             EditingField::Metadata(MetadataField::Fade) => Some(self.fade_seconds()),
             _ => None,
@@ -477,13 +474,13 @@ impl Draft {
     fn set_value(&mut self, field: EditingField, value: f64) -> bool {
         match field {
             EditingField::Parameter(id, p) => {
-                let Some(before) = self.component(id).and_then(|c| c.read(p)) else {
+                let Some(before) = self.component(id).and_then(|c| c.get(p)) else {
                     return false;
                 };
                 if before.to_bits() != value.to_bits() {
                     self.demote_evidence();
                 }
-                self.component_mut(id).is_some_and(|c| c.write(p, value))
+                self.component_mut(id).is_some_and(|c| c.set(p, value))
             }
             EditingField::Metadata(MetadataField::Duration) => {
                 self.set_duration_seconds(value);
@@ -501,7 +498,7 @@ impl Draft {
             EditingField::Parameter(id, p) => self
                 .component(id)
                 .ok_or(EditRefusal::UnknownComponent)?
-                .read(p)
+                .get(p)
                 .map(|_| ())
                 .ok_or(EditRefusal::Inapplicable),
             _ => Ok(()),
@@ -1063,7 +1060,7 @@ impl EditorSession {
             let staged = self.staged.len();
             self.staged.retain(|field, _| match field {
                 EditingField::Parameter(owner, parameter) if *owner == id => {
-                    after.read(*parameter).is_some()
+                    after.get(*parameter).is_some()
                 }
                 _ => true,
             });
@@ -1084,12 +1081,13 @@ impl EditorSession {
         if self
             .draft
             .component(id)
-            .is_some_and(|c| matches!(c, auditorylab_core::ComponentForm::BinauralPair(_)))
+            .is_some_and(|c| matches!(c, auditorylab_core::ComponentForm::BinauralPair { .. }))
         {
             return Err(EditRefusal::Inapplicable);
         }
         self.structural(row, |c| match c {
-            auditorylab_core::ComponentForm::Voice(c) => c.ears = ears,
+            auditorylab_core::ComponentForm::Tone { ears: route, .. }
+            | auditorylab_core::ComponentForm::Clicks { ears: route, .. } => *route = ears,
             auditorylab_core::ComponentForm::MonauralPair { ears: route, .. } => *route = ears,
             _ => {}
         })
@@ -1101,15 +1099,27 @@ impl EditorSession {
     /// # Errors
     /// Returns [`EditRefusal`] for a stale component lifetime or unknown component.
     pub fn set_carrier(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), EditRefusal> {
-        self.structural(row, |c| match c {
-            auditorylab_core::ComponentForm::Voice(c) => {
-                if c.carrier.kind() != kind {
-                    c.carrier = controls::default_carrier(kind);
+        self.structural(row, |form| {
+            if form.primitive_kind() == Some(kind) {
+                return;
+            }
+            let mut replacement = controls::default_component(kind);
+            if form.primitive_kind().is_some() {
+                let ears = form
+                    .route()
+                    .unwrap_or_else(|| unreachable!("primitive route"));
+                match &mut replacement {
+                    auditorylab_core::ComponentForm::Tone { ears: route, .. }
+                    | auditorylab_core::ComponentForm::Clicks { ears: route, .. } => *route = ears,
+                    _ => unreachable!("default primitive"),
                 }
+                let level = form
+                    .get(ParameterId::PeakLevel)
+                    .unwrap_or_else(|| unreachable!("primitive level"));
+                replacement.set(ParameterId::PeakLevel, level);
+                replacement.set_modulation(form.modulation());
             }
-            form => {
-                *form = auditorylab_core::ComponentForm::Voice(controls::default_component(kind))
-            }
+            *form = replacement;
         })
     }
 
@@ -1128,15 +1138,13 @@ impl EditorSession {
         if self
             .draft
             .component(id)
-            .is_some_and(|c| !matches!(c, auditorylab_core::ComponentForm::Voice(_)))
+            .is_some_and(|c| c.primitive_kind().is_none())
         {
             return Err(EditRefusal::Inapplicable);
         }
         self.structural(row, |form| {
-            if let auditorylab_core::ComponentForm::Voice(c) = form
-                && c.modulation.map(|m| m.kind()) != kind
-            {
-                c.modulation = kind.map(|kind| controls::default_modulation(kind, rate));
+            if form.modulation_kind() != kind {
+                form.set_modulation(kind.map(|kind| controls::default_modulation(kind, rate)));
             }
         })
     }

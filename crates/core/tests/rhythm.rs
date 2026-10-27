@@ -1,10 +1,10 @@
 //! Independent nominal boundary and structural counterexamples. No signal rendering.
-use auditorylab_core::{Carrier, Ears, Modulation, Sound, Voice, rhythm::*};
-fn tone(hz: f64, ears: Ears) -> Voice {
-    Voice {
+use auditorylab_core::{ComponentForm, Ears, Modulation, Sound, rhythm::*};
+fn tone(hz: f64, ears: Ears) -> ComponentForm {
+    ComponentForm::Tone {
+        frequency_hz: hz,
         ears,
         peak_dbfs: -20.0,
-        carrier: Carrier::Tone { frequency_hz: hz },
         modulation: None,
     }
 }
@@ -12,7 +12,7 @@ fn tone(hz: f64, ears: Ears) -> Voice {
     clippy::unwrap_used,
     reason = "Fixture identities must fit the finite test component list"
 )]
-fn sound(components: Vec<Voice>) -> Vec<auditorylab_core::Component> {
+fn sound(components: Vec<ComponentForm>) -> Vec<auditorylab_core::Component> {
     Sound {
         duration_seconds: 60.0,
         fade_seconds: 0.1,
@@ -21,7 +21,7 @@ fn sound(components: Vec<Voice>) -> Vec<auditorylab_core::Component> {
             .enumerate()
             .map(|(index, voice)| auditorylab_core::Component {
                 id: auditorylab_core::ComponentId::numbered(index).unwrap(),
-                form: auditorylab_core::ComponentForm::Voice(voice),
+                form: voice,
             })
             .collect(),
     }
@@ -54,37 +54,38 @@ fn carrier_is_not_a_band_and_nominal_am_survives_target_invalidity() {
         assert!(a.bands.is_empty());
     }
     let mut c = tone(1_000.0, Ears::Both);
-    c.modulation = Some(Modulation::Am {
+    c.set_modulation(Some(Modulation::Am {
         rate_hz: 40.0,
         depth: 1.0,
-    });
+    }));
     let a = nominal(&sound(vec![c]));
     assert_eq!(a.bands, [Band::Gamma]);
-    c.carrier = Carrier::Tone {
-        frequency_hz: 100_000.0,
-    };
+    c.set(auditorylab_core::ParameterId::ToneFrequency, 100_000.0);
     assert_eq!(nominal(&sound(vec![c])), a);
-    c.modulation = Some(Modulation::Am {
+    c.set_modulation(Some(Modulation::Am {
         rate_hz: 40.0,
         depth: 0.0,
-    });
+    }));
     assert!(nominal(&sound(vec![c])).no_rhythm());
-    c.modulation = Some(Modulation::Am {
+    c.set_modulation(Some(Modulation::Am {
         rate_hz: 40.0,
         depth: f64::from_bits(1),
-    });
+    }));
     assert_eq!(nominal(&sound(vec![c])).bands, [Band::Gamma]);
-    c.peak_dbfs = -10_000.0;
+    c.set(auditorylab_core::ParameterId::PeakLevel, -10_000.0);
     assert_eq!(nominal(&sound(vec![c])).bands, [Band::Gamma]);
 }
 #[test]
 fn independent_processes_deduplicate_bands_but_never_rates() {
-    let click = |hz| Voice {
-        carrier: Carrier::Clicks {
+    let click = |hz| {
+        let base = tone(240.0, Ears::Both);
+        ComponentForm::Clicks {
             rate_hz: hz,
             width_seconds: 0.001,
-        },
-        ..tone(240.0, Ears::Both)
+            ears: base.route().unwrap(),
+            peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+            modulation: base.modulation(),
+        }
     };
     let a = nominal(&sound(vec![click(2.0), click(3.0)]));
     assert_eq!(a.rhythms.len(), 2);
@@ -159,25 +160,26 @@ fn correlated_facets_cannot_borrow_rates_from_another_process() {
 
 #[test]
 fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
-    use auditorylab_core::{Component, ComponentForm, ComponentId, Pair};
+    use auditorylab_core::{Component, ComponentForm, ComponentId};
     let pair = |id, offset_hz| Component {
         id: ComponentId::new(id).unwrap(),
-        form: ComponentForm::BinauralPair(Pair {
-            first_hz: 200.0,
+        form: ComponentForm::BinauralPair {
+            left_hz: 200.0,
             offset_hz,
-            first_peak_dbfs: -30.0,
-            second_peak_dbfs: -30.0,
-        }),
+            left_peak_dbfs: -30.0,
+            right_peak_dbfs: -30.0,
+        },
     };
     let am = Component {
         id: ComponentId::new(90).unwrap(),
-        form: ComponentForm::Voice(Voice {
-            modulation: Some(Modulation::Am {
+        form: {
+            let mut form = tone(1000.0, Ears::Both);
+            form.set_modulation(Some(Modulation::Am {
                 rate_hz: 40.0,
                 depth: 1.0,
-            }),
-            ..tone(1000.0, Ears::Both)
-        }),
+            }));
+            form
+        },
     };
     let a = nominal(&[pair(7, 6.0), am]);
     assert_eq!(a.bands, [Band::Theta, Band::Gamma]);
@@ -202,11 +204,11 @@ fn actual_authored_pair_mixtures_keep_nominal_intent_and_correlated_facets() {
     raw.extend([
         Component {
             id: ComponentId::new(5).unwrap(),
-            form: ComponentForm::Voice(tone(200.0, Ears::Left)),
+            form: tone(200.0, Ears::Left),
         },
         Component {
             id: ComponentId::new(6).unwrap(),
-            form: ComponentForm::Voice(tone(206.0, Ears::Right)),
+            form: tone(206.0, Ears::Right),
         },
     ]);
     let a = nominal(&raw);

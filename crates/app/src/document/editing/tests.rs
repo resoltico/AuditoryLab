@@ -3,9 +3,9 @@
 
 use super::*;
 use crate::services::save_content;
-use auditorylab_core::{Carrier, Component, ComponentForm};
+use auditorylab_core::{Component, ComponentForm};
 
-fn editor_with(components: &[Voice]) -> EditorSession {
+fn editor_with(components: &[ComponentForm]) -> EditorSession {
     let mut draft = Draft::new().unwrap();
     for component in components {
         let id = draft.add(CarrierKind::Tone).unwrap();
@@ -14,11 +14,11 @@ fn editor_with(components: &[Voice]) -> EditorSession {
     EditorSession::new(draft).unwrap()
 }
 
-fn tone(frequency_hz: f64) -> Voice {
-    Voice {
+fn tone(frequency_hz: f64) -> ComponentForm {
+    ComponentForm::Tone {
+        frequency_hz,
         ears: Ears::Both,
         peak_dbfs: -30.0,
-        carrier: Carrier::Tone { frequency_hz },
         modulation: None,
     }
 }
@@ -159,13 +159,11 @@ fn inherited_nonfinite_values_block_commit_save_until_repaired() {
     // Programmatic nonfinite values are diagnosed the same way.
     let mut draft = Draft::new().unwrap();
     let id = draft.add(CarrierKind::Tone).unwrap();
-    draft.replace(
-        id,
-        Voice {
-            peak_dbfs: f64::NEG_INFINITY,
-            ..tone(440.0)
-        },
-    );
+    draft.replace(id, {
+        let mut form = tone(440.0);
+        form.set(auditorylab_core::ParameterId::PeakLevel, f64::NEG_INFINITY);
+        form
+    });
     let mut editor = EditorSession::new(draft).unwrap();
     assert_eq!(
         editor.candidate().problems(),
@@ -202,7 +200,7 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
             .draft()
             .component(first)
             .unwrap()
-            .read(ParameterId::ClickRate),
+            .get(ParameterId::ClickRate),
         Some(40.0)
     );
     assert_eq!(
@@ -265,7 +263,7 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
             1,
             &Component {
                 id: middle,
-                form: ComponentForm::Voice(tone(550.0))
+                form: tone(550.0)
             }
         ))
     );
@@ -282,10 +280,7 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     assert_eq!(editor.restore_removed(editor.document_key()), Ok(middle));
     let ids: Vec<_> = editor.draft().components().iter().map(|c| c.id).collect();
     assert_eq!(ids[1], middle, "the same identity returns to its place");
-    assert_eq!(
-        editor.draft().component(middle),
-        Some(&ComponentForm::Voice(tone(550.0)))
-    );
+    assert_eq!(editor.draft().component(middle), Some(&tone(550.0)));
     assert_eq!(editor.staged(frequency.field), Some("bad"));
     assert_eq!(
         editor.staged(other.field),
@@ -320,7 +315,7 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
             1,
             &Component {
                 id: last,
-                form: ComponentForm::Voice(tone(660.0))
+                form: tone(660.0)
             }
         ))
     );
@@ -343,7 +338,7 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
             1,
             &Component {
                 id: last,
-                form: ComponentForm::Voice(tone(660.0))
+                form: tone(660.0)
             }
         ))
     );
@@ -446,13 +441,11 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
     assert!(d.remove(a).is_some());
     let c = d.add(CarrierKind::Tone).unwrap();
     assert_ne!(a, c);
-    assert!(d.replace(
-        b,
-        Voice {
-            peak_dbfs: -50.0,
-            ..controls::default_component(CarrierKind::Tone)
-        }
-    ));
+    assert!(d.replace(b, {
+        let mut form = controls::default_component(CarrierKind::Tone);
+        form.set(auditorylab_core::ParameterId::PeakLevel, -50.0);
+        form
+    }));
     assert!(!d.replace(a, controls::default_component(CarrierKind::Clicks)));
     while d.components().len() < Sound::MAX_COMPONENTS {
         d.add(CarrierKind::Tone).unwrap();
@@ -663,7 +656,10 @@ fn descriptions_and_equivalent_text_do_not_recompile_sound_inputs() {
 #[test]
 fn nominal_cache_and_saved_memberships_follow_distinct_committed_snapshots() {
     let mut c = tone(240.0);
-    c.carrier = Carrier::Clicks {
+    c = auditorylab_core::ComponentForm::Clicks {
+        ears: c.route().unwrap(),
+        peak_dbfs: c.get(ParameterId::PeakLevel).unwrap(),
+        modulation: c.modulation(),
         rate_hz: 2.0,
         width_seconds: 0.001,
     };
@@ -857,10 +853,7 @@ fn the_application_rejects_retired_field_and_structural_callbacks_after_undo() {
     );
     assert_eq!(editor.remove_component(current), Err(EditRefusal::StaleRow));
     assert_eq!(editor.staged(field.field), Some("bad"));
-    assert_eq!(
-        editor.draft().component(id),
-        Some(&ComponentForm::Voice(tone(440.0)))
-    );
+    assert_eq!(editor.draft().component(id), Some(&tone(440.0)));
     editor
         .commit_field(
             restored.parameter(ParameterId::ToneFrequency).unwrap(),
@@ -873,7 +866,7 @@ fn the_application_rejects_retired_field_and_structural_callbacks_after_undo() {
             .draft()
             .component(id)
             .unwrap()
-            .read(ParameterId::ToneFrequency),
+            .get(ParameterId::ToneFrequency),
         Some(660.0)
     );
 }
@@ -972,7 +965,7 @@ fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_a
     let mut acoustic = recipe.into_builder();
     acoustic.sound.components[0]
         .form
-        .write(ParameterId::ToneFrequency, -1.0);
+        .set(ParameterId::ToneFrequency, -1.0);
     let editor = EditorSession::new(Draft::from_recipe(acoustic.build().unwrap())).unwrap();
     assert!(editor.component_key(ComponentId::new(1).unwrap()).is_some());
     assert!(
@@ -988,7 +981,7 @@ fn editor_row_identity_producers_refuse_invalid_owner_shapes_without_rejecting_a
 #[test]
 fn authored_and_expanded_addition_boundaries_report_current_counts() {
     use auditorylab_core::PairKind;
-    let primitive = ComponentForm::Voice(tone(440.0));
+    let primitive = tone(440.0);
     let pair = controls::default_pair(PairKind::Binaural);
     for (primitives, pairs, requested, expected) in [
         (

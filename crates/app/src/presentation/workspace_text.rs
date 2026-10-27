@@ -241,7 +241,7 @@ pub(crate) fn editor_view(
             let coupled=analysis.check().result().err().filter(|error|match error {auditorylab_core::SoundError::Pair(auditorylab_core::PairError {id:owner,..})=>owner.get()==id.get(),auditorylab_core::SoundError::PairCarrier {id:owner,..}=>owner.component==*id,_=>false});
             let parameters = ParameterId::COMPONENT
                 .into_iter()
-                .filter(|p| committed.read(*p).is_some())
+                .filter(|p| committed.get(*p).is_some())
                 .map(|parameter| {
                     let field = EditingField::Parameter(*id, parameter);
                     let diagnostic = problem(field).unwrap_or_else(|| {
@@ -264,7 +264,7 @@ pub(crate) fn editor_view(
                         text: editor.text(field),
                         staged: editor.staged(field).is_some(),
                         slider: committed
-                            .read(parameter)
+                            .get(parameter)
                             .and_then(|v| controls::slider_position(parameter, rate, v)),
                         diagnostic,
                     }
@@ -283,8 +283,8 @@ pub(crate) fn editor_view(
             ComponentView {
                 key: editor.component_key(*id).unwrap_or_else(|| unreachable!("an active component has a rendered lifetime")),
                 id: *id,
-                ears: committed.ears(),
-                routing_editable: committed.routing_editable(),
+                ears: committed.route().unwrap_or(crate::core::Ears::Both),
+                routing_editable: committed.route().is_some(),
                 carrier: committed.primitive_kind(),
                 modulation: committed.modulation_kind(),
                 heading: shown.heading(),

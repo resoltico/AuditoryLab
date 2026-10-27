@@ -225,7 +225,7 @@ fn finite_entry_points_select_envelope_errors_before_voice_errors() {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                form: crate::ComponentForm::Voice(voice),
+                form: crate::test_support::form(voice),
             })
             .collect(),
     };
@@ -244,7 +244,7 @@ fn finite_entry_points_select_envelope_errors_before_voice_errors() {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                form: crate::ComponentForm::Voice(voice),
+                form: crate::test_support::form(voice),
             })
             .collect(),
         ..sound.clone()
@@ -284,7 +284,7 @@ fn a_valid_mix_with_zero_duration_is_a_target_but_not_a_finite_signal() {
             .enumerate()
             .map(|(index, voice)| crate::Component {
                 id: crate::ComponentId::numbered(index).unwrap(),
-                form: crate::ComponentForm::Voice(voice),
+                form: crate::test_support::form(voice),
             })
             .collect(),
     };
@@ -365,19 +365,19 @@ fn emptiness_counts_voices() {
 
 #[test]
 fn voice_error_retains_the_owner_after_pair_expansion_and_without_a_pair() {
-    use crate::{Component, ComponentForm, Lane, Pair};
+    use crate::{Component, ComponentForm, Lane};
     let bad = Component {
         id: id(9),
-        form: ComponentForm::Voice(tone(30_000.0, -20.0)),
+        form: crate::test_support::form(tone(30_000.0, -20.0)),
     };
     let pair = Component {
         id: id(7),
-        form: ComponentForm::BinauralPair(Pair {
-            first_hz: 200.0,
+        form: ComponentForm::BinauralPair {
+            left_hz: 200.0,
             offset_hz: 10.0,
-            first_peak_dbfs: -20.0,
-            second_peak_dbfs: -20.0,
-        }),
+            left_peak_dbfs: -20.0,
+            right_peak_dbfs: -20.0,
+        },
     };
     for components in [vec![pair, bad], vec![bad]] {
         let sound = Sound {
