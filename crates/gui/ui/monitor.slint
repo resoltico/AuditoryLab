@@ -1,5 +1,6 @@
+import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
-import { Button, ComboBox, TextEdit, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { ComboBox, TextEdit, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
 export component Lane inherits Rectangle {
     in property <string> label;
     in property <string> trace;
@@ -87,8 +88,8 @@ export component MonitorPanel inherits VerticalBox {
         Text {min-width:0px;text:Terms.caption-output-monitor;font-weight:700;wrap:word-wrap;}
         Text {text:root.data.state;font-weight:600;wrap:no-wrap;horizontal-stretch:0;}
         Text {preferred-width:0px;horizontal-stretch:1;text:root.data.age;wrap:no-wrap;overflow:elide;accessible-label:root.data.age;}
-        Button {text:Terms.caption-details-dialog;accessible-label:Terms.caption-full-audio-diagnostics-and-capture-source;clicked=>{root.details();}}
-        Button {text:Terms.action-hide;accessible-label:Terms.action-hide-output-monitor;clicked=>{root.collapse();}}
+        Button {text:Terms.caption-details-dialog;accessible-label:Terms.caption-full-audio-diagnostics-and-capture-source;triggered =>{root.details();}}
+        Button {text:Terms.action-hide;accessible-label:Terms.action-hide-output-monitor;triggered =>{root.collapse();}}
     }
     HorizontalBox {padding:0px;spacing:12px;
         VerticalBox {padding:0px;spacing:3px;
@@ -101,8 +102,8 @@ export component MonitorPanel inherits VerticalBox {
             span-choice := ComboBox {model:root.span-choices;current-index:root.data.spanchoice;enabled:!root.data.held;accessible-label:Terms.caption-waveform-time-window;selected(v)=>{root.span(self.current-index);}}
             scale-choice := ComboBox {model:root.scale-choices;current-index:root.data.scalechoice;enabled:!root.data.held;accessible-label:Terms.caption-waveform-amplitude-scale;selected(v)=>{root.scale(self.current-index);}}
             HorizontalBox {padding:0px;spacing:4px;
-                Button {text:root.data.held ? Terms.action-return-to-live : Terms.action-hold-display;clicked=>{root.hold();}}
-                if root.data.overridden: Button {text:Terms.action-follow-system;accessible-label:Terms.action-follow-system-motion-preference;clicked=>{root.follow();}}
+                Button {text:root.data.held ? Terms.action-return-to-live : Terms.action-hold-display;triggered =>{root.hold();}}
+                if root.data.overridden: Button {text:Terms.action-follow-system;accessible-label:Terms.action-follow-system-motion-preference;triggered =>{root.follow();}}
             }
             Text {min-width:0px;text:root.data.meters;max-height:root.ui-size*4;wrap:word-wrap;overflow:elide;}
         }
@@ -175,8 +176,8 @@ export component DetailsWindow inherits Window {
     VerticalBox {
         Text {text:root.heading;font-weight:700;vertical-stretch:0;}
         TextEdit {text:root.content;read-only:true;accessible-label:root.heading;}
-        if root.can-refresh: Button {text:Terms.action-refresh-diagnostics-snapshot;clicked=>{root.refresh-content();}}
-        close := Button {text:Terms.action-close;clicked=>{root.dismiss();}}
+        if root.can-refresh: Button {text:Terms.action-refresh-diagnostics-snapshot;triggered =>{root.refresh-content();}}
+        close := Button {text:Terms.action-close;triggered =>{root.dismiss();}}
     }
 }
 }
@@ -193,7 +194,7 @@ export component AudioControlsWindow inherits Window {
         padding:16px;spacing:8px;
         Text {min-width:0px;text:root.source;overflow:elide;accessible-label:root.source;}
         Text {text:root.elapsed;}
-        Button {text:Terms.action-stop-audio;enabled:root.active;clicked=>{root.stop();}}
+        Button {text:Terms.action-stop-audio;enabled:root.active;triggered =>{root.stop();}}
     }
 }
 

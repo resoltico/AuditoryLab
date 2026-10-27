@@ -1,4 +1,5 @@
-import { Button, LineEdit } from "std-widgets.slint";
+import { Button } from "button.slint";
+import { LineEdit } from "std-widgets.slint";
 // refresh while a pointer or keyboard press is held cannot retarget the action.
 export component BoundButton inherits Button {
     in property <string> action;
@@ -11,7 +12,7 @@ export component BoundButton inherits Button {
     private property <bool> armed:false;
     callback activated(string, string);
     changed pressed => { if self.pressed { root.captured-key=root.key;root.captured-token=root.token;root.captured-action=root.action;root.armed=true; } }
-    clicked => { root.activated(root.armed ? root.captured-key : root.key, root.armed ? root.captured-token : root.token);root.dispatch(root.armed ? root.captured-key : root.key,root.armed ? root.captured-token : root.token,root.armed ? root.captured-action : root.action);root.armed=false; }
+    triggered => { root.activated(root.armed ? root.captured-key : root.key, root.armed ? root.captured-token : root.token);root.dispatch(root.armed ? root.captured-key : root.key,root.armed ? root.captured-token : root.token,root.armed ? root.captured-action : root.action);root.armed=false; }
 }
 // A rename retains the entry/version on which text entry started.
 export component BoundTitleEdit inherits LineEdit {

@@ -1,5 +1,6 @@
+import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
-import { AboutSlint, Button, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { AboutSlint, TextEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
 component AboutLabel inherits TextInput {
     read-only: true;
     single-line: true;
@@ -56,8 +57,8 @@ export component AboutWindow inherits Window {
             purpose-text := AboutLabel { text: Terms.caption-product-description; single-line: false; }
             copyright-text := AboutLabel { text: Terms.caption-copyright; }
             HorizontalBox { alignment: center; spacing: 12px; padding: 0px;
-                website := Button { text: Terms.caption-project-website; clicked => { root.open-source(); } }
-                Button { text: Terms.action-licenses; clicked => { root.open-licenses(); } }
+                website := Button { text: Terms.caption-project-website; triggered => { root.open-source(); } }
+                Button { text: Terms.action-licenses; triggered => { root.open-licenses(); } }
             }
             HorizontalBox { alignment: center; vertical-stretch: 0; padding: 0px;
                 AboutSlint { width: 280px; height: 100px; horizontal-stretch: 0; vertical-stretch: 0; }
@@ -94,7 +95,7 @@ export component LicenseWindow inherits Window {
             HorizontalBox {
                 padding: 12px; spacing: 12px; vertical-stretch: 0;
                 Text { text: root.notice; wrap: word-wrap; horizontal-stretch: 1; }
-                Button { text: Terms.action-third-party-licenses-dialog; horizontal-stretch: 0; clicked => { root.third-party-licenses-requested(); } }
+                Button { text: Terms.action-third-party-licenses-dialog; horizontal-stretch: 0; triggered => { root.third-party-licenses-requested(); } }
             }
         }
     }

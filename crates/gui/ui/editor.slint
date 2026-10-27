@@ -1,5 +1,6 @@
+import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
-import { Palette, Button, LineEdit, TextEdit, Slider, HorizontalBox, VerticalBox, ComboBox } from "std-widgets.slint";
+import { Palette, LineEdit, TextEdit, Slider, HorizontalBox, VerticalBox, ComboBox } from "std-widgets.slint";
 import { ParameterKey, MetadataKey, ParameterRow, MetadataRow } from "models.slint";
 // A compact disclosure: as wide as its label, aligned with the content it opens.
 export component Disclosure inherits Rectangle {
@@ -21,7 +22,7 @@ export component Disclosure inherits Rectangle {
         text: (root.expanded ? "▾ " : "▸ ") + root.label;
         accessible-label: root.accessible-name + (root.expanded ? Terms.caption-expanded : Terms.caption-collapsed);
         accessible-expanded: root.expanded;
-        clicked => {root.expanded = !root.expanded;}
+        triggered => {root.expanded = !root.expanded;}
     }
 }
 // Uncommitted text, caret and focus stay local. Model refreshes replace only
@@ -265,7 +266,7 @@ export component StableButton inherits Rectangle {
         enabled: root.enabled;
         accessible-label: root.accessible-name;
         accessible-expanded: root.expanded;
-        clicked => { root.clicked(); }
+        triggered => { root.clicked(); }
     }
 }
 export component ExportRate inherits HorizontalBox {

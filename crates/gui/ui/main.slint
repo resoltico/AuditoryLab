@@ -1,12 +1,12 @@
+import { Button } from "button.slint";
 import { BoundButton, BoundTitleEdit } from "library-controls.slint";
 import { LibraryNavigationItem } from "library-navigation.slint";
 import { WorkspaceNavigation } from "workspace-navigation.slint";
 export { Terms } from "vocabulary.slint";
 import { Terms, Choices } from "vocabulary.slint";
 import {
-    Palette, Button, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, ProgressIndicator
-}
-from "std-widgets.slint";
+    Palette, ComboBox, TextEdit, LineEdit, Slider, VerticalBox, HorizontalBox, CheckBox, StandardListView, ScrollView, ProgressIndicator
+} from "std-widgets.slint";
 export { CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
 import { CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
 import { Disclosure, NumericField, ParameterControl, MetadataField, NotesField, StableButton, ExportRate } from "editor.slint";
@@ -346,7 +346,7 @@ export component MainWindow inherits Window {
             VerticalLayout {padding:12px;spacing:8px;
                 HorizontalBox {padding:0px;vertical-stretch:0;
                     Text {text:Terms.facet-applied-library-filters;font-weight:600;horizontal-stretch:1;}
-                    Button {text:Terms.action-close;clicked=>{query-popup.close();}}
+                    Button {text:Terms.action-close;triggered =>{query-popup.close();}}
                 }
                 TextEdit {text:root.library-count;read-only:true;wrap:word-wrap;min-width:0px;accessible-label:Terms.caption-committed-library-query;}
             }
@@ -365,7 +365,7 @@ export component MainWindow inherits Window {
             VerticalLayout {padding:12px;spacing:8px;
                 HorizontalBox {padding:0px;vertical-stretch:0;
                     Text {text:Terms.caption-library-filters;font-weight:600;vertical-alignment:center;horizontal-stretch:1;}
-                    Button {text:Terms.action-close;accessible-label:Terms.action-close-filters;clicked=>{filters-popup.close();}}
+                    Button {text:Terms.action-close;accessible-label:Terms.action-close-filters;triggered =>{filters-popup.close();}}
                 }
                 filter-scroll := ScrollView {
                     accessible-role:groupbox;
@@ -393,8 +393,8 @@ export component MainWindow inherits Window {
                     }
                 }
                 HorizontalBox {padding:0px;vertical-stretch:0;
-                    Button {text:Terms.action-clear-all-filters;clicked=>{root.clear-applied-filters();}}
-                    Button {text:Terms.action-apply-filters;primary:true;clicked=>{root.apply-filters();}}
+                    Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
+                    Button {text:Terms.action-apply-filters;primary:true;triggered =>{root.apply-filters();}}
                 }
             }
         }
@@ -410,15 +410,15 @@ export component MainWindow inherits Window {
                 width:options-scroll.visible-width;
                 Text {text:Terms.caption-library-options;font-weight:600;vertical-stretch:0;}
                 if root.compact: ComboBox {model:root.sort-labels;current-index <=> root.sort-choice;accessible-label:Terms.facet-sort-library;selected(value)=>{root.collection-filter(root.collection-choice,root.sort-choice);}}
-                Button {text:Terms.action-open-recipe-dialog;enabled:root.can-import;clicked=>{root.open-recipe();library-options.close();}}
-                Button {text:Terms.action-refresh;clicked=>{root.refresh-library();}}
-                Button {text:Terms.action-show-saved;clicked=>{root.show-saved();library-options.close();}}
-                Button {text:Terms.action-reset-sort;clicked=>{root.reset-library-sort();root.direction-choice=0;}}
-                Button {text:Terms.action-clear-all-filters;clicked=>{root.clear-applied-filters();}}
+                Button {text:Terms.action-open-recipe-dialog;enabled:root.can-import;triggered =>{root.open-recipe();library-options.close();}}
+                Button {text:Terms.action-refresh;triggered =>{root.refresh-library();}}
+                Button {text:Terms.action-show-saved;triggered =>{root.show-saved();library-options.close();}}
+                Button {text:Terms.action-reset-sort;triggered =>{root.reset-library-sort();root.direction-choice=0;}}
+                Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
                 Disclosure {label:Terms.caption-library-storage-and-recovery;expanded <=> root.storage-open;}
                 if root.storage-open: Text {text:root.library-status;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                if root.storage-open: Button {enabled:root.can-manage-library;text:Terms.action-initialize-configured-library;clicked=>{root.initialize-library();}}
-                Button {text:Terms.action-close;clicked=>{library-options.close();}}
+                if root.storage-open: Button {enabled:root.can-manage-library;text:Terms.action-initialize-configured-library;triggered =>{root.initialize-library();}}
+                Button {text:Terms.action-close;triggered =>{library-options.close();}}
             }}
         }
     }
@@ -430,10 +430,10 @@ export component MainWindow inherits Window {
         FocusScope {
             key-pressed(event)=>{if event.text==Key.Escape {component-menu.close();return accept;}return reject;}
             VerticalBox {
-                for label[index] in root.add-choices: Button {text:label;enabled:root.can-add-component;accessible-description:root.add-reason;clicked=>{root.add-component(root.component-menu-document,index);component-menu.close();}}
-                Button {text:Terms.action-add-binaural-pair;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;clicked=>{root.add-component(root.component-menu-document,2);component-menu.close();}}
-                Button {text:Terms.action-add-monaural-pair;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;clicked=>{root.add-component(root.component-menu-document,3);component-menu.close();}}
-                Button {text:Terms.action-close;clicked=>{component-menu.close();}}
+                for label[index] in root.add-choices: Button {text:label;enabled:root.can-add-component;accessible-description:root.add-reason;triggered =>{root.add-component(root.component-menu-document,index);component-menu.close();}}
+                Button {text:Terms.action-add-binaural-pair;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,2);component-menu.close();}}
+                Button {text:Terms.action-add-monaural-pair;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,3);component-menu.close();}}
+                Button {text:Terms.action-close;triggered =>{component-menu.close();}}
             }
         }
     }
@@ -450,13 +450,13 @@ export component MainWindow inherits Window {
                 selected(index)=>{root.tab-changed(index);}
             }
             Rectangle {horizontal-stretch:1;}
-            if root.tab-index==0: Button {text:Terms.caption-library-options;clicked=>{library-options.show();}}
+            if root.tab-index==0: Button {text:Terms.caption-library-options;triggered =>{library-options.show();}}
             // Left of the lasting controls, so a late press on Cancel export
             // lands in the space it leaves rather than on another control.
             if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:Terms.caption-wav-export-progress;max-width:120px;}
-            if root.exporting: Button {text:Terms.action-cancel-export;clicked=>{root.cancel-file();}}
-            if root.status != "" || root.auxiliary-error != "": Button {text:Terms.caption-task-details-dialog;clicked=>{root.show-diagnostics();}}
-            if root.tab-index==1: Button {text:Terms.action-save-sound;enabled:root.can-save;accessible-description:root.save-reason;clicked=>{root.save-recipe();}}
+            if root.exporting: Button {text:Terms.action-cancel-export;triggered =>{root.cancel-file();}}
+            if root.status != "" || root.auxiliary-error != "": Button {text:Terms.caption-task-details-dialog;triggered =>{root.show-diagnostics();}}
+            if root.tab-index==1: Button {text:Terms.action-save-sound;enabled:root.can-save;accessible-description:root.save-reason;triggered =>{root.save-recipe();}}
             monitor-opener := StableButton {
                 text:root.monitor-open ? Terms.action-hide-monitor : Terms.action-show-monitor;
                 labels:[Terms.action-hide-monitor,Terms.action-show-monitor];
@@ -498,7 +498,7 @@ export component MainWindow inherits Window {
                             accessible-label: Terms.facet-sort-library;
                             selected(value) => {root.collection-filter(root.collection-choice, root.sort-choice);}
                         }
-                        Button {text:Terms.caption-library-filters;clicked=>{root.open-library-filters();}}
+                        Button {text:Terms.caption-library-filters;triggered =>{root.open-library-filters();}}
 
                     }
                 HorizontalBox {
@@ -568,7 +568,7 @@ export component MainWindow inherits Window {
                                 root.search(value);
                             }
                         }
-                            Button {text:Terms.caption-library-filters;clicked=>{root.open-library-filters();}}
+                            Button {text:Terms.caption-library-filters;triggered =>{root.open-library-filters();}}
                         }
                         if !root.compact: HorizontalBox {padding:0px;vertical-stretch:0;
                         ComboBox {
@@ -588,7 +588,7 @@ export component MainWindow inherits Window {
                         }
                         if root.band-choice != 0 || root.method-choice != 0: Button {
                             text: Terms.action-clear-rhythm-filters;
-                            clicked => {
+                            triggered => {
                                 root.band-choice = 0;
                                 root.method-choice = 0;
                                 root.rhythm-filter(0, 0);
@@ -597,7 +597,7 @@ export component MainWindow inherits Window {
 
                         if root.query != "": Button {
                             text: Terms.action-clear-search;
-                            clicked => {
+                            triggered => {
                                 root.query="";
                                 root.search("");
                             }
@@ -612,7 +612,7 @@ export component MainWindow inherits Window {
                         }
                                 HorizontalBox {padding:0px;vertical-stretch:0;
                                     Text {text:root.library-overview;min-width:0px;wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;}
-                                    Button {text:Terms.action-query-details;accessible-label:Terms.facet-applied-library-filters;accessible-expanded:root.library-query-open;clicked=>{root.open-query-details();}}
+                                    Button {text:Terms.action-query-details;accessible-label:Terms.facet-applied-library-filters;accessible-expanded:root.library-query-open;triggered =>{root.open-query-details();}}
                                 }
 
                         catalog-scroll := ScrollView {
@@ -627,14 +627,14 @@ export component MainWindow inherits Window {
                                 if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
                                 if !root.has-results && root.file-activity != "": Text {text:root.file-activity;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
                                 if !root.has-results: Text {text:root.library-empty-message;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                                if !root.has-results && root.library-filters-active: Button {text:Terms.action-clear-all-filters;clicked=>{root.clear-applied-filters();}}
+                                if !root.has-results && root.library-filters-active: Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
 
                         if !root.has-results: HorizontalBox { vertical-stretch:0;
                         Button {
                             horizontal-stretch:0;
                             text: Terms.action-open-recipe-dialog;
                             enabled: root.can-import;
-                            clicked => {
+                            triggered => {
                                 root.open-recipe();
                             }
                         }
@@ -642,7 +642,7 @@ export component MainWindow inherits Window {
                             horizontal-stretch:0;
                             text:Terms.caption-create-sound;
                             enabled:root.can-new;
-                            clicked=>{root.new-draft();}
+                            triggered =>{root.new-draft();}
                         }
                         Rectangle {horizontal-stretch:1;}
                         }
@@ -799,7 +799,7 @@ export component MainWindow inherits Window {
                             spacing: 10px;
                             if root.compact: Button {
                                 text:Terms.action-back-to-recipes;
-                                clicked => {
+                                triggered => {
                                     root.library-restore-ready=false;
                                     root.library-restoring=true;
                                     root.library-detail=false;
@@ -834,19 +834,19 @@ export component MainWindow inherits Window {
                                     padding: 0px;
                                     vertical-stretch: 0;
 
-                                    Button {text:Terms.action-preview-waveform;enabled:root.can-preview;clicked=>{root.preview-selected();}}
+                                    Button {text:Terms.action-preview-waveform;enabled:root.can-preview;triggered =>{root.preview-selected();}}
                                     Button {
                                         text:Terms.action-edit-acopy;
                                         enabled:root.can-copy;
                                         accessible-description:root.copy-reason;
-                                        clicked=> {
+                                        triggered => {
                                             root.open-workbench();
                                         }
                                     }
                                     Button {
                                         text:Terms.action-export-wav-dialog;
                                         enabled:root.can-export;
-                                        clicked=> {
+                                        triggered => {
                                             root.export-wav();
                                         }
                                     }
@@ -873,7 +873,7 @@ export component MainWindow inherits Window {
                                 if root.library-key != "": Text {text:root.library-key;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
                                 }
                                 if root.library-token != "" && !root.library-trashed: BoundButton {enabled:root.can-new;text:Terms.action-edit-saved-user-recipe;key:root.library-key;token:root.library-token;activated(k,t)=>{root.edit-saved(k,t);}}
-                                Button {text:Terms.action-export-portable-recipe-dialog;enabled:root.can-export-recipe;clicked=>{root.export-recipe();}}
+                                Button {text:Terms.action-export-portable-recipe-dialog;enabled:root.can-export-recipe;triggered =>{root.export-recipe();}}
                                 if root.collection-choice == 3: BoundButton {text:Terms.action-close-open-file;key:root.library-key;token:"";activated(k,t)=>{root.close-open-file(k);}}
                                 if root.collection-choice == 3: BoundButton {enabled:root.can-new;text:Terms.action-edit-external-file;key:root.library-key;token:"";activated(k,t)=>{root.edit-saved(k,t);}}
                                 if root.collection-choice == 3: BoundButton {enabled:root.can-add-to-library;text:Terms.action-add-to-user-library;key:root.library-key;token:"";activated(k,t)=>{root.add-to-library(k);}}
@@ -883,8 +883,8 @@ export component MainWindow inherits Window {
                                     if root.library-trashed: BoundButton {enabled:root.can-manage-library;text:Terms.action-permanently-delete-dialog;key:root.library-key;token:root.library-token;activated(k,t)=>{root.library-action(k,t,Terms.action-purge,"");}}
                                 }
                                 Disclosure {label:Terms.caption-research-citation-and-sound-adaptations;expanded <=> root.research;}
-                                if root.research && root.can-open-study: Button {text:Terms.action-open-study-source;clicked=>{root.open-study();}}
-                                if root.research: Button {text:Terms.action-read-selectable-research-and-recipe-details-dialog;clicked=>{root.show-research();}}
+                                if root.research && root.can-open-study: Button {text:Terms.action-open-study-source;triggered =>{root.open-study();}}
+                                if root.research: Button {text:Terms.action-read-selectable-research-and-recipe-details-dialog;triggered =>{root.show-research();}}
                                 library-pattern := Disclosure {label:Terms.caption-pattern-explained-static-core-model;}
                                 if library-pattern.expanded: VerticalBox {
                                     vertical-stretch:0;
@@ -954,12 +954,12 @@ export component MainWindow inherits Window {
                             text:root.dirty ? Terms.status-unsaved-changes : Terms.status-unmodified-draft;
                             wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;
                         }
-                        Button {text:Terms.action-add-component;enabled:root.can-edit;clicked=>{root.open-component-menu();}}
+                        Button {text:Terms.action-add-component;enabled:root.can-edit;triggered =>{root.open-component-menu();}}
                         Button {
                             horizontal-stretch:0;
                             text:Terms.action-new;
                             enabled:root.can-new;
-                            clicked=> {
+                            triggered => {
                                 root.new-draft();
                             }
                         }
@@ -976,7 +976,7 @@ export component MainWindow inherits Window {
                             horizontal-stretch: 0;
                             enabled: root.can-restore-component;
                             accessible-description: root.removed-component + " " + root.add-reason;
-                            clicked => { root.restore-component(root.document); }
+                            triggered => { root.restore-component(root.document); }
                         }
                         Text {min-width:0px;horizontal-stretch:1;text:root.removed-component;wrap:word-wrap;vertical-alignment:center;}
                     }
@@ -1051,7 +1051,7 @@ export component MainWindow inherits Window {
                                 if row.carrier >= 0: Text { text: Terms.caption-modulation; vertical-alignment: center; }
                                 if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.modulation-choices; current-index: row.modulation; accessible-label: row.name + Terms.caption-modulation-suffix; selected(value) => { root.set-modulation(row.key, self.current-index); } }
                             }
-                            Row { Button { col:1; text: Terms.action-remove; enabled: root.can-edit; accessible-label: Terms.action-remove-prefix + row.name; clicked => { root.remove-component(row.key); } } }
+                            Row { Button { col:1; text: Terms.action-remove; enabled: root.can-edit; accessible-label: Terms.action-remove-prefix + row.name; triggered => { root.remove-component(row.key); } } }
                         }
                         for parameter in row.parameters: ParameterControl {
                             parameter: parameter;
@@ -1084,7 +1084,7 @@ export component MainWindow inherits Window {
                         vertical-stretch:0;
                         Text {text:root.draft-location-details;min-width:0px;wrap:word-wrap;vertical-stretch:0;}
 
-                        Button {text:Terms.action-export-portable-draft-recipe-dialog;enabled:root.can-export-recipe;clicked=>{root.export-recipe();}}
+                        Button {text:Terms.action-export-portable-draft-recipe-dialog;enabled:root.can-export-recipe;triggered =>{root.export-recipe();}}
 
                         HorizontalLayout {
                             Button {
@@ -1092,7 +1092,7 @@ export component MainWindow inherits Window {
                                 text:Terms.action-export-wav-dialog;
                                 enabled:root.can-export;
                                 accessible-description:root.export-reason;
-                                clicked=> {
+                                triggered => {
                                     root.export-wav();
                                 }
                             }
@@ -1109,7 +1109,7 @@ export component MainWindow inherits Window {
                             }
                             if root.based-on != "": Button {
                                 text:Terms.action-show-copied-from-snapshot-in-library;
-                                clicked=> {
+                                triggered => {
                                     root.based-on-source();
                                 }
                             }
@@ -1255,7 +1255,7 @@ export component MainWindow inherits Window {
                         elapsed-template := Text {visible:false;text:"00:00:00 / 00:00:00";}
                         elapsed-text := Text {width:parent.width;height:parent.height;text:root.elapsed;horizontal-alignment:right;vertical-alignment:center;}
                     }
-                    Button {text:Terms.caption-details-dialog;horizontal-stretch:0;accessible-label:Terms.caption-audio-details;clicked=>{root.show-diagnostics();}}
+                    Button {text:Terms.caption-details-dialog;horizontal-stretch:0;accessible-label:Terms.caption-audio-details;triggered =>{root.show-diagnostics();}}
                 }
                 if root.auxiliary-error != "" || root.operation-summary != "" || root.operation-outcome != "": VerticalBox {
                     padding:0px; spacing:0px; min-height:root.ui-size*2.5; max-height:root.ui-size*2.5; vertical-stretch:0;

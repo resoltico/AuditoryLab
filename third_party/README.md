@@ -2,7 +2,7 @@
 
 The workspace patches the native toolkit for accessibility, focus, multiline editing, modeless windows and macOS application menus. Font shaping and X11 DPI use the toolkit's upstream policy. No font files are embedded.
 
-[patches.toml](patches.toml) defines archive URLs, versions and SHA-256 digests. [patches/](patches/) contains the exact unified diffs. Vendored source must equal its authenticated archive with the corresponding patch applied.
+[patches.toml](patches.toml) defines archive URLs, versions and SHA-256 digests. [patches/](patches/) contains the exact unified diffs. Vendored source must equal its authenticated archive with the corresponding patch applied. Every vendored package retains the archive’s `Cargo.lock`.
 
 ```sh
 cargo xtask verify-vendor
@@ -16,9 +16,11 @@ The verifier authenticates archives before extraction, compares every source byt
 | --- | --- |
 | AccessKit Unix | Cache add/remove signals encode one structured D-Bus argument, as specified by [AT-SPI Cache](https://github.com/GNOME/at-spi2-core/blob/main/xml/Cache.xml). An upstream replacement must pass the production signal-serialization tests and refresh removed/reinserted accessible controls. |
 | Slint core | Preserve aggregate macOS modifiers, full multiline shaped extents, shaped cursor height, semantic focus reveal and clipped editor focus. An upstream replacement must pass keyboard, caret, scroll, reflow and removed-row focus tests. |
-| Slint compiler/widgets | Disabled accessibility presses cannot invoke buttons; TextEdit reveals the shaped cursor rectangle. An upstream replacement must pass `accessibility_presses_respect_disabled_buttons` and `text_edit_cursor_scrolls_into_view`. |
+| Slint compiler | TextEdit reveals the shaped cursor rectangle. An upstream replacement must pass `text_edit_cursor_scrolls_into_view` at the supported text sizes. |
 | Slint Winit backend | Wayland show requests a redraw; modeless parent requests survive window recreation. macOS termination and application About route to the application handler. An upstream replacement must preserve those native boundaries and the unsaved-change Save/Discard/Cancel flow. |
 | Winit | Expose Wayland modeless parenting and deferred/coalesced macOS termination requests. An upstream replacement must preserve parent ownership, main-thread replies, stale-request rejection and one pending Quit request. |
+
+Application buttons use [the app-owned component](../crates/gui/ui/button.slint). It retains toolkit rendering, sizing and focus, exposes one accessible button, and forwards its `triggered` application callback only while enabled. `accessibility_presses_respect_disabled_buttons` exercises this component through the production accessibility action.
 
 The standard Slint application About item opens the toolkit's predefined native panel. The custom About event routes to the application's window containing its project and license actions. AppKit termination is intercepted through Winit's own application delegate; the delegate is not replaced. Repeated Quit joins one pending request; unavailable or abandoned handlers deny it.
 

@@ -94,9 +94,7 @@ export component Button {
     accessible-checked: root.checked;
     accessible-label: root.text;
     accessible-action-default => {
-        if (root.enabled) {
-            base.clicked();
-        }
+        base.clicked();
     }
 
     states [
@@ -156,9 +154,7 @@ export component TextButton {
     accessible-role: button;
     accessible-label: root.text;
     accessible-action-default => {
-        if (root.enabled) {
-            clicked();
-        }
+        clicked();
     }
 
     base := MaterialButtonBase {
@@ -187,9 +183,7 @@ export component IconButton {
 
     accessible-role: button;
     accessible-action-default => {
-        if (root.enabled) {
-            clicked();
-        }
+        clicked();
     }
 
     base := MaterialButtonBase {

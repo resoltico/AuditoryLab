@@ -1215,11 +1215,11 @@ fn accessibility_presses_respect_disabled_buttons() {
     };
     use std::ops::ControlFlow;
     slint::slint! {
-        import { Button } from "std-widgets.slint";
+        import { Button } from "../ui/button.slint";
         export component PressProbe inherits Window {
             in property <bool> enabled;
             out property <int> presses;
-            Button { text: "Probe"; enabled: root.enabled; clicked => { root.presses += 1; } }
+            Button { text: "Probe"; enabled: root.enabled; triggered => { root.presses += 1; } }
         }
     }
     install();

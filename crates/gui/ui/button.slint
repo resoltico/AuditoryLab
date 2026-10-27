@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: MPL-2.0
+import { Button as ToolkitButton } from "std-widgets.slint";
+
+// Toolkit input is forwarded to application actions only while enabled.
+export component Button inherits ToolkitButton {
+    callback triggered();
+    clicked => { if root.enabled { root.triggered(); } }
+}
