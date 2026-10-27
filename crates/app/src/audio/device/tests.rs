@@ -32,7 +32,7 @@ fn discovery_requires_stereo_or_wider_and_a_supported_rate_and_format() {
             cpal::SampleFormat::F32,
         );
         assert!(
-            matches!(supported_format(&snapshot), Err(DeviceError::UnsupportedSampleRate { hz: r }) if r == hz)
+            matches!(supported_format(&snapshot), Err(DeviceError::UnsupportedSampleRate(error)) if error.hz == hz)
         );
     }
     let snapshot = cpal::SupportedStreamConfig::new(
@@ -43,9 +43,7 @@ fn discovery_requires_stereo_or_wider_and_a_supported_rate_and_format() {
     );
     assert!(matches!(
         supported_format(&snapshot),
-        Err(DeviceError::UnsupportedSampleFormat(
-            cpal::SampleFormat::U16
-        ))
+        Err(DeviceError::UnsupportedSampleFormat(ref format)) if format=="u16"
     ));
     for (native, format) in [
         (cpal::SampleFormat::F64, SampleFormat::F64),
@@ -78,11 +76,17 @@ fn integer_formats_reach_but_never_pass_full_scale() {
 
 #[test]
 fn a_route_change_keeps_the_native_cause() {
-    let changed = DeviceError::from(cpal::Error::new(ErrorKind::DeviceChanged));
-    assert!(
-        matches!(changed,DeviceError::Backend(ref error) if error.kind()==ErrorKind::DeviceChanged)
+    let changed = DeviceError::from_backend(cpal::Error::new(ErrorKind::DeviceChanged));
+    assert!(matches!(changed, DeviceError::RouteChanged(_)));
+    let cause = std::error::Error::source(&changed)
+        .unwrap()
+        .source()
+        .unwrap();
+    assert_eq!(
+        cause.downcast_ref::<cpal::Error>().unwrap().kind(),
+        ErrorKind::DeviceChanged
     );
-    assert!(std::error::Error::source(&changed).is_some());
+    assert_eq!(crate::core::Code::code(&changed), "device.route_changed");
 }
 
 #[test]

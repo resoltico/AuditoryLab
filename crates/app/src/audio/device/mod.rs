@@ -21,8 +21,8 @@ use cpal::{
     OutputCallbackInfo, Sample, SizedSample, Stream, StreamConfig, StreamInstant,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-pub use error::DeviceError;
 use error::Diagnostics;
+pub use error::{BackendError, DeviceError};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -57,7 +57,9 @@ impl Output {
         let device = cpal::default_host()
             .default_output_device()
             .ok_or(DeviceError::NoDefaultOutput)?;
-        let supported = device.default_output_config()?;
+        let supported = device
+            .default_output_config()
+            .map_err(DeviceError::from_backend)?;
         let (sample_rate, format) = supported_format(&supported)?;
         let name = device
             .description()
@@ -418,11 +420,11 @@ const fn sample_format(format: cpal::SampleFormat) -> Option<SampleFormat> {
 fn supported_format(
     supported: &cpal::SupportedStreamConfig,
 ) -> Result<(SampleRate, SampleFormat), DeviceError> {
-    let format = sample_format(supported.sample_format()).ok_or(
-        DeviceError::UnsupportedSampleFormat(supported.sample_format()),
-    )?;
+    let format = sample_format(supported.sample_format()).ok_or_else(|| {
+        DeviceError::UnsupportedSampleFormat(supported.sample_format().to_string())
+    })?;
     let hz = supported.sample_rate();
-    let sample_rate = SampleRate::new(hz).map_err(|_| DeviceError::UnsupportedSampleRate { hz })?;
+    let sample_rate = SampleRate::new(hz).map_err(DeviceError::UnsupportedSampleRate)?;
     if supported.channels() < 2 {
         return Err(DeviceError::TooFewChannels {
             channels: supported.channels(),
@@ -460,9 +462,9 @@ fn resolve(
     diagnostics: &Diagnostics,
 ) -> Result<PlaybackReport, DeviceError> {
     match terminal {
-        Outcome::Backend => Err(DeviceError::Backend(diagnostics.backend_error())),
+        Outcome::Backend => Err(DeviceError::from_backend(diagnostics.backend_error())),
         Outcome::StreamSetupFailed => match setup_error {
-            Some(error) => Err(DeviceError::Backend(error)),
+            Some(error) => Err(DeviceError::from_backend(error)),
             None => unreachable!("setup failure retains its worker-local error"),
         },
         Outcome::InvalidTiming => Err(DeviceError::InvalidTiming),

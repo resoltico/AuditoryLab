@@ -1,7 +1,7 @@
 //! Playback preparation shares captured-source and Trash policy across frontends.
 use super::{Resolved, library::Library};
 pub use crate::audio::PlaybackError;
-pub use crate::audio::device::{DeviceError, PreparedLive, PreparedPlayback};
+pub use crate::audio::device::{BackendError, DeviceError, PreparedLive, PreparedPlayback};
 pub use crate::audio::session::{
     EndReason, GeneratedStatus, LiveControl, LiveUpdateError, Meter, MonitorDetail, MonitorReader,
     ObservationFreshness, OutputInfo, PlaybackControl, PlaybackMonitor, PlaybackPhase,

@@ -174,10 +174,10 @@ For example, an out-of-range rate reports `sample_rate.range` with `hz`, `min_hz
 | `device.invalid_timing` |
 | `device.misaligned_buffer` |
 | `device.no_default_output` |
+| `device.route_changed` |
 | `device.timed_out` |
 | `device.too_few_channels` |
 | `device.unsupported_sample_format` |
-| `device.unsupported_sample_rate` |
 | `edit.budget_exceeded` |
 | `edit.commit` |
 | `edit.identities_exhausted` |

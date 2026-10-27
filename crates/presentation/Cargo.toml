@@ -12,7 +12,6 @@ auditorylab-app.workspace = true
 auditorylab-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-cpal.workspace = true
 [dev-dependencies]
 getrandom.workspace = true
 auditorylab-core = { workspace = true, features = ["test-support"] }

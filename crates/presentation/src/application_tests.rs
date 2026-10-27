@@ -5,6 +5,7 @@ use auditorylab_app::discovery::collection::CatalogQuery;
 use auditorylab_app::document::editing::Draft;
 use auditorylab_app::document::editing::EditingField;
 use auditorylab_app::job::Cancel;
+use auditorylab_app::services::playback::BackendError;
 use auditorylab_app::services::playback::DeviceError;
 use auditorylab_app::workspace::status::FileStatus;
 use auditorylab_app::workspace::{Capabilities, Effect, JobKind, View, Workspace};
@@ -12,7 +13,6 @@ use auditorylab_core::query::CalendarField;
 use auditorylab_core::query::{GroupBy, SortBy};
 use auditorylab_core::test_support::finite;
 use auditorylab_core::{CarrierKind, ComponentForm, ComponentId, Ears, ParameterId, SampleRate};
-use cpal::ErrorKind;
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 struct Harness {
@@ -288,13 +288,17 @@ fn calendar_order_errors_name_visible_fields_and_same_day_is_inclusive() {
 
 #[test]
 fn a_route_change_says_what_happened_and_what_to_do() {
-    let changed = DeviceError::from(cpal::Error::new(ErrorKind::DeviceChanged));
-    assert_eq!(auditorylab_core::Code::code(&changed), "device.backend");
+    let changed =
+        DeviceError::RouteChanged(BackendError::new(std::io::Error::other("route changed")));
+    assert_eq!(
+        auditorylab_core::Code::code(&changed),
+        "device.route_changed"
+    );
     assert_eq!(
         changed.explain(),
         "the audio output route changed and playback stopped; select the intended output and play again"
     );
-    let busy = DeviceError::from(cpal::Error::with_message(ErrorKind::DeviceBusy, "in use"));
+    let busy = DeviceError::Backend(BackendError::new(std::io::Error::other("in use")));
     assert_eq!(busy.explain(), "audio backend: in use");
     assert_eq!(
         DeviceError::TooFewChannels { channels: 1 }.explain(),
@@ -337,10 +341,7 @@ fn entropy_failure_mentions_random_uuid() {
 #[test]
 fn backend_failure_preserves_native_message() {
     for text in ["unplugged", "original setup failure"] {
-        let error = DeviceError::from(cpal::Error::with_message(
-            ErrorKind::DeviceNotAvailable,
-            text,
-        ));
+        let error = DeviceError::Backend(BackendError::new(std::io::Error::other(text)));
         assert_eq!(error.explain(), format!("audio backend: {text}"));
     }
 }

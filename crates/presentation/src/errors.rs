@@ -407,9 +407,7 @@ impl std::fmt::Display for Human<'_, auditorylab_app::services::playback::Device
             auditorylab_app::services::playback::DeviceError::NoDefaultOutput => {
                 write!(f, "no default audio output device found")
             }
-            auditorylab_app::services::playback::DeviceError::Backend(error)
-                if error.kind() == cpal::ErrorKind::DeviceChanged =>
-            {
+            auditorylab_app::services::playback::DeviceError::RouteChanged(_) => {
                 write!(
                     f,
                     "the audio output route changed and playback stopped; select the intended output and play again"
@@ -424,7 +422,8 @@ impl std::fmt::Display for Human<'_, auditorylab_app::services::playback::Device
                     "the output device's {format} sample format is not supported"
                 )
             }
-            auditorylab_app::services::playback::DeviceError::UnsupportedSampleRate { hz } => {
+            auditorylab_app::services::playback::DeviceError::UnsupportedSampleRate(error) => {
+                let hz = error.hz;
                 write!(
                     f,
                     "the output device's {hz} Hz sample rate is not supported"

@@ -6,6 +6,27 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use {crate::audio::session::Outcome, crate::audio::session::SessionState};
 
+/// An opaque native backend failure with its original typed cause.
+#[derive(Debug, Clone)]
+pub struct BackendError(Arc<dyn Error + Send + Sync>);
+impl BackendError {
+    /// Retain a backend cause without exposing its native type in app signatures.
+    #[must_use]
+    pub fn new(cause: impl Error + Send + Sync + 'static) -> Self {
+        Self(Arc::new(cause))
+    }
+}
+impl std::fmt::Display for BackendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.0.as_ref(), f)
+    }
+}
+impl Error for BackendError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.0.as_ref())
+    }
+}
+
 /// Why device playback did not start or did not finish normally.
 #[derive(Debug, Clone)]
 pub enum DeviceError {
@@ -13,14 +34,13 @@ pub enum DeviceError {
     NoDefaultOutput,
     /// The audio backend refused an operation or reported that the stream
     /// cannot continue.
-    Backend(cpal::Error),
+    Backend(BackendError),
+    /// The native output route changed and the stream cannot continue.
+    RouteChanged(BackendError),
     /// The device's stream uses a sample representation playback cannot fill.
-    UnsupportedSampleFormat(cpal::SampleFormat),
+    UnsupportedSampleFormat(String),
     /// The device runs at a sample rate signals cannot have.
-    UnsupportedSampleRate {
-        /// The device's sample rate in frames per second.
-        hz: u32,
-    },
+    UnsupportedSampleRate(crate::core::SampleRateError),
     /// The default configuration cannot present separate ear channels.
     TooFewChannels {
         /// Available channels in each device frame.
@@ -39,15 +59,22 @@ pub enum DeviceError {
 impl Error for DeviceError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::Backend(error) => Some(error),
+            Self::Backend(error) | Self::RouteChanged(error) => Some(error),
+            Self::UnsupportedSampleRate(error) => Some(error),
             _ => None,
         }
     }
 }
 
-impl From<cpal::Error> for DeviceError {
-    fn from(error: cpal::Error) -> Self {
-        Self::Backend(error)
+impl DeviceError {
+    pub(super) fn from_backend(error: cpal::Error) -> Self {
+        let changed = error.kind() == cpal::ErrorKind::DeviceChanged;
+        let cause = BackendError::new(error);
+        if changed {
+            Self::RouteChanged(cause)
+        } else {
+            Self::Backend(cause)
+        }
     }
 }
 
@@ -122,26 +149,38 @@ impl std::fmt::Display for DeviceError {
 
 crate::core::diagnostic_codes! {
     pub(crate) const CODES;
+    BackendError {
+        codes {
+            Self(..) => "device.backend",
+        }
+        delegates {}
+        params(this) {
+            crate::core::diagnostic_params! {"cause"=>this.to_string()}
+        }
+    }
     DeviceError {
         codes {
             Self::NoDefaultOutput => "device.no_default_output",
-            Self::Backend(..) => "device.backend",
+            Self::RouteChanged(..) => "device.route_changed",
             Self::UnsupportedSampleFormat(..) => "device.unsupported_sample_format",
-            Self::UnsupportedSampleRate { .. } => "device.unsupported_sample_rate",
             Self::TooFewChannels { .. } => "device.too_few_channels",
             Self::InvalidTiming => "device.invalid_timing",
             Self::MisalignedBuffer => "device.misaligned_buffer",
             Self::TimedOut => "device.timed_out",
             Self::Abandoned => "device.abandoned",
         }
-        delegates {}
+        delegates {
+            Self::Backend(error) => error,
+            Self::UnsupportedSampleRate(error) => error,
+        }
         params(this) {
             match this {
-                Self::Backend(error) => crate::core::diagnostic_params! {"cause"=>error.to_string()},
-                Self::UnsupportedSampleFormat(format) => {
-                    crate::core::diagnostic_params! {"sample_format"=>format.to_string()}
+                Self::RouteChanged(error) => {
+                    crate::core::diagnostic_params! {"cause"=>error.to_string()}
                 }
-                Self::UnsupportedSampleRate { hz } => crate::core::diagnostic_params! {"hz"=>*hz},
+                Self::UnsupportedSampleFormat(format) => {
+                    crate::core::diagnostic_params! {"sample_format"=>format.clone()}
+                }
                 Self::TooFewChannels { channels } => {
                     crate::core::diagnostic_params! {"channels"=>*channels}
                 }
