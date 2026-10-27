@@ -69,9 +69,9 @@ impl std::error::Error for IdentityError {
 /// Identity shared by the command-line and desktop products.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuildIdentity {
-    /// Product name from the root license metadata.
+    /// Product name declared in workspace metadata.
     pub name: &'static str,
-    /// Copyright line from the root license metadata.
+    /// Copyright line declared in workspace metadata.
     pub copyright: &'static str,
     /// Workspace product version.
     pub version: &'static str,

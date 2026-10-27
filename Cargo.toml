@@ -13,6 +13,8 @@ repository = "https://github.com/resoltico/AuditoryLab"
 publish = false
 
 [workspace.metadata.auditorylab]
+product-name = "Auditory Lab"
+copyright = "Copyright © 2026 Ervins Strauhmanis"
 build-number = 3
 
 [workspace.dependencies]
