@@ -7,7 +7,6 @@ pub fn about_title() -> String {
     format!("About {}", auditorylab_app::identity::BUILD_IDENTITY.name)
 }
 
-/// Human wording for BuildIdentity values.
 pub trait BuildIdentityText {
     /// Product version, native build counter and optional short source revision.
     #[must_use]

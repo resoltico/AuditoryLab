@@ -8,6 +8,7 @@
 //! open-ended stream, and an [`Observation`] states the facts of a generated frame.
 #![no_std]
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 extern crate alloc;
 #[cfg(test)]
 extern crate std;

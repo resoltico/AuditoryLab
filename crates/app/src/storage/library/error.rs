@@ -10,81 +10,41 @@ use {
 pub enum LibraryError {
     /// Origin parsing or selection failed.
     Origin {
-        /// Captured error.
         error: crate::document::origin::OriginError,
     },
     /// Filesystem publication or observation failed.
-    File {
-        /// Captured error.
-        error: FileError,
-    },
+    File { error: FileError },
     /// A read-only filesystem operation failed.
-    Read {
-        /// Captured error.
-        error: IoFailure,
-    },
+    Read { error: IoFailure },
     /// A managed record could not be read completely.
-    RecordRead {
-        /// Captured path.
-        path: PathBuf,
-        /// Captured error.
-        error: FileError,
-    },
+    RecordRead { path: PathBuf, error: FileError },
     /// A requested managed load could not establish complete readable state.
-    IncompleteRead {
-        /// Captured error.
-        error: Box<LibraryError>,
-    },
+    IncompleteRead { error: Box<LibraryError> },
     /// Portable recipe bytes failed their required UTF-8 conversion.
     RecipeUtf8 {
-        /// Captured path.
         path: PathBuf,
-        /// Captured error.
         error: std::string::FromUtf8Error,
     },
     /// A managed recipe failed its exact portable contract.
-    RecipeFile {
-        /// Captured path.
-        path: PathBuf,
-        /// Captured error.
-        error: RecipeError,
-    },
+    RecipeFile { path: PathBuf, error: RecipeError },
     /// A managed filename names a different document identity.
     RecordIdentity {
-        /// Captured path.
         path: PathBuf,
-        /// Captured expected.
         expected: DocumentUuid,
-        /// Captured found.
         found: DocumentUuid,
     },
     /// Portable content failed before publication.
-    Recipe {
-        /// Captured error.
-        error: RecipeError,
-    },
+    Recipe { error: RecipeError },
     /// The shipped catalog contains invalid portable content.
-    InvalidBuiltin {
-        /// Captured error.
-        error: RecipeError,
-    },
+    InvalidBuiltin { error: RecipeError },
     /// Two shipped recipes declare the same UUID.
-    DuplicateBuiltin {
-        /// Captured id.
-        id: DocumentUuid,
-    },
+    DuplicateBuiltin { id: DocumentUuid },
     /// The selected UUID is reserved by a built-in.
-    ReservedBuiltin {
-        /// Captured id.
-        id: DocumentUuid,
-    },
+    ReservedBuiltin { id: DocumentUuid },
     /// The library has not been initialized.
     NotInitialized,
     /// The requested managed UUID does not exist.
-    UnknownManaged {
-        /// Captured id.
-        id: DocumentUuid,
-    },
+    UnknownManaged { id: DocumentUuid },
     /// A previously configured root disappeared.
     RootMissing,
     /// Initialization did not produce the expected root.
@@ -94,119 +54,61 @@ pub enum LibraryError {
     /// Existing content has no supported marker during mutation.
     MissingMarkerOnMutation,
     /// Captured content no longer matches the managed record.
-    StaleContent {
-        /// Captured id.
-        id: DocumentUuid,
-    },
+    StaleContent { id: DocumentUuid },
     /// The selected entry disappeared.
-    EntryDisappeared {
-        /// Captured id.
-        id: DocumentUuid,
-    },
+    EntryDisappeared { id: DocumentUuid },
     /// This UUID already exists in the active library or Trash.
-    IdentityExists {
-        /// Captured id.
-        id: DocumentUuid,
-    },
+    IdentityExists { id: DocumentUuid },
     /// The proposed document does not match its captured key.
     ProposedIdentity {
-        /// Captured expected.
         expected: DocumentUuid,
-        /// Captured found.
         found: DocumentUuid,
     },
     /// A trashed entry cannot be edited.
-    MustRestore {
-        /// Captured id.
-        id: DocumentUuid,
-    },
+    MustRestore { id: DocumentUuid },
     /// Permanent deletion requires a Trash entry.
-    PurgeRequiresTrash {
-        /// Captured id.
-        id: DocumentUuid,
-    },
+    PurgeRequiresTrash { id: DocumentUuid },
     /// Permanent deletion lacks explicit confirmation.
     PurgeUnconfirmed,
     /// Updating would replace declared creation history.
-    HistoryReplacement {
-        /// Captured id.
-        id: DocumentUuid,
-    },
+    HistoryReplacement { id: DocumentUuid },
     /// Membership text is not UTF-8.
-    MembershipUtf8 {
-        /// Captured error.
-        error: std::str::Utf8Error,
-    },
+    MembershipUtf8 { error: std::str::Utf8Error },
     /// Membership timestamps do not match the strict shape.
-    MembershipFormat {
-        /// Captured error.
-        error: toml::de::Error,
-    },
+    MembershipFormat { error: toml::de::Error },
     /// Membership timestamps could not be encoded.
-    MembershipEncode {
-        /// Captured error.
-        error: toml::ser::Error,
-    },
+    MembershipEncode { error: toml::ser::Error },
     /// Encoded membership exceeds its byte limit.
-    MembershipSize {
-        /// Captured bytes.
-        bytes: usize,
-        /// Captured limit.
-        limit: usize,
-    },
+    MembershipSize { bytes: usize, limit: usize },
     /// Active and Trash paths contain different files for one UUID.
-    AmbiguousRecord {
-        /// Captured id.
-        id: DocumentUuid,
-    },
+    AmbiguousRecord { id: DocumentUuid },
     /// A library operation was cancelled before publication.
     Cancelled,
     /// A bounded scan exhausted one of its resource limits.
     ScanBudget,
     /// Observed clock cannot be represented by the portable timestamp profile.
-    Clock {
-        /// Captured error.
-        error: crate::clock::ClockError,
-    },
+    Clock { error: crate::clock::ClockError },
     /// A built-in is read-only.
-    ReadOnlyBuiltin {
-        /// Captured id.
-        id: String,
-    },
+    ReadOnlyBuiltin { id: String },
     /// Temporary entries are not reusable managed selections.
     TemporarySelection,
 
     /// Native per-user application data could not be resolved.
     NativeRootUnavailable,
     /// A configured root is relative.
-    RelativeRoot {
-        /// Captured path.
-        path: PathBuf,
-    },
+    RelativeRoot { path: PathBuf },
     /// A lock path is not a regular persistent file.
     LockNotRegular,
     /// A cooperating operation holds the root lock.
     Busy,
     /// Required locking assurance is unavailable.
-    LockUnavailable {
-        /// Captured error.
-        error: IoCause,
-    },
+    LockUnavailable { error: IoCause },
     /// The layout marker is not UTF-8.
-    MarkerUtf8 {
-        /// Captured error.
-        error: std::str::Utf8Error,
-    },
+    MarkerUtf8 { error: std::str::Utf8Error },
     /// The layout marker has invalid shape.
-    MarkerFormat {
-        /// Captured error.
-        error: toml::de::Error,
-    },
+    MarkerFormat { error: toml::de::Error },
     /// A different persistent layout was found.
-    UnsupportedLayout {
-        /// Captured found.
-        found: u32,
-    },
+    UnsupportedLayout { found: u32 },
     /// Nonempty membership exists without a supported marker.
     MembershipWithoutMarker,
     /// Recipe files exist without a supported marker.

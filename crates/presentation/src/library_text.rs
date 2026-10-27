@@ -548,7 +548,6 @@ pub fn group_label(label: &auditorylab_app::discovery::collection::GroupLabel) -
     }
 }
 
-/// Human wording for WriteOutcome values.
 pub trait WriteOutcomeText {
     /// Concise confirmed publication result with an unwrapped comparison token.
     #[must_use]

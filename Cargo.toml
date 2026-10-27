@@ -57,12 +57,10 @@ tar = "0.4"
 flate2 = "1"
 
 [workspace.lints.rust]
-warnings = "deny"
 unsafe_code = "deny"
 unsafe_op_in_unsafe_fn = "deny"
-missing_docs = "deny"
-unreachable_pub = "deny"
-unused_lifetimes = "deny"
+unreachable_pub = "warn"
+unused_lifetimes = "warn"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"

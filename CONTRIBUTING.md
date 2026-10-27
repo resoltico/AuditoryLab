@@ -10,14 +10,16 @@ Keep tool scratch under this checkout’s `target/`:
 mkdir -p target/tmp
 export TMPDIR="$PWD/target/tmp"
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --locked
+cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo test -p auditorylab-core --release --locked
-cargo doc --workspace --no-deps --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
 cargo deny check
 cargo xtask verify-vendor
 actionlint
 ```
+
+The compiler warns about ordinary hygiene locally. Core emits missing-documentation warnings; unsafe-code rules remain denied. CI denies workspace Clippy warnings and documentation warnings without applying a global warning denial to vendored path dependencies.
 
 Use the CI-pinned cargo-deny, cargo-mutants, cargo-about and actionlint versions. On Windows, point TMP/TEMP to an absolute directory under `target/`. Linux calendar checks need system `tzdata`.
 

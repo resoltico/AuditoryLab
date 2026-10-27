@@ -32,7 +32,7 @@ macro_rules! report_struct {
         #[derive(Debug, Clone, Serialize)]
         $(#[$attr])*
         pub struct $name {
-            $(#[doc = concat!("The ", stringify!($field), " value.")] $(#[$field_attr])* pub $field: $ty,)*
+            $($(#[$field_attr])* pub $field: $ty,)*
         }
     }
 }

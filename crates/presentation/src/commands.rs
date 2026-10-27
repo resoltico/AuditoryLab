@@ -70,7 +70,6 @@ impl DesktopDiagnostics<'_> {
     }
 }
 
-/// Human wording for RootSource values.
 pub trait RootSourceText {
     /// Name of the configuration source without exposing its internal enum spelling.
     #[must_use]
@@ -87,7 +86,6 @@ impl RootSourceText for auditorylab_app::services::library::RootSource {
     }
 }
 
-/// Human wording for Exported values.
 pub trait ExportedText {
     /// Explain the actual completed WAV container and frame count.
     #[must_use]
@@ -105,7 +103,6 @@ impl ExportedText for Exported {
     }
 }
 
-/// Human wording for Inventory values.
 pub trait InventoryText {
     /// Summary of a bounded storage inspection, without suppressing incompleteness.
     #[must_use]
@@ -122,7 +119,6 @@ impl InventoryText for Inventory {
     }
 }
 
-/// Human wording for Initialization values.
 pub trait InitializationText {
     /// Whether this request initialized the selected root or found it initialized.
     #[must_use]
@@ -143,7 +139,6 @@ impl InitializationText for Initialization {
     }
 }
 
-/// Human wording for Location values.
 pub trait LibraryLocationText {
     /// An inspection failure preserves what is known and marks initialization unverified.
     #[must_use]
@@ -170,7 +165,6 @@ impl LibraryLocationText for auditorylab_app::services::library::Location {
     }
 }
 
-/// Human wording for RootInfo values.
 pub trait RootInfoText {
     /// Human-readable root inspection, without changing initialization state.
     #[must_use]
@@ -189,7 +183,6 @@ impl RootInfoText for RootInfo {
     }
 }
 
-/// Human wording for EntrySummary values.
 pub trait EntrySummaryText {
     /// One complete discovery row, including explicit declared and membership dates.
     #[must_use]

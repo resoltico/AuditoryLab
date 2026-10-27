@@ -19,7 +19,6 @@ pub enum PlaybackError {
     Device(crate::audio::device::DeviceError),
     /// The sound is invalid at the actual device rate.
     Sound {
-        /// Captured title.
         title: String,
         /// Actual device rate.
         rate: SampleRate,

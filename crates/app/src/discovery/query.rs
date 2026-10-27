@@ -210,28 +210,17 @@ pub enum QueryError {
     },
     /// The exclusive upper bound is not after the lower bound.
     RangeOrder {
-        /// Captured from.
         from: crate::core::Timestamp,
-        /// Captured before.
         before: crate::core::Timestamp,
     },
     /// A study identity is empty or malformed.
-    Study {
-        /// Captured value.
-        value: String,
-    },
+    Study { value: String },
     /// A local date or midnight cannot be resolved uniquely.
-    LocalDate {
-        /// Captured value.
-        value: String,
-    },
+    LocalDate { value: String },
     /// A local through date predates its from date.
     LocalOrder {
-        /// Captured field.
         field: crate::core::query::CalendarField,
-        /// Captured from.
         from: String,
-        /// Captured through.
         through: String,
     },
 }

@@ -921,7 +921,6 @@ mod tests {
     }
 }
 
-/// Human wording for Description values.
 pub trait DescriptionText {
     /// Human description from the same captured data used by structured output.
     #[must_use]
@@ -936,7 +935,6 @@ impl DescriptionText for auditorylab_app::services::Description<'_> {
     }
 }
 
-/// Human wording for CaptureError values.
 pub trait CaptureErrorText {
     /// A monitored window that cannot be drawn truthfully.
     #[must_use]
@@ -959,7 +957,6 @@ impl CaptureErrorText for auditorylab_app::workspace::monitor::CaptureError {
     }
 }
 
-/// Human wording for PlaybackReport values.
 pub trait PlaybackReportText {
     /// The result of a playback, for any frontend.
     #[must_use]
@@ -991,7 +988,6 @@ impl PlaybackReportText for auditorylab_app::services::playback::PlaybackReport 
     }
 }
 
-/// Human wording for MonitorReader values.
 pub trait MonitorReaderText {
     /// One status line for a playing session.
     #[must_use]
@@ -1019,7 +1015,6 @@ impl MonitorReaderText for auditorylab_app::services::playback::MonitorReader {
     }
 }
 
-/// Human wording for RecipeSnapshot values.
 pub trait RecipeSnapshotText {
     /// The research text of a snapshot in its shared display order.
     #[must_use]
@@ -1213,7 +1208,6 @@ impl RecipeSnapshotText for RecipeSnapshot {
     }
 }
 
-/// Human wording for Rendition values.
 pub trait RenditionText {
     /// A realized sound's structure in one line.
     #[must_use]
@@ -1297,7 +1291,6 @@ impl RenditionText for Rendition {
     }
 }
 
-/// Human wording for OutputInfo values.
 pub trait OutputInfoText {
     /// Estimated output frame count as a transport clock at this output's rate.
     #[must_use]
@@ -1310,7 +1303,6 @@ impl OutputInfoText for auditorylab_app::services::playback::OutputInfo {
     }
 }
 
-/// Human wording for EditRefusal values.
 pub trait EditRefusalText {
     /// Explain why an editor command was refused without confusing authored components and voices.
     #[must_use]

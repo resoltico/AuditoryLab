@@ -119,10 +119,7 @@ pub enum FileError {
         cause: Option<IoCause>,
     },
     /// Opened identity or bytes changed before the action.
-    Changed {
-        /// Captured path.
-        path: PathBuf,
-    },
+    Changed { path: PathBuf },
     /// The destination has no usable filename.
     MissingFilename,
     /// The external destination has no parent.
@@ -238,24 +235,14 @@ use crate::core::RecipeError;
 pub enum SaveError {
     /// Static portable source resolution failed.
     Load {
-        /// Captured error.
         error: crate::storage::load::LoadError,
     },
     /// The observed clock is outside the portable timestamp profile.
-    Clock {
-        /// Captured error.
-        error: crate::clock::ClockError,
-    },
+    Clock { error: crate::clock::ClockError },
     /// Filesystem publication or observation failed.
-    File {
-        /// Captured error.
-        error: FileError,
-    },
+    File { error: FileError },
     /// Portable content failed validation or serialization.
-    Recipe {
-        /// Captured error.
-        error: RecipeError,
-    },
+    Recipe { error: RecipeError },
     /// Saving would replace identity or creation history.
     HistoryReplacement,
 }

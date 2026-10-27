@@ -10,17 +10,11 @@ use {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExportError {
     /// Filesystem publication failed.
-    File {
-        /// Captured error.
-        error: FileError,
-    },
+    File { error: FileError },
     /// The selected rate cannot realize the captured sound.
     Sound {
-        /// Captured origin.
         origin: Box<crate::document::recipe::Origin>,
-        /// Captured rate.
         rate: SampleRate,
-        /// Captured error.
         error: SoundError,
     },
 }

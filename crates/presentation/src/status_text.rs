@@ -61,7 +61,6 @@ impl super::Explain for auditorylab_app::workspace::ShutdownError {
     }
 }
 
-/// Human wording for OutputIssue values.
 pub trait OutputIssueText {
     /// Explain why a capture is unavailable while retaining its original cause.
     fn description(&self) -> String;
@@ -75,7 +74,6 @@ impl OutputIssueText for auditorylab_app::workspace::output::OutputIssue {
     }
 }
 
-/// Human wording for JobContext values.
 pub trait JobContextText {
     /// Show the operation address retained before applying its shutdown completion.
     fn description(&self) -> String;
@@ -91,7 +89,6 @@ impl JobContextText for auditorylab_app::workspace::JobContext {
     }
 }
 
-/// Human wording for PreviewIssue values.
 pub trait PreviewIssueText {
     /// Explain an unavailable preview using the captured source title and sample rate.
     fn description(&self) -> String;
@@ -114,7 +111,6 @@ impl PreviewIssueText for PreviewIssue {
     }
 }
 
-/// Human wording for WorkerFailure values.
 pub trait WorkerFailureText {
     /// Explain execution failure separately from an operation returning an error.
     fn description(&self) -> String;
@@ -129,7 +125,6 @@ impl WorkerFailureText for WorkerFailure {
     }
 }
 
-/// Human wording for AudioStatus values.
 pub trait AudioStatusText {
     /// Describe joined output or a refused live update without inferring playback from monitoring.
     fn description(&self) -> String;
@@ -149,7 +144,6 @@ impl AudioStatusText for AudioStatus {
     }
 }
 
-/// Human wording for EditStatus values.
 pub trait EditStatusText {
     /// Explain the latest editor admission refusal without changing staged input.
     fn description(&self) -> String;
@@ -163,7 +157,6 @@ impl EditStatusText for EditStatus {
     }
 }
 
-/// Human wording for FileStatus values.
 pub trait FileStatusText {
     /// Describe the current worker, refusal or completion with its retained typed cause.
     fn description(&self) -> String;
@@ -188,7 +181,6 @@ impl FileStatusText for FileStatus {
     }
 }
 
-/// Human wording for LibraryStatus values.
 pub trait LibraryStatusText {
     /// Describe confirmed mutation truth, retained input and applicable recovery actions.
     fn description(&self) -> String;
@@ -286,7 +278,6 @@ impl LibraryStatusText for LibraryStatus {
     }
 }
 
-/// Human wording for LibraryContext values.
 pub trait LibraryContextText {
     /// Show the captured selector and root independently of the current selection.
     fn description(&self) -> String;
@@ -300,7 +291,6 @@ impl LibraryContextText for LibraryContext {
     }
 }
 
-/// Human wording for SaveFeedback values.
 pub trait SaveFeedbackText {
     /// Explain an editor follow-up failure while retaining confirmed publication truth.
     fn description(&self) -> String;
@@ -327,7 +317,6 @@ impl SaveFeedbackText for SaveFeedback {
     }
 }
 
-/// Human wording for InventoryStatus values.
 pub trait InventoryStatusText {
     /// Report observed counts and completeness without treating unseen entries as absent.
     fn description(&self) -> String;
@@ -361,7 +350,6 @@ impl InventoryStatusText for InventoryStatus {
     }
 }
 
-/// Human wording for FileActivity values.
 pub trait FileActivityText {
     /// Describe the captured source and publication activity while its task occupies the slot.
     fn description(&self) -> String;
