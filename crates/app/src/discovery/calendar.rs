@@ -191,6 +191,7 @@ mod tests {
 #[cfg(test)]
 mod order_tests {
     use super::*;
+    use crate::presentation::Explain;
     #[test]
     fn calendar_order_errors_name_visible_fields_and_same_day_is_inclusive() {
         for (field, label) in [
@@ -198,9 +199,9 @@ mod order_tests {
             (CalendarField::Modified, "Modified"),
             (CalendarField::Added, "Added here"),
         ] {
-            let error = local_range(field, "2026-10-26", "2026-10-25")
-                .unwrap_err()
-                .to_string();
+            let error = local_range(field, "2026-10-26", "2026-10-25").unwrap_err();
+            assert_eq!(error.to_string(), "query.local_order");
+            let error = error.explain();
             assert_eq!(
                 error,
                 format!(

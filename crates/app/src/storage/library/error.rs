@@ -175,16 +175,7 @@ pub enum LibraryError {
     },
     /// Temporary entries are not reusable managed selections.
     TemporarySelection,
-    /// The selector is not canonical.
-    InvalidSelector {
-        /// Captured value.
-        value: String,
-    },
-    /// A fingerprint is not canonical lowercase SHA-256.
-    InvalidFingerprint {
-        /// Captured value.
-        value: String,
-    },
+
     /// Native per-user application data could not be resolved.
     NativeRootUnavailable,
     /// A configured root is relative.
@@ -242,8 +233,6 @@ impl LibraryError {
             Self::NativeRootUnavailable
             | Self::RelativeRoot { .. }
             | Self::TemporarySelection
-            | Self::InvalidSelector { .. }
-            | Self::InvalidFingerprint { .. }
             | Self::PurgeUnconfirmed
             | Self::ExpectedUser => Outcome::InvalidArgument,
             Self::ReadOnlyBuiltin { .. } => Outcome::ReadOnlyBuiltIn,
@@ -298,5 +287,81 @@ impl From<crate::clock::ClockError> for LibraryError {
 impl From<crate::document::origin::OriginError> for LibraryError {
     fn from(error: crate::document::origin::OriginError) -> Self {
         Self::Origin { error }
+    }
+}
+
+impl std::fmt::Display for LibraryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Origin { .. } => "library.origin",
+            Self::File { .. } => "library.file",
+            Self::Read { .. } => "library.read",
+            Self::RecordRead { .. } => "library.record_read",
+            Self::IncompleteRead { .. } => "library.incomplete_read",
+            Self::RecipeUtf8 { .. } => "library.recipe_utf8",
+            Self::RecipeFile { .. } => "library.recipe_file",
+            Self::RecordIdentity { .. } => "library.record_identity",
+            Self::Recipe { .. } => "library.recipe",
+            Self::InvalidBuiltin { .. } => "library.invalid_builtin",
+            Self::DuplicateBuiltin { .. } => "library.duplicate_builtin",
+            Self::ReservedBuiltin { .. } => "library.reserved_builtin",
+            Self::NotInitialized => "library.not_initialized",
+            Self::UnknownManaged { .. } => "library.unknown_managed",
+            Self::RootMissing => "library.root_missing",
+            Self::RootDisappeared => "library.root_disappeared",
+            Self::MissingMarkerOnCreate => "library.missing_marker_on_create",
+            Self::MissingMarkerOnMutation => "library.missing_marker_on_mutation",
+            Self::StaleContent { .. } => "library.stale_content",
+            Self::EntryDisappeared { .. } => "library.entry_disappeared",
+            Self::IdentityExists { .. } => "library.identity_exists",
+            Self::ProposedIdentity { .. } => "library.proposed_identity",
+            Self::MustRestore { .. } => "library.must_restore",
+            Self::PurgeRequiresTrash { .. } => "library.purge_requires_trash",
+            Self::PurgeUnconfirmed => "library.purge_unconfirmed",
+            Self::HistoryReplacement { .. } => "library.history_replacement",
+            Self::MembershipUtf8 { .. } => "library.membership_utf8",
+            Self::MembershipFormat { .. } => "library.membership_format",
+            Self::MembershipEncode { .. } => "library.membership_encode",
+            Self::MembershipSize { .. } => "library.membership_size",
+            Self::AmbiguousRecord { .. } => "library.ambiguous_record",
+            Self::Cancelled => "library.cancelled",
+            Self::ScanBudget => "library.scan_budget",
+            Self::Clock { .. } => "library.clock",
+            Self::ReadOnlyBuiltin { .. } => "library.read_only_builtin",
+            Self::TemporarySelection => "library.temporary_selection",
+            Self::NativeRootUnavailable => "library.native_root_unavailable",
+            Self::RelativeRoot { .. } => "library.relative_root",
+            Self::LockNotRegular => "library.lock_not_regular",
+            Self::Busy => "library.busy",
+            Self::LockUnavailable { .. } => "library.lock_unavailable",
+            Self::MarkerUtf8 { .. } => "library.marker_utf8",
+            Self::MarkerFormat { .. } => "library.marker_format",
+            Self::UnsupportedLayout { .. } => "library.unsupported_layout",
+            Self::MembershipWithoutMarker => "library.membership_without_marker",
+            Self::RecipesWithoutMarker => "library.recipes_without_marker",
+            Self::UnknownRootContents => "library.unknown_root_contents",
+            Self::ExpectedUser => "library.expected_user",
+            Self::StalePlayback => "library.stale_playback",
+        })
+    }
+}
+impl std::error::Error for LibraryError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Origin { error } => Some(error),
+            Self::File { error } | Self::RecordRead { error, .. } => Some(error),
+            Self::Read { error } => Some(error.cause.error()),
+            Self::IncompleteRead { error } => Some(error.as_ref()),
+            Self::RecipeUtf8 { error, .. } => Some(error),
+            Self::RecipeFile { error, .. }
+            | Self::Recipe { error }
+            | Self::InvalidBuiltin { error } => Some(error),
+            Self::MembershipUtf8 { error } | Self::MarkerUtf8 { error } => Some(error),
+            Self::MembershipFormat { error } | Self::MarkerFormat { error } => Some(error),
+            Self::MembershipEncode { error } => Some(error),
+            Self::Clock { error } => Some(error),
+            Self::LockUnavailable { error } => Some(error.error()),
+            _ => None,
+        }
     }
 }

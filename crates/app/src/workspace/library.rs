@@ -68,7 +68,7 @@ pub(super) struct LibraryState {
     refresh: bool,
     load_attempted: Option<LibraryKey>,
     inventory: Arc<InventoryStatus>,
-    read_failure: Option<crate::storage::library::LibraryDiagnostic<Error>>,
+    read_failure: Option<crate::storage::library::LibraryDiagnostic<super::status::ReadFailure>>,
     filter_error: Option<crate::discovery::query::QueryError>,
     unreadable: std::collections::BTreeSet<LibraryKey>,
     stale: std::collections::BTreeSet<LibraryKey>,
@@ -115,11 +115,21 @@ impl LibraryState {
     pub(super) fn record_read_status(&mut self, job: &LibraryJob, status: &FileStatus) {
         let cause = match status {
             FileStatus::Library(LibraryStatus::Failed { error, .. })
-            | FileStatus::Failed(error) => Some(
-                crate::services::library::DiagnosticDetail::Failure(Box::new(error.clone())),
-            ),
+            | FileStatus::Failed(error) => {
+                Some(crate::services::library::DiagnosticDetail::Failure(
+                    Box::new(super::status::ReadFailure::Operation(error.clone())),
+                ))
+            }
             FileStatus::WorkerFailed { error, .. } => Some(
-                crate::services::library::DiagnosticDetail::Notice(error.description()),
+                crate::services::library::DiagnosticDetail::Failure(Box::new(match error {
+                    super::WorkerFailure::Launch(cause) => {
+                        super::status::ReadFailure::Launch(cause.clone())
+                    }
+                    super::WorkerFailure::Panicked => super::status::ReadFailure::Panicked,
+                    super::WorkerFailure::InvalidOutcome => {
+                        super::status::ReadFailure::InvalidOutcome
+                    }
+                })),
             ),
             _ => None,
         };
@@ -222,13 +232,51 @@ impl LibraryState {
         self.catalog.iter().find(|s| s.id() == *id)
     }
     pub(super) fn rows(&self) -> (Vec<LibraryRowView>, Option<usize>) {
-        crate::presentation::library_text::rows(
-            &self.query,
-            &self.entries,
-            &self.inventory.diagnostics,
-            self.selection.as_ref(),
-            |key| self.requires_read(key),
-        )
+        let entry = |entry: &EntrySummary| LibraryRowView::Entry {
+            entry: Box::new(entry.clone()),
+            requires_read: self.requires_read(&entry.key),
+        };
+        let mut rows = Vec::new();
+        if let Ok(result) = self.query.execute(&self.entries) {
+            if result.groups.is_empty() {
+                rows.extend(result.entries.into_iter().map(entry));
+            } else {
+                for group in result.groups {
+                    let entries = group
+                        .keys
+                        .iter()
+                        .filter_map(|key| self.entries.iter().find(|e| &e.key == key))
+                        .map(entry)
+                        .collect::<Vec<_>>();
+                    rows.push(LibraryRowView::Group(group));
+                    rows.extend(entries);
+                }
+            }
+        }
+        let diagnostics = self
+            .inventory
+            .diagnostics
+            .iter()
+            .filter(|problem| problem.storage_id.ends_with(".toml"))
+            .collect::<Vec<_>>();
+        if !matches!(
+            self.query.scope,
+            Scope::BuiltIn | Scope::OpenFiles | Scope::Trash
+        ) && !diagnostics.is_empty()
+        {
+            rows.push(LibraryRowView::Unreadable);
+            rows.extend(
+                diagnostics
+                    .into_iter()
+                    .cloned()
+                    .map(LibraryRowView::Diagnostic),
+            );
+        }
+        let selected = self.selection.as_ref().and_then(|key| {
+            rows.iter()
+                .position(|row| matches!(row,LibraryRowView::Entry {entry,..} if &entry.key==key))
+        });
+        (rows, selected)
     }
 
     fn accept_record(&mut self, record: LoadedRecord) {
@@ -405,7 +453,7 @@ impl LibraryJob {
                         crate::storage::library::LibraryDiagnostic {
                             storage_id: "library.toml".into(),
                             code: "initialization_warning".into(),
-                            detail: crate::storage::library::DiagnosticDetail::Notice(message),
+                            detail: crate::storage::library::DiagnosticDetail::Warning(message),
                         }
                     }));
                 Ok(LibraryOutcome::Inventory(inventory))
@@ -424,16 +472,6 @@ impl LibraryJob {
     }
 }
 impl Workspace {
-    /// Incomplete storage state remains visible outside the storage disclosure.
-    #[must_use]
-    pub fn library_alert(&self) -> String {
-        crate::presentation::library_text::alert(
-            self.library.binding.problem(),
-            self.library.filter_error.as_ref(),
-            self.library.read_failure.as_ref(),
-            self.library.inventory.complete,
-        )
-    }
     /// Create a desktop workspace connected to the configured persistent root.
     /// Filesystem reads run on the existing file worker; initialization is explicit
     /// for overrides. A missing default root is created by the first publication.
@@ -491,40 +529,40 @@ impl Workspace {
     }
     /// Disjunctive unique counts from the shared query, with reference intervals.
     #[must_use]
-    pub fn library_facets(&self) -> (Vec<LibraryFacetView>, Vec<String>) {
-        crate::presentation::library_text::facets(
-            &self.library.query,
-            &self.library.entries,
-            self.library.inventory.complete,
-        )
-    }
-    /// Concise authoritative query summary for the results header.
-    #[must_use]
-    pub fn library_overview(&self) -> String {
-        crate::presentation::library_text::overview(
-            &self.library.query,
-            self.library.visible.len(),
-            self.library.inventory.complete,
-        )
-    }
-    /// Unique counts and active restrictions; group repeats are never counted as sounds.
-    #[must_use]
-    pub fn library_count(&self) -> String {
-        crate::presentation::library_text::count(
-            &self.library.query,
-            self.library.visible.len(),
-            self.library.inventory.complete,
-        )
-    }
-    /// Explain an empty result without treating an incomplete scan as an empty collection.
-    #[must_use]
-    pub fn library_empty_message(&self) -> &'static str {
-        crate::presentation::library_text::empty_message(
-            &self.library.query,
-            &self.library.entries,
-            self.library.visible.len(),
-            self.library.inventory.complete,
-        )
+    pub fn library_facets(&self) -> FacetCounts {
+        use crate::core::{
+            query::RhythmState,
+            rhythm::{Band, Method},
+        };
+        let complete = self.library.inventory.complete;
+        let facet = |query: &CatalogQuery, kind| LibraryFacetView {
+            kind,
+            count: query.count(&self.library.entries).unwrap_or(0),
+            complete,
+        };
+        let mut query = self.library.query.clone();
+        query.rhythm.bands.clear();
+        query.rhythm.state = None;
+        let mut bands = vec![facet(&query, FacetKind::AllSounds)];
+        for band in Band::ALL {
+            let mut q = query.clone();
+            q.rhythm.bands = vec![band];
+            bands.push(facet(&q, FacetKind::Band(band)));
+        }
+        for state in RhythmState::ALL {
+            let mut q = query.clone();
+            q.rhythm.state = Some(state);
+            bands.push(facet(&q, FacetKind::State(state)));
+        }
+        let mut query = self.library.query.clone();
+        query.rhythm.methods.clear();
+        let mut methods = vec![facet(&query, FacetKind::AllMethods)];
+        for method in Method::ALL {
+            let mut q = query.clone();
+            q.rhythm.methods = vec![method];
+            methods.push(facet(&q, FacetKind::Method(method)));
+        }
+        FacetCounts { bands, methods }
     }
 
     /// Current persistent query; native filters and the CLI use the same contract.
@@ -838,44 +876,6 @@ impl Workspace {
         true
     }
 
-    /// Root location and current inventory diagnostics.
-    #[must_use]
-    pub fn library_status(&self) -> String {
-        match &self.library.binding {
-            LibraryBinding::Store(store) => format!(
-                "{}\n{}{}",
-                store.path().display(),
-                self.library.inventory.description(),
-                self.library
-                    .read_failure
-                    .as_ref()
-                    .map_or(String::new(), |problem| format!(
-                        "\n{}: {}",
-                        problem.storage_id,
-                        problem.message()
-                    ))
-            ),
-            LibraryBinding::Unavailable(problem) => problem.message(),
-        }
-    }
-    /// Portable history and local membership are displayed with distinct labels.
-    #[must_use]
-    pub fn library_dates(&self) -> String {
-        self.library_dates_shown(false)
-    }
-    /// Exact canonical UTC instants, available separately from local presentation.
-    #[must_use]
-    pub fn library_dates_utc(&self) -> String {
-        self.library_dates_shown(true)
-    }
-    fn library_dates_shown(&self, utc: bool) -> String {
-        let entry = self
-            .library
-            .selection
-            .as_ref()
-            .and_then(|key| self.library.entries.iter().find(|entry| &entry.key == key));
-        crate::presentation::library_text::dates(entry, self.selected(), utc)
-    }
     /// Captured selected managed key/token for action binding, or empty values.
     #[must_use]
     pub fn library_binding(&self) -> (String, String, bool) {
@@ -1112,24 +1112,7 @@ impl Workspace {
             Some(true),
         )
     }
-    /// Persistent edit location, distinct from selection, ancestry and playback.
-    #[must_use]
-    pub fn document_location(&self) -> String {
-        self.location_projection().1
-    }
-    /// Short location badge; exact saved identity/version remains in details.
-    #[must_use]
-    pub fn document_location_label(&self) -> &'static str {
-        self.location_projection().0
-    }
-    fn location_projection(&self) -> (&'static str, String) {
-        crate::presentation::library_text::document_location(
-            self.library.binding.problem(),
-            self.editor.location.detached(),
-            self.editor.location.external(),
-            self.editor.location.managed(),
-        )
-    }
+
     fn accept_managed_outcome(
         &mut self,
         document: Option<DocumentId>,
@@ -1455,5 +1438,48 @@ impl LibraryState {
         self.query.search.clear();
         self.refilter();
         Ok(())
+    }
+}
+
+/// Captured library and document-location context for frontend projections.
+pub struct LibraryData<'a> {
+    pub(crate) query: &'a CatalogQuery,
+    pub(crate) entries: &'a [EntrySummary],
+    pub(crate) visible: usize,
+    pub(crate) inventory: &'a InventoryStatus,
+    pub(crate) path: Option<&'a std::path::Path>,
+    pub(crate) problem: Option<&'a crate::services::library::LibraryDiagnostic>,
+    pub(crate) filter_error: Option<&'a crate::discovery::query::QueryError>,
+    pub(crate) read_failure:
+        Option<&'a crate::services::library::LibraryDiagnostic<super::status::ReadFailure>>,
+    pub(crate) selected: Option<&'a RecipeSnapshot>,
+    pub(crate) selected_entry: Option<&'a EntrySummary>,
+    pub(crate) detached: Option<&'a LibraryKey>,
+    pub(crate) external: Option<&'a crate::document::origin::ObservedFile>,
+    pub(crate) managed: Option<(&'a LibraryKey, VersionToken)>,
+}
+impl Workspace {
+    /// Borrow the exact currently indexed library and captured edit location.
+    #[must_use]
+    pub fn library_data(&self) -> LibraryData<'_> {
+        LibraryData {
+            query: &self.library.query,
+            entries: &self.library.entries,
+            visible: self.library.visible.len(),
+            inventory: &self.library.inventory,
+            path: self.library.binding.store().map(Library::path),
+            problem: self.library.binding.problem(),
+            filter_error: self.library.filter_error.as_ref(),
+            read_failure: self.library.read_failure.as_ref(),
+            selected: self.selected(),
+            selected_entry: self
+                .library
+                .selection
+                .as_ref()
+                .and_then(|key| self.library.entries.iter().find(|e| &e.key == key)),
+            detached: self.editor.location.detached(),
+            external: self.editor.location.external(),
+            managed: self.editor.location.managed(),
+        }
     }
 }

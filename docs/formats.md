@@ -116,12 +116,14 @@ Every envelope contains `output_schema_version`, `operation`, `complete`, `conve
 | --- | --- |
 | List / Trash list | Exact query, `classifier_revision`, `effective_sort` as `[sort,direction]`, groups and retained `stages`. |
 | Describe | Entry adds `recipe_toml` and `history_warnings`. |
-| Inspect | `validation.status` is `valid` with rate/frames/peaks/component facts, or `invalid` with rate/diagnostics. |
+| Inspect | `validation.status` is `valid` with rate/frames/peaks/`voices` facts, or `invalid` with rate/diagnostics. |
 | Library path | `root` reports configured path/source, existence, layout and initialization; unavailable existence can be null. |
 | Initialization | Root result and published/unchanged `status`. |
 | Library check | Bounded inventory, diagnostics and retained stages. |
 | Mutation | Confirmed `status`, `selector`, `version_token`, affected entry and diagnostics. |
 | Failure | Outcome `status` and operation diagnostics. |
+
+Diagnostics and warnings are objects with a stable lowercase `code` and a human-readable `message`. Inventory diagnostics also identify `storage_id`. This applies to nominal diagnostics, rate-validation diagnostics, declared-history warnings and publication warnings. Inspection exposes expanded generator lanes under `voices`; authored components remain in recipe TOML.
 
 Entries identify key, collection, title, portable document identity, duration, dates, content token, directory-owned Trash state, nominal facts, evidence and validation. Unknown dates/values use null. Discovery validation is `not_checked`.
 

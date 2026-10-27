@@ -143,3 +143,31 @@ impl From<crate::document::error::RenditionError> for LoadError {
         }
     }
 }
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::TemporarySelector { .. } => "load.temporary_selector",
+            Self::Identity(..) => "load.identity",
+            Self::UnknownBuiltin { .. } => "load.unknown_builtin",
+            Self::Recipe { .. } => "load.recipe",
+            Self::Read { .. } => "load.read",
+            Self::File(..) => "load.file",
+            Self::Library(..) => "load.library",
+            Self::Sound { .. } => "load.sound",
+        })
+    }
+}
+impl std::error::Error for LoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Recipe { error, .. } => Some(error.as_ref()),
+            Self::Read { cause, .. } => Some(cause.error()),
+            Self::File(error) => Some(error),
+            Self::Library(error) => Some(error),
+            Self::Sound { error, .. } => Some(error),
+            Self::UnknownBuiltin { .. } | Self::TemporarySelector { .. } => None,
+            Self::Identity(error) => Some(error),
+        }
+    }
+}

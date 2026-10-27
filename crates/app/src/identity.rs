@@ -48,13 +48,33 @@ impl IdentityError {
         }
     }
 }
+
+impl std::fmt::Display for IdentityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Entropy(..) => "identity.entropy",
+            Self::Exhausted(..) => "identity.exhausted",
+        })
+    }
+}
+impl std::error::Error for IdentityError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Entropy(error) => Some(error),
+            Self::Exhausted(_) => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::presentation::Explain;
     #[test]
     fn random_failure_does_not_fall_back_to_clock_or_counter() {
         let error = super::generate_uuid(|_| Err(getrandom::Error::UNSUPPORTED)).unwrap_err();
         assert_eq!(error.outcome(), crate::outcome::Outcome::Identity);
-        assert!(error.to_string().contains("random UUID"));
+        assert_eq!(error.to_string(), "identity.entropy");
+        assert!(error.explain().contains("random UUID"));
         assert!(std::error::Error::source(&error).is_some());
     }
 }

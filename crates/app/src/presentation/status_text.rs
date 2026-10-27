@@ -1,4 +1,5 @@
 //! Shared status and refusal sentences for interactive frontends.
+use super::Explain;
 use crate::outcome::Outcome;
 use crate::presentation::AudioErrorText;
 use crate::workspace::WorkerFailure;
@@ -53,13 +54,18 @@ impl SaveFeedback {
         match self {
             Self::InvalidAtRate { rate, error } => format!(
                 "Saved with validation errors at {} Hz: {error}. This finite document can be repaired later.",
-                rate.hz()
+                rate.hz(),
+                error = error.explain()
             ),
             Self::EditorReset(error) => format!(
-                "Trash confirmed, but a blank editor could not be created: {error}. Open draft retained; dependent action stopped."
+                "Trash confirmed, but a blank editor could not be created: {error}. Open draft retained; dependent action stopped.",
+                error = error.explain()
             ),
             Self::EditorRefresh(error) => {
-                format!("Saved, but the editor could not refresh: {error}. Open draft retained.")
+                format!(
+                    "Saved, but the editor could not refresh: {error}. Open draft retained.",
+                    error = error.explain()
+                )
             }
         }
     }
@@ -95,7 +101,7 @@ impl LibraryStatus {
                 },
                 diagnostics
                     .iter()
-                    .cloned()
+                    .map(super::publication_text::warning)
                     .chain(feedback.iter().map(SaveFeedback::description))
                     .map(|d| format!("\n{d}"))
                     .collect::<String>()
@@ -106,7 +112,11 @@ impl LibraryStatus {
             } => format!(
                 "{} · External file saved from captured draft.\n{}",
                 status.label(),
-                diagnostics.join("\n")
+                diagnostics
+                    .iter()
+                    .map(super::publication_text::warning)
+                    .collect::<Vec<_>>()
+                    .join("\n")
             ),
             Self::Failed {
                 error,
@@ -149,7 +159,8 @@ impl LibraryStatus {
                 };
                 format!(
                     "{heading}\n{}\n{error}{publication}\n{recovery}",
-                    context.description()
+                    context.description(),
+                    error = error.explain()
                 )
             }
             Self::InvalidOwner => {
@@ -159,22 +170,15 @@ impl LibraryStatus {
         }
     }
 }
-impl FileStatus {
-    pub(crate) fn library_failure_notice(&self) -> Option<String> {
-        match self {
-            Self::Library(status @ LibraryStatus::Failed { .. }) => Some(status.description()),
-            _ => None,
-        }
-    }
-}
+
 impl FileStatus {
     pub(crate) fn description(&self) -> String {
         match self {
         Self::Idle=>String::new(),Self::Running(activity)=>activity.description(),Self::Refused(refusal)=>super::workspace_text::refusal_text(refusal),
-        Self::Failed(error)=>error.to_string(),Self::DialogFailed {cause}=>cause.clone(),
+        Self::Failed(error)=>error.explain(),Self::DialogFailed {cause}=>cause.clone(),
         Self::WorkerFailed {activity,error}=>format!("{} · {}{}",error.description(),activity.path.display(),if activity.may_publish && !matches!(error,WorkerFailure::Launch(_)) {"\nDraft retained. Inspect the affected path before retrying; a failed worker does not establish that storage was unchanged."}else{""}),
         Self::Imported {snapshot,hidden}=>format!("Opened {}.{}",snapshot.title(),if *hidden {"\nHidden by current filters; clear filters to show the imported recipe."}else{""}),
-        Self::RecipeExported {path,warnings}=>format!("Exported captured portable recipe to {}.{}",path.display(),warnings.iter().map(|warning|format!("\n{warning}")).collect::<String>()),
+        Self::RecipeExported {path,warnings}=>format!("Exported captured portable recipe to {}.{}",path.display(),warnings.iter().map(|warning|format!("\n{}", super::publication_text::warning(warning))).collect::<String>()),
         Self::Exported {path,exported}=>super::workspace_text::exported_text(path,exported),Self::Library(status)=>status.description(),
         Self::Notice(notice)=>match notice {
             FileNotice::RetainedSource=>"Showing the retained source snapshot; filters explicitly cleared. This does not reload or reconstruct an ancestor.".into(),
@@ -199,11 +203,11 @@ impl AudioStatus {
         match self {
             Self::Idle => String::new(),
             Self::Refused(refusal) => super::workspace_text::refusal_text(refusal),
-            Self::LiveUpdate(error) => error.to_string(),
+            Self::LiveUpdate(error) => error.explain(),
             Self::Ended { report, monitored } => {
                 super::workspace_text::playback_text(report, *monitored)
             }
-            Self::Failed(error) => error.to_string(),
+            Self::Failed(error) => error.explain(),
             Self::WorkerFailed(error) => error.description(),
         }
     }
@@ -212,7 +216,7 @@ impl AudioStatus {
 impl WorkerFailure {
     pub(crate) fn description(&self) -> String {
         match self {
-            Self::Launch(error) => format!("Cannot start worker: {error}"),
+            Self::Launch(error) => format!("Cannot start worker: {error}", error = error.explain()),
             Self::Panicked => crate::presentation::WORKER_FAILED.into(),
             Self::InvalidOutcome => "The worker returned a result for another operation.".into(),
         }
@@ -221,7 +225,7 @@ impl WorkerFailure {
 impl PreviewIssue {
     pub(crate) fn description(&self) -> String {
         match self {
-            Self::Snapshot(error) => error.to_string(),
+            Self::Snapshot(error) => error.explain(),
             Self::Acoustic {
                 title,
                 rate,
@@ -240,5 +244,69 @@ pub(crate) fn shutdown_reset_failure(
     error: &crate::document::error::EditorError,
     context: &str,
 ) -> String {
-    format!("Trash confirmed; editor reset failed: {error}{context}")
+    format!(
+        "Trash confirmed; editor reset failed: {error}{context}",
+        error = error.explain()
+    )
+}
+
+impl super::Explain for ReadFailure {
+    fn explain(&self) -> String {
+        match self {
+            Self::Operation(error) => error.explain(),
+            Self::Launch(error) => {
+                format!("Cannot start the worker: {error}", error = error.explain())
+            }
+            Self::Panicked => "Worker failed; inspect the destination before retrying.".into(),
+            Self::InvalidOutcome => {
+                "Worker completion did not match the admitted operation.".into()
+            }
+        }
+    }
+}
+
+impl crate::workspace::JobContext {
+    pub(crate) fn description(&self) -> String {
+        match self {
+            Self::Library(context) => format!(" · {}", context.description()),
+            Self::File(path) => format!(" · {}", path.display()),
+            Self::Audio(title) => format!(" · {title}"),
+            Self::Unknown => String::new(),
+        }
+    }
+}
+impl super::Explain for crate::workspace::ShutdownError {
+    fn explain(&self) -> String {
+        use crate::workspace::{ShutdownIssue, TaskFailure};
+        self.issues
+            .iter()
+            .map(|issue| match issue {
+                ShutdownIssue::Library(library) => LibraryStatus::Failed {
+                    error: library.error.clone(),
+                    publishing: library.publishing,
+                    context: library.context.clone(),
+                }
+                .description(),
+                ShutdownIssue::Task { error, context } => {
+                    let error = match error {
+                        TaskFailure::Operation(error) => error.explain(),
+                        TaskFailure::Worker(error) => error.description(),
+                    };
+                    format!("{error}{}", context.description())
+                }
+                ShutdownIssue::EditorReset { error, context } => {
+                    shutdown_reset_failure(error, &context.description())
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+impl crate::workspace::output::OutputIssue {
+    pub(crate) fn description(&self) -> String {
+        match self {
+            Self::Capture(error) => error.description(),
+            Self::Preview(reason) => reason.description(),
+        }
+    }
 }

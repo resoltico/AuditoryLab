@@ -1,7 +1,6 @@
 //! Human sentences for typed operation failures.
 use super::DisplayText;
 use super::core_errors::recipe_error;
-use std::{error::Error as StdError, fmt};
 use {
     crate::audio::PlaybackError, crate::discovery::query::QueryError,
     crate::document::error::EditorError, crate::identity::IdentityError,
@@ -33,9 +32,10 @@ fn io_text(error: &IoFailure) -> String {
         IoOperation::CheckIdentity => "cannot check opened path identity",
         IoOperation::SetPermissions => "cannot set file permissions",
     };
+    let cause = error.cause.error();
     error.path.as_ref().map_or_else(
-        || format!("{action}: {}", error.cause),
-        |path| format!("{}: {action}: {}", path_text(path), error.cause),
+        || format!("{action}: {cause}"),
+        |path| format!("{}: {action}: {}", path_text(path), cause),
     )
 }
 fn file_text(error: &FileError) -> String {
@@ -83,24 +83,28 @@ fn file_text(error: &FileError) -> String {
             let explanation = match (phase, confirmation) {
                 (P::Publish, C::Unchanged) => "publication failed; previous content remains".into(),
                 (P::Publish, C::Different) => "publication failed and destination differs from both previous and candidate bytes; inspect this path before retrying".into(),
-                (P::Publish, C::Unavailable(error)) => format!("publication outcome is unconfirmed; destination could not be verified ({error}); inspect this path before retrying"),
+                (P::Publish, C::Unavailable(error)) => format!("publication outcome is unconfirmed; destination could not be verified ({error}); inspect this path before retrying", error=error.explain()),
                 (P::SyncPublication, C::Unchanged) => "directory sync failed and previous bytes remain".into(),
                 (P::SyncPublication, C::Different) => "directory sync failed and candidate bytes could not be verified; inspect this path".into(),
-                (P::SyncPublication, C::Unavailable(error)) => format!("directory sync outcome is unconfirmed; destination could not be verified ({error}); inspect this path"),
+                (P::SyncPublication, C::Unavailable(error)) => format!("directory sync outcome is unconfirmed; destination could not be verified ({error}); inspect this path", error=error.explain()),
                 (P::Relocate { .. }, C::Unchanged) => "relocation did not remove its source; Trash remains authoritative for same-file links".into(),
-                (P::Relocate { source }, C::Unavailable(error)) => format!("relocation outcome is unconfirmed; source {} could not be inspected ({error}); recheck before retrying", path_text(source)),
+                (P::Relocate { source }, C::Unavailable(error)) => format!("relocation outcome is unconfirmed; source {} could not be inspected ({error}); recheck before retrying", path_text(source), error=error.explain()),
                 (P::SyncRelocation, C::Different) => "relocation durability failed and destination changed".into(),
-                (P::SyncRelocation, C::Unavailable(error)) => format!("relocation durability is unconfirmed; destination could not be verified ({error}); recheck before retrying"),
+                (P::SyncRelocation, C::Unavailable(error)) => format!("relocation durability is unconfirmed; destination could not be verified ({error}); recheck before retrying", error=error.explain()),
                 (P::Remove, C::Unchanged) => "deletion was not applied; the destination remains".into(),
-                (P::Remove, C::Unavailable(error)) => format!("deletion outcome is unconfirmed; destination could not be inspected ({error}); recheck before retrying"),
+                (P::Remove, C::Unavailable(error)) => format!("deletion outcome is unconfirmed; destination could not be inspected ({error}); recheck before retrying", error=error.explain()),
                 (P::SyncRemoval, C::Different) => "deletion durability failed and the destination is present".into(),
-                (P::SyncRemoval, C::Unavailable(error)) => format!("deletion durability is unconfirmed; destination could not be inspected ({error}); recheck before retrying"),
+                (P::SyncRemoval, C::Unavailable(error)) => format!("deletion durability is unconfirmed; destination could not be inspected ({error}); recheck before retrying", error=error.explain()),
                 // These combinations are not emitted by the adapter. Retain conservative
                 // wording for public error values without claiming a verified outcome.
                 (_, C::Different) => "expected state was not found; inspect this path before retrying".into(),
                 (_, C::Unchanged) => "previous state remains".into(),
             };
-            format!("{}: {explanation}: {cause}", path_text(path))
+            format!(
+                "{}: {explanation}: {cause}",
+                path_text(path),
+                cause = cause.explain()
+            )
         }
 
         FileError::Cleanup {
@@ -108,8 +112,10 @@ fn file_text(error: &FileError) -> String {
             path,
             cause,
         } => format!(
-            "{primary}; a partial file remains at {}: {cause}",
-            path_text(path)
+            "{}; a partial file remains at {}: {cause}",
+            primary.explain(),
+            path_text(path),
+            cause = cause.explain()
         ),
     }
 }
@@ -118,8 +124,18 @@ fn load_text(error: &LoadError) -> String {
         LoadError::TemporarySelector { .. } => "temporary entries have no reusable selector".into(),
         LoadError::Identity(error) => identity_text(error),
         LoadError::UnknownBuiltin { id } => format!("unknown built-in recipe \"{id}\""),
-        LoadError::Recipe { origin, error } => format!("{origin}: {}", recipe_error(error)),
-        LoadError::Read { origin, cause } => format!("cannot read {origin}: {cause}"),
+        LoadError::Recipe { origin, error } => format!(
+            "{origin}: {}",
+            recipe_error(error),
+            origin = origin.explain()
+        ),
+        LoadError::Read { origin, cause } => {
+            format!(
+                "cannot read {origin}: {cause}",
+                cause = cause.explain(),
+                origin = origin.explain()
+            )
+        }
         LoadError::File(error) => file_text(error),
         LoadError::Library(error) => library_text(error),
         LoadError::Sound {
@@ -129,7 +145,8 @@ fn load_text(error: &LoadError) -> String {
         } => format!(
             "{origin} at {} Hz: {}",
             rate.hz(),
-            super::acoustic_errors::sound_error(error)
+            super::acoustic_errors::sound_error(error),
+            origin = origin.explain()
         ),
     }
 }
@@ -139,7 +156,7 @@ fn library_text(error: &LibraryError) -> String {
         E::File { error } => file_text(error), E::Read { error } => io_text(error),
         E::IncompleteRead { error } => library_text(error),
         E::RecipeUtf8 { path, .. } => format!("{}: recipe is not UTF-8", path_text(path)),
-        E::RecordRead { path, error } => format!("{}: {error}", path_text(path)),
+        E::RecordRead { path, error } => format!("{}: {}", path_text(path),error.explain()),
         E::RecipeFile { path, error } => format!("{}: {}; file was left intact", path_text(path), recipe_error(error)),
         E::RecordIdentity { path, expected, found } => format!("{}: filename UUID {expected} does not match document.id {found}", path_text(path)),
         E::Recipe { error } => recipe_error(error),
@@ -165,12 +182,10 @@ fn library_text(error: &LibraryError) -> String {
         E::Clock { .. } => "observed system time is outside the supported UTC timestamp range".into(),
         E::ReadOnlyBuiltin { id } => format!("shipped recipe builtin:{id} cannot be renamed, replaced, trashed or purged; edit a copy"),
         E::TemporarySelection => "temporary files must be explicitly added or copied before managed operations".into(),
-        E::InvalidSelector { value } => format!("invalid selector {value}; expected builtin:<catalog-id> or user:<canonical-uuid>"),
-        E::InvalidFingerprint { .. } => "expected a canonical 64-digit lowercase SHA-256 fingerprint".into(),
         E::NativeRootUnavailable => "cannot resolve native per-user application data; configure an absolute library directory".into(),
         E::RelativeRoot { path } => format!("library directory {} must be absolute; no fallback was used", path_text(path)),
         E::LockNotRegular => "library lock must be a regular persistent file".into(), E::Busy => "Library busy; retry after the other operation finishes".into(),
-        E::LockUnavailable { error } => format!("required library locking assurance is unavailable; no unlocked fallback: {error}"),
+        E::LockUnavailable { error } => format!("required library locking assurance is unavailable; no unlocked fallback: {}",error.explain()),
         E::MarkerUtf8 { .. } => "layout marker is not UTF-8".into(), E::MarkerFormat { .. } => "invalid library.toml layout marker".into(),
         E::UnsupportedLayout { found } => format!("unsupported library layout {found}; this build reads {}", crate::storage::library::LIBRARY_LAYOUT),
         E::MembershipWithoutMarker => "nonempty membership exists without a layout marker; initialization left it intact".into(),
@@ -196,7 +211,7 @@ fn editor_text(error: &EditorError) -> String {
     }
 }
 fn save_text(error: &SaveError) -> String {
-    match error { SaveError::Clock { error } => error.to_string(), SaveError::Load { error } => load_text(error), SaveError::File { error } => file_text(error), SaveError::Recipe { error } => recipe_error(error), SaveError::HistoryReplacement => "external Save must retain identity and creation history; save an independent copy instead".into() }
+    match error { SaveError::Clock { error } => error.explain(), SaveError::Load { error } => load_text(error), SaveError::File { error } => file_text(error), SaveError::Recipe { error } => recipe_error(error), SaveError::HistoryReplacement => "external Save must retain identity and creation history; save an independent copy instead".into() }
 }
 fn export_text(error: &ExportError) -> String {
     match error {
@@ -209,7 +224,8 @@ fn export_text(error: &ExportError) -> String {
             format!(
                 "{origin} at {} Hz: {}",
                 rate.hz(),
-                super::acoustic_errors::sound_error(error)
+                super::acoustic_errors::sound_error(error),
+                origin = origin.explain()
             )
         }
     }
@@ -219,7 +235,7 @@ fn playback_text(error: &PlaybackError) -> String {
         PlaybackError::Trashed { .. } => {
             "trashed recipes can be inspected/exported; restore before playback".into()
         }
-        PlaybackError::Device(error) => error.to_string(),
+        PlaybackError::Device(error) => error.explain(),
         PlaybackError::Sound { title, rate, error } => {
             format!(
                 "{title} at {} Hz: {}",
@@ -259,227 +275,19 @@ fn query_text(error: &QueryError) -> String {
         ),
     }
 }
-macro_rules! displays {
-    ($($ty:ty => $formatter:ident),* $(,)?) => { $(impl fmt::Display for $ty { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(&$formatter(self)) } })* };
-}
-displays! { FileError => file_text, LoadError => load_text, LibraryError => library_text, IdentityError => identity_text, EditorError => editor_text, SaveError => save_text, ExportError => export_text, PlaybackError => playback_text, QueryError => query_text }
-impl StdError for FileError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::Io(error) => Some(error.cause.error()),
-            Self::Identity(error) => Some(error),
-            Self::DestinationExists {
-                cause: Some(error), ..
-            }
-            | Self::AfterMutation { cause: error, .. } => Some(error.error()),
-            Self::Cleanup { primary, .. } => Some(primary.as_ref()),
-            _ => None,
-        }
-    }
-}
-impl StdError for LoadError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::Recipe { error, .. } => Some(error.as_ref()),
-            Self::Read { cause, .. } => Some(cause.error()),
-            Self::File(error) => Some(error),
-            Self::Library(error) => Some(error),
-            Self::Sound { error, .. } => Some(error),
-            Self::UnknownBuiltin { .. } | Self::TemporarySelector { .. } => None,
-            Self::Identity(error) => Some(error),
-        }
-    }
-}
-impl StdError for IdentityError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::Entropy(error) => Some(error),
-            Self::Exhausted(_) => None,
-        }
-    }
-}
-impl StdError for EditorError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::Identity(error) => Some(error),
-            Self::Recipe(error) => Some(error),
-        }
-    }
-}
-impl StdError for LibraryError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::Origin { error } => Some(error),
-            Self::File { error } | Self::RecordRead { error, .. } => Some(error),
-            Self::Read { error } => Some(error.cause.error()),
-            Self::IncompleteRead { error } => Some(error.as_ref()),
-            Self::RecipeUtf8 { error, .. } => Some(error),
-            Self::RecipeFile { error, .. }
-            | Self::Recipe { error }
-            | Self::InvalidBuiltin { error } => Some(error),
-            Self::MembershipUtf8 { error } | Self::MarkerUtf8 { error } => Some(error),
-            Self::MembershipFormat { error } | Self::MarkerFormat { error } => Some(error),
-            Self::MembershipEncode { error } => Some(error),
-            Self::Clock { error } => Some(error),
-            Self::LockUnavailable { error } => Some(error.error()),
-            _ => None,
-        }
-    }
-}
-impl StdError for SaveError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::File { error } => Some(error),
-            Self::Recipe { error } => Some(error),
-            Self::Load { error } => Some(error),
-            Self::Clock { error } => Some(error),
-            Self::HistoryReplacement => None,
-        }
-    }
-}
-impl StdError for ExportError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::File { error } => Some(error),
-            Self::Sound { error, .. } => Some(error),
-        }
-    }
-}
-impl StdError for PlaybackError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::Device(error) => Some(error),
-            Self::Sound { error, .. } => Some(error),
-            Self::Library(error) => Some(error),
-            Self::Load(error) => Some(error),
-            _ => None,
-        }
-    }
-}
-impl StdError for QueryError {}
 
-impl fmt::Display for crate::services::OperationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::services::OperationError as E;
-        match self {
-            E::Load(error) => error.fmt(f),
-            E::Library(error) => error.fmt(f),
-            E::Export(error) => error.fmt(f),
-            E::Playback(error) => error.fmt(f),
-            E::Save(error) => error.fmt(f),
-            E::Editor(error) => error.fmt(f),
-            E::Identity(error) => error.fmt(f),
-            E::Query(error) => error.fmt(f),
-            E::File(error) => error.fmt(f),
-            E::Recipe(error) => f.write_str(&recipe_error(error)),
-        }
-    }
-}
-impl StdError for crate::services::OperationError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        use crate::services::OperationError as E;
-        Some(match self {
-            E::Load(error) => error,
-            E::Library(error) => error,
-            E::Export(error) => error,
-            E::Playback(error) => error,
-            E::Save(error) => error,
-            E::Editor(error) => error,
-            E::Identity(error) => error,
-            E::Query(error) => error,
-            E::File(error) => error,
-            E::Recipe(error) => error,
-        })
-    }
-}
-
-impl fmt::Display for crate::clock::ClockError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("observed system time is outside the supported UTC timestamp range")
-    }
-}
-impl StdError for crate::clock::ClockError {}
-
-impl<E: fmt::Display> crate::storage::library::LibraryDiagnostic<E> {
+impl<E: Explain> crate::storage::library::LibraryDiagnostic<E> {
     /// Render the retained typed cause or inventory notice.
     #[must_use]
     pub fn message(&self) -> String {
         match &self.detail {
-            crate::storage::library::DiagnosticDetail::Failure(error) => error.to_string(),
-            crate::storage::library::DiagnosticDetail::Notice(message) => message.clone(),
-        }
-    }
-}
-impl<E: fmt::Display> serde::Serialize for crate::storage::library::LibraryDiagnostic<E> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut output = serializer.serialize_struct("LibraryDiagnostic", 3)?;
-        output.serialize_field("storage_id", &self.storage_id)?;
-        output.serialize_field("code", &self.code)?;
-        output.serialize_field("message", &self.message())?;
-        output.end()
-    }
-}
-
-impl fmt::Display for crate::audio::device::DeviceError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NoDefaultOutput => write!(f, "no default audio output device found"),
-            Self::Backend(error) if error.kind() == cpal::ErrorKind::DeviceChanged => write!(
-                f,
-                "the audio output route changed and playback stopped; select the intended output and play again"
-            ),
-            Self::Backend(error) => write!(f, "audio backend: {error}"),
-            Self::UnsupportedSampleFormat(format) => write!(
-                f,
-                "the output device's {format} sample format is not supported"
-            ),
-            Self::UnsupportedSampleRate { hz } => write!(
-                f,
-                "the output device's {hz} Hz sample rate is not supported"
-            ),
-            Self::TooFewChannels { channels } => write!(
-                f,
-                "the default output device has {channels} channel{}; stimuli need two, one for each ear",
-                if *channels == 1 { "" } else { "s" }
-            ),
-            Self::InvalidTiming => write!(f, "the audio backend supplied invalid playback timing"),
-            Self::MisalignedBuffer => write!(
-                f,
-                "the audio backend supplied a buffer holding a partial frame"
-            ),
-            Self::TimedOut => write!(
-                f,
-                "the audio stream stopped making progress or outlasted its time limit"
-            ),
-            Self::Abandoned => write!(f, "the playback session ended before its stream started"),
-        }
-    }
-}
-
-impl std::fmt::Display for crate::audio::session::LiveUpdateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::SessionClosed => f.write_str("the live session no longer accepts changes"),
-            Self::RateMismatch {
-                target_hz,
-                session_hz,
-            } => write!(
-                f,
-                "the change was checked at {target_hz} Hz but the live session runs at {session_hz} Hz"
-            ),
-            Self::RevisionLimit => f.write_str("the live session's revision limit is reached"),
-            Self::Unavailable => f.write_str("live control is unavailable"),
-        }
-    }
-}
-impl std::fmt::Display for crate::document::recipe::Origin {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::BuiltIn(id) => write!(f, "{id}"),
-            Self::User { id, .. } => write!(f, "user:{id}"),
-            Self::File(path) => f.write_str(&path_text(path)),
-            Self::Stream(label) | Self::Draft(label) => f.write_str(&label.display_scalar()),
+            crate::storage::library::DiagnosticDetail::Failure(error) => error.explain(),
+            crate::storage::library::DiagnosticDetail::Warning(warning) => {
+                super::publication_text::warning(warning)
+            }
+            crate::storage::library::DiagnosticDetail::Notice(notice) => {
+                super::library_text::inventory_notice(notice)
+            }
         }
     }
 }
@@ -487,30 +295,211 @@ impl std::fmt::Display for crate::document::recipe::Origin {
 /// Explain a canonical source-selector or exact-byte-token failure.
 #[must_use]
 pub(crate) fn origin_error(error: &crate::document::origin::OriginError) -> String {
-    use crate::document::origin::OriginError;
     match error {
-        OriginError::InvalidSelector { value } => library_text(&LibraryError::InvalidSelector {
-            value: value.clone(),
-        }),
-        OriginError::InvalidFingerprint { value } => {
-            library_text(&LibraryError::InvalidFingerprint {
-                value: value.clone(),
-            })
+        crate::document::origin::OriginError::InvalidSelector { value } => format!(
+            "invalid selector {value}; expected builtin:<catalog-id> or user:<canonical-uuid>"
+        ),
+        crate::document::origin::OriginError::InvalidFingerprint { .. } => {
+            "expected a canonical 64-digit lowercase SHA-256 fingerprint".into()
         }
     }
 }
 
-impl std::fmt::Display for crate::document::error::RenditionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&load_text(&LoadError::Sound {
+/// Human explanation, separate from a stable machine code.
+pub trait Explain {
+    /// Render the retained context and original cause for a person.
+    fn explain(&self) -> String;
+}
+struct Human<'a, T>(&'a T);
+impl Explain for FileError {
+    fn explain(&self) -> String {
+        file_text(self)
+    }
+}
+impl Explain for LoadError {
+    fn explain(&self) -> String {
+        load_text(self)
+    }
+}
+impl Explain for LibraryError {
+    fn explain(&self) -> String {
+        library_text(self)
+    }
+}
+impl Explain for IdentityError {
+    fn explain(&self) -> String {
+        identity_text(self)
+    }
+}
+impl Explain for EditorError {
+    fn explain(&self) -> String {
+        editor_text(self)
+    }
+}
+impl Explain for SaveError {
+    fn explain(&self) -> String {
+        save_text(self)
+    }
+}
+impl Explain for ExportError {
+    fn explain(&self) -> String {
+        export_text(self)
+    }
+}
+impl Explain for PlaybackError {
+    fn explain(&self) -> String {
+        playback_text(self)
+    }
+}
+impl Explain for QueryError {
+    fn explain(&self) -> String {
+        query_text(self)
+    }
+}
+impl Explain for crate::clock::ClockError {
+    fn explain(&self) -> String {
+        "observed system time is outside the supported UTC timestamp range".into()
+    }
+}
+impl Explain for crate::document::origin::OriginError {
+    fn explain(&self) -> String {
+        origin_error(self)
+    }
+}
+impl Explain for crate::services::OperationError {
+    fn explain(&self) -> String {
+        use crate::services::OperationError as E;
+        match self {
+            E::Load(error) => error.explain(),
+            E::Library(error) => error.explain(),
+            E::Export(error) => error.explain(),
+            E::Playback(error) => error.explain(),
+            E::Save(error) => error.explain(),
+            E::Editor(error) => error.explain(),
+            E::Identity(error) => error.explain(),
+            E::Query(error) => error.explain(),
+            E::File(error) => error.explain(),
+            E::Recipe(error) => recipe_error(error),
+        }
+    }
+}
+impl Explain for crate::document::error::RenditionError {
+    fn explain(&self) -> String {
+        load_text(&LoadError::Sound {
             origin: self.origin.clone(),
             rate: self.rate,
             error: self.error.clone(),
-        }))
+        })
     }
 }
-impl std::error::Error for crate::document::error::RenditionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.error)
+impl std::fmt::Display for Human<'_, crate::audio::device::DeviceError> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            crate::audio::device::DeviceError::NoDefaultOutput => {
+                write!(f, "no default audio output device found")
+            }
+            crate::audio::device::DeviceError::Backend(error)
+                if error.kind() == cpal::ErrorKind::DeviceChanged =>
+            {
+                write!(
+                    f,
+                    "the audio output route changed and playback stopped; select the intended output and play again"
+                )
+            }
+            crate::audio::device::DeviceError::Backend(error) => {
+                write!(f, "audio backend: {error}")
+            }
+            crate::audio::device::DeviceError::UnsupportedSampleFormat(format) => write!(
+                f,
+                "the output device's {format} sample format is not supported"
+            ),
+            crate::audio::device::DeviceError::UnsupportedSampleRate { hz } => write!(
+                f,
+                "the output device's {hz} Hz sample rate is not supported"
+            ),
+            crate::audio::device::DeviceError::TooFewChannels { channels } => write!(
+                f,
+                "the default output device has {channels} channel{}; stimuli need two, one for each ear",
+                if *channels == 1 { "" } else { "s" }
+            ),
+            crate::audio::device::DeviceError::InvalidTiming => {
+                write!(f, "the audio backend supplied invalid playback timing")
+            }
+            crate::audio::device::DeviceError::MisalignedBuffer => write!(
+                f,
+                "the audio backend supplied a buffer holding a partial frame"
+            ),
+            crate::audio::device::DeviceError::TimedOut => write!(
+                f,
+                "the audio stream stopped making progress or outlasted its time limit"
+            ),
+            crate::audio::device::DeviceError::Abandoned => {
+                write!(f, "the playback session ended before its stream started")
+            }
+        }
+    }
+}
+impl Explain for crate::audio::device::DeviceError {
+    fn explain(&self) -> String {
+        Human(self).to_string()
+    }
+}
+impl std::fmt::Display for Human<'_, crate::audio::session::LiveUpdateError> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            crate::audio::session::LiveUpdateError::SessionClosed => {
+                f.write_str("the live session no longer accepts changes")
+            }
+            crate::audio::session::LiveUpdateError::RateMismatch {
+                target_hz,
+                session_hz,
+            } => write!(
+                f,
+                "the change was checked at {target_hz} Hz but the live session runs at {session_hz} Hz"
+            ),
+            crate::audio::session::LiveUpdateError::RevisionLimit => {
+                f.write_str("the live session's revision limit is reached")
+            }
+            crate::audio::session::LiveUpdateError::Unavailable => {
+                f.write_str("live control is unavailable")
+            }
+        }
+    }
+}
+impl Explain for crate::audio::session::LiveUpdateError {
+    fn explain(&self) -> String {
+        Human(self).to_string()
+    }
+}
+impl std::fmt::Display for Human<'_, crate::document::recipe::Origin> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            crate::document::recipe::Origin::BuiltIn(id) => write!(f, "{id}"),
+            crate::document::recipe::Origin::User { id, .. } => write!(f, "user:{id}"),
+            crate::document::recipe::Origin::File(path) => f.write_str(&path_text(path)),
+            crate::document::recipe::Origin::Stream(label)
+            | crate::document::recipe::Origin::Draft(label) => f.write_str(&label.display_scalar()),
+        }
+    }
+}
+impl Explain for crate::document::recipe::Origin {
+    fn explain(&self) -> String {
+        Human(self).to_string()
+    }
+}
+
+impl Explain for crate::services::IoCause {
+    fn explain(&self) -> String {
+        self.error().to_string()
+    }
+}
+impl Explain for crate::core::SoundError {
+    fn explain(&self) -> String {
+        super::acoustic_errors::sound_error(self)
+    }
+}
+impl Explain for crate::core::RecipeError {
+    fn explain(&self) -> String {
+        recipe_error(self)
     }
 }

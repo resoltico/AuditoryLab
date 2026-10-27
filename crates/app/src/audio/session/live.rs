@@ -229,3 +229,14 @@ impl Drop for LiveGenerator {
         self.state.end_source();
     }
 }
+
+impl std::fmt::Display for LiveUpdateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::SessionClosed => "live_update.session_closed",
+            Self::RateMismatch { .. } => "live_update.rate_mismatch",
+            Self::RevisionLimit => "live_update.revision_limit",
+            Self::Unavailable => "live_update.unavailable",
+        })
+    }
+}

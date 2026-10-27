@@ -29,10 +29,10 @@ pub use sources::{Resolved, Source, builtin, builtin_source, catalog, portable_t
 use std::{path::Path, sync::Arc};
 
 /// Confirmed recipe-file publication and any durability or cleanup warnings.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct SaveOutcome {
     /// Warnings do not undo successful publication or prevent advancing a saved baseline.
-    pub warnings: Vec<String>,
+    pub warnings: Vec<crate::storage::warning::StorageWarning>,
 }
 /// Export a captured rendition with staged no-clobber or confirmed replacement.
 ///
@@ -161,3 +161,6 @@ pub fn save_external(
 
 #[cfg(test)]
 mod tests;
+
+/// Typed nonfatal storage outcomes.
+pub use crate::storage::warning::StorageWarning;

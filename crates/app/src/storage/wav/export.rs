@@ -12,10 +12,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const BLOCK_FRAMES: usize = 4_096;
 
 /// What a successful export wrote.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Exported {
     /// Publication durability and cleanup warnings; encoded streams start empty.
-    pub warnings: Vec<String>,
+    pub warnings: Vec<crate::storage::warning::StorageWarning>,
     /// Number of frames in the file.
     pub frames: u64,
     /// The sample rate the file states.

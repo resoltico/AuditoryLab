@@ -70,16 +70,23 @@ pub struct OutputView {
     /// The capture to draw: held, monitored or preview.
     pub capture: Option<Arc<WaveformCapture>>,
     /// Why nothing is drawn, or why a monitored window was not accepted.
-    pub unavailable: Option<String>,
+    pub unavailable: Option<OutputIssue>,
     /// Whether the display is held.
     pub held: bool,
 }
 
-pub(crate) enum PreviewIssue {
+/// Why a selected sound cannot produce a preview at the diagnostic rate.
+#[derive(Debug, Clone)]
+pub enum PreviewIssue {
+    /// The saved source failed rate-dependent realization.
     Snapshot(crate::document::error::RenditionError),
+    /// The current draft has no valid preview target.
     Acoustic {
+        /// Authored title at evaluation.
         title: String,
+        /// Rate used by the preview.
         rate: SampleRate,
+        /// Acoustic cause when evaluation produced one.
         error: Option<crate::core::SoundError>,
     },
 }
@@ -278,10 +285,10 @@ impl OutputState {
             };
         }
         let unavailable = if self.reader.is_some() {
-            self.capture_error.map(|error| error.description())
+            self.capture_error.map(OutputIssue::Capture)
         } else {
             match &self.preview {
-                Some((_, Err(reason))) => Some(reason.description()),
+                Some((_, Err(reason))) => Some(OutputIssue::Preview(reason.clone())),
                 _ => None,
             }
         };
@@ -460,4 +467,13 @@ impl Workspace {
     pub fn model_view(&self) -> Option<Arc<crate::workspace::monitor::ModelView>> {
         self.audio.output.model().cloned()
     }
+}
+
+/// Why a waveform is unavailable, retaining its source and diagnostic rate.
+#[derive(Debug, Clone)]
+pub enum OutputIssue {
+    /// A copied sample window failed its boundary checks.
+    Capture(CaptureError),
+    /// The selected authored sound cannot produce a preview.
+    Preview(PreviewIssue),
 }

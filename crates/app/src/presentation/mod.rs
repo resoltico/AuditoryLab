@@ -8,8 +8,10 @@ pub mod build_info;
 mod commands;
 pub mod core_errors;
 mod errors;
-pub(crate) mod library_text;
-pub(crate) mod publication_text;
+pub use errors::Explain;
+pub mod library_text;
+pub use library_text::LibraryPresentation;
+pub mod publication_text;
 pub mod recipe_text;
 pub mod reports;
 pub(crate) mod status_text;
@@ -836,7 +838,7 @@ impl RecipeSnapshot {
                     format_dbfs(s.peak_dbfs()[1])
                 ));
             }
-            Err(e) => text.push_str(&e.to_string()),
+            Err(e) => text.push_str(&e.explain()),
         }
         text
     }
@@ -846,19 +848,22 @@ impl RecipeSnapshot {
     pub fn description(&self) -> String {
         self.description_with_history(&crate::services::history_warnings(self.recipe()))
     }
-    pub(crate) fn description_with_history(&self, warnings: &[String]) -> String {
+    pub(crate) fn description_with_history(
+        &self,
+        warnings: &[crate::services::StorageWarning],
+    ) -> String {
         let snapshot = self;
         let s = snapshot.sound();
         let mut out = format!(
             "{}\nSource: {}\nDuration: {}\nFade: {} at each edge\n",
             snapshot.title(),
-            snapshot.origin(),
+            snapshot.origin().explain(),
             human_duration(s.duration_seconds().get()),
             human_duration(s.fade_seconds().get())
         );
         out.push_str(&document_notes(snapshot));
         for warning in warnings {
-            out.push_str(&format!("{warning}\n"));
+            out.push_str(&format!("{}\n", publication_text::warning(warning)));
         }
         for (label, value) in (snapshot).research() {
             out.push_str(&format!("{label}: {value}\n"));
@@ -894,7 +899,7 @@ impl RecipeSnapshot {
         format!(
             "Preparing {}\nSource: {}\nDuration: {}\nDevice: {}\n{} Hz, {} channels, {}\n{}",
             snapshot.title(),
-            snapshot.origin(),
+            snapshot.origin().explain(),
             human_duration(signal.duration_seconds()),
             output.name.as_deref().unwrap_or("default output"),
             output.sample_rate.hz(),

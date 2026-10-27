@@ -27,17 +27,21 @@ use editor::{DocumentLocation, EditorState};
 use file::FileState;
 use prompts::{PromptState, Prompts};
 mod operations;
-pub(crate) mod output;
-pub(crate) mod status;
+pub mod output;
+pub mod status;
 pub(crate) mod tasks;
 mod views;
 
-pub use library::{LibraryBinding, LibraryOutcome};
+pub use library::{LibraryBinding, LibraryData, LibraryOutcome};
 pub use output::{MotionPreference, OutputView};
-pub use tasks::{FileOutcome, Job, JobKind, JobOutcome, Runner, TaskId, WorkerFailure};
+pub use tasks::{
+    FileOutcome, Job, JobContext, JobKind, JobOutcome, LibraryFailure, Runner, ShutdownError,
+    ShutdownIssue, TaskFailure, TaskId, WorkerFailure,
+};
 pub use views::{
-    ActionView, ComponentView, EditorView, FieldDiagnostic, LibraryFacetView, LibraryRowView,
-    LibraryView, MetadataView, ParameterView, TransportView,
+    ActionView, ComponentView, EditorView, FacetCounts, FacetKind, FieldDiagnostic,
+    LibraryFacetView, LibraryRowView, LibraryView, MetadataView, MonitorView, ParameterView,
+    TransportView,
 };
 
 use crate::audio::session::{PlaybackControl, PlaybackPhase, Session, StopRequest};
@@ -990,20 +994,22 @@ impl Workspace {
         let _ = self.audio.stop();
         let _ = self.files.cancel_export();
     }
-    fn job_context(&self, job: TaskId) -> String {
+    fn job_context(&self, job: TaskId) -> JobContext {
         if let Some(task) = self.files.slot.as_ref().filter(|task| task.id == job) {
             return match &task.kind {
-                FileKind::Managed(job) => format!(" · {}", job.context().description()),
+                FileKind::Managed(job) => JobContext::Library(job.context()),
                 FileKind::Import(path)
                 | FileKind::ExportRecipe { path, .. }
-                | FileKind::Export { path, .. } => format!(" · {}", path.display()),
+                | FileKind::Export { path, .. } => JobContext::File(path.clone()),
             };
         }
         self.audio
             .slot
             .as_ref()
             .filter(|task| task.id == job)
-            .map_or(String::new(), |task| format!(" · {}", task.title))
+            .map_or(JobContext::Unknown, |task| {
+                JobContext::Audio(task.title.clone())
+            })
     }
 
     // ---- display policy ----
@@ -1016,3 +1022,33 @@ pub mod monitor;
 
 /// Editing gestures and display defaults.
 pub mod controls;
+
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::LibraryUnavailable(..) => "workspace.library_unavailable",
+            Self::DevicePlaybackUnavailable => "workspace.device_playback_unavailable",
+            Self::PromptOpen => "workspace.prompt_open",
+            Self::ActionPending => "workspace.action_pending",
+            Self::FileBusy => "workspace.file_busy",
+            Self::AudioPlaying => "workspace.audio_playing",
+            Self::Exporting => "workspace.exporting",
+            Self::NoAudio => "workspace.no_audio",
+            Self::NoExport => "workspace.no_export",
+            Self::Input(..) => "workspace.input",
+            Self::NotFinite => "workspace.not_finite",
+            Self::Document(..) => "workspace.document",
+            Self::SelectionChanged => "workspace.selection_changed",
+            Self::TemporaryRequired => "workspace.temporary_required",
+            Self::PurgeSelectionChanged => "workspace.purge_selection_changed",
+            Self::UnknownLibraryAction(..) => "workspace.unknown_library_action",
+            Self::DetachedDraft(..) => "workspace.detached_draft",
+            Self::ExistingSavedIdentity(..) => "workspace.existing_saved_identity",
+            Self::SavedEntryUnreadable => "workspace.saved_entry_unreadable",
+            Self::RestoreBeforePlayback => "workspace.restore_before_playback",
+            Self::Invalid { .. } => "workspace.invalid",
+            Self::NoSelection => "workspace.no_selection",
+            Self::Edit(..) => "workspace.edit",
+        })
+    }
+}

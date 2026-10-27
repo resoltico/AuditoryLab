@@ -470,7 +470,7 @@ pub(super) fn library(command: LibraryCommand, path: Option<&Path>) -> Result<u8
                     );
                 }
                 for stage in &inventory.stages {
-                    output(lab::presentation::retained_stage(stage).as_bytes())?;
+                    output(lab::presentation::retained_stage(&stage.to_string_lossy()).as_bytes())?;
                 }
             }
             Ok(inventory.failure_kind.map_or(0, super::exit_code))
@@ -541,7 +541,7 @@ fn report_mutation(
     stderr: &mut impl Write,
 ) -> Result<u8> {
     let mut bytes = if format == ReadFormat::Json {
-        json_bytes(&Report::mutation(operation, outcome))?
+        lab::presentation::reports::json_bytes(&Report::mutation(operation, outcome))?
     } else {
         outcome.description().display_text().into_bytes()
     };
@@ -556,28 +556,15 @@ fn report_mutation(
     }
     Ok(0)
 }
-fn json_bytes(value: &Report) -> Result<Vec<u8>> {
-    let text = serde_json::to_string(value)?;
-    let mut output = String::with_capacity(text.len());
-    for c in text.chars() {
-        if matches!(c,'\u{061c}'|'\u{200e}'|'\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2066}'..='\u{2069}'|'\u{2028}'|'\u{2029}')
-        {
-            use std::fmt::Write;
-            write!(&mut output, "\\u{:04x}", u32::from(c))?;
-        } else {
-            output.push(c);
-        }
-    }
-    Ok(output.into_bytes())
-}
+
 pub(super) fn print_json(value: &Report) -> Result<()> {
-    let bytes = json_bytes(value)?;
+    let bytes = lab::presentation::reports::json_bytes(value)?;
     output(&bytes)?;
     output(b"\n")?;
     Ok(())
 }
 fn print_mutation_json(value: &Report) -> Result<()> {
-    let mut bytes = match json_bytes(value) {
+    let mut bytes = match lab::presentation::reports::json_bytes(value) {
         Ok(bytes) => bytes,
         Err(error) => {
             eprintln!("{}", value.completion_failure(error).display_text());
@@ -595,7 +582,12 @@ fn print_mutation_json(value: &Report) -> Result<()> {
     Ok(())
 }
 pub(super) fn error_json(operation: &str, error: &super::CliError) -> Result<()> {
-    print_json(&Report::error(operation, error.message(), error.outcome()))
+    print_json(&Report::error(
+        operation,
+        error.code(),
+        error.message(),
+        error.outcome(),
+    ))
 }
 
 #[cfg(test)]

@@ -223,7 +223,7 @@ impl PartialEq for IoCause {
 impl Eq for IoCause {}
 impl fmt::Display for IoCause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        f.write_str("io.cause")
     }
 }
 impl Error for IoCause {
@@ -285,5 +285,61 @@ impl From<RecipeError> for SaveError {
 impl From<crate::clock::ClockError> for SaveError {
     fn from(error: crate::clock::ClockError) -> Self {
         Self::Clock { error }
+    }
+}
+
+impl std::fmt::Display for FileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Io(..) => "file.io",
+            Self::Identity(..) => "file.identity",
+            Self::NotRegular { .. } => "file.not_regular",
+            Self::ReadLimit { .. } => "file.read_limit",
+            Self::Cancelled { .. } => "file.cancelled",
+            Self::DestinationExists { .. } => "file.destination_exists",
+            Self::Changed { .. } => "file.changed",
+            Self::MissingFilename => "file.missing_filename",
+            Self::MissingParent => "file.missing_parent",
+            Self::RelocationExists { .. } => "file.relocation_exists",
+            Self::AfterMutation { .. } => "file.after_mutation",
+            Self::Cleanup { .. } => "file.cleanup",
+        })
+    }
+}
+impl std::error::Error for FileError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(error) => Some(error.cause.error()),
+            Self::Identity(error) => Some(error),
+            Self::DestinationExists {
+                cause: Some(error), ..
+            }
+            | Self::AfterMutation { cause: error, .. } => Some(error.error()),
+            Self::Cleanup { primary, .. } => Some(primary.as_ref()),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for SaveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Load { .. } => "save.load",
+            Self::Clock { .. } => "save.clock",
+            Self::File { .. } => "save.file",
+            Self::Recipe { .. } => "save.recipe",
+            Self::HistoryReplacement => "save.history_replacement",
+        })
+    }
+}
+impl std::error::Error for SaveError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::File { error } => Some(error),
+            Self::Recipe { error } => Some(error),
+            Self::Load { error } => Some(error),
+            Self::Clock { error } => Some(error),
+            Self::HistoryReplacement => None,
+        }
     }
 }

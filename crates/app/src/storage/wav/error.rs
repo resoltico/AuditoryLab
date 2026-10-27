@@ -15,8 +15,8 @@ pub(crate) enum ExportError {
 impl Display for ExportError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io(e) => Display::fmt(e, f),
-            Self::Cancelled => f.write_str("export cancelled before completion"),
+            Self::Io(_) => f.write_str("wav.io"),
+            Self::Cancelled => f.write_str("wav.cancelled"),
         }
     }
 }

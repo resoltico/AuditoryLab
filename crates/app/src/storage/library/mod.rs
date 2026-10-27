@@ -27,3 +27,6 @@ pub(crate) fn require_user(
         Key::External(_) => Err(Error::TemporarySelection),
     }
 }
+
+/// Typed bounded inventory notices.
+pub use store::InventoryNotice;

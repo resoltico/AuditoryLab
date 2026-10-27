@@ -1,6 +1,7 @@
 //! Typed machine-readable application reports.
 use crate::core::query::{Direction, SortBy};
 use crate::document::origin::{LibraryKey, VersionToken};
+use crate::presentation::Explain;
 use serde::Serialize;
 use std::path::PathBuf;
 use {
@@ -27,6 +28,52 @@ macro_rules! report_struct {
         }
     }
 }
+/// A stable diagnostic code and its human explanation.
+#[derive(Debug, Clone, Serialize)]
+pub struct DiagnosticMessage {
+    /// Stable machine identifier.
+    pub code: String,
+    /// Human explanation rendered by presentation.
+    pub message: String,
+}
+impl From<&crate::services::StorageWarning> for DiagnosticMessage {
+    fn from(value: &crate::services::StorageWarning) -> Self {
+        Self {
+            code: value.to_string(),
+            message: super::publication_text::warning(value),
+        }
+    }
+}
+/// Inventory context paired with its rendered diagnostic.
+#[derive(Debug, Clone, Serialize)]
+pub struct LibraryDiagnosticReport {
+    /// Relative storage name or configured root.
+    pub storage_id: String,
+    /// Stable inventory diagnostic category.
+    pub code: String,
+    /// Human explanation from the retained typed cause.
+    pub message: String,
+}
+impl<E: super::Explain> From<&LibraryDiagnostic<E>> for LibraryDiagnosticReport {
+    fn from(value: &LibraryDiagnostic<E>) -> Self {
+        Self {
+            storage_id: value.storage_id.clone(),
+            code: value.code.clone(),
+            message: value.message(),
+        }
+    }
+}
+report_struct!(InitializationReport { created: bool, path: PathBuf, warnings: Vec<DiagnosticMessage> });
+report_struct!(GroupReport {key:String,label:String,keys:Vec<LibraryKey>});
+impl From<&ResultGroup> for GroupReport {
+    fn from(group: &ResultGroup) -> Self {
+        Self {
+            key: group.key.clone(),
+            label: super::library_text::group_label(&group.label),
+            keys: group.keys.clone(),
+        }
+    }
+}
 report_struct!(DescriptorReport {
     owner: VoiceId, method: rhythm::Method,
     hz: f64, band: Option<rhythm::Band>,
@@ -34,7 +81,7 @@ report_struct!(DescriptorReport {
 report_struct!(NominalReport {
     descriptors: Vec<DescriptorReport>, bands: Vec<rhythm::Band>, methods: Vec<rhythm::Method>,
     completeness: rhythm::Completeness, multiple_rhythms: bool, outside_bands: bool,
-    no_rhythm: bool, diagnostics: Vec<String>,
+    no_rhythm: bool, diagnostics: Vec<DiagnosticMessage>,
 });
 impl From<&rhythm::Analysis> for NominalReport {
     fn from(value: &rhythm::Analysis) -> Self {
@@ -58,7 +105,10 @@ impl From<&rhythm::Analysis> for NominalReport {
             diagnostics: value
                 .diagnostics
                 .iter()
-                .map(crate::presentation::rhythm_diagnostic)
+                .map(|cause| DiagnosticMessage {
+                    code: cause.to_string(),
+                    message: crate::presentation::rhythm_diagnostic(cause),
+                })
                 .collect(),
         }
     }
@@ -89,7 +139,7 @@ pub enum Validation {
         /// Frames per second checked.
         sample_rate_hz: u32,
         /// Explanation of the invalid quantities.
-        diagnostics: Vec<String>,
+        diagnostics: Vec<DiagnosticMessage>,
     },
 }
 report_struct!(EntryReport {
@@ -97,7 +147,7 @@ report_struct!(EntryReport {
     duration_seconds: f64, created_at: Option<Timestamp>, modified_at: Option<Timestamp>,
     added_at: Option<Timestamp>, trashed_at: Option<Timestamp>, trashed: bool, version_token: Option<VersionToken>,
     nominal: NominalReport, evidence: Vec<EvidenceFacet>, validation: Validation,
-    #[serde(skip_serializing_if = "Option::is_none")] history_warnings: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")] history_warnings: Option<Vec<DiagnosticMessage>>,
     #[serde(skip_serializing_if = "Option::is_none")] recipe_toml: Option<String>,
 });
 impl From<&EntrySummary> for EntryReport {
@@ -127,7 +177,7 @@ impl From<&EntrySummary> for EntryReport {
 #[serde(untagged)]
 pub enum Diagnostic {
     /// A bounded inventory diagnostic.
-    Library(LibraryDiagnostic),
+    Library(LibraryDiagnosticReport),
     /// A root inspection error.
     Root {
         /// Stable diagnostic class.
@@ -136,7 +186,7 @@ pub enum Diagnostic {
         message: String,
     },
     /// A direct operation diagnostic.
-    Message(String),
+    Message(DiagnosticMessage),
 }
 report_struct!(UnavailableRoot {
     path: PathBuf, source: RootSource, exists: Option<bool>, layout: Option<u32>, initialized: bool,
@@ -148,7 +198,7 @@ pub enum RootReport {
     /// Fully inspected configuration.
     Inspected(RootInfo),
     /// Explicit initialization result.
-    Initialized(Initialization),
+    Initialized(InitializationReport),
     /// Path configuration whose on-disk state could not be verified.
     Unavailable(UnavailableRoot),
 }
@@ -180,7 +230,7 @@ pub enum ReportStatus {
 }
 report_struct!(Report {
     output_schema_version: u32, operation: String, complete: bool, convention: &'static str,
-    query: Option<CatalogQuery>, unique_count: usize, entries: Vec<EntryReport>, groups: Vec<ResultGroup>,
+    query: Option<CatalogQuery>, unique_count: usize, entries: Vec<EntryReport>, groups: Vec<GroupReport>,
     diagnostics: Vec<Diagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")] classifier_revision: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")] effective_sort: Option<(SortBy, Direction)>,
@@ -236,21 +286,26 @@ impl Report {
         report.query = Some(query.clone());
         report.effective_sort = Some(query.effective_sort());
         report.classifier_revision = Some(rhythm::CLASSIFIER_REVISION);
-        report.groups = listing.groups().to_vec();
+        report.groups = listing.groups().iter().map(GroupReport::from).collect();
         report.diagnostics = listing
             .diagnostics()
             .iter()
-            .cloned()
-            .map(Diagnostic::Library)
+            .map(|diagnostic| Diagnostic::Library(diagnostic.into()))
             .collect();
-        report.stages = Some(listing.stages().to_vec());
+        report.stages = Some(
+            listing
+                .stages()
+                .iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect(),
+        );
         report
     }
     /// Full portable content and declared-history diagnostics.
     pub fn describe(description: crate::services::Description<'_>) -> Self {
         let (source, text, history) = description.into_parts();
         let mut entry = EntryReport::from(source.summary());
-        entry.history_warnings = Some(history);
+        entry.history_warnings = Some(history.iter().map(DiagnosticMessage::from).collect());
         entry.recipe_toml = Some(text.to_string());
         Self::new("describe", true).with_entries(vec![entry])
     }
@@ -273,7 +328,10 @@ impl Report {
             },
             Err(error) => Validation::Invalid {
                 sample_rate_hz: rate.hz(),
-                diagnostics: vec![error.to_string()],
+                diagnostics: vec![DiagnosticMessage {
+                    code: error.to_string(),
+                    message: error.explain(),
+                }],
             },
         };
         Self::new("inspect", true).with_entries(vec![entry])
@@ -303,7 +361,7 @@ impl Report {
         }));
         report.diagnostics.push(Diagnostic::Root {
             code: "root_inspection",
-            message: error.to_string(),
+            message: error.explain(),
         });
         report
     }
@@ -316,12 +374,19 @@ impl Report {
         } else {
             MutationStatus::Unchanged
         }));
-        report.root = Some(RootReport::Initialized(initialized.clone()));
+        report.root = Some(RootReport::Initialized(InitializationReport {
+            created: initialized.created,
+            path: initialized.path.clone(),
+            warnings: initialized
+                .warnings
+                .iter()
+                .map(DiagnosticMessage::from)
+                .collect(),
+        }));
         report.diagnostics = initialized
             .warnings
             .iter()
-            .cloned()
-            .map(Diagnostic::Message)
+            .map(|warning| Diagnostic::Message(warning.into()))
             .collect();
         report
     }
@@ -333,10 +398,15 @@ impl Report {
         report.diagnostics = inventory
             .diagnostics
             .iter()
-            .cloned()
-            .map(Diagnostic::Library)
+            .map(|diagnostic| Diagnostic::Library(diagnostic.into()))
             .collect();
-        report.stages = Some(inventory.stages.clone());
+        report.stages = Some(
+            inventory
+                .stages
+                .iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect(),
+        );
         report
     }
     /// The library's authoritative publication outcome.
@@ -355,14 +425,18 @@ impl Report {
         report.diagnostics = outcome
             .diagnostics
             .iter()
-            .cloned()
-            .map(Diagnostic::Message)
+            .map(|warning| Diagnostic::Message(warning.into()))
             .collect();
         report
     }
     /// A failure classified by its public exit outcome.
     #[must_use]
-    pub fn error(operation: &str, message: impl Into<String>, outcome: Outcome) -> Self {
+    pub fn error(
+        operation: &str,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        outcome: Outcome,
+    ) -> Self {
         let mut report = Self::new(operation, false);
         report.status = Some(ReportStatus::Failure(match outcome {
             Outcome::Conflict | Outcome::HistoryConflict => FailureStatus::Conflict,
@@ -380,7 +454,32 @@ impl Report {
             | Outcome::DestinationExists
             | Outcome::Write => FailureStatus::Failed,
         }));
-        report.diagnostics.push(Diagnostic::Message(message.into()));
+        report
+            .diagnostics
+            .push(Diagnostic::Message(DiagnosticMessage {
+                code: code.into(),
+                message: message.into(),
+            }));
         report
     }
+}
+
+/// Serialize one report with control and bidirectional characters escaped.
+///
+/// # Errors
+/// Returns the serializer failure before any output is written.
+pub fn json_bytes(value: &Report) -> Result<Vec<u8>, serde_json::Error> {
+    let text = serde_json::to_string(value)?;
+    let mut output = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(c,'\u{061c}'|'\u{200e}'|'\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2066}'..='\u{2069}'|'\u{2028}'|'\u{2029}')
+        {
+            use std::fmt::Write;
+            write!(&mut output, "\\u{:04x}", u32::from(c))
+                .unwrap_or_else(|_| unreachable!("writing into String cannot fail"));
+        } else {
+            output.push(c);
+        }
+    }
+    Ok(output.into_bytes())
 }

@@ -2,6 +2,7 @@
 use super::*;
 use auditorylab_app::core::query::{Scope, SortBy};
 use auditorylab_app::presentation::DisplayText;
+use auditorylab_app::presentation::LibraryPresentation;
 impl SlintAdapter {
     pub(super) fn project_library(
         &self,
@@ -16,6 +17,8 @@ impl SlintAdapter {
         {
             return;
         }
+        let source = library;
+        let library = auditorylab_app::presentation::workspace_text::library_view(&source);
         #[cfg(test)]
         self.counts
             .library_projections
@@ -61,7 +64,8 @@ impl SlintAdapter {
                         .collect::<Vec<_>>(),
                 ))
             };
-            let (bands, methods) = w.library_facets();
+            let (bands, methods) =
+                auditorylab_app::presentation::library_text::facets(&w.library_facets());
             ui.set_band_labels(strings(
                 bands.iter().map(|band| band.text.clone()).collect(),
             ));
@@ -142,6 +146,6 @@ impl SlintAdapter {
         ui.set_summary(read_only(&library.summary));
         ui.set_details(read_only(&library.details));
         ui.set_can_open_study(library.study_url.is_some());
-        *self.library.borrow_mut() = Some(library);
+        *self.library.borrow_mut() = Some(source);
     }
 }

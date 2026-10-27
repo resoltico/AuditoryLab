@@ -65,10 +65,10 @@ pub(crate) struct InventoryStatus {
     pub not_initialized: bool,
     pub count: usize,
     pub diagnostics: Vec<LibraryDiagnostic>,
-    pub stages: Vec<String>,
+    pub stages: Vec<std::path::PathBuf>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum SaveFeedback {
     InvalidAtRate {
         rate: crate::core::SampleRate,
@@ -80,12 +80,14 @@ pub(crate) enum SaveFeedback {
 
 /// Location and identity captured by the immutable library request.
 #[derive(Debug, Clone)]
-pub(crate) struct LibraryContext {
+pub struct LibraryContext {
+    /// Root used by the admitted operation.
     pub path: PathBuf,
+    /// Selector captured before execution.
     pub selector: Option<LibraryKey>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum LibraryStatus {
     Inventory(Arc<InventoryStatus>),
     Loaded,
@@ -94,11 +96,11 @@ pub(crate) enum LibraryStatus {
         status: MutationStatus,
         document: bool,
         feedback: Vec<SaveFeedback>,
-        diagnostics: Vec<String>,
+        diagnostics: Vec<crate::storage::warning::StorageWarning>,
     },
     ExternalWritten {
         status: MutationStatus,
-        diagnostics: Vec<String>,
+        diagnostics: Vec<crate::storage::warning::StorageWarning>,
     },
     Failed {
         error: Error,
@@ -116,7 +118,7 @@ pub(crate) enum FileNotice {
     SavedSnapshotStillDirty,
     ExportCancelled,
 }
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) enum FileStatus {
     #[default]
     Idle,
@@ -137,7 +139,7 @@ pub(crate) enum FileStatus {
     },
     RecipeExported {
         path: PathBuf,
-        warnings: Vec<String>,
+        warnings: Vec<crate::storage::warning::StorageWarning>,
     },
     Exported {
         path: PathBuf,
@@ -168,14 +170,14 @@ impl FileStatus {
         }
     }
 }
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) enum EditStatus {
     #[default]
     Idle,
     Refused(Refusal),
 }
 
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) enum AudioStatus {
     #[default]
     Idle,
@@ -187,4 +189,28 @@ pub(crate) enum AudioStatus {
     },
     Failed(Error),
     WorkerFailed(WorkerFailure),
+}
+
+/// Failure of an admitted inventory read, including worker execution.
+#[derive(Debug, Clone)]
+pub enum ReadFailure {
+    /// Operation returned an exact typed cause.
+    Operation(crate::services::OperationError),
+    /// Thread creation failed before execution.
+    Launch(crate::services::IoCause),
+    /// Worker panicked, so its result cannot be trusted.
+    Panicked,
+    /// Completion did not match the admitted operation.
+    InvalidOutcome,
+}
+
+impl std::fmt::Display for ReadFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Operation(..) => "read.operation",
+            Self::Launch(..) => "read.launch",
+            Self::Panicked => "read.panicked",
+            Self::InvalidOutcome => "read.invalid_outcome",
+        })
+    }
 }

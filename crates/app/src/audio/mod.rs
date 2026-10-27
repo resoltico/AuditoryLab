@@ -66,3 +66,29 @@ impl From<crate::document::error::RenditionError> for PlaybackError {
         Self::Load(error.into())
     }
 }
+
+impl std::fmt::Display for PlaybackError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Trashed { .. } => "playback.trashed",
+            Self::Device(..) => "playback.device",
+            Self::Sound { .. } => "playback.sound",
+            Self::Load(..) => "playback.load",
+            Self::Library(..) => "playback.library",
+            Self::MissingTerminalOutcome => "playback.missing_terminal_outcome",
+            Self::MonitorInUse => "playback.monitor_in_use",
+            Self::MissingDocument => "playback.missing_document",
+        })
+    }
+}
+impl std::error::Error for PlaybackError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Device(error) => Some(error),
+            Self::Sound { error, .. } => Some(error),
+            Self::Library(error) => Some(error),
+            Self::Load(error) => Some(error),
+            _ => None,
+        }
+    }
+}

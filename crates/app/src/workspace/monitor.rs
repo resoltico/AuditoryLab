@@ -347,3 +347,14 @@ impl WaveformScale {
     /// Every visual scaling choice, in display order.
     pub const ALL: [Self; 2] = [Self::Fixed, Self::Fit];
 }
+
+impl std::fmt::Display for CaptureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::NonFiniteSample => "capture.non_finite_sample",
+            Self::InvalidSpan => "capture.invalid_span",
+        })
+    }
+}
+
+impl std::error::Error for CaptureError {}

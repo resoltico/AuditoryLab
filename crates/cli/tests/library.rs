@@ -746,3 +746,21 @@ fn schema_three_library_diagnostic_keeps_path_version_and_original_bytes() {
         assert_eq!(fs::read(&path).unwrap(), bytes.as_bytes());
     }
 }
+
+#[test]
+fn json_diagnostics_pair_stable_codes_with_human_messages() {
+    let directory = dir();
+    let output = cli(
+        &directory.path().join("library"),
+        &["inspect", "builtin:does-not-exist", "--format", "json"],
+    );
+    assert!(!output.status.success());
+    let value = json(&output);
+    let diagnostic = &value["diagnostics"][0];
+    assert_eq!(diagnostic["code"], "load.unknown_builtin");
+    assert!(
+        diagnostic["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("unknown built-in recipe"))
+    );
+}

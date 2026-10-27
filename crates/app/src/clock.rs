@@ -29,6 +29,14 @@ pub struct ClockError {
     /// Exact observation used for the attempted action.
     pub observed: std::time::SystemTime,
 }
+
+impl std::fmt::Display for ClockError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("clock.range")
+    }
+}
+impl std::error::Error for ClockError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

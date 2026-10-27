@@ -255,3 +255,16 @@ const fn method_search_terms(method: Method) -> &'static str {
         Method::SteadyTone => "steady-tone steady tone",
     }
 }
+
+impl std::fmt::Display for QueryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::TemporaryFilesScope { .. } => "query.temporary_files_scope",
+            Self::RangeOrder { .. } => "query.range_order",
+            Self::Study { .. } => "query.study",
+            Self::LocalDate { .. } => "query.local_date",
+            Self::LocalOrder { .. } => "query.local_order",
+        })
+    }
+}
+impl std::error::Error for QueryError {}

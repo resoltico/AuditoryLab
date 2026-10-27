@@ -9,6 +9,7 @@
 //! the document, component and generation, so late callbacks cannot address a
 //! replacement document or a restored component lifetime.
 use auditorylab_app::presentation::DisplayText;
+use auditorylab_app::presentation::LibraryPresentation;
 use auditorylab_app::presentation::vocabulary::NumberStyle;
 use auditorylab_app::presentation::waveform_view::*;
 use auditorylab_app::presentation::workspace_text::{
@@ -588,7 +589,9 @@ impl SlintAdapter {
                     }
                     (runner, workspace)
                 };
-                runner.shutdown(workspace)
+                runner
+                    .shutdown(workspace)
+                    .map_err(|error| auditorylab_app::presentation::Explain::explain(&error))
             }
             _ => Ok(()),
         }
@@ -704,7 +707,7 @@ impl SlintAdapter {
             (
                 auditorylab_app::presentation::workspace_text::editor_view(&w.editor_view()),
                 w.library_view(),
-                w.action_view(),
+                auditorylab_app::presentation::workspace_text::action_view(&w.action_view()),
                 w.export_rate(),
                 w.rhythm_query().clone(),
             )
@@ -899,7 +902,7 @@ impl SlintAdapter {
     fn project_telemetry(&self, ui: &MainWindow) {
         let views = self.workspace.borrow().as_ref().map(|w| {
             (
-                w.transport_view(),
+                auditorylab_app::presentation::workspace_text::transport_view(&w.transport_view()),
                 w.output_view(),
                 w.model_view(),
                 w.export_progress(),

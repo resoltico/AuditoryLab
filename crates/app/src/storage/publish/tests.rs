@@ -1,5 +1,6 @@
 use super::*;
 use crate::document::origin::LibraryKey;
+use crate::presentation::Explain;
 use std::{
     fs,
     process::{Child, Command, Stdio},
@@ -145,7 +146,7 @@ fn postcommit_failures_verify_candidate_previous_and_foreign_content() {
     fs::write(&path, b"previous").unwrap();
     inject(&[FaultPoint::BeforePublish]);
     let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
-    assert!(error.to_string().contains("previous content remains"));
+    assert!(error.explain().contains("previous content remains"));
     assert_eq!(fs::read(&path).unwrap(), b"previous");
     let changed = path.clone();
     AFTER_PUBLISH.with(|slot| {
@@ -154,8 +155,8 @@ fn postcommit_failures_verify_candidate_previous_and_foreign_content() {
     inject(&[FaultPoint::AfterPublish]);
     let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
     // Human rendering names the complete path without Debug escaping.
-    assert!(error.to_string().contains(&path.display().to_string()));
-    assert!(error.to_string().contains("differs from both"));
+    assert!(error.explain().contains(&path.display().to_string()));
+    assert!(error.explain().contains("differs from both"));
     assert_eq!(fs::read(path).unwrap(), b"foreign");
 }
 #[test]
@@ -559,12 +560,10 @@ fn failed_membership_write_is_saved_with_unknown_new_dates() {
         )
         .unwrap();
     assert_eq!(result.status, MutationStatus::PublishedWithWarning);
-    assert!(
-        result
-            .diagnostics
-            .iter()
-            .any(|d| d.contains("membership timestamps"))
-    );
+    assert!(result.diagnostics.iter().any(|d| matches!(
+        d,
+        crate::services::StorageWarning::MembershipUpdateFailed { .. }
+    )));
     let record = result.record.unwrap();
     assert_eq!(record.added_at, None);
     assert_eq!(store.load(&record.key).unwrap().added_at, None);
@@ -590,7 +589,7 @@ fn unreadable_publication_verification_never_guesses_the_destination_state() {
         ));
         let cause = std::error::Error::source(&error).unwrap();
         assert!(cause.to_string().contains("injected"));
-        let message = error.to_string();
+        let message = error.explain();
         assert_eq!(error.outcome(), crate::outcome::Outcome::Write);
         assert!(message.contains(&path.display().to_string()));
         assert!(message.contains("publication outcome is unconfirmed"));
@@ -777,7 +776,7 @@ fn unreadable_deletion_verification_never_claims_the_file_remains() {
         ));
         let cause = std::error::Error::source(&error).unwrap();
         assert!(cause.to_string().contains("injected"));
-        let message = error.to_string();
+        let message = error.explain();
         assert!(message.contains(&path.display().to_string()));
         assert!(message.contains("deletion outcome is unconfirmed"));
         assert!(!message.contains("was not applied"));
@@ -815,7 +814,7 @@ fn unreadable_relocation_verification_does_not_guess_source_removal() {
         ));
         let cause = std::error::Error::source(&error).unwrap();
         assert!(cause.to_string().contains("injected"));
-        let message = error.to_string();
+        let message = error.explain();
         assert!(message.contains(&destination.display().to_string()));
         assert!(message.contains("relocation outcome is unconfirmed"));
         assert!(!message.contains("did not remove its source"));

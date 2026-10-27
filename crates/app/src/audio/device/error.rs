@@ -113,3 +113,19 @@ impl Diagnostics {
         self.publish(error);
     }
 }
+
+impl std::fmt::Display for DeviceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::NoDefaultOutput => "device.no_default_output",
+            Self::Backend(..) => "device.backend",
+            Self::UnsupportedSampleFormat(..) => "device.unsupported_sample_format",
+            Self::UnsupportedSampleRate { .. } => "device.unsupported_sample_rate",
+            Self::TooFewChannels { .. } => "device.too_few_channels",
+            Self::InvalidTiming => "device.invalid_timing",
+            Self::MisalignedBuffer => "device.misaligned_buffer",
+            Self::TimedOut => "device.timed_out",
+            Self::Abandoned => "device.abandoned",
+        })
+    }
+}

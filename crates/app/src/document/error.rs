@@ -45,3 +45,31 @@ impl RenditionError {
         crate::outcome::Outcome::InvalidSound
     }
 }
+
+impl std::fmt::Display for EditorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Identity(..) => "editor.identity",
+            Self::Recipe(..) => "editor.recipe",
+        })
+    }
+}
+impl std::error::Error for EditorError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Identity(error) => Some(error),
+            Self::Recipe(error) => Some(error),
+        }
+    }
+}
+
+impl std::fmt::Display for RenditionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.error, f)
+    }
+}
+impl std::error::Error for crate::document::error::RenditionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}

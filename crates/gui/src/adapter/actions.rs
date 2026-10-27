@@ -226,11 +226,11 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(on_quit, |a| a.command(Workspace::close));
     on!(on_about, |a| a.show_about());
     on!(on_open_study, |a| {
-        let url = a
-            .workspace
-            .borrow_mut()
-            .as_mut()
-            .and_then(|w| w.library_view().study_url.clone());
+        let url = a.workspace.borrow_mut().as_mut().and_then(|w| {
+            auditorylab_app::presentation::workspace_text::library_view(&w.library_view())
+                .study_url
+                .clone()
+        });
         if let Some(url) = url {
             open_web(&url);
         }
@@ -241,7 +241,9 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         }
     });
     on!(on_show_research, |a| {
-        let library = a.workspace.borrow().as_ref().map(Workspace::library_view);
+        let library = a.workspace.borrow().as_ref().map(|w| {
+            auditorylab_app::presentation::workspace_text::library_view(&w.library_view())
+        });
         if let (Some(window), Some(ui), Some(library)) =
             (a.details.upgrade(), a.main.upgrade(), library)
         {

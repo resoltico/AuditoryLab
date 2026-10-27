@@ -266,3 +266,6 @@ pub fn path(override_path: Option<&Path>) -> Result<PathInspection, LibraryError
         result,
     })
 }
+
+/// Typed bounded inventory notices.
+pub use crate::storage::library::InventoryNotice;

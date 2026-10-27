@@ -296,3 +296,14 @@ pub(crate) fn file_name(title: &str, extension: &str) -> String {
         if stem.is_empty() { "sound" } else { stem }
     )
 }
+
+impl std::fmt::Display for Origin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BuiltIn(id) => write!(f, "{id}"),
+            Self::User { id, .. } => write!(f, "user:{id}"),
+            Self::File(path) => write!(f, "{}", path.display()),
+            Self::Stream(label) | Self::Draft(label) => f.write_str(label),
+        }
+    }
+}

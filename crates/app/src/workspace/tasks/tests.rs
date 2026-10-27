@@ -5,6 +5,8 @@
 use super::*;
 use crate::core::{CarrierKind, ParameterId, SampleRate};
 use crate::document::editing::{EditingField, FieldHandle};
+use crate::presentation::Explain;
+use crate::presentation::LibraryPresentation;
 use crate::services::library::{Library, Mutation};
 use crate::workspace::status::{AudioStatus, FileStatus};
 use crate::workspace::{
@@ -239,7 +241,8 @@ fn a_panic_after_actual_publication_retains_dirty_state_and_denies_close() {
     assert_eq!(store.scan(&Cancel::default()).entries.len(), 1);
     assert!(workspace.editor().dirty());
     assert!(closed(&mut workspace, false));
-    let outcome = workspace.action_view().operation_details;
+    let outcome = crate::presentation::workspace_text::action_view(&workspace.action_view())
+        .operation_details;
     assert!(outcome.contains("thread failed"));
     assert!(outcome.contains("does not establish that storage was unchanged"));
     assert!(outcome.contains(&store.path().display().to_string()));
@@ -309,7 +312,7 @@ fn actual_rate_preparation_submits_committed_edits_but_never_staged_text() {
     assert_eq!(workspace.editor().staged(frequency.field), Some("500"));
     assert_eq!(workspace.diagnostic_rate().hz(), 96000);
     assert_eq!(workspace.export_rate(), SampleRate::DEFAULT);
-    assert!(!workspace.action_view().can_export);
+    assert!(!crate::presentation::workspace_text::action_view(&workspace.action_view()).can_export);
     workspace.commit_field(frequency, "60000").unwrap();
     assert_eq!(
         workspace
@@ -346,7 +349,11 @@ fn device_rate_validation_is_independent_of_export_rate() {
         outcome: JobOutcome::Audio(Err(error)),
     });
     assert!(!workspace.audio_busy());
-    assert!(workspace.action_view().audio_status.contains("8000"));
+    assert!(
+        crate::presentation::workspace_text::action_view(&workspace.action_view())
+            .audio_status
+            .contains("8000")
+    );
     drop(job);
 }
 #[test]
@@ -685,6 +692,7 @@ fn shutdown_reports_prior_rejected_preparation_even_when_real_job_stops_ok() {
         runner
             .shutdown(workspace)
             .unwrap_err()
+            .explain()
             .contains("another operation")
     );
 }
@@ -707,7 +715,7 @@ fn shutdown_reports_wrong_kind_success_after_coordinator_validation() {
             outcome: JobOutcome::File(FileOutcome::Imported(Ok(snapshot))),
         })),
     );
-    let error = runner.shutdown(workspace).unwrap_err();
+    let error = runner.shutdown(workspace).unwrap_err().explain();
     assert!(error.contains("another operation"));
     assert!(error.contains("library"));
 }
@@ -751,7 +759,7 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
         let mut runner = Runner::new();
         runner.start(job);
         let notice = if shutdown {
-            runner.shutdown(workspace).unwrap_err()
+            runner.shutdown(workspace).unwrap_err().explain()
         } else {
             pump(&mut runner, &mut workspace);
             assert!(workspace.editor().dirty());
@@ -762,7 +770,8 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
                 Some(finite(880.0))
             );
             assert!(closed(&mut workspace, false));
-            workspace.action_view().operation_details
+            crate::presentation::workspace_text::action_view(&workspace.action_view())
+                .operation_details
         };
         assert_eq!(std::fs::read(&path).unwrap(), concurrent_bytes);
         assert_eq!(
@@ -828,7 +837,7 @@ fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct()
                 selector: Some(key.clone()),
             },
         });
-        let notice = status.library_failure_notice().unwrap();
+        let notice = status.description();
         assert_eq!(
             notice.contains("inspect this location"),
             inspect,

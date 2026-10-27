@@ -1386,3 +1386,26 @@ fn apply_number(
 
 #[cfg(test)]
 mod tests;
+
+impl std::fmt::Display for EditRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::StaleDocument => "edit.stale_document",
+            Self::StaleRow => "edit.stale_row",
+            Self::UnknownComponent => "edit.unknown_component",
+            Self::Inapplicable => "edit.inapplicable",
+            Self::BudgetExceeded { .. } => "edit.budget_exceeded",
+            Self::IdentitiesExhausted => "edit.identities_exhausted",
+            Self::NothingRemoved => "edit.nothing_removed",
+        })
+    }
+}
+
+impl std::fmt::Display for SaveRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Input(..) => "save_refusal.input",
+            Self::Document(..) => "save_refusal.document",
+        })
+    }
+}

@@ -8,8 +8,7 @@ use super::{FileKind, OutputView, Refusal, View, Workspace};
 use crate::document::editing::FieldHandle;
 use crate::document::editing::RowKey;
 use crate::document::recipe::RecipeSnapshot;
-use crate::presentation::workspace_text::refusal_text;
-use crate::{presentation, workspace::controls};
+use crate::workspace::controls;
 use auditorylab_core::{CarrierKind, ComponentId, ParameterId, SampleRate};
 use std::sync::Arc;
 
@@ -105,76 +104,77 @@ pub struct EditorView {
     pub unrelated_title: Option<String>,
 }
 
-/// A rendered catalog item. Empty keys are headings/diagnostics, never sounds.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LibraryRowView {
-    /// Whether this is an immutable Built-in sound, rather than a heading or local record.
-    pub built_in: bool,
-    /// Immutable collection identity for selection and captured actions.
-    pub key: String,
-    /// Complete accessible description, generated from the same fields.
-    pub text: String,
-    /// Recipe title or nonselectable heading.
-    pub title: String,
-    /// Runtime ownership and read-only/last-observed status.
-    pub collection: String,
-    /// Nominal structural summary; no target compilation.
-    pub summary: String,
-    /// Independent calculated memberships, never an efficacy claim.
-    pub bands: String,
-    /// Requested duration in shared presentation units.
-    pub duration: String,
-    /// Sort-relevant date and any necessary unknown-history context.
-    pub dates: String,
+/// A semantic library row, including nonselectable inventory observations.
+#[derive(Debug, Clone)]
+pub enum LibraryRowView {
+    /// One unique indexed recipe at its last observed version.
+    Entry {
+        /// Correlated indexed content and membership.
+        entry: Box<crate::discovery::collection::EntrySummary>,
+        /// The row requires a fresh read before an action can use it.
+        requires_read: bool,
+    },
+    /// A group heading may repeat recipe keys across memberships.
+    Group(crate::discovery::collection::ResultGroup),
+    /// Heading introducing unreadable inventory records.
+    Unreadable,
+    /// Retained inventory cause, excluded from sound counts.
+    Diagnostic(crate::services::library::LibraryDiagnostic),
 }
-
-/// A navigation facet, including its disclosed interval and disjunctive count.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LibraryFacetView {
-    /// Short shared name.
-    pub label: String,
-    /// Interval or qualification, independent of count.
-    pub detail: String,
-    /// Unique matching sounds; explicitly observed when inventory is incomplete.
-    pub count: String,
-    /// Full accessible/compact selector label.
-    pub text: String,
-}
-
-/// The library and the selected recipe.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Query results and selected immutable source at one export rate.
+#[derive(Debug, Clone)]
 pub struct LibraryView {
-    /// Structured rows; headers and diagnostic rows have empty keys.
+    /// Semantic rows in result order.
     pub rows: Vec<LibraryRowView>,
-    /// The selected entry's position among the rows.
+    /// Selected row position, when visible.
     pub selected: Option<usize>,
-    /// Selected title.
-    pub title: String,
-    /// Selected structure at the export rate.
-    pub structure: String,
-    /// Sample-rate-independent classification of the selected saved snapshot.
-    pub classification: String,
-    /// Runtime collection and read-only status of the selected record.
-    pub ownership: String,
-    /// What the source studied the sound for.
-    pub studied: String,
-    /// Duration and fade.
-    pub timing: String,
-    /// Plain-language summary.
-    pub summary: String,
-    /// Research and validated facts at the export rate.
-    pub details: String,
-    /// The study link, when it is a web address.
-    pub study_url: Option<String>,
+    /// Selected immutable source, if readable.
+    pub snapshot: Option<RecipeSnapshot>,
+    /// Rate used for inspection and export.
+    pub rate: SampleRate,
+    /// Effective ordering used by the indexed rows.
+    pub sort: auditorylab_core::query::SortBy,
+}
+/// Disjunctive navigation membership whose count is independent of wording.
+#[derive(Debug, Clone, Copy)]
+pub enum FacetKind {
+    /// Every sound after non-rhythm restrictions.
+    AllSounds,
+    /// Membership in a disclosed reference interval.
+    Band(auditorylab_core::rhythm::Band),
+    /// Completeness or multiplicity of declared rates.
+    State(auditorylab_core::query::RhythmState),
+    /// Every method after the other restrictions.
+    AllMethods,
+    /// One declared structural method.
+    Method(auditorylab_core::rhythm::Method),
+}
+/// Unique count for one navigation membership.
+#[derive(Debug, Clone, Copy)]
+pub struct LibraryFacetView {
+    /// Membership used by the query.
+    pub kind: FacetKind,
+    /// Unique indexed sounds matching this membership.
+    pub count: usize,
+    /// Whether the inventory established a complete count.
+    pub complete: bool,
+}
+/// Rhythm and method navigation counts in shared vocabulary order.
+#[derive(Debug, Clone)]
+pub struct FacetCounts {
+    /// Band and rhythm-state memberships.
+    pub bands: Vec<LibraryFacetView>,
+    /// Structural method memberships.
+    pub methods: Vec<LibraryFacetView>,
 }
 
 /// Which actions are available and why not.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ActionView {
     /// Play (or replace playing audio) is admitted.
     pub can_play: bool,
     /// Label for Library playback or replacement.
-    pub library_play_label: &'static str,
+    pub playing: bool,
     /// A file import may be requested.
     pub can_import: bool,
     /// The library worker can accept an operation at this configured destination.
@@ -188,17 +188,13 @@ pub struct ActionView {
     /// The current selection can be copied.
     pub can_copy: bool,
     /// Actionable reason a selected source cannot be derived.
-    pub copy_reason: String,
+    pub copy_reason: Option<Refusal>,
     /// Bounded global refusal or task outcome beside persistent actions.
-    pub operation_summary: String,
-    /// File outcome retained alongside a current readiness refusal.
-    pub operation_outcome: String,
-    /// Complete selectable operation/refusal details.
-    pub operation_details: String,
+    pub operation_refusal: Option<Refusal>,
     /// A static preview may replace the last session display.
     pub can_preview: bool,
     /// Why Play is not admitted.
-    pub play_reason: String,
+    pub play_reason: Option<Refusal>,
     /// Save is admitted.
     pub can_save: bool,
     /// A complete independent copy can be created and saved.
@@ -206,11 +202,11 @@ pub struct ActionView {
     /// Current portable content can be captured for an external export.
     pub can_export_recipe: bool,
     /// Why Save is not admitted.
-    pub save_reason: String,
+    pub save_reason: Option<Refusal>,
     /// Export is admitted.
     pub can_export: bool,
     /// Why Export is not admitted.
-    pub export_reason: String,
+    pub export_reason: Option<Refusal>,
     /// Editing commands are accepted.
     pub can_edit: bool,
     /// Another component fits in the open sound.
@@ -218,12 +214,12 @@ pub struct ActionView {
     /// Adding a pair requires room for both generator lanes.
     pub can_add_pair: bool,
     /// Why a two-tone pair cannot currently be added.
-    pub pair_add_reason: String,
+    pub pair_add_reason: Option<Refusal>,
     /// Why no component can be added, when editing is otherwise allowed.
-    pub add_component_reason: String,
+    pub add_component_reason: Option<Refusal>,
     /// The most recently removed component, which Undo remove restores;
     /// empty when there is none.
-    pub removed_component: String,
+    pub removed_component: Option<auditorylab_core::Component>,
     /// Undo remove is admitted.
     pub can_restore_component: bool,
     /// A file task occupies its joined slot; prompt admission is separate.
@@ -235,52 +231,57 @@ pub struct ActionView {
     /// The transport button is enabled.
     pub transport_enabled: bool,
     /// The transport button's label.
-    pub transport_label: String,
+    pub transport_action: auditorylab_core::vocabulary::Action,
     /// What the next Play would play.
     pub play_target: String,
     /// Export progress from 0 to 1.
     pub progress: f64,
     /// File and general status.
-    pub file_status: String,
+    pub(crate) file_status: super::status::FileStatus,
     /// Audio status.
-    pub audio_status: String,
+    pub(crate) audio_status: super::status::AudioStatus,
     /// What the running file task does.
-    pub file_activity: String,
+    pub(crate) file_activity: Option<super::status::FileActivity>,
+    pub(crate) edit_status: super::status::EditStatus,
 }
 
-/// The transport and monitor text.
-#[derive(Debug, Clone, PartialEq)]
+/// Immutable generated-session facts used by the transport projection.
+#[derive(Debug, Clone)]
+pub struct MonitorView {
+    /// Lifecycle, counters and last published observation.
+    pub status: crate::audio::session::GeneratedStatus,
+    /// Source identity and actual output configuration.
+    pub descriptor: crate::audio::session::SessionDescriptor,
+    /// Last accepted target, including after a session ends.
+    pub accepted: auditorylab_core::Target,
+    /// Age of the last changed publication.
+    pub age: Option<std::time::Duration>,
+    /// Current monitoring impairment.
+    pub warning: Option<super::monitor::MonitorWarning>,
+}
+/// Transport, capture and model facts captured in one coordinator projection.
+#[derive(Debug, Clone)]
 pub struct TransportView {
-    /// Phase, source and kind of the session, or the preview.
-    pub player_title: String,
-    /// Estimated output elapsed time.
-    pub elapsed: String,
-    /// Generated structure.
-    pub generated: String,
-    /// Every generated voice.
-    pub generated_details: String,
-    /// Device or preview rate.
-    pub device: String,
-    /// Monitor state label.
-    pub output_state: &'static str,
-    /// Receipt age.
-    pub receipt_age: String,
-    /// Current monitor warning and whether it is announced.
-    pub warning: (String, bool),
-    /// Backend underrun warning.
-    pub backend_warning: String,
-    /// Monitor provenance.
-    pub monitor_state: String,
-    /// Meters of the displayed capture.
-    pub meters: String,
-    /// Caption of the displayed capture.
-    pub caption: String,
-    /// The model caption and structure.
-    pub model_caption: String,
-    /// Motion policy explanation.
-    pub motion: String,
-    /// Whether the person overrode the motion preference.
-    pub motion_overridden: bool,
+    /// Currently displayed capture and any boundary failure.
+    pub output: super::OutputView,
+    /// Bound session facts, when preparation has completed.
+    pub monitor: Option<MonitorView>,
+    /// Current output display lifecycle.
+    pub state: super::monitor::OutputMonitorState,
+    /// Selected rate for static previews and exports.
+    pub export_rate: SampleRate,
+    /// Source title while the audio task occupies its slot.
+    pub task_title: Option<String>,
+    /// Title retained after failed playback preparation.
+    pub failed_title: Option<String>,
+    /// Selected editing surface, independent of the playing source.
+    pub view: View,
+    /// Effective system motion preference.
+    pub motion: super::MotionPreference,
+    /// Explicit user hold choice, if present.
+    pub hold_override: Option<bool>,
+    /// Validated timing model, independent of observed generation.
+    pub model: Option<Arc<super::monitor::ModelView>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -484,12 +485,13 @@ impl Workspace {
 
     fn build_library_view(&self) -> LibraryView {
         let (rows, selected) = self.library.rows();
-        presentation::workspace_text::library_view(
+        LibraryView {
             rows,
             selected,
-            self.selected(),
-            self.editor.export_rate,
-        )
+            snapshot: self.selected().cloned(),
+            rate: self.editor.export_rate,
+            sort: self.library.query.effective_sort().0,
+        }
     }
 
     /// Action availability, from the same admission rules the commands use.
@@ -500,47 +502,17 @@ impl Workspace {
         let export_recipe = self.prepare_export_recipe();
         let export = self.prepare_export();
         let copy = self.copy_admission();
-        let refusal = match self.view {
+        let operation_refusal = match self.view {
             View::Workbench => save
                 .as_ref()
                 .err()
                 .filter(|r| matches!(r, Refusal::Input(_) | Refusal::Document(_)))
-                .map(refusal_text),
+                .cloned(),
             View::Library => copy
                 .as_ref()
                 .err()
                 .filter(|r| matches!(r, Refusal::Document(_)))
-                .map(refusal_text),
-        };
-        let outcome_details = [
-            self.files.status.description(),
-            self.editor.status.description(),
-            self.audio.status.description(),
-        ]
-        .into_iter()
-        .filter(|text| !text.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
-        let operation_details = refusal
-            .iter()
-            .map(String::as_str)
-            .chain(std::iter::once(outcome_details.as_str()))
-            .filter(|text| !text.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
-        let compact = |text: &str| {
-            let line = text.lines().next().unwrap_or("");
-            let mut short: String = line.chars().take(180).collect();
-            if line.chars().count() > 180 {
-                short.push('…');
-            }
-            short
-        };
-        let operation_summary = compact(refusal.as_deref().unwrap_or(&outcome_details));
-        let operation_outcome = if refusal.is_some() {
-            compact(&outcome_details)
-        } else {
-            String::new()
+                .cloned(),
         };
         let row = self.editor.session.document_key();
         let component_add = self.component_add_admission(row, CarrierKind::Tone);
@@ -551,8 +523,7 @@ impl Workspace {
         let progress = self.export_progress();
         ActionView {
             can_play: play.is_ok(),
-            library_play_label: crate::presentation::vocabulary::library_play_labels()
-                [usize::from(playing)],
+            playing,
             can_import: self.import_admission().is_ok(),
             can_manage_library: self.library_job_admission().is_ok(),
             can_add_to_library: self.prepare_add_to_library().is_ok(),
@@ -562,52 +533,38 @@ impl Workspace {
                 .is_some_and(|key| self.trash_request_admission(key).is_ok()),
             can_new: self.start_allowed().is_ok(),
             can_copy: copy.is_ok(),
-            copy_reason: copy.err().as_ref().map(refusal_text).unwrap_or_default(),
-            operation_summary,
-            operation_outcome,
-            operation_details,
+            copy_reason: copy.err(),
+            operation_refusal,
             can_preview: self.preview_admission().is_ok(),
-            play_reason: play.as_ref().err().map(refusal_text).unwrap_or_default(),
+            play_reason: play.as_ref().err().cloned(),
             can_save: save.is_ok(),
             can_save_copy: save_copy.is_ok(),
             can_export_recipe: export_recipe.is_ok(),
-            save_reason: save.err().as_ref().map(refusal_text).unwrap_or_default(),
+            save_reason: save.err(),
             can_export: export.is_ok(),
-            export_reason: export.err().as_ref().map(refusal_text).unwrap_or_default(),
+            export_reason: export.err(),
             can_edit: self.can_edit(),
             can_add_component: component_add.is_ok(),
             can_add_pair: pair_add.is_ok(),
-            pair_add_reason: pair_add
-                .err()
-                .as_ref()
-                .map(refusal_text)
-                .unwrap_or_default(),
-            add_component_reason: component_add
-                .err()
-                .as_ref()
-                .map(refusal_text)
-                .unwrap_or_default(),
+            pair_add_reason: pair_add.err(),
+            add_component_reason: component_add.err(),
             removed_component: self
                 .editor
                 .session
                 .removed()
-                .map(|(_, component)| {
-                    presentation::workspace_text::removed_component(component.form, component.id)
-                })
-                .unwrap_or_default(),
+                .map(|(_, component)| *component),
             can_restore_component: restore_component.is_ok(),
             file_busy: self.file_busy(),
             playback_busy: playing,
             exporting,
             transport_enabled: self.audio.stop_admission().is_ok() || play.is_ok(),
-            transport_label: if playing {
-                crate::core::vocabulary::Action::StopAudio.label()
+            transport_action: if playing {
+                crate::core::vocabulary::Action::StopAudio
             } else if self.view == View::Workbench {
-                crate::core::vocabulary::Action::PlayLive.label()
+                crate::core::vocabulary::Action::PlayLive
             } else {
-                crate::core::vocabulary::Action::PlaySelectedSound.label()
-            }
-            .into(),
+                crate::core::vocabulary::Action::PlaySelectedSound
+            },
             play_target: match self.view {
                 View::Workbench => self.editor.session.draft().title().to_owned(),
                 View::Library => self
@@ -616,18 +573,14 @@ impl Workspace {
                     .unwrap_or_default(),
             },
             progress,
-            file_status: [
-                self.files.status.description(),
-                self.editor.status.description(),
-            ]
-            .into_iter()
-            .filter(|text| !text.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n"),
-            audio_status: self.audio.status.description(),
-            file_activity: presentation::workspace_text::file_activity(
-                self.files.slot.as_ref().map(|task| &task.kind),
-            ),
+            file_status: self.files.status.clone(),
+            edit_status: self.editor.status.clone(),
+            audio_status: self.audio.status.clone(),
+            file_activity: self
+                .files
+                .slot
+                .as_ref()
+                .map(|task| super::status::FileActivity::from_kind(&task.kind)),
         }
     }
 
@@ -661,12 +614,34 @@ impl Workspace {
     /// The transport and monitor text for the bound session or preview.
     #[must_use]
     pub fn transport_view(&self) -> TransportView {
-        presentation::workspace_text::transport_view(
-            &self.audio.output,
-            self.editor.export_rate,
-            self.audio.slot.as_ref().map(|task| task.title.as_str()),
-            self.view,
-        )
+        use super::monitor::{monitor_warning, output_monitor_state};
+        let state = &self.audio.output;
+        let reader = state.reader();
+        let output = state.view();
+        let monitor = reader.map(|reader| MonitorView {
+            status: reader.status(),
+            descriptor: reader.descriptor().clone(),
+            accepted: reader.accepted().1,
+            age: reader.age(),
+            warning: monitor_warning(reader, state.span_ms()),
+        });
+        TransportView {
+            state: output_monitor_state(
+                reader,
+                output.capture.as_deref(),
+                output.held,
+                self.audio.slot.is_some(),
+            ),
+            output,
+            monitor,
+            export_rate: self.editor.export_rate,
+            task_title: self.audio.slot.as_ref().map(|task| task.title.clone()),
+            failed_title: state.failed_title().map(str::to_owned),
+            view: self.view,
+            motion: state.motion(),
+            hold_override: state.hold_overridden(),
+            model: state.model().cloned(),
+        }
     }
 
     /// The selected inspection and export rate's export choices.

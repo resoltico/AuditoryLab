@@ -27,7 +27,7 @@ pub(crate) enum Policy<'a> {
 #[derive(Debug)]
 pub(crate) struct Published<T> {
     pub(crate) value: T,
-    pub(crate) warnings: Vec<String>,
+    pub(crate) warnings: Vec<crate::storage::warning::StorageWarning>,
 }
 /// Open without following the last symlink or waiting for a FIFO.
 pub(crate) fn open_regular(dir: &Dir, name: &Path) -> Result<File, Error> {
@@ -271,9 +271,11 @@ pub(crate) fn publish_in<T>(
             .map_err(|e| io(path, IoOperation::Inspect, e))
             .and_then(|()| observed(dir, name, None));
         match found {
-            Ok(Some(fingerprint)) if fingerprint == candidate => warnings.push(
-                crate::presentation::publication_text::saved_after_io(&error),
-            ),
+            Ok(Some(fingerprint)) if fingerprint == candidate => {
+                warnings.push(crate::storage::warning::StorageWarning::SavedAfterIo {
+                    cause: crate::storage::error::IoCause::new(error),
+                })
+            }
             Ok(found) if found == previous => {
                 return Err(cleanup(
                     dir,
@@ -308,9 +310,11 @@ pub(crate) fn publish_in<T>(
     drop(file);
     if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
         match observed(dir, name, None) {
-            Ok(Some(found)) if found == candidate => warnings.push(
-                crate::presentation::publication_text::saved_durability(&error),
-            ),
+            Ok(Some(found)) if found == candidate => {
+                warnings.push(crate::storage::warning::StorageWarning::SavedDurability {
+                    cause: crate::storage::error::IoCause::new(error),
+                })
+            }
             Ok(found) if found == previous => {
                 return Err(cleanup(
                     dir,
@@ -341,9 +345,10 @@ pub(crate) fn publish_in<T>(
     if matches!(policy, Policy::CreateNew)
         && let Err(error) = fault(FaultPoint::Cleanup).and_then(|()| dir.remove_file(&stage))
     {
-        warnings.push(crate::presentation::publication_text::retained_stage(
-            &stage, &error,
-        ));
+        warnings.push(crate::storage::warning::StorageWarning::RetainedStage {
+            path: (stage).to_path_buf(),
+            cause: crate::storage::error::IoCause::new(error),
+        });
     }
     Ok(Published { value, warnings })
 }
@@ -460,7 +465,7 @@ pub(crate) fn relocate(
     source: &Path,
     destination: &Path,
     cancel: &Cancel,
-) -> Result<Vec<String>, Error> {
+) -> Result<Vec<crate::storage::warning::StorageWarning>, Error> {
     if cancel.is_requested() {
         return Err(cancelled(destination));
     }
@@ -499,17 +504,20 @@ pub(crate) fn relocate(
     let mut warnings = Vec::new();
     if let Err(error) = removal {
         match fault(FaultPoint::Verify).and_then(|()| from.symlink_metadata(name)) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(
-                crate::presentation::publication_text::moved_after_io(&error),
-            ),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                warnings.push(crate::storage::warning::StorageWarning::MovedAfterIo {
+                    cause: crate::storage::error::IoCause::new(error),
+                })
+            }
             Ok(_)
                 if destination.parent().and_then(Path::file_name)
                     == Some(std::ffi::OsStr::new("trash"))
                     && same_file(from, name, to, name)? =>
             {
-                warnings.push(crate::presentation::publication_text::trash_link(
-                    source, &error,
-                ))
+                warnings.push(crate::storage::warning::StorageWarning::TrashLink {
+                    path: (source).to_path_buf(),
+                    cause: crate::storage::error::IoCause::new(error),
+                })
             }
             Ok(_) => {
                 return Err(failed(
@@ -551,14 +559,18 @@ pub(crate) fn relocate(
                     ));
                 }
             }
-            warnings.push(crate::presentation::publication_text::moved_durability(
-                &error,
-            ));
+            warnings.push(crate::storage::warning::StorageWarning::MovedDurability {
+                cause: crate::storage::error::IoCause::new(error),
+            });
         }
     }
     Ok(warnings)
 }
-pub(crate) fn remove(dir: &Dir, name: &Path, path: &Path) -> Result<Vec<String>, Error> {
+pub(crate) fn remove(
+    dir: &Dir,
+    name: &Path,
+    path: &Path,
+) -> Result<Vec<crate::storage::warning::StorageWarning>, Error> {
     let result = fault(FaultPoint::BeforeRemove)
         .and_then(|()| dir.remove_file(name))
         .and_then(|()| fault(FaultPoint::AfterRemove));
@@ -566,9 +578,11 @@ pub(crate) fn remove(dir: &Dir, name: &Path, path: &Path) -> Result<Vec<String>,
     let mut warnings = Vec::new();
     if let Err(error) = result {
         match fault(FaultPoint::Verify).and_then(|()| dir.symlink_metadata(name)) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(
-                crate::presentation::publication_text::deleted_after_io(&error),
-            ),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                warnings.push(crate::storage::warning::StorageWarning::DeletedAfterIo {
+                    cause: crate::storage::error::IoCause::new(error),
+                })
+            }
             Ok(_) => {
                 return Err(failed(
                     path,
@@ -590,9 +604,11 @@ pub(crate) fn remove(dir: &Dir, name: &Path, path: &Path) -> Result<Vec<String>,
     }
     if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
         match dir.symlink_metadata(name) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => warnings.push(
-                crate::presentation::publication_text::deleted_durability(&error),
-            ),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                warnings.push(crate::storage::warning::StorageWarning::DeletedDurability {
+                    cause: crate::storage::error::IoCause::new(error),
+                })
+            }
             found => {
                 let confirmation = match found {
                     Ok(_) => Confirmation::Different,

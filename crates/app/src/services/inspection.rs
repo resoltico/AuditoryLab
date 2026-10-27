@@ -9,10 +9,16 @@ use {
 pub struct Description<'a> {
     pub(super) source: &'a Resolved,
     pub(super) text: std::sync::Arc<str>,
-    pub(super) history: Vec<String>,
+    pub(super) history: Vec<crate::storage::warning::StorageWarning>,
 }
 impl<'a> Description<'a> {
-    pub(crate) fn into_parts(self) -> (&'a Resolved, std::sync::Arc<str>, Vec<String>) {
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        &'a Resolved,
+        std::sync::Arc<str>,
+        Vec<crate::storage::warning::StorageWarning>,
+    ) {
         (self.source, self.text, self.history)
     }
     /// Captured source and correlated ownership.
@@ -27,7 +33,7 @@ impl<'a> Description<'a> {
     }
     /// Declared chronology warnings against one observed clock.
     #[must_use]
-    pub fn history_warnings(&self) -> &[String] {
+    pub fn history_warnings(&self) -> &[crate::storage::warning::StorageWarning] {
         &self.history
     }
 }

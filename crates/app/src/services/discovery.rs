@@ -30,7 +30,7 @@ pub struct Listing {
     groups: Vec<ResultGroup>,
     complete: bool,
     diagnostics: Vec<LibraryDiagnostic>,
-    stages: Vec<String>,
+    stages: Vec<std::path::PathBuf>,
     outcome: Option<Outcome>,
 }
 impl Listing {
@@ -61,7 +61,7 @@ impl Listing {
     }
     /// Owned staging artifacts retained for recovery.
     #[must_use]
-    pub fn stages(&self) -> &[String] {
+    pub fn stages(&self) -> &[std::path::PathBuf] {
         &self.stages
     }
     /// Frontend-independent incomplete/cancellation outcome.

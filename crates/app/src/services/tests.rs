@@ -2,6 +2,7 @@
 use super::*;
 use crate::core::query::Scope;
 use crate::document::origin::LibraryKey;
+use crate::presentation::Explain;
 use library::{DiagnosticDetail, Library};
 use {
     crate::audio::PlaybackError, crate::discovery::collection::CatalogQuery,
@@ -197,7 +198,7 @@ fn source_errors_keep_raw_path_data_and_escape_it_only_for_display() {
     assert!(
         matches!(&error, crate::storage::load::LoadError::Recipe { origin: crate::document::recipe::Origin::File(original), .. } if original == &path)
     );
-    let text = error.to_string();
+    let text = error.explain();
     assert!(
         text.starts_with(directory.path().to_str().unwrap()),
         "{text}"

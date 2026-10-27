@@ -40,7 +40,7 @@ pub struct ExternalOutcome {
     pub recipe: Arc<Recipe>,
     observed: ObservedFile,
     /// Durability and chronology context.
-    pub diagnostics: Vec<String>,
+    pub diagnostics: Vec<crate::storage::warning::StorageWarning>,
 }
 impl ExternalOutcome {
     /// Capture the confirmed saved baseline without rereading a later file version.
@@ -124,7 +124,7 @@ impl ExternalWriter {
             .modified_at
             .is_some_and(|prior| now < prior)
         {
-            diagnostics.push(crate::presentation::publication_text::CLOCK_PREDATES_EDIT.into());
+            diagnostics.push(crate::storage::warning::StorageWarning::ClockPredatesEdit);
         }
         document.modified_at = Some(now);
         let recipe = (*recipe)

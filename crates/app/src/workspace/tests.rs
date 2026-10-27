@@ -55,11 +55,14 @@ impl TestWorkspace {
         self.inner.poll()
     }
     fn select(&mut self, position: usize) {
-        let key = self.library_view().rows[position].key.clone();
+        let key = crate::presentation::workspace_text::library_view(&self.inner.library_view())
+            .rows[position]
+            .key
+            .clone();
         self.select_library_key(&key);
     }
     fn visible_count(&self) -> usize {
-        self.library_view()
+        crate::presentation::workspace_text::library_view(&self.inner.library_view())
             .rows
             .iter()
             .filter(|row| !row.key.is_empty())
@@ -113,7 +116,7 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     document(&mut ws, 440.0);
     ws.poll();
     let view = crate::presentation::workspace_text::editor_view(&ws.editor_view());
-    let actions = ws.action_view();
+    let actions = crate::presentation::workspace_text::action_view(&ws.action_view());
     let previews = ws.audio.output.previews;
     let models = ws.audio.output.models;
     let evaluations = ws.editor.session.evaluations();
@@ -124,7 +127,10 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     for _ in 0..100 {
         assert!(!ws.poll());
     }
-    assert_eq!(ws.action_view(), actions);
+    assert_eq!(
+        crate::presentation::workspace_text::action_view(&ws.action_view()),
+        actions
+    );
     assert_eq!(ws.audio.output.previews, previews);
     assert_eq!(ws.audio.output.models, models);
     assert_eq!(ws.editor.session.evaluations(), evaluations);
@@ -184,7 +190,13 @@ fn invalid_commits_clear_unheld_previews_and_held_captures_stay_frozen() {
         current.capture.is_none(),
         "invalid committed source clears the preview"
     );
-    assert!(current.unavailable.unwrap().contains("48000 Hz"));
+    assert!(
+        current
+            .unavailable
+            .unwrap()
+            .description()
+            .contains("48000 Hz")
+    );
     let evaluations = ws.editor.session.evaluations();
     for _ in 0..10 {
         ws.poll();
@@ -226,8 +238,12 @@ fn a_search_that_hides_every_recipe_leaves_nothing_to_play_or_export() {
             .all(|effect| !matches!(effect, Effect::Run(_))),
         "refused commands never admit jobs"
     );
-    assert!(!ws.action_view().can_play);
-    assert!(ws.library_view().selected.is_none());
+    assert!(!crate::presentation::workspace_text::action_view(&ws.action_view()).can_play);
+    assert!(
+        crate::presentation::workspace_text::library_view(&ws.library_view())
+            .selected
+            .is_none()
+    );
     ws.copy_selected();
     assert_eq!(ws.view(), View::Library, "nothing to copy");
     ws.set_query("");
@@ -262,7 +278,7 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
     let next_id = ws.next_id;
     let effects = ws.take_effects();
     for _ in 0..10 {
-        let actions = ws.action_view();
+        let actions = crate::presentation::workspace_text::action_view(&ws.action_view());
         assert!(actions.can_save);
         assert!(!actions.can_export);
     }
@@ -292,24 +308,34 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
 #[test]
 fn library_dependencies_exclude_editor_and_telemetry_but_include_selection_query_and_rate() {
     let mut ws = workspace();
-    let initial = ws.library_view();
+    let initial = crate::presentation::workspace_text::library_view(&ws.library_view());
     let evaluations = ws.library.evaluations.get();
     let (_, field) = document(&mut ws, 440.0);
     ws.stage(field, "880").unwrap();
-    ws.action_view();
+    let _ = crate::presentation::workspace_text::action_view(&ws.action_view());
     let _ = crate::presentation::workspace_text::editor_view(&ws.editor_view());
     ws.poll();
-    assert_eq!(ws.library_view(), initial);
+    assert_eq!(
+        crate::presentation::workspace_text::library_view(&ws.library_view()),
+        initial
+    );
     assert_eq!(ws.library.evaluations.get(), evaluations);
     ws.select(1);
-    assert_ne!(ws.library_view().title, initial.title);
+    assert_ne!(
+        crate::presentation::workspace_text::library_view(&ws.library_view()).title,
+        initial.title
+    );
     assert_eq!(ws.library.evaluations.get(), evaluations + 1);
     ws.set_query("no matching result");
-    let empty = ws.library_view();
+    let empty = crate::presentation::workspace_text::library_view(&ws.library_view());
     assert!(empty.rows.is_empty() && empty.title.is_empty() && empty.details.is_empty());
     ws.set_query("");
     ws.set_export_rate(SampleRate::new(96000).unwrap());
-    assert!(!ws.library_view().rows.is_empty());
+    assert!(
+        !crate::presentation::workspace_text::library_view(&ws.library_view())
+            .rows
+            .is_empty()
+    );
     assert_eq!(ws.library.evaluations.get(), evaluations + 3);
 }
 
@@ -382,7 +408,11 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
     for query in ["unique-own-notes-marker", &citation] {
         ws.set_query(query);
         assert_eq!(ws.visible_count(), 1, "{query}");
-        assert!(ws.library_view().details.contains("Source citation:"));
+        assert!(
+            crate::presentation::workspace_text::library_view(&ws.library_view())
+                .details
+                .contains("Source citation:")
+        );
         assert!(ws.selected().unwrap().about().unwrap().research.is_none());
     }
     ws.set_query("not-present-anywhere-marker");
@@ -415,15 +445,15 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     )
     .unwrap();
     let selected = ws.selected().unwrap().clone();
-    let _ = ws.library_view();
+    let _ = crate::presentation::workspace_text::library_view(&ws.library_view());
     let count = selected.realization_count();
     assert_eq!(
         count, 1,
         "rows, structure and details share the same actual compile"
     );
     for _ in 0..10 {
-        ws.action_view();
-        let _ = ws.library_view();
+        let _ = crate::presentation::workspace_text::action_view(&ws.action_view());
+        let _ = crate::presentation::workspace_text::library_view(&ws.library_view());
         ws.set_hold(true);
         ws.set_hold(false);
     }
@@ -436,10 +466,10 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     });
     assert_eq!(selected.realization_count(), count);
     ws.set_export_rate(SampleRate::new(96000).unwrap());
-    ws.action_view();
+    let _ = crate::presentation::workspace_text::action_view(&ws.action_view());
     assert_eq!(selected.realization_count(), count + 1);
     ws.set_export_rate(SampleRate::DEFAULT);
-    ws.action_view();
+    let _ = crate::presentation::workspace_text::action_view(&ws.action_view());
     assert_eq!(selected.realization_count(), count + 1);
     let mut invalid = Draft::new().unwrap();
     invalid.set_duration_seconds(finite(-1.0));
@@ -511,11 +541,19 @@ fn search_retains_flat_ancestor_notes_and_reimport_invalidates_old_metadata() {
     );
     ws.add_import(replacement.clone()).unwrap();
     ws.set_query("original-custom-note-marker");
-    assert!(ws.library_view().rows.is_empty());
+    assert!(
+        crate::presentation::workspace_text::library_view(&ws.library_view())
+            .rows
+            .is_empty()
+    );
     ws.set_query("reimport-source-marker");
     assert_eq!(ws.visible_count(), 1);
-    assert!(ws.library_view().details.contains("reimport-source-marker"));
-    ws.action_view();
+    assert!(
+        crate::presentation::workspace_text::library_view(&ws.library_view())
+            .details
+            .contains("reimport-source-marker")
+    );
+    let _ = crate::presentation::workspace_text::action_view(&ws.action_view());
     assert_eq!(replacement.realization_count(), 1);
     assert_eq!(first.realization_count(), initial);
 }
@@ -587,7 +625,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
         ))
         .unwrap();
     ws.stage(notes, &"Z".repeat(66000)).unwrap();
-    let actions = ws.action_view();
+    let actions = crate::presentation::workspace_text::action_view(&ws.action_view());
     assert!(!actions.can_save);
     assert!(actions.operation_summary.contains("65536"));
     ws.files.status = FileStatus::Exported {
@@ -599,7 +637,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
             warnings: Vec::new(),
         },
     };
-    let actions = ws.action_view();
+    let actions = crate::presentation::workspace_text::action_view(&ws.action_view());
     assert!(actions.operation_summary.contains("65536"));
     assert!(actions.operation_outcome.starts_with("Exported 100"));
     assert!(actions.operation_summary.chars().count() <= 181);
@@ -614,7 +652,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
         }
         .into(),
     );
-    let actions = ws.action_view();
+    let actions = crate::presentation::workspace_text::action_view(&ws.action_view());
     assert!(actions.operation_details.contains("cannot write file"));
     assert!(actions.operation_details.len() > actions.operation_summary.len());
 }
@@ -635,7 +673,12 @@ fn nominal_listing_a_thousand_rows_does_not_compile_every_sound() {
         bands: vec![crate::core::rhythm::Band::Delta],
         ..Default::default()
     });
-    assert_eq!(ws.library_view().rows.len(), 1000);
+    assert_eq!(
+        crate::presentation::workspace_text::library_view(&ws.library_view())
+            .rows
+            .len(),
+        1000
+    );
     assert_eq!(
         snapshots
             .iter()
@@ -645,7 +688,12 @@ fn nominal_listing_a_thousand_rows_does_not_compile_every_sound() {
         "only the selected detail is compiled"
     );
     ws.set_export_rate(SampleRate::new(96_000).unwrap());
-    assert_eq!(ws.library_view().rows.len(), 1000);
+    assert_eq!(
+        crate::presentation::workspace_text::library_view(&ws.library_view())
+            .rows
+            .len(),
+        1000
+    );
     assert_eq!(
         snapshots
             .iter()
@@ -1311,7 +1359,7 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
         for _ in 0..pairs {
             ws.add_pair(key, crate::core::PairKind::Binaural).unwrap();
         }
-        let view = ws.action_view();
+        let view = crate::presentation::workspace_text::action_view(&ws.action_view());
         assert!(!view.can_add_pair);
         assert!(view.pair_add_reason.contains(&format!(
             "{components} authored components and {voices} expanded voices"
@@ -1331,7 +1379,7 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
 fn structured_library_rows_keep_saved_identity_and_rate_independent_classification() {
     let mut ws = workspace();
     ws.set_query("ioannou 2");
-    let view = ws.library_view();
+    let view = crate::presentation::workspace_text::library_view(&ws.library_view());
     assert_eq!(view.rows.len(), 1);
     let row = &view.rows[0];
     assert!(row.key.contains("ioannou-2015-binaural-2-hz"));
@@ -1340,8 +1388,14 @@ fn structured_library_rows_keep_saved_identity_and_rate_independent_classificati
     assert!(row.text.contains(&row.title) && row.text.contains(&row.dates));
     let classification = view.classification.clone();
     ws.set_export_rate(auditorylab_core::SampleRate::new(96_000).unwrap());
-    assert_eq!(ws.library_view().classification, classification);
-    assert_eq!(ws.library_view().rows[0].key, row.key);
+    assert_eq!(
+        crate::presentation::workspace_text::library_view(&ws.library_view()).classification,
+        classification
+    );
+    assert_eq!(
+        crate::presentation::workspace_text::library_view(&ws.library_view()).rows[0].key,
+        row.key
+    );
 }
 
 #[test]

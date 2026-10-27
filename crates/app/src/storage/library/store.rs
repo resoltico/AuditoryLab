@@ -28,22 +28,37 @@ pub(crate) const MAX_SCAN_RAW_BYTES: usize = 256 * 1024 * 1024;
 pub(crate) const MAX_SCAN_DECODED_BYTES: usize = 128 * 1024 * 1024;
 const MEMBERSHIP: &str = "membership.toml";
 const MAX_MEMBERSHIP_BYTES: usize = 4 * 1024 * 1024;
+/// A bounded inventory observation.
+#[derive(Debug, Clone)]
+pub enum InventoryNotice {
+    /// Unknown Root Entry.
+    UnknownRootEntry,
+    /// Unknown Entry.
+    UnknownEntry,
+    /// Uuid Filename Required.
+    UuidFilenameRequired,
+    /// Reserved Builtin Identity.
+    ReservedBuiltinIdentity,
+    /// Interrupted Move.
+    InterruptedMove,
+    /// Duplicate Identity.
+    DuplicateIdentity,
+    /// Membership has no corresponding recipe.
+    OrphanMembership(crate::core::DocumentUuid),
+}
 /// A nonfatal inventory notice or a typed operation failure.
 #[derive(Debug, Clone)]
 pub enum DiagnosticDetail<E = Error> {
     /// A descriptive inventory notice.
-    Notice(String),
+    Notice(InventoryNotice),
+    /// Confirmed storage outcome.
+    Warning(crate::storage::warning::StorageWarning),
     /// A failure with its exact typed cause.
     Failure(Box<E>),
 }
-impl From<String> for DiagnosticDetail {
-    fn from(value: String) -> Self {
+impl From<InventoryNotice> for DiagnosticDetail {
+    fn from(value: InventoryNotice) -> Self {
         Self::Notice(value)
-    }
-}
-impl From<&str> for DiagnosticDetail {
-    fn from(value: &str) -> Self {
-        Self::Notice(value.into())
     }
 }
 impl From<Error> for DiagnosticDetail {
@@ -74,7 +89,7 @@ pub struct Inventory {
     /// Storage, chronology and discovery problems.
     pub diagnostics: Vec<LibraryDiagnostic>,
     /// Owned stages reported without promoting them.
-    pub stages: Vec<String>,
+    pub stages: Vec<std::path::PathBuf>,
     /// All eligible entries were inspected within the limits.
     pub complete: bool,
     /// Missing root has not been initialized.
@@ -290,7 +305,7 @@ pub struct WriteOutcome {
     /// Confirmed current content, absent after purge.
     pub record: Option<LoadedRecord>,
     /// Durability, cleanup, chronology and metadata warnings.
-    pub diagnostics: Vec<String>,
+    pub diagnostics: Vec<crate::storage::warning::StorageWarning>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -461,12 +476,12 @@ impl LibraryStore {
                 return Err(budget());
             }
             if root::owned_stage(&name) {
-                result.stages.push(name.to_string_lossy().into_owned());
+                result.stages.push(name.into());
             } else {
                 result.note(
                     name.to_string_lossy(),
                     "unrecognized_artifact",
-                    crate::presentation::library_text::UNKNOWN_ROOT_ENTRY,
+                    InventoryNotice::UnknownRootEntry,
                 );
             }
         }
@@ -485,14 +500,14 @@ impl LibraryStore {
                 let name = entry.file_name();
                 let relative = format!("{directory}/{}", name.to_string_lossy());
                 if root::owned_stage(&name) {
-                    result.stages.push(relative);
+                    result.stages.push(relative.into());
                     continue;
                 }
                 let Some(stem) = name.to_str().and_then(|n| n.strip_suffix(".toml")) else {
                     result.note(
                         relative,
                         "unrecognized_artifact",
-                        crate::presentation::library_text::UNKNOWN_ENTRY,
+                        InventoryNotice::UnknownEntry,
                     );
                     continue;
                 };
@@ -502,7 +517,7 @@ impl LibraryStore {
                         result.error(
                             relative,
                             "filename",
-                            crate::presentation::library_text::UUID_FILENAME_REQUIRED,
+                            InventoryNotice::UuidFilenameRequired,
                             Outcome::IncompleteInventory,
                         );
                         continue;
@@ -515,7 +530,7 @@ impl LibraryStore {
                     result.error(
                         relative,
                         "reserved_identity",
-                        crate::presentation::library_text::RESERVED_BUILTIN_IDENTITY,
+                        InventoryNotice::ReservedBuiltinIdentity,
                         Outcome::IncompleteInventory,
                     );
                     continue;
@@ -565,11 +580,7 @@ impl LibraryStore {
                 result
                     .entries
                     .retain(|entry| entry.key != LibraryKey::User(id) || entry.trashed);
-                result.note(
-                    name,
-                    "interrupted_move",
-                    crate::presentation::library_text::INTERRUPTED_MOVE,
-                );
+                result.note(name, "interrupted_move", InventoryNotice::InterruptedMove);
             } else {
                 result
                     .entries
@@ -577,7 +588,7 @@ impl LibraryStore {
                 result.error(
                     name,
                     "duplicate_identity",
-                    crate::presentation::library_text::DUPLICATE_IDENTITY,
+                    InventoryNotice::DuplicateIdentity,
                     Outcome::IncompleteInventory,
                 );
             }
@@ -586,7 +597,7 @@ impl LibraryStore {
             result.note(
                 MEMBERSHIP,
                 "orphan_membership",
-                crate::presentation::library_text::orphan_membership(*id),
+                InventoryNotice::OrphanMembership(*id),
             );
         }
         let stages = lease.directory(".stage")?;
@@ -604,7 +615,7 @@ impl LibraryStore {
             let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
             result
                 .stages
-                .push(format!(".stage/{}", entry.file_name().to_string_lossy()));
+                .push(std::path::Path::new(".stage").join(entry.file_name()));
         }
         result.entries.sort_by(|a, b| {
             a.normalized_title
@@ -691,9 +702,9 @@ impl LibraryStore {
         }
         let removed = prune_memberships(&lease, &mut memberships)?;
         if removed > 0 {
-            diagnostics.push(crate::presentation::library_text::removed_memberships(
-                removed,
-            ));
+            diagnostics.push(
+                crate::storage::warning::StorageWarning::RemovedMemberships { count: removed },
+            );
             persist_memberships(&lease, &memberships, cancel, &mut diagnostics);
         }
         if let Some(old) = old.as_ref()
@@ -868,7 +879,7 @@ fn persist_memberships(
     lease: &root::Lease,
     memberships: &Memberships,
     _cancel: &Cancel,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<crate::storage::warning::StorageWarning>,
 ) -> bool {
     // The primary recipe already committed; cancellation cannot undo it or skip best-effort timestamps.
     let result = (|| {
@@ -904,14 +915,20 @@ fn persist_memberships(
             true
         }
         Err(error) => {
-            warnings.push(crate::presentation::library_text::membership_update_failed(
-                &error,
-            ));
+            warnings.push(
+                crate::storage::warning::StorageWarning::MembershipUpdateFailed {
+                    cause: Box::new(error),
+                },
+            );
             false
         }
     }
 }
-fn refresh_membership(lease: &root::Lease, record: &mut LoadedRecord, warnings: &mut Vec<String>) {
+fn refresh_membership(
+    lease: &root::Lease,
+    record: &mut LoadedRecord,
+    warnings: &mut Vec<crate::storage::warning::StorageWarning>,
+) {
     match read_memberships(&lease.dir) {
         Ok(memberships) => {
             let membership = crate::storage::library::require_user(&record.key)
@@ -927,9 +944,11 @@ fn refresh_membership(lease: &root::Lease, record: &mut LoadedRecord, warnings: 
         Err(error) => {
             record.added_at = None;
             record.trashed_at = None;
-            warnings.push(crate::presentation::library_text::membership_read_failed(
-                &error,
-            ));
+            warnings.push(
+                crate::storage::warning::StorageWarning::MembershipReadFailed {
+                    cause: Box::new(error),
+                },
+            );
         }
     }
 }
@@ -990,7 +1009,10 @@ fn prune_memberships(lease: &root::Lease, memberships: &mut Memberships) -> Resu
     memberships.entries.retain(|id, _| keep.contains(id));
     Ok(before - memberships.entries.len())
 }
-fn reconcile_moves(lease: &root::Lease, warnings: &mut Vec<String>) -> Result<(), Error> {
+fn reconcile_moves(
+    lease: &root::Lease,
+    warnings: &mut Vec<crate::storage::warning::StorageWarning>,
+) -> Result<(), Error> {
     let recipes = lease.directory("recipes")?;
     let trash = lease.directory("trash")?;
     for entry in trash
@@ -1012,7 +1034,9 @@ fn reconcile_moves(lease: &root::Lease, warnings: &mut Vec<String>) -> Result<()
             recipes
                 .remove_file(&name)
                 .map_err(|e| root::io(IoOperation::Remove, e))?;
-            warnings.push(crate::presentation::library_text::recovered_move(&name));
+            warnings.push(crate::storage::warning::StorageWarning::RecoveredMove {
+                name: (name).to_owned(),
+            });
         }
     }
     Ok(())
@@ -1021,7 +1045,7 @@ fn outcome(
     key: LibraryKey,
     kind: MutationKind,
     record: Option<LoadedRecord>,
-    diagnostics: Vec<String>,
+    diagnostics: Vec<crate::storage::warning::StorageWarning>,
 ) -> WriteOutcome {
     WriteOutcome {
         status: if diagnostics.is_empty() {
@@ -1039,7 +1063,7 @@ fn unchanged(
     key: LibraryKey,
     kind: MutationKind,
     record: LoadedRecord,
-    diagnostics: Vec<String>,
+    diagnostics: Vec<crate::storage::warning::StorageWarning>,
 ) -> WriteOutcome {
     WriteOutcome {
         status: MutationStatus::Unchanged,
@@ -1056,7 +1080,11 @@ fn budget() -> Error {
     Error::ScanBudget
 }
 
-fn chronology(recipe: &Recipe, previous: Option<&Recipe>, now: Timestamp) -> Vec<String> {
+fn chronology(
+    recipe: &Recipe,
+    previous: Option<&Recipe>,
+    now: Timestamp,
+) -> Vec<crate::storage::warning::StorageWarning> {
     let mut warnings = Vec::new();
     if recipe
         .document()
@@ -1064,27 +1092,29 @@ fn chronology(recipe: &Recipe, previous: Option<&Recipe>, now: Timestamp) -> Vec
         .zip(recipe.document().modified_at)
         .is_some_and(|(created, modified)| modified < created)
     {
-        warnings.push(crate::presentation::library_text::MODIFICATION_PRECEDES_CREATION.into());
+        warnings.push(crate::storage::warning::StorageWarning::ModificationPrecedesCreation);
     }
     if previous
         .and_then(|p| p.document().modified_at.or(p.document().created_at))
         .is_some_and(|prior| now < prior)
     {
-        warnings.push(crate::presentation::library_text::CLOCK_PREDATES_HISTORY.into());
+        warnings.push(crate::storage::warning::StorageWarning::ClockPredatesHistory);
     }
     if recipe.document().created_at.is_some_and(|date| date > now)
         || recipe.document().modified_at.is_some_and(|date| date > now)
     {
-        warnings.push(crate::presentation::library_text::FUTURE_HISTORY.into());
+        warnings.push(crate::storage::warning::StorageWarning::FutureHistory);
     }
     warnings
 }
 /// Inspect declared chronology without changing imported dates or fabricating history.
 /// The observed clock is presentation context, never a version token.
 #[must_use]
-pub fn history_warnings(recipe: &Recipe) -> Vec<String> {
+pub fn history_warnings(recipe: &Recipe) -> Vec<crate::storage::warning::StorageWarning> {
     observed_now().map_or_else(
-        |error| vec![crate::presentation::library_text::unavailable_history_clock(&error)],
+        |error| {
+            vec![crate::storage::warning::StorageWarning::UnavailableHistoryClock { cause: error }]
+        },
         |now| chronology(recipe, None, now),
     )
 }

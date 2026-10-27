@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::core::query::{Direction, GroupBy, SortBy};
+use crate::presentation::LibraryPresentation;
 use crate::services::library::Library;
 
 fn fixture() -> (tempfile::TempDir, Library, Workspace) {
@@ -150,6 +151,10 @@ fn summary_rows_show_real_sort_date_unknown_edit_and_added_without_loading_docum
     };
     p.refilter();
     let (rows, _) = p.rows();
+    let rows = rows
+        .iter()
+        .map(|row| crate::presentation::library_text::row(row, p.query.effective_sort().0))
+        .collect::<Vec<_>>();
     assert_eq!(
         rows[0].key,
         known.key.to_string(),
@@ -161,6 +166,10 @@ fn summary_rows_show_real_sort_date_unknown_edit_and_added_without_loading_docum
     p.query.direction = Some(Direction::Asc);
     p.refilter();
     let (rows, _) = p.rows();
+    let rows = rows
+        .iter()
+        .map(|row| crate::presentation::library_text::row(row, p.query.effective_sort().0))
+        .collect::<Vec<_>>();
     assert_eq!(rows[0].key, unknown.key.to_string());
     assert!(rows[0].text.contains(&format!(
         "Created: {}",
@@ -170,6 +179,10 @@ fn summary_rows_show_real_sort_date_unknown_edit_and_added_without_loading_docum
     p.query.direction = Some(Direction::Desc);
     p.refilter();
     let (rows, _) = p.rows();
+    let rows = rows
+        .iter()
+        .map(|row| crate::presentation::library_text::row(row, p.query.effective_sort().0))
+        .collect::<Vec<_>>();
     assert_eq!(rows[0].key, unknown.key.to_string());
     assert!(rows[0].text.contains("Edited: Unknown") && rows[0].text.contains("Added here:"));
     assert!(
@@ -259,7 +272,11 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     let (key, token, _) = w.library_binding();
     w.mutate_library(&key, &token, "trash", "", false).unwrap();
     idle(&mut w);
-    assert!(w.library_view().rows.is_empty());
+    assert!(
+        crate::presentation::workspace_text::library_view(&w.library_view())
+            .rows
+            .is_empty()
+    );
     w.set_catalog_query(CatalogQuery {
         scope: Scope::Trash,
         ..CatalogQuery::default()
@@ -342,7 +359,7 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
     w.refresh_library();
     idle(&mut w);
     assert_eq!(
-        w.library_view()
+        crate::presentation::workspace_text::library_view(&w.library_view())
             .rows
             .iter()
             .filter(|row| !row.key.is_empty())
@@ -350,7 +367,7 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
         1
     );
     assert!(
-        w.library_view()
+        crate::presentation::workspace_text::library_view(&w.library_view())
             .rows
             .iter()
             .any(|row| row.text.contains("Needs review"))
@@ -521,8 +538,7 @@ fn a_failed_completion_keeps_draft_and_retry_observes_actual_storage() {
         });
         assert!(workspace.editor().dirty());
         assert!(
-            workspace
-                .action_view()
+            crate::presentation::workspace_text::action_view(&workspace.action_view())
                 .operation_details
                 .contains("thread failed")
         );
@@ -531,8 +547,7 @@ fn a_failed_completion_keeps_draft_and_retry_observes_actual_storage() {
         if applied {
             assert!(workspace.editor().dirty());
             assert!(
-                workspace
-                    .action_view()
+                crate::presentation::workspace_text::action_view(&workspace.action_view())
                     .operation_details
                     .contains("identity already exists")
             );
@@ -705,10 +720,10 @@ fn selected_ready(workspace: &mut Workspace, key: &LibraryKey, title: &str, quer
         Some(key)
     );
     assert_eq!(workspace.selected().unwrap().title(), title);
-    let view = workspace.library_view();
+    let view = crate::presentation::workspace_text::library_view(&workspace.library_view());
     assert_eq!(view.title, title);
     assert!(view.details.contains(title));
-    let actions = workspace.action_view();
+    let actions = crate::presentation::workspace_text::action_view(&workspace.action_view());
     assert!(actions.can_play);
     assert!(actions.can_copy);
     assert!(actions.can_export);
@@ -837,7 +852,10 @@ fn retained_user_source_exports_its_captured_portable_text_without_reloading_use
     assert!(!workspace.library.selected_user());
     let next = workspace.next_id;
     for _ in 0..20 {
-        assert!(workspace.action_view().can_export_recipe);
+        assert!(
+            crate::presentation::workspace_text::action_view(&workspace.action_view())
+                .can_export_recipe
+        );
     }
     assert_eq!(workspace.next_id, next);
     let first = workspace.prepare_export_recipe().unwrap().0;

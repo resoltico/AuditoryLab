@@ -102,3 +102,55 @@ impl From<crate::document::origin::OriginError> for OperationError {
         Self::Library(LibraryError::from(error))
     }
 }
+
+impl std::fmt::Display for ExportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::File { .. } => "export.file",
+            Self::Sound { .. } => "export.sound",
+        })
+    }
+}
+impl std::error::Error for ExportError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::File { error } => Some(error),
+            Self::Sound { error, .. } => Some(error),
+        }
+    }
+}
+
+impl std::fmt::Display for crate::services::OperationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use crate::services::OperationError as E;
+        match self {
+            E::Load(error) => error.fmt(f),
+            E::Library(error) => error.fmt(f),
+            E::Export(error) => error.fmt(f),
+            E::Playback(error) => error.fmt(f),
+            E::Save(error) => error.fmt(f),
+            E::Editor(error) => error.fmt(f),
+            E::Identity(error) => error.fmt(f),
+            E::Query(error) => error.fmt(f),
+            E::File(error) => error.fmt(f),
+            E::Recipe(error) => error.fmt(f),
+        }
+    }
+}
+impl std::error::Error for crate::services::OperationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        use crate::services::OperationError as E;
+        Some(match self {
+            E::Load(error) => error,
+            E::Library(error) => error,
+            E::Export(error) => error,
+            E::Playback(error) => error,
+            E::Save(error) => error,
+            E::Editor(error) => error,
+            E::Identity(error) => error,
+            E::Query(error) => error,
+            E::File(error) => error,
+            E::Recipe(error) => error,
+        })
+    }
+}

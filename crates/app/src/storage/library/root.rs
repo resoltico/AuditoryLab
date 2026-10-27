@@ -280,14 +280,14 @@ pub struct RootInfo {
     pub initialized: bool,
 }
 /// Explicit initialization result, distinct from creating any recipe.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct Initialization {
     /// False when a supported initialized root already existed.
     pub created: bool,
     /// Root actually initialized/observed.
     pub path: PathBuf,
     /// Post-publication durability/cleanup warnings.
-    pub warnings: Vec<String>,
+    pub warnings: Vec<crate::storage::warning::StorageWarning>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -380,7 +380,7 @@ pub(super) fn owned_stage(name: &std::ffi::OsStr) -> bool {
 pub(super) fn cleanup_stages(
     dir: &Dir,
     path: &Path,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<crate::storage::warning::StorageWarning>,
 ) -> Result<(), Error> {
     for entry in dir.entries().map_err(|e| io(IoOperation::Read, e))? {
         let entry = entry.map_err(|e| io(IoOperation::Inspect, e))?;
@@ -393,9 +393,9 @@ pub(super) fn cleanup_stages(
         {
             dir.remove_file(&name)
                 .map_err(|e| io(IoOperation::Remove, e))?;
-            warnings.push(crate::presentation::library_text::removed_stage(
-                &path.join(name),
-            ));
+            warnings.push(crate::storage::warning::StorageWarning::RemovedStage {
+                path: (path.join(name)).to_path_buf(),
+            });
         }
     }
     Ok(())

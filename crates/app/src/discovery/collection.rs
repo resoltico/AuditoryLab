@@ -214,13 +214,31 @@ impl Default for CatalogQuery {
         }
     }
 }
+/// The membership that determines a virtual group label.
+#[derive(Debug, Clone)]
+pub enum GroupLabel {
+    /// A disclosed nominal reference band.
+    Band(rhythm::Band),
+    /// A nominal coverage or multiplicity state.
+    State(crate::core::query::RhythmState),
+    /// A declared structural method.
+    Method(rhythm::Method),
+    /// No method is declared by the indexed source.
+    NoMethod,
+    /// Correlated DOI or bibliography key supplied by the source.
+    Study(String),
+    /// No current-condition study is declared.
+    NoStudy,
+    /// Runtime ownership collection.
+    Collection(Collection),
+}
 /// A group references keys, never divergent duplicate entry objects.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct ResultGroup {
     /// Stable group identifier.
     pub key: String,
     /// Human label.
-    pub label: String,
+    pub label: GroupLabel,
     /// Unique keys within this group, in result order.
     pub keys: Vec<LibraryKey>,
 }
@@ -438,29 +456,41 @@ impl CatalogQuery {
                 GroupBy::None => {}
                 GroupBy::Band => {
                     for band in &entry.nominal.bands {
-                        values.push((band.key().into(), band.to_string()));
+                        values.push((band.key().into(), GroupLabel::Band(*band)));
                     }
                     if entry.nominal.outside_bands() {
-                        values.push(("other-rates".into(), "Other rates".into()));
+                        values.push((
+                            "other-rates".into(),
+                            GroupLabel::State(crate::core::query::RhythmState::OutsideBands),
+                        ));
                     }
                     if entry.nominal.no_rhythm() {
-                        values.push(("no-rhythm".into(), "No rhythmic rate".into()));
+                        values.push((
+                            "no-rhythm".into(),
+                            GroupLabel::State(crate::core::query::RhythmState::None),
+                        ));
                     }
                     if entry.nominal.multiple() {
-                        values.push(("multiple-rhythms".into(), "Multiple rhythms".into()));
+                        values.push((
+                            "multiple-rhythms".into(),
+                            GroupLabel::State(crate::core::query::RhythmState::Multiple),
+                        ));
                     }
                     if entry.nominal.completeness != rhythm::Completeness::Complete
                         || !entry.nominal.diagnostics.is_empty()
                     {
-                        values.push(("needs-review".into(), "Needs review".into()));
+                        values.push((
+                            "needs-review".into(),
+                            GroupLabel::State(crate::core::query::RhythmState::NeedsReview),
+                        ));
                     }
                 }
                 GroupBy::Method => {
                     for method in &entry.nominal.methods {
-                        values.push((method.key().into(), method.key().into()));
+                        values.push((method.key().into(), GroupLabel::Method(*method)));
                     }
                     if values.is_empty() {
-                        values.push(("none".into(), "No declared method".into()));
+                        values.push(("none".into(), GroupLabel::NoMethod));
                     }
                 }
                 GroupBy::Study => {
@@ -470,13 +500,10 @@ impl CatalogQuery {
                         .filter(|e| e.scope == EvidenceScope::ReferenceCondition)
                     {
                         let label = e.doi.as_deref().unwrap_or(&e.source).to_owned();
-                        values.push((format!("study:{label}"), label));
+                        values.push((format!("study:{label}"), GroupLabel::Study(label)));
                     }
                     if values.is_empty() {
-                        values.push((
-                            "no-current-study".into(),
-                            "No current study declaration".into(),
-                        ));
+                        values.push(("no-current-study".into(), GroupLabel::NoStudy));
                     }
                 }
                 GroupBy::Collection => {
@@ -485,7 +512,7 @@ impl CatalogQuery {
                         Collection::User => "User",
                         Collection::External => "Open files",
                     };
-                    values.push((label.into(), label.into()));
+                    values.push((label.into(), GroupLabel::Collection(entry.collection())));
                 }
             }
             for (key, label) in values {

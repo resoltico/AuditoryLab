@@ -178,10 +178,10 @@ impl std::fmt::Debug for Job {
     }
 }
 /// A worker failure, distinct from an operation's own error.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum WorkerFailure {
     /// The operating system refused thread creation.
-    Launch(std::io::Error),
+    Launch(crate::services::IoCause),
     /// The worker panicked; storage may have changed before the panic.
     Panicked,
     /// A completion did not match its admitted operation.
@@ -198,28 +198,23 @@ pub enum JobOutcome {
     Failed(WorkerFailure),
 }
 impl JobOutcome {
-    pub(crate) fn failure(&self) -> Option<String> {
-        match self {
-            Self::Failed(error) => Some(error.description()),
-            Self::Audio(Err(error)) => Some(error.to_string()),
-            Self::File(outcome) => {
-                let value = match outcome {
-                    FileOutcome::Imported(Err(error)) => Some((error.outcome(), error.to_string())),
-                    FileOutcome::Managed(Err(error)) => Some((error.outcome(), error.to_string())),
-                    FileOutcome::RecipeExported(Err(error)) => {
-                        Some((error.outcome(), error.to_string()))
-                    }
-                    FileOutcome::Exported(Err(error)) => Some((error.outcome(), error.to_string())),
-                    _ => None,
-                };
-                value
-                    .filter(|(outcome, _)| *outcome != Outcome::Cancelled)
-                    .map(|(_, message)| message)
-            }
-            _ => None,
-        }
+    pub(crate) fn failure(&self) -> Option<TaskFailure> {
+        let error = match self {
+            Self::Failed(error) => return Some(TaskFailure::Worker(error.clone())),
+            Self::Audio(Err(error)) => crate::services::OperationError::from(error.clone()),
+            Self::File(outcome) => match outcome {
+                FileOutcome::Imported(Err(error)) => error.clone().into(),
+                FileOutcome::Managed(Err(error)) => error.clone(),
+                FileOutcome::RecipeExported(Err(error)) => error.clone().into(),
+                FileOutcome::Exported(Err(error)) => error.clone().into(),
+                _ => return None,
+            },
+            _ => return None,
+        };
+        (error.outcome() != Outcome::Cancelled).then_some(TaskFailure::Operation(error))
     }
 }
+
 impl Job {
     pub(crate) fn file(id: TaskId, kind: FileKind) -> Self {
         Self {
@@ -388,7 +383,9 @@ impl Runner {
             }),
             Err(error) => self.ready.push(Response::Finished {
                 job: id,
-                outcome: JobOutcome::Failed(WorkerFailure::Launch(error)),
+                outcome: JobOutcome::Failed(WorkerFailure::Launch(crate::services::IoCause::new(
+                    error,
+                ))),
             }),
         }
     }
@@ -424,7 +421,7 @@ impl Runner {
     ///
     /// # Errors
     /// Returns the joined workers' operation and execution failures.
-    pub fn shutdown(mut self, mut workspace: Workspace) -> Result<(), String> {
+    pub fn shutdown(mut self, mut workspace: Workspace) -> Result<(), ShutdownError> {
         workspace.prepare_shutdown();
         for effect in workspace.take_effects() {
             if let super::Effect::Run(job) = effect {
@@ -466,35 +463,127 @@ impl Runner {
                 && let Some((operation_error, context, active_file)) = failure
             {
                 if let Some(error) = operation_error {
-                    errors.push(
-                        if active_file {
-                            workspace.files.status.library_failure_notice()
-                        } else {
-                            None
+                    let library = if active_file {
+                        match &workspace.files.status {
+                            super::status::FileStatus::Library(
+                                super::status::LibraryStatus::Failed {
+                                    error,
+                                    publishing,
+                                    context,
+                                },
+                            ) => Some(LibraryFailure {
+                                error: error.clone(),
+                                publishing: *publishing,
+                                context: context.clone(),
+                            }),
+                            _ => None,
                         }
-                        .unwrap_or_else(|| format!("{error}{context}")),
-                    );
+                    } else {
+                        None
+                    };
+                    if let Some(failure) = library {
+                        errors.push(ShutdownIssue::Library(failure));
+                    } else {
+                        errors.push(ShutdownIssue::Task {
+                            error,
+                            context: context.clone(),
+                        });
+                    }
                 }
                 if active_file && let Some(error) = workspace.files.status.editor_reset_error() {
-                    errors.push(crate::presentation::status_text::shutdown_reset_failure(
-                        error, &context,
-                    ));
+                    errors.push(ShutdownIssue::EditorReset {
+                        error: error.clone(),
+                        context: context.clone(),
+                    });
                 }
                 if disposition == super::ResponseDisposition::Rejected {
-                    errors.push(format!(
-                        "{}{context}",
-                        WorkerFailure::InvalidOutcome.description()
-                    ));
+                    errors.push(ShutdownIssue::Task {
+                        error: TaskFailure::Worker(WorkerFailure::InvalidOutcome),
+                        context,
+                    });
                 }
             }
         }
         if errors.is_empty() {
             Ok(())
         } else {
-            Err(errors.join("\n"))
+            Err(ShutdownError { issues: errors })
         }
     }
 }
 
 #[cfg(test)]
 mod tests;
+
+impl std::fmt::Display for WorkerFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Launch(..) => "worker.launch",
+            Self::Panicked => "worker.panicked",
+            Self::InvalidOutcome => "worker.invalid_outcome",
+        })
+    }
+}
+
+/// Captured source of an admitted worker operation.
+#[derive(Debug, Clone)]
+pub enum JobContext {
+    /// Managed root and captured selector.
+    Library(super::status::LibraryContext),
+    /// Portable input or export destination.
+    File(std::path::PathBuf),
+    /// Audio source title at admission.
+    Audio(String),
+    /// The operation no longer has a retained slot.
+    Unknown,
+}
+/// Operation or worker execution failure, with the original cause.
+#[derive(Debug, Clone)]
+pub enum TaskFailure {
+    /// The operation returned a failure.
+    Operation(crate::services::OperationError),
+    /// Execution failed independently of the operation.
+    Worker(WorkerFailure),
+}
+/// Managed failure context for recovery wording.
+#[derive(Debug, Clone)]
+pub struct LibraryFailure {
+    /// Retained operation cause.
+    pub error: crate::services::OperationError,
+    /// Whether the admitted operation could publish.
+    pub publishing: bool,
+    /// Exact root and selector used by the operation.
+    pub context: super::status::LibraryContext,
+}
+/// A joined shutdown operation could not complete cleanly.
+#[derive(Debug, Clone)]
+pub enum ShutdownIssue {
+    /// A managed operation failed with its publication context.
+    Library(LibraryFailure),
+    /// A joined operation failed or returned an inconsistent result.
+    Task {
+        /// Retained failure.
+        error: TaskFailure,
+        /// Source captured before applying the completion.
+        context: JobContext,
+    },
+    /// Trash completed, but resetting the editor failed.
+    EditorReset {
+        /// Original allocation or document cause.
+        error: crate::document::error::EditorError,
+        /// Source captured before applying the completion.
+        context: JobContext,
+    },
+}
+/// Every observed failure after shutdown has joined its workers.
+#[derive(Debug, Clone)]
+pub struct ShutdownError {
+    /// Failures in completion order.
+    pub issues: Vec<ShutdownIssue>,
+}
+impl std::fmt::Display for ShutdownError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("shutdown.failed")
+    }
+}
+impl std::error::Error for ShutdownError {}

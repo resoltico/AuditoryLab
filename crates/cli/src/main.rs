@@ -123,10 +123,20 @@ impl CliError {
             }
         }
     }
+    fn code(&self) -> String {
+        match self {
+            Self::Operation(error) => error.to_string(),
+            Self::Usage(_) => "cli.argument".into(),
+            Self::Io(_) => "cli.output".into(),
+            Self::Interrupt(_) => "cli.interrupt".into(),
+            Self::Json(_) => "cli.json".into(),
+            Self::Formatting(_) => "cli.format".into(),
+        }
+    }
     fn message(&self) -> String {
         let message = match self {
             Self::Usage(error) => error.to_string(),
-            Self::Operation(error) => error.to_string(),
+            Self::Operation(error) => lab::presentation::Explain::explain(error.as_ref()),
             Self::Io(error) => error.to_string(),
             Self::Interrupt(error) => error.to_string(),
             Self::Json(error) => error.to_string(),
@@ -379,7 +389,10 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             if let Some(path) = path {
                 let saved = lab::services::save_recipe_text(&text, &path, Replace::Never)?;
                 for warning in saved.warnings {
-                    eprintln!("{}", prose(&warning));
+                    eprintln!(
+                        "{}",
+                        prose(&lab::presentation::publication_text::warning(&warning))
+                    );
                 }
                 completed(&lab::presentation::recipe_exported(&path));
             } else {
@@ -422,7 +435,10 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
                 &Progress::default(),
             )?;
             for warning in &result.warnings {
-                eprintln!("{}", prose(warning));
+                eprintln!(
+                    "{}",
+                    prose(&lab::presentation::publication_text::warning(warning))
+                );
             }
             completed(&result.description(&path));
         }

@@ -7,3 +7,5 @@ pub(crate) mod publish;
 pub(crate) mod wav;
 
 pub(crate) mod error;
+
+pub(crate) mod warning;

@@ -504,3 +504,12 @@ crate::vocabulary::vocabulary! { Completeness,"completeness" {
     Complete => ("complete","Complete","complete"),
     Invalid => ("invalid","Invalid","invalid"),
 }}
+
+impl core::fmt::Display for Issue {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Value { .. } => "rhythm.value",
+            Self::Pair(_) => "rhythm.pair",
+        })
+    }
+}

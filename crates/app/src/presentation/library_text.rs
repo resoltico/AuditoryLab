@@ -1,135 +1,113 @@
 //! Shared collection rows, query descriptions and document-location wording.
+use super::workspace_text::{LibraryFacetView, LibraryRowView};
 use crate::core::query::Scope;
 use crate::discovery::collection::{CatalogQuery, EntrySummary};
 use crate::document::origin::LibraryKey;
 use crate::document::recipe::RecipeSnapshot;
+use crate::presentation::Explain;
 use crate::presentation::{AudioSummary, DisplayText, vocabulary::NumberStyle};
 use crate::storage::library::LibraryDiagnostic;
-use crate::workspace::{LibraryFacetView, LibraryRowView};
-pub(crate) fn rows(
-    query: &CatalogQuery,
-    entries: &[EntrySummary],
-    diagnostics: &[LibraryDiagnostic],
-    selection: Option<&LibraryKey>,
-    requires_read: impl Fn(&LibraryKey) -> bool,
-) -> (Vec<LibraryRowView>, Option<usize>) {
-    let label = |e: &EntrySummary| {
-        use crate::core::query::SortBy;
-        let sort = query.effective_sort().0;
-        let (date_label, date) = match sort {
-            SortBy::Created => ("Created", e.created_at),
-            SortBy::Modified => ("Edited", e.modified_at),
-            SortBy::Added => ("Added here", e.added_at),
-            _ if matches!(e.key, LibraryKey::User(_) | LibraryKey::External(_)) => {
-                ("Edited", e.modified_at)
-            }
-            _ => ("Created", e.created_at),
-        };
-        let shown = |date: Option<crate::core::Timestamp>| {
-            date.map_or_else(
-                || "Unknown".into(),
-                crate::discovery::calendar::local_timestamp,
-            )
-        };
-        let mut dates = format!("{date_label}: {}", shown(date));
-        if matches!(e.key, LibraryKey::User(_)) {
-            if date_label != "Edited" {
-                dates.push_str(&format!("\nEdited: {}", shown(e.modified_at)));
-            }
-            if e.modified_at.is_none() && date_label != "Added here" {
-                dates.push_str(&format!("\nAdded here: {}", shown(e.added_at)));
-            }
+/// Render a semantic row, without executing queries or selecting recipe ownership.
+pub(crate) fn row(
+    row: &crate::workspace::LibraryRowView,
+    sort: crate::core::query::SortBy,
+) -> LibraryRowView {
+    use crate::workspace::LibraryRowView as Row;
+    match row {
+        Row::Entry {
+            entry,
+            requires_read,
+        } => entry_row(entry, sort, *requires_read),
+        Row::Group(group) => heading_row(format!(
+            "{} · {} unique sounds",
+            group_label(&group.label),
+            group.keys.len()
+        )),
+        Row::Unreadable => {
+            heading_row("Unreadable storage entries · not included in sound counts".into())
         }
-        let collection = format!(
-            "{}{}",
-            match e.key {
-                LibraryKey::BuiltIn(_) => "Built-in · Read only",
-                LibraryKey::User(_) if e.trashed => "Trash",
-                LibraryKey::User(_) => "User",
-                LibraryKey::External(_) => "Open file · Temporary",
-            },
-            if requires_read(&e.key) {
-                " · Last observed · Needs review"
-            } else {
-                ""
-            }
-        );
-        let title = e.title.display_scalar();
-        let summary = e.nominal.summary();
-        let duration = format!(
-            "Duration {}",
-            NumberStyle::Duration.format(e.duration_seconds)
-        );
-        let mut memberships: Vec<String> =
-            e.nominal.bands.iter().map(ToString::to_string).collect();
-        if e.nominal.outside_bands() {
-            memberships.push("Other rates".into());
+        Row::Diagnostic(problem) => heading_row(format!(
+            "Needs review · {}\n{}",
+            problem.storage_id,
+            problem.message()
+        )),
+    }
+}
+fn entry_row(
+    e: &EntrySummary,
+    sort: crate::core::query::SortBy,
+    requires_read: bool,
+) -> LibraryRowView {
+    use crate::core::query::SortBy;
+    let (date_label, date) = match sort {
+        SortBy::Created => ("Created", e.created_at),
+        SortBy::Modified => ("Edited", e.modified_at),
+        SortBy::Added => ("Added here", e.added_at),
+        _ if matches!(e.key, LibraryKey::User(_) | LibraryKey::External(_)) => {
+            ("Edited", e.modified_at)
         }
-        if e.nominal.no_rhythm() {
-            memberships.push("No rhythmic rate".into());
-        }
-        if e.nominal.multiple() {
-            memberships.push("Multiple rhythms".into());
-        }
-        if e.nominal.completeness != crate::core::rhythm::Completeness::Complete {
-            memberships.push("Needs review".into());
-        }
-        let bands = memberships.join(" · ");
-        LibraryRowView {
-            built_in: matches!(e.key, LibraryKey::BuiltIn(_)),
-            key: e.key.to_string(),
-            text: format!("{title} · {collection}\n{summary}\n{bands}\n{duration}\n{dates}"),
-            title,
-            collection,
-            summary,
-            bands,
-            duration,
-            dates,
-        }
+        _ => ("Created", e.created_at),
     };
-    let mut rows = Vec::new();
-    if let Ok(result) = query.execute(entries) {
-        if result.groups.is_empty() {
-            for e in result.entries {
-                rows.push(label(e));
-            }
+    let shown = |date: Option<crate::core::Timestamp>| {
+        date.map_or_else(
+            || "Unknown".into(),
+            crate::discovery::calendar::local_timestamp,
+        )
+    };
+    let mut dates = format!("{date_label}: {}", shown(date));
+    if matches!(e.key, LibraryKey::User(_)) {
+        if date_label != "Edited" {
+            dates.push_str(&format!("\nEdited: {}", shown(e.modified_at)));
+        }
+        if e.modified_at.is_none() && date_label != "Added here" {
+            dates.push_str(&format!("\nAdded here: {}", shown(e.added_at)));
+        }
+    }
+    let collection = format!(
+        "{}{}",
+        match e.key {
+            LibraryKey::BuiltIn(_) => "Built-in · Read only",
+            LibraryKey::User(_) if e.trashed => "Trash",
+            LibraryKey::User(_) => "User",
+            LibraryKey::External(_) => "Open file · Temporary",
+        },
+        if requires_read {
+            " · Last observed · Needs review"
         } else {
-            for group in result.groups {
-                rows.push(heading_row(format!(
-                    "{} · {} unique sounds",
-                    group.label,
-                    group.keys.len()
-                )));
-                for key in group.keys {
-                    if let Some(e) = entries.iter().find(|e| e.key == key) {
-                        rows.push(label(e));
-                    }
-                }
-            }
+            ""
         }
+    );
+    let title = e.title.display_scalar();
+    let summary = e.nominal.summary();
+    let duration = format!(
+        "Duration {}",
+        NumberStyle::Duration.format(e.duration_seconds)
+    );
+    let mut memberships: Vec<String> = e.nominal.bands.iter().map(ToString::to_string).collect();
+    if e.nominal.outside_bands() {
+        memberships.push("Other rates".into());
     }
-    let diagnostics: Vec<_> = diagnostics
-        .iter()
-        .filter(|problem| problem.storage_id.ends_with(".toml"))
-        .collect();
-    if !matches!(
-        query.scope,
-        Scope::BuiltIn | Scope::OpenFiles | Scope::Trash
-    ) && !diagnostics.is_empty()
-    {
-        rows.push(heading_row(
-            "Unreadable storage entries · not included in sound counts".into(),
-        ));
-        for problem in diagnostics {
-            rows.push(heading_row(format!(
-                "Needs review · {}\n{}",
-                problem.storage_id,
-                problem.message()
-            )));
-        }
+    if e.nominal.no_rhythm() {
+        memberships.push("No rhythmic rate".into());
     }
-    let selected = selection.and_then(|key| rows.iter().position(|row| row.key == key.to_string()));
-    (rows, selected)
+    if e.nominal.multiple() {
+        memberships.push("Multiple rhythms".into());
+    }
+    if e.nominal.completeness != crate::core::rhythm::Completeness::Complete {
+        memberships.push("Needs review".into());
+    }
+    let bands = memberships.join(" · ");
+    LibraryRowView {
+        built_in: matches!(e.key, LibraryKey::BuiltIn(_)),
+        key: e.key.to_string(),
+        text: format!("{title} · {collection}\n{summary}\n{bands}\n{duration}\n{dates}"),
+        title,
+        collection,
+        summary,
+        bands,
+        duration,
+        dates,
+    }
 }
 fn heading_row(text: String) -> LibraryRowView {
     LibraryRowView {
@@ -144,19 +122,22 @@ fn heading_row(text: String) -> LibraryRowView {
         dates: String::new(),
     }
 }
-pub(crate) fn facets(
-    query: &CatalogQuery,
-    entries: &[EntrySummary],
-    complete: bool,
-) -> (Vec<LibraryFacetView>, Vec<String>) {
-    use crate::core::query::RhythmState;
-    use crate::core::rhythm::{Band, Method};
-    let facet = |query: &CatalogQuery, label: String, detail: &str| {
-        let count = query.count(entries).unwrap_or(0);
-        let count = if complete {
-            count.to_string()
+/// Render already-counted navigation memberships.
+#[must_use]
+pub fn facets(counts: &crate::workspace::FacetCounts) -> (Vec<LibraryFacetView>, Vec<String>) {
+    use crate::workspace::FacetKind;
+    let facet = |facet: &crate::workspace::LibraryFacetView| {
+        let (label, detail) = match facet.kind {
+            FacetKind::AllSounds => ("All sounds".into(), ""),
+            FacetKind::AllMethods => ("All methods".into(), ""),
+            FacetKind::Band(band) => (band.to_string(), band.interval()),
+            FacetKind::State(state) => (state.label().into(), ""),
+            FacetKind::Method(method) => (method.label().into(), ""),
+        };
+        let count = if facet.complete {
+            facet.count.to_string()
         } else {
-            format!("{count} observed")
+            format!("{} observed", facet.count)
         };
         let text = if detail.is_empty() {
             format!("{label} · {count}")
@@ -170,30 +151,10 @@ pub(crate) fn facets(
             text,
         }
     };
-    let base = query.clone();
-    let mut unrestricted = base.clone();
-    unrestricted.rhythm.bands.clear();
-    unrestricted.rhythm.state = None;
-    let mut bands = vec![facet(&unrestricted, "All sounds".into(), "")];
-    for band in Band::ALL {
-        let mut query = unrestricted.clone();
-        query.rhythm.bands = vec![band];
-        bands.push(facet(&query, band.to_string(), band.interval()));
-    }
-    for state in RhythmState::ALL {
-        let mut query = unrestricted.clone();
-        query.rhythm.state = Some(state);
-        bands.push(facet(&query, state.label().into(), ""));
-    }
-    let mut unrestricted = base;
-    unrestricted.rhythm.methods.clear();
-    let mut methods = vec![facet(&unrestricted, "All methods".into(), "").text];
-    for method in Method::ALL {
-        let mut query = unrestricted.clone();
-        query.rhythm.methods = vec![method];
-        methods.push(facet(&query, method.label().into(), "").text);
-    }
-    (bands, methods)
+    (
+        counts.bands.iter().map(facet).collect(),
+        counts.methods.iter().map(|f| facet(f).text).collect(),
+    )
 }
 pub(crate) fn overview(query: &CatalogQuery, visible: usize, complete: bool) -> String {
     let q = query;
@@ -309,7 +270,7 @@ pub(crate) fn empty_message(
 pub(crate) fn alert(
     problem: Option<&LibraryDiagnostic>,
     filter_error: Option<&crate::discovery::query::QueryError>,
-    read_failure: Option<&LibraryDiagnostic<crate::services::OperationError>>,
+    read_failure: Option<&LibraryDiagnostic<crate::workspace::status::ReadFailure>>,
     complete: bool,
 ) -> String {
     let mut notices = Vec::new();
@@ -317,7 +278,7 @@ pub(crate) fn alert(
         notices.push(format!("User Library unavailable: {}. Configure an absolute AUDITORYLAB_LIBRARY_DIR and restart; drafts are retained.",problem.message()));
     }
     if let Some(error) = filter_error {
-        notices.push(error.to_string());
+        notices.push(error.explain());
     }
     if let Some(problem) = read_failure {
         notices.push(format!(
@@ -436,7 +397,10 @@ pub(crate) fn orphan_membership(id: crate::core::DocumentUuid) -> String {
     format!("membership for {id} has no recipe; the next locked write will drop it")
 }
 pub(crate) fn unavailable_history_clock(error: &crate::clock::ClockError) -> String {
-    format!("Cannot compare declared history with the observed clock: {error}")
+    format!(
+        "Cannot compare declared history with the observed clock: {}",
+        error.explain()
+    )
 }
 
 impl crate::storage::library::WriteOutcome {
@@ -449,7 +413,7 @@ impl crate::storage::library::WriteOutcome {
         }
         for diagnostic in &self.diagnostics {
             text.push('\n');
-            text.push_str(diagnostic);
+            text.push_str(&super::publication_text::warning(diagnostic));
         }
         text
     }
@@ -479,4 +443,117 @@ pub(crate) fn recovered_move(name: &std::ffi::OsStr) -> String {
 }
 pub(crate) fn removed_stage(path: &std::path::Path) -> String {
     format!("Removed abandoned stage {}", path.display())
+}
+
+pub(crate) fn inventory_notice(notice: &crate::storage::library::InventoryNotice) -> String {
+    use crate::storage::library::InventoryNotice as N;
+    match notice {
+        N::UnknownRootEntry => UNKNOWN_ROOT_ENTRY.into(),
+        N::UnknownEntry => UNKNOWN_ENTRY.into(),
+        N::UuidFilenameRequired => UUID_FILENAME_REQUIRED.into(),
+        N::ReservedBuiltinIdentity => RESERVED_BUILTIN_IDENTITY.into(),
+        N::InterruptedMove => INTERRUPTED_MOVE.into(),
+        N::DuplicateIdentity => DUPLICATE_IDENTITY.into(),
+        N::OrphanMembership(id) => orphan_membership(*id),
+    }
+}
+
+/// Human library and document-location projections over typed coordinator data.
+pub trait LibraryPresentation {
+    /// Configured root and retained inventory causes.
+    fn library_status(&self) -> String;
+    /// Current availability and incomplete-read notices.
+    fn library_alert(&self) -> String;
+    /// Query restrictions and unique result count.
+    fn library_overview(&self) -> String;
+    /// Detailed unique counts and active restrictions.
+    fn library_count(&self) -> String;
+    /// Explanation of an empty result under the current completeness state.
+    fn library_empty_message(&self) -> &'static str;
+    /// Portable and local selected dates in the system time zone.
+    fn library_dates(&self) -> String;
+    /// Exact UTC instants for selected portable and local dates.
+    fn library_dates_utc(&self) -> String;
+    /// Current document location, independent of browsing and playback.
+    fn document_location(&self) -> String;
+    /// Short badge for the current document location.
+    fn document_location_label(&self) -> &'static str;
+}
+impl LibraryPresentation for crate::workspace::Workspace {
+    fn library_status(&self) -> String {
+        let d = self.library_data();
+        match d.path {
+            Some(path) => format!(
+                "{}\n{}{}",
+                path.display(),
+                d.inventory.description(),
+                d.read_failure.map_or(String::new(), |problem| format!(
+                    "\n{}: {}",
+                    problem.storage_id,
+                    problem.message()
+                ))
+            ),
+            None => d
+                .problem
+                .map(LibraryDiagnostic::message)
+                .unwrap_or_default(),
+        }
+    }
+    fn library_alert(&self) -> String {
+        let d = self.library_data();
+        alert(
+            d.problem,
+            d.filter_error,
+            d.read_failure,
+            d.inventory.complete,
+        )
+    }
+    fn library_overview(&self) -> String {
+        let d = self.library_data();
+        overview(d.query, d.visible, d.inventory.complete)
+    }
+    fn library_count(&self) -> String {
+        let d = self.library_data();
+        count(d.query, d.visible, d.inventory.complete)
+    }
+    fn library_empty_message(&self) -> &'static str {
+        let d = self.library_data();
+        empty_message(d.query, d.entries, d.visible, d.inventory.complete)
+    }
+    fn library_dates(&self) -> String {
+        let d = self.library_data();
+        dates(d.selected_entry, d.selected, false)
+    }
+    fn library_dates_utc(&self) -> String {
+        let d = self.library_data();
+        dates(d.selected_entry, d.selected, true)
+    }
+    fn document_location(&self) -> String {
+        let d = self.library_data();
+        document_location(d.problem, d.detached, d.external, d.managed).1
+    }
+    fn document_location_label(&self) -> &'static str {
+        let d = self.library_data();
+        document_location(d.problem, d.detached, d.external, d.managed).0
+    }
+}
+
+/// Label for a virtual group membership, independent of its result keys.
+#[must_use]
+pub fn group_label(label: &crate::discovery::collection::GroupLabel) -> String {
+    use crate::discovery::collection::{Collection, GroupLabel as L};
+    match label {
+        L::Band(band) => band.to_string(),
+        L::State(state) => state.label().into(),
+        L::Method(method) => method.key().into(),
+        L::NoMethod => "No declared method".into(),
+        L::Study(label) => label.clone(),
+        L::NoStudy => "No current study declaration".into(),
+        L::Collection(collection) => match collection {
+            Collection::BuiltIn => "Built-in",
+            Collection::User => "User",
+            Collection::External => "Open files",
+        }
+        .into(),
+    }
 }

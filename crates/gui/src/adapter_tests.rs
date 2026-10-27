@@ -9,6 +9,7 @@ use auditorylab_app::core::ParameterId;
 use auditorylab_app::core::query::{Direction, GroupBy, Scope, SortBy};
 use auditorylab_app::document::editing::{EditingField, MetadataField};
 use auditorylab_app::document::origin::LibraryKey;
+use auditorylab_app::presentation::LibraryPresentation;
 use auditorylab_app::presentation::ParameterText;
 use auditorylab_app::presentation::recipe_text::SnapshotText;
 use auditorylab_app::workspace::{
@@ -1409,7 +1410,7 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
     ui.invoke_rhythm_filter(1, 1); // Delta and binaural.
     h.adapter.inspect(|w| {
         assert_eq!(
-            w.library_view()
+            auditorylab_app::presentation::workspace_text::library_view(&w.library_view())
                 .rows
                 .iter()
                 .filter(|row| !row.key.is_empty())
@@ -2846,7 +2847,10 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
         h.store().load(&saved.key).unwrap().snapshot.title(),
         "Other writer"
     );
-    let details = h.adapter.inspect(|w| w.action_view().operation_details);
+    let details = h.adapter.inspect(|w| {
+        auditorylab_app::presentation::workspace_text::action_view(&w.action_view())
+            .operation_details
+    });
     assert!(
         details.to_lowercase().contains("conflict") || details.to_lowercase().contains("changed"),
         "foreground save failure remains visible after background reads: {details}"
