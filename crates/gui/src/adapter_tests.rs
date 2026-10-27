@@ -1820,8 +1820,8 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
 
 slint::slint! {
     import { BoundButton } from "ui/library-controls.slint";
-    export { LibraryMutationAction } from "ui/models.slint";
-    import { LibraryMutationAction } from "ui/models.slint";
+    export { LibraryMutationAction } from "ui/library-actions.slint";
+    import { LibraryMutationAction } from "ui/library-actions.slint";
     export component LibraryGestureProbe inherits Window {
         width:240px;height:100px;
         in-out property <string> entry-key;

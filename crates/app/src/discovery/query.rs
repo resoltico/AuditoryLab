@@ -157,7 +157,7 @@ impl SearchIndex {
                 }
             }
             if let Some(pair) = component.form.pair() {
-                numbers.push(pair.first_hz + pair.offset_hz);
+                numbers.push(pair.first_hz.get() + pair.offset_hz.get());
             }
         }
         numbers.extend(snapshot.nominal().rhythms.iter().map(|r| r.hz));

@@ -98,10 +98,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         GroupBy::ALL.iter().map(|value| value.label()).collect(),
     );
     vocabulary.push_str("}\n");
-    let vocabulary_path = generated.join("vocabulary.slint");
-    if std::fs::read(&vocabulary_path).ok().as_deref() != Some(vocabulary.as_bytes()) {
-        std::fs::write(&vocabulary_path, vocabulary)?;
+    write_generated(&generated.join("vocabulary.slint"), &vocabulary)?;
+    let mut parameter_enum = String::from("export enum ParameterKey {\n");
+    let mut to_binding = String::from(
+        "pub(crate) const fn parameter_key(id: ParameterId) -> ParameterKey { match id {\n",
+    );
+    let mut to_core = String::from(
+        "pub(crate) const fn parameter_id(key: ParameterKey) -> ParameterId { match key {\n",
+    );
+    for id in ParameterId::ALL {
+        parameter_enum.push_str(&format!("    {},\n", id.key().replace('_', "-")));
+        let binding_name = id
+            .key()
+            .split('_')
+            .map(|part| {
+                let mut chars = part.chars();
+                chars.next().map_or_else(String::new, |first| {
+                    first.to_ascii_uppercase().to_string() + chars.as_str()
+                })
+            })
+            .collect::<String>();
+        let core_name = id.variant_name();
+        to_binding.push_str(&format!(
+            "ParameterId::{core_name} => ParameterKey::{binding_name},\n"
+        ));
+        to_core.push_str(&format!(
+            "ParameterKey::{binding_name} => ParameterId::{core_name},\n"
+        ));
     }
+    parameter_enum.push_str("}\n");
+    to_binding.push_str("}}\n");
+    to_core.push_str("}}\n");
+    write_generated(&generated.join("parameters.slint"), &parameter_enum)?;
+    std::fs::write(
+        generated.join("parameter_bindings.rs"),
+        to_binding + &to_core,
+    )?;
     slint_build::compile_with_config(
         "ui/main.slint",
         slint_build::CompilerConfiguration::new()
@@ -154,6 +186,13 @@ fn append_terms<T: auditorylab_core::vocabulary::Vocabulary>(
     for value in T::ALL {
         let property = format!("{prefix}-{}", value.key().replace('_', "-"));
         append_term(output, properties, &property, value.term().label)?;
+    }
+    Ok(())
+}
+
+fn write_generated(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    if std::fs::read(path).ok().as_deref() != Some(contents.as_bytes()) {
+        std::fs::write(path, contents)?;
     }
     Ok(())
 }

@@ -372,7 +372,7 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                                     p.first_peak_dbfs,
                                     p.second_peak_dbfs,
                                 ]
-                                .map(f64::to_bits),
+                                .map(|value| value.get().to_bits()),
                             );
                         }
                         form @ ComponentForm::Clicks { .. } => {

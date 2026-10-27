@@ -1089,44 +1089,8 @@ fn metadata_handle(key: &str, field: MetadataKey) -> Option<FieldHandle> {
 
 // ---- semantic binding conversions ----
 
-/// The exhaustive core-to-binding mapping: a new quantity must be added here.
-pub(crate) const fn parameter_key(id: ParameterId) -> ParameterKey {
-    match id {
-        ParameterId::ToneFrequency => ParameterKey::ToneFrequency,
-        ParameterId::ClickRate => ParameterKey::ClickRate,
-        ParameterId::ClickWidth => ParameterKey::ClickWidth,
-        ParameterId::PeakLevel => ParameterKey::PeakLevel,
-        ParameterId::AmRate => ParameterKey::AmRate,
-        ParameterId::AmDepth => ParameterKey::AmDepth,
-        ParameterId::GateRate => ParameterKey::GateRate,
-        ParameterId::GateWidth => ParameterKey::GateWidth,
-        ParameterId::Duration => ParameterKey::Duration,
-        ParameterId::Fade => ParameterKey::Fade,
-        ParameterId::PairFirstFrequency => ParameterKey::PairFirstFrequency,
-        ParameterId::PairOffset => ParameterKey::PairOffset,
-        ParameterId::PairFirstLevel => ParameterKey::PairFirstLevel,
-        ParameterId::PairSecondLevel => ParameterKey::PairSecondLevel,
-    }
-}
-
-pub(crate) const fn parameter_id(key: ParameterKey) -> ParameterId {
-    match key {
-        ParameterKey::ToneFrequency => ParameterId::ToneFrequency,
-        ParameterKey::ClickRate => ParameterId::ClickRate,
-        ParameterKey::ClickWidth => ParameterId::ClickWidth,
-        ParameterKey::PeakLevel => ParameterId::PeakLevel,
-        ParameterKey::AmRate => ParameterId::AmRate,
-        ParameterKey::AmDepth => ParameterId::AmDepth,
-        ParameterKey::GateRate => ParameterId::GateRate,
-        ParameterKey::GateWidth => ParameterId::GateWidth,
-        ParameterKey::Duration => ParameterId::Duration,
-        ParameterKey::Fade => ParameterId::Fade,
-        ParameterKey::PairFirstFrequency => ParameterId::PairFirstFrequency,
-        ParameterKey::PairOffset => ParameterId::PairOffset,
-        ParameterKey::PairFirstLevel => ParameterId::PairFirstLevel,
-        ParameterKey::PairSecondLevel => ParameterId::PairSecondLevel,
-    }
-}
+// Generated from the owning parameter inventory by the build script.
+include!(concat!(env!("OUT_DIR"), "/parameter_bindings.rs"));
 
 const fn metadata_field(key: MetadataKey) -> MetadataField {
     match key {

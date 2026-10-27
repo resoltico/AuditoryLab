@@ -83,7 +83,7 @@ pub fn component(component: &Component) -> String {
             kind.phrase(),
             pair.first_hz,
             pair.offset_hz,
-            pair.first_hz + pair.offset_hz,
+            pair.first_hz.get() + pair.offset_hz.get(),
             pair.first_peak_dbfs,
             pair.second_peak_dbfs
         )

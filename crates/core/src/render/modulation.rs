@@ -109,3 +109,19 @@ impl<'de> Deserialize<'de> for Modulation {
         deserializer.deserialize_map(Visitor)
     }
 }
+
+macro_rules! define_modulation_quantities {
+    (parameters {$($parameters:tt)*} fields {$($fields:tt)*} kinds {$($kinds:tt)*}
+     modulation_quantities {$( $kind:ident {$($field:ident=>$parameter:ident),*} )*})=>{
+        impl Modulation {
+            pub(crate) fn get(self,parameter:crate::ParameterId)->Option<crate::Finite> {
+                match (parameter,self) {$($( (crate::ParameterId::$parameter,Self::$kind {$field,..})=>Some($field),)*)* _=>None,}
+            }
+            pub(crate) fn set(&mut self,parameter:crate::ParameterId,value:crate::Finite)->bool {
+                let field=match (parameter,self) {$($( (crate::ParameterId::$parameter,Self::$kind {$field,..})=>$field,)*)* _=>return false,};
+                *field=value;true
+            }
+        }
+    };
+}
+crate::component_schema::component_schema!(define_modulation_quantities);

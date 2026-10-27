@@ -221,10 +221,10 @@ fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
         modulation: None,
     };
     let pair = Pair {
-        first_hz: 380.0,
-        offset_hz: 40.0,
-        first_peak_dbfs: -40.0,
-        second_peak_dbfs: -41.0,
+        first_hz: finite(380.0),
+        offset_hz: finite(40.0),
+        first_peak_dbfs: finite(-40.0),
+        second_peak_dbfs: finite(-41.0),
     };
     for (components, needle, rejected) in [
         (
@@ -259,10 +259,10 @@ fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
         (
             vec![{
                 ComponentForm::BinauralPair {
-                    left_hz: finite(pair.first_hz),
-                    offset_hz: finite(pair.offset_hz),
-                    left_peak_dbfs: finite(pair.first_peak_dbfs),
-                    right_peak_dbfs: finite(pair.second_peak_dbfs),
+                    left_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    left_peak_dbfs: pair.first_peak_dbfs,
+                    right_peak_dbfs: pair.second_peak_dbfs,
                 }
             }],
             "40 Hz interaural difference",
@@ -272,10 +272,10 @@ fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
             vec![{
                 ComponentForm::MonauralPair {
                     ears: Ears::Both,
-                    first_hz: finite(pair.first_hz),
-                    offset_hz: finite(pair.offset_hz),
-                    first_peak_dbfs: finite(pair.first_peak_dbfs),
-                    second_peak_dbfs: finite(pair.second_peak_dbfs),
+                    first_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    first_peak_dbfs: pair.first_peak_dbfs,
+                    second_peak_dbfs: pair.second_peak_dbfs,
                 }
             }],
             "40 Hz monaural",

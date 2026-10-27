@@ -193,9 +193,9 @@ impl TargetCheck {
                 .map(|(pair, kind)| crate::PairFacts {
                     owner: component.id,
                     kind,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    second_hz: pair.first_hz + pair.offset_hz,
+                    first_hz: pair.first_hz.get(),
+                    offset_hz: pair.offset_hz.get(),
+                    second_hz: pair.first_hz.get() + pair.offset_hz.get(),
                 });
             let lanes = match crate::authored::lower(component) {
                 Ok(lanes) => lanes,

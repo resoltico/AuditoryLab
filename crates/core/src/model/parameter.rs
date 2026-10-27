@@ -151,38 +151,36 @@ impl Unit {
     }
 }
 
-/// One editable recipe quantity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ParameterId {
-    /// A tone carrier's frequency.
-    ToneFrequency,
-    /// A click carrier's repetition rate.
-    ClickRate,
-    /// A click carrier's requested pulse length.
-    ClickWidth,
-    /// A component's peak level.
-    PeakLevel,
-    /// Sine amplitude modulation's rate.
-    AmRate,
-    /// Sine amplitude modulation's depth.
-    AmDepth,
-    /// Gating's repetition rate.
-    GateRate,
-    /// Gating's requested open length.
-    GateWidth,
-    /// First/left carrier of an authored pair.
-    PairFirstFrequency,
-    /// Signed nominal carrier offset of an authored pair.
-    PairOffset,
-    /// First/left peak level of an authored pair.
-    PairFirstLevel,
-    /// Second/right peak level of an authored pair.
-    PairSecondLevel,
-    /// The finite length of saved and exported audio.
-    Duration,
-    /// The edge fade of saved and exported audio.
-    Fade,
+macro_rules! define_parameters {
+    (parameters {
+        component {$( $(#[$component_doc:meta])* $component:ident => ($component_key:literal,$component_label:expr,$component_phrase:expr,$component_unit:ident,$component_rule:expr); )*}
+        envelope {$( $(#[$envelope_doc:meta])* $envelope:ident => ($envelope_key:literal,$envelope_label:expr,$envelope_phrase:expr,$envelope_unit:ident,$envelope_rule:expr); )*}
+    } $($rest:tt)*)=>{
+        /// One editable recipe quantity.
+        #[derive(Debug,Clone,Copy,PartialEq,Eq,PartialOrd,Ord,Hash)]
+        pub enum ParameterId {
+            $($(#[$component_doc])* $component,)*
+            $($(#[$envelope_doc])* $envelope,)*
+        }
+        crate::vocabulary::vocabulary! {ParameterId,"parameter_id" {
+            $($component=>($component_key,$component_label,$component_phrase),)*
+            $($envelope=>($envelope_key,$envelope_label,$envelope_phrase),)*
+        }}
+        impl ParameterId {
+            /// Rust variant identifier for generated source; use key() for wire data.
+            #[doc(hidden)]
+            pub const fn variant_name(self)->&'static str {match self {$(Self::$component=>stringify!($component),)*$(Self::$envelope=>stringify!($envelope),)*}}
+            /// Quantities applicable to components, in display order.
+            pub const COMPONENT:[Self;[$(stringify!($component)),*].len()]=[$(Self::$component),*];
+            /// Whether this quantity belongs to a component.
+            #[must_use]
+            pub const fn is_component(self)->bool {match self {$(Self::$component=>true,)*$(Self::$envelope=>false,)*}}
+            const fn unit(self)->Unit {match self {$(Self::$component=>Unit::$component_unit,)*$(Self::$envelope=>Unit::$envelope_unit,)*}}
+            pub(crate) const fn value_rule(self)->Option<crate::ValueRule> {match self {$(Self::$component=>$component_rule,)*$(Self::$envelope=>$envelope_rule,)*}}
+        }
+    };
 }
+crate::component_schema::component_schema!(define_parameters);
 
 /// What a person needs to read, enter and understand one quantity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,22 +194,6 @@ pub struct ParameterDescriptor {
 }
 
 impl ParameterId {
-    /// The quantities a component can have, in display order.
-    pub const COMPONENT: [Self; 12] = [
-        Self::ToneFrequency,
-        Self::ClickRate,
-        Self::ClickWidth,
-        Self::PeakLevel,
-        Self::AmRate,
-        Self::AmDepth,
-        Self::GateRate,
-        Self::GateWidth,
-        Self::PairFirstFrequency,
-        Self::PairOffset,
-        Self::PairFirstLevel,
-        Self::PairSecondLevel,
-    ];
-
     /// Label and model/display unit of this quantity.
     #[must_use]
     pub const fn descriptor(self) -> ParameterDescriptor {
@@ -220,12 +202,6 @@ impl ParameterId {
             label: self.label(),
             unit: self.unit(),
         }
-    }
-
-    /// Whether this quantity belongs to a component rather than the whole recipe.
-    #[must_use]
-    pub const fn is_component(self) -> bool {
-        !matches!(self, Self::Duration | Self::Fade)
     }
 
     /// The sound's value of [`ParameterId::Duration`] or [`ParameterId::Fade`].
@@ -290,23 +266,6 @@ impl Modulation {
     }
 }
 
-crate::vocabulary::vocabulary! { ParameterId,"parameter_id" {
-    ToneFrequency => ("tone_frequency","Tone frequency","tone frequency"),
-    ClickRate => ("click_rate","Clicks rate","clicks rate"),
-    ClickWidth => ("click_width","Clicks width","clicks width"),
-    PeakLevel => ("peak_level","Peak level","peak level"),
-    AmRate => ("am_rate","Modulation rate","modulation rate"),
-    AmDepth => ("am_depth","Modulation depth","modulation depth"),
-    GateRate => ("gate_rate","Gate rate","gate rate"),
-    GateWidth => ("gate_width","Gate width","gate width"),
-    PairFirstFrequency => ("pair_first_frequency","First / left carrier","first / left carrier"),
-    PairOffset => ("pair_offset","Signed offset","signed offset"),
-    PairFirstLevel => ("pair_first_level","First / left peak","first / left peak"),
-    PairSecondLevel => ("pair_second_level","Second / right peak","second / right peak"),
-    Duration => ("duration","Duration","duration"),
-    Fade => ("fade","Fade","fade"),
-}}
-
 crate::vocabulary::vocabulary! { CarrierKind,"carrier_kind" {
     Tone => ("tone","Tone","tone"),
     Clicks => ("clicks","Clicks","clicks"),
@@ -316,27 +275,6 @@ crate::vocabulary::vocabulary! { ModulationKind,"modulation_kind" {
     Am => ("am","AM","AM"),
     Gate => ("gate","Gate","gate"),
 }}
-
-impl ParameterId {
-    const fn unit(self) -> Unit {
-        match self {
-            Self::ToneFrequency => Unit::Hertz,
-            Self::ClickRate => Unit::Hertz,
-            Self::ClickWidth => Unit::Milliseconds,
-            Self::PeakLevel => Unit::DecibelsFullScale,
-            Self::AmRate => Unit::Hertz,
-            Self::AmDepth => Unit::Percent,
-            Self::GateRate => Unit::Hertz,
-            Self::GateWidth => Unit::Milliseconds,
-            Self::PairFirstFrequency => Unit::Hertz,
-            Self::PairOffset => Unit::Hertz,
-            Self::PairFirstLevel => Unit::DecibelsFullScale,
-            Self::PairSecondLevel => Unit::DecibelsFullScale,
-            Self::Duration => Unit::Seconds,
-            Self::Fade => Unit::Seconds,
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -10,69 +10,203 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pair {
     /// First carrier; left for a binaural pair.
-    pub first_hz: f64,
+    pub first_hz: Finite,
     /// Authored signed nominal difference; never recovered from generated carriers.
-    pub offset_hz: f64,
+    pub offset_hz: Finite,
     /// First/left tone's peak bound.
-    pub first_peak_dbfs: f64,
+    pub first_peak_dbfs: Finite,
     /// Second/right tone's peak bound.
-    pub second_peak_dbfs: f64,
+    pub second_peak_dbfs: Finite,
 }
-/// One authored primitive or explicit two-tone construction, without an identity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ComponentForm {
-    /// Authored tone quantities.
-    Tone {
-        /// The requested ears.
-        ears: Ears,
-        /// The requested frequency hz.
-        frequency_hz: Finite,
-        /// The requested peak dbfs.
-        peak_dbfs: Finite,
-        /// The requested modulation.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        modulation: Option<Modulation>,
-    },
-    /// Authored clicks quantities.
-    Clicks {
-        /// The requested ears.
-        ears: Ears,
-        /// The requested rate hz.
-        rate_hz: Finite,
-        /// The requested width seconds.
-        width_seconds: Finite,
-        /// The requested peak dbfs.
-        peak_dbfs: Finite,
-        /// The requested modulation.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        modulation: Option<Modulation>,
-    },
-    /// Authored binaural_pair quantities.
-    BinauralPair {
-        /// The requested left hz.
-        left_hz: Finite,
-        /// The requested offset hz.
-        offset_hz: Finite,
-        /// The requested left peak dbfs.
-        left_peak_dbfs: Finite,
-        /// The requested right peak dbfs.
-        right_peak_dbfs: Finite,
-    },
-    /// Authored monaural_pair quantities.
-    MonauralPair {
-        /// The requested ears.
-        ears: Ears,
-        /// The requested first hz.
-        first_hz: Finite,
-        /// The requested offset hz.
-        offset_hz: Finite,
-        /// The requested first peak dbfs.
-        first_peak_dbfs: Finite,
-        /// The requested second peak dbfs.
-        second_peak_dbfs: Finite,
-    },
+// These helpers select only capabilities explicitly present in a kind row.
+macro_rules! optional_route {
+    () => {
+        None
+    };
+    ($field:ident) => {
+        Some($field)
+    };
 }
+macro_rules! optional_modulation {
+    () => {
+        None
+    };
+    ($field:ident) => {
+        $field
+    };
+}
+macro_rules! replace_modulation {
+    ($value:expr;) => {
+        false
+    };
+    ($value:expr;$field:ident) => {{
+        *$field = $value;
+        true
+    }};
+}
+macro_rules! set_modulation_quantity {
+    ($parameter:expr,$value:expr;) => {
+        false
+    };
+    ($parameter:expr,$value:expr;$field:ident) => {
+        $field
+            .as_mut()
+            .is_some_and(|modulation| modulation.set($parameter, $value))
+    };
+}
+
+// The parser constructs either identified components or standalone forms.
+// The associated identity keeps the required-id case out of an optional result.
+trait FromComponentFields: Sized {
+    type Identity;
+    const IDENTIFIED: bool;
+    fn identity<E: serde::de::Error>(id: Option<ComponentId>) -> Result<Self::Identity, E>;
+    fn from_fields(id: Self::Identity, form: ComponentForm) -> Self;
+}
+impl FromComponentFields for Component {
+    type Identity = ComponentId;
+    const IDENTIFIED: bool = true;
+    fn identity<E: serde::de::Error>(id: Option<ComponentId>) -> Result<Self::Identity, E> {
+        id.ok_or_else(|| E::missing_field("id"))
+    }
+    fn from_fields(id: Self::Identity, form: ComponentForm) -> Self {
+        Self { id, form }
+    }
+}
+impl FromComponentFields for ComponentForm {
+    type Identity = ();
+    const IDENTIFIED: bool = false;
+    fn identity<E: serde::de::Error>(_: Option<ComponentId>) -> Result<Self::Identity, E> {
+        Ok(())
+    }
+    fn from_fields(_: Self::Identity, form: ComponentForm) -> Self {
+        form
+    }
+}
+
+macro_rules! define_component_codec {
+    (
+        parameters {$($parameters:tt)*}
+        fields {$( $wire:ident:$wire_type:ty $(=> $wire_parameter:ident)?; )*}
+        kinds {$( $kind:ident $key:literal {
+            $(route $route:ident;)?
+            quantities [$($quantity:ident),*];
+            $(level $level:ident;)?
+            $(modulation $modulation:ident;)?
+        })*}
+        modulation_quantities {$($modulation_quantities:tt)*}
+    )=>{
+        macro_rules! component_field_type {$(($wire)=>{$wire_type};)*}
+        macro_rules! component_parameter {$( $(($wire)=>{crate::ParameterId::$wire_parameter};)? )*}
+        /// One authored primitive or explicit pair, without an identity.
+        #[derive(Debug,Clone,Copy,PartialEq,Eq,Hash)]
+        pub enum ComponentForm {
+            $(
+                #[doc=concat!("Authored ",$key," quantities.")]
+                $kind {
+                    $(#[doc="Requested route."] $route:component_field_type!($route),)?
+                    $(#[doc=concat!("Requested `",stringify!($quantity),"` in model units.")] $quantity:component_field_type!($quantity),)*
+                    $(#[doc="Requested peak level in dBFS."] $level:component_field_type!($level),)?
+                    $(#[doc="Optional authored modulation."] $modulation:component_field_type!($modulation),)?
+                },
+            )*
+        }
+        impl ComponentForm {
+            fn serialize_with_id<S:Serializer>(self,id:Option<ComponentId>,serializer:S)->Result<S::Ok,S::Error> {
+                use serde::ser::SerializeMap;
+                let mut map=serializer.serialize_map(None)?;
+                match self {
+                    $(Self::$kind { $($route,)? $($quantity,)* $($level,)? $($modulation,)? }=>{
+                        map.serialize_entry("kind",$key)?;
+                        if let Some(id)=id {map.serialize_entry("id",&id)?;}
+                        $(map.serialize_entry(stringify!($route),&$route)?;)?
+                        $(map.serialize_entry(stringify!($quantity),&$quantity)?;)*
+                        $(map.serialize_entry(stringify!($level),&$level)?;)?
+                        $(if let Some(modulation)=$modulation {map.serialize_entry(stringify!($modulation),&modulation)?;})?
+                    },)*
+                }
+                map.end()
+            }
+            /// Shared route, absent for separate-ear pairs.
+            #[must_use]
+            pub const fn route(self)->Option<Ears> {match self {$(Self::$kind {$($route,)?..}=>optional_route!($($route)?),)*}}
+            /// Optional modulation, when the kind permits it.
+            #[must_use]
+            pub const fn modulation(self)->Option<Modulation> {match self {$(Self::$kind {$($modulation,)?..}=>optional_modulation!($($modulation)?),)*}}
+            /// Replace modulation only on a kind that supports it.
+            pub fn set_modulation(&mut self,value:Option<Modulation>)->bool {match self {$(Self::$kind {$($modulation,)?..}=>replace_modulation!(value;$($modulation)?),)*}}
+            /// Read an applicable authored quantity in model units.
+            #[must_use]
+            pub fn get(self,parameter:crate::ParameterId)->Option<Finite> {
+                match (parameter,self) {
+                    $($( (component_parameter!($quantity),Self::$kind {$quantity,..})=>Some($quantity),)*
+                      $((component_parameter!($level),Self::$kind {$level,..})=>Some($level),)?)*
+                    _=>self.modulation().and_then(|modulation|modulation.get(parameter)),
+                }
+            }
+            /// Change one applicable authored quantity, without touching other fields.
+            pub fn set(&mut self,parameter:crate::ParameterId,value:Finite)->bool {
+                match self {
+                    $(Self::$kind { $($quantity,)* $($level,)? $($modulation,)? ..}=>{
+                        $(if parameter==component_parameter!($quantity) {*$quantity=value;return true;})*
+                        $(if parameter==component_parameter!($level) {*$level=value;return true;})?
+                        set_modulation_quantity!(parameter,value;$($modulation)?)
+                    },)*
+                }
+            }
+        }
+        impl Serialize for ComponentForm {
+            fn serialize<S:Serializer>(&self,serializer:S)->Result<S::Ok,S::Error> {self.serialize_with_id(None,serializer)}
+        }
+        impl Serialize for Component {
+            fn serialize<S:Serializer>(&self,serializer:S)->Result<S::Ok,S::Error> {self.form.serialize_with_id(Some(self.id),serializer)}
+        }
+        struct ComponentVisitor<T>(core::marker::PhantomData<T>);
+        impl<'de,T:FromComponentFields> serde::de::Visitor<'de> for ComponentVisitor<T> {
+            type Value=T;
+            fn expecting(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {f.write_str("an authored component")}
+            fn visit_map<M:serde::de::MapAccess<'de>>(self,mut map:M)->Result<T,M::Error> {
+                use serde::de::Error;
+                let mut id:Option<ComponentId>=None;
+                let mut kind:Option<alloc::string::String>=None;
+                $(let mut $wire:Option<$wire_type>=None;)*
+                while let Some(key)=map.next_key::<alloc::string::String>()? {
+                    match key.as_str() {
+                        "id" if T::IDENTIFIED=>{if id.is_some(){return Err(M::Error::duplicate_field("id"));}id=Some(map.next_value()?);},
+                        "kind"=>{if kind.is_some(){return Err(M::Error::duplicate_field("kind"));}kind=Some(map.next_value()?);},
+                        $(stringify!($wire)=>{if $wire.is_some(){return Err(M::Error::duplicate_field(stringify!($wire)));}$wire=Some(map.next_value()?);},)*
+                        _=>return Err(M::Error::custom(alloc::format!("unknown component field `{key}`"))),
+                    }
+                }
+                let id=T::identity(id)?;
+                let kind=kind.ok_or_else(||M::Error::missing_field("kind"))?;
+                let present=[$((stringify!($wire),$wire.is_some())),*];
+                let form=match kind.as_str() {
+                    $($key=>{
+                        let allowed:&[&str]=&[$(stringify!($route),)?$(stringify!($quantity),)*$(stringify!($level),)?$(stringify!($modulation),)?];
+                        for (field,present) in present {if present&&!allowed.contains(&field) {return Err(M::Error::custom(alloc::format!("unknown field `{field}` for {kind}")));}}
+                        ComponentForm::$kind {
+                            $($route:$route.ok_or_else(||M::Error::missing_field(stringify!($route)))?,)?
+                            $($quantity:$quantity.ok_or_else(||M::Error::missing_field(stringify!($quantity)))?,)*
+                            $($level:$level.ok_or_else(||M::Error::missing_field(stringify!($level)))?,)?
+                            $($modulation:$modulation.unwrap_or(None),)?
+                        }
+                    },)*
+                    _=>return Err(M::Error::unknown_variant(&kind,&[$($key),*])),
+                };
+                Ok(T::from_fields(id,form))
+            }
+        }
+        impl<'de> Deserialize<'de> for Component {
+            fn deserialize<D:Deserializer<'de>>(deserializer:D)->Result<Self,D::Error> {deserializer.deserialize_map(ComponentVisitor::<Self>(core::marker::PhantomData))}
+        }
+        impl<'de> Deserialize<'de> for ComponentForm {
+            fn deserialize<D:Deserializer<'de>>(deserializer:D)->Result<Self,D::Error> {deserializer.deserialize_map(ComponentVisitor::<Self>(core::marker::PhantomData))}
+        }
+    };
+}
+crate::component_schema::component_schema!(define_component_codec);
+
 /// An authored form and its positive stable owner identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Component {
@@ -84,7 +218,7 @@ pub struct Component {
 /// Coupled carrier/offset failure, independent of sample-rate Nyquist checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PairIssue {
-    /// A requested carrier, offset or computed carrier is nonfinite.
+    /// The computed second carrier is nonfinite.
     Nonfinite,
     /// One computed carrier is zero or negative.
     Nonpositive,
@@ -159,16 +293,15 @@ pub(crate) fn lower(component: &Component) -> Result<Vec<(VoiceId, Voice)>, Pair
                 None => (Ears::Left, Ears::Right),
                 Some(ears) => (ears, ears),
             };
-            let second_hz = pair.first_hz + pair.offset_hz;
-            // A finite IEEE binary64 sum requires finite operands; this
-            // single check also detects overflow of otherwise finite inputs.
+            let second_hz = pair.first_hz.get() + pair.offset_hz.get();
+            // The finite operands can still overflow during pair addition.
             let issue = if !second_hz.is_finite() {
                 Some(PairIssue::Nonfinite)
-            } else if !crate::validity::positive(pair.first_hz)
+            } else if !crate::validity::positive(pair.first_hz.get())
                 || !crate::validity::positive(second_hz)
             {
                 Some(PairIssue::Nonpositive)
-            } else if pair.offset_hz != 0.0 && second_hz == pair.first_hz {
+            } else if pair.offset_hz.get() != 0.0 && second_hz == pair.first_hz.get() {
                 Some(PairIssue::UnrepresentablePairDifference)
             } else {
                 None
@@ -177,8 +310,8 @@ pub(crate) fn lower(component: &Component) -> Result<Vec<(VoiceId, Voice)>, Pair
                 return Err(PairError {
                     issue,
                     id,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
+                    first_hz: pair.first_hz.get(),
+                    offset_hz: pair.offset_hz.get(),
                 });
             }
             let tone = |frequency_hz, peak_dbfs, ears| Voice {
@@ -189,311 +322,17 @@ pub(crate) fn lower(component: &Component) -> Result<Vec<(VoiceId, Voice)>, Pair
             };
             output.push((
                 id.into(),
-                tone(pair.first_hz, pair.first_peak_dbfs, first_ears),
+                tone(pair.first_hz.get(), pair.first_peak_dbfs.get(), first_ears),
             ));
             output.push((
                 id.with_lane(Lane::Secondary),
-                tone(second_hz, pair.second_peak_dbfs, second_ears),
+                tone(second_hz, pair.second_peak_dbfs.get(), second_ears),
             ));
         }
     }
     Ok(output)
 }
 
-impl Serialize for Component {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(None)?;
-        match self.form {
-            ComponentForm::Tone {
-                ears,
-                frequency_hz,
-                peak_dbfs,
-                modulation,
-            } => {
-                map.serialize_entry("kind", "tone")?;
-                map.serialize_entry("id", &self.id)?;
-                map.serialize_entry("ears", &ears)?;
-                map.serialize_entry("frequency_hz", &frequency_hz)?;
-                map.serialize_entry("peak_dbfs", &peak_dbfs)?;
-                if let Some(modulation) = modulation {
-                    map.serialize_entry("modulation", &modulation)?;
-                }
-            }
-            ComponentForm::Clicks {
-                ears,
-                rate_hz,
-                width_seconds,
-                peak_dbfs,
-                modulation,
-            } => {
-                map.serialize_entry("kind", "clicks")?;
-                map.serialize_entry("id", &self.id)?;
-                map.serialize_entry("ears", &ears)?;
-                map.serialize_entry("rate_hz", &rate_hz)?;
-                map.serialize_entry("width_seconds", &width_seconds)?;
-                map.serialize_entry("peak_dbfs", &peak_dbfs)?;
-                if let Some(modulation) = modulation {
-                    map.serialize_entry("modulation", &modulation)?;
-                }
-            }
-            ComponentForm::BinauralPair {
-                left_hz,
-                offset_hz,
-                left_peak_dbfs,
-                right_peak_dbfs,
-            } => {
-                map.serialize_entry("kind", "binaural_pair")?;
-                map.serialize_entry("id", &self.id)?;
-                map.serialize_entry("left_hz", &left_hz)?;
-                map.serialize_entry("offset_hz", &offset_hz)?;
-                map.serialize_entry("left_peak_dbfs", &left_peak_dbfs)?;
-                map.serialize_entry("right_peak_dbfs", &right_peak_dbfs)?;
-            }
-            ComponentForm::MonauralPair {
-                ears,
-                first_hz,
-                offset_hz,
-                first_peak_dbfs,
-                second_peak_dbfs,
-            } => {
-                map.serialize_entry("kind", "monaural_pair")?;
-                map.serialize_entry("id", &self.id)?;
-                map.serialize_entry("ears", &ears)?;
-                map.serialize_entry("first_hz", &first_hz)?;
-                map.serialize_entry("offset_hz", &offset_hz)?;
-                map.serialize_entry("first_peak_dbfs", &first_peak_dbfs)?;
-                map.serialize_entry("second_peak_dbfs", &second_peak_dbfs)?;
-            }
-        }
-        map.end()
-    }
-}
-impl<'de> Deserialize<'de> for Component {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct Visitor;
-        impl<'de> serde::de::Visitor<'de> for Visitor {
-            type Value = Component;
-            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("an authored component")
-            }
-            fn visit_map<M: serde::de::MapAccess<'de>>(
-                self,
-                mut map: M,
-            ) -> Result<Component, M::Error> {
-                use serde::de::Error;
-                let mut id: Option<ComponentId> = None;
-                let mut kind: Option<alloc::string::String> = None;
-                let mut ears: Option<Ears> = None;
-                let mut frequency_hz: Option<Finite> = None;
-                let mut peak_dbfs: Option<Finite> = None;
-                let mut modulation: Option<Option<Modulation>> = None;
-                let mut rate_hz: Option<Finite> = None;
-                let mut width_seconds: Option<Finite> = None;
-                let mut left_hz: Option<Finite> = None;
-                let mut offset_hz: Option<Finite> = None;
-                let mut left_peak_dbfs: Option<Finite> = None;
-                let mut right_peak_dbfs: Option<Finite> = None;
-                let mut first_hz: Option<Finite> = None;
-                let mut first_peak_dbfs: Option<Finite> = None;
-                let mut second_peak_dbfs: Option<Finite> = None;
-                while let Some(key) = map.next_key::<alloc::string::String>()? {
-                    match key.as_str() {
-                        "id" => {
-                            if id.is_some() {
-                                return Err(M::Error::duplicate_field("id"));
-                            }
-                            id = Some(map.next_value()?);
-                        }
-                        "kind" => {
-                            if kind.is_some() {
-                                return Err(M::Error::duplicate_field("kind"));
-                            }
-                            kind = Some(map.next_value()?);
-                        }
-                        "ears" => {
-                            if ears.is_some() {
-                                return Err(M::Error::duplicate_field("ears"));
-                            }
-                            ears = Some(map.next_value()?);
-                        }
-                        "frequency_hz" => {
-                            if frequency_hz.is_some() {
-                                return Err(M::Error::duplicate_field("frequency_hz"));
-                            }
-                            frequency_hz = Some(map.next_value()?);
-                        }
-                        "peak_dbfs" => {
-                            if peak_dbfs.is_some() {
-                                return Err(M::Error::duplicate_field("peak_dbfs"));
-                            }
-                            peak_dbfs = Some(map.next_value()?);
-                        }
-                        "modulation" => {
-                            if modulation.is_some() {
-                                return Err(M::Error::duplicate_field("modulation"));
-                            }
-                            modulation = Some(map.next_value()?);
-                        }
-                        "rate_hz" => {
-                            if rate_hz.is_some() {
-                                return Err(M::Error::duplicate_field("rate_hz"));
-                            }
-                            rate_hz = Some(map.next_value()?);
-                        }
-                        "width_seconds" => {
-                            if width_seconds.is_some() {
-                                return Err(M::Error::duplicate_field("width_seconds"));
-                            }
-                            width_seconds = Some(map.next_value()?);
-                        }
-                        "left_hz" => {
-                            if left_hz.is_some() {
-                                return Err(M::Error::duplicate_field("left_hz"));
-                            }
-                            left_hz = Some(map.next_value()?);
-                        }
-                        "offset_hz" => {
-                            if offset_hz.is_some() {
-                                return Err(M::Error::duplicate_field("offset_hz"));
-                            }
-                            offset_hz = Some(map.next_value()?);
-                        }
-                        "left_peak_dbfs" => {
-                            if left_peak_dbfs.is_some() {
-                                return Err(M::Error::duplicate_field("left_peak_dbfs"));
-                            }
-                            left_peak_dbfs = Some(map.next_value()?);
-                        }
-                        "right_peak_dbfs" => {
-                            if right_peak_dbfs.is_some() {
-                                return Err(M::Error::duplicate_field("right_peak_dbfs"));
-                            }
-                            right_peak_dbfs = Some(map.next_value()?);
-                        }
-                        "first_hz" => {
-                            if first_hz.is_some() {
-                                return Err(M::Error::duplicate_field("first_hz"));
-                            }
-                            first_hz = Some(map.next_value()?);
-                        }
-                        "first_peak_dbfs" => {
-                            if first_peak_dbfs.is_some() {
-                                return Err(M::Error::duplicate_field("first_peak_dbfs"));
-                            }
-                            first_peak_dbfs = Some(map.next_value()?);
-                        }
-                        "second_peak_dbfs" => {
-                            if second_peak_dbfs.is_some() {
-                                return Err(M::Error::duplicate_field("second_peak_dbfs"));
-                            }
-                            second_peak_dbfs = Some(map.next_value()?);
-                        }
-                        _ => {
-                            return Err(M::Error::custom(alloc::format!(
-                                "unknown component field `{key}`"
-                            )));
-                        }
-                    }
-                }
-                let id = id.ok_or_else(|| M::Error::missing_field("id"))?;
-                let kind = kind.ok_or_else(|| M::Error::missing_field("kind"))?;
-                macro_rules! required {
-                    ($field:ident) => {
-                        $field.ok_or_else(|| M::Error::missing_field(stringify!($field)))?
-                    };
-                }
-                macro_rules! absent { ($($field:ident),* $(,)?) => { $(if $field.is_some() { return Err(M::Error::custom(alloc::format!("unknown field `{}` for {}", stringify!($field), kind))); })* }; }
-                let form = match kind.as_str() {
-                    "tone" => {
-                        absent!(
-                            rate_hz,
-                            width_seconds,
-                            left_hz,
-                            offset_hz,
-                            left_peak_dbfs,
-                            right_peak_dbfs,
-                            first_hz,
-                            first_peak_dbfs,
-                            second_peak_dbfs
-                        );
-                        ComponentForm::Tone {
-                            ears: required!(ears),
-                            frequency_hz: required!(frequency_hz),
-                            peak_dbfs: required!(peak_dbfs),
-                            modulation: modulation.unwrap_or(None),
-                        }
-                    }
-                    "clicks" => {
-                        absent!(
-                            frequency_hz,
-                            left_hz,
-                            offset_hz,
-                            left_peak_dbfs,
-                            right_peak_dbfs,
-                            first_hz,
-                            first_peak_dbfs,
-                            second_peak_dbfs
-                        );
-                        ComponentForm::Clicks {
-                            ears: required!(ears),
-                            rate_hz: required!(rate_hz),
-                            width_seconds: required!(width_seconds),
-                            peak_dbfs: required!(peak_dbfs),
-                            modulation: modulation.unwrap_or(None),
-                        }
-                    }
-                    "binaural_pair" => {
-                        absent!(
-                            ears,
-                            frequency_hz,
-                            peak_dbfs,
-                            modulation,
-                            rate_hz,
-                            width_seconds,
-                            first_hz,
-                            first_peak_dbfs,
-                            second_peak_dbfs
-                        );
-                        ComponentForm::BinauralPair {
-                            left_hz: required!(left_hz),
-                            offset_hz: required!(offset_hz),
-                            left_peak_dbfs: required!(left_peak_dbfs),
-                            right_peak_dbfs: required!(right_peak_dbfs),
-                        }
-                    }
-                    "monaural_pair" => {
-                        absent!(
-                            frequency_hz,
-                            peak_dbfs,
-                            modulation,
-                            rate_hz,
-                            width_seconds,
-                            left_hz,
-                            left_peak_dbfs,
-                            right_peak_dbfs
-                        );
-                        ComponentForm::MonauralPair {
-                            ears: required!(ears),
-                            first_hz: required!(first_hz),
-                            offset_hz: required!(offset_hz),
-                            first_peak_dbfs: required!(first_peak_dbfs),
-                            second_peak_dbfs: required!(second_peak_dbfs),
-                        }
-                    }
-                    _ => {
-                        return Err(M::Error::unknown_variant(
-                            &kind,
-                            &["tone", "clicks", "binaural_pair", "monaural_pair"],
-                        ));
-                    }
-                };
-                Ok(Component { id, form })
-            }
-        }
-        deserializer.deserialize_map(Visitor)
-    }
-}
 /// Ordered authored sound with unique identities and bounded generator capacity.
 /// Fields can only be set through checked construction and mutation.
 /// ```compile_fail
@@ -699,10 +538,10 @@ impl ComponentForm {
                 left_peak_dbfs,
                 right_peak_dbfs,
             } => Some(Pair {
-                first_hz: left_hz.get(),
-                offset_hz: offset_hz.get(),
-                first_peak_dbfs: left_peak_dbfs.get(),
-                second_peak_dbfs: right_peak_dbfs.get(),
+                first_hz: left_hz,
+                offset_hz,
+                first_peak_dbfs: left_peak_dbfs,
+                second_peak_dbfs: right_peak_dbfs,
             }),
             Self::MonauralPair {
                 first_hz,
@@ -711,24 +550,15 @@ impl ComponentForm {
                 second_peak_dbfs,
                 ..
             } => Some(Pair {
-                first_hz: first_hz.get(),
-                offset_hz: offset_hz.get(),
-                first_peak_dbfs: first_peak_dbfs.get(),
-                second_peak_dbfs: second_peak_dbfs.get(),
+                first_hz,
+                offset_hz,
+                first_peak_dbfs,
+                second_peak_dbfs,
             }),
             _ => None,
         }
     }
-    /// The shared route, absent for a binaural pair's separate ears.
-    #[must_use]
-    pub const fn route(self) -> Option<Ears> {
-        match self {
-            Self::Tone { ears, .. }
-            | Self::Clicks { ears, .. }
-            | Self::MonauralPair { ears, .. } => Some(ears),
-            Self::BinauralPair { .. } => None,
-        }
-    }
+
     /// Whether this form needs separate ear channels.
     #[must_use]
     pub const fn separates_ears(self) -> bool {
@@ -767,24 +597,7 @@ impl ComponentForm {
             _ => None,
         }
     }
-    /// Optional modulation on a primitive form.
-    #[must_use]
-    pub const fn modulation(self) -> Option<Modulation> {
-        match self {
-            Self::Tone { modulation, .. } | Self::Clicks { modulation, .. } => modulation,
-            _ => None,
-        }
-    }
-    /// Replace modulation when the authored form supports it.
-    pub fn set_modulation(&mut self, value: Option<Modulation>) -> bool {
-        match self {
-            Self::Tone { modulation, .. } | Self::Clicks { modulation, .. } => {
-                *modulation = value;
-                true
-            }
-            _ => false,
-        }
-    }
+
     /// Primitive carrier choice; pairs have no carrier choice.
     #[must_use]
     pub const fn primitive_kind(self) -> Option<crate::CarrierKind> {
@@ -807,129 +620,7 @@ impl ComponentForm {
     pub fn heading(self) -> &'static str {
         crate::rhythm::Method::primary_of(self).label()
     }
-    /// Read an applicable authored quantity in model units.
-    #[must_use]
-    pub fn get(self, parameter: crate::ParameterId) -> Option<Finite> {
-        use crate::ParameterId as P;
-        match (parameter, self) {
-            (P::ToneFrequency, Self::Tone { frequency_hz, .. }) => Some(frequency_hz),
-            (P::ClickRate, Self::Clicks { rate_hz, .. }) => Some(rate_hz),
-            (P::ClickWidth, Self::Clicks { width_seconds, .. }) => Some(width_seconds),
-            (P::PeakLevel, Self::Tone { peak_dbfs, .. }) => Some(peak_dbfs),
-            (P::PeakLevel, Self::Clicks { peak_dbfs, .. }) => Some(peak_dbfs),
-            (P::PairFirstFrequency, Self::BinauralPair { left_hz, .. }) => Some(left_hz),
-            (P::PairFirstFrequency, Self::MonauralPair { first_hz, .. }) => Some(first_hz),
-            (P::PairOffset, Self::BinauralPair { offset_hz, .. }) => Some(offset_hz),
-            (P::PairOffset, Self::MonauralPair { offset_hz, .. }) => Some(offset_hz),
-            (P::PairFirstLevel, Self::BinauralPair { left_peak_dbfs, .. }) => Some(left_peak_dbfs),
-            (
-                P::PairFirstLevel,
-                Self::MonauralPair {
-                    first_peak_dbfs, ..
-                },
-            ) => Some(first_peak_dbfs),
-            (
-                P::PairSecondLevel,
-                Self::BinauralPair {
-                    right_peak_dbfs, ..
-                },
-            ) => Some(right_peak_dbfs),
-            (
-                P::PairSecondLevel,
-                Self::MonauralPair {
-                    second_peak_dbfs, ..
-                },
-            ) => Some(second_peak_dbfs),
-            _ => match (parameter, self.modulation()) {
-                (P::AmRate, Some(Modulation::Am { rate_hz, .. }))
-                | (P::GateRate, Some(Modulation::Gate { rate_hz, .. })) => Some(rate_hz),
-                (P::AmDepth, Some(Modulation::Am { depth, .. })) => Some(depth),
-                (P::GateWidth, Some(Modulation::Gate { width_seconds, .. })) => Some(width_seconds),
-                _ => None,
-            },
-        }
-    }
-    /// Change one applicable authored quantity, leaving all others unchanged.
-    pub fn set(&mut self, parameter: crate::ParameterId, value: Finite) -> bool {
-        use crate::ParameterId as P;
-        let slot = match (parameter, self) {
-            (P::ToneFrequency, Self::Tone { frequency_hz, .. }) => frequency_hz,
-            (P::ClickRate, Self::Clicks { rate_hz, .. }) => rate_hz,
-            (P::ClickWidth, Self::Clicks { width_seconds, .. }) => width_seconds,
-            (P::PeakLevel, Self::Tone { peak_dbfs, .. }) => peak_dbfs,
-            (P::PeakLevel, Self::Clicks { peak_dbfs, .. }) => peak_dbfs,
-            (P::PairFirstFrequency, Self::BinauralPair { left_hz, .. }) => left_hz,
-            (P::PairFirstFrequency, Self::MonauralPair { first_hz, .. }) => first_hz,
-            (P::PairOffset, Self::BinauralPair { offset_hz, .. }) => offset_hz,
-            (P::PairOffset, Self::MonauralPair { offset_hz, .. }) => offset_hz,
-            (P::PairFirstLevel, Self::BinauralPair { left_peak_dbfs, .. }) => left_peak_dbfs,
-            (
-                P::PairFirstLevel,
-                Self::MonauralPair {
-                    first_peak_dbfs, ..
-                },
-            ) => first_peak_dbfs,
-            (
-                P::PairSecondLevel,
-                Self::BinauralPair {
-                    right_peak_dbfs, ..
-                },
-            ) => right_peak_dbfs,
-            (
-                P::PairSecondLevel,
-                Self::MonauralPair {
-                    second_peak_dbfs, ..
-                },
-            ) => second_peak_dbfs,
-            (
-                P::AmRate,
-                Self::Tone {
-                    modulation: Some(Modulation::Am { rate_hz, .. }),
-                    ..
-                }
-                | Self::Clicks {
-                    modulation: Some(Modulation::Am { rate_hz, .. }),
-                    ..
-                },
-            ) => rate_hz,
-            (
-                P::GateRate,
-                Self::Tone {
-                    modulation: Some(Modulation::Gate { rate_hz, .. }),
-                    ..
-                }
-                | Self::Clicks {
-                    modulation: Some(Modulation::Gate { rate_hz, .. }),
-                    ..
-                },
-            ) => rate_hz,
-            (
-                P::AmDepth,
-                Self::Tone {
-                    modulation: Some(Modulation::Am { depth, .. }),
-                    ..
-                }
-                | Self::Clicks {
-                    modulation: Some(Modulation::Am { depth, .. }),
-                    ..
-                },
-            ) => depth,
-            (
-                P::GateWidth,
-                Self::Tone {
-                    modulation: Some(Modulation::Gate { width_seconds, .. }),
-                    ..
-                }
-                | Self::Clicks {
-                    modulation: Some(Modulation::Gate { width_seconds, .. }),
-                    ..
-                },
-            ) => width_seconds,
-            _ => return false,
-        };
-        *slot = value;
-        true
-    }
+
     pub(crate) fn intrinsic_issues(&self) -> impl Iterator<Item = crate::ValueIssue> + '_ {
         crate::ParameterId::COMPONENT.into_iter().filter_map(|p| {
             self.get(p)

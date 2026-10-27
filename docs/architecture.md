@@ -68,7 +68,7 @@ Generated frames, backend-submitted frames and estimated output position are dis
 
 ### Add a component kind
 
-Define its finite authored fields, strict serialization and `get`/`set` quantities in core's [authored model](../crates/core/src/model/authored.rs). Define lowering, validation and voice facts, then classification/timing where applicable. Preserve authored order, owner/lane identity and serialization field order. Add independent structure/sample/rejection cases. Workspace chooses applicable controls and typed diagnostics; presentation supplies descriptions, while the GUI maps the resulting rows.
+Declare its wire fields, parameter meaning and allowed shared fields in the [component schema](../crates/core/src/model/component_schema.rs). The schema generates forms, the strict visitor, quantity access, units and intrinsic rules. Define lowering, validation and voice facts, then classification/timing where applicable. Preserve authored order, owner/lane identity and serialization field order. Add independent structure/sample/rejection cases. Workspace chooses applicable controls and typed diagnostics; presentation supplies descriptions, while the GUI maps the resulting rows. The GUI build script generates `ParameterKey` and its mappings from `ParameterId::ALL`.
 
 ### Add a CLI command
 

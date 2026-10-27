@@ -1286,7 +1286,8 @@ fn committed_classification_never_borrows_pending_pair_facts() {
                 .form
                 .pair()
                 .unwrap()
-                .offset_hz,
+                .offset_hz
+                .get(),
             -7.0
         );
         assert_eq!(ws.restore(offset).unwrap(), "-7");

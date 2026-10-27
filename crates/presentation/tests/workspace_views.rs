@@ -88,28 +88,28 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     }
     for binaural in [true, false] {
         let pair = auditorylab_app::core::Pair {
-            first_hz: 380.0,
-            offset_hz: 40.0,
-            first_peak_dbfs: -40.0,
-            second_peak_dbfs: -40.0,
+            first_hz: finite(380.0),
+            offset_hz: finite(40.0),
+            first_peak_dbfs: finite(-40.0),
+            second_peak_dbfs: finite(-40.0),
         };
         let form = if binaural {
             {
                 auditorylab_app::core::ComponentForm::BinauralPair {
-                    left_hz: finite(pair.first_hz),
-                    offset_hz: finite(pair.offset_hz),
-                    left_peak_dbfs: finite(pair.first_peak_dbfs),
-                    right_peak_dbfs: finite(pair.second_peak_dbfs),
+                    left_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    left_peak_dbfs: pair.first_peak_dbfs,
+                    right_peak_dbfs: pair.second_peak_dbfs,
                 }
             }
         } else {
             {
                 auditorylab_app::core::ComponentForm::MonauralPair {
                     ears: Ears::Both,
-                    first_hz: finite(pair.first_hz),
-                    offset_hz: finite(pair.offset_hz),
-                    first_peak_dbfs: finite(pair.first_peak_dbfs),
-                    second_peak_dbfs: finite(pair.second_peak_dbfs),
+                    first_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    first_peak_dbfs: pair.first_peak_dbfs,
+                    second_peak_dbfs: pair.second_peak_dbfs,
                 }
             }
         };

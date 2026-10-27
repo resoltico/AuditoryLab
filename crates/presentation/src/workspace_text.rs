@@ -304,7 +304,7 @@ pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorView 
             key:component.key,id:component.id,ears:component.committed.route().unwrap_or(auditorylab_core::Ears::Both),
             routing_editable:component.committed.route().is_some(),carrier:component.committed.primitive_kind(),modulation:component.committed.modulation_kind(),
             heading:component.shown.heading(),name:format!("{} · Component {}",component.shown.heading(),component.id),
-            context:component.shown.pair().map_or_else(||component.facts.as_ref().map(AudioSummary::summary).unwrap_or_default(),|pair| format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz+pair.offset_hz,pair.offset_hz.abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)),
+            context:component.shown.pair().map_or_else(||component.facts.as_ref().map(AudioSummary::summary).unwrap_or_default(),|pair| format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz.get()+pair.offset_hz.get(),pair.offset_hz.get().abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)),
             error:errors.join("; "),parameters,
         }
     }).collect();

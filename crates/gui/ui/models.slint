@@ -1,9 +1,6 @@
-export enum LibraryMutationAction { rename, trash, restore, request-purge }
-// Semantic quantities; the application maps each to exactly one domain field.
-export enum ParameterKey {
-    tone-frequency, click-rate, click-width, peak-level, am-rate,
-    am-depth, gate-rate, gate-width, duration, fade, pair-first-frequency, pair-offset, pair-first-level, pair-second-level
-}
+export { LibraryMutationAction } from "library-actions.slint";
+export { ParameterKey } from "parameters.slint";
+import { ParameterKey } from "parameters.slint";
 export enum MetadataKey { title, summary, duration, fade }
 export struct ParameterRow {
     key: ParameterKey,

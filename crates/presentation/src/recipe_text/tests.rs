@@ -124,10 +124,10 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
         modulation: None,
     };
     let pair = Pair {
-        first_hz: 200.0,
-        offset_hz: -6.0,
-        first_peak_dbfs: -20.0,
-        second_peak_dbfs: -30.0,
+        first_hz: finite(200.0),
+        offset_hz: finite(-6.0),
+        first_peak_dbfs: finite(-20.0),
+        second_peak_dbfs: finite(-30.0),
     };
     for (form, expected) in [
         (plain, "tone 437 Hz, peak -24 dBFS, left ear"),
@@ -169,10 +169,10 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
         (
             {
                 ComponentForm::BinauralPair {
-                    left_hz: finite(pair.first_hz),
-                    offset_hz: finite(pair.offset_hz),
-                    left_peak_dbfs: finite(pair.first_peak_dbfs),
-                    right_peak_dbfs: finite(pair.second_peak_dbfs),
+                    left_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    left_peak_dbfs: pair.first_peak_dbfs,
+                    right_peak_dbfs: pair.second_peak_dbfs,
                 }
             },
             "binaural pair, first 200 Hz, signed offset -6 Hz, second 194 Hz, peaks -20 / -30 dBFS",
@@ -180,15 +180,15 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
         (
             {
                 let pair = Pair {
-                    offset_hz: 6.0,
+                    offset_hz: finite(6.0),
                     ..pair
                 };
                 ComponentForm::MonauralPair {
                     ears: Ears::Right,
-                    first_hz: finite(pair.first_hz),
-                    offset_hz: finite(pair.offset_hz),
-                    first_peak_dbfs: finite(pair.first_peak_dbfs),
-                    second_peak_dbfs: finite(pair.second_peak_dbfs),
+                    first_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    first_peak_dbfs: pair.first_peak_dbfs,
+                    second_peak_dbfs: pair.second_peak_dbfs,
                 }
             },
             "monaural pair, first 200 Hz, signed offset 6 Hz, second 206 Hz, peaks -20 / -30 dBFS",

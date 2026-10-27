@@ -24,34 +24,22 @@ pub(crate) fn positive(value: f64) -> bool {
     value.is_finite() && value > 0.0
 }
 pub(crate) fn check_value(parameter: ParameterId, value: f64) -> Result<(), ValueIssue> {
-    use ParameterId as P;
-    let rule = match parameter {
-        P::ToneFrequency
-        | P::ClickRate
-        | P::ClickWidth
-        | P::AmRate
-        | P::GateRate
-        | P::GateWidth
-        | P::PairFirstFrequency
-            if !positive(value) =>
-        {
-            Some(ValueRule::Positive)
-        }
-        P::PeakLevel | P::PairFirstLevel | P::PairSecondLevel
-            if !value.is_finite() || value > 0.0 =>
-        {
-            Some(ValueRule::Peak)
-        }
-        P::AmDepth if !(0.0..=1.0).contains(&value) => Some(ValueRule::Depth),
-        _ => None,
+    let Some(rule) = parameter.value_rule() else {
+        return Ok(());
     };
-    match rule {
-        Some(rule) => Err(ValueIssue {
+    let invalid = match rule {
+        ValueRule::Positive => !positive(value),
+        ValueRule::Peak => !value.is_finite() || value > 0.0,
+        ValueRule::Depth => !(0.0..=1.0).contains(&value),
+    };
+    if invalid {
+        Err(ValueIssue {
             parameter,
             value,
             rule,
-        }),
-        None => Ok(()),
+        })
+    } else {
+        Ok(())
     }
 }
 

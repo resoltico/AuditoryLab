@@ -299,12 +299,12 @@ pub fn nominal(sound: &crate::Sound) -> Analysis {
                 for (parameter, value, lane) in [
                     (
                         ParameterId::PairFirstLevel,
-                        pair.first_peak_dbfs,
+                        pair.first_peak_dbfs.get(),
                         Lane::Primary,
                     ),
                     (
                         ParameterId::PairSecondLevel,
-                        pair.second_peak_dbfs,
+                        pair.second_peak_dbfs.get(),
                         Lane::Secondary,
                     ),
                 ] {
@@ -320,10 +320,10 @@ pub fn nominal(sound: &crate::Sound) -> Analysis {
                 }
                 (
                     Carrier::Tone {
-                        frequency_hz: pair.first_hz,
+                        frequency_hz: pair.first_hz.get(),
                     },
                     None,
-                    Some((kind, Some(pair.offset_hz.abs()))),
+                    Some((kind, Some(pair.offset_hz.get().abs()))),
                 )
             }
         };
