@@ -14,7 +14,7 @@
 - `ComponentForm` replaces `Node` with flat tone/click/pair variants; `Voice` is private. Build forms with `Finite` values and use `get`/`set`.
 - `Clicks`, `Am` and `Gate` replace `Click`, `Sinusoidal` and `Rectangular`; update Rust matches and recipe generation.
 - Core uses `SoundError`/`VoiceError` instead of `StimulusError`/`ComponentError`; `SoundError::Voice` identifies the authored owner and lane.
-- Rust generator APIs use `CompiledVoice`, `VoiceFacts` and `voices()`; `observations()` yields origin-zero observations. Update lane-level callers.
+- Rust `ComponentFacts` is `VoiceFacts`; target/signal `voices()` expose generator lanes, and target `observations()` returns origin-zero observations.
 - `ComponentId` is nonzero; expanded generators use `VoiceId { component, lane }`. Update constructors and consumers of generator identities.
 - App origin keys/tokens live in `document::origin`, job controls in `job` and outcome categories in `outcome`. Shared vocabulary and query choices belong to core.
 - Editable number text belongs to `document::input`; monitor/control models and typed views belong to workspace. Update app/presentation imports.
