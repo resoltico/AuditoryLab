@@ -188,13 +188,16 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
             .unwrap();
         }
         let view = crate::workspace_text::action_view(&ws.action_view());
-        assert!(!view.can_add_pair);
+        assert!(!ws.action_view().can_add_pair);
         assert!(view.pair_add_reason.contains(&format!(
             "{components} authored components and {voices} expanded voices"
         )));
         assert!(view.pair_add_reason.contains("2 more voices"));
-        assert_eq!(view.can_add_component, voices < 16 && components < 16);
-        if !view.can_add_component {
+        assert_eq!(
+            ws.action_view().can_add_component,
+            voices < 16 && components < 16
+        );
+        if !ws.action_view().can_add_component {
             assert!(view.add_component_reason.contains(&format!(
                 "{components} authored components and {voices} expanded voices"
             )));
@@ -211,8 +214,9 @@ fn structured_library_rows_keep_saved_identity_and_rate_independent_classificati
     )))
     .unwrap();
     let view = crate::workspace_text::library_view(&ws.library_view());
-    assert_eq!(view.rows.len(), 1);
-    let row = &view.rows[0];
+    let typed = ws.library_view();
+    assert_eq!(typed.rows.len(), 1);
+    let row = crate::library_text::row(&typed.rows[0], typed.sort);
     assert!(row.key.contains("ioannou-2015-binaural-2-hz"));
     assert_eq!(row.bands, "Delta");
     assert!(row.collection.contains("Read only"));
@@ -227,7 +231,7 @@ fn structured_library_rows_keep_saved_identity_and_rate_independent_classificati
         classification
     );
     assert_eq!(
-        crate::workspace_text::library_view(&ws.library_view()).rows[0].key,
+        crate::library_text::row(&ws.library_view().rows[0], ws.library_view().sort).key,
         row.key
     );
 }
@@ -247,14 +251,14 @@ fn staged_envelope_failures_render_quantities_and_rate_in_metadata() {
             text: ("0").to_string(),
         }))
         .unwrap();
-    let view = crate::workspace_text::editor_view(&workspace.editor_view());
+    let view = workspace.editor_view();
     let duration = view
         .metadata
         .iter()
         .find(|field| field.handle == handle)
         .unwrap();
     assert_eq!(
-        duration.diagnostic,
+        crate::workspace_text::metadata_text(duration, &view).diagnostic,
         "Duration 0 s must last from one sample (1/48000 s) to 16.6 days at 48000 Hz"
     );
 }
@@ -616,7 +620,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
     .unwrap();
     let mut typed = ws.action_view();
     let actions = crate::workspace_text::action_view(&typed);
-    assert!(!actions.can_save);
+    assert!(!typed.can_save);
     assert!(actions.operation_summary.contains("65536"));
     typed.file_status = FileStatus::Exported {
         path: PathBuf::from("capture.wav"),
@@ -1011,8 +1015,10 @@ fn repeated_views_keep_all_rendered_fields_and_empty_selection_clears_text() {
     )))
     .unwrap();
     let empty = workspace_text::library_view(&ws.library_view());
-    assert!(empty.rows.is_empty() && empty.title.is_empty() && empty.details.is_empty());
-    assert!(!workspace_text::action_view(&ws.action_view()).can_play);
+    assert!(
+        ws.library_view().rows.is_empty() && empty.title.is_empty() && empty.details.is_empty()
+    );
+    assert!(!ws.action_view().can_play);
 }
 
 #[test]

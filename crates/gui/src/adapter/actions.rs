@@ -214,12 +214,10 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(on_quit, |a| a.command(|w| w.apply(Command::Close)));
     on!(on_about, |a| a.show_about());
     on!(on_open_study, |a| {
-        let url = a.workspace.borrow_mut().as_mut().and_then(|w| {
-            auditorylab_presentation::workspace_text::library_view(&w.library_view())
-                .study_url
-                .clone()
+        let url = a.workspace.borrow_mut().as_mut().map(|w| {
+            auditorylab_presentation::workspace_text::library_view(&w.library_view()).study_url
         });
-        if let Some(url) = url {
+        if let Some(url) = url.filter(|url| !url.is_empty()) {
             open_web(&url);
         }
     });

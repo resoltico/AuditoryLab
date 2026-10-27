@@ -95,16 +95,18 @@ impl SlintAdapter {
             .set(self.counts.library_projections.get() + 1);
         sync_rows(
             &self.catalog,
-            library
+            source
                 .rows
                 .iter()
                 .enumerate()
-                .map(|(index, row)| CatalogRow {
+                .map(|(index, source_row)| {
+                    let row=auditorylab_presentation::library_text::row(source_row,source.sort);
+                    CatalogRow {
                     entry: crate::generated::EntryAddress {
                         table: table.clone(),
                         row: i32::try_from(index).unwrap_or(-1),
                     },
-                    built_in: row.built_in,
+                    built_in: matches!(source_row,auditorylab_app::workspace::LibraryRowView::Entry {entry,..} if matches!(entry.key,auditorylab_app::document::origin::LibraryKey::BuiltIn(_))),
                     text: read_only(&row.text),
                     binding: row.key.as_str().into(),
                     title: read_only(&row.title),
@@ -113,7 +115,7 @@ impl SlintAdapter {
                     bands: read_only(&row.bands),
                     duration: read_only(&row.duration),
                     dates: read_only(&row.dates),
-                })
+                }})
                 .collect(),
         );
         if let Some(w) = self.workspace.borrow().as_ref() {
@@ -242,13 +244,18 @@ impl SlintAdapter {
             *self.choices.borrow_mut() = choices;
         }
         // Virtual group/diagnostic rows do not create a selectable sound.
-        let has_results = library.rows.iter().any(|row| !row.key.is_empty());
+        let has_results = source.rows.iter().any(|row| {
+            matches!(
+                row,
+                auditorylab_app::workspace::LibraryRowView::Entry { .. }
+            )
+        });
         ui.set_has_results(has_results);
         if !has_results {
             ui.set_library_detail(false);
         }
         ui.set_selected(
-            library
+            source
                 .selected
                 .and_then(|i| i32::try_from(i).ok())
                 .unwrap_or(-1),
@@ -261,7 +268,7 @@ impl SlintAdapter {
         ui.set_recipe_timing(read_only(&library.timing));
         ui.set_summary(read_only(&library.summary));
         ui.set_details(read_only(&library.details));
-        ui.set_can_open_study(library.study_url.is_some());
+        ui.set_can_open_study(!library.study_url.is_empty());
         *self.library.borrow_mut() = Some(source);
     }
 }

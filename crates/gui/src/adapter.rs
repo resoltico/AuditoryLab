@@ -9,13 +9,11 @@
 //! the document, component and generation, so late callbacks cannot address a
 //! replacement document or a restored component lifetime.
 use auditorylab_app::workspace::monitor::WaveformScale;
+use auditorylab_app::workspace::{ComponentView, EditorView, MetadataView, ParameterView};
 use auditorylab_presentation::DisplayText;
 use auditorylab_presentation::LibraryPresentation;
 use auditorylab_presentation::vocabulary::NumberStyle;
 use auditorylab_presentation::waveform_view::*;
-use auditorylab_presentation::workspace_text::{
-    ComponentView, EditorView, MetadataView, ParameterView,
-};
 use auditorylab_presentation::*;
 mod actions;
 mod auxiliary;
@@ -654,9 +652,9 @@ impl SlintAdapter {
             .set(self.counts.document_projections.get() + 1);
         let views = self.workspace.borrow_mut().as_mut().map(|w| {
             (
-                auditorylab_presentation::workspace_text::editor_view(&w.editor_view()),
+                w.editor_view(),
                 w.library_view(),
-                auditorylab_presentation::workspace_text::action_view(&w.action_view()),
+                w.action_view(),
                 w.export_rate(),
             )
         });
@@ -669,51 +667,53 @@ impl SlintAdapter {
             ui.set_draft_location_details(read_only(&workspace.document_location()));
         }
         ui.set_dirty(editor.dirty);
-        ui.set_draft_brief(read_only(&editor.brief));
-        ui.set_peak(read_only(&editor.peak));
-        ui.set_metadata_error(read_only(&editor.metadata_error));
-        ui.set_based_on_title(read_only(&editor.based_on_title));
-        ui.set_based_on(read_only(&editor.based_on));
-        ui.set_retained_warning(read_only(&editor.retained_warning));
+        let editor_text = auditorylab_presentation::workspace_text::editor_view(&editor);
+        ui.set_draft_brief(read_only(&editor_text.brief));
+        ui.set_peak(read_only(&editor_text.peak));
+        ui.set_metadata_error(read_only(&editor_text.metadata_error));
+        ui.set_based_on_title(read_only(&editor_text.based_on_title));
+        ui.set_based_on(read_only(&editor_text.based_on));
+        ui.set_retained_warning(read_only(&editor_text.retained_warning));
 
         self.project_library(ui, library);
         if ui.get_query() != self.query() {
             ui.set_query(self.query().into());
         }
 
+        let action_text = auditorylab_presentation::workspace_text::action_view(&actions);
         ui.set_can_play(actions.can_play);
-        ui.set_library_play_action(actions.library_play_label.into());
+        ui.set_library_play_action(action_text.library_play_label.into());
         ui.set_can_import(actions.can_import);
         ui.set_can_manage_library(actions.can_manage_library);
         ui.set_can_add_to_library(actions.can_add_to_library);
         ui.set_can_request_trash(actions.can_request_trash);
         ui.set_can_new(actions.can_new);
         ui.set_can_copy(actions.can_copy);
-        ui.set_copy_reason(read_only(&actions.copy_reason));
-        ui.set_operation_summary(read_only(&actions.operation_summary));
-        ui.set_operation_outcome(read_only(&actions.operation_outcome));
+        ui.set_copy_reason(read_only(&action_text.copy_reason));
+        ui.set_operation_summary(read_only(&action_text.operation_summary));
+        ui.set_operation_outcome(read_only(&action_text.operation_outcome));
         ui.set_can_preview(actions.can_preview);
-        ui.set_play_reason(read_only(&actions.play_reason));
+        ui.set_play_reason(read_only(&action_text.play_reason));
         ui.set_can_save(actions.can_save);
         ui.set_can_save_copy(actions.can_save_copy);
         ui.set_can_export_recipe(actions.can_export_recipe);
-        ui.set_save_reason(read_only(&actions.save_reason));
+        ui.set_save_reason(read_only(&action_text.save_reason));
         ui.set_can_export(actions.can_export);
-        ui.set_export_reason(read_only(&actions.export_reason));
+        ui.set_export_reason(read_only(&action_text.export_reason));
         ui.set_can_edit(actions.can_edit);
         ui.set_can_add_component(actions.can_add_component);
         ui.set_can_add_pair(actions.can_add_pair);
-        ui.set_pair_add_reason(read_only(&actions.pair_add_reason));
-        ui.set_add_reason(read_only(&actions.add_component_reason));
-        ui.set_removed_component(read_only(&actions.removed_component));
+        ui.set_pair_add_reason(read_only(&action_text.pair_add_reason));
+        ui.set_add_reason(read_only(&action_text.add_component_reason));
+        ui.set_removed_component(read_only(&action_text.removed_component));
         ui.set_can_restore_component(actions.can_restore_component);
         ui.set_playback_busy(actions.playback_busy);
         ui.set_exporting(actions.exporting);
         ui.set_transport_enabled(actions.transport_enabled);
-        ui.set_transport_action(read_only(&actions.transport_label));
-        ui.set_play_target(read_only(&actions.play_target));
-        ui.set_file_activity(read_only(&actions.file_activity));
-        ui.set_status(read_only(&actions.operation_details));
+        ui.set_transport_action(read_only(&action_text.transport_label));
+        ui.set_play_target(read_only(&action_text.play_target));
+        ui.set_file_activity(read_only(&action_text.file_activity));
+        ui.set_status(read_only(&action_text.operation_details));
         if let Some(index) = Workspace::export_rates().iter().position(|r| *r == rate)
             && let Ok(index) = i32::try_from(index)
         {
@@ -745,21 +745,21 @@ impl SlintAdapter {
                 .components
                 .iter()
                 .map(|component| {
-                    let entry = Self::new_entry(component);
-                    let row = component_row(&entry, component);
+                    let entry = Self::new_entry(component, editor);
+                    let row = component_row(&entry, component, editor);
                     entries.push(entry);
                     row
                 })
                 .collect();
             self.components.set_vec(rows);
-            set_metadata(ui, &editor.metadata);
+            set_metadata(ui, editor);
             ui.set_document(editor.key.to_string().into());
             ui.set_document_reset(ui.get_document_reset().wrapping_add(1));
             ui.set_editor_scroll_y(0.0);
             ui.set_edits_suspended(suspended);
             return;
         }
-        set_metadata(ui, &editor.metadata);
+        set_metadata(ui, editor);
         let mut entries = self.entries.borrow_mut();
         let mut index = 0;
         while index < entries.len() {
@@ -787,30 +787,30 @@ impl SlintAdapter {
                     }
                 }
                 None => {
-                    let entry = Self::new_entry(component);
+                    let entry = Self::new_entry(component, editor);
                     self.components
-                        .insert(index, component_row(&entry, component));
+                        .insert(index, component_row(&entry, component, editor));
                     entries.insert(index, entry);
                     continue;
                 }
             }
             let entry = &entries[index];
-            reconcile_parameters(&entry.parameters, &component.parameters);
-            let row = component_row(entry, component);
+            reconcile_parameters(&entry.parameters, &component.parameters, editor);
+            let row = component_row(entry, component, editor);
             if self.components.row_data(index).as_ref() != Some(&row) {
                 self.components.set_row_data(index, row);
             }
         }
     }
 
-    fn new_entry(component: &ComponentView) -> ComponentEntry {
+    fn new_entry(component: &ComponentView, editor: &EditorView) -> ComponentEntry {
         ComponentEntry {
             key: component.key,
             parameters: Rc::new(VecModel::from(
                 component
                     .parameters
                     .iter()
-                    .map(parameter_row)
+                    .map(|field| parameter_row(field, editor))
                     .collect::<Vec<_>>(),
             )),
         }
@@ -819,7 +819,7 @@ impl SlintAdapter {
     fn project_telemetry(&self, ui: &MainWindow) {
         let views = self.workspace.borrow().as_ref().map(|w| {
             (
-                auditorylab_presentation::workspace_text::transport_view(&w.transport_view()),
+                w.transport_view(),
                 w.output_view(),
                 w.model_view(),
                 w.export_progress(),
@@ -828,22 +828,32 @@ impl SlintAdapter {
         let Some((transport, output, model, progress)) = views else {
             return;
         };
-        ui.set_player_title(read_only(&transport.player_title));
-        ui.set_elapsed(read_only(&transport.elapsed));
-        ui.set_generated(read_only(&transport.generated));
-        ui.set_generated_details(read_only(&transport.generated_details));
-        ui.set_device(read_only(&transport.device));
-        ui.set_output_state(transport.output_state.into());
-        ui.set_receipt_age(read_only(&transport.receipt_age));
-        ui.set_monitor_warning(read_only(&transport.warning.0));
-        ui.set_monitor_warning_live(transport.warning.1);
-        ui.set_backend_warning(read_only(&transport.backend_warning));
-        ui.set_monitor_state(read_only(&transport.monitor_state));
-        ui.set_meters(read_only(&transport.meters));
-        ui.set_waveform_caption(read_only(&transport.caption));
-        ui.set_model_caption(read_only(&transport.model_caption));
-        ui.set_motion_reason(read_only(&transport.motion));
-        ui.set_motion_overridden(transport.motion_overridden);
+        let transport_text = auditorylab_presentation::workspace_text::transport_view(&transport);
+        ui.set_player_title(read_only(&transport_text.player_title));
+        ui.set_elapsed(read_only(&transport_text.elapsed));
+        ui.set_generated(read_only(&transport_text.generated));
+        ui.set_generated_details(read_only(&transport_text.generated_details));
+        ui.set_device(read_only(&transport_text.device));
+        ui.set_output_state(transport_text.output_state.into());
+        ui.set_receipt_age(read_only(&transport_text.receipt_age));
+        ui.set_monitor_warning(read_only(&transport_text.warning));
+        ui.set_monitor_warning_live(
+            transport.output.unavailable.is_some()
+                || transport
+                    .monitor
+                    .as_ref()
+                    .and_then(|monitor| monitor.warning)
+                    .is_some_and(
+                        auditorylab_app::workspace::monitor::MonitorWarning::announces_changes,
+                    ),
+        );
+        ui.set_backend_warning(read_only(&transport_text.backend_warning));
+        ui.set_monitor_state(read_only(&transport_text.monitor_state));
+        ui.set_meters(read_only(&transport_text.meters));
+        ui.set_waveform_caption(read_only(&transport_text.caption));
+        ui.set_model_caption(read_only(&transport_text.model_caption));
+        ui.set_motion_reason(read_only(&transport_text.motion));
+        ui.set_motion_overridden(transport.hold_override.is_some());
         ui.set_held(output.held);
         #[expect(
             clippy::cast_possible_truncation,
@@ -1168,7 +1178,8 @@ fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
     ));
 }
 
-fn parameter_row(view: &ParameterView) -> ParameterRow {
+fn parameter_row(view: &ParameterView, editor: &EditorView) -> ParameterRow {
+    let text = auditorylab_presentation::workspace_text::parameter_text(view, editor);
     #[expect(
         clippy::cast_possible_truncation,
         reason = "A normalized slider position rounds to the renderer's f32; values stay binary64"
@@ -1176,41 +1187,54 @@ fn parameter_row(view: &ParameterView) -> ParameterRow {
     let position = view.slider.unwrap_or(0.0) as f32;
     ParameterRow {
         key: parameter_key(view.parameter),
-        label: view.label.as_str().into(),
-        help: view.help.into(),
+        label: text.label.as_str().into(),
+        help: text.help.into(),
         text: view.text.as_str().into(),
         staged: view.staged,
         has_slider: view.slider.is_some(),
         position,
-        diagnostic: view.diagnostic.as_str().into(),
-        show_diagnostic: !view.diagnostic.is_empty(),
+        diagnostic: text.diagnostic.as_str().into(),
+        show_diagnostic: !text.diagnostic.is_empty(),
     }
 }
 
-fn component_row(entry: &ComponentEntry, view: &ComponentView) -> ComponentRow {
+fn component_row(
+    entry: &ComponentEntry,
+    view: &ComponentView,
+    editor: &EditorView,
+) -> ComponentRow {
+    let text = auditorylab_presentation::workspace_text::component_text(view, editor);
     ComponentRow {
         key: entry.key.to_string().into(),
         id: view.id.get().to_string().into(),
-        ears: index_of(&Ears::ALL, &view.ears),
+        ears: index_of(&Ears::ALL, &view.committed.route().unwrap_or(Ears::Both)),
         carrier: view
-            .carrier
+            .committed
+            .primitive_kind()
             .map_or(-1, |kind| index_of(&CarrierKind::ALL, &kind)),
-        routing_editable: view.routing_editable,
+        routing_editable: view.committed.route().is_some(),
         modulation: index_of(
             &auditorylab_app::workspace::controls::modulation_choices(),
-            &view.modulation,
+            &view.committed.modulation_kind(),
         ),
-        heading: view.heading.into(),
-        name: view.name.as_str().into(),
-        context: view.context.as_str().into(),
-        error: view.error.as_str().into(),
+        heading: text.heading.into(),
+        name: text.name.as_str().into(),
+        context: text.context.as_str().into(),
+        error: text.error.as_str().into(),
         parameters: ModelRc::from(entry.parameters.clone()),
     }
 }
 
 /// Reconcile one component's parameters by key with minimal notifications.
-fn reconcile_parameters(model: &VecModel<ParameterRow>, views: &[ParameterView]) {
-    let mut rows: Vec<_> = views.iter().map(parameter_row).collect();
+fn reconcile_parameters(
+    model: &VecModel<ParameterRow>,
+    views: &[ParameterView],
+    editor: &EditorView,
+) {
+    let mut rows: Vec<_> = views
+        .iter()
+        .map(|field| parameter_row(field, editor))
+        .collect();
     let mut shown = std::collections::BTreeSet::new();
     for row in rows.iter_mut().rev() {
         row.show_diagnostic = !row.diagnostic.is_empty() && shown.insert(row.diagnostic.clone());
@@ -1244,21 +1268,22 @@ fn reconcile_parameters(model: &VecModel<ParameterRow>, views: &[ParameterView])
     }
 }
 
-fn metadata_row(view: &MetadataView) -> MetadataRow {
+fn metadata_row(view: &MetadataView, editor: &EditorView) -> MetadataRow {
+    let text = auditorylab_presentation::workspace_text::metadata_text(view, editor);
     MetadataRow {
-        label: view.label.as_str().into(),
+        label: text.label.as_str().into(),
         text: view.text.as_str().into(),
         staged: view.staged,
-        diagnostic: view.diagnostic.as_str().into(),
+        diagnostic: text.diagnostic.as_str().into(),
     }
 }
 
-fn set_metadata(ui: &MainWindow, metadata: &[MetadataView; 4]) {
-    for view in metadata {
+fn set_metadata(ui: &MainWindow, editor: &EditorView) {
+    for view in &editor.metadata {
         let EditingField::Metadata(field) = view.handle.field else {
             continue;
         };
-        let row = metadata_row(view);
+        let row = metadata_row(view, editor);
         match field {
             MetadataField::Title => ui.set_title_field(row),
             MetadataField::Summary => ui.set_summary_field(row),

@@ -1,5 +1,5 @@
 //! Shared collection rows, query descriptions and document-location wording.
-use super::workspace_text::{LibraryFacetView, LibraryRowView};
+use super::workspace_text::{LibraryFacetText, LibraryRowText};
 use crate::AudioSummary;
 use crate::DisplayText;
 use crate::Explain;
@@ -13,10 +13,10 @@ use auditorylab_app::services::library::LibraryDiagnostic;
 use auditorylab_core::query::{CalendarField, RhythmState, Scope};
 use auditorylab_core::vocabulary::Status;
 /// Render a semantic row, without executing queries or selecting recipe ownership.
-pub(crate) fn row(
+pub fn row(
     row: &auditorylab_app::workspace::LibraryRowView,
     sort: auditorylab_core::query::SortBy,
-) -> LibraryRowView {
+) -> LibraryRowText {
     use auditorylab_app::workspace::LibraryRowView as Row;
     match row {
         Row::Entry {
@@ -43,7 +43,7 @@ fn entry_row(
     e: &EntrySummary,
     sort: auditorylab_core::query::SortBy,
     requires_read: bool,
-) -> LibraryRowView {
+) -> LibraryRowText {
     use auditorylab_core::query::SortBy;
     let (date_label, date) = match sort {
         SortBy::Created => (CalendarField::Created.label(), e.created_at),
@@ -111,8 +111,7 @@ fn entry_row(
         memberships.push(RhythmState::NeedsReview.label().into());
     }
     let bands = memberships.join(" · ");
-    LibraryRowView {
-        built_in: matches!(e.key, LibraryKey::BuiltIn(_)),
+    LibraryRowText {
         key: e.key.to_string(),
         text: format!("{title} · {collection}\n{summary}\n{bands}\n{duration}\n{dates}"),
         title,
@@ -123,9 +122,8 @@ fn entry_row(
         dates,
     }
 }
-fn heading_row(text: String) -> LibraryRowView {
-    LibraryRowView {
-        built_in: false,
+fn heading_row(text: String) -> LibraryRowText {
+    LibraryRowText {
         key: String::new(),
         title: text.clone(),
         text,
@@ -140,7 +138,7 @@ fn heading_row(text: String) -> LibraryRowView {
 #[must_use]
 pub fn facets(
     counts: &auditorylab_app::workspace::FacetCounts,
-) -> (Vec<LibraryFacetView>, Vec<String>) {
+) -> (Vec<LibraryFacetText>, Vec<String>) {
     use auditorylab_app::workspace::FacetKind;
     let facet = |facet: &auditorylab_app::workspace::LibraryFacetView| {
         let (label, detail) = match facet.kind {
@@ -160,7 +158,7 @@ pub fn facets(
         } else {
             format!("{label} · {detail} · {count}")
         };
-        LibraryFacetView {
+        LibraryFacetText {
             label,
             detail: detail.into(),
             count,

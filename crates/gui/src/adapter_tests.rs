@@ -1418,9 +1418,10 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
     ui.invoke_rhythm_filter(1, 1); // Delta and binaural.
     h.adapter.inspect(|w| {
         assert_eq!(
-            auditorylab_presentation::workspace_text::library_view(&w.library_view())
+            w.library_view()
                 .rows
                 .iter()
+                .map(|row| auditorylab_presentation::library_text::row(row, w.library_view().sort))
                 .filter(|row| !row.key.is_empty())
                 .count(),
             1

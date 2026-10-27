@@ -175,139 +175,123 @@ pub(crate) fn sound_diagnostic(error: &auditorylab_core::SoundError, context: &s
     }
 }
 
-/// One editable quantity of a component.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ParameterView {
-    /// The field this row edits, bound to its document.
-    pub handle: auditorylab_app::document::editing::FieldHandle,
-    pub parameter: ParameterId,
-    /// Label with unit.
-    pub label: String,
-    /// One plain sentence about the quantity.
-    pub help: &'static str,
-    /// Staged text, or the committed value in the displayed unit.
-    pub text: String,
-    /// Whether the text is staged and not committed.
-    pub staged: bool,
-    /// The slider position, for quantities with a slider.
-    pub slider: Option<f64>,
-    /// What is wrong with this field, if anything.
-    pub diagnostic: String,
-}
-
-/// One component of the open document.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ComponentView {
-    /// Opaque identity of this rendered component lifetime.
-    pub key: auditorylab_app::document::editing::RowKey,
-    /// The authored component identity.
-    pub id: auditorylab_core::ComponentId,
-    pub ears: auditorylab_core::Ears,
-    /// False for separate-ear pairs whose routes are part of their construction.
-    pub routing_editable: bool,
-    pub carrier: Option<auditorylab_core::CarrierKind>,
-    /// Modulation kind, if any.
-    pub modulation: Option<auditorylab_core::ModulationKind>,
-    /// The component's role.
-    pub heading: &'static str,
-    /// Accessible name: role and position.
-    pub name: String,
-    /// The component's generated quantities at the diagnostic rate, or its error.
-    pub context: String,
-    /// Every problem of this component.
-    pub error: String,
-    /// The quantities this component has, in display order.
-    pub parameters: Vec<ParameterView>,
-}
-
-/// A recipe-wide field.
+/// Wording for one typed parameter; identity, text and state remain in app.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MetadataView {
-    /// The field, bound to its document.
-    pub handle: auditorylab_app::document::editing::FieldHandle,
-    /// Label, with unit for quantities.
+pub struct ParameterFieldText {
     pub label: String,
-    /// Staged text, or the committed value.
-    pub text: String,
-    /// Whether the text is staged and not committed.
-    pub staged: bool,
-    /// What is wrong with the field, if anything.
+    pub help: &'static str,
     pub diagnostic: String,
 }
-#[derive(Debug, Clone, PartialEq)]
-pub struct EditorView {
-    /// Opaque identity of the rendered document lifetime.
-    pub key: auditorylab_app::document::editing::RowKey,
-    /// Title, notes, duration and fade.
-    pub metadata: [MetadataView; 4],
-    /// Components in order.
-    pub components: Vec<ComponentView>,
-    /// Whether the document differs from what was saved.
-    pub dirty: bool,
-    /// The candidate's structure in one line, or why it has none.
+/// Wording for one typed metadata field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MetadataFieldText {
+    pub label: String,
+    pub diagnostic: String,
+}
+/// Wording derived from one component, without child rows or copied state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComponentText {
+    pub heading: &'static str,
+    pub name: String,
+    pub context: String,
+    pub error: String,
+}
+/// Document wording; the app owns the only editor view tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditorText {
     pub brief: String,
-    /// The candidate's peak bounds or global error, with its rate context.
     pub peak: String,
-    /// Recipe-wide problems: duration, fade and unparseable metadata.
     pub metadata_error: String,
-    /// Short attribution to the copied source.
     pub based_on_title: String,
-    /// Attribution with the source's citation and summary.
     pub based_on: String,
-    /// Edits not applied to the playing sound, and why.
     pub retained_warning: String,
 }
-
-/// Render a typed editor projection without changing its admission or applicability.
-#[must_use]
-pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorView {
-    use crate::AudioSummary;
-    use crate::ParameterText;
-    use crate::vocabulary::NumberStyle;
-    use auditorylab_app::workspace::FieldDiagnostic;
-    let rate = view.rate;
-    let context = if view.live {
-        format!("at the live device rate of {} Hz", rate.hz())
+fn editor_context(view: &auditorylab_app::workspace::EditorView) -> String {
+    if view.live {
+        format!("at the live device rate of {} Hz", view.rate.hz())
     } else {
-        format!("at the {} Hz export rate", rate.hz())
-    };
-    let diagnostic = |cause: &FieldDiagnostic| match cause {
+        format!("at the {} Hz export rate", view.rate.hz())
+    }
+}
+fn field_diagnostic(
+    cause: &auditorylab_app::workspace::FieldDiagnostic,
+    view: &auditorylab_app::workspace::EditorView,
+) -> String {
+    use auditorylab_app::workspace::FieldDiagnostic;
+    match cause {
         FieldDiagnostic::Input(field, problem) => problem_text(*field, *problem),
-        FieldDiagnostic::Voice(error) => component_diagnostic(error, &context),
-        FieldDiagnostic::Sound(error) => sound_diagnostic(error, &context),
-    };
-    let metadata = view.metadata.clone().map(|field| MetadataView {
-        handle: field.handle,
+        FieldDiagnostic::Voice(error) => component_diagnostic(error, &editor_context(view)),
+        FieldDiagnostic::Sound(error) => sound_diagnostic(error, &editor_context(view)),
+    }
+}
+/// Render one parameter directly from its typed view.
+#[must_use]
+pub fn parameter_text(
+    field: &auditorylab_app::workspace::ParameterView,
+    editor: &auditorylab_app::workspace::EditorView,
+) -> ParameterFieldText {
+    use crate::ParameterText;
+    ParameterFieldText {
+        label: field.parameter.input_label(),
+        help: field.parameter.help(),
+        diagnostic: field
+            .diagnostic
+            .as_ref()
+            .map(|cause| field_diagnostic(cause, editor))
+            .unwrap_or_default(),
+    }
+}
+/// Render one metadata field directly from its typed view.
+#[must_use]
+pub fn metadata_text(
+    field: &auditorylab_app::workspace::MetadataView,
+    editor: &auditorylab_app::workspace::EditorView,
+) -> MetadataFieldText {
+    use crate::ParameterText;
+    use auditorylab_app::workspace::FieldDiagnostic;
+    MetadataFieldText {
         label: field.field.parameter().map_or_else(
             || field_label(EditingField::Metadata(field.field)),
             ParameterText::input_label,
         ),
-        text: field.text,
-        staged: field.staged,
         diagnostic: field
             .diagnostic
             .as_ref()
             .map(|cause| match cause {
                 FieldDiagnostic::Sound(error) => presentation::acoustic_errors::sound_error(error),
-                _ => diagnostic(cause),
+                _ => field_diagnostic(cause, editor),
             })
             .unwrap_or_default(),
-    });
-    let components = view.components.iter().map(|component| {
-        let parameters = component.parameters.iter().map(|field| ParameterView {
-            handle:field.handle,parameter:field.parameter,label:field.parameter.input_label(),help:field.parameter.help(),
-            text:field.text.clone(), staged:field.staged,slider:field.slider,diagnostic:field.diagnostic.as_ref().map(diagnostic).unwrap_or_default(),
-        }).collect::<Vec<_>>();
-        let mut errors:Vec<_> = component.diagnostics.iter().map(diagnostic).collect();
-        errors.retain(|e|!parameters.iter().any(|p|p.diagnostic==*e));errors.dedup();
-        ComponentView {
-            key:component.key,id:component.id,ears:component.committed.route().unwrap_or(auditorylab_core::Ears::Both),
-            routing_editable:component.committed.route().is_some(),carrier:component.committed.primitive_kind(),modulation:component.committed.modulation_kind(),
-            heading:component.shown.heading(),name:format!("{} · Component {}",component.shown.heading(),component.id),
-            context:component.shown.pair().map_or_else(||component.facts.as_ref().map(AudioSummary::summary).unwrap_or_default(),|pair| format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz.get()+pair.offset_hz.get(),pair.offset_hz.get().abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)),
-            error:errors.join("; "),parameters,
-        }
-    }).collect();
+    }
+}
+/// Render one component directly; child fields retain their app-owned structure.
+#[must_use]
+pub fn component_text(
+    component: &auditorylab_app::workspace::ComponentView,
+    editor: &auditorylab_app::workspace::EditorView,
+) -> ComponentText {
+    use crate::AudioSummary;
+    let parameters = component
+        .parameters
+        .iter()
+        .map(|field| parameter_text(field, editor).diagnostic)
+        .collect::<Vec<_>>();
+    let mut errors = component
+        .diagnostics
+        .iter()
+        .map(|cause| field_diagnostic(cause, editor))
+        .collect::<Vec<_>>();
+    errors.retain(|error| !parameters.contains(error));
+    errors.dedup();
+    ComponentText {heading:component.shown.heading(),name:format!("{} · Component {}",component.shown.heading(),component.id),
+    context:component.shown.pair().map_or_else(||component.facts.as_ref().map(AudioSummary::summary).unwrap_or_default(),|pair|format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz.get()+pair.offset_hz.get(),pair.offset_hz.get().abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)),error:errors.join("; ")}
+}
+/// Render document wording without copying its structure or admission state.
+#[must_use]
+pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorText {
+    use crate::AudioSummary;
+    use crate::vocabulary::NumberStyle;
+    let context = editor_context(view);
     let peak = match &view.target {
         Ok(target) => format!(
             "{}Peak bounds: {} / {} dBFS {context}",
@@ -325,10 +309,11 @@ pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorView 
         ),
         Err(_) => format!("Correct the highlighted fields to apply this sound {context}."),
     };
-    let mut deduped: Vec<String> = Vec::new();
-    for field in &metadata {
-        if !field.diagnostic.is_empty() && !deduped.contains(&field.diagnostic) {
-            deduped.push(field.diagnostic.clone());
+    let mut deduped = Vec::new();
+    for field in &view.metadata {
+        let diagnostic = metadata_text(field, view).diagnostic;
+        if !diagnostic.is_empty() && !deduped.contains(&diagnostic) {
+            deduped.push(diagnostic);
         }
     }
     let generated_brief = view.committed.as_ref().map_or_else(
@@ -349,11 +334,7 @@ pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorView 
         generated_brief
     );
     let based_on = view.based_on.as_ref();
-    EditorView {
-        key: view.key,
-        metadata,
-        components,
-        dirty: view.dirty,
+    EditorText {
         brief,
         peak,
         metadata_error: deduped.join("; "),
@@ -409,7 +390,7 @@ pub(crate) fn retained_warning(
 
 /// The transport and monitor text.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TransportView {
+pub struct TransportText {
     /// Phase, source and kind of the session, or the preview.
     pub player_title: String,
     /// Estimated output elapsed time.
@@ -425,7 +406,7 @@ pub struct TransportView {
     /// Time since changed generated data was received.
     pub receipt_age: String,
     /// Current monitor warning and whether it is announced.
-    pub warning: (String, bool),
+    pub warning: String,
     /// Backend underrun warning.
     pub backend_warning: String,
     /// Monitor provenance.
@@ -438,13 +419,11 @@ pub struct TransportView {
     pub model_caption: String,
     /// Motion policy explanation.
     pub motion: String,
-    /// Whether the person overrode the motion preference.
-    pub motion_overridden: bool,
 }
 
 /// Render a coherent transport projection; all lifecycle decisions are captured by workspace.
 #[must_use]
-pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> TransportView {
+pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> TransportText {
     use crate::AudioDetails;
     use crate::AudioSummary;
     use crate::vocabulary::NumberStyle;
@@ -460,7 +439,7 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
     let export_rate = data.export_rate;
     let task_title = data.task_title.as_deref();
     let view_kind = data.view;
-    let mut view = TransportView {
+    let mut view = TransportText {
         player_title: String::new(),
         elapsed: String::new(),
         generated: String::new(),
@@ -468,7 +447,7 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
         device: format!("Preview/export sample rate: {} Hz", export_rate.hz()),
         output_state: data.state.label(),
         receipt_age: String::new(),
-        warning: (String::new(), false),
+        warning: String::new(),
         backend_warning: String::new(),
         monitor_state: String::new(),
         meters: String::new(),
@@ -488,7 +467,6 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
                 None => "",
             }
         ),
-        motion_overridden: data.hold_override.is_some(),
     };
     if let Some(reader) = reader {
         let status = reader.status;
@@ -552,12 +530,7 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
             descriptor.output.format.label()
         );
         let warning = reader.warning;
-        view.warning = (
-            warning.map_or_else(String::new, |w| w.message().into()),
-            warning.is_some_and(
-                auditorylab_app::workspace::monitor::MonitorWarning::announces_changes,
-            ),
-        );
+        view.warning = warning.map_or_else(String::new, |warning| warning.message().into());
         view.backend_warning = output_underrun_warning(status.underruns);
         view.receipt_age = reader.age.map_or_else(
             || "No generated publication received".into(),
@@ -601,7 +574,7 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
         },
     );
     if let Some(reason) = &output.unavailable {
-        view.warning = (reason.description(), true);
+        view.warning = reason.description();
     }
     if let Some(capture) = &output.capture {
         view.meters = format!(
@@ -615,10 +588,10 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
         view.monitor_state = format!("{}\n{}", capture.caption(held, ended), view.monitor_state);
         if capture.clipped() {
             let advisory = auditorylab_app::workspace::monitor::MonitorWarning::FixedRangeExceeded;
-            if !view.warning.0.is_empty() {
-                view.warning.0.push('\n');
+            if !view.warning.is_empty() {
+                view.warning.push('\n');
             }
-            view.warning.0.push_str(advisory.message());
+            view.warning.push_str(advisory.message());
         }
     } else {
         view.caption = if audio {
@@ -632,9 +605,7 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
 
 /// A rendered catalog item. Empty keys are headings/diagnostics, never sounds.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LibraryRowView {
-    /// Whether this is an immutable Built-in sound, rather than a heading or local record.
-    pub built_in: bool,
+pub struct LibraryRowText {
     /// Immutable collection identity for selection and captured actions.
     pub key: String,
     /// Complete accessible description, generated from the same fields.
@@ -655,7 +626,7 @@ pub struct LibraryRowView {
 
 /// A navigation facet, including its disclosed interval and disjunctive count.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LibraryFacetView {
+pub struct LibraryFacetText {
     /// Short shared name.
     pub label: String,
     /// Interval or qualification, independent of count.
@@ -668,11 +639,7 @@ pub struct LibraryFacetView {
 
 /// The library and the selected recipe.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LibraryView {
-    /// Structured rows; headers and diagnostic rows have empty keys.
-    pub rows: Vec<LibraryRowView>,
-    /// The selected entry's position among the rows.
-    pub selected: Option<usize>,
+pub struct LibraryText {
     /// Selected title.
     pub title: String,
     /// Selected structure at the export rate.
@@ -690,26 +657,18 @@ pub struct LibraryView {
     /// Research and validated facts at the export rate.
     pub details: String,
     /// The study link, when it is a web address.
-    pub study_url: Option<String>,
+    pub study_url: String,
 }
 
 /// Render an immutable library projection without querying or loading sources.
 #[must_use]
-pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryView {
+pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryText {
     use crate::AudioSummary;
     use crate::vocabulary::NumberStyle;
-    let rows = data
-        .rows
-        .iter()
-        .map(|row| super::library_text::row(row, data.sort))
-        .collect::<Vec<_>>();
-    let selected = data.selected;
     let snapshot = data.snapshot.as_ref();
     let rate = data.rate;
     let Some(snapshot) = snapshot else {
-        return LibraryView {
-            rows,
-            selected,
+        return LibraryText {
             title: String::new(),
             structure: String::new(),
             classification: String::new(),
@@ -718,17 +677,16 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryVi
             timing: String::new(),
             summary: String::new(),
             details: String::new(),
-            study_url: None,
+            study_url: String::new(),
         };
     };
     let about = snapshot.about();
-    let ownership = selected
-        .and_then(|index| rows.get(index))
-        .map(|row| row.collection.clone())
+    let ownership = data
+        .selected
+        .and_then(|index| data.rows.get(index))
+        .map(|row| super::library_text::row(row, data.sort).collection)
         .unwrap_or_default();
-    LibraryView {
-        rows,
-        selected,
+    LibraryText {
         title: snapshot.title(),
         classification: format!(
             "{}\nReference: {}. This describes the sound, not measured brain activity.",
@@ -762,7 +720,8 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryVi
             .as_ref()
             .and_then(|a| a.research.as_ref())
             .and_then(|a| a.source_url.clone())
-            .filter(|url| url.starts_with("https://") || url.starts_with("http://")),
+            .filter(|url| url.starts_with("https://") || url.starts_with("http://"))
+            .unwrap_or_default(),
     }
 }
 pub(crate) fn removed_component(
@@ -807,23 +766,9 @@ mod diagnostic_tests {
 
 /// Which actions are available and why not.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ActionView {
-    /// Play (or replace playing audio) is admitted.
-    pub can_play: bool,
+pub struct ActionText {
     /// Label for Library playback or replacement.
     pub library_play_label: &'static str,
-    /// A file import may be requested.
-    pub can_import: bool,
-    /// The library worker can accept an operation at this configured destination.
-    pub can_manage_library: bool,
-    /// The selected opened input can be explicitly imported.
-    pub can_add_to_library: bool,
-    /// Trash can start or queue the current managed draft decision.
-    pub can_request_trash: bool,
-    /// A document replacement/copy may be requested (possibly queued).
-    pub can_new: bool,
-    /// The current selection can be copied.
-    pub can_copy: bool,
     /// Actionable reason a selected source cannot be derived.
     pub copy_reason: String,
     /// Bounded global refusal or task outcome beside persistent actions.
@@ -832,28 +777,12 @@ pub struct ActionView {
     pub operation_outcome: String,
     /// Complete selectable operation/refusal details.
     pub operation_details: String,
-    /// A static preview may replace the last session display.
-    pub can_preview: bool,
     /// Why Play is not admitted.
     pub play_reason: String,
-    /// Save is admitted.
-    pub can_save: bool,
-    /// A complete independent copy can be created and saved.
-    pub can_save_copy: bool,
-    /// Current portable content can be captured for an external export.
-    pub can_export_recipe: bool,
     /// Why Save is not admitted.
     pub save_reason: String,
-    /// Export is admitted.
-    pub can_export: bool,
     /// Why Export is not admitted.
     pub export_reason: String,
-    /// Editing commands are accepted.
-    pub can_edit: bool,
-    /// Another component fits in the open sound.
-    pub can_add_component: bool,
-    /// Adding a pair requires room for both generator lanes.
-    pub can_add_pair: bool,
     /// Why a two-tone pair cannot currently be added.
     pub pair_add_reason: String,
     /// Why no component can be added, when editing is otherwise allowed.
@@ -861,22 +790,10 @@ pub struct ActionView {
     /// The most recently removed component, which Undo remove restores;
     /// empty when there is none.
     pub removed_component: String,
-    /// Undo remove is admitted.
-    pub can_restore_component: bool,
-    /// A file task occupies its joined slot; prompt admission is separate.
-    pub file_busy: bool,
-    /// An audio task occupies its slot.
-    pub playback_busy: bool,
-    /// An export runs.
-    pub exporting: bool,
-    /// The transport button is enabled.
-    pub transport_enabled: bool,
     /// The transport button's label.
     pub transport_label: String,
     /// What the next Play would play.
     pub play_target: String,
-    /// Export progress from 0 to 1.
-    pub progress: f64,
     /// File and general status.
     pub file_status: String,
     pub audio_status: String,
@@ -886,7 +803,7 @@ pub struct ActionView {
 
 /// Render action availability and retained status without making admission decisions.
 #[must_use]
-pub fn action_view(view: &auditorylab_app::workspace::ActionView) -> ActionView {
+pub fn action_view(view: &auditorylab_app::workspace::ActionView) -> ActionText {
     let refusal = view.operation_refusal.as_ref().map(refusal_text);
     let outcome_details = [
         view.file_status.description(),
@@ -918,15 +835,8 @@ pub fn action_view(view: &auditorylab_app::workspace::ActionView) -> ActionView 
     } else {
         String::new()
     };
-    ActionView {
-        can_play: view.can_play,
+    ActionText {
         library_play_label: crate::vocabulary::library_play_labels()[usize::from(view.playing)],
-        can_import: view.can_import,
-        can_manage_library: view.can_manage_library,
-        can_add_to_library: view.can_add_to_library,
-        can_request_trash: view.can_request_trash,
-        can_new: view.can_new,
-        can_copy: view.can_copy,
         copy_reason: view
             .copy_reason
             .as_ref()
@@ -935,29 +845,21 @@ pub fn action_view(view: &auditorylab_app::workspace::ActionView) -> ActionView 
         operation_summary,
         operation_outcome,
         operation_details,
-        can_preview: view.can_preview,
         play_reason: view
             .play_reason
             .as_ref()
             .map(refusal_text)
             .unwrap_or_default(),
-        can_save: view.can_save,
-        can_save_copy: view.can_save_copy,
-        can_export_recipe: view.can_export_recipe,
         save_reason: view
             .save_reason
             .as_ref()
             .map(refusal_text)
             .unwrap_or_default(),
-        can_export: view.can_export,
         export_reason: view
             .export_reason
             .as_ref()
             .map(refusal_text)
             .unwrap_or_default(),
-        can_edit: view.can_edit,
-        can_add_component: view.can_add_component,
-        can_add_pair: view.can_add_pair,
         pair_add_reason: view
             .pair_add_reason
             .as_ref()
@@ -972,14 +874,8 @@ pub fn action_view(view: &auditorylab_app::workspace::ActionView) -> ActionView 
             .removed_component
             .map(|c| removed_component(c.form, c.id))
             .unwrap_or_default(),
-        can_restore_component: view.can_restore_component,
-        file_busy: view.file_busy,
-        playback_busy: view.playback_busy,
-        exporting: view.exporting,
-        transport_enabled: view.transport_enabled,
         transport_label: view.transport_action.label().into(),
         play_target: view.play_target.clone(),
-        progress: view.progress,
         file_status: [
             view.file_status.description(),
             view.edit_status.description(),
