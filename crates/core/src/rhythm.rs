@@ -513,3 +513,12 @@ impl core::fmt::Display for Issue {
         })
     }
 }
+
+impl core::error::Error for Issue {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        Some(match self {
+            Self::Value { issue, .. } => issue,
+            Self::Pair(cause) => cause,
+        })
+    }
+}

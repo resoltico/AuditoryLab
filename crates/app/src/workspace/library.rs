@@ -68,7 +68,7 @@ pub(super) struct LibraryState {
     refresh: bool,
     load_attempted: Option<LibraryKey>,
     inventory: Arc<InventoryStatus>,
-    read_failure: Option<crate::storage::library::LibraryDiagnostic<super::status::ReadFailure>>,
+    read_failure: Option<crate::storage::library::LibraryDiagnostic<super::TaskFailure>>,
     filter_error: Option<crate::discovery::query::QueryError>,
     unreadable: std::collections::BTreeSet<LibraryKey>,
     stale: std::collections::BTreeSet<LibraryKey>,
@@ -117,20 +117,14 @@ impl LibraryState {
             FileStatus::Library(LibraryStatus::Failed { error, .. })
             | FileStatus::Failed(error) => {
                 Some(crate::services::library::DiagnosticDetail::Failure(
-                    Box::new(super::status::ReadFailure::Operation(error.clone())),
+                    Box::new(super::TaskFailure::Operation(error.clone())),
                 ))
             }
-            FileStatus::WorkerFailed { error, .. } => Some(
-                crate::services::library::DiagnosticDetail::Failure(Box::new(match error {
-                    super::WorkerFailure::Launch(cause) => {
-                        super::status::ReadFailure::Launch(cause.clone())
-                    }
-                    super::WorkerFailure::Panicked => super::status::ReadFailure::Panicked,
-                    super::WorkerFailure::InvalidOutcome => {
-                        super::status::ReadFailure::InvalidOutcome
-                    }
-                })),
-            ),
+            FileStatus::WorkerFailed { error, .. } => {
+                Some(crate::services::library::DiagnosticDetail::Failure(
+                    Box::new(super::TaskFailure::Worker(error.clone())),
+                ))
+            }
             _ => None,
         };
         if let Some(message) = cause {
@@ -1458,8 +1452,7 @@ pub struct LibraryData<'a> {
     /// Refused query change; the prior valid query remains committed.
     pub filter_error: Option<&'a crate::discovery::query::QueryError>,
     /// Failure of the most recent admitted managed read.
-    pub read_failure:
-        Option<&'a crate::services::library::LibraryDiagnostic<super::status::ReadFailure>>,
+    pub read_failure: Option<&'a crate::services::library::LibraryDiagnostic<super::TaskFailure>>,
     /// Readable immutable source correlated with the current selection.
     pub selected: Option<&'a RecipeSnapshot>,
     /// Indexed membership and dates of the selected key.

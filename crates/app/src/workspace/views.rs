@@ -651,3 +651,22 @@ impl Workspace {
         controls::EXPORT_RATES
     }
 }
+
+impl std::fmt::Display for FieldDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Input(_, cause) => cause.fmt(f),
+            Self::Voice(cause) => cause.fmt(f),
+            Self::Sound(cause) => cause.fmt(f),
+        }
+    }
+}
+impl std::error::Error for FieldDiagnostic {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Self::Input(_, cause) => cause,
+            Self::Voice(cause) => cause,
+            Self::Sound(cause) => cause,
+        })
+    }
+}

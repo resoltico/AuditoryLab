@@ -358,3 +358,13 @@ impl std::fmt::Display for CaptureError {
 }
 
 impl std::error::Error for CaptureError {}
+
+impl std::fmt::Display for MonitorWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Stale => "monitor.stale",
+            Self::IncompleteCoverage => "monitor.incomplete_coverage",
+            Self::FixedRangeExceeded => "monitor.fixed_range_exceeded",
+        })
+    }
+}

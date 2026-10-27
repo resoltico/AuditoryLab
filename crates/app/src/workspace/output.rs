@@ -477,3 +477,42 @@ pub enum OutputIssue {
     /// The selected authored sound cannot produce a preview.
     Preview(PreviewIssue),
 }
+
+impl std::fmt::Display for PreviewIssue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Snapshot(cause) => cause.fmt(f),
+            Self::Acoustic {
+                error: Some(cause), ..
+            } => cause.fmt(f),
+            Self::Acoustic { error: None, .. } => f.write_str("preview.unavailable"),
+        }
+    }
+}
+impl std::error::Error for PreviewIssue {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Snapshot(cause) => Some(cause),
+            Self::Acoustic {
+                error: Some(cause), ..
+            } => Some(cause),
+            Self::Acoustic { error: None, .. } => None,
+        }
+    }
+}
+impl std::fmt::Display for OutputIssue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Capture(cause) => cause.fmt(f),
+            Self::Preview(cause) => cause.fmt(f),
+        }
+    }
+}
+impl std::error::Error for OutputIssue {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Self::Capture(cause) => cause,
+            Self::Preview(cause) => cause,
+        })
+    }
+}

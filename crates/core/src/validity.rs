@@ -54,3 +54,33 @@ pub(crate) fn check_value(parameter: ParameterId, value: f64) -> Result<(), Valu
         None => Ok(()),
     }
 }
+
+impl core::fmt::Display for ValueIssue {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self.rule {
+            ValueRule::Positive => "value.positive",
+            ValueRule::Peak => "value.peak",
+            ValueRule::Depth => "value.depth",
+        })
+    }
+}
+impl core::error::Error for ValueIssue {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::string::ToString;
+    #[test]
+    fn intrinsic_failures_expose_stable_codes_and_exact_requested_values() {
+        for (parameter, value, code) in [
+            (ParameterId::ToneFrequency, 0.0, "value.positive"),
+            (ParameterId::PeakLevel, 1.0, "value.peak"),
+            (ParameterId::AmDepth, 1.25, "value.depth"),
+        ] {
+            let failure = check_value(parameter, value).unwrap_err();
+            assert_eq!(failure.to_string(), code);
+            assert_eq!(failure.parameter, parameter);
+            assert_eq!(failure.value.to_bits(), value.to_bits());
+        }
+    }
+}

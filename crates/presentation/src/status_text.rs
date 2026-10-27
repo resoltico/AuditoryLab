@@ -17,17 +17,11 @@ pub(crate) fn shutdown_reset_failure(
     )
 }
 
-impl super::Explain for ReadFailure {
+impl super::Explain for auditorylab_app::workspace::TaskFailure {
     fn explain(&self) -> String {
         match self {
             Self::Operation(error) => error.explain(),
-            Self::Launch(error) => {
-                format!("Cannot start the worker: {error}", error = error.explain())
-            }
-            Self::Panicked => "Worker failed; inspect the destination before retrying.".into(),
-            Self::InvalidOutcome => {
-                "Worker completion did not match the admitted operation.".into()
-            }
+            Self::Worker(error) => error.description(),
         }
     }
 }

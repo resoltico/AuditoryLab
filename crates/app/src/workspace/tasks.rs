@@ -612,3 +612,28 @@ impl Executor for Runner {
         Runner::shutdown(*self, workspace)
     }
 }
+
+impl std::fmt::Display for TaskFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Operation(error) => error.fmt(f),
+            Self::Worker(error) => error.fmt(f),
+        }
+    }
+}
+impl std::error::Error for TaskFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Self::Operation(error) => error,
+            Self::Worker(error) => error,
+        })
+    }
+}
+impl std::error::Error for WorkerFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Launch(cause) => Some(cause.error()),
+            Self::Panicked | Self::InvalidOutcome => None,
+        }
+    }
+}

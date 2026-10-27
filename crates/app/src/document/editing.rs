@@ -1409,3 +1409,36 @@ impl std::fmt::Display for SaveRefusal {
         })
     }
 }
+
+impl std::fmt::Display for InputProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Unparseable => "input.unparseable",
+            Self::Nonfinite => "input.nonfinite",
+        })
+    }
+}
+impl std::error::Error for InputProblem {}
+impl std::fmt::Display for CommitRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("edit.commit")
+    }
+}
+impl std::error::Error for CommitRefusal {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.problems
+            .first()
+            .map(|(_, cause)| cause as &(dyn std::error::Error + 'static))
+    }
+}
+impl std::error::Error for EditRefusal {}
+impl std::error::Error for SaveRefusal {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Document(error) => Some(error),
+            Self::Input(problems) => problems
+                .first()
+                .map(|(_, cause)| cause as &(dyn std::error::Error + 'static)),
+        }
+    }
+}

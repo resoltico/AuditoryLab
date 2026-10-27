@@ -330,3 +330,14 @@ impl std::error::Error for SaveError {
         }
     }
 }
+
+impl std::fmt::Display for IoFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("io.failure")
+    }
+}
+impl std::error::Error for IoFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.cause.error())
+    }
+}

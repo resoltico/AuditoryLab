@@ -276,7 +276,7 @@ pub(crate) fn empty_message(
 pub(crate) fn alert(
     problem: Option<&LibraryDiagnostic>,
     filter_error: Option<&auditorylab_app::discovery::query::QueryError>,
-    read_failure: Option<&LibraryDiagnostic<auditorylab_app::workspace::status::ReadFailure>>,
+    read_failure: Option<&LibraryDiagnostic<auditorylab_app::workspace::TaskFailure>>,
     complete: bool,
 ) -> String {
     let mut notices = Vec::new();

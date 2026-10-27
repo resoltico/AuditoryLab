@@ -1052,3 +1052,23 @@ impl std::fmt::Display for Refusal {
         })
     }
 }
+
+impl std::error::Error for Refusal {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Document(cause) => Some(cause),
+            Self::Edit(cause) => Some(cause),
+            Self::Invalid {
+                error: Some(cause), ..
+            } => Some(cause),
+            Self::Input(problems) => problems
+                .first()
+                .map(|(_, cause)| cause as &(dyn std::error::Error + 'static)),
+            Self::LibraryUnavailable(problem) => match &problem.detail {
+                crate::services::library::DiagnosticDetail::Failure(cause) => Some(cause.as_ref()),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+}

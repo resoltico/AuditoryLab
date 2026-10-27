@@ -268,26 +268,20 @@ pub enum AudioStatus {
     WorkerFailed(WorkerFailure),
 }
 
-/// Failure of an admitted inventory read, including worker execution.
-#[derive(Debug, Clone)]
-pub enum ReadFailure {
-    /// Operation returned an exact typed cause.
-    Operation(crate::services::OperationError),
-    /// Thread creation failed before execution.
-    Launch(crate::services::IoCause),
-    /// Worker panicked, so its result cannot be trusted.
-    Panicked,
-    /// Completion did not match the admitted operation.
-    InvalidOutcome,
-}
-
-impl std::fmt::Display for ReadFailure {
+impl std::fmt::Display for SaveFeedback {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Operation(..) => "read.operation",
-            Self::Launch(..) => "read.launch",
-            Self::Panicked => "read.panicked",
-            Self::InvalidOutcome => "read.invalid_outcome",
+            Self::InvalidAtRate { .. } => "save.invalid_at_rate",
+            Self::EditorRefresh(_) => "save.editor_refresh",
+            Self::EditorReset(_) => "save.editor_reset",
+        })
+    }
+}
+impl std::error::Error for SaveFeedback {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Self::InvalidAtRate { error, .. } => error,
+            Self::EditorRefresh(error) | Self::EditorReset(error) => error,
         })
     }
 }
