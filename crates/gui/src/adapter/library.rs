@@ -1,6 +1,6 @@
 //! Library model updates depend only on an immutable library projection.
 use super::*;
-use auditorylab_app::workspace::QueryFacet;
+use auditorylab_app::workspace::{ChoiceView, QueryFacet};
 use auditorylab_presentation::DisplayText;
 use auditorylab_presentation::LibraryPresentation;
 struct EntryHandles(Vec<Option<auditorylab_app::workspace::EntryHandle>>);
@@ -33,6 +33,27 @@ pub(super) fn entry_handle(
         .clone()
 }
 
+pub(super) fn select_choice(ui: &MainWindow, facet: QueryFacet, view: &ChoiceView) {
+    let Some(selected) = view
+        .options
+        .iter()
+        .position(|option| option.selected)
+        .and_then(|index| i32::try_from(index).ok())
+    else {
+        return;
+    };
+    match facet {
+        QueryFacet::Scope => ui.set_collection_choice(selected),
+        QueryFacet::Sort => ui.set_sort_choice(selected),
+        QueryFacet::Direction => ui.set_direction_choice(selected),
+        QueryFacet::Group => ui.set_group_choice(selected),
+        QueryFacet::Band => ui.set_band_choice(selected),
+        QueryFacet::Method => ui.set_method_choice(selected),
+        QueryFacet::Population => ui.set_population_choice(selected),
+        QueryFacet::Role => ui.set_role_choice(selected),
+        QueryFacet::Analysis => ui.set_analysis_choice(selected),
+    }
+}
 impl SlintAdapter {
     pub(super) fn facet_key(&self, facet: QueryFacet, index: i32) -> Option<String> {
         self.choices
@@ -191,20 +212,18 @@ impl SlintAdapter {
                         .map(|option| option.label.to_string())
                         .collect(),
                 );
-                let selected = view
-                    .options
+                let app_selection_changed = self
+                    .choices
+                    .borrow()
                     .iter()
-                    .position(|option| option.selected)
-                    .and_then(|index| i32::try_from(index).ok())
-                    .unwrap_or(0);
+                    .find(|(kind, _)| kind == facet)
+                    .is_none_or(|(_, old)| old != view);
                 match facet {
                     QueryFacet::Scope => {
                         ui.set_collection_labels(labels);
-                        ui.set_collection_choice(selected);
                     }
                     QueryFacet::Sort => {
                         ui.set_sort_labels(labels);
-                        ui.set_sort_choice(selected);
                     }
                     QueryFacet::Direction => ui.set_direction_labels(labels),
                     QueryFacet::Group => ui.set_group_labels(labels),
@@ -220,7 +239,6 @@ impl SlintAdapter {
                                 })
                                 .collect(),
                         ));
-                        ui.set_band_choice(selected);
                     }
                     QueryFacet::Method => {
                         ui.set_method_labels(strings(
@@ -234,11 +252,21 @@ impl SlintAdapter {
                                 })
                                 .collect(),
                         ));
-                        ui.set_method_choice(selected);
                     }
                     QueryFacet::Population => ui.set_population_labels(labels),
                     QueryFacet::Role => ui.set_role_labels(labels),
                     QueryFacet::Analysis => ui.set_analysis_labels(labels),
+                }
+                if app_selection_changed
+                    || matches!(
+                        facet,
+                        QueryFacet::Scope
+                            | QueryFacet::Sort
+                            | QueryFacet::Band
+                            | QueryFacet::Method
+                    )
+                {
+                    select_choice(ui, *facet, view);
                 }
             }
             *self.choices.borrow_mut() = choices;

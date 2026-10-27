@@ -70,9 +70,6 @@ export component Dialogs inherits Rectangle {
 
     public function clear-applied-filters() {
         root.clear-library-filters();
-        root.query="";root.band-choice=0;root.method-choice=0;
-        root.study-query="";root.population-choice=0;root.role-choice=0;root.analysis-choice=0;
-        root.created-from="";root.created-through="";root.modified-from="";root.modified-through="";root.added-from="";root.added-through="";
     }
     function apply-filters() { root.more-filters(root.study-query,root.population-choice,root.role-choice,root.analysis-choice,root.direction-choice,root.group-choice,root.created-from,root.created-through,root.modified-from,root.modified-through,root.added-from,root.added-through); }
     query-popup := PopupWindow {
@@ -153,7 +150,7 @@ export component Dialogs inherits Rectangle {
                 Button {text:(Terms.operation-open-recipe + "…");enabled:root.can-import;triggered =>{root.open-recipe();library-options.close();}}
                 Button {text:Terms.operation-library-refresh;triggered =>{root.refresh-library();}}
                 Button {text:Terms.operation-show-saved;triggered =>{root.show-saved();library-options.close();}}
-                Button {text:Terms.action-reset-sort;triggered =>{root.reset-library-sort();root.direction-choice=0;}}
+                Button {text:Terms.action-reset-sort;triggered =>{root.reset-library-sort();}}
                 Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
                 Disclosure {label:Terms.caption-library-storage-and-recovery;expanded <=> root.storage-open;}
                 if root.storage-open: Text {text:root.library-status;wrap:word-wrap;min-width:0px;vertical-stretch:0;}

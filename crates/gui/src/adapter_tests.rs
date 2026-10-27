@@ -3655,3 +3655,59 @@ fn real_worker_completion_reaches_projection_without_a_timer_and_wakes_coalesce(
         "shutdown rejects later notifications"
     );
 }
+
+#[test]
+fn app_facet_selections_project_without_overwriting_pending_native_filter_edits() {
+    use auditorylab_app::core::rhythm::Completeness;
+    use auditorylab_app::core::{ConditionRole, Population};
+    use auditorylab_app::discovery::collection::CatalogQuery;
+    let (mut workspace, _root, _store) = bound_workspace(
+        auditorylab_app::services::catalog().unwrap(),
+        Capabilities::no_device_playback(),
+    );
+    workspace
+        .apply(Command::Library(LibraryCommand::SetQuery(Box::new(
+            CatalogQuery {
+                scope: Scope::BuiltIn,
+                populations: vec![Population::Mouse],
+                roles: vec![ConditionRole::Comparison],
+                analysis: Some(Completeness::Invalid),
+                direction: Some(Direction::Desc),
+                group_by: GroupBy::Study,
+                ..CatalogQuery::default()
+            },
+        ))))
+        .unwrap();
+    let h = Harness::with_startup_workspace(workspace);
+    let ui = h.ui();
+    assert_eq!(ui.get_population_choice(), 2);
+    assert_eq!(ui.get_role_choice(), 2);
+    assert_eq!(ui.get_analysis_choice(), 2);
+    assert_eq!(ui.get_direction_choice(), 2);
+    assert_eq!(ui.get_group_choice(), 3);
+    // Advanced fields stage locally until Apply. Unrelated projection keeps that input.
+    ui.set_population_choice(1);
+    ui.set_created_from("unfinished date".into());
+    ui.invoke_navigate_library(1);
+    h.settle();
+    assert_eq!(ui.get_population_choice(), 1);
+    assert_eq!(ui.get_created_from(), "unfinished date");
+    ui.invoke_reset_library_sort();
+    h.settle();
+    assert_eq!(ui.get_direction_choice(), 0);
+    assert_eq!(ui.get_group_choice(), 3);
+    assert_eq!(ui.get_population_choice(), 1);
+    assert_eq!(ui.get_created_from(), "unfinished date");
+    ui.invoke_clear_library_filters();
+    h.settle();
+    assert_eq!(ui.get_population_choice(), 0);
+    assert_eq!(ui.get_role_choice(), 0);
+    assert_eq!(ui.get_analysis_choice(), 0);
+    assert_eq!(ui.get_created_from(), "");
+    assert_eq!(ui.get_group_choice(), 3);
+    h.adapter.inspect(|workspace| {
+        assert!(workspace.catalog_query().populations.is_empty());
+        assert_eq!(workspace.catalog_query().group_by, GroupBy::Study);
+        assert_eq!(workspace.catalog_query().direction, None);
+    });
+}

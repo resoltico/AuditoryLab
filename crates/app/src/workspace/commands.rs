@@ -158,7 +158,11 @@ impl Workspace {
                 EditorCommand::RemoveComponent(row) => self.remove_component(row),
                 EditorCommand::RestoreComponent(row) => self.restore_component(row),
                 EditorCommand::ShowBasedOnSource => {
+                    let revealed = self.editor().draft().based_on().is_some();
                     self.show_based_on_source();
+                    if revealed {
+                        self.effects.push(Effect::ResetLibraryInputs);
+                    }
                     Ok(())
                 }
             },
@@ -167,7 +171,9 @@ impl Workspace {
                 LibraryCommand::SetFilters(input) => self.edit_filters(*input),
                 LibraryCommand::ClearFilters => {
                     let query = self.catalog_query().cleared_filters();
-                    self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))
+                    self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))?;
+                    self.effects.push(Effect::ResetLibraryInputs);
+                    Ok(())
                 }
                 LibraryCommand::ResetSort => {
                     let query = self.catalog_query().reset_sort();

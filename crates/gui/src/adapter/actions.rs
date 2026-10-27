@@ -199,18 +199,9 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     ));
     on!(on_new_draft, |a| a
         .command(|w| w.apply(Command::Editor(EditorCommand::New))));
-    on!(on_based_on_source, |a| {
-        let revealed = a.command(|w| {
-            let found = w.editor().draft().based_on().is_some();
-            let _ = w.apply(Command::Editor(EditorCommand::ShowBasedOnSource));
-            found
-        });
-        if revealed == Some(true)
-            && let Some(ui) = a.main.upgrade()
-        {
-            reset_filter_inputs(&ui);
-        }
-    });
+    on!(on_based_on_source, |a| a.command(
+        |w| w.apply(Command::Editor(EditorCommand::ShowBasedOnSource))
+    ));
     on!(on_quit, |a| a.command(|w| w.apply(Command::Close)));
     on!(on_about, |a| a.show_about());
     on!(on_open_study, |a| {
@@ -274,13 +265,18 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
 
 // Only explicit reveal/reset commands clear pending native filter entry. Ordinary
 // selection, worker and telemetry projections preserve unfinished date/study text.
-pub(super) fn reset_filter_inputs(ui: &MainWindow) {
+pub(super) fn reset_filter_inputs(ui: &MainWindow, workspace: &Workspace) {
+    ui.set_query(workspace.query().into());
+    for facet in [
+        QueryFacet::Population,
+        QueryFacet::Role,
+        QueryFacet::Analysis,
+        QueryFacet::Direction,
+        QueryFacet::Group,
+    ] {
+        library::select_choice(ui, facet, &workspace.library_choices(facet));
+    }
     ui.set_study_query("".into());
-    ui.set_population_choice(0);
-    ui.set_role_choice(0);
-    ui.set_analysis_choice(0);
-    ui.set_direction_choice(0);
-    ui.set_group_choice(0);
     ui.set_created_from("".into());
     ui.set_created_through("".into());
     ui.set_modified_from("".into());

@@ -458,9 +458,13 @@ impl SlintAdapter {
             }
             Effect::CloseResolved { approved } => self.shell.close_resolved(self, approved),
             Effect::ResetLibraryInputs => {
-                if let Some(ui) = self.main.upgrade() {
-                    actions::reset_filter_inputs(&ui);
+                let updating = self.updating.replace(true);
+                if let (Some(ui), Some(workspace)) =
+                    (self.main.upgrade(), self.workspace.borrow().as_ref())
+                {
+                    actions::reset_filter_inputs(&ui, workspace);
                 }
+                self.updating.set(updating);
             }
             Effect::ShowView(view) => {
                 if let Some(ui) = self.main.upgrade() {
