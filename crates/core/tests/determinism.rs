@@ -6,7 +6,7 @@
 
 #![cfg(test)]
 
-mod common;
+use auditorylab_core::test_support as common;
 use auditorylab_core::{ComponentForm, Ears, Modulation, SampleRate};
 
 /// FNV-1a over the little-endian bytes of every sample.

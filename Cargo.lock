@@ -571,6 +571,7 @@ name = "auditorylab-cli"
 version = "0.6.0"
 dependencies = [
  "auditorylab-app",
+ "auditorylab-core",
  "auditorylab-presentation",
  "clap",
  "ctrlc",
@@ -584,6 +585,7 @@ name = "auditorylab-core"
 version = "0.6.0"
 dependencies = [
  "allocation-counter",
+ "auditorylab-core",
  "chrono",
  "libm",
  "proptest",

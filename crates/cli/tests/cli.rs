@@ -1,7 +1,7 @@
 //! CLI contracts through the shipped executable.
 #![cfg(test)]
 #[cfg(unix)]
-mod common;
+use auditorylab_core::test_support as common;
 use std::time::{Duration, Instant};
 use std::{
     fs,

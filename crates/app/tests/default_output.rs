@@ -1,10 +1,10 @@
 //! Device integration using only component-free silence.
 #![cfg(test)]
-mod common;
 use auditorylab_app::document::editing::Draft;
 use auditorylab_app::services::playback::{EndReason, Preparation, Session, StopRequest};
 use auditorylab_app::services::playback::{prepare_live, prepare_playback};
 use auditorylab_app::services::{Source, resolve};
+use auditorylab_core::test_support as common;
 use std::time::{Duration, Instant};
 
 fn silent(

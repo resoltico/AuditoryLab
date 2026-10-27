@@ -37,6 +37,7 @@ embed-resource = "=3.0.12"
 slint-build.workspace = true
 
 [dev-dependencies]
+auditorylab-core = { workspace = true, features = ["test-support"] }
 serde_json.workspace = true
 slint = { workspace = true, features = ["renderer-software"] }
 tempfile.workspace = true

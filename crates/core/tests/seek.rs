@@ -1,5 +1,5 @@
 //! Seekability, bounds, fades and trace extrema against independent oracles.
-mod common;
+use auditorylab_core::test_support as common;
 use auditorylab_core::{ComponentForm, Ears, Modulation, Recipe, SampleRate, catalog, waveform};
 use proptest::prelude::*;
 proptest! {

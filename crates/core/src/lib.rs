@@ -64,7 +64,7 @@ pub use signal::Signal;
 pub use voice::{Carrier, Ear, Ears, SoundError, VoiceError};
 pub use waveform::Extent;
 
-#[cfg(test)]
-mod test_support;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 
 pub(crate) use voice::Voice;

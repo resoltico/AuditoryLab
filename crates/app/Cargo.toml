@@ -34,6 +34,7 @@ winapi-util.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
+auditorylab-core = { workspace = true, features = ["test-support"] }
 allocation-counter.workspace = true
 proptest.workspace = true
 waveadapter.workspace = true

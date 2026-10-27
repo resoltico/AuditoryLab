@@ -22,5 +22,4 @@ pub(crate) mod storage;
 pub mod workspace;
 
 #[cfg(test)]
-#[path = "../tests/common/mod.rs"]
-mod test_recipes;
+use auditorylab_core::test_support as test_recipes;

@@ -1,7 +1,5 @@
 //! Public loading and publication contracts.
 #![cfg(test)]
-#[path = "../../app/tests/common/mod.rs"]
-mod common;
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::document::recipe::Rendition;
@@ -15,6 +13,7 @@ use auditorylab_app::services::catalog;
 use auditorylab_app::services::export;
 use auditorylab_app::services::open_file;
 use auditorylab_app::services::read_source;
+use auditorylab_core::test_support as common;
 use auditorylab_presentation::{BuildIdentityText, RecipeSnapshotText};
 use std::{fs, path::Path};
 fn dir() -> tempfile::TempDir {
