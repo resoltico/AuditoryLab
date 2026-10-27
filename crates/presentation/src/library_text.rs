@@ -535,7 +535,7 @@ pub fn group_label(label: &auditorylab_app::discovery::collection::GroupLabel) -
     match label {
         L::Band(band) => band.to_string(),
         L::State(state) => state.label().into(),
-        L::Method(method) => method.key().into(),
+        L::Method(method) => method.label().into(),
         L::NoMethod => "No declared method".into(),
         L::Study(label) => label.clone(),
         L::NoStudy => "No current study declaration".into(),
