@@ -2,15 +2,14 @@
 
 ## [Unreleased]
 
-- Update the bundled Markdown parser to address RUSTSEC-2026-0414.
-
-- Contributors must install `slint-lsp` at the resolved Slint version and run `cargo xtask check-style` for source width and Slint formatting.
-- CI denies Clippy pedantic findings; intentional escaped native-path diagnostics have narrow, reasoned expectations.
-
 - About and `--version` show the product version and optional source revision without a separate build counter.
+- Contributors must install `slint-lsp` at the resolved Slint version and run `cargo xtask check-style` for source width and Slint formatting.
+- CI treats Clippy pedantic findings as errors.
 - macOS `CFBundleVersion` derives from `X*10000 + Y*100 + Z`; packaging rejects version suffixes and minor or patch values above 99.
 - Windows CLI and desktop executables include version, product name and copyright details.
-- Relative `--library-dir` errors use the shared path-bearing explanation; they still exit 2 before listing.
+- Relative `--library-dir` errors name the rejected path and exit 2 before listing.
+- Desktop ignores stale Save actions outside Workbench and selected-sound playback activations outside Library.
+- Update the bundled Markdown parser to address RUSTSEC-2026-0414.
 
 ## [0.7.0] - 2026-10-28
 
