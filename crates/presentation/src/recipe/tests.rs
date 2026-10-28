@@ -1,6 +1,5 @@
 use super::*;
-use crate::RecipeSnapshotText;
-use crate::recipe_text::SnapshotText;
+
 use auditorylab_core::catalog;
 use std::collections::BTreeMap;
 
@@ -35,7 +34,7 @@ fn display_about_uses_population_and_condition_labels_for_every_declaration() {
                 auditorylab_app::document::recipe::Origin::Stream("test".into()),
                 builder.build().unwrap(),
             );
-            let about = snapshot.about().unwrap();
+            let about = crate::recipe::snapshot_about(&(snapshot)).unwrap();
             let text = about
                 .research
                 .as_ref()
@@ -222,9 +221,9 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
             .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
         let recipe = candidate.build().unwrap();
         let snapshot = RecipeSnapshot::new(Origin::Stream("test".into()), recipe);
-        assert!(snapshot.details_at(SampleRate::DEFAULT).contains(expected));
+        assert!(crate::snapshot_details_at(&(snapshot), SampleRate::DEFAULT).contains(expected));
         if snapshot.at(SampleRate::DEFAULT).is_err() {
-            assert!(snapshot.description().contains(expected));
+            assert!(crate::snapshot_description(&(snapshot)).contains(expected));
         }
     }
 }

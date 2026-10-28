@@ -139,12 +139,10 @@ fn voice(form: ComponentForm) -> String {
 mod tests;
 
 /// Derived descriptions of immutable snapshot content.
-pub trait SnapshotText {
-    /// Research and listening description, without retaining wording in document state.
-    fn about(&self) -> Option<About>;
+
+pub fn snapshot_about(value: &auditorylab_app::document::recipe::RecipeSnapshot) -> Option<About> {
+    about(value.recipe())
 }
-impl SnapshotText for auditorylab_app::document::recipe::RecipeSnapshot {
-    fn about(&self) -> Option<About> {
-        about(self.recipe())
-    }
-}
+
+mod render;
+pub use render::*;

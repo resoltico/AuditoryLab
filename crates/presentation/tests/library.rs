@@ -5,7 +5,6 @@ use auditorylab_app::document::origin::{LibraryKey, VersionToken};
 use auditorylab_app::job::Cancel;
 use auditorylab_app::outcome::Outcome;
 use auditorylab_app::services::library::{Library, Mutation, MutationStatus};
-use auditorylab_presentation::*;
 use std::{fs, path::PathBuf, sync::Arc};
 #[expect(
     clippy::unwrap_used,
@@ -363,8 +362,7 @@ fn managed_descendant_symlinks_and_nonregular_entries_never_read_external_conten
     assert!(!scan.complete);
     assert!(scan.entries.is_empty());
     assert!(
-        !scan.diagnostics[0]
-            .message()
+        !auditorylab_presentation::errors::library_diagnostic_message(&(scan.diagnostics[0]))
             .contains("secret outside bytes")
     );
     assert_eq!(fs::read(&external).unwrap(), b"secret outside bytes");
@@ -489,7 +487,7 @@ fn unknown_membership_dates_remain_visible_in_human_descriptions() {
     fs::remove_file(path.join("membership.toml")).unwrap();
     let summary = store.load(&trashed.key).unwrap().summary();
     assert!(summary.trashed);
-    let text = summary.membership_description();
+    let text = auditorylab_presentation::library::entry_summary_membership_description(&(summary));
     assert!(text.contains("Added here: Unknown"));
     assert!(text.contains("Trash: Unknown"));
     assert!(text.contains(&summary.version_token.unwrap().to_string()));
@@ -498,7 +496,7 @@ fn unknown_membership_dates_remain_visible_in_human_descriptions() {
 #[test]
 fn failed_report_completion_never_claims_a_failed_operation_was_confirmed() {
     let error = std::io::Error::other("rejected operation");
-    let report = auditorylab_presentation::reports::Report::error(
+    let report = auditorylab_presentation::report::Report::error(
         auditorylab_app::vocabulary::Operation::LibraryInit,
         &auditorylab_core::SampleRateError { hz: 0 },
         error.to_string(),

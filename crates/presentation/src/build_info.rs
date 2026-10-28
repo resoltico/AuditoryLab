@@ -7,35 +7,24 @@ pub fn about_title() -> String {
     format!("About {}", auditorylab_app::identity::BUILD_IDENTITY.name)
 }
 
-pub trait BuildIdentityText {
-    /// Product version, native build counter and optional short source revision.
-    #[must_use]
-    fn version_text(self) -> String;
+/// Product version, native build counter and optional short source revision.
 
-    /// A binary name followed by its canonical build identity.
-    #[must_use]
-    fn version_line(self, binary: &str) -> String;
-
-    /// Version and native build counter shown in the graphical About window.
-    #[must_use]
-    fn about_version(self) -> String;
+pub fn build_identity_version_text(value: BuildIdentity) -> String {
+    let source = value
+        .revision
+        .map_or(String::new(), |revision| format!(" · {}", &revision[..12]));
+    format!("{} (build {}){source}", value.version, value.build)
 }
-impl BuildIdentityText for BuildIdentity {
-    /// Product version, native build counter and optional short source revision.
-    fn version_text(self) -> String {
-        let source = self
-            .revision
-            .map_or(String::new(), |revision| format!(" · {}", &revision[..12]));
-        format!("{} (build {}){source}", self.version, self.build)
-    }
+/// A binary name followed by its canonical build identity.
 
-    /// A binary name followed by its canonical build identity.
-    fn version_line(self, binary: &str) -> String {
-        format!("{binary} {}", self.version_text())
-    }
+pub fn build_identity_version_line(value: BuildIdentity, binary: &str) -> String {
+    format!(
+        "{binary} {}",
+        crate::build_info::build_identity_version_text(value)
+    )
+}
+/// Version and native build counter shown in the graphical About window.
 
-    /// Version and native build counter shown in the graphical About window.
-    fn about_version(self) -> String {
-        format!("Version {} (Build {})", self.version, self.build)
-    }
+pub fn build_identity_about_version(value: BuildIdentity) -> String {
+    format!("Version {} (Build {})", value.version, value.build)
 }

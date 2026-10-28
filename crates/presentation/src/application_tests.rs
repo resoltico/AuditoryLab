@@ -89,7 +89,7 @@ fn receipt_age_reads_in_human_units() {
         (7_300_000, true, "Current session received samples 2 h ago"),
     ] {
         assert_eq!(
-            crate::workspace_text::received_text(Duration::from_millis(millis), held),
+            crate::workspace::received_text(Duration::from_millis(millis), held),
             text
         );
     }
@@ -124,7 +124,7 @@ fn committed_brief_never_borrows_pending_pair_facts() {
         text: ("-7").to_string(),
     }))
     .unwrap();
-    let original = crate::workspace_text::editor_view(&ws.editor_view()).brief;
+    let original = crate::workspace::editor_view(&ws.editor_view()).brief;
     assert!(original.contains("7 Hz") && original.contains("317") && original.contains("310"));
     for text in ["40", "NaN"] {
         ws.apply(Command::Editor(EditorCommand::Stage {
@@ -132,7 +132,7 @@ fn committed_brief_never_borrows_pending_pair_facts() {
             text: (text).to_string(),
         }))
         .unwrap();
-        let view = crate::workspace_text::editor_view(&ws.editor_view());
+        let view = crate::workspace::editor_view(&ws.editor_view());
         assert_eq!(
             view.brief,
             original.replace("Draft classification", "Last committed classification")
@@ -151,7 +151,7 @@ fn committed_brief_never_borrows_pending_pair_facts() {
             .unwrap();
         assert_eq!(ws.editor().text(offset.field), "-7");
         assert_eq!(
-            crate::workspace_text::editor_view(&ws.editor_view()).brief,
+            crate::workspace::editor_view(&ws.editor_view()).brief,
             original
         );
     }
@@ -161,7 +161,7 @@ fn committed_brief_never_borrows_pending_pair_facts() {
     }))
     .unwrap();
     ws.apply(Command::Editor(EditorCommand::Commit)).unwrap();
-    let committed = crate::workspace_text::editor_view(&ws.editor_view()).brief;
+    let committed = crate::workspace::editor_view(&ws.editor_view()).brief;
     assert!(committed.contains("40 Hz") && committed.contains("357"));
     assert!(!committed.contains("Last committed"));
 }
@@ -187,7 +187,7 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
             }))
             .unwrap();
         }
-        let view = crate::workspace_text::action_view(&ws.action_view());
+        let view = crate::workspace::action_view(&ws.action_view());
         assert!(!ws.action_view().can_add_pair);
         assert!(view.pair_add_reason.contains(&format!(
             "{components} authored components and {voices} expanded voices"
@@ -213,10 +213,10 @@ fn structured_library_rows_keep_saved_identity_and_rate_independent_classificati
         ("ioannou 2").to_string(),
     )))
     .unwrap();
-    let view = crate::workspace_text::library_view(&ws.library_view());
+    let view = crate::workspace::library_view(&ws.library_view());
     let typed = ws.library_view();
     assert_eq!(typed.rows.len(), 1);
-    let row = crate::library_text::row(&typed.rows[0], typed.sort);
+    let row = crate::library::row(&typed.rows[0], typed.sort);
     assert!(row.key.contains("ioannou-2015-binaural-2-hz"));
     assert_eq!(row.bands, "Delta");
     assert!(row.collection.contains("Read only"));
@@ -227,11 +227,11 @@ fn structured_library_rows_keep_saved_identity_and_rate_independent_classificati
     )))
     .unwrap();
     assert_eq!(
-        crate::workspace_text::library_view(&ws.library_view()).classification,
+        crate::workspace::library_view(&ws.library_view()).classification,
         classification
     );
     assert_eq!(
-        crate::library_text::row(&ws.library_view().rows[0], ws.library_view().sort).key,
+        crate::library::row(&ws.library_view().rows[0], ws.library_view().sort).key,
         row.key
     );
 }
@@ -258,7 +258,7 @@ fn staged_envelope_failures_render_quantities_and_rate_in_metadata() {
         .find(|field| field.handle == handle)
         .unwrap();
     assert_eq!(
-        crate::workspace_text::metadata_text(duration, &view).diagnostic,
+        crate::workspace::metadata_text(duration, &view).diagnostic,
         "Duration 0 s must last from one sample (1/48000 s) to 16.6 days at 48000 Hz"
     );
 }
@@ -295,15 +295,11 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
         transitioning: true,
         voices,
     };
-    let text = (Some(&observation)).summary();
+    let text = crate::optional_observation_summary(&(Some(&observation)));
     assert!(text.contains("Both ears"), "{text}");
+    assert!(crate::observation_details(&(observation)).contains("gain L -26.0 / R -26.0 dBFS"));
     assert!(
-        observation
-            .details()
-            .contains("gain L -26.0 / R -26.0 dBFS")
-    );
-    assert!(
-        observation.details().contains("Continuing"),
+        crate::observation_details(&(observation)).contains("Continuing"),
         "role label, not Debug"
     );
     assert!(text.starts_with("Changing"));
@@ -520,7 +516,7 @@ fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct()
                     selector: Some(key.clone()),
                 },
             });
-        let notice = status.description();
+        let notice = crate::workspace::status::file_status_description(&(status));
         assert_eq!(
             notice.contains("inspect this location"),
             inspect,
@@ -633,7 +629,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
     }))
     .unwrap();
     let mut typed = ws.action_view();
-    let actions = crate::workspace_text::action_view(&typed);
+    let actions = crate::workspace::action_view(&typed);
     assert!(!typed.can_save);
     assert!(actions.operation_summary.contains("65536"));
     typed.file_status = FileStatus::Exported {
@@ -645,7 +641,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
             warnings: Vec::new(),
         },
     };
-    let actions = crate::workspace_text::action_view(&typed);
+    let actions = crate::workspace::action_view(&typed);
     assert!(actions.operation_summary.contains("65536"));
     assert!(actions.operation_outcome.starts_with("Exported 100"));
     assert!(actions.operation_summary.chars().count() <= 181);
@@ -662,7 +658,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
         }
         .into(),
     );
-    let actions = crate::workspace_text::action_view(&typed);
+    let actions = crate::workspace::action_view(&typed);
     assert!(actions.operation_details.contains("cannot write file"));
     assert!(actions.operation_details.len() > actions.operation_summary.len());
 }
@@ -704,7 +700,7 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
         query.clone(),
     ))))
     .unwrap();
-    let summary = w.library_count();
+    let summary = crate::library::workspace_library_count(&(w));
     for expected in [
         "exact search",
         "10.1234/exact",
@@ -731,7 +727,7 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
         ))))
         .is_err()
     );
-    assert_eq!(w.library_count(), summary);
+    assert_eq!(crate::library::workspace_library_count(&(w)), summary);
 }
 
 #[test]
@@ -761,8 +757,11 @@ fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids()
             .collect::<Vec<_>>(),
         recipe_ids
     );
-    let about = crate::recipe_text::about(&d.recipe().unwrap()).unwrap();
-    assert_eq!(about.summary, snapshot.about().unwrap().summary);
+    let about = crate::recipe::about(&d.recipe().unwrap()).unwrap();
+    assert_eq!(
+        about.summary,
+        crate::recipe::snapshot_about(&(snapshot)).unwrap().summary
+    );
     assert!(about.research.is_none());
 }
 
@@ -825,7 +824,7 @@ fn publication_text_preserves_known_and_unconfirmed_postconditions() {
 }
 #[test]
 fn waveform_captions_are_frozen_and_underruns_remain_readable() {
-    use crate::waveform_view::{WaveformCaptureText, output_underrun_warning};
+    use crate::workspace::monitor::output_underrun_warning;
     use auditorylab_app::workspace::monitor::{WaveformCapture, WaveformScale};
     let frozen = WaveformCapture::samples(
         "source".into(),
@@ -835,7 +834,7 @@ fn waveform_captions_are_frozen_and_underruns_remain_readable() {
         WaveformScale::Fit,
     )
     .unwrap();
-    let caption = frozen.caption(true, false);
+    let caption = crate::workspace::monitor::waveform_capture_caption(&(frozen), true, false);
     let prior = frozen.clone();
     let _other = WaveformCapture::samples(
         "other".into(),
@@ -845,8 +844,14 @@ fn waveform_captions_are_frozen_and_underruns_remain_readable() {
         WaveformScale::Fixed,
     )
     .unwrap();
-    assert_eq!(frozen.caption(true, false), caption);
-    assert_eq!(prior.caption(true, false), caption);
+    assert_eq!(
+        crate::workspace::monitor::waveform_capture_caption(&(frozen), true, false),
+        caption
+    );
+    assert_eq!(
+        crate::workspace::monitor::waveform_capture_caption(&(prior), true, false),
+        caption
+    );
     assert!(output_underrun_warning(1).contains("underruns: 1"));
     assert_eq!(
         output_underrun_warning(1),
@@ -860,12 +865,10 @@ fn copied_attribution_and_reimported_notes_reach_library_details() {
     let mut draft = Draft::from_snapshot(&source).unwrap();
     draft.set_summary("Own notes".into());
     let recipe = draft.recipe().unwrap();
-    assert!(recipe_text::about(&recipe).unwrap().research.is_none());
+    assert!(crate::recipe::about(&recipe).unwrap().research.is_none());
     let derived = RecipeSnapshot::new(Origin::Stream("derivative".into()), recipe);
     assert!(
-        derived
-            .details_at(SampleRate::DEFAULT)
-            .contains("Source citation:")
+        crate::snapshot_details_at(&(derived), SampleRate::DEFAULT).contains("Source citation:")
     );
     let mut changed = derived.recipe().clone().into_builder();
     changed.content.lineage[0].note = "reimport-source-marker".into();
@@ -874,8 +877,7 @@ fn copied_attribution_and_reimported_notes_reach_library_details() {
         changed.build().unwrap(),
     );
     assert!(
-        changed
-            .details_at(SampleRate::DEFAULT)
+        crate::snapshot_details_at(&(changed), SampleRate::DEFAULT)
             .contains("reimport-source-marker")
     );
 }
@@ -904,17 +906,17 @@ fn rows_show_sort_dates_unknown_edit_and_duration() {
         requires_read: false,
     };
     for sort in [SortBy::Modified, SortBy::Added] {
-        let text = library_text::row(&row, sort);
+        let text = crate::library::row(&row, sort);
         assert_eq!(text.key, entry.key.to_string());
         assert!(text.text.contains("Edited: Unknown") && text.text.contains("Added here:"));
         assert!(text.text.contains("Duration 1 min"));
     }
-    let text = library_text::row(&row, SortBy::Created);
+    let text = crate::library::row(&row, SortBy::Created);
     assert!(text.text.contains(&format!(
         "Created: {}",
-        calendar_text::local_timestamp(entry.created_at.unwrap())
+        crate::library::calendar::local_timestamp(entry.created_at.unwrap())
     )));
-    let stale = library_text::row(
+    let stale = crate::library::row(
         &LibraryRowView::Entry {
             handle: handle.clone(),
             entry: Box::new(entry),
@@ -964,7 +966,7 @@ fn operation_and_shutdown_failures_keep_recovery_context() {
         },
         error: WorkerFailure::Panicked,
     };
-    let outcome = status.description();
+    let outcome = crate::workspace::status::file_status_description(&(status));
     assert!(outcome.contains("thread failed"));
     assert!(outcome.contains("does not establish that storage was unchanged"));
     assert!(outcome.contains(&path.display().to_string()));
@@ -977,25 +979,27 @@ fn operation_and_shutdown_failures_keep_recovery_context() {
     .explain();
     assert!(error.contains("another operation"));
     assert!(error.contains("library"));
-    let notice = LibraryStatus::Failed {
-        error: LibraryError::StaleContent { id }.into(),
-        publishing: true,
-        context,
-    }
-    .description();
+    let notice = crate::workspace::status::library_status_description(
+        &(LibraryStatus::Failed {
+            error: LibraryError::StaleContent { id }.into(),
+            publishing: true,
+            context,
+        }),
+    );
     assert!(notice.contains(&format!("Selector: {key}")));
     assert!(notice.contains(&format!("Location: {}", path.display())));
     assert!(notice.contains("conflicts with the captured operation"));
     assert!(notice.contains("did not publish a replacement"));
     assert!(notice.contains("Draft retained"));
     assert!(!notice.contains("inspect"));
-    let feedback = SaveFeedback::EditorReset(
-        auditorylab_app::identity::IdentityError::Exhausted(
-            auditorylab_app::identity::IdentityScope::Document,
-        )
-        .into(),
-    )
-    .description();
+    let feedback = crate::workspace::status::save_feedback_description(
+        &(SaveFeedback::EditorReset(
+            auditorylab_app::identity::IdentityError::Exhausted(
+                auditorylab_app::identity::IdentityScope::Document,
+            )
+            .into(),
+        )),
+    );
     for expected in [
         "Trash confirmed",
         "Open draft retained",
@@ -1004,7 +1008,7 @@ fn operation_and_shutdown_failures_keep_recovery_context() {
         assert!(feedback.contains(expected));
     }
     assert!(
-        library_text::document_location(None, Some(&key), None, None)
+        crate::library::document_location(None, Some(&key), None, None)
             .1
             .starts_with("Detached draft")
     );
@@ -1013,22 +1017,22 @@ fn operation_and_shutdown_failures_keep_recovery_context() {
 #[test]
 fn repeated_views_keep_all_rendered_fields_and_empty_selection_clears_text() {
     let mut ws = workspace();
-    let initial = workspace_text::library_view(&ws.library_view());
+    let initial = crate::workspace::library_view(&ws.library_view());
     assert_eq!(initial.title, ws.selected().unwrap().title());
     assert!(initial.details.contains(&initial.title));
-    let editor = workspace_text::editor_view(&ws.editor_view());
-    let actions = workspace_text::action_view(&ws.action_view());
+    let editor = crate::workspace::editor_view(&ws.editor_view());
+    let actions = crate::workspace::action_view(&ws.action_view());
     for _ in 0..10 {
         ws.poll();
-        assert_eq!(workspace_text::library_view(&ws.library_view()), initial);
-        assert_eq!(workspace_text::editor_view(&ws.editor_view()), editor);
-        assert_eq!(workspace_text::action_view(&ws.action_view()), actions);
+        assert_eq!(crate::workspace::library_view(&ws.library_view()), initial);
+        assert_eq!(crate::workspace::editor_view(&ws.editor_view()), editor);
+        assert_eq!(crate::workspace::action_view(&ws.action_view()), actions);
     }
     ws.apply(Command::Library(LibraryCommand::Search(
         ("no matching result").to_string(),
     )))
     .unwrap();
-    let empty = workspace_text::library_view(&ws.library_view());
+    let empty = crate::workspace::library_view(&ws.library_view());
     assert!(
         ws.library_view().rows.is_empty() && empty.title.is_empty() && empty.details.is_empty()
     );
@@ -1043,7 +1047,7 @@ fn preview_and_audio_failures_name_the_captured_rate() {
         rate: SampleRate::DEFAULT,
         error: None,
     };
-    assert!(preview.description().contains("48000 Hz"));
+    assert!(crate::workspace::status::preview_issue_description(&(preview)).contains("48000 Hz"));
     let error = auditorylab_app::services::LoadError::Sound {
         origin: auditorylab_app::document::recipe::Origin::Stream("tone".into()),
         rate: SampleRate::new(8000).unwrap(),
@@ -1053,9 +1057,10 @@ fn preview_and_audio_failures_name_the_captured_rate() {
         }),
     };
     assert!(
-        auditorylab_app::workspace::status::AudioStatus::Failed(error.into())
-            .description()
-            .contains("8000")
+        crate::workspace::status::audio_status_description(
+            &(auditorylab_app::workspace::status::AudioStatus::Failed(error.into()))
+        )
+        .contains("8000")
     );
 }
 
@@ -1094,7 +1099,9 @@ fn file_activity_uses_the_captured_shared_operation_term() {
             may_publish: false,
         };
         assert_eq!(kind.operation(), operation);
-        assert!(activity.description().starts_with(label));
-        assert!(workspace_text::file_activity(Some(kind)).starts_with(label));
+        assert!(
+            crate::workspace::status::file_activity_description(&(activity)).starts_with(label)
+        );
+        assert!(crate::workspace::file_activity(Some(kind)).starts_with(label));
     }
 }

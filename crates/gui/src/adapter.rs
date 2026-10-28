@@ -9,11 +9,8 @@
 //! the document, component and generation, so late callbacks cannot address a
 //! replacement document or a restored component lifetime.
 use auditorylab_app::workspace::{ComponentView, EditorView, MetadataView, ParameterView};
-use auditorylab_presentation::DisplayText;
-use auditorylab_presentation::LibraryPresentation;
-use auditorylab_presentation::vocabulary::NumberStyle;
-use auditorylab_presentation::waveform_view::*;
-use auditorylab_presentation::*;
+
+use auditorylab_presentation::numbers::NumberStyle;
 mod actions;
 mod auxiliary;
 mod editing;
@@ -241,22 +238,17 @@ impl SlintAdapter {
         ui.set_catalog(ModelRc::from(adapter.catalog.clone()));
         ui.set_model_lanes(ModelRc::from(adapter.lanes.clone()));
         ui.set_transport_labels(ModelRc::new(VecModel::from(
-            [
-                auditorylab_app::vocabulary::Operation::PlaySelectedSound,
-                auditorylab_app::vocabulary::Operation::PlayLive,
-                auditorylab_app::vocabulary::Operation::Stop,
-            ]
-            .map(|operation| {
-                auditorylab_presentation::workspace_text::operation_label(operation).into()
-            })
-            .to_vec(),
+            crate::labels::transport_labels()
+                .map(SharedString::from)
+                .to_vec(),
         )));
         ui.set_guidance(auditorylab_presentation::Notice::general_guidance().into());
         ui.set_native_mac(cfg!(target_os = "macos"));
         windows.about.set_identity(
-            auditorylab_app::identity::BUILD_IDENTITY
-                .about_version()
-                .into(),
+            auditorylab_presentation::build_info::build_identity_about_version(
+                auditorylab_app::identity::BUILD_IDENTITY,
+            )
+            .into(),
         );
         windows
             .licenses
@@ -497,7 +489,7 @@ impl SlintAdapter {
             .as_ref()
             .map(|w| w.editor().draft().title().to_owned())
             .unwrap_or_default();
-        let title = title.display_scalar();
+        let title = auditorylab_presentation::display_scalar(&(title));
         match title.char_indices().nth(60) {
             Some((cut, _)) => format!("{}…", &title[..cut]),
             None => title,
@@ -692,11 +684,16 @@ impl SlintAdapter {
         self.project_view_captions(ui, &editor);
         self.reconcile_document(ui, &editor);
         if let Some(workspace) = self.workspace.borrow().as_ref() {
-            ui.set_draft_location(workspace.document_location_label().into());
-            ui.set_draft_location_details(read_only(&workspace.document_location()));
+            ui.set_draft_location(
+                auditorylab_presentation::library::workspace_document_location_label(&(workspace))
+                    .into(),
+            );
+            ui.set_draft_location_details(read_only(
+                &auditorylab_presentation::library::workspace_document_location(&(workspace)),
+            ));
         }
         ui.set_dirty(editor.dirty);
-        let editor_text = auditorylab_presentation::workspace_text::editor_view(&editor);
+        let editor_text = auditorylab_presentation::workspace::editor_view(&editor);
         ui.set_draft_brief(read_only(&editor_text.brief));
         ui.set_peak(read_only(&editor_text.peak));
         ui.set_metadata_error(read_only(&editor_text.metadata_error));
@@ -710,7 +707,7 @@ impl SlintAdapter {
         }
 
         self.project_actions(&actions);
-        let action_text = auditorylab_presentation::workspace_text::action_view(&actions);
+        let action_text = auditorylab_presentation::workspace::action_view(&actions);
         ui.set_can_play(actions.can_play);
         ui.set_library_play_action(action_text.library_play_label.into());
         ui.set_can_import(actions.can_import);
@@ -856,7 +853,7 @@ impl SlintAdapter {
         let Some((transport, output, model, progress)) = views else {
             return;
         };
-        let transport_text = auditorylab_presentation::workspace_text::transport_view(&transport);
+        let transport_text = auditorylab_presentation::workspace::transport_view(&transport);
         ui.set_player_title(read_only(&transport_text.player_title));
         ui.set_elapsed(read_only(&transport_text.elapsed));
         ui.set_generated(read_only(&transport_text.generated));
@@ -903,11 +900,19 @@ impl SlintAdapter {
                 let [left, right] = scope::paths(capture.bins(), capture.limit());
                 ui.set_left_path(left.into());
                 ui.set_right_path(right.into());
-                ui.set_scale_label(NumberStyle::AxisLimit.format(capture.limit()).into());
+                ui.set_scale_label(
+                    auditorylab_presentation::numbers::format(
+                        NumberStyle::AxisLimit,
+                        capture.limit(),
+                    )
+                    .into(),
+                );
                 ui.set_capture_duration(
-                    NumberStyle::CapturedMilliseconds
-                        .format(capture.milliseconds())
-                        .into(),
+                    auditorylab_presentation::numbers::format(
+                        NumberStyle::CapturedMilliseconds,
+                        capture.milliseconds(),
+                    )
+                    .into(),
                 );
             } else {
                 ui.set_left_path(SharedString::new());
@@ -933,7 +938,11 @@ impl SlintAdapter {
                             let [trace, _] = scope::paths(&stereo, 1.0);
                             ModelLane {
                                 component: lane.id.get().to_string().into(),
-                                label: ModelView::lane_label(lane).into(),
+                                label:
+                                    auditorylab_presentation::workspace::monitor::model_view_lane_label(
+                                        lane,
+                                    )
+                                    .into(),
                                 trace: trace.into(),
                             }
                         })
@@ -1081,18 +1090,19 @@ impl SlintAdapter {
         window.set_heading(crate::terms::Caption::AudioSnapshot.label().into());
         window.set_can_refresh(true);
         window.set_content(
-            auditorylab_presentation::DesktopDiagnostics {
-                player: &ui.get_player_title(),
-                generated: &ui.get_generated_details(),
-                monitor: &ui.get_monitor_state(),
-                device: &ui.get_device(),
-                status: &ui.get_status(),
-                auxiliary_error: &ui.get_auxiliary_error(),
-                motion: &ui.get_motion_reason(),
-                typography: &ui.get_typography_origin(),
-                model: &ui.get_model_caption(),
-            }
-            .text()
+            auditorylab_presentation::workspace::desktop_diagnostics_text(
+                &(auditorylab_presentation::DesktopDiagnostics {
+                    player: &ui.get_player_title(),
+                    generated: &ui.get_generated_details(),
+                    monitor: &ui.get_monitor_state(),
+                    device: &ui.get_device(),
+                    status: &ui.get_status(),
+                    auxiliary_error: &ui.get_auxiliary_error(),
+                    motion: &ui.get_motion_reason(),
+                    typography: &ui.get_typography_origin(),
+                    model: &ui.get_model_caption(),
+                }),
+            )
             .into(),
         );
     }
@@ -1107,7 +1117,7 @@ fn selected_option<K>(view: &auditorylab_app::workspace::ChoiceView<K>) -> i32 {
 }
 
 fn parameter_row(view: &ParameterView, editor: &EditorView) -> ParameterRow {
-    let text = auditorylab_presentation::workspace_text::parameter_text(view, editor);
+    let text = auditorylab_presentation::workspace::parameter_text(view, editor);
     #[expect(
         clippy::cast_possible_truncation,
         reason = "A normalized slider position rounds to the renderer's f32; values stay binary64"
@@ -1132,7 +1142,7 @@ fn component_row(
     editor: &EditorView,
     choices: &[auditorylab_app::workspace::ControlChoices],
 ) -> ComponentRow {
-    let text = auditorylab_presentation::workspace_text::component_text(view, editor);
+    let text = auditorylab_presentation::workspace::component_text(view, editor);
     ComponentRow {
         key: entry.key.to_string().into(),
         id: view.id.get().to_string().into(),
@@ -1204,7 +1214,7 @@ fn reconcile_parameters(
 }
 
 fn metadata_row(view: &MetadataView, editor: &EditorView) -> MetadataRow {
-    let text = auditorylab_presentation::workspace_text::metadata_text(view, editor);
+    let text = auditorylab_presentation::workspace::metadata_text(view, editor);
     MetadataRow {
         key: view.handle.to_string().into(),
         label: text.label.as_str().into(),
@@ -1319,10 +1329,8 @@ impl SlintAdapter {
         {
             for view in &view.operations {
                 let action = crate::generated::Action {
-                    label: auditorylab_presentation::workspace_text::operation_label(
-                        view.operation,
-                    )
-                    .into(),
+                    label: auditorylab_presentation::workspace::operation_label(view.operation)
+                        .into(),
                     enabled: view.enabled,
                 };
                 use auditorylab_app::vocabulary::Operation;
@@ -1378,7 +1386,7 @@ impl SlintAdapter {
                 .view
                 .options
                 .iter()
-                .map(|o| auditorylab_presentation::workspace_text::control_choice(o).into())
+                .map(|o| auditorylab_presentation::workspace::control_choice(o).into())
                 .collect::<Vec<SharedString>>();
             let strings = ModelRc::new(VecModel::from(labels));
             let selected = selected_option(&menu.view);
@@ -1391,8 +1399,7 @@ impl SlintAdapter {
                         .options
                         .iter()
                         .map(|o| crate::generated::ControlOption {
-                            label: auditorylab_presentation::workspace_text::control_choice(o)
-                                .into(),
+                            label: auditorylab_presentation::workspace::control_choice(o).into(),
                             enabled: o.enabled,
                         })
                         .collect::<Vec<_>>(),
@@ -1489,7 +1496,7 @@ fn open_web(url: &str) {
 
 // Keep display escaping separate from lossless editable field models and bindings.
 fn read_only(text: &str) -> SharedString {
-    (text).display_text().into()
+    auditorylab_presentation::display_text(&(text)).into()
 }
 
 #[cfg(test)]
@@ -1510,10 +1517,9 @@ pub(crate) fn project_captions(
     captions: crate::generated::ViewCaptions<'_>,
     status: auditorylab_app::vocabulary::EditorStatus,
 ) {
-    captions
-        .set_editor_status(auditorylab_presentation::workspace_text::editor_status(status).into());
+    captions.set_editor_status(auditorylab_presentation::workspace::editor_status(status).into());
     for caption in auditorylab_app::vocabulary::ViewCaption::VALUES {
-        let label = auditorylab_presentation::workspace_text::view_caption(*caption).into();
+        let label = auditorylab_presentation::workspace::view_caption(*caption).into();
         use auditorylab_app::vocabulary::ViewCaption;
         match caption {
             ViewCaption::AddedHereThroughInclusiveLocalCalendarDate => {

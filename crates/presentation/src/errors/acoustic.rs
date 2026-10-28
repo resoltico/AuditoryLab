@@ -75,7 +75,7 @@ impl Display for Quantity {
 impl Display for SoundText<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0 {
-            SoundError::Pair(error) => f.write_str(&super::core_errors::pair_error(error)),
+            SoundError::Pair(error) => f.write_str(&crate::errors::core::pair_error(error)),
             SoundError::PairCarrier {
                 id,
                 first_hz,

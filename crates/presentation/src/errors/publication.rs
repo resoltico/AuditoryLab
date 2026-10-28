@@ -52,18 +52,14 @@ pub fn warning(warning: &auditorylab_app::services::StorageWarning) -> String {
         W::DeletedAfterIo { cause } => deleted_after_io(cause),
         W::DeletedDurability { cause } => deleted_durability(cause),
         W::ClockPredatesEdit => CLOCK_PREDATES_EDIT.into(),
-        W::RemovedStage { path } => super::library_text::removed_stage(path),
-        W::RemovedMemberships { count } => super::library_text::removed_memberships(*count),
-        W::MembershipUpdateFailed { cause } => super::library_text::membership_update_failed(cause),
-        W::MembershipReadFailed { cause } => super::library_text::membership_read_failed(cause),
-        W::RecoveredMove { name } => super::library_text::recovered_move(name),
-        W::ModificationPrecedesCreation => {
-            super::library_text::MODIFICATION_PRECEDES_CREATION.into()
-        }
-        W::ClockPredatesHistory => super::library_text::CLOCK_PREDATES_HISTORY.into(),
-        W::FutureHistory => super::library_text::FUTURE_HISTORY.into(),
-        W::UnavailableHistoryClock { cause } => {
-            super::library_text::unavailable_history_clock(cause)
-        }
+        W::RemovedStage { path } => crate::library::removed_stage(path),
+        W::RemovedMemberships { count } => crate::library::removed_memberships(*count),
+        W::MembershipUpdateFailed { cause } => crate::library::membership_update_failed(cause),
+        W::MembershipReadFailed { cause } => crate::library::membership_read_failed(cause),
+        W::RecoveredMove { name } => crate::library::recovered_move(name),
+        W::ModificationPrecedesCreation => crate::library::MODIFICATION_PRECEDES_CREATION.into(),
+        W::ClockPredatesHistory => crate::library::CLOCK_PREDATES_HISTORY.into(),
+        W::FutureHistory => crate::library::FUTURE_HISTORY.into(),
+        W::UnavailableHistoryClock { cause } => crate::library::unavailable_history_clock(cause),
     }
 }

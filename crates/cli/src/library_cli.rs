@@ -11,8 +11,8 @@ use auditorylab_app::{
     discovery::collection::{CatalogQuery, DateRange},
     services::library::Library,
 };
-use auditorylab_presentation::DisplayText;
-use auditorylab_presentation::reports::Report;
+
+use auditorylab_presentation::report::Report;
 use auditorylab_presentation::*;
 use clap::{Args, Subcommand, ValueEnum};
 use lab::services::LibraryContext;
@@ -363,26 +363,40 @@ fn print_list(
                 }
             } else {
                 for diagnostic in listing.diagnostics() {
-                    eprintln!("{}", prose(&diagnostic.message()));
+                    eprintln!(
+                        "{}",
+                        prose(
+                            &auditorylab_presentation::errors::library_diagnostic_message(
+                                &(diagnostic)
+                            )
+                        )
+                    );
                 }
             }
         }
         ListFormat::Json => print_json(&Report::listing(operation, listing))?,
         ListFormat::Text => {
             for entry in listing.entries() {
-                output(entry.list_description().as_bytes())?;
+                output(
+                    auditorylab_presentation::library::entry_summary_list_description(&(entry))
+                        .as_bytes(),
+                )?;
             }
             if !listing.complete() {
                 eprintln!(
                     "{}",
-                    auditorylab_presentation::vocabulary::INVENTORY_INCOMPLETE
+                    auditorylab_presentation::library::INVENTORY_INCOMPLETE
                 );
             }
             for diagnostic in listing.diagnostics() {
                 eprintln!(
                     "{}: {}",
-                    diagnostic.storage_id.display_scalar(),
-                    prose(&diagnostic.message())
+                    auditorylab_presentation::display_scalar(&(diagnostic.storage_id)),
+                    prose(
+                        &auditorylab_presentation::errors::library_diagnostic_message(
+                            &(diagnostic)
+                        )
+                    )
                 );
             }
         }
@@ -394,8 +408,19 @@ pub(super) fn describe(resolved: &Resolved, format: ReadFormat) -> Result<()> {
     if format == ReadFormat::Json {
         print_json(&Report::describe(description))?;
     } else {
-        let extra = resolved.summary().membership_description();
-        output(format!("{}{}\n", prose(&description.description()), prose(&extra)).as_bytes())?;
+        let extra = auditorylab_presentation::library::entry_summary_membership_description(
+            &(resolved.summary()),
+        );
+        output(
+            format!(
+                "{}{}\n",
+                prose(&auditorylab_presentation::recipe_description(
+                    &(description)
+                )),
+                prose(&extra)
+            )
+            .as_bytes(),
+        )?;
     }
     Ok(())
 }
@@ -403,7 +428,13 @@ pub(super) fn inspect(resolved: &Resolved, rate: SampleRate, format: ReadFormat)
     let inspection = lab::services::inspect(resolved, rate);
     if format == ReadFormat::Text {
         let sound = inspection.sound().map_err(Clone::clone)?;
-        output(format!("{}\n", prose(&sound.inspection())).as_bytes())?;
+        output(
+            format!(
+                "{}\n",
+                prose(&auditorylab_presentation::rendition_inspection(&(sound)))
+            )
+            .as_bytes(),
+        )?;
     } else {
         print_json(&Report::inspect(&inspection))?;
     }
@@ -422,7 +453,14 @@ pub(super) fn library(command: LibraryCommand, context: &LibraryContext) -> Resu
                     if format == ReadFormat::Json {
                         print_json(&Report::unavailable_path(operation, &root, exists, &error))?;
                     } else {
-                        output(root.inspection_failure(exists, &error).as_bytes())?;
+                        output(
+                            auditorylab_presentation::library::location_inspection_failure(
+                                &(root),
+                                exists,
+                                &error,
+                            )
+                            .as_bytes(),
+                        )?;
                     }
                     return Ok(
                         if matches!(
@@ -440,7 +478,9 @@ pub(super) fn library(command: LibraryCommand, context: &LibraryContext) -> Resu
             if format == ReadFormat::Json {
                 print_json(&Report::path(operation, info.clone()))?;
             } else {
-                output(info.description().as_bytes())?;
+                output(
+                    auditorylab_presentation::library::root_info_description(&(info)).as_bytes(),
+                )?;
             }
             Ok(0)
         }
@@ -449,7 +489,10 @@ pub(super) fn library(command: LibraryCommand, context: &LibraryContext) -> Resu
             if format == ReadFormat::Json {
                 print_mutation_json(&Report::initialized(operation, &initialized))?;
             } else {
-                output(initialized.description().as_bytes())?;
+                output(
+                    auditorylab_presentation::library::initialization_description(&(initialized))
+                        .as_bytes(),
+                )?;
             }
             Ok(0)
         }
@@ -471,12 +514,19 @@ pub(super) fn library(command: LibraryCommand, context: &LibraryContext) -> Resu
             if format == ReadFormat::Json {
                 print_json(&Report::inventory(operation, &inventory))?;
             } else {
-                output(inventory.description().as_bytes())?;
+                output(
+                    auditorylab_presentation::library::inventory_description(&(inventory))
+                        .as_bytes(),
+                )?;
                 for diagnostic in &inventory.diagnostics {
                     eprintln!(
                         "{}: {}",
-                        diagnostic.storage_id.display_scalar(),
-                        prose(&diagnostic.message())
+                        auditorylab_presentation::display_scalar(&(diagnostic.storage_id)),
+                        prose(
+                            &auditorylab_presentation::errors::library_diagnostic_message(
+                                &(diagnostic)
+                            )
+                        )
                     );
                 }
                 for stage in &inventory.stages {
@@ -554,16 +604,24 @@ fn report_mutation(
     stderr: &mut impl Write,
 ) -> Result<u8> {
     let mut bytes = if format == ReadFormat::Json {
-        auditorylab_presentation::reports::json_bytes(&Report::mutation(operation, outcome))?
+        auditorylab_presentation::report::json_bytes(&Report::mutation(operation, outcome))?
     } else {
-        outcome.description().display_text().into_bytes()
+        auditorylab_presentation::display_text(
+            &(auditorylab_presentation::library::write_outcome_description(&(outcome))),
+        )
+        .into_bytes()
     };
     bytes.push(b'\n');
     if let Err(error) = stdout.write_all(&bytes).and_then(|()| stdout.flush()) {
         let _ = writeln!(
             stderr,
             "{}",
-            outcome.completion_failure(error).display_text()
+            auditorylab_presentation::display_text(
+                &(auditorylab_presentation::library::write_outcome_completion_failure(
+                    &(outcome),
+                    error
+                ))
+            )
         );
         let _ = stderr.flush();
     }
@@ -571,16 +629,19 @@ fn report_mutation(
 }
 
 pub(super) fn print_json(value: &Report) -> Result<()> {
-    let bytes = auditorylab_presentation::reports::json_bytes(value)?;
+    let bytes = auditorylab_presentation::report::json_bytes(value)?;
     output(&bytes)?;
     output(b"\n")?;
     Ok(())
 }
 fn print_mutation_json(value: &Report) -> Result<()> {
-    let mut bytes = match auditorylab_presentation::reports::json_bytes(value) {
+    let mut bytes = match auditorylab_presentation::report::json_bytes(value) {
         Ok(bytes) => bytes,
         Err(error) => {
-            eprintln!("{}", value.completion_failure(error).display_text());
+            eprintln!(
+                "{}",
+                auditorylab_presentation::display_text(&(value.completion_failure(error)))
+            );
             return Ok(());
         }
     };
@@ -590,7 +651,10 @@ fn print_mutation_json(value: &Report) -> Result<()> {
         .write_all(&bytes)
         .and_then(|()| io::stdout().lock().flush())
     {
-        eprintln!("{}", value.completion_failure(error).display_text());
+        eprintln!(
+            "{}",
+            auditorylab_presentation::display_text(&(value.completion_failure(error)))
+        );
     }
     Ok(())
 }

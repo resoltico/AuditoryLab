@@ -1,8 +1,7 @@
 //! Library model updates depend only on an immutable library projection.
 use super::*;
 use auditorylab_app::workspace::{ChoiceView, FacetCounts, QueryFacet};
-use auditorylab_presentation::DisplayText;
-use auditorylab_presentation::LibraryPresentation;
+
 struct EntryHandles(Vec<Option<auditorylab_app::workspace::EntryHandle>>);
 impl slint::Model for EntryHandles {
     type Data = i32;
@@ -76,7 +75,7 @@ impl SlintAdapter {
             .map(|count| {
                 (
                     count.kind.key(),
-                    auditorylab_presentation::library_text::facet(count),
+                    auditorylab_presentation::library::facet(count),
                 )
             })
             .collect::<std::collections::BTreeMap<_, _>>();
@@ -86,7 +85,7 @@ impl SlintAdapter {
             .map(|count| {
                 (
                     count.kind.key(),
-                    auditorylab_presentation::library_text::facet(count).text,
+                    auditorylab_presentation::library::facet(count).text,
                 )
             })
             .collect::<std::collections::BTreeMap<_, _>>();
@@ -216,7 +215,7 @@ impl SlintAdapter {
                 .and_then(|row| i32::try_from(row).ok())
                 .unwrap_or(-1),
         });
-        let library = auditorylab_presentation::workspace_text::library_view(&source);
+        let library = auditorylab_presentation::workspace::library_view(&source);
         ui.set_library_heading(read_only(&library.heading));
         ui.set_rhythm_filtered(source.query.rhythm_filtered());
         ui.set_open_files_scope(
@@ -238,7 +237,7 @@ impl SlintAdapter {
                 .iter()
                 .enumerate()
                 .map(|(index, source_row)| {
-                    let row=auditorylab_presentation::library_text::row(source_row,source.sort);
+                    let row=auditorylab_presentation::library::row(source_row,source.sort);
                     CatalogRow {
                     entry: crate::generated::EntryAddress {
                         table: table.clone(),
@@ -257,18 +256,31 @@ impl SlintAdapter {
                 .collect(),
         );
         if let Some(w) = self.workspace.borrow().as_ref() {
-            let binding =
-                auditorylab_presentation::library_text::selection_binding(w.library_binding());
+            let binding = auditorylab_presentation::library::selection_binding(w.library_binding());
             ui.set_library_key(binding.key.into());
             ui.set_library_token(binding.token.into());
             ui.set_library_trashed(binding.trashed);
-            ui.set_library_status(read_only(&w.library_status()));
-            ui.set_library_alert(read_only(&w.library_alert()));
-            ui.set_library_dates(read_only(&w.library_dates()));
-            ui.set_library_dates_utc(read_only(&w.library_dates_utc()));
-            ui.set_library_count(read_only(&w.library_count()));
-            ui.set_library_overview(read_only(&w.library_overview()));
-            ui.set_library_empty_message(read_only(w.library_empty_message()));
+            ui.set_library_status(read_only(
+                &auditorylab_presentation::library::workspace_library_status(&(w)),
+            ));
+            ui.set_library_alert(read_only(
+                &auditorylab_presentation::library::workspace_library_alert(&(w)),
+            ));
+            ui.set_library_dates(read_only(
+                &auditorylab_presentation::library::workspace_library_dates(&(w)),
+            ));
+            ui.set_library_dates_utc(read_only(
+                &auditorylab_presentation::library::workspace_library_dates_utc(&(w)),
+            ));
+            ui.set_library_count(read_only(
+                &auditorylab_presentation::library::workspace_library_count(&(w)),
+            ));
+            ui.set_library_overview(read_only(
+                &auditorylab_presentation::library::workspace_library_overview(&(w)),
+            ));
+            ui.set_library_empty_message(read_only(
+                auditorylab_presentation::library::workspace_library_empty_message(&(w)),
+            ));
             ui.set_library_filters_active(
                 *w.catalog_query() != w.catalog_query().cleared_filters(),
             );
@@ -288,7 +300,7 @@ impl SlintAdapter {
             .collect();
             self.project_choice_models(ui, &w.library_facets(), choices);
             ui.set_calendar_context(
-                auditorylab_presentation::calendar_text::local_context().into(),
+                auditorylab_presentation::library::calendar::local_context().into(),
             );
         }
         // Virtual group/diagnostic rows do not create a selectable sound.
@@ -308,7 +320,7 @@ impl SlintAdapter {
                 .and_then(|i| i32::try_from(i).ok())
                 .unwrap_or(-1),
         );
-        ui.set_sound_title(library.title.display_scalar().into());
+        ui.set_sound_title(auditorylab_presentation::display_scalar(&(library.title)).into());
         ui.set_structure(read_only(&library.structure));
         ui.set_library_classification(read_only(&library.classification));
         ui.set_library_ownership(read_only(&library.ownership));

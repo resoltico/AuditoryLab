@@ -4,7 +4,6 @@ use auditorylab_app::workspace::{
     AudioCommand, Command, EditorCommand, FileCommand, LibraryCommand, Navigation, OutputCommand,
 };
 use auditorylab_app::workspace::{FilterInput, QueryFacet};
-use auditorylab_presentation::DisplayText;
 
 pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     macro_rules! on {
@@ -211,7 +210,7 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(on_about, |a| a.show_about());
     on!(on_open_study, |a| {
         let url = a.workspace.borrow_mut().as_mut().map(|w| {
-            auditorylab_presentation::workspace_text::library_view(&w.library_view()).study_url
+            auditorylab_presentation::workspace::library_view(&w.library_view()).study_url
         });
         if let Some(url) = url.filter(|url| !url.is_empty()) {
             open_web(&url);
@@ -227,12 +226,15 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             .workspace
             .borrow()
             .as_ref()
-            .map(|w| auditorylab_presentation::workspace_text::library_view(&w.library_view()));
+            .map(|w| auditorylab_presentation::workspace::library_view(&w.library_view()));
         if let (Some(window), Some(ui), Some(library)) =
             (a.details.upgrade(), a.main.upgrade(), library)
         {
             window.set_heading(
-                crate::terms::Caption::sound_details(&library.title.display_scalar()).into(),
+                crate::terms::Caption::sound_details(&auditorylab_presentation::display_scalar(
+                    &(library.title),
+                ))
+                .into(),
             );
             window.set_can_refresh(false);
             window.set_content(read_only(&library.details));

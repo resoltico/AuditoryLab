@@ -10,9 +10,7 @@ use auditorylab_app::core::ParameterId;
 use auditorylab_app::core::SampleRate;
 use auditorylab_app::core::rhythm::Method;
 use auditorylab_app::core::rhythm::Structure;
-use auditorylab_presentation::vocabulary::NumberStyle;
-use auditorylab_presentation::waveform_view::*;
-use auditorylab_presentation::{AudioDetails, AudioSummary, ParameterText};
+use auditorylab_presentation::numbers::NumberStyle;
 
 use auditorylab_app::workspace::monitor::CaptureError;
 use auditorylab_app::workspace::monitor::ModelSource;
@@ -62,7 +60,7 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     let s = summary(&[click, tone(440.0, Ears::Both)]);
     assert_eq!(s.rhythms.len(), 1);
     assert_eq!(s.rhythms[0].method, Method::Clicks);
-    let text = s.summary();
+    let text = auditorylab_presentation::structure_summary(&(s));
     assert!(
         text.contains("40 Hz clicks")
             && text.contains("440 Hz steady tone")
@@ -82,9 +80,14 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     ] {
         let structure = summary(&raw);
         assert!(structure.pairs.is_empty());
-        assert!(!structure.summary().contains("interaural difference"));
-        assert!(!structure.summary().contains("monaural beat"));
-        assert!(!structure.summary().contains("Unison"));
+        assert!(
+            !auditorylab_presentation::structure_summary(&(structure))
+                .contains("interaural difference")
+        );
+        assert!(
+            !auditorylab_presentation::structure_summary(&(structure)).contains("monaural beat")
+        );
+        assert!(!auditorylab_presentation::structure_summary(&(structure)).contains("Unison"));
     }
     for binaural in [true, false] {
         let pair = auditorylab_app::core::Pair {
@@ -126,11 +129,13 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
         .unwrap();
         let structure = auditorylab_app::core::rhythm::realized(&target);
         assert_eq!(structure.pairs.len(), 1);
-        assert!(structure.summary().contains(if binaural {
-            "40 Hz interaural difference"
-        } else {
-            "40 Hz monaural beat"
-        }));
+        assert!(
+            auditorylab_presentation::structure_summary(&(structure)).contains(if binaural {
+                "40 Hz interaural difference"
+            } else {
+                "40 Hz monaural beat"
+            })
+        );
     }
     let gate = {
         let mut form = tone(10000.0, Ears::Both);
@@ -142,7 +147,10 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     };
     let s = summary(&[gate, click]);
     assert_eq!(s.rhythms.len(), 2);
-    assert!(s.summary().contains("8 Hz gate") && s.summary().contains("40 Hz clicks"));
+    assert!(
+        auditorylab_presentation::structure_summary(&(s)).contains("8 Hz gate")
+            && auditorylab_presentation::structure_summary(&(s)).contains("40 Hz clicks")
+    );
     let active = {
         let mut form = a;
         form.set_modulation(Some(Modulation::Am {
@@ -154,7 +162,10 @@ fn physical_meaning_has_positive_and_rejected_neighbors() {
     let am = summary(&[active]);
     assert_eq!(am.rhythms.len(), 1);
     assert_eq!(am.rhythms[0].method, Method::Am);
-    assert!(am.summary().contains("39.0625") && am.summary().contains("50%"));
+    assert!(
+        auditorylab_presentation::structure_summary(&(am)).contains("39.0625")
+            && auditorylab_presentation::structure_summary(&(am)).contains("50%")
+    );
     let inactive = {
         let mut form = a;
         form.set_modulation(Some(Modulation::Am {
@@ -258,8 +269,14 @@ fn captures_fit_both_ears_without_changing_meters_and_reject_invalid_data() {
 }
 #[test]
 fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized() {
-    assert_eq!(NumberStyle::Compact.format(39.0625), "39.0625");
-    assert_eq!(NumberStyle::Compact.format(39.0625123456789), "≈39.0625");
+    assert_eq!(
+        auditorylab_presentation::numbers::format(NumberStyle::Compact, 39.0625),
+        "39.0625"
+    );
+    assert_eq!(
+        auditorylab_presentation::numbers::format(NumberStyle::Compact, 39.0625123456789),
+        "≈39.0625"
+    );
     let exact = 39.0625123456789;
     assert_eq!(
         auditorylab_app::document::input::parameter_text(ParameterId::ToneFrequency, exact),
@@ -287,7 +304,11 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
     .target(SampleRate::new(44100).unwrap())
     .unwrap();
     let m = ModelView::new(t, "draft".into(), ModelSource::Draft);
-    assert!(m.caption().contains("origin 0") && m.caption().contains("44100 Hz"));
+    assert!(
+        auditorylab_presentation::workspace::monitor::model_view_caption(&(m)).contains("origin 0")
+            && auditorylab_presentation::workspace::monitor::model_view_caption(&(m))
+                .contains("44100 Hz")
+    );
     let CarrierFacts::Clicks(p) = m.projection.lanes[0].facts.carrier else {
         panic!("click lane")
     };
@@ -310,7 +331,7 @@ fn a_carrier_is_named_in_sentence_case() {
         )
         .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .check(SampleRate::DEFAULT);
-        check.voices()[0].1.clone().unwrap().summary()
+        auditorylab_presentation::voice_summary(&(check.voices()[0].1.clone().unwrap()))
     };
     let modulated = |modulation| {
         let mut form = tone(440.0, Ears::Both);
@@ -375,8 +396,8 @@ fn pulse_widths_are_requested_in_editing_and_realized_in_generated_views() {
         .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
         .check(rate);
         let facts = check.voices()[0].1.clone().unwrap();
-        let brief = facts.summary();
-        let detail = facts.details();
+        let brief = auditorylab_presentation::voice_summary(&(facts));
+        let detail = auditorylab_presentation::voice_details(&(facts));
         assert!(brief.contains(&format!("{realized} ms open")), "{brief}");
         assert!(
             detail.contains(&format!("requested {} ms", requested * 1000.0)),
@@ -400,7 +421,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
     for id in ParameterId::ALL {
         let d = id.descriptor();
         assert_eq!(
-            (id).input_label(),
+            auditorylab_presentation::parameter_input_label(id),
             format!("{} ({})", d.label, d.unit.symbol())
         );
     }
@@ -489,7 +510,7 @@ fn every_parameter_has_shared_vocabulary_and_exact_field_attribution() {
         .clone()
         .unwrap_err();
     assert_eq!(
-        auditorylab_presentation::acoustic_errors::voice_error(&error),
+        auditorylab_presentation::errors::acoustic::voice_error(&error),
         "Modulation depth 150% must be from 0% to 100%"
     );
     for kind in CarrierKind::ALL {

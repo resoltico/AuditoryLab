@@ -1,10 +1,8 @@
 //! Shared collection rows, query descriptions and document-location wording.
-use super::workspace_text::{LibraryFacetText, LibraryRowText};
-use crate::AudioSummary;
-use crate::DisplayText;
+use crate::workspace::{LibraryFacetText, LibraryRowText};
+
 use crate::Explain;
-use crate::vocabulary::NumberStyle;
-use crate::*;
+use crate::numbers::NumberStyle;
 use auditorylab_app::discovery::collection::CatalogQuery;
 use auditorylab_app::discovery::collection::EntrySummary;
 use auditorylab_app::discovery::query::{CalendarField, RhythmState, Scope};
@@ -35,7 +33,7 @@ pub fn row(
         Row::Diagnostic(problem) => heading_row(format!(
             "Needs review · {}\n{}",
             problem.storage_id,
-            problem.message()
+            crate::errors::library_diagnostic_message(&(problem))
         )),
     }
 }
@@ -57,7 +55,7 @@ fn entry_row(
     let shown = |date: Option<auditorylab_core::Timestamp>| {
         date.map_or_else(
             || Status::Unknown.label().into(),
-            crate::calendar_text::local_timestamp,
+            crate::library::calendar::local_timestamp,
         )
     };
     let mut dates = format!("{date_label}: {}", shown(date));
@@ -91,11 +89,11 @@ fn entry_row(
             ""
         }
     );
-    let title = e.title.display_scalar();
-    let summary = e.nominal.summary();
+    let title = crate::display_scalar(&(e.title));
+    let summary = crate::analysis_summary(&(e.nominal));
     let duration = format!(
         "Duration {}",
-        NumberStyle::Duration.format(e.duration_seconds)
+        crate::numbers::format(NumberStyle::Duration, e.duration_seconds)
     );
     let mut memberships: Vec<String> = e.nominal.bands.iter().map(ToString::to_string).collect();
     if e.nominal.outside_bands() {
@@ -205,7 +203,7 @@ pub(crate) fn count(query: &CatalogQuery, visible: usize, complete: bool) -> Str
         )];
         let mut restrictions = Vec::new();
         if !q.search.is_empty() {
-            restrictions.push(format!("Search: {}", q.search.display_scalar()));
+            restrictions.push(format!("Search: {}", crate::display_scalar(&(q.search))));
         }
         if q.include_external {
             restrictions.push("Include temporary Open files".into());
@@ -221,7 +219,7 @@ pub(crate) fn count(query: &CatalogQuery, visible: usize, complete: bool) -> Str
             restrictions.push(format!("Rhythm state: {label}"));
         }
         for study in &q.studies {
-            restrictions.push(format!("Study: {}", (study).display_scalar()));
+            restrictions.push(format!("Study: {}", crate::display_scalar(&(study))));
         }
         for population in &q.populations {
             restrictions.push(format!("Population: {}", population.label()));
@@ -244,7 +242,7 @@ pub(crate) fn count(query: &CatalogQuery, visible: usize, complete: bool) -> Str
                 if let Some(value) = value {
                     restrictions.push(format!(
                         "{name} {label}: {} · UTC {value}",
-                        crate::calendar_text::local_timestamp(value)
+                        crate::library::calendar::local_timestamp(value)
                     ));
                 }
             }
@@ -268,10 +266,10 @@ pub(crate) fn empty_message(
         return "";
     }
     if !matches!(query.scope, Scope::BuiltIn | Scope::OpenFiles) && !complete {
-        return crate::vocabulary::INVENTORY_INCOMPLETE;
+        return crate::library::INVENTORY_INCOMPLETE;
     }
     if query.cleared_filters().count(entries).unwrap_or(0) > 0 {
-        return crate::vocabulary::EMPTY_FILTERED_LIBRARY;
+        return crate::library::EMPTY_FILTERED_LIBRARY;
     }
     match query.scope {
         Scope::User => {
@@ -292,7 +290,7 @@ pub(crate) fn alert(
 ) -> String {
     let mut notices = Vec::new();
     if let Some(problem) = problem {
-        notices.push(format!("User Library unavailable: {}. Configure an absolute AUDITORYLAB_LIBRARY_DIR and restart; drafts are retained.",problem.message()));
+        notices.push(format!("User Library unavailable: {}. Configure an absolute AUDITORYLAB_LIBRARY_DIR and restart; drafts are retained.",crate::errors::library_diagnostic_message(&(problem))));
     }
     if let Some(error) = filter_error {
         notices.push(error.explain());
@@ -301,7 +299,7 @@ pub(crate) fn alert(
         notices.push(format!(
             "Library read failed · {}: {}",
             problem.storage_id,
-            problem.message()
+            crate::errors::library_diagnostic_message(&(problem))
         ));
     }
     if !complete {
@@ -322,7 +320,7 @@ pub(crate) fn dates(
                     if utc {
                         d.to_string()
                     } else {
-                        crate::calendar_text::local_timestamp(d)
+                        crate::library::calendar::local_timestamp(d)
                     }
                 },
             )
@@ -358,7 +356,10 @@ pub(crate) fn document_location(
     if let Some(error) = problem {
         return (
             "User Library unavailable",
-            format!("Unsaved · User Library unavailable: {}", error.message()),
+            format!(
+                "Unsaved · User Library unavailable: {}",
+                crate::errors::library_diagnostic_message(&(error))
+            ),
         );
     }
     if let Some(key) = detached {
@@ -459,83 +460,66 @@ pub(crate) fn inventory_notice(
 }
 
 /// Human library and document-location projections over typed coordinator data.
-pub trait LibraryPresentation {
-    /// Configured root and retained inventory causes.
-    fn library_status(&self) -> String;
-    /// Current availability and incomplete-read notices.
-    fn library_alert(&self) -> String;
-    /// Query restrictions and unique result count.
-    fn library_overview(&self) -> String;
-    /// Detailed unique counts and active restrictions.
-    fn library_count(&self) -> String;
-    /// Explanation of an empty result under the current completeness state.
-    fn library_empty_message(&self) -> &'static str;
-    /// Portable and local selected dates in the system time zone.
-    fn library_dates(&self) -> String;
-    /// Exact UTC instants for selected portable and local dates.
-    fn library_dates_utc(&self) -> String;
-    /// Current document location, independent of browsing and playback.
-    fn document_location(&self) -> String;
-    /// Short badge for the current document location.
-    fn document_location_label(&self) -> &'static str;
+
+pub fn workspace_library_status(value: &auditorylab_app::workspace::Workspace) -> String {
+    let d = value.library_data();
+    match d.path {
+        Some(path) => format!(
+            "{}\n{}{}",
+            path.display(),
+            crate::workspace::status::inventory_status_description(&(d.inventory)),
+            d.read_failure.map_or(String::new(), |problem| format!(
+                "\n{}: {}",
+                problem.storage_id,
+                crate::errors::library_diagnostic_message(&(problem))
+            ))
+        ),
+        None => d
+            .problem
+            .map(crate::errors::library_diagnostic_message)
+            .unwrap_or_default(),
+    }
 }
-impl LibraryPresentation for auditorylab_app::workspace::Workspace {
-    fn library_status(&self) -> String {
-        let d = self.library_data();
-        match d.path {
-            Some(path) => format!(
-                "{}\n{}{}",
-                path.display(),
-                d.inventory.description(),
-                d.read_failure.map_or(String::new(), |problem| format!(
-                    "\n{}: {}",
-                    problem.storage_id,
-                    problem.message()
-                ))
-            ),
-            None => d
-                .problem
-                .map(LibraryDiagnostic::message)
-                .unwrap_or_default(),
-        }
-    }
-    fn library_alert(&self) -> String {
-        let d = self.library_data();
-        alert(
-            d.problem,
-            d.filter_error,
-            d.read_failure,
-            d.inventory.complete,
-        )
-    }
-    fn library_overview(&self) -> String {
-        let d = self.library_data();
-        overview(d.query, d.visible, d.inventory.complete)
-    }
-    fn library_count(&self) -> String {
-        let d = self.library_data();
-        count(d.query, d.visible, d.inventory.complete)
-    }
-    fn library_empty_message(&self) -> &'static str {
-        let d = self.library_data();
-        empty_message(d.query, d.entries, d.visible, d.inventory.complete)
-    }
-    fn library_dates(&self) -> String {
-        let d = self.library_data();
-        dates(d.selected_entry, d.selected, false)
-    }
-    fn library_dates_utc(&self) -> String {
-        let d = self.library_data();
-        dates(d.selected_entry, d.selected, true)
-    }
-    fn document_location(&self) -> String {
-        let d = self.library_data();
-        document_location(d.problem, d.detached, d.external, d.managed).1
-    }
-    fn document_location_label(&self) -> &'static str {
-        let d = self.library_data();
-        document_location(d.problem, d.detached, d.external, d.managed).0
-    }
+pub fn workspace_library_alert(value: &auditorylab_app::workspace::Workspace) -> String {
+    let d = value.library_data();
+    alert(
+        d.problem,
+        d.filter_error,
+        d.read_failure,
+        d.inventory.complete,
+    )
+}
+pub fn workspace_library_overview(value: &auditorylab_app::workspace::Workspace) -> String {
+    let d = value.library_data();
+    overview(d.query, d.visible, d.inventory.complete)
+}
+pub fn workspace_library_count(value: &auditorylab_app::workspace::Workspace) -> String {
+    let d = value.library_data();
+    count(d.query, d.visible, d.inventory.complete)
+}
+pub fn workspace_library_empty_message(
+    value: &auditorylab_app::workspace::Workspace,
+) -> &'static str {
+    let d = value.library_data();
+    empty_message(d.query, d.entries, d.visible, d.inventory.complete)
+}
+pub fn workspace_library_dates(value: &auditorylab_app::workspace::Workspace) -> String {
+    let d = value.library_data();
+    dates(d.selected_entry, d.selected, false)
+}
+pub fn workspace_library_dates_utc(value: &auditorylab_app::workspace::Workspace) -> String {
+    let d = value.library_data();
+    dates(d.selected_entry, d.selected, true)
+}
+pub fn workspace_document_location(value: &auditorylab_app::workspace::Workspace) -> String {
+    let d = value.library_data();
+    document_location(d.problem, d.detached, d.external, d.managed).1
+}
+pub fn workspace_document_location_label(
+    value: &auditorylab_app::workspace::Workspace,
+) -> &'static str {
+    let d = value.library_data();
+    document_location(d.problem, d.detached, d.external, d.managed).0
 }
 
 /// Label for a virtual group membership, independent of its result keys.
@@ -559,36 +543,31 @@ pub fn group_label(label: &auditorylab_app::discovery::collection::GroupLabel) -
     }
 }
 
-pub trait WriteOutcomeText {
-    /// Concise confirmed publication result with an unwrapped comparison token.
-    #[must_use]
-    fn description(&self) -> String;
+/// Concise confirmed publication result with an unwrapped comparison token.
 
-    /// Confirmed truth retained when completion output fails.
-    #[must_use]
-    fn completion_failure(&self, error: impl std::fmt::Display) -> String;
+pub fn write_outcome_description(
+    value: &auditorylab_app::services::library::WriteOutcome,
+) -> String {
+    let mut text = format!("{}: {}", value.status.label(), value.key);
+    if let Some(record) = &value.record {
+        text.push_str(&format!("\nVersion token: {}", record.version_token));
+    }
+    for diagnostic in &value.diagnostics {
+        text.push('\n');
+        text.push_str(&crate::errors::publication::warning(diagnostic));
+    }
+    text
 }
-impl WriteOutcomeText for auditorylab_app::services::library::WriteOutcome {
-    /// Concise confirmed publication result with an unwrapped comparison token.
-    fn description(&self) -> String {
-        let mut text = format!("{}: {}", self.status.label(), self.key);
-        if let Some(record) = &self.record {
-            text.push_str(&format!("\nVersion token: {}", record.version_token));
-        }
-        for diagnostic in &self.diagnostics {
-            text.push('\n');
-            text.push_str(&super::publication_text::warning(diagnostic));
-        }
-        text
-    }
+/// Confirmed truth retained when completion output fails.
 
-    /// Confirmed truth retained when completion output fails.
-    fn completion_failure(&self, error: impl std::fmt::Display) -> String {
-        format!(
-            "Operation confirmed\n{}\nCompletion output failed: {error}",
-            self.description()
-        )
-    }
+pub fn write_outcome_completion_failure(
+    value: &auditorylab_app::services::library::WriteOutcome,
+    error: impl std::fmt::Display,
+) -> String {
+    format!(
+        "Operation confirmed\n{}\nCompletion output failed: {error}",
+        crate::library::write_outcome_description(&(value))
+    )
 }
 
 /// Encoded selection fields for frontends whose binding properties are strings.
@@ -639,9 +618,14 @@ mod tests {
         };
         assert!(alert(None, None, Some(&problem), false).contains("read failed"));
         assert!(
-            auditorylab_app::workspace::status::InventoryStatus::default()
-                .description()
-                .contains("incomplete")
+            crate::workspace::status::inventory_status_description(
+                &(auditorylab_app::workspace::status::InventoryStatus::default())
+            )
+            .contains("incomplete")
         );
     }
 }
+
+pub mod calendar;
+mod operations;
+pub use operations::*;

@@ -3,7 +3,7 @@
 use crate::generated::{AudioControlsWindow, MainWindow, MonitorWindow};
 use crate::test_platform::install;
 use crate::typography;
-use auditorylab_presentation::waveform_view::*;
+use auditorylab_presentation::workspace::monitor::*;
 use slint::ComponentHandle;
 use std::{
     cell::{Cell, RefCell},
@@ -20,7 +20,12 @@ fn sync_monitor_warnings(
     clipped: bool,
 ) {
     let mut text = capture_error.map_or_else(
-        || warning.map_or_else(String::new, |warning| warning.message().into()),
+        || {
+            warning.map_or_else(String::new, |warning| {
+                auditorylab_presentation::workspace::monitor::monitor_warning_message(warning)
+                    .into()
+            })
+        },
         str::to_owned,
     );
     let live = capture_error.is_some()
@@ -31,13 +36,15 @@ fn sync_monitor_warnings(
             text.push('\n');
         }
         text.push_str(
-            auditorylab_app::workspace::monitor::MonitorWarning::FixedRangeExceeded.message(),
+            auditorylab_presentation::workspace::monitor::monitor_warning_message(
+                auditorylab_app::workspace::monitor::MonitorWarning::FixedRangeExceeded,
+            ),
         );
     }
     ui.set_monitor_warning(text.into());
     ui.set_monitor_warning_live(live);
     ui.set_backend_warning(
-        auditorylab_presentation::waveform_view::output_underrun_warning(underruns).into(),
+        auditorylab_presentation::workspace::monitor::output_underrun_warning(underruns).into(),
     );
 }
 
@@ -777,7 +784,9 @@ fn assert_monitor_warning_accessibility(ui: &MainWindow) {
         sync_monitor_warnings(ui, Some(partial), None, 1, false);
         window.set_data(ui.get_monitor_data());
         reveal_warnings(window.window());
-        let coverage = find(partial.message()).expect("current partial coverage remains readable");
+        let coverage =
+            find(auditorylab_presentation::workspace::monitor::monitor_warning_message(partial))
+                .expect("current partial coverage remains readable");
         assert_eq!(
             coverage
                 .accessible_string_property(AccessibleStringProperty::LiveRegion)
@@ -792,7 +801,10 @@ fn assert_monitor_warning_accessibility(ui: &MainWindow) {
         sync_monitor_warnings(ui, None, None, 1, false);
         window.set_data(ui.get_monitor_data());
         reveal_warnings(window.window());
-        assert!(find(partial.message()).is_none());
+        assert!(
+            find(auditorylab_presentation::workspace::monitor::monitor_warning_message(partial))
+                .is_none()
+        );
         assert!(find(backend_text).is_some_and(|item| item == backend));
     }
     {
@@ -800,7 +812,9 @@ fn assert_monitor_warning_accessibility(ui: &MainWindow) {
         sync_monitor_warnings(ui, Some(critical), None, 1, false);
         window.set_data(ui.get_monitor_data());
         reveal_warnings(window.window());
-        let warning = find(critical.message()).unwrap();
+        let warning =
+            find(auditorylab_presentation::workspace::monitor::monitor_warning_message(critical))
+                .unwrap();
         assert_eq!(
             warning
                 .accessible_string_property(AccessibleStringProperty::LiveRegion)
@@ -1020,7 +1034,7 @@ fn assert_audio_controls_keep_stop_visible(
     controls
         .global::<crate::generated::Actions>()
         .set_stop(crate::generated::Action {
-            label: auditorylab_presentation::workspace_text::operation_label(
+            label: auditorylab_presentation::workspace::operation_label(
                 auditorylab_app::vocabulary::Operation::Stop,
             )
             .into(),
@@ -1099,7 +1113,7 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.set_ui_family(typography::resolve().family.into());
     ui.set_transport_labels(slint::ModelRc::new(VecModel::from(
-        auditorylab_presentation::vocabulary::transport_labels()
+        crate::labels::transport_labels()
             .iter()
             .map(|label| slint::SharedString::from(*label))
             .collect::<Vec<_>>(),
@@ -1113,7 +1127,7 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     for size in [13.0, 26.0] {
         ui.set_ui_size(size);
         let mut reference = None;
-        for label in auditorylab_presentation::vocabulary::transport_labels() {
+        for label in crate::labels::transport_labels() {
             for (elapsed, status) in [
                 ("0:00", "Preparing output… · A"),
                 (
@@ -1205,7 +1219,7 @@ fn a_finished_export_leaves_no_control_under_cancel_export() {
     ui.set_exporting(true);
     ui.global::<crate::generated::Actions>()
         .set_cancel_export(crate::generated::Action {
-            label: auditorylab_presentation::workspace_text::operation_label(
+            label: auditorylab_presentation::workspace::operation_label(
                 auditorylab_app::vocabulary::Operation::CancelExport,
             )
             .into(),

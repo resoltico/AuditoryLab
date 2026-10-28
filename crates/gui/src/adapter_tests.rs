@@ -13,9 +13,7 @@ use auditorylab_app::workspace::{
     AudioCommand, Capabilities, Command, EditorCommand, Job, JobKind, LibraryCommand, PathPurpose,
     PromptAnswer, PromptId, View, Workspace,
 };
-use auditorylab_presentation::LibraryPresentation;
-use auditorylab_presentation::ParameterText;
-use auditorylab_presentation::recipe_text::SnapshotText;
+
 use slint::platform::{Key, WindowEvent};
 use slint::private_unstable_api::re_exports::{
     AccessibleStringProperty, FocusReason, ItemRc, TextInput, WindowInner,
@@ -484,8 +482,11 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
             let row = ui.get_components().row_data(0).unwrap();
             for shown in row.parameters.iter() {
                 let id = field_parameter(&shown.key);
-                assert_eq!(shown.label, (id).input_label());
-                assert_eq!(shown.help, id.help());
+                assert_eq!(
+                    shown.label,
+                    auditorylab_presentation::parameter_input_label((id))
+                );
+                assert_eq!(shown.help, auditorylab_presentation::parameter_help(id));
                 assert_eq!(
                     shown.has_slider,
                     auditorylab_app::workspace::controls::range(id, Workspace::export_rates()[1])
@@ -1222,20 +1223,14 @@ fn assert_library_play_during_file(save: bool) {
     };
     assert!(h.adapter.inspect(|w| w.file_busy()));
     assert!(ui.get_can_play(), "Save/Import can coexist with audio");
-    assert_eq!(
-        ui.get_library_play_action(),
-        auditorylab_presentation::vocabulary::library_play_labels()[0]
-    );
+    assert_eq!(ui.get_library_play_action(), "Play selected sound");
     ui.invoke_play_recipe();
     assert!(
         h.adapter.inspect(|w| w.audio_busy()),
         "the retained Library command dispatches Play"
     );
     let audio = take_job(&h, JobKind::Audio);
-    assert_eq!(
-        ui.get_library_play_action(),
-        auditorylab_presentation::vocabulary::library_play_labels()[1]
-    );
+    assert_eq!(ui.get_library_play_action(), "Stop current & play recipe");
     finish_stopped_audio(&h, audio);
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
     finish_file(&h, file);
@@ -1338,7 +1333,10 @@ fn notes_return_stages_newlines_and_save_preserves_exact_multiline_text() {
         .remove(0);
     let saved = h.store().load(&entry.key).unwrap().snapshot;
     assert_eq!(
-        saved.about().unwrap().summary.as_deref(),
+        auditorylab_presentation::recipe::snapshot_about(&(saved))
+            .unwrap()
+            .summary
+            .as_deref(),
         Some(text.as_str())
     );
 }
@@ -1462,7 +1460,7 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
             w.library_view()
                 .rows
                 .iter()
-                .map(|row| auditorylab_presentation::library_text::row(row, w.library_view().sort))
+                .map(|row| auditorylab_presentation::library::row(row, w.library_view().sort))
                 .filter(|row| !row.key.is_empty())
                 .count(),
             1
@@ -2615,9 +2613,10 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     assert!(
         row.contains("Edited: Unknown") && row.contains("Added here:") && row.contains("Created:")
     );
-    assert!(ui.get_library_dates().contains(
-        &auditorylab_presentation::calendar_text::local_timestamp(created)
-    ));
+    assert!(
+        ui.get_library_dates()
+            .contains(&auditorylab_presentation::library::calendar::local_timestamp(created))
+    );
     assert!(
         ui.get_library_dates_utc()
             .contains("2026-10-25T00:30:00.123456789Z")
@@ -2941,7 +2940,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
         "Other writer"
     );
     let details = h.adapter.inspect(|w| {
-        auditorylab_presentation::workspace_text::action_view(&w.action_view()).operation_details
+        auditorylab_presentation::workspace::action_view(&w.action_view()).operation_details
     });
     assert!(
         details.to_lowercase().contains("conflict") || details.to_lowercase().contains("changed"),
@@ -2998,7 +2997,7 @@ fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
         h.wait_for_files();
         h.adapter.inspect(|w| {
             assert_eq!(w.catalog_query(), &previous);
-            let error = w.library_alert();
+            let error = auditorylab_presentation::library::workspace_library_alert(&(w));
             assert!(error.contains(&format!(
                 "{label} through (2026-10-25) must be on or after {label} from (2026-10-26)."
             )));
@@ -3035,7 +3034,7 @@ fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
         );
         h.wait_for_files();
         h.adapter.inspect(|w| {
-            assert!(w.library_alert().is_empty());
+            assert!(auditorylab_presentation::library::workspace_library_alert(&(w)).is_empty());
             let query = w.catalog_query();
             let range = match field {
                 0 => &query.created,

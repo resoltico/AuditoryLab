@@ -14,7 +14,7 @@ use auditorylab_app::services::export;
 use auditorylab_app::services::open_file;
 use auditorylab_app::services::read_source;
 use auditorylab_core::test_support as common;
-use auditorylab_presentation::{BuildIdentityText, RecipeSnapshotText};
+
 use std::{fs, path::Path};
 fn dir() -> tempfile::TempDir {
     let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
@@ -145,10 +145,12 @@ fn shared_values_cross_threads() {
     shared::<Progress>();
     assert!(!catalog().unwrap().is_empty());
     assert_eq!(
-        BUILD_IDENTITY
-            .version_line("auditorylab")
-            .split_whitespace()
-            .next(),
+        auditorylab_presentation::build_info::build_identity_version_line(
+            BUILD_IDENTITY,
+            "auditorylab"
+        )
+        .split_whitespace()
+        .next(),
         Some("auditorylab")
     );
 }
@@ -172,9 +174,11 @@ fn untitled_file_names_are_concise_and_origins_remain_complete() {
         assert_eq!(snapshot.title(), name);
         assert_eq!(snapshot.suggested_output_name("wav"), suggested);
         assert!(
-            snapshot
-                .details_at(auditorylab_app::core::SampleRate::DEFAULT)
-                .contains("/deep/")
+            auditorylab_presentation::snapshot_details_at(
+                &(snapshot),
+                auditorylab_app::core::SampleRate::DEFAULT
+            )
+            .contains("/deep/")
         );
         let draft = auditorylab_app::document::editing::Draft::from_snapshot(&snapshot).unwrap();
         assert_eq!(draft.title(), format!("{name} (edited)"));

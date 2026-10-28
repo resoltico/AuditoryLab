@@ -1,6 +1,4 @@
 //! Shared search and correlated query behavior for built-in and external origins.
-use auditorylab_presentation::AudioSummary;
-use auditorylab_presentation::*;
 
 use auditorylab_app::document::recipe::{Origin, RecipeSnapshot};
 #[expect(
@@ -120,8 +118,11 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
     .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
     let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe.build().unwrap());
     // These captions are deliberately present in display output, not authored facts.
-    assert!(snapshot.description().contains("Unknown"));
-    assert!((snapshot.nominal()).summary().contains("No rhythmic rate"));
+    assert!(auditorylab_presentation::snapshot_description(&(snapshot)).contains("Unknown"));
+    assert!(
+        auditorylab_presentation::analysis_summary(&(snapshot.nominal()))
+            .contains("No rhythmic rate")
+    );
     for caption in ["unknown", "document", "rhythmic"] {
         assert!(
             !matches_search(&snapshot, caption),

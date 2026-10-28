@@ -1,10 +1,8 @@
 //! Shared wording derived from interactive application values.
 use crate as presentation;
-use crate::AudioErrorText;
+
 use crate::Explain;
-use crate::recipe_text::SnapshotText;
-use crate::waveform_view::*;
-use crate::*;
+
 use auditorylab_app::document::editing::EditingField;
 use auditorylab_app::document::editing::InputProblem;
 use auditorylab_app::document::editing::MetadataField;
@@ -17,7 +15,7 @@ use std::path::Path;
 pub(crate) fn refusal_text(refusal: &Refusal) -> String {
     match refusal {
         Refusal::LibraryUnavailable(problem) => {
-            format!("User Library unavailable: {}", problem.message())
+            format!("User Library unavailable: {}", crate::errors::library_diagnostic_message(&(problem)))
         }
         Refusal::DevicePlaybackUnavailable => {
             "Device playback is disabled for this workspace.".into()
@@ -46,9 +44,9 @@ pub(crate) fn refusal_text(refusal: &Refusal) -> String {
         Refusal::RestoreBeforePlayback => "Restore this saved recipe before playback.".into(),
         Refusal::Invalid { title, rate, error } => error.as_ref().map_or_else(
             || format!("Could not prepare “{title}” at {} Hz.", rate.hz()),
-            |error| (error).at_rate(title, *rate),
+            |error| crate::sound_error_at_rate(&((error)), title, *rate),
         ),
-        Refusal::Edit(error) => error.description(),
+        Refusal::Edit(error) => crate::edit_refusal_description(*(error)),
     }
 }
 
@@ -103,7 +101,7 @@ pub(crate) fn exported_text(path: &Path, exported: &Exported) -> String {
     );
     for warning in &exported.warnings {
         text.push('\n');
-        text.push_str(&super::publication_text::warning(warning));
+        text.push_str(&crate::errors::publication::warning(warning));
     }
     text
 }
@@ -158,7 +156,7 @@ pub(crate) fn component_diagnostic(error: &auditorylab_core::VoiceError, context
         }
         _ => format!(
             "{} ({context})",
-            presentation::acoustic_errors::voice_error(error)
+            crate::errors::acoustic::voice_error(error)
         ),
     }
 }
@@ -170,7 +168,7 @@ pub(crate) fn sound_diagnostic(error: &auditorylab_core::SoundError, context: &s
         }
         _ => format!(
             "{} ({context})",
-            presentation::acoustic_errors::sound_error(error)
+            crate::errors::acoustic::sound_error(error)
         ),
     }
 }
@@ -230,10 +228,9 @@ pub fn parameter_text(
     field: &auditorylab_app::workspace::ParameterView,
     editor: &auditorylab_app::workspace::EditorView,
 ) -> ParameterFieldText {
-    use crate::ParameterText;
     ParameterFieldText {
-        label: field.parameter.input_label(),
-        help: field.parameter.help(),
+        label: crate::parameter_input_label(field.parameter),
+        help: crate::parameter_help(field.parameter),
         diagnostic: field
             .diagnostic
             .as_ref()
@@ -247,18 +244,17 @@ pub fn metadata_text(
     field: &auditorylab_app::workspace::MetadataView,
     editor: &auditorylab_app::workspace::EditorView,
 ) -> MetadataFieldText {
-    use crate::ParameterText;
     use auditorylab_app::workspace::FieldDiagnostic;
     MetadataFieldText {
         label: field.field.parameter().map_or_else(
             || field_label(EditingField::Metadata(field.field)),
-            ParameterText::input_label,
+            crate::parameter_input_label,
         ),
         diagnostic: field
             .diagnostic
             .as_ref()
             .map(|cause| match cause {
-                FieldDiagnostic::Sound(error) => presentation::acoustic_errors::sound_error(error),
+                FieldDiagnostic::Sound(error) => crate::errors::acoustic::sound_error(error),
                 _ => field_diagnostic(cause, editor),
             })
             .unwrap_or_default(),
@@ -270,7 +266,6 @@ pub fn component_text(
     component: &auditorylab_app::workspace::ComponentView,
     editor: &auditorylab_app::workspace::EditorView,
 ) -> ComponentText {
-    use crate::AudioSummary;
     let parameters = component
         .parameters
         .iter()
@@ -284,13 +279,12 @@ pub fn component_text(
     errors.retain(|error| !parameters.contains(error));
     errors.dedup();
     ComponentText {heading:component.shown.heading(),name:format!("{} · Component {}",component.shown.heading(),component.id),
-    context:component.shown.pair().map_or_else(||component.facts.as_ref().map(AudioSummary::summary).unwrap_or_default(),|pair|format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz.get()+pair.offset_hz.get(),pair.offset_hz.get().abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)),error:errors.join("; ")}
+    context:component.shown.pair().map_or_else(||component.facts.as_ref().map(crate::voice_summary).unwrap_or_default(),|pair|format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz.get()+pair.offset_hz.get(),pair.offset_hz.get().abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)),error:errors.join("; ")}
 }
 /// Render document wording without copying its structure or admission state.
 #[must_use]
 pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorText {
-    use crate::AudioSummary;
-    use crate::vocabulary::NumberStyle;
+    use crate::numbers::NumberStyle;
     let context = editor_context(view);
     let peak = match &view.target {
         Ok(target) => format!(
@@ -300,12 +294,12 @@ pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorText 
             } else {
                 ""
             },
-            NumberStyle::Decibels.format(target.peak_dbfs()[0]),
-            NumberStyle::Decibels.format(target.peak_dbfs()[1])
+            crate::numbers::format(NumberStyle::Decibels, target.peak_dbfs()[0]),
+            crate::numbers::format(NumberStyle::Decibels, target.peak_dbfs()[1])
         ),
         Err(error) if error.parameters().is_empty() => format!(
             "{} ({context})",
-            presentation::acoustic_errors::sound_error(error)
+            crate::errors::acoustic::sound_error(error)
         ),
         Err(_) => format!("Correct the highlighted fields to apply this sound {context}."),
     };
@@ -318,7 +312,7 @@ pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorText 
     }
     let generated_brief = view.committed.as_ref().map_or_else(
         || "No valid sound model; correct the fields".into(),
-        AudioSummary::summary,
+        crate::structure_summary,
     );
     let brief = format!(
         "{} classification · {}\nSaved version · {}\n{}",
@@ -327,10 +321,10 @@ pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorText 
         } else {
             "Draft"
         },
-        view.nominal.summary(),
+        crate::analysis_summary(&(view.nominal)),
         view.saved
             .as_ref()
-            .map_or_else(|| "Not saved".into(), |a| a.summary()),
+            .map_or_else(|| "Not saved".into(), |a| crate::analysis_summary(&(a))),
         generated_brief
     );
     let based_on = view.based_on.as_ref();
@@ -345,7 +339,7 @@ pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorText 
             )
         }),
         based_on: based_on.map_or_else(String::new, |p| {
-            let about = p.about();
+            let about = crate::recipe::snapshot_about(&(p));
             format!(
                 "Based on “{}” · {}\n{}\nResearch findings describe the source recipe.",
                 p.title(),
@@ -424,11 +418,9 @@ pub struct TransportText {
 /// Render a coherent transport projection; all lifecycle decisions are captured by workspace.
 #[must_use]
 pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> TransportText {
-    use crate::AudioDetails;
-    use crate::AudioSummary;
-    use crate::vocabulary::NumberStyle;
-    use crate::waveform_view::output_underrun_warning;
-    use crate::waveform_view::phase_text;
+    use crate::numbers::NumberStyle;
+    use crate::workspace::monitor::output_underrun_warning;
+    use crate::workspace::monitor::phase_text;
     use auditorylab_app::workspace::MotionPreference;
     use auditorylab_app::workspace::View;
     let output = &data.output;
@@ -445,7 +437,7 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
         generated: String::new(),
         generated_details: String::new(),
         device: format!("Preview/export sample rate: {} Hz", export_rate.hz()),
-        output_state: data.state.label(),
+        output_state: crate::workspace::monitor::output_monitor_state_label(data.state),
         receipt_age: String::new(),
         warning: String::new(),
         backend_warning: String::new(),
@@ -481,14 +473,19 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
                 (Some(_), _) => "Finite recipe",
             }
         );
-        let elapsed = NumberStyle::Clock
-            .format((descriptor.output.sample_rate).seconds_in(status.estimated_output_frames));
+        let elapsed = crate::numbers::format(
+            NumberStyle::Clock,
+            (descriptor.output.sample_rate).seconds_in(status.estimated_output_frames),
+        );
         view.elapsed = descriptor.frames.map_or_else(
             || elapsed.clone(),
             |frames| {
                 format!(
                     "{elapsed} / {}",
-                    NumberStyle::Clock.format(descriptor.output.sample_rate.seconds_in(frames))
+                    crate::numbers::format(
+                        NumberStyle::Clock,
+                        descriptor.output.sample_rate.seconds_in(frames)
+                    )
                 )
             },
         );
@@ -500,12 +497,17 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
                 } else {
                     "Last accepted target"
                 },
-                auditorylab_core::rhythm::realized(&reader.accepted).summary()
+                crate::structure_summary(&(auditorylab_core::rhythm::realized(&reader.accepted)))
             )
         } else {
             status.observation.as_ref().map_or_else(
-                || (None).summary(),
-                |o| format!("Generated audio · {}", (Some(o)).summary()),
+                || crate::optional_observation_summary(&(None)),
+                |o| {
+                    format!(
+                        "Generated audio · {}",
+                        crate::optional_observation_summary(&(Some(o)))
+                    )
+                },
             )
         };
         view.generated_details = status.observation.map_or_else(String::new, |o| {
@@ -515,7 +517,7 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
                 status.accepted_revision,
                 o.active_revision,
                 o.settled_revision,
-                o.details()
+                crate::observation_details(&(o))
             )
         });
         view.device = format!(
@@ -527,10 +529,12 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
                 .unwrap_or("Default output"),
             descriptor.output.sample_rate.hz(),
             descriptor.output.channels,
-            descriptor.output.format.label()
+            crate::sample_format_label(descriptor.output.format)
         );
         let warning = reader.warning;
-        view.warning = warning.map_or_else(String::new, |warning| warning.message().into());
+        view.warning = warning.map_or_else(String::new, |warning| {
+            crate::workspace::monitor::monitor_warning_message(warning).into()
+        });
         view.backend_warning = output_underrun_warning(status.underruns);
         view.receipt_age = reader.age.map_or_else(
             || "No generated publication received".into(),
@@ -567,31 +571,38 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
         |model| {
             format!(
                 "{}{}\n{}",
-                model.caption(),
-                reader.map_or_else(String::new, |r| model.generation_note(r.status)),
-                model.structure.summary()
+                crate::workspace::monitor::model_view_caption(&(model)),
+                reader.map_or_else(String::new, |r| {
+                    crate::workspace::monitor::model_view_generation_note(&(model), r.status)
+                }),
+                crate::structure_summary(&(model.structure))
             )
         },
     );
     if let Some(reason) = &output.unavailable {
-        view.warning = reason.description();
+        view.warning = crate::workspace::status::output_issue_description(&(reason));
     }
     if let Some(capture) = &output.capture {
         view.meters = format!(
             "Captured sample peak L {} / R {} dBFS · RMS L {} / R {} dBFS",
-            NumberStyle::Decibels.format(capture.meters()[0].peak_dbfs),
-            NumberStyle::Decibels.format(capture.meters()[1].peak_dbfs),
-            NumberStyle::Decibels.format(capture.meters()[0].rms_dbfs),
-            NumberStyle::Decibels.format(capture.meters()[1].rms_dbfs)
+            crate::numbers::format(NumberStyle::Decibels, capture.meters()[0].peak_dbfs),
+            crate::numbers::format(NumberStyle::Decibels, capture.meters()[1].peak_dbfs),
+            crate::numbers::format(NumberStyle::Decibels, capture.meters()[0].rms_dbfs),
+            crate::numbers::format(NumberStyle::Decibels, capture.meters()[1].rms_dbfs)
         );
-        view.caption = capture.label(held, ended);
-        view.monitor_state = format!("{}\n{}", capture.caption(held, ended), view.monitor_state);
+        view.caption = crate::workspace::monitor::waveform_capture_label(&(capture), held, ended);
+        view.monitor_state = format!(
+            "{}\n{}",
+            crate::workspace::monitor::waveform_capture_caption(&(capture), held, ended),
+            view.monitor_state
+        );
         if capture.clipped() {
             let advisory = auditorylab_app::workspace::monitor::MonitorWarning::FixedRangeExceeded;
             if !view.warning.is_empty() {
                 view.warning.push('\n');
             }
-            view.warning.push_str(advisory.message());
+            view.warning
+                .push_str(crate::workspace::monitor::monitor_warning_message(advisory));
         }
     } else {
         view.caption = if audio {
@@ -665,8 +676,7 @@ pub struct LibraryText {
 /// Render an immutable library projection without querying or loading sources.
 #[must_use]
 pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryText {
-    use crate::AudioSummary;
-    use crate::vocabulary::NumberStyle;
+    use crate::numbers::NumberStyle;
     let heading = data
         .query
         .rhythm
@@ -702,24 +712,24 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryTe
             study_url: String::new(),
         };
     };
-    let about = snapshot.about();
+    let about = crate::recipe::snapshot_about(&(snapshot));
     let ownership = data
         .selected
         .and_then(|index| data.rows.get(index))
-        .map(|row| super::library_text::row(row, data.sort).collection)
+        .map(|row| crate::library::row(row, data.sort).collection)
         .unwrap_or_default();
     LibraryText {
         heading,
         title: snapshot.title(),
         classification: format!(
             "{}\nReference: {}. This describes the sound, not measured brain activity.",
-            snapshot.nominal().summary(),
+            crate::analysis_summary(&(snapshot.nominal())),
             auditorylab_core::rhythm::CONVENTION
         ),
         ownership,
         structure: snapshot
             .at(rate)
-            .map_or_else(|e| e.explain(), |s| s.brief()),
+            .map_or_else(|e| e.explain(), |s| crate::rendition_brief(&(s))),
         studied: about
             .as_ref()
             .and_then(|a| a.research.as_ref())
@@ -727,8 +737,11 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryTe
             .unwrap_or_default(),
         timing: format!(
             "Duration {} · fade {} at each edge",
-            NumberStyle::Duration.format(snapshot.sound().duration_seconds().get()),
-            NumberStyle::Duration.format(snapshot.sound().fade_seconds().get())
+            crate::numbers::format(
+                NumberStyle::Duration,
+                snapshot.sound().duration_seconds().get()
+            ),
+            crate::numbers::format(NumberStyle::Duration, snapshot.sound().fade_seconds().get())
         ),
         summary: about
             .as_ref()
@@ -738,7 +751,7 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryTe
                     .or_else(|| a.research.as_ref().and_then(|r| r.summary.clone()))
             })
             .unwrap_or_default(),
-        details: (snapshot).details_at(rate),
+        details: crate::snapshot_details_at(&(snapshot), rate),
         study_url: about
             .as_ref()
             .and_then(|a| a.research.as_ref())
@@ -829,9 +842,9 @@ pub struct ActionText {
 pub fn action_view(view: &auditorylab_app::workspace::WorkspaceActions) -> ActionText {
     let refusal = view.operation_refusal.as_ref().map(refusal_text);
     let outcome_details = [
-        view.file_status.description(),
-        view.edit_status.description(),
-        view.audio_status.description(),
+        crate::workspace::status::file_status_description(&(view.file_status)),
+        crate::workspace::status::edit_status_description(&(view.edit_status)),
+        crate::workspace::status::audio_status_description(&(view.audio_status)),
     ]
     .into_iter()
     .filter(|text| !text.is_empty())
@@ -859,7 +872,12 @@ pub fn action_view(view: &auditorylab_app::workspace::WorkspaceActions) -> Actio
         String::new()
     };
     ActionText {
-        library_play_label: crate::vocabulary::library_play_labels()[usize::from(view.playing)],
+        library_play_label: (if view.playing {
+            auditorylab_app::vocabulary::Operation::StopCurrentAndPlayRecipe
+        } else {
+            auditorylab_app::vocabulary::Operation::PlaySelectedSound
+        })
+        .label(),
         copy_reason: view
             .copy_reason
             .as_ref()
@@ -900,14 +918,14 @@ pub fn action_view(view: &auditorylab_app::workspace::WorkspaceActions) -> Actio
         transport_label: view.transport_action.label().into(),
         play_target: view.play_target.clone(),
         file_status: [
-            view.file_status.description(),
-            view.edit_status.description(),
+            crate::workspace::status::file_status_description(&(view.file_status)),
+            crate::workspace::status::edit_status_description(&(view.edit_status)),
         ]
         .into_iter()
         .filter(|text| !text.is_empty())
         .collect::<Vec<_>>()
         .join("\n"),
-        audio_status: view.audio_status.description(),
+        audio_status: crate::workspace::status::audio_status_description(&(view.audio_status)),
         file_activity: file_activity(view.file_activity.as_ref().map(|activity| activity.kind)),
     }
 }
@@ -920,15 +938,15 @@ pub fn control_choice(
     use auditorylab_app::workspace::ControlValue;
     match option.key {
         ControlValue::MonitorSpan(ms) => {
-            crate::vocabulary::NumberStyle::Milliseconds.format(f64::from(ms))
+            crate::numbers::format(crate::numbers::NumberStyle::Milliseconds, f64::from(ms))
         }
         ControlValue::ExportRate(rate) => {
-            crate::vocabulary::NumberStyle::Hertz.format(f64::from(rate.hz()))
+            crate::numbers::format(crate::numbers::NumberStyle::Hertz, f64::from(rate.hz()))
         }
-        ControlValue::AddCarrier(kind) => crate::vocabulary::add_component(kind),
-        ControlValue::AddPair(kind) => crate::vocabulary::add_pair(kind),
+        ControlValue::AddCarrier(kind) => crate::workspace::add_component(kind),
+        ControlValue::AddPair(kind) => crate::workspace::add_pair(kind),
         ControlValue::WaveformScale(scale) => {
-            crate::waveform_view::WaveformScaleText::label(scale).into()
+            crate::workspace::monitor::waveform_scale_label(scale).into()
         }
         ControlValue::Ears(_) | ControlValue::Carrier(_) | ControlValue::Modulation(_) => {
             option.label.into()
@@ -952,3 +970,12 @@ pub const fn editor_status(status: auditorylab_app::vocabulary::EditorStatus) ->
 pub const fn view_caption(caption: auditorylab_app::vocabulary::ViewCaption) -> &'static str {
     caption.label()
 }
+
+mod controls;
+pub mod monitor;
+mod publication;
+pub mod status;
+mod transport;
+pub use controls::*;
+pub use publication::*;
+pub use transport::*;

@@ -1,6 +1,6 @@
 //! Human sentences for typed operation failures.
-use super::DisplayText;
-use super::core_errors::recipe_error;
+
+use crate::errors::core::recipe_error;
 use {
     auditorylab_app::discovery::query::QueryError, auditorylab_app::document::error::EditorError,
     auditorylab_app::identity::IdentityError, auditorylab_app::identity::IdentityScope,
@@ -11,7 +11,7 @@ use {
     auditorylab_app::services::playback::PlaybackError,
 };
 fn path_text(path: &std::path::Path) -> String {
-    path.to_string_lossy().display_scalar()
+    crate::display_scalar(&(path.to_string_lossy()))
 }
 fn io_text(error: &IoFailure) -> String {
     let action = match error.action {
@@ -147,7 +147,7 @@ fn load_text(error: &LoadError) -> String {
         } => format!(
             "{origin} at {} Hz: {}",
             rate.hz(),
-            super::acoustic_errors::sound_error(error),
+            crate::errors::acoustic::sound_error(error),
             origin = origin.explain()
         ),
     }
@@ -226,7 +226,7 @@ fn export_text(error: &ExportError) -> String {
             format!(
                 "{origin} at {} Hz: {}",
                 rate.hz(),
-                super::acoustic_errors::sound_error(error),
+                crate::errors::acoustic::sound_error(error),
                 origin = origin.explain()
             )
         }
@@ -242,7 +242,7 @@ fn playback_text(error: &PlaybackError) -> String {
             format!(
                 "{title} at {} Hz: {}",
                 rate.hz(),
-                super::acoustic_errors::sound_error(error)
+                crate::errors::acoustic::sound_error(error)
             )
         }
         PlaybackError::Library(error) => library_text(error),
@@ -279,23 +279,19 @@ fn query_text(error: &QueryError) -> String {
 }
 
 /// Human explanation of a retained inventory diagnostic.
-pub trait LibraryDiagnosticText {
-    /// Explain the retained cause without changing its storage identifier.
-    fn message(&self) -> String;
-}
-impl<E: Explain> LibraryDiagnosticText
-    for auditorylab_app::services::library::LibraryDiagnostic<E>
-{
-    /// Render the retained typed cause or inventory notice.
-    fn message(&self) -> String {
-        match &self.detail {
-            auditorylab_app::services::library::DiagnosticDetail::Failure(error) => error.explain(),
-            auditorylab_app::services::library::DiagnosticDetail::Warning(warning) => {
-                super::publication_text::warning(warning)
-            }
-            auditorylab_app::services::library::DiagnosticDetail::Notice(notice) => {
-                super::library_text::inventory_notice(notice)
-            }
+
+/// Render the retained typed cause or inventory notice.
+
+pub fn library_diagnostic_message<E: Explain>(
+    value: &auditorylab_app::services::library::LibraryDiagnostic<E>,
+) -> String {
+    match &value.detail {
+        auditorylab_app::services::library::DiagnosticDetail::Failure(error) => error.explain(),
+        auditorylab_app::services::library::DiagnosticDetail::Warning(warning) => {
+            crate::errors::publication::warning(warning)
+        }
+        auditorylab_app::services::library::DiagnosticDetail::Notice(notice) => {
+            crate::library::inventory_notice(notice)
         }
     }
 }
@@ -378,7 +374,7 @@ impl Explain for auditorylab_app::services::OperationError {
     fn explain(&self) -> String {
         use auditorylab_app::services::OperationError as E;
         match self {
-            E::SampleRate(error) => super::core_errors::sample_rate_error(error),
+            E::SampleRate(error) => crate::errors::core::sample_rate_error(error),
             E::Load(error) => error.explain(),
             E::Library(error) => error.explain(),
             E::Export(error) => error.explain(),
@@ -493,7 +489,7 @@ impl std::fmt::Display for Human<'_, auditorylab_app::document::recipe::Origin> 
             auditorylab_app::document::recipe::Origin::File(path) => f.write_str(&path_text(path)),
             auditorylab_app::document::recipe::Origin::Stream(label)
             | auditorylab_app::document::recipe::Origin::Draft(label) => {
-                f.write_str(&label.display_scalar())
+                f.write_str(&crate::display_scalar(&(label)))
             }
         }
     }
@@ -511,7 +507,7 @@ impl Explain for auditorylab_app::services::IoCause {
 }
 impl Explain for auditorylab_core::SoundError {
     fn explain(&self) -> String {
-        super::acoustic_errors::sound_error(self)
+        crate::errors::acoustic::sound_error(self)
     }
 }
 impl Explain for auditorylab_core::RecipeError {
@@ -519,3 +515,11 @@ impl Explain for auditorylab_core::RecipeError {
         recipe_error(self)
     }
 }
+
+pub mod acoustic;
+mod context;
+pub mod core;
+pub mod publication;
+pub use context::*;
+
+mod workspace;

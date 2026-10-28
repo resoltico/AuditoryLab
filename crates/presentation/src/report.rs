@@ -1,6 +1,5 @@
 //! Typed machine-readable application reports.
 use crate::Explain;
-use crate::*;
 use auditorylab_app::discovery::query::Direction;
 use auditorylab_app::discovery::query::SortBy;
 use auditorylab_app::document::origin::LibraryKey;
@@ -62,12 +61,12 @@ impl DiagnosticMessage {
 }
 impl From<&auditorylab_app::services::StorageWarning> for DiagnosticMessage {
     fn from(value: &auditorylab_app::services::StorageWarning) -> Self {
-        Self::new(value, super::publication_text::warning(value))
+        Self::new(value, crate::errors::publication::warning(value))
     }
 }
 impl<E: Code + super::Explain> From<&LibraryDiagnostic<E>> for DiagnosticMessage {
     fn from(value: &LibraryDiagnostic<E>) -> Self {
-        Self::new(value, value.message())
+        Self::new(value, crate::errors::library_diagnostic_message(&(value)))
     }
 }
 report_struct!(InitializationReport { created: bool, path: PathBuf, warnings: Vec<DiagnosticMessage> });
@@ -76,7 +75,7 @@ impl From<&ResultGroup> for GroupReport {
     fn from(group: &ResultGroup) -> Self {
         Self {
             key: group.key.clone(),
-            label: super::library_text::group_label(&group.label),
+            label: crate::library::group_label(&group.label),
             keys: group.keys.clone(),
         }
     }

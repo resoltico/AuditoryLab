@@ -1,7 +1,7 @@
 //! Command-line interface to Auditory Lab.
 #![forbid(unsafe_code)]
 use auditorylab_app::job::{Cancel, Progress, Replace};
-use auditorylab_presentation::DisplayText;
+
 use auditorylab_presentation::*;
 mod cli_text;
 mod library_cli;
@@ -19,7 +19,7 @@ use std::{
     process::ExitCode,
 };
 #[derive(Parser)]
-#[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = auditorylab_app::identity::BUILD_IDENTITY.version_text())]
+#[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = auditorylab_presentation::build_info::build_identity_version_text(auditorylab_app::identity::BUILD_IDENTITY))]
 struct Cli {
     /// Absolute persistent User Library override (then environment, then native data).
     #[arg(long,global=true,value_name="ABSOLUTE_PATH",value_parser=absolute_path)]
@@ -221,7 +221,7 @@ fn prose(text: &str) -> String {
         78
     };
     text.lines()
-        .map(|line| textwrap::fill(&(line).display_text(), width))
+        .map(|line| textwrap::fill(&auditorylab_presentation::display_text(&(line)), width))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -264,7 +264,11 @@ struct StatusLine {
 impl StatusLine {
     fn draw(&mut self, text: &str) {
         self.active = true;
-        let _ = write!(io::stderr(), "\r\x1b[2K{}", (text).display_text());
+        let _ = write!(
+            io::stderr(),
+            "\r\x1b[2K{}",
+            auditorylab_presentation::display_text(&(text))
+        );
         let _ = io::stderr().flush();
     }
 }
@@ -292,22 +296,32 @@ fn play(resolved: &lab::services::Resolved) -> Result<Ended, CliError> {
     let mut playback = match lab::services::playback::prepare_playback(session, resolved)? {
         Preparation::Ready(playback) => playback,
         Preparation::Stopped(report) => {
-            eprintln!("{}", prose(&report.description()));
+            eprintln!(
+                "{}",
+                prose(&auditorylab_presentation::playback_report_description(
+                    &(report)
+                ))
+            );
             return Ok(Ended::Stopped);
         }
     };
     eprintln!(
         "{}\n{}",
-        prose(
-            &playback
-                .rendition()
-                .snapshot()
-                .playback_preamble(playback.output(), playback.signal())
-        ),
+        prose(&auditorylab_presentation::snapshot_playback_preamble(
+            &(playback.rendition().snapshot()),
+            playback.output(),
+            playback.signal()
+        )),
         crate::cli_text::Caption::StopKeyboardHint.label()
     );
     let sound = playback.rendition();
-    eprintln!("{}", prose(&sound.description(false)));
+    eprintln!(
+        "{}",
+        prose(&auditorylab_presentation::rendition_description(
+            &(sound),
+            false
+        ))
+    );
     let report = if io::stderr().is_terminal() {
         let mut reader = playback
             .monitor(lab::services::playback::MonitorDetail::Quantities)
@@ -322,7 +336,9 @@ fn play(resolved: &lab::services::Resolved) -> Result<Ended, CliError> {
                     let mut terminal = StatusLine { active: false };
                     while !done.load(std::sync::atomic::Ordering::Acquire) {
                         reader.poll(0);
-                        terminal.draw(&reader.status_text());
+                        terminal.draw(&auditorylab_presentation::monitor_reader_status_text(
+                            &(reader),
+                        ));
                         std::thread::sleep(std::time::Duration::from_millis(250));
                     }
                 });
@@ -339,7 +355,12 @@ fn play(resolved: &lab::services::Resolved) -> Result<Ended, CliError> {
     } else {
         playback.play()?
     };
-    eprintln!("{}", prose(&report.description()));
+    eprintln!(
+        "{}",
+        prose(&auditorylab_presentation::playback_report_description(
+            &(report)
+        ))
+    );
     Ok(if report.end == EndReason::Stopped {
         Ended::Stopped
     } else {
@@ -376,7 +397,7 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
                 for warning in saved.warnings {
                     eprintln!(
                         "{}",
-                        prose(&auditorylab_presentation::publication_text::warning(
+                        prose(&auditorylab_presentation::errors::publication::warning(
                             &warning
                         ))
                     );
@@ -415,7 +436,13 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             let cancel = Cancel::default();
             let request = cancel.clone();
             on_interrupt(move || request.request())?;
-            eprintln!("{}", prose(&sound.export_preamble(&path)));
+            eprintln!(
+                "{}",
+                prose(&auditorylab_presentation::rendition_export_preamble(
+                    &(sound),
+                    &path
+                ))
+            );
             let result = lab::services::export_rendition(
                 sound,
                 &path,
@@ -426,12 +453,15 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             for warning in &result.warnings {
                 eprintln!(
                     "{}",
-                    prose(&auditorylab_presentation::publication_text::warning(
+                    prose(&auditorylab_presentation::errors::publication::warning(
                         warning
                     ))
                 );
             }
-            completed(&result.description(&path));
+            completed(&auditorylab_presentation::workspace::exported_description(
+                &(result),
+                &path,
+            ));
         }
         Command::Play(source) => {
             let resolved = library_cli::resolve(source, &context)?;
@@ -548,7 +578,7 @@ mod operation_tests {
             } else {
                 args[0].to_owned()
             });
-            let report = auditorylab_presentation::reports::Report::error(
+            let report = auditorylab_presentation::report::Report::error(
                 actual,
                 &CliError::Usage(Usage("fixture".into())),
                 "fixture",
