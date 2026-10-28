@@ -1,6 +1,6 @@
 # CLI
 
-Run `auditorylab` for help, `auditorylab COMMAND --help` for command options, or `auditorylab -V` for version, build and source identity.
+Run `auditorylab` for help, `auditorylab COMMAND --help` for command options, or `auditorylab -V` for the product version and optional full source revision.
 
 ## Choose an input
 
@@ -46,7 +46,7 @@ auditorylab export --file pair.toml --output pair.wav --sample-rate 48000
 
 `inspect` opens no device. It reports the chosen rate, resolved frame count, per-ear peak bounds and generator-voice facts. Components are named by their authored ID; a pair's secondary lane is its second tone. WAV export writes the exact rendition inspected at its chosen rate as stereo 32-bit float RIFF/RF64. The [recipe guide](recipes.md) explains rate-dependent validity and waveforms.
 
-`recipe SELECTOR` prints saved portable TOML; `--output PATH` writes it. Built-in output retains embedded comments and User output retains exact file bytes. This preserves document identity and history. CLI recipe and WAV exports never overwrite an existing destination.
+`recipe SELECTOR` prints saved portable TOML; `--output PATH` writes it. Built-in output is standalone TOML assembled from embedded catalog conditions and study records; User output retains exact saved file bytes. Both preserve document identity and declared timestamps. CLI recipe and WAV exports never overwrite an existing destination.
 
 ## Root and lifecycle
 

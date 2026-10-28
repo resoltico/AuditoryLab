@@ -64,6 +64,7 @@ Prefer removing unnecessary work over lint suppression. For a necessary numeric 
 - What does this frontend change decide? Admission, defaults and validity belong to app/core owners.
 - Which owner holds the wording? Use its vocabulary/presentation function; labels are not protocol.
 - Does each module have one subject, with private state and explicit typed boundaries?
+- Are macro data tables written one entry per line? Formatting and width checks do not establish that layout.
 
 ## Dependencies and native toolkit
 
