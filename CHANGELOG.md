@@ -2,8 +2,10 @@
 
 ## [Unreleased]
 
-- Recipes require schema 4: put duration, fade and components in `[sound]`; use `clicks`, `am` and `gate`. Rewrite custom files against the [format](docs/formats.md#recipe-schema).
-- Discovery that includes schema-3 User files is incomplete (`list` exits 5); rewrite or move them out. See [recovery](docs/formats.md#unsupported-and-unreadable-recipes).
+## [0.7.0] - 2026-10-28
+
+- Schema 4 puts duration, fade and components in `[sound]` and uses `clicks`/`am`/`gate`; [rewrite custom files](https://github.com/resoltico/AuditoryLab/blob/v0.7.0/docs/formats.md#recipe-schema).
+- Schema-3 User files make discovery incomplete (`list` exits 5); [rewrite or move them out](https://github.com/resoltico/AuditoryLab/blob/v0.7.0/docs/formats.md#unsupported-and-unreadable-recipes).
 - CLI values use snake_case, including `steady_tone`, `outside_bands` and `needs_review`; update scripts. `--method am` replaces `amplitude-modulation`; `--analysis` is `complete` or `invalid`.
 - CLI JSON schema 2 exposes expanded generator lanes under `voices`; update consumers of schema-1 reports. Operation values use shared snake_case keys.
 - Diagnostic `code` values are fixed identifiers; captured values move to optional `params`, including `storage_id`. Update scripts that extract values from codes.
@@ -40,8 +42,6 @@
 - Local hygiene warns; CI denies workspace Clippy/doc warnings. Core warns on missing documentation. Diagnostic and vocabulary reference tables are checked against their owners.
 
 ## [0.6.0] - 2026-10-26
-
-[Published release notes](https://github.com/resoltico/AuditoryLab/releases/tag/v0.6.0).
 
 - Schema 3 requires UUIDs and component IDs; schema 2 is not migrated. Recreate custom files using the [recipe guide](https://github.com/resoltico/AuditoryLab/blob/v0.6.0/docs/recipes.md).
 - CLI sources require builtin:ID or user:UUID; bare catalog IDs reject. Files and streams still use --file or --stdin. Update scripts and saved command lines.
