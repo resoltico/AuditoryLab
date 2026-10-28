@@ -6,6 +6,8 @@ use crate::workspace::monitor::WaveformScale;
 /// One requested workspace transition. Display labels are never command input.
 #[derive(Debug, Clone)]
 pub enum Command {
+    /// Resolve a value retained from an app-issued control menu.
+    ChooseControl { row: RowKey, value: ControlValue },
     /// Change the interaction surface.
     SetView(View),
     /// Edit the current document or request its replacement.
@@ -134,6 +136,7 @@ impl Workspace {
     /// Returns the typed refusal while retaining its owner-specific status.
     pub fn apply(&mut self, command: Command) -> Result<(), Refusal> {
         match command {
+            Command::ChooseControl { row, value } => self.choose_control(row, value),
             Command::SetView(view) => {
                 self.set_view(view);
                 Ok(())

@@ -186,3 +186,50 @@ mod tests {
     macro_rules! checks {($($test:ident:$kind:ty),* $(,)?)=>{$(#[test] fn $test(){check::<$kind>();})*};}
     vocabularies!(checks);
 }
+
+/// Heading for the SoundFacts domain concept.
+pub const SOUND: Term = Term {
+    label: "Sound",
+    phrase: "Sound",
+};
+
+/// Heading for the NominalRhythmReferenceBand domain concept.
+pub const NOMINAL_RHYTHM_REFERENCE_BAND: Term = Term {
+    label: "Nominal rhythm reference band",
+    phrase: "Nominal rhythm reference band",
+};
+
+/// Heading for the StructuralMethod domain concept.
+pub const STRUCTURAL_METHOD: Term = Term {
+    label: "Structural method",
+    phrase: "Structural method",
+};
+
+/// Heading for the Ears domain concept.
+pub const EARS: Term = Term {
+    label: "Ears",
+    phrase: "Ears",
+};
+
+/// Heading for the Carrier domain concept.
+pub const CARRIER: Term = Term {
+    label: "Carrier",
+    phrase: "Carrier",
+};
+
+/// Heading for the Modulation domain concept.
+pub const MODULATION: Term = Term {
+    label: "Modulation",
+    phrase: "Modulation",
+};
+
+/// The generated audio's left channel, independent of authored routing.
+pub const LEFT_CHANNEL: Term = Term {
+    label: "Left",
+    phrase: "left",
+};
+/// The generated audio's right channel, independent of authored routing.
+pub const RIGHT_CHANNEL: Term = Term {
+    label: "Right",
+    phrase: "right",
+};

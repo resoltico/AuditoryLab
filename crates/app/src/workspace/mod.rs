@@ -18,7 +18,9 @@
 
 mod audio;
 mod choices;
-pub use choices::{ChoiceOption, ChoiceView, FilterInput, QueryFacet};
+pub use choices::{
+    ChoiceOption, ChoiceView, ControlChoices, ControlMenu, ControlValue, FilterInput, QueryFacet,
+};
 mod commands;
 pub use commands::{
     AudioCommand, Command, EditorCommand, FileCommand, LibraryCommand, Navigation, OutputCommand,
@@ -50,7 +52,7 @@ pub use tasks::{
 pub use views::{
     ActionView, ComponentView, EditorView, FacetCounts, FacetKind, FieldDiagnostic,
     LibraryFacetView, LibraryRowView, LibraryView, MetadataView, MonitorView, ParameterView,
-    TransportView,
+    TransportView, WorkspaceActions,
 };
 
 use crate::audio::session::{PlaybackControl, PlaybackPhase, Session, StopRequest};

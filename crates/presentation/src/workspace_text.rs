@@ -826,7 +826,7 @@ pub struct ActionText {
 
 /// Render action availability and retained status without making admission decisions.
 #[must_use]
-pub fn action_view(view: &auditorylab_app::workspace::ActionView) -> ActionText {
+pub fn action_view(view: &auditorylab_app::workspace::WorkspaceActions) -> ActionText {
     let refusal = view.operation_refusal.as_ref().map(refusal_text);
     let outcome_details = [
         view.file_status.description(),
@@ -910,4 +910,45 @@ pub fn action_view(view: &auditorylab_app::workspace::ActionView) -> ActionText 
         audio_status: view.audio_status.description(),
         file_activity: file_activity(view.file_activity.as_ref().map(|activity| activity.kind)),
     }
+}
+
+/// Render one app-issued control option, preserving domain terms and number styles.
+#[must_use]
+pub fn control_choice(
+    option: &auditorylab_app::workspace::ChoiceOption<auditorylab_app::workspace::ControlValue>,
+) -> String {
+    use auditorylab_app::workspace::ControlValue;
+    match option.key {
+        ControlValue::MonitorSpan(ms) => {
+            crate::vocabulary::NumberStyle::Milliseconds.format(f64::from(ms))
+        }
+        ControlValue::ExportRate(rate) => {
+            crate::vocabulary::NumberStyle::Hertz.format(f64::from(rate.hz()))
+        }
+        ControlValue::AddCarrier(kind) => crate::vocabulary::add_component(kind),
+        ControlValue::AddPair(kind) => crate::vocabulary::add_pair(kind),
+        ControlValue::WaveformScale(scale) => {
+            crate::waveform_view::WaveformScaleText::label(scale).into()
+        }
+        ControlValue::Ears(_) | ControlValue::Carrier(_) | ControlValue::Modulation(_) => {
+            option.label.into()
+        }
+    }
+}
+
+/// Heading or control label of an offered application operation.
+#[must_use]
+pub const fn operation_label(operation: auditorylab_app::vocabulary::Operation) -> &'static str {
+    operation.label()
+}
+
+/// Shared editor status at this projection.
+#[must_use]
+pub const fn editor_status(status: auditorylab_app::vocabulary::EditorStatus) -> &'static str {
+    status.label()
+}
+/// Caption owned by the application or its sound/research domain.
+#[must_use]
+pub const fn view_caption(caption: auditorylab_app::vocabulary::ViewCaption) -> &'static str {
+    caption.label()
 }

@@ -1,3 +1,8 @@
+import { ControlOption } from "models.slint";
+export { ViewCaptions } from "view-captions.slint";
+import { ViewCaptions } from "view-captions.slint";
+export { Actions, Action } from "actions.slint";
+import { Actions } from "actions.slint";
 import { Dialogs } from "dialogs.slint";
 import { LibraryPane } from "library-pane.slint";
 import { WorkbenchPane } from "workbench-pane.slint";
@@ -9,8 +14,8 @@ import { WorkspaceNavigation } from "workspace-navigation.slint";
 export { Terms } from "vocabulary.slint";
 import { Terms } from "vocabulary.slint";
 import { Palette, VerticalBox, HorizontalBox, ProgressIndicator } from "std-widgets.slint";
-export { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
-import { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ParameterKey, MetadataKey, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+export { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
 import { StableButton } from "editor.slint";
 export { AboutWindow, LicenseWindow } from "about.slint";
 
@@ -37,19 +42,19 @@ export component MainWindow inherits Window {
     in property <[ModelLane]> model-lanes;
     in property <[string]> ears-choices;
     in property <[string]> carrier-choices;
-    in property <[string]> add-choices;
+    in property <[ControlOption]> add-choices;
     in property <string> add-binaural-label;
     in property <string> add-monaural-label;
     in property <[string]> modulation-choices;
     in property <[string]> span-choices;
     in property <[string]> scale-choices;
-    callback stage-parameter(string, ParameterKey, string);
-    callback commit-parameter(string, ParameterKey, string);
-    callback restore-parameter(string, ParameterKey);
-    callback slide(string, ParameterKey, float);
-    callback stage-metadata(string, MetadataKey, string);
-    callback commit-metadata(string, MetadataKey, string);
-    callback restore-metadata(string, MetadataKey);
+    callback stage-parameter(string, string);
+    callback commit-parameter(string, string);
+    callback restore-parameter(string);
+    callback slide(string, float);
+    callback stage-metadata(string, string);
+    callback commit-metadata(string, string);
+    callback restore-metadata(string);
     callback set-ears(string, int);
     callback set-carrier(string, int);
     callback set-modulation(string, int);
@@ -82,7 +87,8 @@ export component MainWindow inherits Window {
     changed monitor-height=>{root.update-monitor-layout();}
     public function resize-monitor(pixels:float){root.monitor-height=max(240px,min(360px,pixels*1px));}
     public function focus-monitor-opener(){monitor-opener.focus-button();}
-    out property <MonitorData> monitor-data:{state:root.output-state,age:root.receipt-age,caption:root.waveform-caption,meters:root.meters,warning:root.monitor-warning,warninglive:root.monitor-warning-live,backendwarning:root.backend-warning,motion:root.motion-reason,left:root.left-path,right:root.right-path,limit:root.scale-label,spanlabel:root.capture-duration,spanchoice:root.window-index,scalechoice:root.scale-index,held:root.held,overridden:root.motion-overridden};
+    in property <bool> can-change-waveform;
+    out property <MonitorData> monitor-data:{state:root.output-state,age:root.receipt-age,caption:root.waveform-caption,meters:root.meters,warning:root.monitor-warning,warninglive:root.monitor-warning-live,backendwarning:root.backend-warning,motion:root.motion-reason,left:root.left-path,right:root.right-path,limit:root.scale-label,spanlabel:root.capture-duration,spanchoice:root.window-index,scalechoice:root.scale-index,held:root.held,settingsenabled:root.can-change-waveform,overridden:root.motion-overridden};
     callback show-diagnostics();
     callback show-research();
     callback hold-changed();
@@ -342,37 +348,37 @@ export component MainWindow inherits Window {
         Menu {
             title: Terms.caption-file;
             MenuItem {
-                title: Terms.operation-new-sound;
-                enabled: root.can-new;
+                title: Actions.new-sound.label;
+                enabled: Actions.new-sound.enabled;
                 activated => {
                     root.new-draft();
                 }
             }
             MenuItem {
-                title: (Terms.operation-open-recipe + "…");
-                enabled: root.can-import;
+                title: (Actions.open-recipe.label + "…");
+                enabled: Actions.open-recipe.enabled;
                 activated => {
                     root.open-recipe();
                 }
             }
             MenuItem {
-                title: Terms.operation-save;
-                enabled: root.can-save && root.tab-index == 1;
+                title: Actions.save.label;
+                enabled: Actions.save.enabled;
                 activated => {
                     root.save-recipe();
                 }
             }
-            MenuItem {title:Terms.operation-save-copy;enabled:root.can-save-copy && root.tab-index==1;activated=>{root.save-copy();}}
-            MenuItem {title:(Terms.operation-export-recipe + "…");enabled:root.can-export-recipe;activated=>{root.export-recipe();}}
+            MenuItem {title:Actions.save-copy.label;enabled: Actions.save-copy.enabled;activated=>{root.save-copy();}}
+            MenuItem {title:(Actions.export-recipe.label + "…");enabled: Actions.export-recipe.enabled;activated=>{root.export-recipe();}}
             MenuItem {
-                title: (Terms.operation-export + "…");
-                enabled: root.can-export;
+                title: (Actions.export.label + "…");
+                enabled: Actions.export.enabled;
                 activated => {
                     root.export-wav();
                 }
             }
-            MenuItem {title:root.library-play-action;enabled:root.tab-index==0 && root.can-play;activated=>{root.play-recipe();}}
-            MenuItem {title:Terms.operation-stop;enabled:root.playback-busy;activated=>{root.stop-audio();}}
+            MenuItem {title:root.library-play-action;enabled: Actions.play-selected-sound.enabled;activated=>{root.play-recipe();}}
+            MenuItem {title:Actions.stop.label;enabled: Actions.stop.enabled;activated=>{root.stop-audio();}}
             MenuItem {
                 title: Terms.action-quit;
                 activated => {
@@ -408,10 +414,10 @@ export component MainWindow inherits Window {
             if root.tab-index==0: Button {text:Terms.caption-library-options;triggered =>{dialogs.open-library-options();}}
             // Left of the lasting controls, so a late press on Cancel export
             // lands in the space it leaves rather than on another control.
-            if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:Terms.caption-wav-export-progress;max-width:120px;}
-            if root.exporting: Button {text:Terms.operation-cancel-export;triggered =>{root.cancel-file();}}
+            if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:ViewCaptions.caption-wav-export-progress;max-width:120px;}
+            if root.exporting: Button { enabled: Actions.cancel-export.enabled;text:Actions.cancel-export.label;triggered =>{root.cancel-file();}}
             if root.status != "" || root.auxiliary-error != "": Button {text:Terms.caption-task-details-dialog;triggered =>{root.show-diagnostics();}}
-            if root.tab-index==1: Button {text:Terms.operation-save;enabled:root.can-save;accessible-description:root.save-reason;triggered =>{root.save-recipe();}}
+            if root.tab-index==1: Button {text:Actions.save.label;enabled: Actions.save.enabled;accessible-description:root.save-reason;triggered =>{root.save-recipe();}}
             monitor-opener := StableButton {
                 text:root.monitor-open ? Terms.action-hide-monitor : Terms.action-show-monitor;
                 labels:[Terms.action-hide-monitor,Terms.action-show-monitor];
@@ -520,8 +526,8 @@ export component MainWindow inherits Window {
                 can-new: root.can-new;
                 can-restore-component: root.can-restore-component;
                 carrier-choices: root.carrier-choices;
-                commit-metadata(arg0, arg1, arg2) => { root.commit-metadata(arg0, arg1, arg2); }
-                commit-parameter(arg0, arg1, arg2) => { root.commit-parameter(arg0, arg1, arg2); }
+                commit-metadata(arg0, arg1) => { root.commit-metadata(arg0, arg1); }
+                commit-parameter(arg0, arg1) => { root.commit-parameter(arg0, arg1); }
                 compact <=> root.compact;
                 components: root.components;
                 dirty: root.dirty;
@@ -554,17 +560,17 @@ export component MainWindow inherits Window {
                 remove-component(arg0) => { root.remove-component(arg0); }
                 removed-component: root.removed-component;
                 restore-component(arg0) => { root.restore-component(arg0); }
-                restore-metadata(arg0, arg1) => { root.restore-metadata(arg0, arg1); }
-                restore-parameter(arg0, arg1) => { root.restore-parameter(arg0, arg1); }
+                restore-metadata(arg0) => { root.restore-metadata(arg0); }
+                restore-parameter(arg0) => { root.restore-parameter(arg0); }
                 retained-warning: root.retained-warning;
                 save-reason: root.save-reason;
                 saved-audio <=> root.saved-audio;
                 set-carrier(arg0, arg1) => { root.set-carrier(arg0, arg1); }
                 set-ears(arg0, arg1) => { root.set-ears(arg0, arg1); }
                 set-modulation(arg0, arg1) => { root.set-modulation(arg0, arg1); }
-                slide(arg0, arg1, arg2) => { root.slide(arg0, arg1, arg2); }
-                stage-metadata(arg0, arg1, arg2) => { root.stage-metadata(arg0, arg1, arg2); }
-                stage-parameter(arg0, arg1, arg2) => { root.stage-parameter(arg0, arg1, arg2); }
+                slide(arg0, arg1) => { root.slide(arg0, arg1); }
+                stage-metadata(arg0, arg1) => { root.stage-metadata(arg0, arg1); }
+                stage-parameter(arg0, arg1) => { root.stage-parameter(arg0, arg1); }
                 summary-field: root.summary-field;
                 tab-index <=> root.tab-index;
                 title-field: root.title-field;

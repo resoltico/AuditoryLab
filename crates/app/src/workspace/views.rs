@@ -75,6 +75,7 @@ pub struct MetadataView {
 /// Current document inputs and cached analysis, without rendered wording.
 #[derive(Debug, Clone)]
 pub struct EditorView {
+    pub status: crate::vocabulary::EditorStatus,
     /// Captured document lifetime.
     pub key: RowKey,
     /// Title, notes, duration and fade.
@@ -186,6 +187,13 @@ pub struct FacetCounts {
 /// Which actions are available and why not.
 #[derive(Debug, Clone)]
 pub struct ActionView {
+    pub operation: crate::vocabulary::Operation,
+    pub enabled: bool,
+}
+/// Workspace feedback and the offered operations at one projection.
+#[derive(Debug, Clone)]
+pub struct WorkspaceActions {
+    pub operations: Vec<ActionView>,
     /// Play (or replace playing audio) is admitted.
     pub can_play: bool,
     /// Label for Library playback or replacement.
@@ -457,6 +465,11 @@ impl Workspace {
         let unrelated = self.audio.slot.as_ref().filter(|task| self.view == View::Workbench
             && !matches!(task.kind, super::AudioKind::Live(d) if d == self.editor.session.document()));
         EditorView {
+            status: if self.editor.session.dirty() {
+                crate::vocabulary::EditorStatus::UnsavedChanges
+            } else {
+                crate::vocabulary::EditorStatus::UnmodifiedDraft
+            },
             key: self.editor.session.document_key(),
             metadata,
             components,
@@ -511,7 +524,7 @@ impl Workspace {
     }
 
     /// Action availability, from the same admission rules the commands use.
-    pub fn action_view(&mut self) -> ActionView {
+    pub fn action_view(&mut self) -> WorkspaceActions {
         let play = self.play_readiness();
         let save = self.prepare_save();
         let save_copy = self.prepare_save_copy();
@@ -537,7 +550,8 @@ impl Workspace {
         let playing = self.audio.slot.is_some();
         let exporting = self.exporting();
         let progress = self.export_progress();
-        ActionView {
+        let mut view = WorkspaceActions {
+            operations: Vec::new(),
             can_play: play.is_ok(),
             playing,
             can_import: self.import_admission().is_ok(),
@@ -597,7 +611,51 @@ impl Workspace {
                 .slot
                 .as_ref()
                 .map(|task| super::status::FileActivity::from_kind(&task.kind)),
-        }
+        };
+        view.operations = crate::vocabulary::Operation::ALL
+            .into_iter()
+            .map(|operation| {
+                use crate::vocabulary::Operation as O;
+                let enabled = match operation {
+                    O::Save => self.view == View::Workbench && view.can_save,
+                    O::SaveCopy => self.view == View::Workbench && view.can_save_copy,
+                    O::NewSound => view.can_new,
+                    O::EditCopy => view.can_copy,
+                    O::OpenRecipe => view.can_import,
+                    O::ExportRecipe => view.can_export_recipe,
+                    O::Export => view.can_export,
+                    O::Play | O::PlaySelectedSound | O::StopCurrentAndPlayRecipe => {
+                        self.view == View::Library && view.can_play
+                    }
+                    O::PlayLive => self.view == View::Workbench && view.can_play,
+                    O::Stop => view.playback_busy,
+                    O::CancelExport => view.exporting,
+                    O::AddComponent | O::RemoveComponent => view.can_edit,
+                    O::UndoRemove => view.can_restore_component,
+                    O::EditSavedRecipe | O::EditExternalFile => view.can_new,
+                    O::LibraryAdd => view.can_add_to_library,
+                    O::LibraryTrash => view.can_request_trash,
+                    O::LibraryInit
+                    | O::LibraryUpdate
+                    | O::LibraryRename
+                    | O::LibraryRestore
+                    | O::LibraryPurge => view.can_manage_library,
+                    O::List
+                    | O::ListTrash
+                    | O::Describe
+                    | O::Inspect
+                    | O::Recipe
+                    | O::LibraryPath
+                    | O::LibraryCheck
+                    | O::LibraryRefresh
+                    | O::LibraryRead
+                    | O::CloseOpenFile
+                    | O::ShowSaved => true,
+                };
+                ActionView { operation, enabled }
+            })
+            .collect();
+        view
     }
 
     /// The running export's completed fraction, from 0 to 1; 0 otherwise.

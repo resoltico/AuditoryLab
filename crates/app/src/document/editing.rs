@@ -175,6 +175,50 @@ pub struct FieldHandle {
     pub field: EditingField,
 }
 
+impl std::fmt::Display for FieldHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.field {
+            EditingField::Parameter(_, parameter) => {
+                write!(f, "{}/p/{}", self.row, parameter.key())
+            }
+            EditingField::Metadata(field) => {
+                let key = match field {
+                    MetadataField::Title => "title",
+                    MetadataField::Summary => "summary",
+                    MetadataField::Duration => "duration",
+                    MetadataField::Fade => "fade",
+                };
+                write!(f, "{}/m/{key}", self.row)
+            }
+        }
+    }
+}
+impl std::str::FromStr for FieldHandle {
+    type Err = &'static str;
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        const INVALID: &str = "invalid editor field handle";
+        let mut parts = text.split('/');
+        let row: RowKey = parts.next().ok_or(INVALID)?.parse()?;
+        let kind = parts.next().ok_or(INVALID)?;
+        let key = parts.next().ok_or(INVALID)?;
+        if parts.next().is_some() {
+            return Err(INVALID);
+        }
+        match kind {
+            "p" => row.parameter(key.parse().map_err(|_| INVALID)?),
+            "m" => row.metadata(match key {
+                "title" => MetadataField::Title,
+                "summary" => MetadataField::Summary,
+                "duration" => MetadataField::Duration,
+                "fade" => MetadataField::Fade,
+                _ => return Err(INVALID),
+            }),
+            _ => None,
+        }
+        .ok_or(INVALID)
+    }
+}
+
 /// Why an editing command was not applied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditRefusal {

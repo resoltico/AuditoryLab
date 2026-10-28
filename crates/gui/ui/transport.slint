@@ -1,3 +1,4 @@
+import { ViewCaptions } from "view-captions.slint";
 import { Button } from "button.slint";
 
 
@@ -25,7 +26,7 @@ export component TransportBar inherits Rectangle {
     in property <length> ui-size;
     callback update-monitor-layout();
 
-            accessible-role:groupbox;accessible-label:Terms.caption-playback-transport;
+            accessible-role:groupbox;accessible-label:ViewCaptions.caption-playback-transport;
             changed preferred-height=>{root.update-monitor-layout();}
             preferred-height: content.preferred-height;
             min-height:content.preferred-height;max-height:content.preferred-height;
@@ -48,7 +49,7 @@ export component TransportBar inherits Rectangle {
                         elapsed-template := Text {visible:false;text:"00:00:00 / 00:00:00";}
                         elapsed-text := Text {width:parent.width;height:parent.height;text:root.elapsed;horizontal-alignment:right;vertical-alignment:center;}
                     }
-                    Button {text:Terms.caption-details-dialog;horizontal-stretch:0;accessible-label:Terms.caption-audio-details;triggered =>{root.show-diagnostics();}}
+                    Button {text:Terms.caption-details-dialog;horizontal-stretch:0;accessible-label:ViewCaptions.caption-audio-details;triggered =>{root.show-diagnostics();}}
                 }
                 if root.auxiliary-error != "" || root.operation-summary != "" || root.operation-outcome != "": VerticalBox {
                     padding:0px; spacing:0px; min-height:root.ui-size*2.5; max-height:root.ui-size*2.5; vertical-stretch:0;
@@ -60,5 +61,5 @@ export component TransportBar inherits Rectangle {
                 }
                 Text {min-width:0px;text:root.guidance;wrap:word-wrap;vertical-stretch:0;}
             }
-        
+
 }

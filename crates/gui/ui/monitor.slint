@@ -1,3 +1,5 @@
+import { ViewCaptions } from "view-captions.slint";
+import { Actions } from "actions.slint";
 import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
 import { ComboBox, TextEdit, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
@@ -73,7 +75,7 @@ export component Lane inherits Rectangle {
 }
 export struct MonitorData {
     state:string,age:string,caption:string,meters:string,warning:string,warninglive:bool,backendwarning:string,motion:string,
-    left:string,right:string,limit:string,spanlabel:string,spanchoice:int,scalechoice:int,held:bool,overridden:bool
+    left:string,right:string,limit:string,spanlabel:string,spanchoice:int,scalechoice:int,held:bool,settingsenabled:bool,overridden:bool
 }
 export component MonitorPanel inherits VerticalBox {
     public function sync-controls() { span-choice.current-index = root.data.spanchoice; scale-choice.current-index = root.data.scalechoice; }
@@ -85,7 +87,7 @@ export component MonitorPanel inherits VerticalBox {
     callback span(int);callback scale(int);callback hold();callback follow();callback details();callback collapse();
     spacing:4px;padding:0px;
     HorizontalBox {padding:0px;vertical-stretch:0;cross-axis-alignment:center;
-        Text {min-width:0px;text:Terms.caption-output-monitor;font-weight:700;wrap:word-wrap;}
+        Text {min-width:0px;text:ViewCaptions.caption-output-monitor;font-weight:700;wrap:word-wrap;}
         Text {text:root.data.state;font-weight:600;wrap:no-wrap;horizontal-stretch:0;}
         Text {preferred-width:0px;horizontal-stretch:1;text:root.data.age;wrap:no-wrap;overflow:elide;accessible-label:root.data.age;}
         Button {text:Terms.caption-details-dialog;accessible-label:Terms.caption-full-audio-diagnostics-and-capture-source;triggered =>{root.details();}}
@@ -94,13 +96,13 @@ export component MonitorPanel inherits VerticalBox {
     HorizontalBox {padding:0px;spacing:12px;
         VerticalBox {padding:0px;spacing:3px;
             Text {min-width:0px;text:root.data.caption;max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
-            left-lane := Lane {label:Terms.caption-left;trace:root.data.left;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
-            right-lane := Lane {label:Terms.caption-right;trace:root.data.right;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
-            HorizontalBox {padding:0px;vertical-stretch:0;Text {text:"−"+root.data.spanlabel;}Rectangle {horizontal-stretch:1;}Text {text:Terms.caption-captured-end;}}
+            left-lane := Lane {label:ViewCaptions.caption-left;trace:root.data.left;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
+            right-lane := Lane {label:ViewCaptions.caption-right;trace:root.data.right;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
+            HorizontalBox {padding:0px;vertical-stretch:0;Text {text:"−"+root.data.spanlabel;}Rectangle {horizontal-stretch:1;}Text {text:ViewCaptions.caption-captured-end;}}
         }
         VerticalBox {padding:0px;spacing:4px;preferred-width:root.ui-size*21;max-width:root.ui-size*25;
-            span-choice := ComboBox {model:root.span-choices;current-index:root.data.spanchoice;enabled:!root.data.held;accessible-label:Terms.caption-waveform-time-window;selected(v)=>{root.span(self.current-index);}}
-            scale-choice := ComboBox {model:root.scale-choices;current-index:root.data.scalechoice;enabled:!root.data.held;accessible-label:Terms.caption-waveform-amplitude-scale;selected(v)=>{root.scale(self.current-index);}}
+            span-choice := ComboBox {model:root.span-choices;current-index:root.data.spanchoice;enabled:root.data.settingsenabled;accessible-label:ViewCaptions.caption-waveform-time-window;selected(v)=>{root.span(self.current-index);}}
+            scale-choice := ComboBox {model:root.scale-choices;current-index:root.data.scalechoice;enabled:root.data.settingsenabled;accessible-label:ViewCaptions.caption-waveform-amplitude-scale;selected(v)=>{root.scale(self.current-index);}}
             HorizontalBox {padding:0px;spacing:4px;
                 Button {text:root.data.held ? Terms.action-return-to-live : Terms.action-hold-display;triggered =>{root.hold();}}
                 if root.data.overridden: Button {text:Terms.action-follow-system;accessible-label:Terms.action-follow-system-motion-preference;triggered =>{root.follow();}}
@@ -119,7 +121,7 @@ export component MonitorPanel inherits VerticalBox {
 }
 export component MonitorWindow inherits Window {
     public function sync-controls() { panel.sync-controls(); }
-    title:Terms.caption-output-monitor;
+    title:ViewCaptions.caption-output-monitor;
     in property <string> ui-family;in property <length> ui-size:13px;
     default-font-family:root.ui-family;default-font-size:root.ui-size;
     preferred-width:950px;preferred-height:420px;
@@ -194,7 +196,7 @@ export component AudioControlsWindow inherits Window {
         padding:16px;spacing:8px;
         Text {min-width:0px;text:root.source;overflow:elide;accessible-label:root.source;}
         Text {text:root.elapsed;}
-        Button {text:Terms.operation-stop;enabled:root.active;triggered =>{root.stop();}}
+        Button {text:Actions.stop.label;enabled: Actions.stop.enabled;triggered =>{root.stop();}}
     }
 }
 

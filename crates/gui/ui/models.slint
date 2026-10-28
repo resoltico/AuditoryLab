@@ -1,9 +1,6 @@
 export { EntryAddress, LibraryMutationAction } from "library-actions.slint";
-export { ParameterKey } from "parameters.slint";
-import { ParameterKey } from "parameters.slint";
-export enum MetadataKey { title, summary, duration, fade }
 export struct ParameterRow {
-    key: ParameterKey,
+    key: string,
     label: string,
     help: string,
     text: string,
@@ -27,7 +24,7 @@ export struct ComponentRow {
     error: string,
     parameters: [ParameterRow],
 }
-export struct MetadataRow { label: string, text: string, staged: bool, diagnostic: string }
+export struct MetadataRow { key: string, label: string, text: string, staged: bool, diagnostic: string }
 export struct ModelLane { component: string, label: string, trace: string }
 
 // A process-local immutable snapshot binding, independent of row position.
@@ -39,3 +36,5 @@ export struct CatalogRow {
     summary: string, bands: string, duration: string, dates: string
 }
 export struct LibraryFacet { choice-index: int, selected: bool, label: string, detail: string, count: string, text: string }
+
+export struct ControlOption { label: string, enabled: bool }

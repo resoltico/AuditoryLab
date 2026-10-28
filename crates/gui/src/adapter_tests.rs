@@ -2,8 +2,8 @@
 //! [`SlintAdapter::install`] exactly as at startup, drive a real workspace.
 //! Dialogs are answered through a recording shell; audio is the portable
 //! workspace's typed refusal, so no device is touched.
-use crate::adapter::{Shell, SlintAdapter, Windows, parameter_id, parameter_key};
-use crate::generated::{MainWindow, MetadataKey, ParameterKey};
+use crate::adapter::{Shell, SlintAdapter, Windows};
+use crate::generated::MainWindow;
 use crate::test_platform::{install, settle};
 use auditorylab_app::core::ParameterId;
 use auditorylab_app::discovery::query::{Direction, GroupBy, Scope, SortBy};
@@ -92,7 +92,7 @@ impl Harness {
             Capabilities::no_device_playback(),
         )
     }
-    fn with_catalog(
+    pub(crate) fn with_catalog(
         catalog: Vec<auditorylab_app::document::recipe::RecipeSnapshot>,
         capabilities: Capabilities,
     ) -> Self {
@@ -173,9 +173,12 @@ impl Harness {
         self.ui().get_components().row_data(index).unwrap().key
     }
 
-    fn keys(&self, index: usize) -> Vec<ParameterKey> {
+    fn keys(&self, index: usize) -> Vec<ParameterId> {
         let row = self.ui().get_components().row_data(index).unwrap();
-        row.parameters.iter().map(|p| p.key).collect()
+        row.parameters
+            .iter()
+            .map(|p| field_parameter(&p.key))
+            .collect()
     }
 
     fn wait_for_files(&self) {
@@ -278,12 +281,15 @@ fn generated_editing_callbacks_reach_the_workspace_and_project_its_results() {
     assert_eq!(row.heading, "Steady tone");
     assert_eq!(
         h.keys(0),
-        [ParameterKey::ToneFrequency, ParameterKey::PeakLevel]
+        [ParameterId::ToneFrequency, ParameterId::PeakLevel]
     );
     let binding = h.component_key(0);
     let frequency = h.adapter.inspect(parameter(0, ParameterId::ToneFrequency));
 
-    ui.invoke_stage_parameter(binding.clone(), ParameterKey::ToneFrequency, "bad".into());
+    ui.invoke_stage_parameter(
+        parameter_field(&binding.clone(), ParameterId::ToneFrequency),
+        "bad".into(),
+    );
     assert_eq!(
         h.adapter
             .inspect(|w| w.editor().staged(frequency).map(str::to_owned)),
@@ -300,15 +306,24 @@ fn generated_editing_callbacks_reach_the_workspace_and_project_its_results() {
     assert!(!ui.get_can_save(), "unparseable staged input blocks Save");
     assert!(!ui.get_save_reason().is_empty());
 
-    ui.invoke_commit_parameter(binding.clone(), ParameterKey::ToneFrequency, "3750".into());
+    ui.invoke_commit_parameter(
+        parameter_field(&binding.clone(), ParameterId::ToneFrequency),
+        "3750".into(),
+    );
     assert_eq!(
         h.adapter.inspect(|w| w.editor().draft().value(frequency)),
         Some(3750.0)
     );
     assert!(ui.get_can_save());
 
-    ui.invoke_stage_parameter(binding.clone(), ParameterKey::ToneFrequency, "12".into());
-    ui.invoke_restore_parameter(binding.clone(), ParameterKey::ToneFrequency);
+    ui.invoke_stage_parameter(
+        parameter_field(&binding.clone(), ParameterId::ToneFrequency),
+        "12".into(),
+    );
+    ui.invoke_restore_parameter(parameter_field(
+        &binding.clone(),
+        ParameterId::ToneFrequency,
+    ));
     assert!(
         h.adapter
             .inspect(|w| w.editor().staged(frequency).is_none())
@@ -324,19 +339,28 @@ fn generated_editing_callbacks_reach_the_workspace_and_project_its_results() {
     assert!(!shown.staged);
 
     let title = EditingField::Metadata(MetadataField::Title);
-    ui.invoke_commit_metadata(ui.get_document(), MetadataKey::Title, "Probe".into());
+    ui.invoke_commit_metadata(
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
+        "Probe".into(),
+    );
     assert_eq!(
         h.adapter.inspect(|w| w.editor().draft().title().to_owned()),
         "Probe"
     );
     assert_eq!(ui.get_title_field().text, "Probe");
-    ui.invoke_stage_metadata(ui.get_document(), MetadataKey::Title, "Draft".into());
+    ui.invoke_stage_metadata(
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
+        "Draft".into(),
+    );
     assert_eq!(
         h.adapter
             .inspect(|w| w.editor().staged(title).map(str::to_owned)),
         Some("Draft".to_owned())
     );
-    ui.invoke_restore_metadata(ui.get_document(), MetadataKey::Title);
+    ui.invoke_restore_metadata(metadata_field_handle(
+        &ui.get_document(),
+        MetadataField::Title,
+    ));
     assert_eq!(ui.get_title_field().text, "Probe");
 
     ui.invoke_set_modulation(binding.clone(), 1);
@@ -344,10 +368,10 @@ fn generated_editing_callbacks_reach_the_workspace_and_project_its_results() {
     assert_eq!(
         h.keys(0),
         [
-            ParameterKey::ToneFrequency,
-            ParameterKey::PeakLevel,
-            ParameterKey::AmRate,
-            ParameterKey::AmDepth
+            ParameterId::ToneFrequency,
+            ParameterId::PeakLevel,
+            ParameterId::AmRate,
+            ParameterId::AmDepth
         ]
     );
     ui.invoke_set_ears(binding.clone(), 1);
@@ -433,27 +457,24 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
     let h = Harness::new();
     let ui = h.ui();
     h.workbench();
-    for id in ParameterId::ALL {
-        assert_eq!(parameter_id(parameter_key(id)), id);
-    }
     ui.invoke_add_component(ui.get_document(), 0);
     let binding = h.component_key(0);
     // Independent oracle: the fields each kind has.
     let carriers = [
-        (0, vec![ParameterKey::ToneFrequency]),
-        (1, vec![ParameterKey::ClickRate, ParameterKey::ClickWidth]),
+        (0, vec![ParameterId::ToneFrequency]),
+        (1, vec![ParameterId::ClickRate, ParameterId::ClickWidth]),
     ];
     let modulations = [
         (0, vec![]),
-        (1, vec![ParameterKey::AmRate, ParameterKey::AmDepth]),
-        (2, vec![ParameterKey::GateRate, ParameterKey::GateWidth]),
+        (1, vec![ParameterId::AmRate, ParameterId::AmDepth]),
+        (2, vec![ParameterId::GateRate, ParameterId::GateWidth]),
     ];
     for (carrier, carrier_keys) in &carriers {
         for (modulation, modulation_keys) in &modulations {
             ui.invoke_set_carrier(binding.clone(), *carrier);
             ui.invoke_set_modulation(binding.clone(), *modulation);
             let mut expected = carrier_keys.clone();
-            expected.push(ParameterKey::PeakLevel);
+            expected.push(ParameterId::PeakLevel);
             expected.extend(modulation_keys);
             assert_eq!(
                 h.keys(0),
@@ -462,7 +483,7 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
             );
             let row = ui.get_components().row_data(0).unwrap();
             for shown in row.parameters.iter() {
-                let id = parameter_id(shown.key);
+                let id = field_parameter(&shown.key);
                 assert_eq!(shown.label, (id).input_label());
                 assert_eq!(shown.help, id.help());
                 assert_eq!(
@@ -470,7 +491,7 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
                     auditorylab_app::workspace::controls::range(id, Workspace::export_rates()[1])
                         .is_some()
                 );
-                ui.invoke_stage_parameter(binding.clone(), shown.key, "1x".into());
+                ui.invoke_stage_parameter(shown.key.clone(), "1x".into());
                 let field = h.adapter.inspect(parameter(0, id));
                 assert_eq!(
                     h.adapter
@@ -479,14 +500,17 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
                     "{:?} stages its own field",
                     shown.key
                 );
-                ui.invoke_restore_parameter(binding.clone(), shown.key);
+                ui.invoke_restore_parameter(shown.key.clone());
             }
         }
     }
     // A key the component does not have is refused, not redirected.
     ui.invoke_set_carrier(binding.clone(), 0);
     ui.invoke_set_modulation(binding.clone(), 0);
-    ui.invoke_stage_parameter(binding.clone(), ParameterKey::GateRate, "5".into());
+    ui.invoke_stage_parameter(
+        parameter_field(&binding.clone(), ParameterId::GateRate),
+        "5".into(),
+    );
     assert!(!h.adapter.inspect(|w| w.editor().has_staged()));
 }
 
@@ -587,12 +611,17 @@ fn callbacks_from_a_replaced_document_are_refused() {
     h.settle();
     // Late callbacks carrying the old bindings.
     ui.invoke_commit_parameter(
-        old_component.clone(),
-        ParameterKey::ToneFrequency,
+        parameter_field(&old_component.clone(), ParameterId::ToneFrequency),
         "999".into(),
     );
-    ui.invoke_commit_metadata(old_document.clone(), MetadataKey::Title, "Old".into());
-    ui.invoke_stage_metadata(old_document.clone(), MetadataKey::Summary, "Old".into());
+    ui.invoke_commit_metadata(
+        metadata_field_handle(&old_document.clone(), MetadataField::Title),
+        "Old".into(),
+    );
+    ui.invoke_stage_metadata(
+        metadata_field_handle(&old_document.clone(), MetadataField::Summary),
+        "Old".into(),
+    );
     ui.invoke_add_component(old_document.clone(), 1);
     h.adapter.inspect(|w| {
         assert_eq!(w.editor().draft().title(), fresh_title);
@@ -687,7 +716,10 @@ fn a_dragged_slider_keeps_following_typed_values() {
     h.settle();
     let dragged = value();
     let binding = h.component_key(0);
-    ui.invoke_commit_parameter(binding.clone(), ParameterKey::ToneFrequency, "5000".into());
+    ui.invoke_commit_parameter(
+        parameter_field(&binding.clone(), ParameterId::ToneFrequency),
+        "5000".into(),
+    );
     h.settle();
     let expected = ui
         .get_components()
@@ -1033,7 +1065,10 @@ fn retired_component_callbacks_stay_retired_after_undo() {
         let current = h.component_key(0);
         assert_ne!(current, previous);
         assert_eq!(ui.get_components().row_count(), 1);
-        ui.invoke_commit_parameter(previous.clone(), ParameterKey::ToneFrequency, "999".into());
+        ui.invoke_commit_parameter(
+            parameter_field(&previous.clone(), ParameterId::ToneFrequency),
+            "999".into(),
+        );
         assert_eq!(
             h.adapter.inspect(|w| w
                 .editor()
@@ -1056,8 +1091,14 @@ fn editing_and_telemetry_do_not_project_the_library_again() {
     h.settle();
     let libraries = h.adapter.counts.library_projections.get();
     let binding = h.component_key(0);
-    ui.invoke_commit_parameter(binding.clone(), ParameterKey::ToneFrequency, "880".into());
-    ui.invoke_stage_parameter(binding.clone(), ParameterKey::ToneFrequency, "900".into());
+    ui.invoke_commit_parameter(
+        parameter_field(&binding.clone(), ParameterId::ToneFrequency),
+        "880".into(),
+    );
+    ui.invoke_stage_parameter(
+        parameter_field(&binding.clone(), ParameterId::ToneFrequency),
+        "900".into(),
+    );
     for _ in 0..20 {
         h.adapter.tick();
     }
@@ -1437,17 +1478,26 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 1); // Clicks.
     let binding = h.component_key(0);
-    ui.invoke_commit_parameter(binding.clone(), ParameterKey::ClickRate, "2".into());
+    ui.invoke_commit_parameter(
+        parameter_field(&binding.clone(), ParameterId::ClickRate),
+        "2".into(),
+    );
     assert!(
         ui.get_draft_brief()
             .contains("Draft classification · Delta")
     );
-    ui.invoke_stage_parameter(binding.clone(), ParameterKey::ClickRate, "bad".into());
+    ui.invoke_stage_parameter(
+        parameter_field(&binding.clone(), ParameterId::ClickRate),
+        "bad".into(),
+    );
     assert!(
         ui.get_draft_brief()
             .contains("Last committed classification · Delta")
     );
-    ui.invoke_commit_parameter(binding.clone(), ParameterKey::ClickRate, "6".into());
+    ui.invoke_commit_parameter(
+        parameter_field(&binding.clone(), ParameterId::ClickRate),
+        "6".into(),
+    );
     assert!(
         ui.get_draft_brief()
             .contains("Draft classification · Theta")
@@ -1481,14 +1531,17 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
     assert_eq!(
         h.keys(0),
         [
-            ParameterKey::PairFirstFrequency,
-            ParameterKey::PairOffset,
-            ParameterKey::PairFirstLevel,
-            ParameterKey::PairSecondLevel
+            ParameterId::PairFirstFrequency,
+            ParameterId::PairOffset,
+            ParameterId::PairFirstLevel,
+            ParameterId::PairSecondLevel
         ]
     );
     let binding = h.component_key(0);
-    ui.invoke_commit_parameter(binding.clone(), ParameterKey::PairOffset, "-6".into());
+    ui.invoke_commit_parameter(
+        parameter_field(&binding.clone(), ParameterId::PairOffset),
+        "-6".into(),
+    );
     assert!(
         ui.get_components()
             .row_data(0)
@@ -1498,15 +1551,14 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
     );
     assert!(ui.get_draft_brief().contains("Theta"));
     ui.invoke_commit_parameter(
-        binding.clone(),
-        ParameterKey::PairFirstFrequency,
+        parameter_field(&binding.clone(), ParameterId::PairFirstFrequency),
         "24000".into(),
     );
     let rows = ui.get_components().row_data(0).unwrap().parameters;
-    for key in [ParameterKey::PairFirstFrequency, ParameterKey::PairOffset] {
+    for key in [ParameterId::PairFirstFrequency, ParameterId::PairOffset] {
         assert!(
             rows.iter()
-                .find(|p| p.key == key)
+                .find(|p| field_parameter(&p.key) == key)
                 .is_some_and(|p| !p.diagnostic.is_empty())
         );
     }
@@ -1516,8 +1568,7 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
         "finite rate-invalid pairs remain serializable for repair"
     );
     ui.invoke_commit_parameter(
-        binding.clone(),
-        ParameterKey::PairFirstFrequency,
+        parameter_field(&binding.clone(), ParameterId::PairFirstFrequency),
         "200.00000000000003".into(),
     );
     let value = h.adapter.inspect(|w| {
@@ -1591,8 +1642,10 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
     let first = h.component_key(0);
     let second = h.component_key(1);
     assert_ne!(first, second);
-    h.ui()
-        .invoke_commit_parameter(first.clone(), ParameterKey::PairOffset, "6".into());
+    h.ui().invoke_commit_parameter(
+        parameter_field(&first.clone(), ParameterId::PairOffset),
+        "6".into(),
+    );
     assert_eq!(
         h.adapter.inspect(|w| w.editor().draft().components()[1]
             .form
@@ -1622,8 +1675,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     assert_eq!(h.adapter.inspect(|w| w.view()), View::Workbench);
     let binding = h.component_key(0);
     ui.invoke_commit_metadata(
-        ui.get_document(),
-        MetadataKey::Title,
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
         "Native managed copy".into(),
     );
     ui.invoke_save_recipe();
@@ -1640,7 +1692,10 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
         .remove(0);
     assert_eq!(first.title, "Native managed copy");
     assert!(first.created_at.is_some());
-    ui.invoke_commit_parameter(binding.clone(), ParameterKey::PairOffset, "6".into());
+    ui.invoke_commit_parameter(
+        parameter_field(&binding.clone(), ParameterId::PairOffset),
+        "6".into(),
+    );
     assert!(
         ui.get_draft_brief()
             .contains("Draft classification · Theta")
@@ -1988,8 +2043,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
         original.document().id
     );
     ui.invoke_commit_metadata(
-        ui.get_document(),
-        MetadataKey::Title,
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
         "External edited".into(),
     );
     ui.invoke_save_recipe();
@@ -2011,8 +2065,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
     other.content.description.as_mut().unwrap().title = "Other application".into();
     std::fs::write(&file, other.build().unwrap().to_toml().unwrap()).unwrap();
     ui.invoke_commit_metadata(
-        ui.get_document(),
-        MetadataKey::Title,
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
         "Retained after conflict".into(),
     );
     ui.invoke_save_recipe();
@@ -2629,10 +2682,10 @@ fn changing_display_vocabulary_preserves_typed_library_search() {
         .collect::<Vec<_>>();
     assert_eq!(before.len(), 1);
     h.ui()
-        .global::<crate::generated::Terms>()
+        .global::<crate::generated::ViewCaptions>()
         .set_caption_structural_method("Different display wording".into());
     h.ui()
-        .global::<crate::generated::Terms>()
+        .global::<crate::generated::ViewCaptions>()
         .set_caption_library("Different collection wording".into());
     h.ui().invoke_search("".into());
     h.wait_for_files();
@@ -2697,7 +2750,17 @@ fn filter_controls_map_to_independent_typed_queries() {
     }
     ui.invoke_collection_filter(0, 0);
     h.wait_for_files();
-    for (index, method) in Method::ALL.iter().enumerate() {
+    for (index, method) in [
+        Method::Binaural,
+        Method::Monaural,
+        Method::Clicks,
+        Method::Gate,
+        Method::Am,
+        Method::SteadyTone,
+    ]
+    .iter()
+    .enumerate()
+    {
         let label = ui.get_method_labels().row_data(index + 1).unwrap();
         assert!(label.starts_with(method.label()), "{method:?}: {label}");
     }
@@ -2794,8 +2857,7 @@ fn real_save_capture_and_delayed_completion_preserve_newer_edits_and_close_promp
     let ui = h.ui();
     h.workbench();
     ui.invoke_commit_metadata(
-        ui.get_document(),
-        MetadataKey::Title,
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
         "Captured by Save".into(),
     );
     ui.invoke_save_recipe();
@@ -2803,8 +2865,7 @@ fn real_save_capture_and_delayed_completion_preserve_newer_edits_and_close_promp
     assert!(h.take().is_empty());
     let document = ui.get_document();
     ui.invoke_commit_metadata(
-        ui.get_document(),
-        MetadataKey::Title,
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
         "Newer unsaved edits".into(),
     );
     // Execute the real capture while withholding its Finished response. Physical
@@ -2843,8 +2904,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
     let ui = h.ui();
     h.workbench();
     ui.invoke_commit_metadata(
-        ui.get_document(),
-        MetadataKey::Title,
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
         "Initial saved title".into(),
     );
     ui.invoke_save_recipe();
@@ -2855,8 +2915,7 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
         .entries
         .remove(0);
     ui.invoke_commit_metadata(
-        ui.get_document(),
-        MetadataKey::Title,
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
         "Retained draft".into(),
     );
     ui.invoke_save_recipe();
@@ -3000,7 +3059,16 @@ fn wide_library_navigation_uses_real_shared_filters_and_structured_cards() {
     h.settle();
     assert!(ui.get_library_wide());
     assert_eq!(ui.get_band_navigation().row_count(), 10);
-    for (index, band) in Band::ALL.iter().enumerate() {
+    for (index, band) in [
+        Band::Delta,
+        Band::Theta,
+        Band::Alpha,
+        Band::Beta,
+        Band::Gamma,
+    ]
+    .iter()
+    .enumerate()
+    {
         let facet = ui.get_band_navigation().row_data(index + 1).unwrap();
         assert_eq!(facet.label, band.to_string());
         assert_eq!(facet.detail, band.interval());
@@ -3381,7 +3449,10 @@ fn library_ux_coupled_errors_appear_once_by_the_fields_and_clear_after_correctio
     ui.invoke_add_component(ui.get_document(), 2);
     h.settle();
     let owner = h.component_key(0);
-    ui.invoke_commit_parameter(owner.clone(), ParameterKey::PairOffset, "50000".into());
+    ui.invoke_commit_parameter(
+        parameter_field(&owner.clone(), ParameterId::PairOffset),
+        "50000".into(),
+    );
     h.settle();
     let row = ui.get_components().row_data(0).unwrap();
     let errors: Vec<_> = row
@@ -3404,7 +3475,7 @@ fn library_ux_coupled_errors_appear_once_by_the_fields_and_clear_after_correctio
         row.error.is_empty(),
         "field diagnostics must not be repeated below the component"
     );
-    ui.invoke_commit_parameter(owner, ParameterKey::PairOffset, "2".into());
+    ui.invoke_commit_parameter(parameter_field(&owner, ParameterId::PairOffset), "2".into());
     h.settle();
     assert!(
         ui.get_components()
@@ -3532,7 +3603,18 @@ fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
         h.wait_for_files();
     };
     for (index, expected) in std::iter::once(None)
-        .chain(Population::ALL.into_iter().map(Some))
+        .chain(
+            [
+                Population::Human,
+                Population::Mouse,
+                Population::OtherAnimal,
+                Population::Mixed,
+                Population::NotApplicable,
+                Population::Unspecified,
+            ]
+            .into_iter()
+            .map(Some),
+        )
         .enumerate()
     {
         apply(i32::try_from(index).unwrap(), 0, 0, 0, 0);
@@ -3544,7 +3626,16 @@ fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
         });
     }
     for (index, expected) in std::iter::once(None)
-        .chain(ConditionRole::ALL.into_iter().map(Some))
+        .chain(
+            [
+                ConditionRole::Test,
+                ConditionRole::Comparison,
+                ConditionRole::Mixed,
+                ConditionRole::Unspecified,
+            ]
+            .into_iter()
+            .map(Some),
+        )
         .enumerate()
     {
         apply(0, i32::try_from(index).unwrap(), 0, 0, 0);
@@ -3556,7 +3647,11 @@ fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
         });
     }
     for (index, expected) in std::iter::once(None)
-        .chain(Completeness::ALL.into_iter().map(Some))
+        .chain(
+            [Completeness::Complete, Completeness::Invalid]
+                .into_iter()
+                .map(Some),
+        )
         .enumerate()
     {
         apply(0, 0, i32::try_from(index).unwrap(), 0, 0);
@@ -3564,14 +3659,23 @@ fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
             .inspect(|w| assert_eq!(w.catalog_query().analysis, expected));
     }
     for (index, expected) in std::iter::once(None)
-        .chain(Direction::ALL.into_iter().map(Some))
+        .chain([Direction::Asc, Direction::Desc].into_iter().map(Some))
         .enumerate()
     {
         apply(0, 0, 0, i32::try_from(index).unwrap(), 0);
         h.adapter
             .inspect(|w| assert_eq!(w.catalog_query().direction, expected));
     }
-    for (index, expected) in GroupBy::ALL.into_iter().enumerate() {
+    for (index, expected) in [
+        GroupBy::None,
+        GroupBy::Band,
+        GroupBy::Method,
+        GroupBy::Study,
+        GroupBy::Collection,
+    ]
+    .into_iter()
+    .enumerate()
+    {
         apply(0, 0, 0, 0, i32::try_from(index).unwrap());
         h.adapter
             .inspect(|w| assert_eq!(w.catalog_query().group_by, expected));
@@ -3846,4 +3950,30 @@ fn runtime_query_controls_keep_semantics_when_rendered_options_are_reordered() {
             && item.geometry().size.height > ui.get_ui_size() * 1.5)
         .is_some()
     );
+}
+
+fn parameter_field(row: &str, parameter: ParameterId) -> slint::SharedString {
+    row.parse::<auditorylab_app::document::editing::RowKey>()
+        .unwrap()
+        .parameter(parameter)
+        .unwrap()
+        .to_string()
+        .into()
+}
+fn metadata_field_handle(row: &str, field: MetadataField) -> slint::SharedString {
+    row.parse::<auditorylab_app::document::editing::RowKey>()
+        .unwrap()
+        .metadata(field)
+        .unwrap()
+        .to_string()
+        .into()
+}
+fn field_parameter(handle: &str) -> ParameterId {
+    let field = handle
+        .parse::<auditorylab_app::document::editing::FieldHandle>()
+        .unwrap();
+    match field.field {
+        auditorylab_app::document::editing::EditingField::Parameter(_, parameter) => parameter,
+        _ => panic!("expected a component parameter"),
+    }
 }

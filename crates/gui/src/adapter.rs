@@ -8,7 +8,6 @@
 //! Rendered fields carry application-owned opaque row keys. The editor validates
 //! the document, component and generation, so late callbacks cannot address a
 //! replacement document or a restored component lifetime.
-use auditorylab_app::workspace::monitor::WaveformScale;
 use auditorylab_app::workspace::{ComponentView, EditorView, MetadataView, ParameterView};
 use auditorylab_presentation::DisplayText;
 use auditorylab_presentation::LibraryPresentation;
@@ -22,11 +21,10 @@ mod library;
 mod wake;
 use crate::generated::{
     AboutWindow, AudioControlsWindow, CatalogRow, ComponentRow, DetailsWindow, MainWindow,
-    MetadataKey, MetadataRow, ModelLane, MonitorWindow, ParameterKey, ParameterRow,
+    MetadataRow, ModelLane, MonitorWindow, ParameterRow,
 };
 use crate::{details_parent, motion, scope, typography};
 use actions::install_actions;
-use auditorylab_app::core::{CarrierKind, Ears, ModulationKind, ParameterId};
 use auditorylab_app::document::editing::{EditingField, FieldHandle, MetadataField, RowKey};
 use auditorylab_app::services::playback::PlaybackPhase;
 use auditorylab_app::workspace::{
@@ -47,7 +45,6 @@ use {
     auditorylab_app::workspace::monitor::WaveformCapture,
 };
 
-use auditorylab_app::workspace::controls::MONITOR_SPANS_MS as SPANS_MS;
 /// Redraw cadence while a session is bound or the monitor is visible.
 const ACTIVE_TICK: Duration = Duration::from_millis(50);
 
@@ -150,6 +147,7 @@ pub(crate) struct SlintAdapter {
             auditorylab_app::workspace::ChoiceView,
         )>,
     >,
+    control_choices: RefCell<Vec<auditorylab_app::workspace::ControlChoices>>,
     lanes: Rc<VecModel<ModelLane>>,
     document: Cell<Option<RowKey>>,
     projected: Cell<Option<(u64, Option<PlaybackPhase>)>>,
@@ -215,6 +213,7 @@ impl SlintAdapter {
             library: RefCell::new(None),
             entry_handles: RefCell::new(None),
             choices: RefCell::new(Vec::new()),
+            control_choices: RefCell::new(Vec::new()),
             lanes: Rc::new(VecModel::default()),
             document: Cell::new(None),
             projected: Cell::new(None),
@@ -238,18 +237,20 @@ impl SlintAdapter {
             termination: RefCell::new(None),
             counts: ProjectionCounts::default(),
         });
-        set_choices(ui, &windows.monitor);
-        ui.set_window_index(index_of(
-            &SPANS_MS,
-            &auditorylab_app::workspace::controls::DEFAULT_MONITOR_SPAN_MS,
-        ));
-        ui.set_scale_index(index_of(
-            &WaveformScale::ALL,
-            &auditorylab_app::workspace::controls::DEFAULT_MONITOR_SCALE,
-        ));
         ui.set_components(ModelRc::from(adapter.components.clone()));
         ui.set_catalog(ModelRc::from(adapter.catalog.clone()));
         ui.set_model_lanes(ModelRc::from(adapter.lanes.clone()));
+        ui.set_transport_labels(ModelRc::new(VecModel::from(
+            [
+                auditorylab_app::vocabulary::Operation::PlaySelectedSound,
+                auditorylab_app::vocabulary::Operation::PlayLive,
+                auditorylab_app::vocabulary::Operation::Stop,
+            ]
+            .map(|operation| {
+                auditorylab_presentation::workspace_text::operation_label(operation).into()
+            })
+            .to_vec(),
+        )));
         ui.set_guidance(auditorylab_presentation::Notice::general_guidance().into());
         ui.set_native_mac(cfg!(target_os = "macos"));
         windows.about.set_identity(
@@ -680,12 +681,15 @@ impl SlintAdapter {
                 w.editor_view(),
                 w.library_view(),
                 w.action_view(),
-                w.export_rate(),
+                w.control_choices(),
             )
         });
-        let Some((editor, library, actions, rate)) = views else {
+        let Some((editor, library, actions, controls)) = views else {
             return;
         };
+        *self.control_choices.borrow_mut() = controls;
+        self.project_control_choices(ui);
+        self.project_view_captions(ui, &editor);
         self.reconcile_document(ui, &editor);
         if let Some(workspace) = self.workspace.borrow().as_ref() {
             ui.set_draft_location(workspace.document_location_label().into());
@@ -705,6 +709,7 @@ impl SlintAdapter {
             ui.set_query(self.query().into());
         }
 
+        self.project_actions(&actions);
         let action_text = auditorylab_presentation::workspace_text::action_view(&actions);
         ui.set_can_play(actions.can_play);
         ui.set_library_play_action(action_text.library_play_label.into());
@@ -739,11 +744,6 @@ impl SlintAdapter {
         ui.set_play_target(read_only(&action_text.play_target));
         ui.set_file_activity(read_only(&action_text.file_activity));
         ui.set_status(read_only(&action_text.operation_details));
-        if let Some(index) = Workspace::export_rates().iter().position(|r| *r == rate)
-            && let Ok(index) = i32::try_from(index)
-        {
-            ui.set_rate_index(index);
-        }
     }
 
     fn query(&self) -> String {
@@ -771,7 +771,8 @@ impl SlintAdapter {
                 .iter()
                 .map(|component| {
                     let entry = Self::new_entry(component, editor);
-                    let row = component_row(&entry, component, editor);
+                    let row =
+                        component_row(&entry, component, editor, &self.control_choices.borrow());
                     entries.push(entry);
                     row
                 })
@@ -813,15 +814,17 @@ impl SlintAdapter {
                 }
                 None => {
                     let entry = Self::new_entry(component, editor);
-                    self.components
-                        .insert(index, component_row(&entry, component, editor));
+                    self.components.insert(
+                        index,
+                        component_row(&entry, component, editor, &self.control_choices.borrow()),
+                    );
                     entries.insert(index, entry);
                     continue;
                 }
             }
             let entry = &entries[index];
             reconcile_parameters(&entry.parameters, &component.parameters, editor);
-            let row = component_row(entry, component, editor);
+            let row = component_row(entry, component, editor, &self.control_choices.borrow());
             if self.components.row_data(index).as_ref() != Some(&row) {
                 self.components.set_row_data(index, row);
             }
@@ -1095,112 +1098,12 @@ impl SlintAdapter {
     }
 }
 
-fn parameter_handle(key: &str, parameter: ParameterKey) -> Option<FieldHandle> {
-    key.parse::<RowKey>()
-        .ok()?
-        .parameter(parameter_id(parameter))
-}
-fn metadata_handle(key: &str, field: MetadataKey) -> Option<FieldHandle> {
-    key.parse::<RowKey>().ok()?.metadata(metadata_field(field))
-}
-
-// ---- semantic binding conversions ----
-
-// Generated from the owning parameter inventory by the build script.
-include!(concat!(env!("OUT_DIR"), "/parameter_bindings.rs"));
-
-const fn metadata_field(key: MetadataKey) -> MetadataField {
-    match key {
-        MetadataKey::Title => MetadataField::Title,
-        MetadataKey::Summary => MetadataField::Summary,
-        MetadataKey::Duration => MetadataField::Duration,
-        MetadataKey::Fade => MetadataField::Fade,
-    }
-}
-
-fn index_of<T: PartialEq>(all: &[T], value: &T) -> i32 {
-    all.iter()
-        .position(|v| v == value)
+fn selected_option<K>(view: &auditorylab_app::workspace::ChoiceView<K>) -> i32 {
+    view.options
+        .iter()
+        .position(|o| o.selected)
         .and_then(|i| i32::try_from(i).ok())
         .unwrap_or(-1)
-}
-
-fn choice<T: Copy>(all: &[T], index: i32) -> Option<T> {
-    usize::try_from(index)
-        .ok()
-        .and_then(|i| all.get(i))
-        .copied()
-}
-
-fn set_choices(ui: &MainWindow, monitor: &MonitorWindow) {
-    let strings = |labels: Vec<String>| {
-        ModelRc::new(VecModel::from(
-            labels
-                .into_iter()
-                .map(SharedString::from)
-                .collect::<Vec<_>>(),
-        ))
-    };
-    ui.set_ears_choices(strings(
-        Ears::ALL.iter().map(|e| e.label().into()).collect(),
-    ));
-    ui.set_carrier_choices(strings(
-        CarrierKind::ALL.iter().map(|k| k.label().into()).collect(),
-    ));
-    ui.set_add_choices(strings(
-        CarrierKind::ALL
-            .iter()
-            .map(|k| auditorylab_presentation::vocabulary::add_component(*k))
-            .collect(),
-    ));
-    ui.set_add_binaural_label(
-        auditorylab_presentation::vocabulary::add_pair(auditorylab_app::core::PairKind::Binaural)
-            .into(),
-    );
-    ui.set_add_monaural_label(
-        auditorylab_presentation::vocabulary::add_pair(auditorylab_app::core::PairKind::Monaural)
-            .into(),
-    );
-    ui.set_modulation_choices(strings(
-        auditorylab_app::workspace::controls::modulation_choices()
-            .into_iter()
-            .map(|kind| {
-                kind.map_or(
-                    auditorylab_app::core::vocabulary::NO_MODULATION.label,
-                    ModulationKind::label,
-                )
-                .to_owned()
-            })
-            .collect(),
-    ));
-    let spans = strings(
-        SPANS_MS
-            .iter()
-            .map(|ms| NumberStyle::Milliseconds.format(f64::from(*ms)))
-            .collect(),
-    );
-    let scales = strings(
-        WaveformScale::ALL
-            .iter()
-            .map(|scale| scale.label().to_owned())
-            .collect(),
-    );
-    ui.set_span_choices(spans.clone());
-    ui.set_scale_choices(scales.clone());
-    monitor.set_span_choices(spans);
-    monitor.set_scale_choices(scales);
-    ui.set_transport_labels(strings(
-        auditorylab_presentation::vocabulary::transport_labels()
-            .iter()
-            .map(|label| (*label).to_owned())
-            .collect(),
-    ));
-    ui.set_export_rates(strings(
-        Workspace::export_rates()
-            .iter()
-            .map(|rate| NumberStyle::Hertz.format(f64::from(rate.hz())))
-            .collect(),
-    ));
 }
 
 fn parameter_row(view: &ParameterView, editor: &EditorView) -> ParameterRow {
@@ -1211,7 +1114,7 @@ fn parameter_row(view: &ParameterView, editor: &EditorView) -> ParameterRow {
     )]
     let position = view.slider.unwrap_or(0.0) as f32;
     ParameterRow {
-        key: parameter_key(view.parameter),
+        key: view.handle.to_string().into(),
         label: text.label.as_str().into(),
         help: text.help.into(),
         text: view.text.as_str().into(),
@@ -1227,20 +1130,27 @@ fn component_row(
     entry: &ComponentEntry,
     view: &ComponentView,
     editor: &EditorView,
+    choices: &[auditorylab_app::workspace::ControlChoices],
 ) -> ComponentRow {
     let text = auditorylab_presentation::workspace_text::component_text(view, editor);
     ComponentRow {
         key: entry.key.to_string().into(),
         id: view.id.get().to_string().into(),
-        ears: index_of(&Ears::ALL, &view.committed.route().unwrap_or(Ears::Both)),
-        carrier: view
-            .committed
-            .primitive_kind()
-            .map_or(-1, |kind| index_of(&CarrierKind::ALL, &kind)),
+        ears: control_index(
+            choices,
+            view.key,
+            auditorylab_app::workspace::ControlMenu::Ears,
+        ),
+        carrier: control_index(
+            choices,
+            view.key,
+            auditorylab_app::workspace::ControlMenu::Carrier,
+        ),
         routing_editable: view.committed.route().is_some(),
-        modulation: index_of(
-            &auditorylab_app::workspace::controls::modulation_choices(),
-            &view.committed.modulation_kind(),
+        modulation: control_index(
+            choices,
+            view.key,
+            auditorylab_app::workspace::ControlMenu::Modulation,
         ),
         heading: text.heading.into(),
         name: text.name.as_str().into(),
@@ -1296,6 +1206,7 @@ fn reconcile_parameters(
 fn metadata_row(view: &MetadataView, editor: &EditorView) -> MetadataRow {
     let text = auditorylab_presentation::workspace_text::metadata_text(view, editor);
     MetadataRow {
+        key: view.handle.to_string().into(),
         label: text.label.as_str().into(),
         text: view.text.as_str().into(),
         staged: view.staged,
@@ -1341,17 +1252,173 @@ impl SlintAdapter {
         let Some(ui) = self.main.upgrade() else {
             return;
         };
-        let span = choice(&SPANS_MS, ui.get_window_index());
-        let scale = choice(&WaveformScale::ALL, ui.get_scale_index());
-        if let (Some(span), Some(scale)) = (span, scale) {
-            self.command(|w| {
-                w.apply(Command::Output(OutputCommand::SetWaveform {
-                    span_ms: span,
-                    scale,
-                }))
+        self.choose_control(
+            auditorylab_app::workspace::ControlMenu::MonitorSpan,
+            None,
+            ui.get_window_index(),
+        );
+        self.choose_control(
+            auditorylab_app::workspace::ControlMenu::WaveformScale,
+            None,
+            ui.get_scale_index(),
+        );
+    }
+
+    fn choose_control(
+        self: &Rc<Self>,
+        menu: auditorylab_app::workspace::ControlMenu,
+        row: Option<&str>,
+        index: i32,
+    ) {
+        let command = self
+            .control_choices
+            .borrow()
+            .iter()
+            .find(|choices| {
+                choices.menu == menu && row.is_none_or(|row| row == choices.row.to_string())
+            })
+            .and_then(|choices| {
+                usize::try_from(index)
+                    .ok()
+                    .and_then(|i| choices.view.options.get(i))
+                    .map(|option| Command::ChooseControl {
+                        row: choices.row,
+                        value: option.key,
+                    })
             });
+        if let Some(command) = command {
+            self.command(|w| w.apply(command));
         } else {
             self.project();
+        }
+    }
+
+    fn project_view_captions(&self, ui: &MainWindow, editor: &EditorView) {
+        let monitor = self.monitor.upgrade();
+        for captions in std::iter::once(ui.global::<crate::generated::ViewCaptions>()).chain(
+            monitor
+                .as_ref()
+                .map(|w| w.global::<crate::generated::ViewCaptions>()),
+        ) {
+            project_captions(captions, editor.status);
+        }
+    }
+
+    fn project_actions(&self, view: &auditorylab_app::workspace::WorkspaceActions) {
+        let main = self.main.upgrade();
+        let audio_controls = self.audio_controls.upgrade();
+        for actions in [
+            main.as_ref()
+                .map(|w| w.global::<crate::generated::Actions>()),
+            audio_controls
+                .as_ref()
+                .map(|w| w.global::<crate::generated::Actions>()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            for view in &view.operations {
+                let action = crate::generated::Action {
+                    label: auditorylab_presentation::workspace_text::operation_label(
+                        view.operation,
+                    )
+                    .into(),
+                    enabled: view.enabled,
+                };
+                use auditorylab_app::vocabulary::Operation;
+                match view.operation {
+                    Operation::List => actions.set_list(action),
+                    Operation::ListTrash => actions.set_list_trash(action),
+                    Operation::Describe => actions.set_describe(action),
+                    Operation::Inspect => actions.set_inspect(action),
+                    Operation::Recipe => actions.set_recipe(action),
+                    Operation::Export => actions.set_export(action),
+                    Operation::Play => actions.set_play(action),
+                    Operation::Stop => actions.set_stop(action),
+                    Operation::LibraryPath => actions.set_library_path(action),
+                    Operation::LibraryInit => actions.set_library_init(action),
+                    Operation::LibraryAdd => actions.set_library_add(action),
+                    Operation::LibraryUpdate => actions.set_library_update(action),
+                    Operation::LibraryRename => actions.set_library_rename(action),
+                    Operation::LibraryTrash => actions.set_library_trash(action),
+                    Operation::LibraryRestore => actions.set_library_restore(action),
+                    Operation::LibraryPurge => actions.set_library_purge(action),
+                    Operation::LibraryCheck => actions.set_library_check(action),
+                    Operation::LibraryRefresh => actions.set_library_refresh(action),
+                    Operation::LibraryRead => actions.set_library_read(action),
+                    Operation::NewSound => actions.set_new_sound(action),
+                    Operation::EditCopy => actions.set_edit_copy(action),
+                    Operation::Save => actions.set_save(action),
+                    Operation::SaveCopy => actions.set_save_copy(action),
+                    Operation::OpenRecipe => actions.set_open_recipe(action),
+                    Operation::ExportRecipe => actions.set_export_recipe(action),
+                    Operation::StopCurrentAndPlayRecipe => {
+                        actions.set_stop_current_and_play_recipe(action)
+                    }
+                    Operation::PlaySelectedSound => actions.set_play_selected_sound(action),
+                    Operation::PlayLive => actions.set_play_live(action),
+                    Operation::EditSavedRecipe => actions.set_edit_saved_recipe(action),
+                    Operation::EditExternalFile => actions.set_edit_external_file(action),
+                    Operation::CloseOpenFile => actions.set_close_open_file(action),
+                    Operation::ShowSaved => actions.set_show_saved(action),
+                    Operation::CancelExport => actions.set_cancel_export(action),
+                    Operation::AddComponent => actions.set_add_component(action),
+                    Operation::UndoRemove => actions.set_undo_remove(action),
+                    Operation::RemoveComponent => actions.set_remove_component(action),
+                }
+            }
+        }
+    }
+
+    fn project_control_choices(&self, ui: &MainWindow) {
+        use auditorylab_app::workspace::ControlMenu;
+        let choices = self.control_choices.borrow();
+        for menu in choices.iter() {
+            let labels = menu
+                .view
+                .options
+                .iter()
+                .map(|o| auditorylab_presentation::workspace_text::control_choice(o).into())
+                .collect::<Vec<SharedString>>();
+            let strings = ModelRc::new(VecModel::from(labels));
+            let selected = selected_option(&menu.view);
+            match menu.menu {
+                ControlMenu::Ears => ui.set_ears_choices(strings),
+                ControlMenu::Carrier => ui.set_carrier_choices(strings),
+                ControlMenu::Modulation => ui.set_modulation_choices(strings),
+                ControlMenu::AddComponent => ui.set_add_choices(ModelRc::new(VecModel::from(
+                    menu.view
+                        .options
+                        .iter()
+                        .map(|o| crate::generated::ControlOption {
+                            label: auditorylab_presentation::workspace_text::control_choice(o)
+                                .into(),
+                            enabled: o.enabled,
+                        })
+                        .collect::<Vec<_>>(),
+                ))),
+                ControlMenu::MonitorSpan => {
+                    ui.set_can_change_waveform(
+                        menu.view.options.first().is_some_and(|o| o.enabled),
+                    );
+                    ui.set_span_choices(strings.clone());
+                    ui.set_window_index(selected);
+                    if let Some(monitor) = self.monitor.upgrade() {
+                        monitor.set_span_choices(strings);
+                    }
+                }
+                ControlMenu::WaveformScale => {
+                    ui.set_scale_choices(strings.clone());
+                    ui.set_scale_index(selected);
+                    if let Some(monitor) = self.monitor.upgrade() {
+                        monitor.set_scale_choices(strings);
+                    }
+                }
+                ControlMenu::ExportRate => {
+                    ui.set_export_rates(strings);
+                    ui.set_rate_index(selected);
+                }
+            }
         }
     }
 }
@@ -1428,3 +1495,113 @@ fn read_only(text: &str) -> SharedString {
 #[cfg(test)]
 #[path = "adapter_test_support.rs"]
 pub(crate) mod tests;
+
+fn control_index(
+    choices: &[auditorylab_app::workspace::ControlChoices],
+    row: RowKey,
+    menu: auditorylab_app::workspace::ControlMenu,
+) -> i32 {
+    choices
+        .iter()
+        .find(|c| c.row == row && c.menu == menu)
+        .map_or(-1, |c| selected_option(&c.view))
+}
+
+pub(crate) fn project_captions(
+    captions: crate::generated::ViewCaptions<'_>,
+    status: auditorylab_app::vocabulary::EditorStatus,
+) {
+    captions
+        .set_editor_status(auditorylab_presentation::workspace_text::editor_status(status).into());
+    for caption in auditorylab_app::vocabulary::ViewCaption::VALUES {
+        let label = auditorylab_presentation::workspace_text::view_caption(*caption).into();
+        use auditorylab_app::vocabulary::ViewCaption;
+        match caption {
+            ViewCaption::AddedHereThroughInclusiveLocalCalendarDate => {
+                captions.set_facet_added_here_through_inclusive_local_calendar_date(label)
+            }
+            ViewCaption::AddedHereThroughYyyyMmDd => {
+                captions.set_facet_added_here_through_yyyy_mm_dd(label)
+            }
+            ViewCaption::AddedHereFromLocalCalendarDate => {
+                captions.set_facet_added_here_from_local_calendar_date(label)
+            }
+            ViewCaption::AddedHereFromYyyyMmDd => {
+                captions.set_facet_added_here_from_yyyy_mm_dd(label)
+            }
+            ViewCaption::ExportSampleRate => captions.set_facet_export_sample_rate(label),
+            ViewCaption::AppliedLibraryFiltersPrefix => {
+                captions.set_facet_applied_library_filters_prefix(label)
+            }
+            ViewCaption::AppliedLibraryFilters => captions.set_facet_applied_library_filters(label),
+            ViewCaption::StudyEvidenceFilter => captions.set_facet_study_evidence_filter(label),
+            ViewCaption::PopulationEvidenceFilter => {
+                captions.set_facet_population_evidence_filter(label)
+            }
+            ViewCaption::ConditionRoleEvidenceFilter => {
+                captions.set_facet_condition_role_evidence_filter(label)
+            }
+            ViewCaption::NominalAnalysisCoverage => {
+                captions.set_facet_nominal_analysis_coverage(label)
+            }
+            ViewCaption::SortDirection => captions.set_facet_sort_direction(label),
+            ViewCaption::LibraryResultGrouping => captions.set_facet_library_result_grouping(label),
+            ViewCaption::CreatedFromLocalCalendarDate => {
+                captions.set_facet_created_from_local_calendar_date(label)
+            }
+            ViewCaption::CreatedThroughInclusiveLocalCalendarDate => {
+                captions.set_facet_created_through_inclusive_local_calendar_date(label)
+            }
+            ViewCaption::ModifiedFromLocalCalendarDate => {
+                captions.set_facet_modified_from_local_calendar_date(label)
+            }
+            ViewCaption::ModifiedThroughInclusiveLocalCalendarDate => {
+                captions.set_facet_modified_through_inclusive_local_calendar_date(label)
+            }
+            ViewCaption::ExactUtcDates => captions.set_facet_exact_utc_dates(label),
+            ViewCaption::ExactUtcRecipeAndMembershipDates => {
+                captions.set_facet_exact_utc_recipe_and_membership_dates(label)
+            }
+            ViewCaption::Library => captions.set_caption_library(label),
+            ViewCaption::PlaybackTransport => captions.set_caption_playback_transport(label),
+            ViewCaption::CommittedLibraryQuery => {
+                captions.set_caption_committed_library_query(label)
+            }
+            ViewCaption::Collections => captions.set_caption_collections(label),
+            ViewCaption::DatesIdentity => captions.set_caption_dates_identity(label),
+            ViewCaption::SoundFacts => captions.set_caption_sound_facts(label),
+            ViewCaption::OutputMonitor => captions.set_caption_output_monitor(label),
+            ViewCaption::Left => captions.set_caption_left(label),
+            ViewCaption::Right => captions.set_caption_right(label),
+            ViewCaption::CapturedEnd => captions.set_caption_captured_end(label),
+            ViewCaption::WaveformTimeWindow => captions.set_caption_waveform_time_window(label),
+            ViewCaption::WaveformAmplitudeScale => {
+                captions.set_caption_waveform_amplitude_scale(label)
+            }
+            ViewCaption::WavExportProgress => captions.set_caption_wav_export_progress(label),
+            ViewCaption::LibraryCollection => captions.set_caption_library_collection(label),
+            ViewCaption::NominalRhythmReferenceBand => {
+                captions.set_caption_nominal_rhythm_reference_band(label)
+            }
+            ViewCaption::StructuralMethod => captions.set_caption_structural_method(label),
+            ViewCaption::StudyDoiOrKeySource => captions.set_caption_study_doi_or_key_source(label),
+            ViewCaption::CreatedFromYyyyMmDd => captions.set_caption_created_from_yyyy_mm_dd(label),
+            ViewCaption::CreatedThroughYyyyMmDd => {
+                captions.set_caption_created_through_yyyy_mm_dd(label)
+            }
+            ViewCaption::ModifiedFromYyyyMmDd => {
+                captions.set_caption_modified_from_yyyy_mm_dd(label)
+            }
+            ViewCaption::ModifiedThroughYyyyMmDd => {
+                captions.set_caption_modified_through_yyyy_mm_dd(label)
+            }
+            ViewCaption::Workbench => captions.set_caption_workbench(label),
+            ViewCaption::SoundTitle => captions.set_caption_sound_title(label),
+            ViewCaption::Ears => captions.set_caption_ears(label),
+            ViewCaption::Carrier => captions.set_caption_carrier(label),
+            ViewCaption::Modulation => captions.set_caption_modulation(label),
+            ViewCaption::SoundNotes => captions.set_caption_sound_notes(label),
+            ViewCaption::AudioDetails => captions.set_caption_audio_details(label),
+        }
+    }
+}

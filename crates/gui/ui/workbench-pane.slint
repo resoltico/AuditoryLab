@@ -1,9 +1,11 @@
+import { ViewCaptions } from "view-captions.slint";
+import { Actions } from "actions.slint";
 import { Button } from "button.slint";
 
 
 import { Terms } from "vocabulary.slint";
 import { Palette, ComboBox, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
-import { ParameterKey, MetadataKey, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import { ComponentRow, MetadataRow, ModelLane } from "models.slint";
 import { Disclosure, ParameterControl, MetadataField, NotesField, ExportRate } from "editor.slint";
 
 
@@ -18,8 +20,8 @@ export component WorkbenchPane inherits Rectangle {
     in property <bool> can-new;
     in property <bool> can-restore-component;
     in property <[string]> carrier-choices;
-    callback commit-metadata(string, MetadataKey, string);
-    callback commit-parameter(string, ParameterKey, string);
+    callback commit-metadata(string, string);
+    callback commit-parameter(string, string);
     in-out property <bool> compact;
     in property <[ComponentRow]> components;
     in property <bool> dirty;
@@ -52,23 +54,23 @@ export component WorkbenchPane inherits Rectangle {
     callback remove-component(string);
     in property <string> removed-component;
     callback restore-component(string);
-    callback restore-metadata(string, MetadataKey);
-    callback restore-parameter(string, ParameterKey);
+    callback restore-metadata(string);
+    callback restore-parameter(string);
     in property <string> retained-warning;
     in property <string> save-reason;
     in-out property <bool> saved-audio;
     callback set-carrier(string, int);
     callback set-ears(string, int);
     callback set-modulation(string, int);
-    callback slide(string, ParameterKey, float);
-    callback stage-metadata(string, MetadataKey, string);
-    callback stage-parameter(string, ParameterKey, string);
+    callback slide(string, float);
+    callback stage-metadata(string, string);
+    callback stage-parameter(string, string);
     in property <MetadataRow> summary-field;
     in-out property <int> tab-index;
     in property <MetadataRow> title-field;
     in property <length> ui-size;
 
-                accessible-role:tab-panel;accessible-label:Terms.caption-workbench;
+                accessible-role:tab-panel;accessible-label:ViewCaptions.caption-workbench;
                 visible:root.tab-index==1;
 
 
@@ -87,28 +89,27 @@ export component WorkbenchPane inherits Rectangle {
                             vertical-alignment:center;
                         }
                         MetadataField {
-                            key: MetadataKey.title;
                             field: root.title-field;
-                            binding: root.document;
+
                             reset-key:root.document-reset;
                             enabled:root.can-edit;
                             edits-suspended:root.edits-suspended;
-                            accessible-label:Terms.caption-sound-title;
-                            stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
-                            commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
-                            restore-field(owner, key) => { root.restore-metadata(owner, key); }
+                            accessible-label:ViewCaptions.caption-sound-title;
+                            stage-field(owner, value) => { root.stage-metadata(owner, value); }
+                            commit-field(owner, value) => { root.commit-metadata(owner, value); }
+                            restore-field(owner) => { root.restore-metadata(owner); }
                         }
                     }
                     HorizontalBox {vertical-stretch:0;
                         Text {min-width:0px;
-                            text:root.dirty ? Terms.status-unsaved-changes : Terms.status-unmodified-draft;
+                            text:ViewCaptions.editor-status;
                             wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;
                         }
-                        Button {text:(Terms.operation-add-component + "…");enabled:root.can-edit;triggered =>{root.open-component-menu();}}
+                        Button {text:(Actions.add-component.label + "…");enabled: Actions.add-component.enabled;triggered =>{root.open-component-menu();}}
                         Button {
                             horizontal-stretch:0;
-                            text:Terms.operation-new-sound;
-                            enabled:root.can-new;
+                            text:Actions.new-sound.label;
+                            enabled: Actions.new-sound.enabled;
                             triggered => {
                                 root.new-draft();
                             }
@@ -122,9 +123,9 @@ export component WorkbenchPane inherits Rectangle {
                         padding: 0px;
                         vertical-stretch: 0;
                         Button {
-                            text: Terms.operation-undo-remove;
+                            text: Actions.undo-remove.label;
                             horizontal-stretch: 0;
-                            enabled: root.can-restore-component;
+                            enabled: Actions.undo-remove.enabled;
                             accessible-description: root.removed-component + " " + root.add-reason;
                             triggered => { root.restore-component(root.document); }
                         }
@@ -189,19 +190,19 @@ export component WorkbenchPane inherits Rectangle {
                             spacing: 6px;
                             vertical-stretch: 0;
                             Row {
-                                if row.routing-editable: Text { text: Terms.caption-ears; vertical-alignment: center; }
+                                if row.routing-editable: Text { text: ViewCaptions.caption-ears; vertical-alignment: center; }
                                 if row.routing-editable: ComboBox { enabled: root.can-edit; model: root.ears-choices; current-index: row.ears; accessible-label: row.name + Terms.caption-ears-suffix; selected(value) => { root.set-ears(row.key, self.current-index); } }
                                 Rectangle { horizontal-stretch: 1; }
                             }
                             Row {
-                                if row.carrier >= 0: Text { text: Terms.caption-carrier; vertical-alignment: center; }
+                                if row.carrier >= 0: Text { text: ViewCaptions.caption-carrier; vertical-alignment: center; }
                                 if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.carrier-choices; current-index: row.carrier; accessible-label: row.name + Terms.caption-carrier-suffix; selected(value) => { root.set-carrier(row.key, self.current-index); } }
                             }
                             Row {
-                                if row.carrier >= 0: Text { text: Terms.caption-modulation; vertical-alignment: center; }
+                                if row.carrier >= 0: Text { text: ViewCaptions.caption-modulation; vertical-alignment: center; }
                                 if row.carrier >= 0: ComboBox { enabled: root.can-edit; model: root.modulation-choices; current-index: row.modulation; accessible-label: row.name + Terms.caption-modulation-suffix; selected(value) => { root.set-modulation(row.key, self.current-index); } }
                             }
-                            Row { Button { col:1; text: Terms.operation-remove-component; enabled: root.can-edit; accessible-label: (Terms.operation-remove-component + " ") + row.name; triggered => { root.remove-component(row.key); } } }
+                            Row { Button { col:1; text: Actions.remove-component.label; enabled: Actions.remove-component.enabled; accessible-label: (Actions.remove-component.label + " ") + row.name; triggered => { root.remove-component(row.key); } } }
                         }
                         for parameter in row.parameters: ParameterControl {
                             parameter: parameter;
@@ -211,10 +212,10 @@ export component WorkbenchPane inherits Rectangle {
                             ui-size: root.ui-size;
                             edit-enabled: root.can-edit;
                             edits-suspended: root.edits-suspended;
-                            stage(owner, key, value) => { root.stage-parameter(owner, key, value); }
-                            commit(owner, key, value) => { root.commit-parameter(owner, key, value); }
-                            restore(owner, key) => { root.restore-parameter(owner, key); }
-                            slide(owner, key, value) => { root.slide(owner, key, value); }
+                            stage(owner, value) => { root.stage-parameter(owner, value); }
+                            commit(owner, value) => { root.commit-parameter(owner, value); }
+                            restore(owner) => { root.restore-parameter(owner); }
+                            slide(owner, value) => { root.slide(owner, value); }
                         }
                         if row.error != "": Text {min-width:0px;
                             text: row.error;
@@ -234,13 +235,13 @@ export component WorkbenchPane inherits Rectangle {
                         vertical-stretch:0;
                         Text {text:root.draft-location-details;min-width:0px;wrap:word-wrap;vertical-stretch:0;}
 
-                        Button {text:(Terms.operation-export-recipe + "…");enabled:root.can-export-recipe;triggered =>{root.export-recipe();}}
+                        Button {text:(Actions.export-recipe.label + "…");enabled: Actions.export-recipe.enabled;triggered =>{root.export-recipe();}}
 
                         HorizontalLayout {
                             Button {
                                 horizontal-stretch:0;
-                                text:(Terms.operation-export + "…");
-                                enabled:root.can-export;
+                                text:(Actions.export.label + "…");
+                                enabled: Actions.export.enabled;
                                 accessible-description:root.export-reason;
                                 triggered => {
                                     root.export-wav();
@@ -249,7 +250,7 @@ export component WorkbenchPane inherits Rectangle {
                             Rectangle {}
                         }
                         if !root.can-export && root.export-reason != "": Text {min-width:0px;text:root.export-reason;wrap:word-wrap;vertical-stretch:0;}
-                        Disclosure {label:Terms.caption-sound-notes;expanded <=> root.notes;}
+                        Disclosure {label:ViewCaptions.caption-sound-notes;expanded <=> root.notes;}
                         if root.notes: VerticalBox {
                             vertical-stretch:0;
                             if root.based-on != "": Text {min-width:0px;
@@ -268,16 +269,15 @@ export component WorkbenchPane inherits Rectangle {
                                 vertical-stretch:0;
                             }
                             NotesField {
-                                key: MetadataKey.summary;
                                 field: root.summary-field;
-                                binding: root.document;
+
                                 reset-key:root.document-reset;
                                 enabled:root.can-edit;
                                 edits-suspended:root.edits-suspended;
                                 accessible-label:Terms.caption-custom-recipe-notes;
-                                stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
-                                commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
-                                restore-field(owner, key) => { root.restore-metadata(owner, key); }
+                                stage-field(owner, value) => { root.stage-metadata(owner, value); }
+                                commit-field(owner, value) => { root.commit-metadata(owner, value); }
+                                restore-field(owner) => { root.restore-metadata(owner); }
                             }
                         }
                         Disclosure {label:Terms.action-saved-audio-duration-fades-and-export-rate;expanded <=> root.saved-audio;}
@@ -296,36 +296,34 @@ export component WorkbenchPane inherits Rectangle {
                                     vertical-alignment:center;
                                 }
                                 MetadataField {
-                                    key: MetadataKey.duration;
                                     field: root.duration-field;
-                                    binding: root.document;
+
                                     reset-key:root.document-reset;
                                     enabled:root.can-edit;
                                     edits-suspended:root.edits-suspended;
                                     accessible-label:Terms.action-saved-duration;
                                     horizontal-stretch:0;
                                     preferred-width:root.ui-size*10;
-                                    stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
-                                    commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
-                                    restore-field(owner, key) => { root.restore-metadata(owner, key); }
+                                    stage-field(owner, value) => { root.stage-metadata(owner, value); }
+                                    commit-field(owner, value) => { root.commit-metadata(owner, value); }
+                                    restore-field(owner) => { root.restore-metadata(owner); }
                                 }
                                 Text {
                                     text:root.fade-field.label;
                                     vertical-alignment:center;
                                 }
                                 MetadataField {
-                                    key: MetadataKey.fade;
                                     field: root.fade-field;
-                                    binding: root.document;
+
                                     reset-key:root.document-reset;
                                     enabled:root.can-edit;
                                     edits-suspended:root.edits-suspended;
                                     accessible-label:Terms.action-saved-fade;
                                     horizontal-stretch:0;
                                     preferred-width:root.ui-size*10;
-                                    stage-field(owner, key, value) => { root.stage-metadata(owner, key, value); }
-                                    commit-field(owner, key, value) => { root.commit-metadata(owner, key, value); }
-                                    restore-field(owner, key) => { root.restore-metadata(owner, key); }
+                                    stage-field(owner, value) => { root.stage-metadata(owner, value); }
+                                    commit-field(owner, value) => { root.commit-metadata(owner, value); }
+                                    restore-field(owner) => { root.restore-metadata(owner); }
                                 }
                                 Rectangle {}
                             }
@@ -347,5 +345,5 @@ export component WorkbenchPane inherits Rectangle {
                     }
                 }
 
-            
+
 }

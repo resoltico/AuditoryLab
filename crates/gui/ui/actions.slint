@@ -1,0 +1,39 @@
+export struct Action { label: string, enabled: bool }
+export global Actions {
+    in-out property <Action> list;
+    in-out property <Action> list-trash;
+    in-out property <Action> describe;
+    in-out property <Action> inspect;
+    in-out property <Action> recipe;
+    in-out property <Action> export;
+    in-out property <Action> play;
+    in-out property <Action> stop;
+    in-out property <Action> library-path;
+    in-out property <Action> library-init;
+    in-out property <Action> library-add;
+    in-out property <Action> library-update;
+    in-out property <Action> library-rename;
+    in-out property <Action> library-trash;
+    in-out property <Action> library-restore;
+    in-out property <Action> library-purge;
+    in-out property <Action> library-check;
+    in-out property <Action> library-refresh;
+    in-out property <Action> library-read;
+    in-out property <Action> new-sound;
+    in-out property <Action> edit-copy;
+    in-out property <Action> save;
+    in-out property <Action> save-copy;
+    in-out property <Action> open-recipe;
+    in-out property <Action> export-recipe;
+    in-out property <Action> stop-current-and-play-recipe;
+    in-out property <Action> play-selected-sound;
+    in-out property <Action> play-live;
+    in-out property <Action> edit-saved-recipe;
+    in-out property <Action> edit-external-file;
+    in-out property <Action> close-open-file;
+    in-out property <Action> show-saved;
+    in-out property <Action> cancel-export;
+    in-out property <Action> add-component;
+    in-out property <Action> undo-remove;
+    in-out property <Action> remove-component;
+}

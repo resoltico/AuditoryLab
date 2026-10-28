@@ -71,7 +71,12 @@ fn platform_modifiers_drive_text_shortcuts() {
 fn monitor_drawer_and_focused_window_layout() {
     let auxiliary_constraints = install();
     let ui = MainWindow::new().unwrap();
+    crate::adapter::project_captions(
+        ui.global::<crate::generated::ViewCaptions>(),
+        auditorylab_app::vocabulary::EditorStatus::UnmodifiedDraft,
+    );
     crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
+    ui.set_can_change_waveform(true);
     ui.set_monitor_open(true);
     ui.set_ui_family(typography::resolve().family.into());
     ui.show().unwrap();
@@ -143,6 +148,7 @@ fn assert_monitor_layout_survives_warning_changes(ui: &MainWindow) {
         let _ = ui.get_drawer_fits();
         slint::platform::update_timers_and_animations();
     }
+    ui.set_can_change_waveform(true);
     ui.set_monitor_open(true);
     ui.set_motion_reason("System motion preference permits live drawing.".into());
     ui.invoke_resize_monitor(270.0);
@@ -338,9 +344,14 @@ fn assert_monitor_lane_geometry(
             "both ears must retain the same plot origin, time scale, and amplitude height"
         );
     }
+    ui.set_can_change_waveform(true);
     ui.set_monitor_open(true);
     ui.invoke_resize_monitor(270.0);
     let window = MonitorWindow::new().unwrap();
+    crate::adapter::project_captions(
+        window.global::<crate::generated::ViewCaptions>(),
+        auditorylab_app::vocabulary::EditorStatus::UnmodifiedDraft,
+    );
     window.set_ui_family(ui.get_ui_family());
     let mut drawer_cases = 0;
     for size in [40.0, 32.666_668, 26.0, 13.0] {
@@ -362,6 +373,7 @@ fn assert_monitor_lane_geometry(
                 data.state = state.into();
                 data.age = "Current session receipt 123456 milliseconds ago; full receipt provenance remains accessible".into();
                 data.held = state == "Held";
+                data.settingsenabled = state != "Held";
                 data.overridden = true;
                 data.motion = "System Reduce Motion is enabled: display held by default.".into();
                 data.backendwarning = "Backend-reported output underruns: 8 · see details.".into();
@@ -724,6 +736,10 @@ fn assert_monitor_warning_accessibility(ui: &MainWindow) {
         WindowInner::from_pub(window).draw_contents(|_, _| ());
     }
     let window = MonitorWindow::new().unwrap();
+    crate::adapter::project_captions(
+        window.global::<crate::generated::ViewCaptions>(),
+        auditorylab_app::vocabulary::EditorStatus::UnmodifiedDraft,
+    );
     window.show().unwrap();
     window
         .window()
@@ -1001,6 +1017,15 @@ fn assert_audio_controls_keep_stop_visible(
     let controls = AudioControlsWindow::new().unwrap();
     controls.set_ui_family(typography::resolve().family.into());
     controls.set_active(true);
+    controls
+        .global::<crate::generated::Actions>()
+        .set_stop(crate::generated::Action {
+            label: auditorylab_presentation::workspace_text::operation_label(
+                auditorylab_app::vocabulary::Operation::Stop,
+            )
+            .into(),
+            enabled: true,
+        });
     controls.set_elapsed("59:59:59 / 99:59:59".into());
     let stops = Rc::new(Cell::new(0));
     let calls = stops.clone();
@@ -1067,6 +1092,10 @@ fn transport_controls_keep_their_geometry_while_labels_and_clock_change() {
     use slint::{Model, VecModel};
     install();
     let ui = MainWindow::new().unwrap();
+    crate::adapter::project_captions(
+        ui.global::<crate::generated::ViewCaptions>(),
+        auditorylab_app::vocabulary::EditorStatus::UnmodifiedDraft,
+    );
     crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.set_ui_family(typography::resolve().family.into());
     ui.set_transport_labels(slint::ModelRc::new(VecModel::from(
@@ -1167,9 +1196,21 @@ fn exposed_bounds(window: &slint::Window, label: &str) -> (f32, f32, f32, f32) {
 fn a_finished_export_leaves_no_control_under_cancel_export() {
     install();
     let ui = MainWindow::new().unwrap();
+    crate::adapter::project_captions(
+        ui.global::<crate::generated::ViewCaptions>(),
+        auditorylab_app::vocabulary::EditorStatus::UnmodifiedDraft,
+    );
     crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.set_status("Exporting WAV".into());
     ui.set_exporting(true);
+    ui.global::<crate::generated::Actions>()
+        .set_cancel_export(crate::generated::Action {
+            label: auditorylab_presentation::workspace_text::operation_label(
+                auditorylab_app::vocabulary::Operation::CancelExport,
+            )
+            .into(),
+            enabled: true,
+        });
     ui.show().unwrap();
     ui.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
     crate::test_platform::settle(ui.window());
@@ -1193,6 +1234,10 @@ fn a_finished_export_leaves_no_control_under_cancel_export() {
 fn absent_recipe_texts_leave_no_gap() {
     install();
     let ui = MainWindow::new().unwrap();
+    crate::adapter::project_captions(
+        ui.global::<crate::generated::ViewCaptions>(),
+        auditorylab_app::vocabulary::EditorStatus::UnmodifiedDraft,
+    );
     crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.set_has_results(true);
     ui.set_sound_title("Title".into());
@@ -1269,6 +1314,10 @@ fn unbreakable_text_never_widens_the_documents() {
     use std::ops::ControlFlow;
     install();
     let ui = MainWindow::new().unwrap();
+    crate::adapter::project_captions(
+        ui.global::<crate::generated::ViewCaptions>(),
+        auditorylab_app::vocabulary::EditorStatus::UnmodifiedDraft,
+    );
     crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.show().unwrap();
     ui.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
@@ -1387,6 +1436,10 @@ fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_sc
 fn incomplete_filtered_count_header_fits_large_text_in_compact_window() {
     install();
     let ui = MainWindow::new().unwrap();
+    crate::adapter::project_captions(
+        ui.global::<crate::generated::ViewCaptions>(),
+        auditorylab_app::vocabulary::EditorStatus::UnmodifiedDraft,
+    );
     crate::native_text::initialize_identity(ui.global::<crate::generated::Terms>());
     ui.set_ui_family(typography::resolve().family.into());
     ui.set_ui_size(26.0);
@@ -1406,4 +1459,18 @@ fn incomplete_filtered_count_header_fits_large_text_in_compact_window() {
             "count and disclosure must fit: {label}: {x} {y} {width} {height}"
         );
     }
+}
+
+#[test]
+fn first_show_projects_nonempty_operation_labels_and_accessible_names() {
+    let harness = crate::adapter_tests::Harness::with_catalog(
+        Vec::new(),
+        auditorylab_app::workspace::Capabilities::no_device_playback(),
+    );
+    let ui = &harness.windows.main;
+    let actions = ui.global::<crate::generated::Actions>();
+    assert_eq!(actions.get_open_recipe().label, "Open Recipe");
+    assert_eq!(actions.get_new_sound().label, "New Sound");
+    assert_eq!(actions.get_save().label, "Save sound");
+    assert!(exposed_bounds(ui.window(), "Open Recipe…").2 > 0.0);
 }

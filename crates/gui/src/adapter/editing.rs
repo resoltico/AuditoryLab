@@ -10,9 +10,9 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         }
     };
     let w = with.clone();
-    ui.on_stage_parameter(move |binding, key, text| {
+    ui.on_stage_parameter(move |binding, text| {
         w(&|a| {
-            if let Some(handle) = parameter_handle(&binding, key) {
+            if let Some(handle) = binding.parse::<FieldHandle>().ok() {
                 a.command(|w| {
                     w.apply(Command::Editor(EditorCommand::Stage {
                         field: handle,
@@ -23,9 +23,9 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         });
     });
     let w = with.clone();
-    ui.on_commit_parameter(move |binding, key, text| {
+    ui.on_commit_parameter(move |binding, text| {
         w(&|a| {
-            if let Some(handle) = parameter_handle(&binding, key) {
+            if let Some(handle) = binding.parse::<FieldHandle>().ok() {
                 a.command(|w| {
                     w.apply(Command::Editor(EditorCommand::CommitField {
                         field: handle,
@@ -36,17 +36,17 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         });
     });
     let w = with.clone();
-    ui.on_restore_parameter(move |binding, key| {
+    ui.on_restore_parameter(move |binding| {
         w(&|a| {
-            if let Some(handle) = parameter_handle(&binding, key) {
+            if let Some(handle) = binding.parse::<FieldHandle>().ok() {
                 a.command(|w| w.apply(Command::Editor(EditorCommand::Restore(handle))));
             }
         });
     });
     let w = with.clone();
-    ui.on_slide(move |binding, key, position| {
+    ui.on_slide(move |binding, position| {
         w(&|a| {
-            if let Some(handle) = parameter_handle(&binding, key) {
+            if let Some(handle) = binding.parse::<FieldHandle>().ok() {
                 a.command(|w| {
                     w.apply(Command::Editor(EditorCommand::Slide {
                         field: handle,
@@ -57,9 +57,9 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         });
     });
     let w = with.clone();
-    ui.on_stage_metadata(move |binding, key, text| {
+    ui.on_stage_metadata(move |binding, text| {
         w(&|a| {
-            if let Some(handle) = metadata_handle(&binding, key) {
+            if let Some(handle) = binding.parse::<FieldHandle>().ok() {
                 a.command(|w| {
                     w.apply(Command::Editor(EditorCommand::Stage {
                         field: handle,
@@ -70,9 +70,9 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         });
     });
     let w = with.clone();
-    ui.on_commit_metadata(move |binding, key, text| {
+    ui.on_commit_metadata(move |binding, text| {
         w(&|a| {
-            if let Some(handle) = metadata_handle(&binding, key) {
+            if let Some(handle) = binding.parse::<FieldHandle>().ok() {
                 a.command(|w| {
                     w.apply(Command::Editor(EditorCommand::CommitField {
                         field: handle,
@@ -83,9 +83,9 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         });
     });
     let w = with.clone();
-    ui.on_restore_metadata(move |binding, key| {
+    ui.on_restore_metadata(move |binding| {
         w(&|a| {
-            if let Some(handle) = metadata_handle(&binding, key) {
+            if let Some(handle) = binding.parse::<FieldHandle>().ok() {
                 a.command(|w| w.apply(Command::Editor(EditorCommand::Restore(handle))));
             }
         });
@@ -93,31 +93,31 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     let w = with.clone();
     ui.on_set_ears(move |binding, index| {
         w(&|a| {
-            if let (Ok(row), Some(ears)) = (binding.parse::<RowKey>(), choice(&Ears::ALL, index)) {
-                a.command(|w| w.apply(Command::Editor(EditorCommand::SetEars { row, ears })));
-            }
+            a.choose_control(
+                auditorylab_app::workspace::ControlMenu::Ears,
+                Some(&binding),
+                index,
+            )
         });
     });
     let w = with.clone();
     ui.on_set_carrier(move |binding, index| {
         w(&|a| {
-            if let (Ok(row), Some(kind)) =
-                (binding.parse::<RowKey>(), choice(&CarrierKind::ALL, index))
-            {
-                a.command(|w| w.apply(Command::Editor(EditorCommand::SetCarrier { row, kind })));
-            }
+            a.choose_control(
+                auditorylab_app::workspace::ControlMenu::Carrier,
+                Some(&binding),
+                index,
+            )
         });
     });
     let w = with.clone();
     ui.on_set_modulation(move |binding, index| {
         w(&|a| {
-            let kind = choice(
-                &auditorylab_app::workspace::controls::modulation_choices(),
+            a.choose_control(
+                auditorylab_app::workspace::ControlMenu::Modulation,
+                Some(&binding),
                 index,
-            );
-            if let (Ok(row), Some(kind)) = (binding.parse::<RowKey>(), kind) {
-                a.command(|w| w.apply(Command::Editor(EditorCommand::SetModulation { row, kind })));
-            }
+            )
         });
     });
     let w = with.clone();
@@ -139,35 +139,11 @@ pub(super) fn install_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     let w = with;
     ui.on_add_component(move |binding, index| {
         w(&|a| {
-            let Ok(row) = binding.parse::<RowKey>() else {
-                return;
-            };
-            match index {
-                0 | 1 => {
-                    if let Some(kind) = choice(&CarrierKind::ALL, index) {
-                        a.command(|w| {
-                            w.apply(Command::Editor(EditorCommand::AddComponent { row, kind }))
-                        });
-                    }
-                }
-                2 => {
-                    a.command(|w| {
-                        w.apply(Command::Editor(EditorCommand::AddPair {
-                            row,
-                            kind: auditorylab_app::core::PairKind::Binaural,
-                        }))
-                    });
-                }
-                3 => {
-                    a.command(|w| {
-                        w.apply(Command::Editor(EditorCommand::AddPair {
-                            row,
-                            kind: auditorylab_app::core::PairKind::Monaural,
-                        }))
-                    });
-                }
-                _ => {}
-            }
+            a.choose_control(
+                auditorylab_app::workspace::ControlMenu::AddComponent,
+                Some(&binding),
+                index,
+            )
         });
     });
 }

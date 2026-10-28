@@ -164,9 +164,11 @@ pub(super) fn install_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         });
     });
     on!(on_rate_changed, |a, index| {
-        if let Some(rate) = choice(&Workspace::export_rates(), index) {
-            a.command(|w| w.apply(Command::Editor(EditorCommand::SetExportRate(rate))));
-        }
+        a.choose_control(
+            auditorylab_app::workspace::ControlMenu::ExportRate,
+            None,
+            index,
+        );
     });
     on!(on_play_stop, |a| a
         .command(|w| w.apply(Command::Audio(AudioCommand::Toggle))));

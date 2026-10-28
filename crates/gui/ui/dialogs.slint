@@ -1,10 +1,13 @@
+import { ControlOption } from "models.slint";
+import { ViewCaptions } from "view-captions.slint";
+import { Actions } from "actions.slint";
 import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
 import { Palette, ComboBox, TextEdit, LineEdit, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
 import { Disclosure } from "editor.slint";
 
 export component Dialogs inherits Rectangle {
-    in property <[string]> add-choices;
+    in property <[ControlOption]> add-choices;
     in property <string> add-binaural-label;
     in property <string> add-monaural-label;
     callback add-component(string, int);
@@ -82,10 +85,10 @@ export component Dialogs inherits Rectangle {
             key-pressed(event)=>{if event.text==Key.Escape {query-popup.close();return accept;}return reject;}
             VerticalLayout {padding:12px;spacing:8px;
                 HorizontalBox {padding:0px;vertical-stretch:0;
-                    Text {text:Terms.facet-applied-library-filters;font-weight:600;horizontal-stretch:1;}
+                    Text {text:ViewCaptions.facet-applied-library-filters;font-weight:600;horizontal-stretch:1;}
                     Button {text:Terms.action-close;triggered =>{query-popup.close();}}
                 }
-                TextEdit {text:root.library-count;read-only:true;wrap:word-wrap;min-width:0px;accessible-label:Terms.caption-committed-library-query;}
+                TextEdit {text:root.library-count;read-only:true;wrap:word-wrap;min-width:0px;accessible-label:ViewCaptions.caption-committed-library-query;}
             }
         }
     }
@@ -108,22 +111,22 @@ export component Dialogs inherits Rectangle {
                     accessible-role:groupbox;
                     accessible-label:Terms.caption-library-filters;
                     VerticalBox {width:filter-scroll.visible-width;
-                        if root.compact: Text {text:Terms.caption-structural-method;vertical-stretch:0;}
-                        if root.compact: ComboBox {model:root.method-labels;current-index <=> root.method-choice;accessible-label:Terms.caption-structural-method;selected(value)=>{root.rhythm-filter(root.band-choice,root.method-choice);}}
+                        if root.compact: Text {text:ViewCaptions.caption-structural-method;vertical-stretch:0;}
+                        if root.compact: ComboBox {model:root.method-labels;current-index <=> root.method-choice;accessible-label:ViewCaptions.caption-structural-method;selected(value)=>{root.rhythm-filter(root.band-choice,root.method-choice);}}
 
                             Text {text:root.calendar-context;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                            LineEdit {text <=> root.study-query;placeholder-text:Terms.caption-study-doi-or-key-source;accessible-label:Terms.facet-study-evidence-filter;}
-                            ComboBox {model:root.population-labels;current-index <=> root.population-choice;accessible-label:Terms.facet-population-evidence-filter;}
-                            ComboBox {model:root.role-labels;current-index <=> root.role-choice;accessible-label:Terms.facet-condition-role-evidence-filter;}
-                            ComboBox {model:root.analysis-labels;current-index <=> root.analysis-choice;accessible-label:Terms.facet-nominal-analysis-coverage;}
-                            ComboBox {model:root.direction-labels;current-index <=> root.direction-choice;accessible-label:Terms.facet-sort-direction;}
-                            ComboBox {model:root.group-labels;current-index <=> root.group-choice;accessible-label:Terms.facet-library-result-grouping;}
-                            LineEdit {text <=> root.created-from;placeholder-text:Terms.caption-created-from-yyyy-mm-dd;accessible-label:Terms.facet-created-from-local-calendar-date;}
-                            LineEdit {text <=> root.created-through;placeholder-text:Terms.caption-created-through-yyyy-mm-dd;accessible-label:Terms.facet-created-through-inclusive-local-calendar-date;}
-                            LineEdit {text <=> root.modified-from;placeholder-text:Terms.caption-modified-from-yyyy-mm-dd;accessible-label:Terms.facet-modified-from-local-calendar-date;}
-                            LineEdit {text <=> root.modified-through;placeholder-text:Terms.caption-modified-through-yyyy-mm-dd;accessible-label:Terms.facet-modified-through-inclusive-local-calendar-date;}
-                            LineEdit {text <=> root.added-from;placeholder-text:Terms.facet-added-here-from-yyyy-mm-dd;accessible-label:Terms.facet-added-here-from-local-calendar-date;}
-                            LineEdit {text <=> root.added-through;placeholder-text:Terms.facet-added-here-through-yyyy-mm-dd;accessible-label:Terms.facet-added-here-through-inclusive-local-calendar-date;}
+                            LineEdit {text <=> root.study-query;placeholder-text:ViewCaptions.caption-study-doi-or-key-source;accessible-label:ViewCaptions.facet-study-evidence-filter;}
+                            ComboBox {model:root.population-labels;current-index <=> root.population-choice;accessible-label:ViewCaptions.facet-population-evidence-filter;}
+                            ComboBox {model:root.role-labels;current-index <=> root.role-choice;accessible-label:ViewCaptions.facet-condition-role-evidence-filter;}
+                            ComboBox {model:root.analysis-labels;current-index <=> root.analysis-choice;accessible-label:ViewCaptions.facet-nominal-analysis-coverage;}
+                            ComboBox {model:root.direction-labels;current-index <=> root.direction-choice;accessible-label:ViewCaptions.facet-sort-direction;}
+                            ComboBox {model:root.group-labels;current-index <=> root.group-choice;accessible-label:ViewCaptions.facet-library-result-grouping;}
+                            LineEdit {text <=> root.created-from;placeholder-text:ViewCaptions.caption-created-from-yyyy-mm-dd;accessible-label:ViewCaptions.facet-created-from-local-calendar-date;}
+                            LineEdit {text <=> root.created-through;placeholder-text:ViewCaptions.caption-created-through-yyyy-mm-dd;accessible-label:ViewCaptions.facet-created-through-inclusive-local-calendar-date;}
+                            LineEdit {text <=> root.modified-from;placeholder-text:ViewCaptions.caption-modified-from-yyyy-mm-dd;accessible-label:ViewCaptions.facet-modified-from-local-calendar-date;}
+                            LineEdit {text <=> root.modified-through;placeholder-text:ViewCaptions.caption-modified-through-yyyy-mm-dd;accessible-label:ViewCaptions.facet-modified-through-inclusive-local-calendar-date;}
+                            LineEdit {text <=> root.added-from;placeholder-text:ViewCaptions.facet-added-here-from-yyyy-mm-dd;accessible-label:ViewCaptions.facet-added-here-from-local-calendar-date;}
+                            LineEdit {text <=> root.added-through;placeholder-text:ViewCaptions.facet-added-here-through-yyyy-mm-dd;accessible-label:ViewCaptions.facet-added-here-through-inclusive-local-calendar-date;}
 
 
                         if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
@@ -147,14 +150,14 @@ export component Dialogs inherits Rectangle {
                 width:options-scroll.visible-width;
                 Text {text:Terms.caption-library-options;font-weight:600;vertical-stretch:0;}
                 if root.compact: ComboBox {model:root.sort-labels;current-index <=> root.sort-choice;accessible-label:Terms.facet-sort-library;selected(value)=>{root.collection-filter(root.collection-choice,root.sort-choice);}}
-                Button {text:(Terms.operation-open-recipe + "…");enabled:root.can-import;triggered =>{root.open-recipe();library-options.close();}}
-                Button {text:Terms.operation-library-refresh;triggered =>{root.refresh-library();}}
-                Button {text:Terms.operation-show-saved;triggered =>{root.show-saved();library-options.close();}}
+                Button {text:(Actions.open-recipe.label + "…");enabled: Actions.open-recipe.enabled;triggered =>{root.open-recipe();library-options.close();}}
+                Button { enabled: Actions.library-refresh.enabled;text:Actions.library-refresh.label;triggered =>{root.refresh-library();}}
+                Button { enabled: Actions.show-saved.enabled;text:Actions.show-saved.label;triggered =>{root.show-saved();library-options.close();}}
                 Button {text:Terms.action-reset-sort;triggered =>{root.reset-library-sort();}}
                 Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
                 Disclosure {label:Terms.caption-library-storage-and-recovery;expanded <=> root.storage-open;}
                 if root.storage-open: Text {text:root.library-status;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                if root.storage-open: Button {enabled:root.can-manage-library;text:Terms.operation-library-init;triggered =>{root.initialize-library();}}
+                if root.storage-open: Button {enabled: Actions.library-init.enabled;text:Actions.library-init.label;triggered =>{root.initialize-library();}}
                 Button {text:Terms.action-close;triggered =>{library-options.close();}}
             }}
         }
@@ -167,9 +170,7 @@ export component Dialogs inherits Rectangle {
         FocusScope {
             key-pressed(event)=>{if event.text==Key.Escape {component-menu.close();return accept;}return reject;}
             VerticalBox {
-                for label[index] in root.add-choices: Button {text:label;enabled:root.can-add-component;accessible-description:root.add-reason;triggered =>{root.add-component(root.component-menu-document,index);component-menu.close();}}
-                Button {text:root.add-binaural-label;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,2);component-menu.close();}}
-                Button {text:root.add-monaural-label;enabled:root.can-add-pair;accessible-description:root.pair-add-reason;triggered =>{root.add-component(root.component-menu-document,3);component-menu.close();}}
+                for label[index] in root.add-choices: Button {text:label.label;enabled:label.enabled;accessible-description:root.add-reason;triggered =>{root.add-component(root.component-menu-document,index);component-menu.close();}}
                 Button {text:Terms.action-close;triggered =>{component-menu.close();}}
             }
         }

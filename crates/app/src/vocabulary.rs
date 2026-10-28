@@ -243,3 +243,180 @@ mod tests {
     macro_rules! checks {($($test:ident:$kind:ty),* $(,)?)=>{$(#[test] fn $test(){check::<$kind>();})*};}
     vocabularies!(checks);
 }
+
+/// Captions for application views, independent of a desktop widget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewCaption {
+    AddedHereThroughInclusiveLocalCalendarDate,
+    AddedHereThroughYyyyMmDd,
+    AddedHereFromLocalCalendarDate,
+    AddedHereFromYyyyMmDd,
+    ExportSampleRate,
+    AppliedLibraryFiltersPrefix,
+    AppliedLibraryFilters,
+    StudyEvidenceFilter,
+    PopulationEvidenceFilter,
+    ConditionRoleEvidenceFilter,
+    NominalAnalysisCoverage,
+    SortDirection,
+    LibraryResultGrouping,
+    CreatedFromLocalCalendarDate,
+    CreatedThroughInclusiveLocalCalendarDate,
+    ModifiedFromLocalCalendarDate,
+    ModifiedThroughInclusiveLocalCalendarDate,
+    ExactUtcDates,
+    ExactUtcRecipeAndMembershipDates,
+    Library,
+    PlaybackTransport,
+    CommittedLibraryQuery,
+    Collections,
+    DatesIdentity,
+    SoundFacts,
+    OutputMonitor,
+    Left,
+    Right,
+    CapturedEnd,
+    WaveformTimeWindow,
+    WaveformAmplitudeScale,
+    WavExportProgress,
+    LibraryCollection,
+    NominalRhythmReferenceBand,
+    StructuralMethod,
+    StudyDoiOrKeySource,
+    CreatedFromYyyyMmDd,
+    CreatedThroughYyyyMmDd,
+    ModifiedFromYyyyMmDd,
+    ModifiedThroughYyyyMmDd,
+    Workbench,
+    SoundTitle,
+    Ears,
+    Carrier,
+    Modulation,
+    SoundNotes,
+    AudioDetails,
+}
+impl ViewCaption {
+    pub const VALUES: &[Self] = &[
+        Self::AddedHereThroughInclusiveLocalCalendarDate,
+        Self::AddedHereThroughYyyyMmDd,
+        Self::AddedHereFromLocalCalendarDate,
+        Self::AddedHereFromYyyyMmDd,
+        Self::ExportSampleRate,
+        Self::AppliedLibraryFiltersPrefix,
+        Self::AppliedLibraryFilters,
+        Self::StudyEvidenceFilter,
+        Self::PopulationEvidenceFilter,
+        Self::ConditionRoleEvidenceFilter,
+        Self::NominalAnalysisCoverage,
+        Self::SortDirection,
+        Self::LibraryResultGrouping,
+        Self::CreatedFromLocalCalendarDate,
+        Self::CreatedThroughInclusiveLocalCalendarDate,
+        Self::ModifiedFromLocalCalendarDate,
+        Self::ModifiedThroughInclusiveLocalCalendarDate,
+        Self::ExactUtcDates,
+        Self::ExactUtcRecipeAndMembershipDates,
+        Self::Library,
+        Self::PlaybackTransport,
+        Self::CommittedLibraryQuery,
+        Self::Collections,
+        Self::DatesIdentity,
+        Self::SoundFacts,
+        Self::OutputMonitor,
+        Self::Left,
+        Self::Right,
+        Self::CapturedEnd,
+        Self::WaveformTimeWindow,
+        Self::WaveformAmplitudeScale,
+        Self::WavExportProgress,
+        Self::LibraryCollection,
+        Self::NominalRhythmReferenceBand,
+        Self::StructuralMethod,
+        Self::StudyDoiOrKeySource,
+        Self::CreatedFromYyyyMmDd,
+        Self::CreatedThroughYyyyMmDd,
+        Self::ModifiedFromYyyyMmDd,
+        Self::ModifiedThroughYyyyMmDd,
+        Self::Workbench,
+        Self::SoundTitle,
+        Self::Ears,
+        Self::Carrier,
+        Self::Modulation,
+        Self::SoundNotes,
+        Self::AudioDetails,
+    ];
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::AddedHereThroughInclusiveLocalCalendarDate => {
+                "Added here through inclusive local calendar date"
+            }
+            Self::AddedHereThroughYyyyMmDd => "Added here through YYYY-MM-DD",
+            Self::AddedHereFromLocalCalendarDate => "Added here from local calendar date",
+            Self::AddedHereFromYyyyMmDd => "Added here from YYYY-MM-DD",
+            Self::ExportSampleRate => "Export sample rate",
+            Self::AppliedLibraryFiltersPrefix => "Applied library filters · ",
+            Self::AppliedLibraryFilters => "Applied library filters",
+            Self::StudyEvidenceFilter => "Study evidence filter",
+            Self::PopulationEvidenceFilter => "Population evidence filter",
+            Self::ConditionRoleEvidenceFilter => "Condition role evidence filter",
+            Self::NominalAnalysisCoverage => "Nominal analysis coverage",
+            Self::SortDirection => "Sort direction",
+            Self::LibraryResultGrouping => "Library result grouping",
+            Self::CreatedFromLocalCalendarDate => "Created from local calendar date",
+            Self::CreatedThroughInclusiveLocalCalendarDate => {
+                "Created through inclusive local calendar date"
+            }
+            Self::ModifiedFromLocalCalendarDate => "Modified from local calendar date",
+            Self::ModifiedThroughInclusiveLocalCalendarDate => {
+                "Modified through inclusive local calendar date"
+            }
+            Self::ExactUtcDates => "Exact UTC dates",
+            Self::ExactUtcRecipeAndMembershipDates => "Exact UTC recipe and membership dates",
+            Self::Library => "Library",
+            Self::PlaybackTransport => "Playback transport",
+            Self::CommittedLibraryQuery => "Committed library query",
+            Self::Collections => "Collections",
+            Self::DatesIdentity => "Dates and identity",
+            Self::SoundFacts => auditorylab_core::vocabulary::SOUND.label,
+            Self::OutputMonitor => "Output monitor",
+            Self::Left => auditorylab_core::vocabulary::LEFT_CHANNEL.label,
+            Self::Right => auditorylab_core::vocabulary::RIGHT_CHANNEL.label,
+            Self::CapturedEnd => "Captured end",
+            Self::WaveformTimeWindow => "Waveform time window",
+            Self::WaveformAmplitudeScale => "Waveform amplitude scale",
+            Self::WavExportProgress => "WAV export progress",
+            Self::LibraryCollection => "Library collection",
+            Self::NominalRhythmReferenceBand => {
+                auditorylab_core::vocabulary::NOMINAL_RHYTHM_REFERENCE_BAND.label
+            }
+            Self::StructuralMethod => auditorylab_core::vocabulary::STRUCTURAL_METHOD.label,
+            Self::StudyDoiOrKeySource => "Study DOI or key:source",
+            Self::CreatedFromYyyyMmDd => "Created from YYYY-MM-DD",
+            Self::CreatedThroughYyyyMmDd => "Created through YYYY-MM-DD",
+            Self::ModifiedFromYyyyMmDd => "Modified from YYYY-MM-DD",
+            Self::ModifiedThroughYyyyMmDd => "Modified through YYYY-MM-DD",
+            Self::Workbench => "Workbench",
+            Self::SoundTitle => "Sound title",
+            Self::Ears => auditorylab_core::vocabulary::EARS.label,
+            Self::Carrier => auditorylab_core::vocabulary::CARRIER.label,
+            Self::Modulation => auditorylab_core::vocabulary::MODULATION.label,
+            Self::SoundNotes => "Sound notes",
+            Self::AudioDetails => "Audio details",
+        }
+    }
+}
+
+/// Whether the open document has unsaved content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditorStatus {
+    UnsavedChanges,
+    UnmodifiedDraft,
+}
+impl EditorStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::UnsavedChanges => "Unsaved changes",
+            Self::UnmodifiedDraft => "Unmodified draft",
+        }
+    }
+}

@@ -20,15 +20,16 @@ pub enum QueryFacet {
 }
 /// One offered semantic key and its current selection.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChoiceOption {
-    pub key: &'static str,
+pub struct ChoiceOption<K = &'static str> {
+    pub key: K,
     pub label: &'static str,
     pub selected: bool,
+    pub enabled: bool,
 }
 /// Runtime options; absence/automatic choices are ordinary keyed options.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChoiceView {
-    pub options: Vec<ChoiceOption>,
+pub struct ChoiceView<K = &'static str> {
+    pub options: Vec<ChoiceOption<K>>,
 }
 /// Native filter entry captured together before date/query validation.
 #[derive(Debug, Clone)]
@@ -49,6 +50,7 @@ impl Workspace {
                 key,
                 label,
                 selected,
+                enabled: true,
             })
         };
         macro_rules! values {
@@ -194,5 +196,194 @@ impl Workspace {
         };
         self.assign_facets(&mut query, input.facets)?;
         self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))
+    }
+}
+
+/// A menu whose values and selection are owned by the application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlMenu {
+    Ears,
+    Carrier,
+    Modulation,
+    AddComponent,
+    MonitorSpan,
+    WaveformScale,
+    ExportRate,
+}
+/// Typed payload retained in the table for one rendered menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlValue {
+    Ears(Ears),
+    Carrier(CarrierKind),
+    Modulation(Option<ModulationKind>),
+    AddCarrier(CarrierKind),
+    AddPair(crate::core::PairKind),
+    MonitorSpan(u32),
+    WaveformScale(crate::workspace::monitor::WaveformScale),
+    ExportRate(SampleRate),
+}
+/// An offered menu bound to an exact rendered document or component lifetime.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControlChoices {
+    pub menu: ControlMenu,
+    pub row: RowKey,
+    pub view: ChoiceView<ControlValue>,
+}
+impl Workspace {
+    /// Every menu, including its current selection and typed command payloads.
+    #[must_use]
+    pub fn control_choices(&self) -> Vec<ControlChoices> {
+        use ControlValue as V;
+        let document = self.editor.session.document_key();
+        let mut menus = Vec::new();
+        let mut add = |menu, row, values: Vec<(V, &'static str)>, selected: Option<V>| {
+            menus.push(ControlChoices {
+                menu,
+                row,
+                view: ChoiceView {
+                    options: values
+                        .into_iter()
+                        .map(|(key, label)| ChoiceOption {
+                            key,
+                            label,
+                            selected: selected == Some(key),
+                            enabled: match key {
+                                ControlValue::AddCarrier(kind) => {
+                                    self.component_add_admission(row, kind).is_ok()
+                                }
+                                ControlValue::AddPair(kind) => {
+                                    self.pair_add_admission(row, kind).is_ok()
+                                }
+                                ControlValue::MonitorSpan(_) | ControlValue::WaveformScale(_) => {
+                                    !self.audio.output.held()
+                                }
+                                _ => true,
+                            },
+                        })
+                        .collect(),
+                },
+            });
+        };
+        for component in self.editor.session.draft().components() {
+            let row = self
+                .editor
+                .session
+                .component_key(component.id)
+                .unwrap_or_else(|| unreachable!("component"));
+            add(
+                ControlMenu::Ears,
+                row,
+                Ears::ALL
+                    .into_iter()
+                    .map(|v| (V::Ears(v), v.label()))
+                    .collect(),
+                component.form.route().map(V::Ears),
+            );
+            add(
+                ControlMenu::Carrier,
+                row,
+                CarrierKind::ALL
+                    .into_iter()
+                    .map(|v| (V::Carrier(v), v.label()))
+                    .collect(),
+                component.form.primitive_kind().map(V::Carrier),
+            );
+            add(
+                ControlMenu::Modulation,
+                row,
+                controls::modulation_choices()
+                    .into_iter()
+                    .map(|v| {
+                        (
+                            V::Modulation(v),
+                            v.map_or(
+                                crate::core::vocabulary::NO_MODULATION.label,
+                                ModulationKind::label,
+                            ),
+                        )
+                    })
+                    .collect(),
+                Some(V::Modulation(component.form.modulation_kind())),
+            );
+        }
+        add(
+            ControlMenu::AddComponent,
+            document,
+            CarrierKind::ALL
+                .into_iter()
+                .map(|v| (V::AddCarrier(v), ""))
+                .chain(
+                    crate::core::PairKind::ALL
+                        .into_iter()
+                        .map(|v| (V::AddPair(v), "")),
+                )
+                .collect(),
+            None,
+        );
+        add(
+            ControlMenu::MonitorSpan,
+            document,
+            controls::MONITOR_SPANS_MS
+                .into_iter()
+                .map(|v| (V::MonitorSpan(v), ""))
+                .collect(),
+            Some(V::MonitorSpan(self.audio.output.span_ms())),
+        );
+        add(
+            ControlMenu::WaveformScale,
+            document,
+            crate::workspace::monitor::WaveformScale::ALL
+                .into_iter()
+                .map(|v| (V::WaveformScale(v), ""))
+                .collect(),
+            Some(V::WaveformScale(self.audio.output.scale())),
+        );
+        add(
+            ControlMenu::ExportRate,
+            document,
+            controls::EXPORT_RATES
+                .into_iter()
+                .map(|v| (V::ExportRate(v), ""))
+                .collect(),
+            Some(V::ExportRate(self.editor.export_rate)),
+        );
+        menus
+    }
+    pub(super) fn choose_control(
+        &mut self,
+        row: RowKey,
+        value: ControlValue,
+    ) -> Result<(), Refusal> {
+        if !self.control_choices().iter().any(|menu| {
+            menu.row == row
+                && menu
+                    .view
+                    .options
+                    .iter()
+                    .any(|o| o.key == value && o.enabled)
+        }) {
+            return Err(Refusal::SelectionChanged);
+        }
+        let command = match value {
+            ControlValue::Ears(ears) => Command::Editor(EditorCommand::SetEars { row, ears }),
+            ControlValue::Carrier(kind) => Command::Editor(EditorCommand::SetCarrier { row, kind }),
+            ControlValue::Modulation(kind) => {
+                Command::Editor(EditorCommand::SetModulation { row, kind })
+            }
+            ControlValue::AddCarrier(kind) => {
+                Command::Editor(EditorCommand::AddComponent { row, kind })
+            }
+            ControlValue::AddPair(kind) => Command::Editor(EditorCommand::AddPair { row, kind }),
+            ControlValue::ExportRate(rate) => Command::Editor(EditorCommand::SetExportRate(rate)),
+            ControlValue::MonitorSpan(span_ms) => Command::Output(OutputCommand::SetWaveform {
+                span_ms,
+                scale: self.audio.output.scale(),
+            }),
+            ControlValue::WaveformScale(scale) => Command::Output(OutputCommand::SetWaveform {
+                span_ms: self.audio.output.span_ms(),
+                scale,
+            }),
+        };
+        self.apply(command)
     }
 }

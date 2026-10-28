@@ -1,7 +1,8 @@
+import { ViewCaptions } from "view-captions.slint";
 import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
 import { Palette, LineEdit, TextEdit, Slider, HorizontalBox, VerticalBox, ComboBox } from "std-widgets.slint";
-import { ParameterKey, MetadataKey, ParameterRow, MetadataRow } from "models.slint";
+import { ParameterRow, MetadataRow } from "models.slint";
 // A compact disclosure: as wide as its label, aligned with the content it opens.
 export component Disclosure inherits Rectangle {
     in-out property <bool> expanded: false;
@@ -90,10 +91,10 @@ export component ParameterControl inherits VerticalBox {
     in property <length> ui-size:13px;
     in property <bool> edits-suspended:false;
     in property <bool> edit-enabled: true;
-    callback stage(string, ParameterKey, string);
-    callback commit(string, ParameterKey, string);
-    callback restore(string, ParameterKey);
-    callback slide(string, ParameterKey, float);
+    callback stage(string, string);
+    callback commit(string, string);
+    callback restore(string);
+    callback slide(string, float);
     padding: 0px;
     vertical-stretch: 0;
     HorizontalBox {
@@ -116,7 +117,7 @@ export component ParameterControl inherits VerticalBox {
         changed committed => { self.value = self.committed; }
         accessible-label: root.context+": "+root.parameter.label + Terms.caption-slider;
         changed(value) => {
-            root.slide(root.owner, root.parameter.key, value);
+            root.slide(root.parameter.key, value);
         }
     }
     Rectangle {
@@ -127,16 +128,16 @@ export component ParameterControl inherits VerticalBox {
     field := NumericField {
         width:parent.width;height:parent.height;
         enabled: root.edit-enabled;
-        binding: root.owner;
+        binding: root.parameter.key;
         display-text: root.parameter.text;
         edits-suspended:root.edits-suspended;
         staged:root.parameter.staged;
         horizontal-stretch: 0;
         accessible-label: root.context+": "+root.parameter.label;
         accessible-description: root.parameter.diagnostic != "" ? root.parameter.diagnostic : root.parameter.help;
-        restore(owner) => { root.restore(owner, root.parameter.key); }
-        stage(owner, value) => { root.stage(owner, root.parameter.key, value); }
-        commit(owner, value) => { root.commit(owner, root.parameter.key, value); }
+        restore(owner) => { root.restore(owner); }
+        stage(owner, value) => { root.stage(owner, value); }
+        commit(owner, value) => { root.commit(owner, value); }
     }
     if root.parameter.diagnostic != "": Rectangle {
         width:parent.width;height:parent.height;background:transparent;
@@ -206,29 +207,29 @@ export component NotesInput inherits TextEdit {
 }
 export component MetadataField inherits NumericField {
     in property <MetadataRow> field;
-    in property <MetadataKey> key;
-    callback stage-field(string, MetadataKey, string);
-    callback commit-field(string, MetadataKey, string);
-    callback restore-field(string, MetadataKey);
+    callback stage-field(string, string);
+    callback commit-field(string, string);
+    callback restore-field(string);
+    binding: root.field.key;
     display-text: root.field.text;
     staged: root.field.staged;
     accessible-description: root.field.diagnostic;
-    stage(owner, value) => { root.stage-field(owner, root.key, value); }
-    commit(owner, value) => { root.commit-field(owner, root.key, value); }
-    restore(owner) => { root.restore-field(owner, root.key); }
+    stage(owner, value) => { root.stage-field(owner, value); }
+    commit(owner, value) => { root.commit-field(owner, value); }
+    restore(owner) => { root.restore-field(owner); }
 }
 export component NotesField inherits NotesInput {
     in property <MetadataRow> field;
-    in property <MetadataKey> key;
-    callback stage-field(string, MetadataKey, string);
-    callback commit-field(string, MetadataKey, string);
-    callback restore-field(string, MetadataKey);
+    callback stage-field(string, string);
+    callback commit-field(string, string);
+    callback restore-field(string);
+    binding: root.field.key;
     display-text: root.field.text;
     staged: root.field.staged;
     accessible-description: root.field.diagnostic;
-    stage(owner, value) => { root.stage-field(owner, root.key, value); }
-    commit(owner, value) => { root.commit-field(owner, root.key, value); }
-    restore(owner) => { root.restore-field(owner, root.key); }
+    stage(owner, value) => { root.stage-field(owner, value); }
+    commit(owner, value) => { root.commit-field(owner, value); }
+    restore(owner) => { root.restore-field(owner); }
 }
 // A button as wide as the widest of its possible labels, so a label change
 // never resizes it or moves its neighbours. Hidden copies of the button
@@ -277,7 +278,7 @@ export component ExportRate inherits HorizontalBox {
     in property <bool> edit-enabled;
     callback changed(int);
     Text {
-        text:Terms.facet-export-sample-rate;
+        text:ViewCaptions.facet-export-sample-rate;
         vertical-alignment:center;
     }
     ComboBox {
