@@ -26,8 +26,6 @@ pub(crate) enum CommandProblem {
     TemporaryIds,
     /// Purging requires explicit confirmation and an observed version.
     PurgeConfirmation,
-    /// The root must be explicit rather than silently falling back.
-    RelativeLibraryRoot,
 }
 impl CommandProblem {
     /// User-facing explanation for the rejected request.
@@ -38,7 +36,6 @@ impl CommandProblem {
             Self::TemporaryRecipeSelector => "temporary selectors are not reusable; use --file",
             Self::TemporaryIds => "--format ids cannot emit temporary inputs; omit --file",
             Self::PurgeConfirmation => "permanent deletion requires --yes",
-            Self::RelativeLibraryRoot => "--library-dir must be absolute; no fallback is used",
         }
     }
 }

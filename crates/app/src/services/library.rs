@@ -26,6 +26,18 @@ pub struct LibraryContext {
     library: Result<Library, LibraryError>,
 }
 impl LibraryContext {
+    /// Validate an explicit override before dispatch, retaining other configuration failures.
+    ///
+    /// # Errors
+    /// Rejects a relative root without falling back or performing an operation.
+    pub fn from_override(path: PathBuf) -> Result<Self, LibraryError> {
+        let context = Self::resolve(Some(&path));
+        if let Some(error @ LibraryError::RelativeRoot { .. }) = context.problem() {
+            return Err(error.clone());
+        }
+        Ok(context)
+    }
+
     /// Capture CLI override, environment or native default once, including failure.
     #[must_use]
     pub fn resolve(override_path: Option<&Path>) -> Self {

@@ -775,3 +775,29 @@ fn json_diagnostics_pair_stable_codes_with_human_messages() {
             .is_some_and(|message| message.contains("unknown built-in recipe"))
     );
 }
+
+#[test]
+fn explicit_relative_root_is_usage_error_before_any_listing() {
+    let output = Command::new(env!("CARGO_BIN_EXE_auditorylab"))
+        .args(["--library-dir", "relative-root-probe", "list"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(error.contains("relative-root-probe"));
+    assert!(error.contains("must be absolute; no fallback was used"));
+}
+
+#[test]
+fn unusable_absolute_override_remains_a_listing_diagnostic() {
+    let directory = dir();
+    let file = directory.path().join("file");
+    fs::write(&file, b"not a directory").unwrap();
+    let output = cli(
+        &file.join("child"),
+        &["list", "--collection", "user", "--format", "ids"],
+    );
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+}

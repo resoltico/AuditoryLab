@@ -22,8 +22,8 @@ use std::{
 #[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = auditorylab_presentation::build_info::build_identity_version_text(auditorylab_app::identity::BUILD_IDENTITY))]
 struct Cli {
     /// Absolute persistent User Library override (then environment, then native data).
-    #[arg(long,global=true,value_name="ABSOLUTE_PATH",value_parser=absolute_path)]
-    library_dir: Option<PathBuf>,
+    #[arg(long,global=true,value_name="ABSOLUTE_PATH",value_parser=library_override)]
+    library_dir: Option<lab::services::LibraryContext>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -84,13 +84,9 @@ struct Source {
     stdin: bool,
 }
 
-fn absolute_path(text: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(text);
-    if path.is_absolute() {
-        Ok(path)
-    } else {
-        Err(CommandProblem::RelativeLibraryRoot.message().into())
-    }
+fn library_override(text: &str) -> Result<lab::services::LibraryContext, String> {
+    lab::services::LibraryContext::from_override(PathBuf::from(text))
+        .map_err(|error| error.explain())
 }
 #[derive(Debug)]
 struct Usage(String);
@@ -372,7 +368,9 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
         output(format!("{}\n", Cli::command().render_help()).as_bytes())?;
         return Ok(Ended::Normally);
     };
-    let context = lab::services::LibraryContext::resolve(cli.library_dir.as_deref());
+    let context = cli
+        .library_dir
+        .unwrap_or_else(|| lab::services::LibraryContext::resolve(None));
     match command {
         Command::List(args) => {
             return Ok(Ended::Code(library_cli::list(args, &context)?));
