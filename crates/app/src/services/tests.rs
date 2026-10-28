@@ -192,7 +192,13 @@ fn retained_user_provenance_does_not_invent_a_managed_selection() {
 #[test]
 fn source_errors_keep_raw_path_data() {
     let directory = directory();
-    let path = directory.path().join("source\n\u{202e}name.toml");
+    // Windows forbids newline in a filename; bidi controls are valid on both OSes.
+    let filename = if cfg!(windows) {
+        "source\u{202e}name.toml"
+    } else {
+        "source\n\u{202e}name.toml"
+    };
+    let path = directory.path().join(filename);
     let bytes = crate::test_recipes::silent(1.0, 0.0)
         .to_toml()
         .unwrap()

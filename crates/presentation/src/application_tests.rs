@@ -355,7 +355,13 @@ fn a_route_change_says_what_happened_and_what_to_do() {
 #[test]
 fn source_errors_keep_raw_path_data_and_escape_it_only_for_display() {
     let directory = directory();
-    let path = directory.path().join("source\n\u{202e}name.toml");
+    // Windows forbids newline in a filename; bidi controls are valid on both OSes.
+    let filename = if cfg!(windows) {
+        "source\u{202e}name.toml"
+    } else {
+        "source\n\u{202e}name.toml"
+    };
+    let path = directory.path().join(filename);
     let bytes = auditorylab_core::test_support::silent(1.0, 0.0)
         .to_toml()
         .unwrap()
@@ -370,7 +376,12 @@ fn source_errors_keep_raw_path_data_and_escape_it_only_for_display() {
         text.starts_with(directory.path().to_str().unwrap()),
         "{text}"
     );
-    assert!(text.contains("source\\n\\u{202e}name.toml"), "{text}");
+    let displayed_filename = if cfg!(windows) {
+        "source\\u{202e}name.toml"
+    } else {
+        "source\\n\\u{202e}name.toml"
+    };
+    assert!(text.contains(displayed_filename), "{text}");
     assert!(!text.contains('\n') && !text.contains('\u{202e}'));
     assert!(text.contains("schema_version 3; this build reads 4"));
     assert_eq!(std::fs::read(&path).unwrap(), bytes.as_bytes());
