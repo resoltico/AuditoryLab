@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- About and `--version` show the product version and optional source revision without a separate build counter.
+- macOS `CFBundleVersion` derives from `X*10000 + Y*100 + Z`; packaging rejects version suffixes and minor or patch values above 99.
+- Windows CLI and desktop executables include version, product name and copyright details.
+
 ## [0.7.0] - 2026-10-28
 
 - Schema 4 puts duration, fade and components in `[sound]` and uses `clicks`/`am`/`gate`; [rewrite custom files](https://github.com/resoltico/AuditoryLab/blob/v0.7.0/docs/formats.md#recipe-schema).

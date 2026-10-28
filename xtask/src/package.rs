@@ -49,7 +49,7 @@ pub(crate) fn inspect(
     out: &Path,
     target: &str,
     version: &str,
-    build: u32,
+    bundle_version: u32,
     rust_copyright: &[u8],
     source: &crate::source::Source,
 ) -> Result<PathBuf> {
@@ -91,8 +91,7 @@ pub(crate) fn inspect(
     if fs::read(root.join("LICENSE"))? != include_bytes!("../../LICENSE") {
         return Err("package LICENSE differs from complete software/artwork terms".into());
     }
-    if fs::read_to_string(root.join("SOURCE.txt"))? != crate::source_notice(version, build, source)
-    {
+    if fs::read_to_string(root.join("SOURCE.txt"))? != crate::source_notice(version, source) {
         return Err("package source availability identity differs".into());
     }
     let app = root.join("Auditory Lab.app");
@@ -118,6 +117,9 @@ pub(crate) fn inspect(
     if !target.contains("apple") {
         let bytes = fs::read(&executable)?;
         architecture_header(&bytes, target)?;
+        if target.contains("windows") {
+            inspect_windows_identity(&executable, version)?;
+        }
         if binary == "auditorylab-gui" && target.contains("windows") {
             crate::pe_icon::verify(
                 &bytes,
@@ -163,7 +165,7 @@ pub(crate) fn inspect(
             }
             for (key, expected) in [
                 ("CFBundleShortVersionString", version.to_owned()),
-                ("CFBundleVersion", build.to_string()),
+                ("CFBundleVersion", bundle_version.to_string()),
                 ("LSMinimumSystemVersion", "15.0".into()),
             ] {
                 let actual = String::from_utf8(capture(
@@ -183,7 +185,7 @@ pub(crate) fn inspect(
         }
     }
     let actual = String::from_utf8(capture(Command::new(&executable).arg("--version"))?)?;
-    if actual.trim() != crate::version_line(binary, version, build, Some(&source.revision))? {
+    if actual.trim() != crate::version_line(binary, version, Some(&source.revision))? {
         return Err(format!("extracted executable identity differs: {actual:?}").into());
     }
     println!("Extracted package identity/content/architecture checks passed: {name}");
@@ -233,7 +235,6 @@ mod tests {
             folder.join("SOURCE.txt"),
             crate::source_notice(
                 "0.4.0",
-                1,
                 &crate::source::Source {
                     revision: "a".repeat(40),
                     epoch: 1_709_251_199,
@@ -333,4 +334,39 @@ mod tests {
             assert!(super::architecture(actual, "arm64").is_err());
         }
     }
+}
+
+fn inspect_windows_identity(executable: &Path, version: &str) -> Result<()> {
+    if !cfg!(target_os = "windows") {
+        return Err("Windows resource inspection requires a native Windows host".into());
+    }
+    let manifest: toml::Value = toml::from_str(&fs::read_to_string("Cargo.toml")?)?;
+    let product = crate::source::identity_input::product(&manifest)?;
+    let output = capture(Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", r#"
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$v = (Get-Item -LiteralPath $env:AUDITORYLAB_INSPECT_EXECUTABLE).VersionInfo
+@{
+    file = @($v.FileMajorPart, $v.FileMinorPart, $v.FileBuildPart, $v.FilePrivatePart)
+    product = @($v.ProductMajorPart, $v.ProductMinorPart, $v.ProductBuildPart, $v.ProductPrivatePart)
+    fileVersion = $v.FileVersion
+    productVersion = $v.ProductVersion
+    name = $v.ProductName
+    copyright = $v.LegalCopyright
+} | ConvertTo-Json -Compress
+"#]).env("AUDITORYLAB_INSPECT_EXECUTABLE", executable))?;
+    let actual: serde_json::Value = serde_json::from_slice(&output)?;
+    let mut components = version
+        .split('.')
+        .map(str::parse::<u32>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    components.push(0);
+    let native = format!("{version}.0");
+    let expected = serde_json::json!({"file": components, "product": components,
+        "fileVersion": native, "productVersion": native,
+        "name": product.name, "copyright": product.copyright});
+    if actual != expected {
+        return Err(format!("Windows VERSIONINFO differs: {actual} vs {expected}").into());
+    }
+    Ok(())
 }

@@ -1375,7 +1375,7 @@ fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_sc
     install();
     let about = AboutWindow::new().unwrap();
     crate::native_text::initialize_identity(about.global::<crate::generated::Terms>());
-    about.set_identity("Version 0.4.0 (Build 2)".into());
+    about.set_identity("Version 0.4.0 (0123456789ab)".into());
     about.show().unwrap();
     for scale in [1.0, 2.0] {
         about
@@ -1402,7 +1402,7 @@ fn about_geometry_keeps_identity_icon_and_actions_visible_at_font_and_display_sc
                         label.as_str(),
                         "Application icon"
                             | "Auditory Lab"
-                            | "Version 0.4.0 (Build 2)"
+                            | "Version 0.4.0 (0123456789ab)"
                             | "Copyright © 2026 Ervins Strauhmanis"
                             | "Project website"
                             | "Licenses"

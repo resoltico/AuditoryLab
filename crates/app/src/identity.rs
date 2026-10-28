@@ -72,8 +72,6 @@ pub struct BuildIdentity {
     pub copyright: &'static str,
     /// Workspace product version.
     pub version: &'static str,
-    /// Native build counter in 1..9999.
-    pub build: u32,
     /// Validated full ASCII hexadecimal source revision, when supplied at build time.
     pub revision: Option<&'static str>,
 }

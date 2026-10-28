@@ -29,3 +29,7 @@ name = "auditorylab"
 path = "src/main.rs"
 # Rust API documentation lives in auditorylab-app; CLI usage is available through --help.
 doc = false
+
+[build-dependencies]
+embed-resource.workspace = true
+toml.workspace = true

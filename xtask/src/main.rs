@@ -50,6 +50,31 @@ fn metadata(target: Option<&str>) -> Result<Value> {
     }
     Ok(serde_json::from_slice(&capture(&mut command)?)?)
 }
+fn native_bundle_version(version: &str) -> Result<u32> {
+    let parts = version
+        .split('.')
+        .map(|part| {
+            if part.is_empty()
+                || part.len() > 1 && part.starts_with('0')
+                || !part.bytes().all(|b| b.is_ascii_digit())
+            {
+                return Err("native packaging requires X.Y.Z without suffixes".into());
+            }
+            part.parse::<u32>().map_err(Into::into)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let [major, minor, patch] = parts.as_slice() else {
+        return Err("native packaging requires X.Y.Z without suffixes".into());
+    };
+    if *minor > 99 || *patch > 99 {
+        return Err("native packaging requires minor and patch at most 99".into());
+    }
+    major
+        .checked_mul(10000)
+        .and_then(|n| n.checked_add(minor * 100))
+        .and_then(|n| n.checked_add(*patch))
+        .ok_or_else(|| "native bundle version overflow".into())
+}
 fn version(metadata: &Value) -> Result<&str> {
     metadata["packages"]
         .as_array()
@@ -57,26 +82,7 @@ fn version(metadata: &Value) -> Result<&str> {
         .and_then(|p| p["version"].as_str())
         .ok_or_else(|| "workspace version missing".into())
 }
-fn build_number(metadata: &Value) -> Result<u32> {
-    metadata["metadata"]["auditorylab"]["build-number"]
-        .as_u64()
-        .filter(|n| (1..=9999).contains(n))
-        .and_then(|n| u32::try_from(n).ok())
-        .ok_or_else(|| {
-            "workspace.metadata.auditorylab.build-number must be an integer in 1..9999".into()
-        })
-}
-fn native_version(version: &str) -> Result<()> {
-    let parts: Vec<_> = version.split('.').collect();
-    if parts.len() != 3
-        || parts
-            .iter()
-            .any(|p| p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit()))
-    {
-        return Err("macOS marketing version must contain three decimal components; prerelease versions are unsupported".into());
-    }
-    Ok(())
-}
+
 fn rust_version() -> Result<String> {
     let source = fs::read_to_string("rust-toolchain.toml")?;
     source
@@ -242,17 +248,17 @@ fn about(product: &str, target: &str, meta: &Value) -> Result<String> {
     }
     Ok(text)
 }
-fn version_line(binary: &str, version: &str, build: u32, revision: Option<&str>) -> Result<String> {
+fn version_line(binary: &str, version: &str, revision: Option<&str>) -> Result<String> {
     let source = match revision {
         Some(rev) => {
             if !matches!(rev.len(), 40 | 64) || !rev.bytes().all(|b| b.is_ascii_hexdigit()) {
                 return Err("AUDITORYLAB_SOURCE_REVISION must be a full 40- or 64-character ASCII hex commit ID".into());
             }
-            format!(" · {}", &rev[..12])
+            format!(" ({rev})")
         }
         None => String::new(),
     };
-    Ok(format!("{binary} {version} (build {build}){source}"))
+    Ok(format!("{binary} {version}{source}"))
 }
 fn smoke(cli: &Path, scratch: &Path) -> Result<()> {
     let listing = String::from_utf8(capture(Command::new(cli).args([
@@ -312,9 +318,9 @@ fn smoke(cli: &Path, scratch: &Path) -> Result<()> {
     println!("Smoke checks passed: catalog, one-frame RIFF, no-clobber.");
     Ok(())
 }
-fn source_notice(version: &str, build: u32, source: &source::Source) -> String {
+fn source_notice(version: &str, source: &source::Source) -> String {
     format!(
-        "Auditory Lab {version} (build {build})\nSource revision: {}\nSource commit epoch: {} (Unix UTC seconds)\nCorresponding source: https://github.com/resoltico/AuditoryLab/tree/{}\nRelease source archives: https://github.com/resoltico/AuditoryLab/releases\nSoftware uses MPL-2.0; owner artwork has separate terms in LICENSE.\nRedistributors must provide corresponding MPL-covered source and tell recipients how to obtain it.\n",
+        "Auditory Lab {version}\nSource revision: {}\nSource commit epoch: {} (Unix UTC seconds)\nCorresponding source: https://github.com/resoltico/AuditoryLab/tree/{}\nRelease source archives: https://github.com/resoltico/AuditoryLab/releases\nSoftware uses MPL-2.0; owner artwork has separate terms in LICENSE.\nRedistributors must provide corresponding MPL-covered source and tell recipients how to obtain it.\n",
         source.revision, source.epoch, source.revision
     )
 }
@@ -331,36 +337,12 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
     }
     Ok(())
 }
-fn increasing_build(current: u32, previous: u32) -> Result<()> {
-    if !(1..=9999).contains(&current) || !(1..=9999).contains(&previous) || current <= previous {
-        return Err(format!(
-            "product build {current} must exceed prior published build {previous} (range 1..9999)"
-        )
-        .into());
-    }
-    Ok(())
-}
-fn check_previous_build(current: u32) -> Result<()> {
-    // Release checkout must fetch tags. Query committed metadata, never a separate counter.
-    let tag = String::from_utf8(capture(Command::new("git").args([
-        "describe",
-        "--tags",
-        "--abbrev=0",
-        "--match",
-        "v[0-9]*",
-    ]))?)?;
-    let text = String::from_utf8(capture(
-        Command::new("git").args(["show", &format!("{}:Cargo.toml", tag.trim())]),
-    )?)?;
-    let manifest: toml::Value = toml::from_str(&text)?;
-    let previous = manifest["workspace"]["metadata"]["auditorylab"]["build-number"]
-        .as_integer()
-        .and_then(|n| u32::try_from(n).ok())
-        .ok_or("previous published build metadata missing")?;
-    increasing_build(current, previous)
-}
+
 fn dist(target: &str, out: &Path, icons: Option<&Path>) -> Result<()> {
     let platform = platform(target)?;
+    let meta = metadata(Some(target))?;
+    let version = version(&meta)?.to_owned();
+    let bundle_version = native_bundle_version(&version)?;
     let source = source::Source::resolve()?;
     if let Some(icons) = icons {
         if !target.contains("apple") {
@@ -393,9 +375,6 @@ fn dist(target: &str, out: &Path, icons: Option<&Path>) -> Result<()> {
         .env("AUDITORYLAB_SOURCE_REVISION", &source.revision)
         .env("SOURCE_DATE_EPOCH", source.epoch.to_string());
     run(&mut command)?;
-    let meta = metadata(Some(target))?;
-    let version = version(&meta)?.to_owned();
-    let build = build_number(&meta)?;
     let target_dir = PathBuf::from(
         meta["target_directory"]
             .as_str()
@@ -429,12 +408,16 @@ fn dist(target: &str, out: &Path, icons: Option<&Path>) -> Result<()> {
             )?;
             fs::copy("LICENSE", folder.join("LICENSE"))?;
             fs::write(folder.join("COPYRIGHT-library.html"), &rust_copyright)?;
-            fs::write(
-                folder.join("SOURCE.txt"),
-                source_notice(&version, build, &source),
-            )?;
+            fs::write(folder.join("SOURCE.txt"), source_notice(&version, &source))?;
             if product == "gui" && target.contains("apple") {
-                macos::bundle(&destination, &folder, &version, build, icons, &source)?;
+                macos::bundle(
+                    &destination,
+                    &folder,
+                    &version,
+                    bundle_version,
+                    icons,
+                    &source,
+                )?;
                 fs::remove_file(&destination)?;
             } else if target.contains("apple") {
                 // Both architectures have the same declared ad-hoc signing contract.
@@ -464,7 +447,7 @@ fn dist(target: &str, out: &Path, icons: Option<&Path>) -> Result<()> {
                 &scratch.join("extracted"),
                 target,
                 &version,
-                build,
+                bundle_version,
                 &rust_copyright,
                 &source,
             )?);
@@ -494,10 +477,10 @@ fn main() -> Result<()> {
         Some("verify-vendor") if args.len()==1 => vendor::verify(),
         Some("dist") => { let mut target=None; let mut icons=None; let mut out=PathBuf::from("target/dist"); let mut i=1; while i<args.len() { let value=args.get(i+1).ok_or("missing option value")?; match args[i].as_str() { "--target"=>target=Some(value.as_str()),"--out"=>out=PathBuf::from(value),"--icons"=>icons=Some(Path::new(value)),_=>return Err("use dist --target TARGET [--out DIR] [--icons DIR]".into()) } i+=2; } dist(target.ok_or("dist requires --target")?,&out,icons) }
         Some("compile-icons") if args.len()==2 => macos::compile_icons(Path::new(&args[1]), &source::Source::resolve()?),
-        Some("inspect-package") if args.len()==3 => { let meta=metadata(None)?; let _=package::inspect(Path::new(&args[2]), Path::new("target/package-inspection"), &args[1], version(&meta)?, build_number(&meta)?, &rust_standard_library_copyright()?, &source::Source::resolve()?)?; Ok(()) },
+        Some("inspect-package") if args.len()==3 => { let meta=metadata(None)?; let _=package::inspect(Path::new(&args[2]), Path::new("target/package-inspection"), &args[1], version(&meta)?, native_bundle_version(version(&meta)?)?, &rust_standard_library_copyright()?, &source::Source::resolve()?)?; Ok(()) },
         Some("collect-assets") if args.len()==4 => targets::collect(&args[1], Path::new(&args[2]), Path::new(&args[3])),
         Some("notes") if args.len()==2 => { println!("{}",section(&fs::read_to_string("CHANGELOG.md")?,&args[1])?.1); Ok(()) }
-        Some("check-release") if args.len()==2 => { let meta=metadata(None)?; if version(&meta)?!=args[1] { return Err("workspace version differs from requested release".into()); } let text=fs::read_to_string("CHANGELOG.md")?; release_notes(&text,&args[1])?; check_previous_build(build_number(&meta)?)?; rust_standard_library_copyright()?; Ok(()) }
+        Some("check-release") if args.len()==2 => { let meta=metadata(None)?; if version(&meta)?!=args[1] { return Err("workspace version differs from requested release".into()); } let text=fs::read_to_string("CHANGELOG.md")?; release_notes(&text,&args[1])?;  rust_standard_library_copyright()?; Ok(()) }
         Some("notices") if args.len()==4 => { let meta=metadata(Some(&args[2]))?; fs::write(&args[3],about(&args[1],&args[2],&meta)?)?; Ok(()) }
         _=>Err("use cargo xtask verify-vendor, dist --target TARGET [--out DIR] [--icons DIR], compile-icons OUTPUT, inspect-package TARGET ARCHIVE, collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT, notes VERSION, or check-release VERSION".into()),
     }
@@ -506,10 +489,28 @@ fn main() -> Result<()> {
 mod tests {
     use super::*;
     #[test]
-    fn published_build_counter_must_increase_without_reset() {
-        assert!(increasing_build(2, 1).is_ok());
-        for (current, previous) in [(1, 1), (1, 2), (0, 1), (10000, 9999), (2, 0)] {
-            assert!(increasing_build(current, previous).is_err());
+    fn native_bundle_identity_is_derived_and_rejects_unsupported_versions() {
+        for (version, expected) in [
+            ("0.7.0", 700),
+            ("0.8.0", 800),
+            ("1.2.3", 10203),
+            ("1.99.99", 19999),
+        ] {
+            assert_eq!(native_bundle_version(version).unwrap(), expected);
+        }
+        assert!(native_bundle_version("0.7.0").unwrap() > 4);
+        for version in [
+            "0.100.0",
+            "0.0.100",
+            "0.8.0-beta.1",
+            "0.8.0+local",
+            "0.8",
+            "",
+            "1.a.0",
+            "01.2.3",
+            "999999999.0.0",
+        ] {
+            assert!(native_bundle_version(version).is_err(), "{version}");
         }
     }
     #[test]
@@ -524,34 +525,7 @@ mod tests {
         assert!(text.contains("Desktop") && text.contains("xdg-desktop-portal"));
         assert!(!text.contains("{version}"));
     }
-    #[test]
-    fn identity_metadata_rejects_missing_invalid_counters_and_prereleases() {
-        for value in [
-            serde_json::json!(null),
-            serde_json::json!(0),
-            serde_json::json!(-1),
-            serde_json::json!(10000),
-            serde_json::json!(1.5),
-            serde_json::json!("1"),
-        ] {
-            assert!(
-                build_number(
-                    &serde_json::json!({"metadata":{"auditorylab":{"build-number":value}}})
-                )
-                .is_err()
-            );
-        }
-        assert!(build_number(&serde_json::json!({})).is_err());
-        assert_eq!(
-            build_number(&serde_json::json!({"metadata":{"auditorylab":{"build-number":1}}}))
-                .unwrap(),
-            1
-        );
-        assert!(native_version("0.4.0").is_ok());
-        for v in ["0.4.0-beta.1", "0.4", "", "1.a.0"] {
-            assert!(native_version(v).is_err());
-        }
-    }
+
     #[test]
     fn release_checks_reject_malformed_dates_and_version_headings() {
         for date in ["2026-10-19", "2028-02-29", "2000-02-29"] {

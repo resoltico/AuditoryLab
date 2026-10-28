@@ -1,5 +1,5 @@
 //! Self-contained macOS app assembly; legal and icon resources precede signing.
-use crate::{Result, archive, capture, native_version, run, source::Source};
+use crate::{Result, archive, capture, run, source::Source};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -110,11 +110,10 @@ pub(crate) fn bundle(
     binary: &Path,
     root: &Path,
     version: &str,
-    build: u32,
+    bundle_version: u32,
     icons: Option<&Path>,
     source: &Source,
 ) -> Result<PathBuf> {
-    native_version(version)?;
     let app = root.join("Auditory Lab.app");
     let contents = app.join("Contents");
     let resources = contents.join("Resources");
@@ -145,7 +144,7 @@ pub(crate) fn bundle(
     fs::write(
         &plist,
         format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>org.resoltico.auditorylab</string><key>CFBundleName</key><string>Auditory Lab</string><key>CFBundleDisplayName</key><string>Auditory Lab</string><key>CFBundleExecutable</key><string>auditorylab-gui</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleShortVersionString</key><string>{version}</string><key>CFBundleVersion</key><string>{build}</string><key>LSMinimumSystemVersion</key><string>15.0</string><key>NSHighResolutionCapable</key><true/></dict></plist>"#
+            r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>org.resoltico.auditorylab</string><key>CFBundleName</key><string>Auditory Lab</string><key>CFBundleDisplayName</key><string>Auditory Lab</string><key>CFBundleExecutable</key><string>auditorylab-gui</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleShortVersionString</key><string>{version}</string><key>CFBundleVersion</key><string>{bundle_version}</string><key>LSMinimumSystemVersion</key><string>15.0</string><key>NSHighResolutionCapable</key><true/></dict></plist>"#
         ),
     )?;
     run(Command::new("/usr/libexec/PlistBuddy")

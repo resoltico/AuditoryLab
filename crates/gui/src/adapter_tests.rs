@@ -1009,11 +1009,19 @@ fn about_and_licenses_use_production_actions_and_reopen_without_losing_terms() {
     assert!(h.windows.about.window().is_visible());
     assert_eq!(
         h.windows.about.get_identity().as_str(),
-        format!(
-            "Version {} (Build {})",
-            auditorylab_app::identity::BUILD_IDENTITY.version,
-            auditorylab_app::identity::BUILD_IDENTITY.build
-        )
+        auditorylab_app::identity::BUILD_IDENTITY
+            .revision
+            .map_or_else(
+                || format!(
+                    "Version {}",
+                    auditorylab_app::identity::BUILD_IDENTITY.version
+                ),
+                |revision| format!(
+                    "Version {} ({})",
+                    auditorylab_app::identity::BUILD_IDENTITY.version,
+                    &revision[..12]
+                )
+            )
     );
     h.windows.about.invoke_open_licenses();
     settle(h.windows.licenses.window());

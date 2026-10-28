@@ -32,7 +32,8 @@ futures-lite = "=2.6.1"
 windows-sys = { version = "0.61.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_HiDpi"] }
 
 [build-dependencies]
-embed-resource = "=3.0.12"
+embed-resource.workspace = true
+toml.workspace = true
 slint-build.workspace = true
 
 [dev-dependencies]

@@ -2,6 +2,13 @@
 // The desktop build script and binary share the same desktop-owned chrome inventory.
 #[path = "src/terms.rs"]
 mod terms;
+// Native resources and app identity validate the same workspace-owned metadata.
+#[path = "../app/identity_input.rs"]
+#[expect(
+    dead_code,
+    reason = "Native resources share validation with readers that also accept source revisions"
+)]
+mod identity_input;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let generated = std::path::PathBuf::from(std::env::var_os("OUT_DIR").ok_or("missing OUT_DIR")?);
     let mut vocabulary = String::from("export global Terms {\n");
@@ -28,12 +35,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "cargo:rerun-if-changed=../../artwork/auditorylab-icon/assets/runtime/window-icon.png"
     );
+    println!("cargo:rerun-if-changed=../../Cargo.toml");
+    println!("cargo:rerun-if-changed=../app/identity_input.rs");
     if std::env::var("CARGO_CFG_TARGET_OS")?.as_str() == "windows" {
         println!("cargo:rerun-if-changed=app.rc");
         println!(
             "cargo:rerun-if-changed=../../artwork/auditorylab-icon/assets/windows/auditorylab.ico"
         );
-        embed_resource::compile("app.rc", embed_resource::NONE).manifest_required()?;
+        let manifest: toml::Value = toml::from_str(&std::fs::read_to_string("../../Cargo.toml")?)?;
+        let resource = identity_input::windows_resource(
+            identity_input::product(&manifest)?,
+            &std::env::var("CARGO_PKG_VERSION")?,
+        )?;
+        let icon = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR")?)
+            .join("../../artwork/auditorylab-icon/assets/windows/auditorylab.ico")
+            .canonicalize()?;
+        let source = std::fs::read_to_string("app.rc")?
+            .replace("@ICON_PATH@", &icon.to_string_lossy().replace('\\', "/"));
+        let path = std::path::Path::new(&std::env::var("OUT_DIR")?).join("app.rc");
+        std::fs::write(&path, source + &resource)?;
+        embed_resource::compile(path, embed_resource::NONE).manifest_required()?;
     }
     Ok(())
 }

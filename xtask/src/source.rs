@@ -3,7 +3,14 @@ use crate::{Result, capture};
 use std::{env, process::Command};
 // Identity generation and packaging share validation of the canonical workspace inputs.
 #[path = "../../crates/app/identity_input.rs"]
-mod identity_input;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Packaging and native-resource readers share the full identity validation module"
+    )
+)]
+pub(crate) mod identity_input;
 
 // ZIP's civil date range is the common representable range for every product.
 pub(crate) fn epoch(value: &str) -> Result<u64> {

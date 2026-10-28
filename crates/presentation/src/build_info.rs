@@ -7,24 +7,52 @@ pub fn about_title() -> String {
     format!("About {}", auditorylab_app::identity::BUILD_IDENTITY.name)
 }
 
-/// Product version, native build counter and optional short source revision.
-
+/// Product version with the full source revision when supplied.
+#[must_use]
 pub fn build_identity_version_text(value: BuildIdentity) -> String {
-    let source = value
-        .revision
-        .map_or(String::new(), |revision| format!(" · {}", &revision[..12]));
-    format!("{} (build {}){source}", value.version, value.build)
-}
-/// A binary name followed by its canonical build identity.
-
-pub fn build_identity_version_line(value: BuildIdentity, binary: &str) -> String {
-    format!(
-        "{binary} {}",
-        crate::build_info::build_identity_version_text(value)
+    value.revision.map_or_else(
+        || value.version.into(),
+        |revision| format!("{} ({revision})", value.version),
     )
 }
-/// Version and native build counter shown in the graphical About window.
-
+/// A binary name followed by its canonical source identity.
+#[must_use]
+pub fn build_identity_version_line(value: BuildIdentity, binary: &str) -> String {
+    format!("{binary} {}", build_identity_version_text(value))
+}
+/// Version and optional short source revision in the graphical About window.
+#[must_use]
 pub fn build_identity_about_version(value: BuildIdentity) -> String {
-    format!("Version {} (Build {})", value.version, value.build)
+    value.revision.map_or_else(
+        || format!("Version {}", value.version),
+        |revision| format!("Version {} ({})", value.version, &revision[..12]),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn version_display_retains_full_source_and_about_uses_twelve_characters() {
+        let identity = BuildIdentity {
+            name: "Auditory Lab",
+            copyright: "Copyright",
+            version: "0.7.0",
+            revision: None,
+        };
+        assert_eq!(build_identity_version_text(identity), "0.7.0");
+        assert_eq!(build_identity_about_version(identity), "Version 0.7.0");
+        let identity = BuildIdentity {
+            revision: Some("0123456789abcdef0123456789abcdef01234567"),
+            ..identity
+        };
+        assert_eq!(
+            build_identity_version_line(identity, "auditorylab"),
+            "auditorylab 0.7.0 (0123456789abcdef0123456789abcdef01234567)"
+        );
+        assert_eq!(
+            build_identity_about_version(identity),
+            "Version 0.7.0 (0123456789ab)"
+        );
+    }
 }

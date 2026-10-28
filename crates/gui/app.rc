@@ -1,1 +1,2 @@
-1 ICON "../../artwork/auditorylab-icon/assets/windows/auditorylab.ico"
+1 ICON "@ICON_PATH@"
+// VERSIONINFO is appended by build.rs from validated workspace identity.
