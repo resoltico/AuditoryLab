@@ -568,7 +568,12 @@ fn print_mutation_json(value: &Report) {
         Err(error) => {
             eprintln!(
                 "{}",
-                auditorylab_presentation::display_text(&(value.completion_failure(error)))
+                auditorylab_presentation::display_text(
+                    &(auditorylab_presentation::library::report_completion_failure(
+                        value.complete,
+                        error
+                    ))
+                )
             );
             return;
         }
@@ -581,7 +586,12 @@ fn print_mutation_json(value: &Report) {
     {
         eprintln!(
             "{}",
-            auditorylab_presentation::display_text(&(value.completion_failure(error)))
+            auditorylab_presentation::display_text(
+                &(auditorylab_presentation::library::report_completion_failure(
+                    value.complete,
+                    error
+                ))
+            )
         );
     }
 }

@@ -359,8 +359,10 @@ crate::core::diagnostic_codes! {
                 IoOperation::CheckIdentity => "check_identity",
                 IoOperation::SetPermissions => "set_permissions",
             };
-            let mut params = crate::core::diagnostic_params! {"action"=>action,
-                "cause"=>this.cause.error().to_string()};
+            let mut params = crate::core::diagnostic_params! {
+                "action"=>action,
+                "cause"=>this.cause.error().to_string(),
+            };
             if let Some(path) = &this.path {
                 params.insert("path", path.to_string_lossy().into_owned().into());
             }
@@ -387,8 +389,10 @@ crate::core::diagnostic_codes! {
         params(this) {
             match this {
                 Self::ReadLimit { path, grew } => {
-                    crate::core::diagnostic_params! {"path"=>path.to_string_lossy().into_owned(),
-                        "grew"=>*grew}
+                    crate::core::diagnostic_params! {
+                        "path"=>path.to_string_lossy().into_owned(),
+                        "grew"=>*grew,
+                    }
                 }
                 Self::NotRegular { path }
                 | Self::DestinationExists { path, .. }
@@ -415,9 +419,13 @@ crate::core::diagnostic_codes! {
                         Confirmation::Different => "different",
                         Confirmation::Unavailable(_) => "unavailable",
                     };
-                    let mut params = crate::core::diagnostic_params! {"phase"=>phase_key,
-                        "path"=>path.to_string_lossy().into_owned(),"confirmati\
-                        on"=>confirmation_key,"cause"=>cause.error().to_string()};
+                    let mut params = crate::core::diagnostic_params! {
+                        "phase"=>phase_key,
+                        "path"=>path.to_string_lossy().into_owned(),
+                        "confirmati\
+                        on"=>confirmation_key,
+                        "cause"=>cause.error().to_string(),
+                    };
                     if let MutationPhase::Relocate { source } = phase {
                         params.insert("source_path", source.to_string_lossy().into_owned().into());
                     }
@@ -429,8 +437,10 @@ crate::core::diagnostic_codes! {
                 }
                 Self::Cleanup { path, cause, .. } => {
                     crate::core::diagnostic_params! {
-                        "leftover_path"=>path.to_string_lossy().into_owned(),"cleanup_ca\
-                        use"=>cause.error().to_string()}
+                        "leftover_path"=>path.to_string_lossy().into_owned(),
+                        "cleanup_ca\
+                        use"=>cause.error().to_string(),
+                    }
                 }
                 _ => crate::core::diagnostic::Params::new(),
             }

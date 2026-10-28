@@ -495,8 +495,10 @@ crate::core::diagnostic_codes! {
         params(this) {
             match this {
                 Self::Acoustic { title, rate, .. } => {
-                    crate::core::diagnostic_params! {"title"=>title.clone(),
-                        "diagnostic_rate_hz"=>rate.hz()}
+                    crate::core::diagnostic_params! {
+                        "title"=>title.clone(),
+                        "diagnostic_rate_hz"=>rate.hz(),
+                    }
                 }
                 Self::Snapshot(_) => crate::core::diagnostic::Params::new(),
             }

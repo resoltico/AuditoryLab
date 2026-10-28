@@ -698,10 +698,16 @@ crate::diagnostic_codes! {
             match this {
                 Self::Identity { id } => crate::diagnostic_params! {"component_id"=>id.get()},
                 Self::ComponentBudget { count } => {
-                    crate::diagnostic_params! {"count"=>*count,"limit"=>Sound::MAX_COMPONENTS}
+                    crate::diagnostic_params! {
+                        "count"=>*count,
+                        "limit"=>Sound::MAX_COMPONENTS,
+                    }
                 }
                 Self::VoiceBudget { count } => {
-                    crate::diagnostic_params! {"count"=>*count,"limit"=>Sound::MAX_VOICES}
+                    crate::diagnostic_params! {
+                        "count"=>*count,
+                        "limit"=>Sound::MAX_VOICES,
+                    }
                 }
             }
         }
@@ -712,8 +718,11 @@ crate::diagnostic_codes! {
             Self { issue, .. } => issue,
         }
         params(this) {
-            crate::diagnostic_params! {"component_id"=>this.id.get(),"first_hz"=>this.first_hz,
-                "offset_hz"=>this.offset_hz}
+            crate::diagnostic_params! {
+                "component_id"=>this.id.get(),
+                "first_hz"=>this.first_hz,
+                "offset_hz"=>this.offset_hz,
+            }
         }
     }
 }

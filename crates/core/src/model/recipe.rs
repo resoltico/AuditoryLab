@@ -394,7 +394,10 @@ crate::diagnostic_codes! {
         params(this) {
             match this {
                 Self::UnsupportedVersion { found } => {
-                    crate::diagnostic_params! {"found"=>*found,"supported"=>Recipe::SCHEMA_VERSION}
+                    crate::diagnostic_params! {
+                        "found"=>*found,
+                        "supported"=>Recipe::SCHEMA_VERSION,
+                    }
                 }
                 _ => crate::Params::new(),
             }

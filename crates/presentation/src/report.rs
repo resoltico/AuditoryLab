@@ -69,26 +69,42 @@ impl<E: Code + super::Explain> From<&LibraryDiagnostic<E>> for DiagnosticMessage
         Self::new(value, crate::errors::library_diagnostic_message(value))
     }
 }
-report_struct!(InitializationReport { created: bool, path: PathBuf,
-    warnings: Vec<DiagnosticMessage> });
-report_struct!(GroupReport {key:String,label:String,keys:Vec<LibraryKey>});
+report_struct!(InitializationReport {
+    created: bool,
+    path: PathBuf,
+    warnings: Vec<DiagnosticMessage>,
+});
+report_struct!(GroupReport {
+    key: String,
+    label: String,
+    keys: Vec<LibraryKey>,
+});
 impl From<&ResultGroup> for GroupReport {
     fn from(group: &ResultGroup) -> Self {
         Self {
             key: group.key.clone(),
+            // Schema 2 includes a display caption alongside the independent machine key.
+            // Keep its wording owned by the same renderer as the human library views.
             label: crate::library::group_label(&group.label),
             keys: group.keys.clone(),
         }
     }
 }
 report_struct!(DescriptorReport {
-    owner: VoiceId, method: rhythm::Method,
-    hz: f64, band: Option<rhythm::Band>,
+    owner: VoiceId,
+    method: rhythm::Method,
+    hz: f64,
+    band: Option<rhythm::Band>,
 });
 report_struct!(NominalReport {
-    descriptors: Vec<DescriptorReport>, bands: Vec<rhythm::Band>, methods: Vec<rhythm::Method>,
-    completeness: rhythm::Completeness, multiple_rhythms: bool, outside_bands: bool,
-    no_rhythm: bool, diagnostics: Vec<DiagnosticMessage>,
+    descriptors: Vec<DescriptorReport>,
+    bands: Vec<rhythm::Band>,
+    methods: Vec<rhythm::Method>,
+    completeness: rhythm::Completeness,
+    multiple_rhythms: bool,
+    outside_bands: bool,
+    no_rhythm: bool,
+    diagnostics: Vec<DiagnosticMessage>,
 });
 impl From<&rhythm::Analysis> for NominalReport {
     fn from(value: &rhythm::Analysis) -> Self {
@@ -119,7 +135,7 @@ impl From<&rhythm::Analysis> for NominalReport {
 }
 report_struct!(VoiceReport {
     id: VoiceId,
-    facts: VoiceFacts
+    facts: VoiceFacts,
 });
 /// Validation at the explicitly requested output rate.
 #[derive(Debug, Clone, Serialize)]
@@ -147,14 +163,24 @@ pub enum Validation {
     },
 }
 report_struct!(EntryReport {
-    key: LibraryKey, collection: Collection, title: String, document_id: DocumentUuid,
-    duration_seconds: f64, created_at: Option<Timestamp>, modified_at: Option<Timestamp>,
-    added_at: Option<Timestamp>, trashed_at: Option<Timestamp>, trashed: bool,
-        version_token: Option<VersionToken>,
-    nominal: NominalReport, evidence: Vec<EvidenceFacet>, validation: Validation,
-    #[serde(skip_serializing_if = "Option::is_none")] history_warnings:
-        Option<Vec<DiagnosticMessage>>,
-    #[serde(skip_serializing_if = "Option::is_none")] recipe_toml: Option<String>,
+    key: LibraryKey,
+    collection: Collection,
+    title: String,
+    document_id: DocumentUuid,
+    duration_seconds: f64,
+    created_at: Option<Timestamp>,
+    modified_at: Option<Timestamp>,
+    added_at: Option<Timestamp>,
+    trashed_at: Option<Timestamp>,
+    trashed: bool,
+    version_token: Option<VersionToken>,
+    nominal: NominalReport,
+    evidence: Vec<EvidenceFacet>,
+    validation: Validation,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history_warnings: Option<Vec<DiagnosticMessage>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recipe_toml: Option<String>,
 });
 impl From<&EntrySummary> for EntryReport {
     fn from(e: &EntrySummary) -> Self {
@@ -179,7 +205,11 @@ impl From<&EntrySummary> for EntryReport {
     }
 }
 report_struct!(UnavailableRoot {
-    path: PathBuf, source: RootSource, exists: Option<bool>, layout: Option<u32>, initialized: bool,
+    path: PathBuf,
+    source: RootSource,
+    exists: Option<bool>,
+    layout: Option<u32>,
+    initialized: bool,
 });
 /// Root information from inspection, initialization, or an inspection failure.
 #[derive(Debug, Clone, Serialize)]
@@ -219,30 +249,31 @@ pub enum ReportStatus {
     Failure(FailureStatus),
 }
 report_struct!(Report {
-    output_schema_version: u32, operation: Operation, complete: bool, convention: &'static str,
-    query: Option<CatalogQuery>, unique_count: usize, entries: Vec<EntryReport>,
-        groups: Vec<GroupReport>,
+    output_schema_version: u32,
+    operation: Operation,
+    complete: bool,
+    convention: &'static str,
+    query: Option<CatalogQuery>,
+    unique_count: usize,
+    entries: Vec<EntryReport>,
+    groups: Vec<GroupReport>,
     diagnostics: Vec<DiagnosticMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")] classifier_revision: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")] effective_sort: Option<(SortBy, Direction)>,
-    #[serde(skip_serializing_if = "Option::is_none")] stages: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")] root: Option<RootReport>,
-    #[serde(skip_serializing_if = "Option::is_none")] status: Option<ReportStatus>,
-    #[serde(skip_serializing_if = "Option::is_none")] selector: Option<LibraryKey>,
-    #[serde(skip_serializing_if = "Option::is_none")] version_token: Option<Option<VersionToken>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    classifier_revision: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effective_sort: Option<(SortBy, Direction)>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stages: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root: Option<RootReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<ReportStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selector: Option<LibraryKey>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version_token: Option<Option<VersionToken>>,
 });
 impl Report {
-    /// A completed operation remains confirmed if rendering or writing its report fails.
-    #[must_use]
-    pub fn completion_failure(&self, error: impl std::fmt::Display) -> String {
-        let truth = if self.complete {
-            auditorylab_app::vocabulary::Status::OperationConfirmed
-        } else {
-            auditorylab_app::vocabulary::Status::OperationIncomplete
-        }
-        .label();
-        format!("{truth}; completion output failed: {error}")
-    }
     fn new(operation: Operation, complete: bool) -> Self {
         Self {
             output_schema_version: OUTPUT_SCHEMA_VERSION,

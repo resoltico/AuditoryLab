@@ -225,8 +225,10 @@ crate::core::diagnostic_codes! {
                     crate::core::diagnostic_params! {"scope"=>scope.key()}
                 }
                 Self::RangeOrder { from, before } => {
-                    crate::core::diagnostic_params! {"from"=>from.to_string(),
-                        "before"=>before.to_string()}
+                    crate::core::diagnostic_params! {
+                        "from"=>from.to_string(),
+                        "before"=>before.to_string(),
+                    }
                 }
                 Self::Study { value } | Self::LocalDate { value } => {
                     crate::core::diagnostic_params! {"value"=>value.clone()}
@@ -236,8 +238,11 @@ crate::core::diagnostic_codes! {
                     from,
                     through,
                 } => {
-                    crate::core::diagnostic_params! {"field"=>field.key(),"from"=>from.clone(),
-                        "through"=>through.clone()}
+                    crate::core::diagnostic_params! {
+                        "field"=>field.key(),
+                        "from"=>from.clone(),
+                        "through"=>through.clone(),
+                    }
                 }
             }
         }

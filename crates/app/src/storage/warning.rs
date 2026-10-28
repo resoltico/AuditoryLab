@@ -105,8 +105,10 @@ crate::core::diagnostic_codes! {
                     crate::core::diagnostic_params! {"cause"=>cause.error().to_string()}
                 }
                 Self::RetainedStage { path, cause } | Self::TrashLink { path, cause } => {
-                    crate::core::diagnostic_params! {"path"=>path.to_string_lossy().into_owned(),
-                        "cause"=>cause.error().to_string()}
+                    crate::core::diagnostic_params! {
+                        "path"=>path.to_string_lossy().into_owned(),
+                        "cause"=>cause.error().to_string(),
+                    }
                 }
                 Self::RemovedStage { path } => {
                     crate::core::diagnostic_params! {"path"=>path.to_string_lossy().into_owned()}

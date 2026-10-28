@@ -167,7 +167,7 @@ The [diagnostic contract](#diagnostic-codes) applies to nominal diagnostics, rat
 
 Entries identify key, collection, title, portable document identity, duration, dates, content token, directory-owned Trash state, nominal facts, evidence and validation. Unknown dates/values use null. Discovery validation is `not_checked`.
 
-Nominal descriptors contain `owner`, `method`, `hz` and optional `band` membership. Expanded owners use `{"component":N,"lane":"primary"}` or `secondary`. Each nominal descriptor identifies its generator lane and structural method. Transition roles belong to generated observations, not nominal JSON descriptors. Display labels are separate from serialized keys; method group captions use the same owning vocabulary labels as the other views.
+Nominal descriptors contain `owner`, `method`, `hz` and optional `band` membership. Expanded owners use `{"component":N,"lane":"primary"}` or `secondary`. Each nominal descriptor identifies its generator lane and structural method. Transition roles belong to generated observations, not nominal JSON descriptors. Display labels are separate from serialized keys; method group captions use the same owning vocabulary labels as the other views. `groups[].label` is a human display caption rendered by the shared library presentation owner, independently of the group key and membership.
 
 Read-only partial inventories return healthy entries with `complete:false`. IDs output emits no stdout selectors for incomplete discovery and rejects grouping or temporary inputs. Prose escapes controls/bidi overrides; raw portable output retains its bytes. JSON escaping preserves decoded string data.
 

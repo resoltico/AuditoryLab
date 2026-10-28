@@ -103,8 +103,10 @@ crate::core::diagnostic_codes! {
                 Self::Trashed { key } => crate::core::diagnostic_params! {
                     "selector"=>key.to_string()},
                 Self::Sound { title, rate, .. } => {
-                    crate::core::diagnostic_params! {"title"=>title.clone(),
-                        "diagnostic_rate_hz"=>rate.hz()}
+                    crate::core::diagnostic_params! {
+                        "title"=>title.clone(),
+                        "diagnostic_rate_hz"=>rate.hz(),
+                    }
                 }
                 _ => crate::core::diagnostic::Params::new(),
             }

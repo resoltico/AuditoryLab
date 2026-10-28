@@ -93,10 +93,19 @@ macro_rules! operation_from {
     ($($ty:ty => $variant:ident),* $(,)?) => { $(impl From<$ty> for OperationError {
         fn from(error: $ty) -> Self { Self::$variant(error) } })* };
 }
-operation_from! { LoadError => Load, LibraryError => Library, ExportError => Export,
-PlaybackError => Playback, SaveError => Save, EditorError => Editor, IdentityError => Identity,
-QueryError => Query, FileError => File, crate::core::RecipeError => Recipe,
-crate::core::SampleRateError => SampleRate }
+operation_from! {
+    LoadError => Load,
+    LibraryError => Library,
+    ExportError => Export,
+    PlaybackError => Playback,
+    SaveError => Save,
+    EditorError => Editor,
+    IdentityError => Identity,
+    QueryError => Query,
+    FileError => File,
+    crate::core::RecipeError => Recipe,
+    crate::core::SampleRateError => SampleRate,
+}
 
 impl From<crate::document::origin::OriginError> for OperationError {
     fn from(error: crate::document::origin::OriginError) -> Self {
@@ -153,8 +162,11 @@ crate::core::diagnostic_codes! {
         params(this) {
             match this {
                 Self::Sound { origin, rate, .. } => {
-                    crate::core::diagnostic_params! {"origin"=>origin.to_string(),"diagnostic_rate\
-                        _hz"=>rate.hz()}
+                    crate::core::diagnostic_params! {
+                        "origin"=>origin.to_string(),
+                        "diagnostic_rate\
+                        _hz"=>rate.hz(),
+                    }
                 }
                 Self::File { .. } => crate::core::diagnostic::Params::new(),
             }

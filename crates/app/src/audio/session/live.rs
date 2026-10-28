@@ -252,8 +252,10 @@ crate::core::diagnostic_codes! {
                     target_hz,
                     session_hz,
                 } => {
-                    crate::core::diagnostic_params! {"target_hz"=>*target_hz,
-                        "session_hz"=>*session_hz}
+                    crate::core::diagnostic_params! {
+                        "target_hz"=>*target_hz,
+                        "session_hz"=>*session_hz,
+                    }
                 }
                 _ => crate::core::diagnostic::Params::new(),
             }

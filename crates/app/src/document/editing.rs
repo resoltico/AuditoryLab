@@ -1495,9 +1495,12 @@ crate::core::diagnostic_codes! {
                     voices,
                     additional_voices,
                 } => {
-                    crate::core::diagnostic_params! {"components"=>*components,"voices"=>*voices,
+                    crate::core::diagnostic_params! {
+                        "components"=>*components,
+                        "voices"=>*voices,
                         "additional\
-                        _voices"=>*additional_voices}
+                        _voices"=>*additional_voices,
+                    }
                 }
                 _ => crate::core::diagnostic::Params::new(),
             }

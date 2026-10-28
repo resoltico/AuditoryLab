@@ -582,11 +582,17 @@ fn inspection_serializes_expanded_identity_without_conflating_authored_owners() 
     let voices = &report["entries"][0]["validation"]["voices"];
     assert_eq!(
         voices[0]["id"],
-        serde_json::json!({"component": 1, "lane": "primary"})
+        serde_json::json!({
+            "component": 1,
+            "lane": "primary"
+        })
     );
     assert_eq!(
         voices[1]["id"],
-        serde_json::json!({"component": 1, "lane": "secondary"})
+        serde_json::json!({
+            "component": 1,
+            "lane": "secondary"
+        })
     );
 }
 

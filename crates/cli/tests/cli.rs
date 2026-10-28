@@ -463,7 +463,11 @@ fn json_failures_keep_fixed_codes_and_structured_values() {
     assert_eq!(value["diagnostics"][0]["code"], "sample_rate.range");
     assert_eq!(
         value["diagnostics"][0]["params"],
-        serde_json::json!({"hz":0,"min_hz":1,"max_hz":768_000})
+        serde_json::json!({
+            "hz": 0,
+            "min_hz": 1,
+            "max_hz": 768_000
+        })
     );
     assert!(!missing.exists(), "range refusal precedes source access");
 
@@ -591,4 +595,62 @@ fn cli_meaning_cases() -> [(
             "interaural",
         ),
     ]
+}
+
+#[test]
+fn grouped_schema_two_json_retains_display_labels_and_member_keys() {
+    for (group_by, expected) in [
+        (
+            "method",
+            vec![("am", "AM"), ("binaural", "Binaural"), ("clicks", "Clicks")],
+        ),
+        (
+            "band",
+            vec![
+                ("gamma", "Gamma"),
+                ("delta", "Delta"),
+                ("no_rhythm", "No rhythmic rate"),
+            ],
+        ),
+        (
+            "study",
+            vec![(
+                "study:10.1016/j.cell.2019.02.014",
+                "10.1016/j.cell.2019.02.014",
+            )],
+        ),
+        ("collection", vec![("Built-in", "Built-in")]),
+    ] {
+        let output = cli(&[
+            "list",
+            "--collection",
+            "builtin",
+            "--group-by",
+            group_by,
+            "--format",
+            "json",
+        ]);
+        assert!(output.status.success(), "{output:?}");
+        let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(value["output_schema_version"], 2);
+        for (key, label) in expected {
+            let group = value["groups"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|group| group["key"] == key)
+                .unwrap();
+            assert_eq!(group["label"], label);
+            assert_ne!(group["keys"].as_array().unwrap().len(), 0);
+            for member in group["keys"].as_array().unwrap() {
+                assert!(
+                    value["entries"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|entry| entry["key"] == *member)
+                );
+            }
+        }
+    }
 }

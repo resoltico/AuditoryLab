@@ -387,7 +387,10 @@ fn failed_report_completion_never_claims_a_failed_operation_was_confirmed() {
         error.to_string(),
         Outcome::InvalidArgument,
     );
-    let text = report.completion_failure(std::io::Error::other("closed output"));
+    let text = auditorylab_presentation::library::report_completion_failure(
+        report.complete,
+        std::io::Error::other("closed output"),
+    );
     assert!(text.contains("Operation not completed"));
     assert!(!text.contains("Operation confirmed"));
 }
@@ -538,4 +541,23 @@ fn assert_restore_and_purge(
             .outcome(),
         Outcome::Conflict
     );
+}
+
+#[test]
+fn completion_output_failures_preserve_the_exact_confirmation_wording() {
+    for (complete, expected) in [
+        (
+            true,
+            "Operation confirmed; completion output failed: closed output",
+        ),
+        (
+            false,
+            "Operation not completed; completion output failed: closed output",
+        ),
+    ] {
+        assert_eq!(
+            auditorylab_presentation::library::report_completion_failure(complete, "closed output"),
+            expected
+        );
+    }
 }

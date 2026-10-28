@@ -309,8 +309,10 @@ crate::core::diagnostic_codes! {
                 Self::InvalidAtRate { rate, error } => {
                     let mut params = crate::core::diagnostic::Code::params(error);
                     params.extend(crate::core::diagnostic_params! {
-                        "cause_code"=>crate::core::diagnostic::Code::code(error),"diagnostic\
-                        _rate_hz"=>rate.hz()});
+                        "cause_code"=>crate::core::diagnostic::Code::code(error),
+                        "diagnostic\
+                        _rate_hz"=>rate.hz(),
+                    });
                     params
                 }
                 Self::EditorRefresh(error) | Self::EditorReset(error) => {

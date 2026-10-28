@@ -24,9 +24,12 @@ fn calendar_child() {
     .collect();
     fs::write(
         std::env::var_os("AUDITORYLAB_CALENDAR_TEST_RESULT").unwrap(),
-        serde_json::to_vec(&serde_json::json!({"from":range.from,"before":range.before,
-        "context":auditorylab_presentation::library::calendar::local_context(),"shown":shown}
-        ))
+        serde_json::to_vec(&serde_json::json!({
+            "from": range.from,
+            "before": range.before,
+            "context": auditorylab_presentation::library::calendar::local_context(),
+            "shown": shown
+        }))
         .unwrap(),
     )
     .unwrap();

@@ -137,3 +137,38 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
         None => panic!("nonfinite fixture value"),
     }
 }
+
+#[test]
+fn schema_two_group_labels_preserve_human_captions_and_machine_identity() {
+    use auditorylab_app::discovery::collection::{Collection, GroupLabel, ResultGroup};
+    use auditorylab_app::discovery::query::RhythmState;
+    use auditorylab_core::rhythm::{Band, Method};
+    for (label, expected) in [
+        (GroupLabel::Band(Band::Gamma), "Gamma"),
+        (GroupLabel::Method(Method::Am), "AM"),
+        (GroupLabel::State(RhythmState::None), "No rhythmic rate"),
+        (GroupLabel::NoMethod, "No declared method"),
+        (GroupLabel::Study("10.1234/study".into()), "10.1234/study"),
+        (GroupLabel::NoStudy, "No current study declaration"),
+        (GroupLabel::Collection(Collection::BuiltIn), "Built-in"),
+        (GroupLabel::Collection(Collection::User), "User"),
+        (GroupLabel::Collection(Collection::External), "Open files"),
+    ] {
+        let group = ResultGroup {
+            key: "independent-machine-key".into(),
+            label,
+            keys: Vec::new(),
+        };
+        let value =
+            serde_json::to_value(auditorylab_presentation::report::GroupReport::from(&group))
+                .unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "key": "independent-machine-key",
+                "label": expected,
+                "keys": []
+            })
+        );
+    }
+}

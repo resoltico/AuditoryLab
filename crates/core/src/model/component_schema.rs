@@ -86,8 +86,14 @@ macro_rules! component_schema {
             }
         }
         modulation_quantities {
-            Am {rate_hz=>AmRate,depth=>AmDepth}
-            Gate {rate_hz=>GateRate,width_seconds=>GateWidth}
+            Am {
+                rate_hz => AmRate,
+                depth => AmDepth
+            }
+            Gate {
+                rate_hz => GateRate,
+                width_seconds => GateWidth
+            }
         }
     }};
 }

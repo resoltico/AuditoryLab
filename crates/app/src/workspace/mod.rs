@@ -1094,8 +1094,10 @@ crate::core::diagnostic_codes! {
                     crate::core::diagnostic_params! {"document_id"=>id.to_string()}
                 }
                 Self::Invalid { title, rate, .. } => {
-                    crate::core::diagnostic_params! {"title"=>title.clone(),
-                        "diagnostic_rate_hz"=>rate.hz()}
+                    crate::core::diagnostic_params! {
+                        "title"=>title.clone(),
+                        "diagnostic_rate_hz"=>rate.hz(),
+                    }
                 }
                 _ => crate::core::diagnostic::Params::new(),
             }

@@ -69,7 +69,10 @@ crate::diagnostic_codes! {
         }
         delegates {}
         params(this) {
-            crate::diagnostic_params! {"parameter"=>this.parameter.key(),"value"=>this.value}
+            crate::diagnostic_params! {
+                "parameter"=>this.parameter.key(),
+                "value"=>this.value,
+            }
         }
     }
 }

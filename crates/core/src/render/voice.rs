@@ -351,19 +351,27 @@ crate::diagnostic_codes! {
                 | Self::Fade {
                     seconds,
                     sample_rate_hz,
-                } => crate::diagnostic_params! {"seconds"=>*seconds,
-                    "sample_rate_hz"=>*sample_rate_hz},
+                } => crate::diagnostic_params! {
+                    "seconds"=>*seconds,
+                    "sample_rate_hz"=>*sample_rate_hz,
+                },
                 Self::FadesOverlap {
                     fade_frames,
                     frames,
                     sample_rate_hz,
                 } => {
-                    crate::diagnostic_params! {"fade_frames"=>*fade_frames,"frames"=>*frames,
+                    crate::diagnostic_params! {
+                        "fade_frames"=>*fade_frames,
+                        "frames"=>*frames,
                         "sample_rat\
-                        e_hz"=>*sample_rate_hz}
+                        e_hz"=>*sample_rate_hz,
+                    }
                 }
                 Self::Peak { ear, amplitude } => {
-                    crate::diagnostic_params! {"ear"=>ear.key(),"amplitude"=>*amplitude}
+                    crate::diagnostic_params! {
+                        "ear"=>ear.key(),
+                        "amplitude"=>*amplitude,
+                    }
                 }
                 Self::Voice { id, .. } => {
                     crate::diagnostic_params! {"owner"=>alloc::string::ToString::to_string(id)}
@@ -374,8 +382,11 @@ crate::diagnostic_codes! {
                     offset_hz,
                     ..
                 } => {
-                    crate::diagnostic_params! {"owner"=>alloc::string::ToString::to_string(id),
-                        "first_hz"=>*first_hz,"offset_hz"=>*offset_hz}
+                    crate::diagnostic_params! {
+                        "owner"=>alloc::string::ToString::to_string(id),
+                        "first_hz"=>*first_hz,
+                        "offset_hz"=>*offset_hz,
+                    }
                 }
                 Self::Pair(_) => crate::Params::new(),
             }
@@ -397,17 +408,24 @@ crate::diagnostic_codes! {
                     hz,
                     sample_rate_hz,
                 } => {
-                    crate::diagnostic_params! {"parameter"=>parameter.key(),"hz"=>*hz,"sample_rate\
-                        _hz"=>*sample_rate_hz}
+                    crate::diagnostic_params! {
+                        "parameter"=>parameter.key(),
+                        "hz"=>*hz,
+                        "sample_rate\
+                        _hz"=>*sample_rate_hz,
+                    }
                 }
                 Self::Sideband {
                     frequency_hz,
                     rate_hz,
                     sample_rate_hz,
                 } => {
-                    crate::diagnostic_params! {"frequency_hz"=>*frequency_hz,"rate_hz"=>*rate_hz,
+                    crate::diagnostic_params! {
+                        "frequency_hz"=>*frequency_hz,
+                        "rate_hz"=>*rate_hz,
                         "sample_rat\
-                        e_hz"=>*sample_rate_hz}
+                        e_hz"=>*sample_rate_hz,
+                    }
                 }
                 Self::PulseWidth {
                     parameter,
@@ -415,9 +433,13 @@ crate::diagnostic_codes! {
                     rate_hz,
                     sample_rate_hz,
                 } => {
-                    crate::diagnostic_params! {"parameter"=>parameter.key(),
-                        "width_seconds"=>*width_seconds,"rate_hz"=>*rate_hz,"sample_rat\
-                        e_hz"=>*sample_rate_hz}
+                    crate::diagnostic_params! {
+                        "parameter"=>parameter.key(),
+                        "width_seconds"=>*width_seconds,
+                        "rate_hz"=>*rate_hz,
+                        "sample_rat\
+                        e_hz"=>*sample_rate_hz,
+                    }
                 }
                 Self::PeakDbfs { peak_dbfs } => crate::diagnostic_params! {"peak_dbfs"=>*peak_dbfs},
                 Self::Depth { depth } => crate::diagnostic_params! {"depth"=>*depth},

@@ -82,8 +82,11 @@ crate::diagnostic_codes! {
         }
         delegates {}
         params(this) {
-            crate::diagnostic_params! {"hz"=>this.hz,"min_hz"=>SampleRate::MIN_HZ,
-                "max_hz"=>SampleRate::MAX_HZ}
+            crate::diagnostic_params! {
+                "hz"=>this.hz,
+                "min_hz"=>SampleRate::MIN_HZ,
+                "max_hz"=>SampleRate::MAX_HZ,
+            }
         }
     }
 }

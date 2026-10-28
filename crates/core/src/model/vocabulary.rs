@@ -107,14 +107,20 @@ impl crate::Code for VocabularyError {
 macro_rules! vocabularies {
     ($consumer:ident) => {
         $consumer! {
-                ears:crate::Ears,ear:crate::Ear,pair_kind:crate::PairKind,slot_role:crate::SlotRole,
-                parameters:crate::ParameterId,carrier_kind:crate::CarrierKind,
-                    modulation_kind:crate::ModulationKind,
-                population:crate::Population,condition_role:crate::ConditionRole,
-                    evidence_scope:crate::EvidenceScope,measure:crate::Measure,
-                band:crate::rhythm::Band,method:crate::rhythm::Method,
-                    completeness:crate::rhythm::Completeness,
-
+            ears:crate::Ears,
+            ear:crate::Ear,
+            pair_kind:crate::PairKind,
+            slot_role:crate::SlotRole,
+            parameters:crate::ParameterId,
+            carrier_kind:crate::CarrierKind,
+            modulation_kind:crate::ModulationKind,
+            population:crate::Population,
+            condition_role:crate::ConditionRole,
+            evidence_scope:crate::EvidenceScope,
+            measure:crate::Measure,
+            band:crate::rhythm::Band,
+            method:crate::rhythm::Method,
+            completeness:crate::rhythm::Completeness,
         }
     };
 }

@@ -49,9 +49,12 @@ crate::core::diagnostic_codes! {
                 Ok(duration) => (false, duration),
                 Err(error) => (true, error.duration()),
             };
-            crate::core::diagnostic_params! {"observed_before_epoch"=>before,
-                "observed_seconds"=>duration.as_secs(),"observed_n\
-                anoseconds"=>duration.subsec_nanos()}
+            crate::core::diagnostic_params! {
+                "observed_before_epoch"=>before,
+                "observed_seconds"=>duration.as_secs(),
+                "observed_n\
+                anoseconds"=>duration.subsec_nanos(),
+            }
         }
     }
 }

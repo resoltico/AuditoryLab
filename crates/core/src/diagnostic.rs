@@ -44,8 +44,18 @@ macro_rules! unsigned {($($ty:ty),*)=>{$(impl From<$ty> for ParamValue {fn from(
     Self::Unsigned(u128::from(value))}})*};}
 macro_rules! signed {($($ty:ty),*)=>{$(impl From<$ty> for ParamValue {fn from(value:$ty)->Self {
     Self::Signed(i128::from(value))}})*};}
-unsigned!(u8, u16, u32, u64);
-signed!(i8, i16, i32, i64);
+unsigned! {
+    u8,
+    u16,
+    u32,
+    u64
+}
+signed! {
+    i8,
+    i16,
+    i32,
+    i64
+}
 impl From<f64> for ParamValue {
     fn from(value: f64) -> Self {
         match crate::Finite::new(value) {

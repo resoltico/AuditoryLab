@@ -618,6 +618,18 @@ pub mod calendar;
 mod operations;
 pub use operations::*;
 
+/// A completed operation remains confirmed if rendering or writing its report fails.
+#[must_use]
+pub fn report_completion_failure(complete: bool, error: impl std::fmt::Display) -> String {
+    let truth = if complete {
+        auditorylab_app::vocabulary::Status::OperationConfirmed
+    } else {
+        auditorylab_app::vocabulary::Status::OperationIncomplete
+    }
+    .label();
+    format!("{truth}; completion output failed: {error}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

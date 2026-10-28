@@ -183,12 +183,20 @@ vocabulary! { Status,"status" {
         for generated audio"),
 }}
 
-macro_rules! vocabularies {($consumer:ident)=>{$consumer! {
-        scope:crate::discovery::query::Scope,sort:crate::discovery::query::SortBy,
-            direction:crate::discovery::query::Direction,group:crate::discovery::query::GroupBy,
+macro_rules! vocabularies {
+    ($consumer:ident) => {
+        $consumer! {
+            scope:crate::discovery::query::Scope,
+            sort:crate::discovery::query::SortBy,
+            direction:crate::discovery::query::Direction,
+            group:crate::discovery::query::GroupBy,
             rhythm_state:crate::discovery::query::RhythmState,
-        calendar_field:crate::discovery::query::CalendarField,operation:Operation,status:Status,
-}};}
+            calendar_field:crate::discovery::query::CalendarField,
+            operation:Operation,
+            status:Status,
+        }
+    };
+}
 macro_rules! registry {($($name:ident:$kind:ty),* $(,)?)=>{
     pub(crate) const CODES:&[&str]=&[$(<$kind>::INVALID_CODE),*];};}
 vocabularies!(registry);

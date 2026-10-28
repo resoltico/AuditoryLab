@@ -139,11 +139,20 @@ fn controlled_child() {
     let outcome = store.apply(mutation, &Cancel::default());
     let report = match outcome {
         Ok(result) => {
-            serde_json::json!({"code":0,"status":format!("{:?}",result.status)})
+            serde_json::json!({
+                "code": 0,
+                "status": format!("{:?}", result.status)
+            })
         }
         Err(error) => {
-            serde_json::json!({"code":match error.outcome(){Outcome::Conflict=>3,Outcome::Busy=>4,
-                _=>1},"error":error.to_string()})
+            serde_json::json!({
+                "code": match error.outcome() {
+                    Outcome::Conflict => 3,
+                    Outcome::Busy => 4,
+                    _ => 1
+                },
+                "error": error.to_string()
+            })
         }
     };
     fs::write(
