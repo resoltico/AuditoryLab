@@ -10,10 +10,10 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use super::{View, Workspace};
+use super::View;
+use super::editor::EditorState;
 use crate::audio::session::MonitorReader;
 use crate::audio::session::SessionId;
-use crate::document::editing::EditorSession;
 use crate::document::recipe::{RecipeSnapshot, SnapshotId};
 use auditorylab_core::SampleRate;
 use std::sync::Arc;
@@ -205,9 +205,9 @@ impl OutputState {
     /// revision while its document is open, otherwise the shown source at
     /// its rate. A model is built once per key; an invalid source caches its
     /// absence. Returns whether the model changed.
-    pub(crate) fn refresh_model(
+    pub(super) fn refresh_model(
         &mut self,
-        editor: &mut EditorSession,
+        editor: &mut EditorState,
         selected: Option<&RecipeSnapshot>,
         view: View,
         live_document: bool,
@@ -221,7 +221,10 @@ impl OutputState {
         let key = match (accepted, view, selected) {
             (Some((session, (revision, _))), _, _) => ModelKey::Accepted(session, revision),
             (None, View::Workbench, _) => ModelKey::Source(
-                SourceKey::Draft(editor.document(), editor.draft_revision()),
+                SourceKey::Draft(
+                    editor.session().document(),
+                    editor.session().draft_revision(),
+                ),
                 rate,
             ),
             (None, View::Library, Some(snapshot)) => {
@@ -243,13 +246,18 @@ impl OutputState {
         let model = match (accepted, key) {
             (Some((_, (revision, target))), _) => Some((
                 target,
-                editor.draft().title().to_owned(),
+                editor.session().draft().title().to_owned(),
                 ModelSource::Accepted(revision),
             )),
-            (None, ModelKey::Source(SourceKey::Draft(..), _)) => editor
-                .committed_analysis(rate)
-                .target()
-                .map(|t| (*t, editor.draft().title().to_owned(), ModelSource::Draft)),
+            (None, ModelKey::Source(SourceKey::Draft(..), _)) => {
+                editor.committed_analysis(rate).target().map(|t| {
+                    (
+                        *t,
+                        editor.session().draft().title().to_owned(),
+                        ModelSource::Draft,
+                    )
+                })
+            }
             (None, _) => selected.and_then(|snapshot| {
                 snapshot.at(rate).ok().map(|sound| {
                     (
@@ -301,9 +309,9 @@ impl OutputState {
 
     /// Bring captures up to date with their inputs. Returns whether the
     /// displayed capture changed.
-    pub(crate) fn refresh(
+    pub(super) fn refresh(
         &mut self,
-        editor: &mut EditorSession,
+        editor: &mut EditorState,
         selected: Option<&RecipeSnapshot>,
         view: View,
         export_rate: SampleRate,
@@ -345,7 +353,7 @@ impl OutputState {
 
     fn refresh_preview(
         &mut self,
-        editor: &mut EditorSession,
+        editor: &mut EditorState,
         selected: Option<&RecipeSnapshot>,
         view: View,
         rate: SampleRate,
@@ -361,7 +369,10 @@ impl OutputState {
                     return;
                 }
             },
-            View::Workbench => SourceKey::Draft(editor.document(), editor.draft_revision()),
+            View::Workbench => SourceKey::Draft(
+                editor.session().document(),
+                editor.session().draft_revision(),
+            ),
         };
         let key = PreviewKey {
             source,
@@ -394,13 +405,13 @@ impl OutputState {
                     let analysis = editor.committed_analysis(rate);
                     match analysis.signal() {
                         Some(signal) => Ok(Arc::new(WaveformCapture::preview(
-                            editor.draft().title().to_owned(),
+                            editor.session().draft().title().to_owned(),
                             signal,
                             span_ms,
                             WaveformScale::Fixed,
                         ))),
                         None => Err(PreviewIssue::Acoustic {
-                            title: editor.draft().title().into(),
+                            title: editor.session().draft().title().into(),
                             rate,
                             error: analysis.finite_error().cloned(),
                         }),
@@ -426,46 +437,6 @@ impl OutputState {
 impl OutputState {
     pub(super) fn preview_admission(audio: &super::AudioState) -> Result<(), super::Refusal> {
         audio.idle_admission()
-    }
-}
-
-impl Workspace {
-    /// Record the platform's reduced-motion preference.
-    pub(super) fn set_motion_preference(&mut self, preference: MotionPreference) {
-        if self.audio.output.set_motion(preference) {
-            self.changed();
-        }
-    }
-    /// Hold or release the displayed capture, overriding the platform
-    /// preference until [`Workspace::follow_motion`].
-    pub(super) fn set_hold(&mut self, held: bool) {
-        self.audio.output.set_override(Some(held));
-        self.changed();
-    }
-    /// Follow the platform's motion preference again.
-    pub(super) fn follow_motion(&mut self) {
-        self.audio.output.set_override(None);
-        self.changed();
-    }
-    /// Choose the waveform span in milliseconds and its display scale.
-    pub(super) fn set_waveform(&mut self, span_ms: u32, scale: WaveformScale) {
-        if self.audio.output.set_waveform(span_ms, scale) {
-            self.changed();
-        }
-    }
-    /// Stop showing the last session's output and preview the current source.
-    pub(super) fn preview_current(&mut self) {
-        if self.preview_admission().is_ok() {
-            self.audio.output.unbind();
-            self.changed();
-        }
-    }
-    /// The timing model of what the current view explains: the open
-    /// document's accepted live revision, its committed content, or the
-    /// selected recipe. `None` when that source is not valid.
-    #[must_use]
-    pub fn model_view(&self) -> Option<Arc<crate::workspace::monitor::ModelView>> {
-        self.audio.output.model().cloned()
     }
 }
 

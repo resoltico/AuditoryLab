@@ -130,10 +130,10 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     ws.poll();
     let view = ws.editor_view();
     let actions = ws.action_view();
-    let previews = ws.audio.output.previews;
-    let models = ws.audio.output.models;
-    let evaluations = ws.editor.session.evaluations();
-    let serializations = ws.editor.session.serializations();
+    let previews = ws.audio.output().previews;
+    let models = ws.audio.output().models;
+    let evaluations = ws.editor.session().evaluations();
+    let serializations = ws.editor.session().serializations();
     let revision = ws.revision();
     let capture = ws.output_view().capture.unwrap();
     let model = ws.model_view().unwrap();
@@ -142,11 +142,11 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     }
     assert_eq!(ws.action_view().can_play, actions.can_play);
     assert_eq!(ws.action_view().can_save, actions.can_save);
-    assert_eq!(ws.audio.output.previews, previews);
-    assert_eq!(ws.audio.output.models, models);
-    assert_eq!(ws.editor.session.evaluations(), evaluations);
+    assert_eq!(ws.audio.output().previews, previews);
+    assert_eq!(ws.audio.output().models, models);
+    assert_eq!(ws.editor.session().evaluations(), evaluations);
     assert_eq!(
-        ws.editor.session.serializations(),
+        ws.editor.session().serializations(),
         serializations,
         "save readiness is checked once per candidate"
     );
@@ -156,7 +156,7 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     assert_eq!(ws.editor_view().metadata, view.metadata);
     assert_eq!(ws.editor_view().components, view.components);
     assert_eq!(
-        ws.editor.session.evaluations(),
+        ws.editor.session().evaluations(),
         evaluations,
         "views reuse cached evaluations"
     );
@@ -166,7 +166,7 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
         scale: WaveformScale::Fit,
     }));
     ws.poll();
-    assert_eq!(ws.audio.output.previews, previews);
+    assert_eq!(ws.audio.output().previews, previews);
     // A relevant change recomputes once.
     let _ = ws.apply(Command::Output(OutputCommand::SetWaveform {
         span_ms: 10,
@@ -174,7 +174,7 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     }));
     ws.poll();
     ws.poll();
-    assert_eq!(ws.audio.output.previews, previews + 1);
+    assert_eq!(ws.audio.output().previews, previews + 1);
 }
 
 #[test]
@@ -210,12 +210,12 @@ fn invalid_commits_clear_unheld_previews_and_held_captures_stay_frozen() {
         "invalid committed source clears the preview"
     );
     assert!(current.unavailable.is_some());
-    let evaluations = ws.editor.session.evaluations();
+    let evaluations = ws.editor.session().evaluations();
     for _ in 0..10 {
         ws.poll();
     }
     assert_eq!(
-        ws.editor.session.evaluations(),
+        ws.editor.session().evaluations(),
         evaluations,
         "invalid results are cached"
     );
@@ -281,8 +281,8 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
     }))
     .unwrap();
     let revision = ws.revision();
-    let committed = ws.editor.session.draft_revision();
-    let input = ws.editor.session.input_revision();
+    let committed = ws.editor.session().draft_revision();
+    let input = ws.editor.session().input_revision();
     let next_id = ws.next_id;
     let effects = ws.take_effects();
     for _ in 0..10 {
@@ -292,17 +292,17 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
     }
     assert_eq!(ws.next_id, next_id);
     assert_eq!(ws.revision(), revision);
-    assert_eq!(ws.editor.session.draft_revision(), committed);
-    assert_eq!(ws.editor.session.input_revision(), input);
+    assert_eq!(ws.editor.session().draft_revision(), committed);
+    assert_eq!(ws.editor.session().input_revision(), input);
     assert!(ws.take_effects().is_empty());
     assert!(!ws.audio_busy() && !ws.file_busy());
     assert!(ws.apply(Command::File(FileCommand::ExportWav)).is_err());
-    assert_eq!(ws.editor.session.staged(frequency.field), Some("30000"));
-    assert_eq!(ws.editor.session.draft_revision(), committed);
+    assert_eq!(ws.editor.session().staged(frequency.field), Some("30000"));
+    assert_eq!(ws.editor.session().draft_revision(), committed);
     drop(effects);
     let notes = ws
         .editor
-        .session
+        .session()
         .handle(EditingField::Metadata(
             crate::document::editing::MetadataField::Summary,
         ))
@@ -313,15 +313,15 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
     }))
     .unwrap();
     assert!(ws.apply(Command::File(FileCommand::Save)).is_err());
-    assert!(ws.editor.session.staged(notes.field).is_some());
-    assert_eq!(ws.editor.session.draft_revision(), committed);
+    assert!(ws.editor.session().staged(notes.field).is_some());
+    assert_eq!(ws.editor.session().draft_revision(), committed);
 }
 
 #[test]
 fn library_dependencies_exclude_editor_and_telemetry_but_include_selection_query_and_rate() {
     let mut ws = workspace();
     let initial = ws.library_view();
-    let evaluations = ws.library.evaluations.get();
+    let evaluations = ws.library.evaluations();
     let (_, field) = document(&mut ws, 440.0);
     ws.apply(Command::Editor(EditorCommand::Stage {
         field,
@@ -335,13 +335,13 @@ fn library_dependencies_exclude_editor_and_telemetry_but_include_selection_query
         ws.library_view().snapshot.as_ref().map(RecipeSnapshot::id),
         initial.snapshot.as_ref().map(RecipeSnapshot::id)
     );
-    assert_eq!(ws.library.evaluations.get(), evaluations);
+    assert_eq!(ws.library.evaluations(), evaluations);
     ws.select(1);
     assert_ne!(
         ws.library_view().snapshot.as_ref().unwrap().id(),
         initial.snapshot.as_ref().unwrap().id()
     );
-    assert_eq!(ws.library.evaluations.get(), evaluations + 1);
+    assert_eq!(ws.library.evaluations(), evaluations + 1);
     let _ = ws.apply(Command::Library(LibraryCommand::Search(
         ("no matching result").to_string(),
     )));
@@ -352,7 +352,7 @@ fn library_dependencies_exclude_editor_and_telemetry_but_include_selection_query
         SampleRate::new(96000).unwrap(),
     )));
     assert!(!ws.library_view().rows.is_empty());
-    assert_eq!(ws.library.evaluations.get(), evaluations + 3);
+    assert_eq!(ws.library.evaluations(), evaluations + 3);
 }
 
 #[test]
@@ -400,7 +400,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
             .iter()
             .all(|e| e.scope == crate::core::EvidenceScope::Ancestor)
     );
-    assert_eq!(ws.editor.session.draft().summary(), "Own notes");
+    assert_eq!(ws.editor.session().draft().summary(), "Own notes");
 }
 
 #[test]
@@ -488,10 +488,11 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     assert_eq!(selected.realization_count(), count);
     ws.apply(Command::File(FileCommand::ExportWav)).unwrap();
     let prompt = ws.prompts.current.as_ref().unwrap().id;
-    ws.respond(Response::Prompt {
+    ws.apply(Command::Answer {
         prompt,
         answer: PromptAnswer::Path(None),
-    });
+    })
+    .unwrap();
     assert_eq!(selected.realization_count(), count);
     let _ = ws.apply(Command::Editor(EditorCommand::SetExportRate(
         SampleRate::new(96000).unwrap(),
@@ -656,7 +657,7 @@ fn save_refusal_and_file_outcome_remain_independent() {
     let _ = ws.apply(Command::SetView(View::Workbench));
     let notes = ws
         .editor
-        .session
+        .session()
         .handle(EditingField::Metadata(
             crate::document::editing::MetadataField::Summary,
         ))
@@ -669,7 +670,7 @@ fn save_refusal_and_file_outcome_remain_independent() {
     let actions = ws.action_view();
     assert!(!actions.can_save);
     assert!(actions.save_reason.is_some());
-    ws.files.status = FileStatus::Exported {
+    ws.files.record_status(FileStatus::Exported {
         path: PathBuf::from("capture.wav"),
         exported: crate::storage::wav::Exported {
             frames: 100,
@@ -677,14 +678,14 @@ fn save_refusal_and_file_outcome_remain_independent() {
             container: crate::storage::wav::Container::Riff,
             warnings: Vec::new(),
         },
-    };
+    });
     let actions = ws.action_view();
     assert!(actions.save_reason.is_some());
     assert!(
         matches!(actions.file_status,FileStatus::Exported {ref exported,..} if exported.frames==100)
     );
-    ws.editor.session.restore(notes).unwrap();
-    ws.files.status = FileStatus::Failed(
+    ws.editor.restore(notes).unwrap();
+    ws.files.record_status(FileStatus::Failed(
         crate::services::ExportError::File {
             error: crate::storage::error::FileError::Io(crate::storage::error::IoFailure::new(
                 crate::storage::error::IoOperation::Write,
@@ -693,7 +694,7 @@ fn save_refusal_and_file_outcome_remain_independent() {
             )),
         }
         .into(),
-    );
+    ));
     let actions = ws.action_view();
     assert!(matches!(actions.file_status, FileStatus::Failed(_)));
 }
@@ -764,10 +765,11 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
         let Effect::ChoosePath { prompt, .. } = ws.take_effects()[0] else {
             panic!()
         };
-        ws.respond(Response::Prompt {
+        ws.apply(Command::Answer {
             prompt,
             answer: PromptAnswer::Path(Some(path.clone())),
-        });
+        })
+        .unwrap();
         drain_files(&mut ws);
         if text == &first_text {
             ws.apply(Command::Editor(EditorCommand::CopySelected))
@@ -842,11 +844,13 @@ fn answer_path(workspace: &mut Workspace, purpose: PathPurpose, path: Option<Pat
     let (prompt, actual, _) = take_path_prompt(workspace);
     assert_eq!(actual, purpose);
     assert_eq!(
-        workspace.respond(Response::Prompt {
-            prompt,
-            answer: PromptAnswer::Path(path)
-        }),
-        ResponseDisposition::Applied
+        workspace
+            .apply(Command::Answer {
+                prompt,
+                answer: PromptAnswer::Path(path)
+            })
+            .is_ok(),
+        true
     );
     prompt
 }
@@ -977,7 +981,7 @@ fn captured_save_completion_never_replaces_a_different_editor_document() {
     assert_eq!(workspace.editor().draft().recipe().unwrap(), before);
     assert_eq!(workspace.editor().dirty(), dirty);
     assert!(matches!(
-        workspace.editor.location,
+        workspace.editor.location(),
         DocumentLocation::Unsaved
     ));
     let saved = workspace
@@ -1003,11 +1007,13 @@ fn save_before_close_waits_for_the_captured_job_completion() {
     let _ = workspace.apply(Command::Close);
     let prompt = take_unsaved_prompt(&mut workspace);
     assert_eq!(
-        workspace.respond(Response::Prompt {
-            prompt,
-            answer: PromptAnswer::Save
-        }),
-        ResponseDisposition::Applied
+        workspace
+            .apply(Command::Answer {
+                prompt,
+                answer: PromptAnswer::Save
+            })
+            .is_ok(),
+        true
     );
     let job = take_file_job(&mut workspace);
     assert!(workspace.action_pending());
@@ -1048,10 +1054,12 @@ fn failed_captured_save_denies_close_and_preserves_foreign_storage() {
     let captured = workspace.editor().draft().recipe().unwrap();
     let _ = workspace.apply(Command::Close);
     let prompt = take_unsaved_prompt(&mut workspace);
-    workspace.respond(Response::Prompt {
-        prompt,
-        answer: PromptAnswer::Save,
-    });
+    workspace
+        .apply(Command::Answer {
+            prompt,
+            answer: PromptAnswer::Save,
+        })
+        .unwrap();
     let job = take_file_job(&mut workspace);
     let path = workspace
         .store
@@ -1071,7 +1079,7 @@ fn failed_captured_save_denies_close_and_preserves_foreign_storage() {
         b"foreign malformed content must remain"
     );
     assert!(matches!(
-        &workspace.files.status,
+        &workspace.files.status(),
         FileStatus::Library(LibraryStatus::Failed {
             publishing: true,
             ..
@@ -1092,7 +1100,7 @@ fn one_prompt_coalesces_quit_and_ignores_an_older_real_panel_answer() {
     let _ = workspace.apply(Command::Editor(EditorCommand::New));
     assert!(workspace.take_effects().is_empty());
     assert!(matches!(
-        &workspace.files.status,
+        &workspace.files.status(),
         FileStatus::Refused(Refusal::PromptOpen)
     ));
     assert!(
@@ -1103,29 +1111,35 @@ fn one_prompt_coalesces_quit_and_ignores_an_older_real_panel_answer() {
         "Stop admission is independent of a native panel"
     );
     assert_eq!(
-        workspace.respond(Response::Prompt {
-            prompt: stale,
-            answer: PromptAnswer::Discard
-        }),
-        ResponseDisposition::Ignored
+        workspace
+            .apply(Command::Answer {
+                prompt: stale,
+                answer: PromptAnswer::Discard
+            })
+            .is_ok(),
+        true
     );
     assert!(workspace.prompt_open());
     assert_eq!(
-        workspace.respond(Response::Prompt {
-            prompt,
-            answer: PromptAnswer::Failed("panel unavailable".into())
-        }),
-        ResponseDisposition::Applied
+        workspace
+            .apply(Command::Answer {
+                prompt,
+                answer: PromptAnswer::Failed("panel unavailable".into())
+            })
+            .is_ok(),
+        true
     );
     assert!(!workspace.prompt_open());
     assert!(workspace.editor().dirty());
     assert_close_resolution(&mut workspace, false);
     assert_eq!(
-        workspace.respond(Response::Prompt {
-            prompt,
-            answer: PromptAnswer::Discard
-        }),
-        ResponseDisposition::Ignored
+        workspace
+            .apply(Command::Answer {
+                prompt,
+                answer: PromptAnswer::Discard
+            })
+            .is_ok(),
+        true
     );
     assert!(workspace.take_effects().is_empty());
 }
@@ -1143,11 +1157,13 @@ fn invalid_staged_input_denies_save_before_close_without_starting_a_job() {
     let _ = workspace.apply(Command::Close);
     let prompt = take_unsaved_prompt(&mut workspace);
     assert_eq!(
-        workspace.respond(Response::Prompt {
-            prompt,
-            answer: PromptAnswer::Save
-        }),
-        ResponseDisposition::Applied
+        workspace
+            .apply(Command::Answer {
+                prompt,
+                answer: PromptAnswer::Save
+            })
+            .is_ok(),
+        true
     );
     assert_eq!(
         workspace.editor().staged(field.field),
@@ -1159,10 +1175,12 @@ fn invalid_staged_input_denies_save_before_close_without_starting_a_job() {
     assert_close_resolution(&mut workspace, false);
     let _ = workspace.apply(Command::Close);
     let prompt = take_unsaved_prompt(&mut workspace);
-    workspace.respond(Response::Prompt {
-        prompt,
-        answer: PromptAnswer::Discard,
-    });
+    workspace
+        .apply(Command::Answer {
+            prompt,
+            answer: PromptAnswer::Discard,
+        })
+        .unwrap();
     assert_close_resolution(&mut workspace, true);
 }
 
@@ -1259,7 +1277,7 @@ fn portable_export_keeps_the_prompt_capture_and_does_not_advance_the_save_baseli
     assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
     assert!(workspace.editor().dirty());
     assert!(matches!(
-        workspace.editor.location,
+        workspace.editor.location(),
         DocumentLocation::Unsaved
     ));
     assert!(
@@ -1306,7 +1324,7 @@ fn canceled_real_exports_cleanup_and_close_treats_requested_cancellation_as_expe
         assert!(!workspace.file_busy());
         assert!(!workspace.audio_busy());
         assert!(matches!(
-            workspace.files.status,
+            workspace.files.status(),
             FileStatus::Notice(FileNotice::ExportCancelled)
         ));
         if close {
@@ -1343,7 +1361,7 @@ fn a_close_request_after_export_publication_does_not_unpublish_the_real_file() {
     assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
     assert_eq!(std::fs::read(path).unwrap(), bytes);
     assert!(matches!(
-        workspace.files.status,
+        workspace.files.status(),
         FileStatus::Exported { .. }
     ));
     assert_close_resolution(&mut workspace, true);
@@ -1544,7 +1562,7 @@ fn staged_envelope_diagnostics_retain_quantities_and_rate_in_metadata() {
     let mut workspace = workspace();
     let handle = workspace
         .editor
-        .session
+        .session()
         .handle(EditingField::Metadata(
             crate::document::editing::MetadataField::Duration,
         ))

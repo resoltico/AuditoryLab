@@ -2,8 +2,8 @@
 use super::*;
 #[derive(Default)]
 pub(super) struct FileState {
-    pub(super) slot: Option<FileTask>,
-    pub(super) status: FileStatus,
+    slot: Option<FileTask>,
+    status: FileStatus,
 }
 impl FileState {
     pub(super) const fn busy(&self) -> bool {
@@ -19,16 +19,13 @@ impl FileState {
             .as_ref()
             .is_some_and(|task| matches!(task.kind, FileKind::Export { .. } | FileKind::Import(_)))
     }
-    pub(super) fn idle_admission(&self, prompts: &Prompts, pending: bool) -> Result<(), Refusal> {
-        prompts.admit_start(pending)?;
+    pub(super) fn idle_admission(&self) -> Result<(), Refusal> {
         if self.busy() {
             return Err(Refusal::FileBusy);
         }
         Ok(())
     }
-}
 
-impl FileState {
     pub(super) fn start(&mut self, id: TaskId, kind: FileKind) -> Job {
         assert!(
             self.slot.is_none(),
@@ -59,6 +56,30 @@ impl FileState {
             None
         }
     }
+
+    pub(super) const fn task(&self) -> Option<&FileTask> {
+        self.slot.as_ref()
+    }
+    pub(super) const fn status(&self) -> &FileStatus {
+        &self.status
+    }
+    pub(super) fn record_status(&mut self, status: FileStatus) {
+        self.status = status;
+    }
+
+    pub(super) fn apply(&mut self, command: FileCommand) -> Result<Option<FileRequest>, Refusal> {
+        Ok(match command {
+            FileCommand::Import => Some(FileRequest::Import),
+            FileCommand::Save => Some(FileRequest::Save),
+            FileCommand::SaveCopy => Some(FileRequest::SaveCopy),
+            FileCommand::ExportRecipe => Some(FileRequest::ExportRecipe),
+            FileCommand::ExportWav => Some(FileRequest::ExportWav),
+            FileCommand::CancelExport => {
+                self.cancel_export()?;
+                None
+            }
+        })
+    }
 }
 
 pub(super) enum PreparedExport {
@@ -88,100 +109,10 @@ impl PreparedExport {
     }
 }
 
-impl Workspace {
-    /// Whether a file task occupies its slot.
-    #[must_use]
-    pub const fn file_busy(&self) -> bool {
-        self.files.busy()
-    }
-    /// Whether the running file task is an export.
-    #[must_use]
-    pub fn exporting(&self) -> bool {
-        self.files.exporting()
-    }
-    /// Choose a recipe file to open. Opening may run beside audio.
-    ///
-    /// # Errors
-    /// Returns the admission refusal.
-    pub(super) fn import(&mut self) -> Result<(), Refusal> {
-        self.import_admission()?;
-        let id = self.prompt(PromptState::Import);
-        self.effects.push(Effect::ChoosePath {
-            prompt: id,
-            purpose: PathPurpose::OpenRecipe,
-            suggested_name: None,
-        });
-        self.changed();
-        Ok(())
-    }
-    /// Commit and capture the open document, then choose where to save it.
-    /// The captured content is what is written, whatever is edited later.
-    ///
-    /// # Errors
-    /// Returns the admission or readiness refusal.
-    pub(super) fn save(&mut self) -> Result<(), Refusal> {
-        let result = self.save_inner();
-        if let Err(refusal) = &result {
-            self.files.status = FileStatus::Refused((refusal).clone());
-        }
-        self.changed();
-        result
-    }
-    pub(super) fn save_inner(&mut self) -> Result<(), Refusal> {
-        let content = self.prepare_save()?;
-        self.editor.commit()?;
-        self.submit_live();
-        self.start_managed_save(self.editor.session.document(), content)?;
-        Ok(())
-    }
-    /// Export captured portable content without saving or forking the document.
-    ///
-    /// # Errors
-    /// Refuses occupied slots or an unserializable draft; no playback is started.
-    pub(super) fn export_recipe(&mut self) -> Result<(), Refusal> {
-        let (text, title) = self.prepare_export_recipe()?;
-        let prompt = self.prompt(PromptState::ExportRecipe(text));
-        self.effects.push(Effect::ChoosePath {
-            prompt,
-            purpose: PathPurpose::ExportRecipe,
-            suggested_name: Some(file_name(&title, "toml")),
-        });
-        self.changed();
-        Ok(())
-    }
-    /// Validate the current source at the selected export rate, then choose
-    /// where to write it. Export needs idle audio and an idle file slot.
-    ///
-    /// # Errors
-    /// Returns the admission or validity refusal.
-    pub(super) fn export(&mut self) -> Result<(), Refusal> {
-        let result = self.export_inner();
-        if let Err(refusal) = &result {
-            self.files.status = FileStatus::Refused((refusal).clone());
-        }
-        self.changed();
-        result
-    }
-    pub(super) fn export_inner(&mut self) -> Result<(), Refusal> {
-        let prepared = self.prepare_export()?;
-        if self.view == View::Workbench {
-            self.editor.commit()?;
-            self.submit_live();
-        }
-        let (sound, name) = prepared.capture();
-        let id = self.prompt(PromptState::Export(sound));
-        self.effects.push(Effect::ChoosePath {
-            prompt: id,
-            purpose: PathPurpose::ExportWav,
-            suggested_name: Some(name),
-        });
-        Ok(())
-    }
-    /// Cancel the running export. Audio is unaffected.
-    ///
-    /// # Errors
-    /// Returns [`Refusal::NoExport`] when no export runs.
-    pub(super) fn cancel_export(&mut self) -> Result<(), Refusal> {
-        self.files.cancel_export()
-    }
+pub(super) enum FileRequest {
+    Import,
+    Save,
+    SaveCopy,
+    ExportRecipe,
+    ExportWav,
 }

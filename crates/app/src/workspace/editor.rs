@@ -45,10 +45,10 @@ impl DocumentLocation {
     }
 }
 pub(super) struct EditorState {
-    pub(super) session: EditorSession,
-    pub(super) export_rate: SampleRate,
-    pub(super) status: EditStatus,
-    pub(super) location: DocumentLocation,
+    session: EditorSession,
+    export_rate: SampleRate,
+    status: EditStatus,
+    location: DocumentLocation,
 }
 impl EditorState {
     pub(super) fn new() -> Result<Self, crate::document::error::EditorError> {
@@ -59,18 +59,7 @@ impl EditorState {
             location: DocumentLocation::Unsaved,
         })
     }
-    pub(super) fn editing_admission(
-        &self,
-        prompts: &Prompts,
-        pending: bool,
-        files: &FileState,
-    ) -> Result<(), Refusal> {
-        prompts.admit_start(pending)?;
-        if files.blocks_edit() {
-            return Err(Refusal::FileBusy);
-        }
-        Ok(())
-    }
+
     pub(super) fn finish_edit(&mut self, result: &Result<(), Refusal>) {
         self.status = match result {
             Ok(()) | Err(Refusal::Input(_)) => EditStatus::Idle,
@@ -82,9 +71,7 @@ impl EditorState {
         self.location = DocumentLocation::Unsaved;
         self.status = EditStatus::Idle;
     }
-}
 
-impl EditorState {
     pub(super) fn stage(&mut self, handle: FieldHandle, text: &str) -> Result<(), Refusal> {
         self.session.stage(handle, text).map_err(Refusal::Edit)
     }
@@ -150,9 +137,7 @@ impl EditorState {
             .map(|_| ())
             .map_err(Refusal::Edit)
     }
-}
 
-impl EditorState {
     fn save_refusal(refusal: SaveRefusal) -> Refusal {
         match refusal {
             SaveRefusal::Input(problems) => Refusal::Input(problems),
@@ -217,11 +202,7 @@ impl EditorState {
         &self,
         row: RowKey,
         form: crate::core::ComponentForm,
-        prompts: &Prompts,
-        pending: bool,
-        files: &FileState,
     ) -> Result<(), Refusal> {
-        self.editing_admission(prompts, pending, files)?;
         self.session.admit_document(row).map_err(Refusal::Edit)?;
         self.session
             .draft()
@@ -229,22 +210,13 @@ impl EditorState {
             .map(|_| ())
             .map_err(Refusal::Edit)
     }
-    pub(super) fn restore_admission(
-        &self,
-        row: RowKey,
-        prompts: &Prompts,
-        pending: bool,
-        files: &FileState,
-    ) -> Result<(), Refusal> {
-        self.editing_admission(prompts, pending, files)?;
+    pub(super) fn restore_admission(&self, row: RowKey) -> Result<(), Refusal> {
         self.session
             .restore_admission(row)
             .map(|_| ())
             .map_err(Refusal::Edit)
     }
-}
 
-impl EditorState {
     pub(super) fn record_managed(
         &mut self,
         document: Option<DocumentId>,
@@ -311,186 +283,7 @@ impl EditorState {
         self.export_rate = rate;
         true
     }
-}
 
-impl Workspace {
-    /// The open document's editor.
-    #[must_use]
-    pub const fn editor(&self) -> &EditorSession {
-        &self.editor.session
-    }
-    /// The selected inspection and export rate; device rates are separate.
-    #[must_use]
-    pub const fn export_rate(&self) -> SampleRate {
-        self.editor.export_rate
-    }
-    /// Select the inspection and export rate. A device's actual rate is
-    /// unaffected.
-    pub(super) fn set_export_rate(&mut self, rate: SampleRate) {
-        if self.editor.set_export_rate(rate) {
-            self.changed();
-        }
-    }
-    pub(super) fn editing_allowed(&self) -> Result<(), Refusal> {
-        self.editor
-            .editing_admission(&self.prompts, self.pending.is_some(), &self.files)
-    }
-    /// Whether editing commands are accepted now.
-    #[must_use]
-    pub fn can_edit(&self) -> bool {
-        self.editing_allowed().is_ok()
-    }
-    pub(super) fn after_edit(&mut self, result: Result<(), Refusal>) -> Result<(), Refusal> {
-        if result.is_ok() {
-            self.submit_live();
-        }
-        self.editor.finish_edit(&result);
-        self.changed();
-        result
-    }
-    /// Stage typed text. Staging changes diagnostics and readiness only.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale handles or while editing is blocked.
-    pub(super) fn stage(&mut self, handle: FieldHandle, text: &str) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self.editor.stage(handle, text);
-        self.changed();
-        result
-    }
-    /// Discard a field's staged text; returns its committed text.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale handles.
-    pub(super) fn restore(&mut self, handle: FieldHandle) -> Result<String, Refusal> {
-        self.editing_allowed()?;
-        let result = self.editor.restore(handle);
-        self.changed();
-        result
-    }
-    /// Stage a field's text and commit the whole candidate.
-    ///
-    /// # Errors
-    /// Returns the refusal, including every field that kept the candidate
-    /// staged.
-    pub(super) fn commit_field(&mut self, handle: FieldHandle, text: &str) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self.editor.commit_field(handle, text);
-        self.after_edit(result)
-    }
-    /// Commit the whole candidate.
-    ///
-    /// # Errors
-    /// Returns every field that kept the candidate staged.
-    pub(super) fn commit(&mut self) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self.editor.commit();
-        self.after_edit(result)
-    }
-    /// Apply a slider gesture: the shared comfortable span and gesture
-    /// rounding give the value, which is staged and committed.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale handles or a blocked commit.
-    pub(super) fn slide(&mut self, handle: FieldHandle, position: f64) -> Result<(), Refusal> {
-        let EditingField::Parameter(_, parameter) = handle.field else {
-            return Err(Refusal::Edit(EditRefusal::Inapplicable));
-        };
-        let Some(value) = controls::slider_value(parameter, self.diagnostic_rate(), position)
-        else {
-            return Err(Refusal::Edit(EditRefusal::Inapplicable));
-        };
-        self.commit_field(handle, &value.to_string())
-    }
-    /// Route a component to other ears.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale identities or while editing is blocked.
-    pub(super) fn set_ears(&mut self, row: RowKey, ears: Ears) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self.editor.set_ears(row, ears);
-        self.after_edit(result)
-    }
-    /// Change a component's carrier kind.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale identities or while editing is blocked.
-    pub(super) fn set_carrier(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self.editor.set_carrier(row, kind);
-        self.after_edit(result)
-    }
-    /// Change a component's modulation kind, or remove its modulation.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale identities or while editing is blocked.
-    pub(super) fn set_modulation(
-        &mut self,
-        row: RowKey,
-        kind: Option<ModulationKind>,
-    ) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let rate = self.diagnostic_rate();
-        let result = self.editor.set_modulation(row, kind, rate);
-        self.after_edit(result)
-    }
-    /// Add a default component.
-    ///
-    /// # Errors
-    /// Returns the refusal at the component limit or while editing is blocked.
-    pub(super) fn add_component(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
-        self.component_add_admission(row, kind)?;
-        let result = self.editor.add_component(row, kind);
-        self.after_edit(result)
-    }
-    /// Add a complete pair as one committed edit/live target submission.
-    ///
-    /// # Errors
-    /// Refuses stale documents, busy editing or the expanded voice budget.
-    pub(super) fn add_pair(
-        &mut self,
-        row: RowKey,
-        kind: auditorylab_core::PairKind,
-    ) -> Result<(), Refusal> {
-        self.pair_add_admission(row, kind)?;
-        let result = self.editor.add_pair(row, kind);
-        self.after_edit(result)
-    }
-    /// Remove a component.
-    ///
-    /// # Errors
-    /// Returns the refusal for stale identities or while editing is blocked.
-    pub(super) fn remove_component(&mut self, row: RowKey) -> Result<(), Refusal> {
-        self.editing_allowed()?;
-        let result = self.editor.remove_component(row);
-        self.after_edit(result)
-    }
-    /// Put the most recently removed component back where it was.
-    ///
-    /// # Errors
-    /// Returns the refusal when nothing was removed, at the component limit
-    /// or while editing is blocked.
-    pub(super) fn restore_component(&mut self, row: RowKey) -> Result<(), Refusal> {
-        self.restore_component_admission(row)?;
-        let result = self.editor.restore_component(row);
-        self.after_edit(result)
-    }
-    /// The live session's actual rate, when a live task is bound to the open
-    /// document; otherwise the selected export rate. Field diagnostics use it.
-    #[must_use]
-    pub fn diagnostic_rate(&self) -> SampleRate {
-        self.live_rate().unwrap_or(self.editor.export_rate)
-    }
-    /// Show the recipe the open document was copied from, by its retained
-    /// snapshot rather than by its path.
-    pub(super) fn show_based_on_source(&mut self) {
-        if let Some(source) = self.editor.session.draft().based_on().cloned() {
-            self.reveal_retained_source(source);
-        }
-    }
-}
-
-impl EditorState {
     pub(super) fn dirty_managed(&self, key: &crate::document::origin::LibraryKey) -> bool {
         self.session.dirty()
             && self
@@ -498,4 +291,102 @@ impl EditorState {
                 .managed()
                 .is_some_and(|(saved, _)| saved == key)
     }
+
+    pub(super) const fn session(&self) -> &EditorSession {
+        &self.session
+    }
+    pub(super) const fn export_rate(&self) -> SampleRate {
+        self.export_rate
+    }
+    pub(super) const fn status(&self) -> &EditStatus {
+        &self.status
+    }
+    pub(super) const fn location(&self) -> &DocumentLocation {
+        &self.location
+    }
+    pub(super) fn locate(&mut self, location: DocumentLocation) {
+        self.location = location;
+    }
+    pub(super) fn candidate(&mut self) -> Arc<crate::document::editing::Candidate> {
+        self.session.candidate()
+    }
+    pub(super) fn candidate_analysis(
+        &mut self,
+        rate: SampleRate,
+    ) -> Arc<crate::document::editing::Analysis> {
+        self.session.candidate_analysis(rate)
+    }
+    pub(super) fn committed_analysis(
+        &mut self,
+        rate: SampleRate,
+    ) -> Arc<crate::document::editing::Analysis> {
+        self.session.committed_analysis(rate)
+    }
+    pub(super) fn nominal(&mut self) -> Arc<crate::core::rhythm::Analysis> {
+        self.session.nominal()
+    }
+    pub(super) fn record_saved(&mut self, document: DocumentId, recipe: &Recipe) -> bool {
+        self.session.record_saved(document, recipe)
+    }
+
+    pub(super) fn slider_command(
+        field: FieldHandle,
+        position: f64,
+        rate: SampleRate,
+    ) -> Result<EditorCommand, Refusal> {
+        let EditingField::Parameter(_, parameter) = field.field else {
+            return Err(Refusal::Edit(EditRefusal::Inapplicable));
+        };
+        let value = controls::slider_value(parameter, rate, position)
+            .ok_or(Refusal::Edit(EditRefusal::Inapplicable))?;
+        Ok(EditorCommand::CommitField {
+            field,
+            text: value.to_string(),
+        })
+    }
+    pub(super) fn apply(&mut self, command: EditorCommand, rate: SampleRate) -> EditorTransition {
+        use EditorTransition as T;
+        match command {
+            EditorCommand::New => T::Request(EditorRequest::New),
+            EditorCommand::CopySelected => T::Request(EditorRequest::CopySelected),
+            EditorCommand::ShowBasedOnSource => T::Request(EditorRequest::ShowBasedOnSource),
+            EditorCommand::SetExportRate(rate) => T::RateChanged(self.set_export_rate(rate)),
+            EditorCommand::Stage { field, text } => T::Staged(self.stage(field, &text)),
+            EditorCommand::Restore(field) => T::Staged(self.restore(field).map(|_| ())),
+            EditorCommand::CommitField { field, text } => {
+                T::Committed(self.commit_field(field, &text))
+            }
+            EditorCommand::Commit => T::Committed(self.commit()),
+            EditorCommand::Slide { field, position } => {
+                match Self::slider_command(field, position, rate) {
+                    Ok(command) => self.apply(command, rate),
+                    Err(refusal) => T::Refused(refusal),
+                }
+            }
+            EditorCommand::SetEars { row, ears } => T::Committed(self.set_ears(row, ears)),
+            EditorCommand::SetCarrier { row, kind } => T::Committed(self.set_carrier(row, kind)),
+            EditorCommand::SetModulation { row, kind } => {
+                T::Committed(self.set_modulation(row, kind, rate))
+            }
+            EditorCommand::AddComponent { row, kind } => {
+                T::Committed(self.add_component(row, kind))
+            }
+            EditorCommand::AddPair { row, kind } => T::Committed(self.add_pair(row, kind)),
+            EditorCommand::RemoveComponent(row) => T::Committed(self.remove_component(row)),
+            EditorCommand::RestoreComponent(row) => T::Committed(self.restore_component(row)),
+        }
+    }
+}
+
+pub(super) enum EditorRequest {
+    New,
+    CopySelected,
+    ShowBasedOnSource,
+}
+pub(super) enum EditorTransition {
+    Request(EditorRequest),
+    RateChanged(bool),
+    Staged(Result<(), Refusal>),
+    Committed(Result<(), Refusal>),
+    Refused(Refusal),
 }

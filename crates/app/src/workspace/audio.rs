@@ -1,10 +1,10 @@
 //! The occupied audio slot, live binding and playback transitions.
 use super::*;
 pub(super) struct AudioState {
-    pub(super) slot: Option<AudioTask>,
-    pub(super) status: AudioStatus,
-    pub(super) output: OutputState,
-    pub(super) capabilities: Capabilities,
+    slot: Option<AudioTask>,
+    status: AudioStatus,
+    output: OutputState,
+    capabilities: Capabilities,
 }
 impl AudioState {
     pub(super) fn new(capabilities: Capabilities) -> Self {
@@ -18,28 +18,14 @@ impl AudioState {
     pub(super) const fn busy(&self) -> bool {
         self.slot.is_some()
     }
-}
 
-#[derive(Debug, Clone)]
-pub(super) enum AudioRequest {
-    Finite {
-        snapshot: Box<RecipeSnapshot>,
-        store: Option<crate::services::library::Library>,
-    },
-    Live {
-        document: DocumentId,
-        candidate: Arc<crate::document::editing::Candidate>,
-    },
-}
-
-impl AudioState {
     pub(super) fn live_rate(&self, document_id: DocumentId) -> Option<SampleRate> {
         self.slot
             .as_ref()
             .filter(|t| matches!(t.kind, AudioKind::Live(document) if document == document_id))
             .and_then(|t| t.rate)
     }
-    pub(super) fn submit_live(&mut self, editor: &mut EditorSession) {
+    pub(super) fn submit_live(&mut self, editor: &mut EditorState) {
         let Some(task) = self.slot.as_ref() else {
             return;
         };
@@ -48,7 +34,7 @@ impl AudioState {
         else {
             return;
         };
-        if *document != editor.document() {
+        if *document != editor.session().document() {
             return;
         }
         let live = live.clone();
@@ -173,9 +159,7 @@ impl AudioState {
             None
         }
     }
-}
 
-impl AudioState {
     pub(super) fn idle_admission(&self) -> Result<(), Refusal> {
         if self.busy() {
             Err(Refusal::AudioPlaying)
@@ -183,106 +167,93 @@ impl AudioState {
             Ok(())
         }
     }
-    pub(super) fn play_admission(
-        &self,
-        prompts: &Prompts,
-        pending: bool,
-        files: &FileState,
-    ) -> Result<(), Refusal> {
+    pub(super) fn play_admission(&self) -> Result<(), Refusal> {
         if !self.capabilities.device_playback {
             return Err(Refusal::DevicePlaybackUnavailable);
         }
-        prompts.admit_start(pending)?;
-        if files.exporting() {
-            return Err(Refusal::Exporting);
-        }
         Ok(())
+    }
+
+    pub(super) const fn task(&self) -> Option<&AudioTask> {
+        self.slot.as_ref()
+    }
+    pub(super) const fn status(&self) -> &AudioStatus {
+        &self.status
+    }
+    pub(super) const fn output(&self) -> &OutputState {
+        &self.output
+    }
+    pub(super) const fn capabilities(&self) -> Capabilities {
+        self.capabilities
+    }
+    pub(super) fn record_status(&mut self, status: AudioStatus) {
+        self.status = status;
+    }
+    pub(super) fn set_motion(&mut self, preference: MotionPreference) -> bool {
+        self.output.set_motion(preference)
+    }
+    pub(super) fn set_override(&mut self, held: Option<bool>) {
+        self.output.set_override(held);
+    }
+    pub(super) fn set_waveform(&mut self, span_ms: u32, scale: monitor::WaveformScale) -> bool {
+        self.output.set_waveform(span_ms, scale)
+    }
+    pub(super) fn unbind_output(&mut self) {
+        self.output.unbind();
+    }
+    pub(super) fn refresh(
+        &mut self,
+        editor: &mut EditorState,
+        selected: Option<&RecipeSnapshot>,
+        view: View,
+        rate: SampleRate,
+    ) -> bool {
+        self.output
+            .refresh(editor, selected, view, rate, self.busy())
+    }
+    pub(super) fn refresh_model(
+        &mut self,
+        editor: &mut EditorState,
+        selected: Option<&RecipeSnapshot>,
+        view: View,
+        live_document: bool,
+        rate: SampleRate,
+    ) -> bool {
+        self.output
+            .refresh_model(editor, selected, view, live_document, rate)
+    }
+
+    pub(super) fn apply(&mut self, command: AudioCommand) -> Result<AudioTransition, Refusal> {
+        match command {
+            AudioCommand::Play => Ok(AudioTransition::Play),
+            AudioCommand::Toggle if !self.busy() => Ok(AudioTransition::Play),
+            AudioCommand::Toggle | AudioCommand::Stop => {
+                self.stop().map(|_| AudioTransition::Stopped)
+            }
+        }
     }
 }
 
-impl Workspace {
-    /// The capabilities in effect.
-    #[must_use]
-    pub const fn capabilities(&self) -> Capabilities {
-        self.audio.capabilities
+#[derive(Debug, Clone)]
+pub(super) enum AudioRequest {
+    Finite {
+        snapshot: Box<RecipeSnapshot>,
+        store: Option<crate::services::library::Library>,
+    },
+    Live {
+        document: DocumentId,
+        candidate: Arc<crate::document::editing::Candidate>,
+    },
+}
+
+#[cfg(test)]
+impl AudioState {
+    pub(super) fn set_capabilities(&mut self, capabilities: Capabilities) {
+        self.capabilities = capabilities;
     }
-    /// Whether an audio task occupies its slot.
-    #[must_use]
-    pub const fn audio_busy(&self) -> bool {
-        self.audio.busy()
-    }
-    /// The bound live session's actual device rate, if any.
-    #[must_use]
-    pub fn live_rate(&self) -> Option<SampleRate> {
-        self.audio.live_rate(self.editor.session.document())
-    }
-    /// Request Stop of the current audio session. Files are unaffected, and
-    /// Stop stays available while prompts are open.
-    ///
-    /// # Errors
-    /// Returns [`Refusal::NoAudio`] when nothing plays.
-    pub(super) fn stop(&mut self) -> Result<StopRequest, Refusal> {
-        let result = self.audio.stop();
-        self.changed();
-        result
-    }
-    /// Play what the current view shows: the selected recipe to its end, or
-    /// the open document live. Playing replaces current audio after it
-    /// stops. Preparation is requested from fully parsed finite values; the
-    /// definitive check happens at the device's actual rate before the
-    /// stream starts, independently of the export rate.
-    ///
-    /// # Errors
-    /// Returns the admission or input refusal.
-    pub(super) fn play(&mut self) -> Result<(), Refusal> {
-        let result = self.play_inner();
-        self.audio.status = match &result {
-            Ok(()) => AudioStatus::Idle,
-            Err(refusal) => AudioStatus::Refused(refusal.clone()),
-        };
-        self.changed();
-        result
-    }
-    /// Invoke the persistent transport action for the current workspace.
-    ///
-    /// # Errors
-    /// Returns the same admission refusal as Stop or Play.
-    pub(super) fn play_stop(&mut self) -> Result<(), Refusal> {
-        if self.audio_busy() {
-            self.stop().map(|_| ())
-        } else {
-            self.play()
-        }
-    }
-    pub(super) fn play_inner(&mut self) -> Result<(), Refusal> {
-        let request = self.audio_request()?;
-        if self.audio.slot.is_some() {
-            self.schedule(Action::StartAudio(request));
-        } else {
-            self.start_audio(request);
-        }
-        Ok(())
-    }
-    pub(super) fn audio_request(&mut self) -> Result<AudioRequest, Refusal> {
-        let request = self.prepare_audio()?;
-        if matches!(request, AudioRequest::Live { .. }) {
-            self.editor.commit()?;
-        }
-        Ok(request)
-    }
-    /// Whether Play has a complete candidate and admission, before device discovery.
-    pub(crate) fn play_readiness(&mut self) -> Result<(), Refusal> {
-        self.prepare_audio().map(|_| ())
-    }
-    /// Stop control of the current audio session, for a native control that
-    /// must stop exactly that session.
-    #[must_use]
-    pub fn audio_control(&self) -> Option<PlaybackControl> {
-        self.audio.slot.as_ref().map(|task| task.control.clone())
-    }
-    /// Phase of the current audio session, if one is bound.
-    #[must_use]
-    pub fn audio_phase(&self) -> Option<PlaybackPhase> {
-        self.audio.slot.as_ref().map(|t| t.control.phase())
-    }
+}
+
+pub(super) enum AudioTransition {
+    Play,
+    Stopped,
 }

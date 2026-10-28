@@ -596,9 +596,7 @@ impl Runner {
                     outcome.failure(),
                     workspace.job_context(*job),
                     workspace
-                        .files
-                        .slot
-                        .as_ref()
+                        .files.task()
                         .is_some_and(|task| {
                             task.id == *job
                                 && !matches!(&task.kind, FileKind::Managed(job) if job.background_read())
@@ -613,7 +611,7 @@ impl Runner {
             {
                 if let Some(error) = operation_error {
                     let library = if active_file {
-                        match &workspace.files.status {
+                        match &workspace.files.status() {
                             super::status::FileStatus::Library(
                                 super::status::LibraryStatus::Failed {
                                     error,
@@ -639,7 +637,7 @@ impl Runner {
                         });
                     }
                 }
-                if active_file && let Some(error) = workspace.files.status.editor_reset_error() {
+                if active_file && let Some(error) = workspace.files.status().editor_reset_error() {
                     errors.push(ShutdownIssue::EditorReset {
                         error: error.clone(),
                         context: context.clone(),

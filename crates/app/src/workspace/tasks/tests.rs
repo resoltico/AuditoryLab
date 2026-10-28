@@ -72,7 +72,10 @@ fn take_job(workspace: &mut Workspace, kind: JobKind) -> Job {
 fn tone(workspace: &mut Workspace, hz: &str) -> FieldHandle {
     let _ = workspace.apply(Command::SetView(View::Workbench));
     workspace
-        .add_component(workspace.editor().document_key(), CarrierKind::Tone)
+        .apply(Command::Editor(EditorCommand::AddComponent {
+            row: workspace.editor().document_key(),
+            kind: CarrierKind::Tone,
+        }))
         .unwrap();
     let id = workspace.editor().draft().components()[0].id;
     let handle = workspace
@@ -97,10 +100,12 @@ fn close_after_save(workspace: &mut Workspace) -> Job {
             _ => None,
         })
         .unwrap();
-    workspace.respond(Response::Prompt {
-        prompt,
-        answer: PromptAnswer::Save,
-    });
+    workspace
+        .apply(Command::Answer {
+            prompt,
+            answer: PromptAnswer::Save,
+        })
+        .unwrap();
     take_job(workspace, JobKind::File)
 }
 fn pump(runner: &mut Runner, workspace: &mut Workspace) {
@@ -246,7 +251,7 @@ fn a_panic_after_actual_publication_retains_dirty_state_and_denies_close() {
     assert!(workspace.editor().dirty());
     assert!(closed(&mut workspace, false));
     assert!(
-        matches!(workspace.files.status,FileStatus::WorkerFailed {error:WorkerFailure::Panicked,ref activity} if activity.path==store.path())
+        matches!(workspace.files.status(),FileStatus::WorkerFailed {error:WorkerFailure::Panicked,activity} if activity.path==store.path())
     );
 }
 #[test]
@@ -306,8 +311,7 @@ fn actual_rate_preparation_submits_committed_edits_but_never_staged_text() {
     assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
     let accepted = workspace
         .audio
-        .slot
-        .as_ref()
+        .task()
         .unwrap()
         .live
         .as_ref()
@@ -334,8 +338,7 @@ fn actual_rate_preparation_submits_committed_edits_but_never_staged_text() {
     assert_eq!(
         workspace
             .audio
-            .slot
-            .as_ref()
+            .task()
             .unwrap()
             .live
             .as_ref()
@@ -368,7 +371,7 @@ fn device_rate_validation_is_independent_of_export_rate() {
         outcome: JobOutcome::Audio(Err(error)),
     });
     assert!(!workspace.audio_busy());
-    assert!(matches!(workspace.audio.status, AudioStatus::Failed(_)));
+    assert!(matches!(workspace.audio.status(), AudioStatus::Failed(_)));
     drop(job);
 }
 #[test]
@@ -398,7 +401,7 @@ fn stale_and_duplicate_preparations_cannot_rebind_audio() {
     assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
     let (response, _generator3) = prepared(&job, SampleRate::DEFAULT).unwrap();
     assert_eq!(workspace.respond(response), ResponseDisposition::Rejected);
-    assert!(workspace.audio.slot.as_ref().unwrap().protocol_failed);
+    assert!(workspace.audio.task().unwrap().protocol_failed);
     let response = job.execute(|_| panic!("rejected preparation requested Stop"));
     assert_eq!(workspace.respond(response), ResponseDisposition::Rejected);
     assert!(!workspace.audio_busy());
@@ -489,7 +492,10 @@ fn accepted_live_revision_changes_update_model_even_for_identical_audio() {
     let (_directory, _store, mut workspace) = fixture();
     let _ = workspace.apply(Command::SetView(View::Workbench));
     workspace
-        .add_component(workspace.editor().document_key(), CarrierKind::Clicks)
+        .apply(Command::Editor(EditorCommand::AddComponent {
+            row: workspace.editor().document_key(),
+            kind: CarrierKind::Clicks,
+        }))
         .unwrap();
     let id = workspace.editor().draft().components()[0].id;
     let width = workspace
@@ -508,11 +514,11 @@ fn accepted_live_revision_changes_update_model_even_for_identical_audio() {
     workspace.respond(response);
     workspace.poll();
     let first = workspace.model_view().unwrap();
-    let models = workspace.audio.output.models;
+    let models = workspace.audio.output().models;
     for _ in 0..20 {
         workspace.poll();
     }
-    assert_eq!(workspace.audio.output.models, models);
+    assert_eq!(workspace.audio.output().models, models);
     workspace
         .apply(Command::Editor(EditorCommand::CommitField {
             field: width,
@@ -523,7 +529,7 @@ fn accepted_live_revision_changes_update_model_even_for_identical_audio() {
     let second = workspace.model_view().unwrap();
     assert!(second.target.same_audio(&first.target));
     assert_ne!(second.target, first.target);
-    assert_eq!(workspace.audio.output.models, models + 1);
+    assert_eq!(workspace.audio.output().models, models + 1);
     workspace.apply(Command::Audio(AudioCommand::Stop)).unwrap();
     workspace.respond(job.execute(|_| {}));
 }
@@ -574,7 +580,7 @@ fn wrong_library_identity_or_kind_cannot_mark_a_clean_draft_saved_or_close_it() 
         assert_eq!(workspace.respond(response), ResponseDisposition::Rejected);
         assert_eq!(workspace.editor().document(), original);
         assert!(matches!(
-            workspace.editor.location,
+            workspace.editor.location(),
             super::super::DocumentLocation::Unsaved
         ));
         assert!(closed(&mut workspace, false));
@@ -764,9 +770,12 @@ fn shutdown_reports_wrong_kind_success_after_coordinator_validation() {
 #[test]
 fn shutdown_does_not_reclassify_a_historical_resolved_failure() {
     let (_directory, _store, mut workspace) = fixture();
-    workspace.files.status =
-        FileStatus::Failed(crate::storage::error::FileError::MissingFilename.into());
-    workspace.audio.status = AudioStatus::WorkerFailed(WorkerFailure::Panicked);
+    workspace.files.record_status(FileStatus::Failed(
+        crate::storage::error::FileError::MissingFilename.into(),
+    ));
+    workspace
+        .audio
+        .record_status(AudioStatus::WorkerFailed(WorkerFailure::Panicked));
     assert!(Runner::new().shutdown(workspace).is_ok());
 }
 
@@ -825,7 +834,7 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
                 error,
                 context,
                 ..
-            }) = workspace.files.status.clone()
+            }) = workspace.files.status().clone()
             else {
                 panic!("library failure")
             };

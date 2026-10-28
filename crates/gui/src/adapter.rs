@@ -29,7 +29,7 @@ use auditorylab_app::document::editing::{EditingField, FieldHandle, MetadataFiel
 use auditorylab_app::services::playback::PlaybackPhase;
 use auditorylab_app::workspace::{
     Command, Effect, Executor, LibraryCommand, MotionPreference, OutputCommand, PathPurpose,
-    PromptAnswer, PromptId, Response, View, Workspace,
+    PromptAnswer, PromptId, View, Workspace,
 };
 use auxiliary::{install_auxiliary, install_monitor};
 use editing::install_editing;
@@ -391,7 +391,7 @@ impl SlintAdapter {
     pub(crate) fn respond(self: &Rc<Self>, prompt: PromptId, response: PromptAnswer) {
         self.dialog_open.set(false);
         if let Some(workspace) = self.workspace.borrow_mut().as_mut() {
-            workspace.respond(Response::Prompt {
+            let _ = workspace.apply(Command::Answer {
                 prompt,
                 answer: response,
             });

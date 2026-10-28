@@ -47,13 +47,13 @@ fn idle(w: &mut Workspace) {
 fn title(w: &mut Workspace, text: &str) {
     let handle = w
         .editor
-        .session
+        .session()
         .handle(EditingField::Metadata(
             crate::document::editing::MetadataField::Title,
         ))
         .unwrap();
-    w.editor.session.stage(handle, text).unwrap();
-    w.editor.session.commit().unwrap();
+    w.editor.stage(handle, text).unwrap();
+    w.editor.commit().unwrap();
 }
 fn user(w: &mut Workspace) {
     w.apply(Command::Library(LibraryCommand::SetQuery(Box::new(
@@ -178,13 +178,13 @@ fn save_publishes_captured_history_and_keeps_later_draft_and_filters() {
     let _ = w.apply(Command::Editor(EditorCommand::New));
     title(&mut w, "captured");
     // Capture before a later edit; the real worker publishes only this Arc.
-    let content = Arc::new(w.editor.session.draft().recipe().unwrap());
-    w.start_managed_save(w.editor.session.document(), content)
+    let content = Arc::new(w.editor.session().draft().recipe().unwrap());
+    w.start_managed_save(w.editor.session().document(), content)
         .unwrap();
     title(&mut w, "later");
     idle(&mut w);
-    assert!(w.editor.session.dirty());
-    assert_eq!(w.editor.session.draft().title(), "later");
+    assert!(w.editor.session().dirty());
+    assert_eq!(w.editor.session().draft().title(), "later");
     assert_eq!(w.catalog_query().scope, Scope::All);
     let inventory = store.scan(&Cancel::default());
     assert_eq!(inventory.entries.len(), 1);
@@ -192,10 +192,10 @@ fn save_publishes_captured_history_and_keeps_later_draft_and_filters() {
     assert!(inventory.entries[0].created_at.is_some());
     user(&mut w);
     assert_eq!(w.selected().unwrap().title(), "captured");
-    assert!(w.editor.session.dirty());
+    assert!(w.editor.session().dirty());
     w.apply(Command::File(FileCommand::Save)).unwrap();
     idle(&mut w);
-    assert!(!w.editor.session.dirty());
+    assert!(!w.editor.session().dirty());
     assert_eq!(store.scan(&Cancel::default()).entries[0].title, "later");
 }
 #[test]
@@ -225,17 +225,17 @@ fn two_editors_conflict_even_for_noop_and_refresh_preserves_draft() {
     other.apply(Command::File(FileCommand::Save)).unwrap();
     idle(&mut other);
     assert!(
-        matches!(&other.files.status,FileStatus::Library(LibraryStatus::Failed {error,..}) if error.outcome()==crate::outcome::Outcome::Conflict)
+        matches!(&other.files.status(),FileStatus::Library(LibraryStatus::Failed {error,..}) if error.outcome()==crate::outcome::Outcome::Conflict)
     );
-    assert_eq!(other.editor.session.draft().title(), "Untitled sound");
+    assert_eq!(other.editor.session().draft().title(), "Untitled sound");
     let _ = other.apply(Command::Library(LibraryCommand::Refresh));
     idle(&mut other);
     assert_eq!(other.selected().unwrap().title(), "renamed elsewhere");
-    assert_eq!(other.editor.session.draft().title(), "Untitled sound");
+    assert_eq!(other.editor.session().draft().title(), "Untitled sound");
     assert!(
         other
             .editor
-            .session
+            .session()
             .draft()
             .recipe()
             .unwrap()
@@ -316,10 +316,11 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
         store.load(&key.parse().unwrap()).is_ok(),
         "confirmation occurs before any deletion"
     );
-    w.respond(Response::Prompt {
+    w.apply(Command::Answer {
         prompt,
         answer: PromptAnswer::Confirm,
-    });
+    })
+    .unwrap();
     idle(&mut w);
     assert!(store.scan(&Cancel::default()).entries.is_empty());
     assert!(w.library_data().detached.is_some());
@@ -370,7 +371,7 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
     assert!(w.library.selected_unreadable());
     assert!(w.library_binding().unwrap().version_token.is_none());
     assert!(!w.library_data().inventory.complete);
-    assert_eq!(w.editor.session.draft().title(), "Untitled sound");
+    assert_eq!(w.editor.session().draft().title(), "Untitled sound");
 }
 
 #[test]
@@ -398,15 +399,16 @@ fn save_before_trash_uses_confirmed_new_token_and_preserves_published_edit() {
             }
         })
         .unwrap();
-    w.respond(Response::Prompt {
+    w.apply(Command::Answer {
         prompt,
         answer: PromptAnswer::Save,
-    });
+    })
+    .unwrap();
     idle(&mut w);
     let record = store.load(&key.parse().unwrap()).unwrap();
     assert!(record.trashed_at.is_some());
     assert_eq!(record.snapshot.title(), "save before trash");
-    assert_eq!(w.editor.session.draft().title(), "Untitled sound");
+    assert_eq!(w.editor.session().draft().title(), "Untitled sound");
 }
 #[test]
 
@@ -432,10 +434,11 @@ fn discard_before_trash_preserves_edits_made_after_the_job_was_captured() {
             _ => None,
         })
         .unwrap();
-    w.respond(Response::Prompt {
+    w.apply(Command::Answer {
         prompt,
         answer: PromptAnswer::Discard,
-    });
+    })
+    .unwrap();
     let job = w
         .take_effects()
         .into_iter()
@@ -542,7 +545,7 @@ fn a_failed_completion_keeps_draft_and_retry_observes_actual_storage() {
         });
         assert!(workspace.editor().dirty());
         assert!(matches!(
-            workspace.files.status,
+            workspace.files.status(),
             FileStatus::WorkerFailed {
                 error: WorkerFailure::Panicked,
                 ..
@@ -553,7 +556,7 @@ fn a_failed_completion_keeps_draft_and_retry_observes_actual_storage() {
         if applied {
             assert!(workspace.editor().dirty());
             assert!(
-                matches!(&workspace.files.status,FileStatus::Library(LibraryStatus::Failed {error,..}) if error.outcome()==crate::outcome::Outcome::Conflict)
+                matches!(&workspace.files.status(),FileStatus::Library(LibraryStatus::Failed {error,..}) if error.outcome()==crate::outcome::Outcome::Conflict)
             );
             workspace
                 .apply(Command::File(FileCommand::SaveCopy))
@@ -636,7 +639,7 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
         assert!(store.load(&key).unwrap().trashed);
         assert_eq!(workspace.editor().document(), retained);
         assert!(
-            matches!(workspace.editor.location, DocumentLocation::Detached(ref detached) if detached==&key)
+            matches!(workspace.editor.location(), DocumentLocation::Detached(detached) if detached==&key)
         );
         assert!(
             matches!(&status, FileStatus::Library(LibraryStatus::Written { status, .. }) if *status==publication)
@@ -647,7 +650,7 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
         assert!(status.editor_reset_error().is_some());
         // A later background read retains the banner but does not make the old
         // reset failure a new shutdown failure.
-        workspace.files.status = status;
+        workspace.files.record_status(status);
         let _ = workspace.apply(Command::Library(LibraryCommand::Refresh));
         assert!(workspace.file_busy());
         Runner::new().shutdown(workspace).unwrap();
@@ -750,9 +753,9 @@ fn independent_copy_save_keeps_the_original_selected_user_cache() {
         !workspace.file_busy(),
         "saving another key needs no selected-record reload"
     );
-    assert!(!workspace.editor.session.dirty());
+    assert!(!workspace.editor.session().dirty());
     assert_eq!(store.scan(&Cancel::default()).entries.len(), 3);
-    assert_ne!(workspace.editor.location.managed().unwrap().0, &original);
+    assert_ne!(workspace.editor.location().managed().unwrap().0, &original);
     let _ = workspace.apply(Command::SetView(View::Library));
     selected_ready(&mut workspace, &original, "Shared A", &query);
     assert_eq!(workspace.selected().unwrap().id(), selected);
@@ -795,7 +798,7 @@ fn saving_an_existing_nonselected_user_keeps_selected_details_and_filters() {
         store.load(&edited).unwrap().snapshot.title(),
         "Shared B edited"
     );
-    assert!(!workspace.editor.session.dirty());
+    assert!(!workspace.editor.session().dirty());
     selected_ready(&mut workspace, &selected, "Shared A", &query);
     assert_eq!(workspace.selected().unwrap().id(), snapshot);
 }

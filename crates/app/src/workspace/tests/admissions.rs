@@ -337,11 +337,12 @@ fn fixture(case: Case) -> TestWorkspace {
             }
         }
         Case::Unavailable => {
-            ws.library.binding =
+            ws.library.replace_binding(
                 LibraryBinding::from_context(crate::services::LibraryContext::resolve(Some(
                     std::path::Path::new("relative-unavailable-root"),
                 )))
-                .unwrap();
+                .unwrap(),
+            );
         }
         Case::NoSelection => {
             let _ = ws.apply(Command::SetView(View::Library));
@@ -350,7 +351,9 @@ fn fixture(case: Case) -> TestWorkspace {
             )));
             assert!(ws.selected().is_none());
         }
-        Case::NoDevice => ws.audio.capabilities = Capabilities::no_device_playback(),
+        Case::NoDevice => ws
+            .audio
+            .set_capabilities(Capabilities::no_device_playback()),
         Case::OpenFile | Case::OpenFilePrompt | Case::OpenFileBusy => {
             let snapshot = RecipeSnapshot::new(
                 crate::document::recipe::Origin::Stream("opened input".into()),

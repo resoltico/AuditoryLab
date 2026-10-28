@@ -35,7 +35,6 @@ use audio::{AudioRequest, AudioState};
 use editor::{DocumentLocation, EditorState};
 use file::FileState;
 use prompts::{PromptState, Prompts};
-mod operations;
 pub mod output;
 pub mod status;
 pub(crate) mod tasks;
@@ -177,15 +176,8 @@ pub enum PromptAnswer {
     Failed(String),
 }
 
-/// An external response correlated by prompt or admitted job identity.
+/// An executor response correlated by admitted job identity.
 pub enum Response {
-    /// A native dialog or file panel answer.
-    Prompt {
-        /// Prompt being answered.
-        prompt: PromptId,
-        /// Typed dialog answer.
-        answer: PromptAnswer,
-    },
     /// Audio preparation finished at the actual discovered device rate.
     Prepared {
         /// Admitted audio job.
@@ -347,9 +339,9 @@ impl std::fmt::Debug for Workspace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Workspace")
             .field("view", &self.view)
-            .field("document", &self.editor.session.document())
-            .field("audio", &self.audio.slot.as_ref().map(|t| t.id))
-            .field("file", &self.files.slot.as_ref().map(|t| t.id))
+            .field("document", &self.editor.session().document())
+            .field("audio", &self.audio.task().map(|t| t.id))
+            .field("file", &self.files.task().map(|t| t.id))
             .finish_non_exhaustive()
     }
 }
@@ -437,7 +429,7 @@ impl Workspace {
     /// session's actual rate. Invalid committed values keep the last valid
     /// accepted target; staged text is never sent.
     fn submit_live(&mut self) {
-        self.audio.submit_live(&mut self.editor.session);
+        self.audio.submit_live(&mut self.editor);
     }
 
     // ---- prompts and document actions ----
@@ -462,7 +454,8 @@ impl Workspace {
     /// Open an editable copy of the selected recipe.
     fn copy_selected(&mut self) -> Result<(), Refusal> {
         if let Err(refusal) = self.copy_admission() {
-            self.files.status = FileStatus::Refused(refusal.clone());
+            self.files
+                .record_status(FileStatus::Refused(refusal.clone()));
             self.changed();
             return Err(refusal);
         }
@@ -488,12 +481,13 @@ impl Workspace {
     fn request(&mut self, action: DocumentAction) -> Result<(), Refusal> {
         let closes = matches!(action, DocumentAction::Close);
         if let Err(refusal) = self.start_allowed() {
-            self.files.status = FileStatus::Refused(refusal.clone());
+            self.files
+                .record_status(FileStatus::Refused(refusal.clone()));
             self.deny(closes);
             self.changed();
             return Err(refusal);
         }
-        if self.files.slot.is_some() {
+        if self.files.busy() {
             self.schedule(Action::Retry(action));
             self.changed();
             return Ok(());
@@ -501,7 +495,7 @@ impl Workspace {
         // Commit staged text when it can be; anything left staged is unsaved.
         let _ = self.editor.commit();
         self.submit_live();
-        if self.editor.session.dirty() {
+        if self.editor.session().dirty() {
             let id = self.prompt(PromptState::Unsaved(action));
             self.effects.push(Effect::AskUnsaved(id));
         } else {
@@ -511,15 +505,10 @@ impl Workspace {
         Ok(())
     }
 
-    /// Answer a prompt. Answers to prompts that are no longer open change nothing.
+    /// Deliver executor preparation or joined completion.
     pub fn respond(&mut self, response: Response) -> ResponseDisposition {
         let mut rejected = false;
         match response {
-            Response::Prompt { prompt, answer } => {
-                if !self.respond_prompt(prompt, answer) {
-                    return ResponseDisposition::Ignored;
-                }
-            }
             Response::Prepared {
                 job,
                 reader,
@@ -583,9 +572,10 @@ impl Workspace {
             return false;
         };
         if matches!(response, PromptAnswer::Path(Some(_)))
-            && (self.files.slot.is_some() || self.pending.is_some())
+            && (self.files.busy() || self.pending.is_some())
         {
-            self.files.status = FileStatus::Refused(Refusal::FileBusy);
+            self.files
+                .record_status(FileStatus::Refused(Refusal::FileBusy));
             self.deny(matches!(state, PromptState::Unsaved(DocumentAction::Close)));
             self.changed();
             return true;
@@ -594,7 +584,8 @@ impl Workspace {
             (PromptState::Purge { key, expect }, PromptAnswer::Confirm) => {
                 let result = self.purge_confirmed(key, expect);
                 if let Err(refusal) = result {
-                    self.files.status = FileStatus::Refused(refusal.clone());
+                    self.files
+                        .record_status(FileStatus::Refused(refusal.clone()));
                 }
             }
 
@@ -603,12 +594,12 @@ impl Workspace {
                 match self.prepare_save() {
                     Ok(content) => {
                         if let Err(refusal) = self.editor.commit() {
-                            self.files.status = FileStatus::Refused(refusal);
+                            self.files.record_status(FileStatus::Refused(refusal));
                             self.deny(closes);
                             return true;
                         }
                         self.submit_live();
-                        let document = self.editor.session.document();
+                        let document = self.editor.session().document();
                         match self.start_managed_save(document, content) {
                             Ok(task) => self.schedule(Action::AfterSave {
                                 action,
@@ -616,13 +607,15 @@ impl Workspace {
                                 document,
                             }),
                             Err(refusal) => {
-                                self.files.status = FileStatus::Refused(refusal.clone());
+                                self.files
+                                    .record_status(FileStatus::Refused(refusal.clone()));
                                 self.deny(closes);
                             }
                         }
                     }
                     Err(refusal) => {
-                        self.files.status = FileStatus::Refused(refusal.clone());
+                        self.files
+                            .record_status(FileStatus::Refused(refusal.clone()));
                         self.deny(closes);
                     }
                 }
@@ -637,8 +630,9 @@ impl Workspace {
                 self.start_file(FileKind::Import(path));
             }
             (PromptState::Export(sound), PromptAnswer::Path(Some(path))) => {
-                if self.audio.slot.is_some() {
-                    self.files.status = FileStatus::Refused(Refusal::AudioPlaying);
+                if self.audio.busy() {
+                    self.files
+                        .record_status(FileStatus::Refused(Refusal::AudioPlaying));
                 } else {
                     let frames = sound.signal().frames();
                     let title = sound.snapshot().title();
@@ -654,7 +648,8 @@ impl Workspace {
             }
             (state, response) => {
                 if let PromptAnswer::Failed(message) = response {
-                    self.files.status = FileStatus::DialogFailed { cause: message };
+                    self.files
+                        .record_status(FileStatus::DialogFailed { cause: message });
                 }
                 let closes = matches!(state, PromptState::Unsaved(DocumentAction::Close));
                 self.deny(closes);
@@ -687,12 +682,12 @@ impl Workspace {
         }
         let pending = Pending {
             audio: if audio {
-                self.audio.slot.as_ref().map(|t| t.id)
+                self.audio.task().map(|t| t.id)
             } else {
                 None
             },
             file: if file {
-                self.files.slot.as_ref().map(|t| t.id)
+                self.files.task().map(|t| t.id)
             } else {
                 None
             },
@@ -721,17 +716,18 @@ impl Workspace {
                 Ok(draft) => {
                     self.replace_document(draft);
                 }
-                Err(e) => self.files.status = FileStatus::Failed(e.into()),
+                Err(e) => self.files.record_status(FileStatus::Failed(e.into())),
             },
             Action::Document(DocumentAction::Copy(snapshot)) => {
                 if let Err(refusal) = Self::copy_content_admission(&snapshot) {
-                    self.files.status = FileStatus::Refused(refusal.clone());
+                    self.files
+                        .record_status(FileStatus::Refused(refusal.clone()));
                 } else {
                     match Draft::from_snapshot(&snapshot) {
                         Ok(draft) => {
                             self.replace_document(draft);
                         }
-                        Err(e) => self.files.status = FileStatus::Failed(e.into()),
+                        Err(e) => self.files.record_status(FileStatus::Failed(e.into())),
                     }
                 }
             }
@@ -742,26 +738,26 @@ impl Workspace {
                 if self.replace_document(Draft::from_recipe(snapshot.recipe().clone()))
                     && self
                         .editor
-                        .session
-                        .record_saved(self.editor.session.document(), snapshot.recipe())
+                        .record_saved(self.editor.session().document(), snapshot.recipe())
                 {
-                    self.editor.location = snapshot
-                        .external_file()
-                        .cloned()
-                        .map_or(DocumentLocation::Unsaved, DocumentLocation::External);
+                    self.editor.locate(
+                        snapshot
+                            .external_file()
+                            .cloned()
+                            .map_or(DocumentLocation::Unsaved, DocumentLocation::External),
+                    );
                 }
             }
             Action::Document(DocumentAction::EditManaged(record)) => {
                 if self.replace_document(Draft::from_recipe(record.snapshot.recipe().clone()))
                     && self
                         .editor
-                        .session
-                        .record_saved(self.editor.session.document(), record.snapshot.recipe())
+                        .record_saved(self.editor.session().document(), record.snapshot.recipe())
                 {
-                    self.editor.location = DocumentLocation::Managed {
+                    self.editor.locate(DocumentLocation::Managed {
                         key: record.key,
                         token: record.version_token,
-                    };
+                    });
                 }
             }
             Action::Retry(action) => {
@@ -772,11 +768,11 @@ impl Workspace {
                 action, document, ..
             } => {
                 if pending.saved == Some(true)
-                    && self.editor.session.document() == document
-                    && !self.editor.session.dirty()
+                    && self.editor.session().document() == document
+                    && !self.editor.session().dirty()
                 {
                     let action = if let DocumentAction::TrashSaved { key, expect } = action {
-                        let expect = self.editor.location.saved_token(&key).unwrap_or(expect);
+                        let expect = self.editor.location().saved_token(&key).unwrap_or(expect);
                         DocumentAction::TrashSaved { key, expect }
                     } else {
                         action
@@ -784,7 +780,8 @@ impl Workspace {
                     self.schedule(Action::Document(action));
                 } else {
                     if pending.saved == Some(true) {
-                        self.files.status = FileStatus::Notice(FileNotice::SavedSnapshotStillDirty);
+                        self.files
+                            .record_status(FileStatus::Notice(FileNotice::SavedSnapshotStillDirty));
                     }
                     self.deny(matches!(action, DocumentAction::Close));
                 }
@@ -799,7 +796,7 @@ impl Workspace {
                 true
             }
             Err(error) => {
-                self.files.status = FileStatus::Failed(error.into());
+                self.files.record_status(FileStatus::Failed(error.into()));
                 false
             }
         }
@@ -809,7 +806,7 @@ impl Workspace {
         self.editor.install(editor);
         self.view = View::Workbench;
         self.effects.push(Effect::ShowView(View::Workbench));
-        self.files.status = FileStatus::Idle;
+        self.files.record_status(FileStatus::Idle);
     }
 
     // ---- tasks ----
@@ -841,22 +838,20 @@ impl Workspace {
         self.resolve_pending();
         self.continue_library();
         let shown = self.selected().cloned();
-        if self.audio.output.refresh(
-            &mut self.editor.session,
-            shown.as_ref(),
-            self.view,
-            self.editor.export_rate,
-            self.audio.slot.is_some(),
-        ) {
+        let export_rate = self.editor.export_rate();
+        if self
+            .audio
+            .refresh(&mut self.editor, shown.as_ref(), self.view, export_rate)
+        {
             self.changed();
         }
         let live_document = self.live_rate().is_some();
         let rate = match self.view {
             View::Workbench => self.diagnostic_rate(),
-            View::Library => self.editor.export_rate,
+            View::Library => self.editor.export_rate(),
         };
-        if self.audio.output.refresh_model(
-            &mut self.editor.session,
+        if self.audio.refresh_model(
+            &mut self.editor,
             shown.as_ref(),
             self.view,
             live_document,
@@ -890,7 +885,7 @@ impl Workspace {
                 {
                     self.library.record_read_status(job, &status);
                 } else {
-                    self.files.status = status;
+                    self.files.record_status(status);
                 }
                 self.conclude(task.id, false, Conclusion::Failed, Some(false));
                 self.changed();
@@ -944,7 +939,7 @@ impl Workspace {
         {
             self.library.record_read_status(job, &status);
         } else {
-            self.files.status = status;
+            self.files.record_status(status);
         }
         self.conclude(task.id, false, conclusion, saved);
         self.changed();
@@ -1006,7 +1001,7 @@ impl Workspace {
         let _ = self.files.cancel_export();
     }
     fn job_context(&self, job: TaskId) -> JobContext {
-        if let Some(task) = self.files.slot.as_ref().filter(|task| task.id == job) {
+        if let Some(task) = self.files.task().filter(|task| task.id == job) {
             return match &task.kind {
                 FileKind::Managed(job) => JobContext::Library(job.context()),
                 FileKind::Import(path)
@@ -1015,8 +1010,7 @@ impl Workspace {
             };
         }
         self.audio
-            .slot
-            .as_ref()
+            .task()
             .filter(|task| task.id == job)
             .map_or(JobContext::Unknown, |task| {
                 JobContext::Audio(task.title.clone())

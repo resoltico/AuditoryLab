@@ -1,5 +1,6 @@
 //! Deterministic execution and private-state accessors for adapter integration tests.
 use super::*;
+use auditorylab_app::workspace::Response;
 use auditorylab_app::workspace::{
     AudioCommand, Command, Executor, FileCommand, Job, JobKind, Runner, ShutdownError,
 };
