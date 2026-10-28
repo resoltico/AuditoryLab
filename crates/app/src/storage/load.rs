@@ -146,7 +146,7 @@ impl From<crate::document::error::RenditionError> for LoadError {
 
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for LoadError {
@@ -195,7 +195,7 @@ crate::core::diagnostic_codes! {
                     }
                     params
                 }
-                _ => crate::core::Params::new(),
+                _ => crate::core::diagnostic::Params::new(),
             }
         }
     }
@@ -204,7 +204,7 @@ crate::core::diagnostic_codes! {
 #[cfg(test)]
 mod error_tests {
     use super::*;
-    use crate::core::{Code, ParameterId, VoiceError};
+    use crate::core::{ParameterId, VoiceError, diagnostic::Code};
     use std::error::Error as _;
 
     #[test]
@@ -228,7 +228,10 @@ mod error_tests {
             Some(&sound)
         );
         assert_eq!(load.code(), "voice.frequency");
-        assert_eq!(load.params()["hz"], crate::core::ParamValue::from(24_000.0));
+        assert_eq!(
+            load.params()["hz"],
+            crate::core::diagnostic::ParamValue::from(24_000.0)
+        );
         assert_eq!(load.outcome(), Outcome::InvalidSound);
         let recipe = LibraryError::RecipeFile {
             path: "captured.toml".into(),

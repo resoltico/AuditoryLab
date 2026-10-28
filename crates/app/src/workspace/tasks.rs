@@ -664,7 +664,7 @@ mod tests;
 
 impl std::fmt::Display for WorkerFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 
@@ -726,7 +726,7 @@ pub struct ShutdownError {
 }
 impl std::fmt::Display for ShutdownError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for ShutdownError {}
@@ -748,7 +748,7 @@ impl Executor for Runner {
 
 impl std::fmt::Display for TaskFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for TaskFailure {
@@ -782,7 +782,7 @@ crate::core::diagnostic_codes! {
                 Self::Launch(cause) => {
                     crate::core::diagnostic_params! {"cause"=>cause.error().to_string()}
                 }
-                _ => crate::core::Params::new(),
+                _ => crate::core::diagnostic::Params::new(),
             }
         }
     }

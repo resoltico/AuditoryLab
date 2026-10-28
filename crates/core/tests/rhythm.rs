@@ -266,7 +266,7 @@ fn catalog_bands_and_methods_match_independently_listed_expectations() {
     assert_eq!(catalog::ENTRIES.len(), expected.len());
     for (id, method, band) in expected {
         let entry = catalog::find(id).unwrap();
-        let recipe = Recipe::parse(entry.text).unwrap();
+        let recipe = Recipe::parse(&entry.text()).unwrap();
         let analysis = nominal(&authored(recipe.sound().components()));
         assert_eq!(analysis.methods, [method], "{id}");
         assert_eq!(analysis.bands, band.into_iter().collect::<Vec<_>>(), "{id}");

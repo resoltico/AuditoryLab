@@ -8,7 +8,7 @@ fn catalog_and_fixture_serializations_preserve_the_schema_four_bytes() {
     let mut catalog_names = BTreeSet::new();
     for entry in catalog::ENTRIES {
         catalog_names.insert(format!("{}.toml", entry.id));
-        let canonical = Recipe::parse(entry.text).unwrap().to_toml().unwrap();
+        let canonical = Recipe::parse(&entry.text()).unwrap().to_toml().unwrap();
         assert_eq!(
             canonical.as_bytes(),
             fs::read(expected.join("catalog").join(format!("{}.toml", entry.id))).unwrap(),

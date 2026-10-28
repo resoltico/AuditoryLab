@@ -200,7 +200,7 @@ impl From<crate::document::origin::OriginError> for LibraryError {
 
 impl std::fmt::Display for LibraryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for LibraryError {
@@ -323,7 +323,7 @@ crate::core::diagnostic_codes! {
                 Self::LockUnavailable { error } => {
                     crate::core::diagnostic_params! {"cause"=>error.error().to_string()}
                 }
-                _ => crate::core::Params::new(),
+                _ => crate::core::diagnostic::Params::new(),
             }
         }
     }

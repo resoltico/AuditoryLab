@@ -6,7 +6,7 @@ proptest! {
     #![proptest_config(ProptestConfig { cases: 64, max_shrink_iters: 128, failure_persistence: None, .. ProptestConfig::default() })]
     #[test]
     fn arbitrary_windows_equal_a_full_render(start in 0_usize..5000, len in 0_usize..1000, entry in 0_usize..catalog::ENTRIES.len()) {
-        let mut sound = Recipe::parse(catalog::ENTRIES[entry].text).unwrap().sound().clone();
+        let mut sound = Recipe::parse(&catalog::ENTRIES[entry].text()).unwrap().sound().clone();
         sound.set_duration(finite(0.1)); sound.set_fade(finite(0.01));
         let signal = sound.signal(SampleRate::DEFAULT).unwrap();
         let mut all = vec![[0.0; 2]; 6000]; signal.render(0, &mut all);
@@ -68,10 +68,14 @@ fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
 }
 #[test]
 fn fades_and_late_tones_follow_independent_sine_formulas() {
-    let mut sound = Recipe::parse(catalog::find("ioannou-2015-pure-tone-200-hz").unwrap().text)
-        .unwrap()
-        .sound()
-        .clone();
+    let mut sound = Recipe::parse(
+        &catalog::find("ioannou-2015-pure-tone-200-hz")
+            .unwrap()
+            .text(),
+    )
+    .unwrap()
+    .sound()
+    .clone();
     sound.set_duration(finite(68_719_476_736.0 / 48_000.0));
     let signal = sound.signal(SampleRate::DEFAULT).unwrap();
     for n in [0, 1, 4799, 4800, 4801, (1 << 36) - 4801, (1 << 36) - 1] {

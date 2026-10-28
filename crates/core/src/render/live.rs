@@ -642,7 +642,7 @@ mod tests {
     fn an_unedited_session_equals_the_signal_after_its_start_ramp() {
         let mut stimuli: Vec<crate::Sound> = crate::catalog::ENTRIES
             .iter()
-            .map(|entry| Recipe::parse(entry.text).unwrap().sound().clone())
+            .map(|entry| Recipe::parse(&entry.text()).unwrap().sound().clone())
             .collect();
         stimuli.push(
             Sound::new(

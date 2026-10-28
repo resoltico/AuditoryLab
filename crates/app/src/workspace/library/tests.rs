@@ -74,8 +74,8 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
     let query = CatalogQuery {
         search: "exact search".into(),
         studies: vec!["10.1234/exact".into()],
-        populations: vec![crate::core::Population::Human],
-        roles: vec![crate::core::ConditionRole::Comparison],
+        populations: vec![crate::core::provenance::Population::Human],
+        roles: vec![crate::core::provenance::ConditionRole::Comparison],
         analysis: Some(crate::core::rhythm::Completeness::Invalid),
         rhythm: crate::discovery::query::RhythmQuery {
             bands: vec![crate::core::rhythm::Band::Delta],
@@ -1006,8 +1006,8 @@ fn clear_rhythm_command_retains_every_non_rhythm_query_field() {
             include_external: scope == Scope::All,
             search: "40".into(),
             studies: vec!["key:source".into()],
-            populations: vec![crate::core::Population::Human],
-            roles: vec![crate::core::ConditionRole::Test],
+            populations: vec![crate::core::provenance::Population::Human],
+            roles: vec![crate::core::provenance::ConditionRole::Test],
             analysis: Some(crate::core::rhythm::Completeness::Complete),
             created: DateRange {
                 from: Some("2026-01-01T00:00:00Z".parse().unwrap()),

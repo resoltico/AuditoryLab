@@ -220,7 +220,7 @@ impl PartialEq for IoCause {
 impl Eq for IoCause {}
 impl std::fmt::Display for IoCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl Error for IoCause {
@@ -277,7 +277,7 @@ impl From<crate::clock::ClockError> for SaveError {
 
 impl std::fmt::Display for FileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for FileError {
@@ -297,7 +297,7 @@ impl std::error::Error for FileError {
 
 impl std::fmt::Display for SaveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for SaveError {
@@ -314,7 +314,7 @@ impl std::error::Error for SaveError {
 
 impl std::fmt::Display for IoFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for IoFailure {
@@ -421,14 +421,14 @@ crate::core::diagnostic_codes! {
                         params.insert("source_path", source.to_string_lossy().into_owned().into());
                     }
                     if let Confirmation::Unavailable(error) = confirmation {
-                        params.insert("verification_code", crate::core::Code::code(error).into());
+                        params.insert("verification_code", crate::core::diagnostic::Code::code(error).into());
                     }
                     params
                 }
                 Self::Cleanup { path, cause, .. } => {
                     crate::core::diagnostic_params! {"leftover_path"=>path.to_string_lossy().into_owned(),"cleanup_cause"=>cause.error().to_string()}
                 }
-                _ => crate::core::Params::new(),
+                _ => crate::core::diagnostic::Params::new(),
             }
         }
     }

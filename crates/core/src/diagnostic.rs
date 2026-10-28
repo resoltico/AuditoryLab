@@ -82,14 +82,14 @@ macro_rules! diagnostic_codes {
     })*)=>{
         $(#[$registry_attr])*
         $visibility const $registry:&[&str]=&[$($($code,)*)*];
-        $(impl $crate::Code for $ty {
+        $(impl $crate::diagnostic::Code for $ty {
             fn code(&self)->&'static str {
-                match self {$( $pattern=>$code, )* $( $delegate=>$crate::Code::code($cause), )*}
+                match self {$( $pattern=>$code, )* $( $delegate=>$crate::diagnostic::Code::code($cause), )*}
             }
-            fn params(&self)->$crate::Params {
+            fn params(&self)->$crate::diagnostic::Params {
                 let params=match self {
-                    $( $pattern=>$crate::Params::new(), )*
-                    $( $delegate=>$crate::Code::params($cause), )*
+                    $( $pattern=>$crate::diagnostic::Params::new(), )*
+                    $( $delegate=>$crate::diagnostic::Code::params($cause), )*
                 };
                 $(let $this=self; let params={let mut combined=params;combined.extend($extra);combined};)?
                 params
@@ -102,7 +102,7 @@ macro_rules! diagnostic_codes {
 #[macro_export]
 macro_rules! diagnostic_params {
     ($($key:literal => $value:expr),* $(,)?)=>{
-        $crate::Params::from([$(($key,$crate::ParamValue::from($value))),*])
+        $crate::diagnostic::Params::from([$(($key,$crate::diagnostic::ParamValue::from($value))),*])
     };
 }
 

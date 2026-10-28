@@ -68,7 +68,7 @@ impl From<crate::document::error::RenditionError> for PlaybackError {
 
 impl std::fmt::Display for PlaybackError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for PlaybackError {
@@ -104,7 +104,7 @@ crate::core::diagnostic_codes! {
                 Self::Sound { title, rate, .. } => {
                     crate::core::diagnostic_params! {"title"=>title.clone(),"diagnostic_rate_hz"=>rate.hz()}
                 }
-                _ => crate::core::Params::new(),
+                _ => crate::core::diagnostic::Params::new(),
             }
         }
     }

@@ -330,7 +330,6 @@ crate::vocabulary::vocabulary! { Ear,"ear" {
 }}
 
 #[cfg(test)]
-#[path = "voice/tests.rs"]
 mod tests;
 
 crate::diagnostic_codes! {

@@ -279,7 +279,7 @@ impl Draft {
     }
     fn empty(document: auditorylab_core::DocumentIdentity) -> Self {
         let mut content = Recipe::builder(document);
-        content.content.description = Some(auditorylab_core::Description {
+        content.content.description = Some(auditorylab_core::provenance::Description {
             title: crate::core::vocabulary::UNTITLED_SOUND.into(),
             notes: Some(String::new()),
         });
@@ -462,7 +462,7 @@ impl Draft {
         self.recipe
             .content
             .description
-            .get_or_insert_with(|| auditorylab_core::Description {
+            .get_or_insert_with(|| auditorylab_core::provenance::Description {
                 title: String::new(),
                 notes: None,
             })
@@ -487,7 +487,7 @@ impl Draft {
         self.recipe
             .content
             .description
-            .get_or_insert(auditorylab_core::Description { title, notes: None })
+            .get_or_insert(auditorylab_core::provenance::Description { title, notes: None })
             .notes = Some(summary);
     }
     /// Requested finite duration.
@@ -573,7 +573,7 @@ impl Draft {
     }
     fn demote_evidence(&mut self) {
         for evidence in &mut self.recipe.content.evidence {
-            evidence.scope = auditorylab_core::EvidenceScope::Ancestor;
+            evidence.scope = auditorylab_core::provenance::EvidenceScope::Ancestor;
         }
     }
     /// Capture full content under a new process-local snapshot identity.
@@ -1435,25 +1435,25 @@ mod tests;
 
 impl std::fmt::Display for EditRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 
 impl std::fmt::Display for SaveRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 
 impl std::fmt::Display for InputProblem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for InputProblem {}
 impl std::fmt::Display for CommitRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for CommitRefusal {
@@ -1497,7 +1497,7 @@ crate::core::diagnostic_codes! {
                 } => {
                     crate::core::diagnostic_params! {"components"=>*components,"voices"=>*voices,"additional_voices"=>*additional_voices}
                 }
-                _ => crate::core::Params::new(),
+                _ => crate::core::diagnostic::Params::new(),
             }
         }
     }
@@ -1513,7 +1513,7 @@ crate::core::diagnostic_codes! {
                 Self::Input(problems) => {
                     crate::core::diagnostic_params! {"problem_count"=>problems.len()}
                 }
-                _ => crate::core::Params::new(),
+                _ => crate::core::diagnostic::Params::new(),
             }
         }
     }

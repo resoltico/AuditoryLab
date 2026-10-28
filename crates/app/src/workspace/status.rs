@@ -283,7 +283,7 @@ pub enum AudioStatus {
 
 impl std::fmt::Display for SaveFeedback {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for SaveFeedback {
@@ -307,14 +307,14 @@ crate::core::diagnostic_codes! {
         params(this) {
             match this {
                 Self::InvalidAtRate { rate, error } => {
-                    let mut params = crate::core::Code::params(error);
-                    params.extend(crate::core::diagnostic_params! {"cause_code"=>crate::core::Code::code(error),"diagnostic_rate_hz"=>rate.hz()});
+                    let mut params = crate::core::diagnostic::Code::params(error);
+                    params.extend(crate::core::diagnostic_params! {"cause_code"=>crate::core::diagnostic::Code::code(error),"diagnostic_rate_hz"=>rate.hz()});
                     params
                 }
                 Self::EditorRefresh(error) | Self::EditorReset(error) => {
-                    let mut params = crate::core::Code::params(error);
+                    let mut params = crate::core::diagnostic::Code::params(error);
                     params.extend(
-                        crate::core::diagnostic_params! {"cause_code"=>crate::core::Code::code(error)},
+                        crate::core::diagnostic_params! {"cause_code"=>crate::core::diagnostic::Code::code(error)},
                     );
                     params
                 }

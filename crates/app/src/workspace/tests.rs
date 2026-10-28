@@ -398,7 +398,7 @@ fn reopened_copy_navigation_keeps_declared_ancestry_without_reconstructing_origi
             .recipe()
             .evidence()
             .iter()
-            .all(|e| e.scope == crate::core::EvidenceScope::Ancestor)
+            .all(|e| e.scope == crate::core::provenance::EvidenceScope::Ancestor)
     );
     assert_eq!(ws.editor.session().draft().summary(), "Own notes");
 }
@@ -432,7 +432,7 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
                 .recipe()
                 .evidence()
                 .iter()
-                .all(|e| e.scope == crate::core::EvidenceScope::Ancestor)
+                .all(|e| e.scope == crate::core::provenance::EvidenceScope::Ancestor)
         );
     }
     let _ = ws.apply(Command::Library(LibraryCommand::Search(
@@ -635,7 +635,7 @@ fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
     assert!(Workspace::copy_content_admission(&finite).is_ok());
     let mut full = finite.recipe().clone().into_builder();
     full.content.lineage = vec![
-        crate::core::Lineage {
+        crate::core::provenance::Lineage {
             title: "ancestor".into(),
             note: "attributed".into(),
             document_id: None,
@@ -749,7 +749,7 @@ fn reimports_get_new_identities_and_based_on_details_use_the_retained_snapshot()
     let path = dir.path().join("same.toml");
     let text = |duration, title: &str| {
         let mut recipe = crate::test_recipes::silent(duration, 0.0).into_builder();
-        recipe.content.description = Some(crate::core::Description {
+        recipe.content.description = Some(crate::core::provenance::Description {
             title: title.into(),
             notes: None,
         });
@@ -1604,19 +1604,28 @@ fn diagnostic_codes_retain_typed_field_context_and_original_worker_causes() {
     use std::error::Error as _;
     let cause = crate::services::IoCause::new(std::io::Error::other("launch marker"));
     let failure = TaskFailure::Worker(WorkerFailure::Launch(cause));
-    assert_eq!(crate::core::Code::code(&failure), "worker.launch");
+    assert_eq!(
+        crate::core::diagnostic::Code::code(&failure),
+        "worker.launch"
+    );
     assert_eq!(
         failure.source().unwrap().source().unwrap().to_string(),
         "launch marker"
     );
     let field = EditingField::Metadata(crate::document::editing::MetadataField::Duration);
     let diagnostic = FieldDiagnostic::Input(field, InputProblem::Unparseable);
-    assert_eq!(crate::core::Code::code(&diagnostic), "input.unparseable");
+    assert_eq!(
+        crate::core::diagnostic::Code::code(&diagnostic),
+        "input.unparseable"
+    );
     assert!(matches!(diagnostic,FieldDiagnostic::Input(retained,_) if retained==field));
     let refusal = Refusal::Input(vec![(field, InputProblem::Unparseable)]);
-    assert_eq!(crate::core::Code::code(&refusal), "workspace.input");
     assert_eq!(
-        crate::core::Code::code(
+        crate::core::diagnostic::Code::code(&refusal),
+        "workspace.input"
+    );
+    assert_eq!(
+        crate::core::diagnostic::Code::code(
             refusal
                 .source()
                 .unwrap()
@@ -1627,7 +1636,7 @@ fn diagnostic_codes_retain_typed_field_context_and_original_worker_causes() {
     );
     let warning = monitor::MonitorWarning::FixedRangeExceeded;
     assert_eq!(
-        crate::core::Code::code(&warning),
+        crate::core::diagnostic::Code::code(&warning),
         "monitor.fixed_range_exceeded"
     );
     assert!(!warning.announces_changes());

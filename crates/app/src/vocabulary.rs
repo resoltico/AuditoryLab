@@ -189,7 +189,7 @@ vocabularies!(registry);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auditorylab_core::Code;
+    use auditorylab_core::diagnostic::Code;
     use auditorylab_core::vocabulary::{Vocabulary, VocabularyError};
     use serde::Serialize;
     use std::collections::BTreeSet;

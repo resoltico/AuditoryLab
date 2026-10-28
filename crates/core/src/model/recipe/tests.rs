@@ -277,7 +277,7 @@ fn bibliography_graph_has_strict_scopes_unique_keys_and_no_recursive_sources() {
 #[test]
 fn every_catalog_recipe_reads_back_equal_after_writing() {
     for entry in crate::catalog::ENTRIES {
-        let recipe = Recipe::parse(entry.text).unwrap();
+        let recipe = Recipe::parse(&entry.text()).unwrap();
         let text = recipe.to_toml().unwrap();
         assert!(text.starts_with("schema_version = 4\n"));
         assert_eq!(Recipe::parse(&text).unwrap(), recipe, "{}", entry.id);

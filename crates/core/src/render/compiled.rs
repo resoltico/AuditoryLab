@@ -305,5 +305,4 @@ impl TargetCheck {
 }
 
 #[cfg(test)]
-#[path = "compiled/tests.rs"]
 mod tests;

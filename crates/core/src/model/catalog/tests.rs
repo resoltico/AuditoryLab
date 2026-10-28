@@ -191,7 +191,7 @@ const RECIPES: &[Written] = &[
 ];
 
 fn recipe(entry: &Entry) -> Recipe {
-    Recipe::parse(entry.text).unwrap_or_else(|error| panic!("{}: {error}", entry.id))
+    Recipe::parse(&entry.text()).unwrap_or_else(|error| panic!("{}: {error}", entry.id))
 }
 
 /// Name order with runs of digits compared as numbers, written independently
@@ -230,7 +230,7 @@ fn the_catalog_is_exactly_the_files_in_the_catalog_directory_in_natural_name_ord
             let name = path.file_stem().unwrap().to_str().unwrap().to_owned();
             (
                 name,
-                catalog_build::generated_recipe(&std::fs::read_to_string(&path).unwrap(), |id| {
+                super::generated_recipe(&std::fs::read_to_string(&path).unwrap(), |id| {
                     Ok(std::fs::read_to_string(
                         Path::new(env!("CARGO_MANIFEST_DIR"))
                             .join("studies")
@@ -244,7 +244,7 @@ fn the_catalog_is_exactly_the_files_in_the_catalog_directory_in_natural_name_ord
     files.sort_by_key(|(name, _)| natural(name));
     let entries: Vec<(String, String)> = catalog::ENTRIES
         .iter()
-        .map(|e| (e.id.to_owned(), e.text.to_owned()))
+        .map(|e| (e.id.to_owned(), e.text()))
         .collect();
     assert_eq!(entries, files);
     for entry in catalog::ENTRIES {
@@ -409,14 +409,6 @@ fn builtins_have_unique_curated_identities_and_do_not_invent_creation_dates() {
     assert_eq!(identities.len(), catalog::ENTRIES.len());
 }
 
-// Compile the build script's pure ordering test as part of this integration target.
-#[path = "../../../build.rs"]
-#[expect(
-    dead_code,
-    reason = "The integration test imports the real catalog build module to check catalog inputs; its unused Cargo build-script main is not executed by that test"
-)]
-mod catalog_build;
-
 #[test]
 fn catalog_identity_validates_grammar_without_claiming_resolution() {
     for invalid in ["", "UPPER", "a_b", "a/b", "builtin:a", "é", " a"] {
@@ -427,4 +419,76 @@ fn catalog_identity_validates_grammar_without_claiming_resolution() {
         assert_eq!(id.as_str(), valid);
     }
     assert!(super::find("unknown-recipe").is_none());
+}
+
+#[test]
+fn studies_match_directory_contents_and_curated_ids_are_unique() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let names = |directory: &str| {
+        std::fs::read_dir(root.join(directory))
+            .unwrap()
+            .map(|entry| {
+                let path = entry.unwrap().path();
+                assert_eq!(path.extension().and_then(|x| x.to_str()), Some("toml"));
+                path.file_stem().unwrap().to_str().unwrap().to_owned()
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let ids = catalog::ENTRIES
+        .iter()
+        .map(|entry| entry.id.to_owned())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(ids.len(), catalog::ENTRIES.len());
+    assert_eq!(ids, names("catalog"));
+    let studies = super::STUDIES
+        .iter()
+        .map(|(id, text)| {
+            assert!(super::CatalogId::new(id).is_some());
+            assert_eq!(
+                *text,
+                std::fs::read_to_string(root.join("studies").join(format!("{id}.toml"))).unwrap()
+            );
+            (*id).to_owned()
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(studies.len(), super::STUDIES.len());
+    assert_eq!(studies, names("studies"));
+}
+
+#[test]
+fn merging_refuses_duplicate_citations_and_preserves_specific_limitations() {
+    let entry = &catalog::ENTRIES[0];
+    let read = |key: &str| -> Result<String, std::boxed::Box<dyn core::error::Error>> {
+        Ok(super::STUDIES
+            .iter()
+            .find(|(id, _)| *id == key)
+            .unwrap()
+            .1
+            .into())
+    };
+    let mut condition: toml::Table = toml::from_str(entry.condition).unwrap();
+    condition
+        .get_mut("evidence")
+        .unwrap()
+        .as_array_mut()
+        .unwrap()[0]
+        .as_table_mut()
+        .unwrap()
+        .insert(
+            "limitations".into(),
+            toml::Value::String("Specific limit".into()),
+        );
+    let merged = super::generated_recipe(&toml::to_string(&condition).unwrap(), read).unwrap();
+    assert_eq!(
+        Recipe::parse(&merged).unwrap().evidence()[0].limitations,
+        "Specific limit"
+    );
+    condition.get_mut("source").unwrap().as_array_mut().unwrap()[0]
+        .as_table_mut()
+        .unwrap()
+        .insert(
+            "citation".into(),
+            toml::Value::String("Duplicate citation".into()),
+        );
+    assert!(super::generated_recipe(&toml::to_string(&condition).unwrap(), read).is_err());
 }

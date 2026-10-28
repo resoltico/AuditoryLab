@@ -20,7 +20,7 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
         modified_at: modified.map(|s| s.parse().unwrap()),
     };
     let mut recipe = Recipe::builder(document);
-    recipe.content.description = Some(auditorylab_app::core::Description {
+    recipe.content.description = Some(auditorylab_app::core::provenance::Description {
         title: title.into(),
         notes: None,
     });
@@ -121,7 +121,8 @@ fn correlated_rate_sort_and_groups_use_unique_actual_authored_keys() {
 #[test]
 fn evidence_filters_cannot_borrow_population_or_role_and_ancestors_never_assert_current_study() {
     use auditorylab_core::{
-        BibliographySource, ConditionRole as R, Evidence, EvidenceScope as S, Population as P,
+        provenance::BibliographySource, provenance::ConditionRole as R, provenance::Evidence,
+        provenance::EvidenceScope as S, provenance::Population as P,
     };
     let mut recipe = auditorylab_app::document::editing::Draft::new()
         .unwrap()

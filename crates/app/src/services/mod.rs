@@ -91,7 +91,7 @@ pub fn export_rendition(
 /// Preserves source resolution and staged publication failures.
 pub fn save_builtin(id: &str, path: &Path, replace: Replace) -> Result<SaveOutcome, SaveError> {
     let text = builtin_source(id).map_err(|error| SaveError::Load { error })?;
-    publish_text(text, path, replace)
+    publish_text(&text, path, replace)
 }
 /// Export captured portable text without rewriting history.
 ///
@@ -103,7 +103,7 @@ pub fn save_recipe_text(
     replace: Replace,
 ) -> Result<SaveOutcome, SaveError> {
     Recipe::parse(text)?;
-    publish_text(text, path, replace)
+    publish_text(&text, path, replace)
 }
 /// Save validated portable content with staged publication.
 ///

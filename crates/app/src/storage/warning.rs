@@ -66,7 +66,7 @@ pub enum StorageWarning {
 }
 impl std::fmt::Display for StorageWarning {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 
@@ -115,16 +115,16 @@ crate::core::diagnostic_codes! {
                     crate::core::diagnostic_params! {"name"=>name.to_string_lossy().into_owned()}
                 }
                 Self::MembershipUpdateFailed { cause } | Self::MembershipReadFailed { cause } => {
-                    let mut params = crate::core::Code::params(cause);
-                    params.insert("cause_code", crate::core::Code::code(cause).into());
+                    let mut params = crate::core::diagnostic::Code::params(cause);
+                    params.insert("cause_code", crate::core::diagnostic::Code::code(cause).into());
                     params
                 }
                 Self::UnavailableHistoryClock { cause } => {
-                    let mut params = crate::core::Code::params(cause);
-                    params.insert("cause_code", crate::core::Code::code(cause).into());
+                    let mut params = crate::core::diagnostic::Code::params(cause);
+                    params.insert("cause_code", crate::core::diagnostic::Code::code(cause).into());
                     params
                 }
-                _ => crate::core::Params::new(),
+                _ => crate::core::diagnostic::Params::new(),
             }
         }
     }

@@ -643,7 +643,6 @@ crate::vocabulary::vocabulary! { PairKind,"pair_kind" {
 }}
 
 #[cfg(test)]
-#[path = "authored/tests.rs"]
 mod tests;
 
 crate::diagnostic_codes! {

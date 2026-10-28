@@ -6,7 +6,7 @@ use auditorylab_app::outcome::Outcome;
 use auditorylab_app::workspace::WorkerFailure;
 use auditorylab_app::workspace::output::PreviewIssue;
 use auditorylab_app::workspace::status::*;
-use auditorylab_core::Code;
+use auditorylab_core::diagnostic::Code;
 
 pub(crate) fn shutdown_reset_failure(
     error: &auditorylab_app::document::error::EditorError,

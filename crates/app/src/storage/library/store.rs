@@ -347,7 +347,7 @@ impl LibraryStore {
         let mut reserved = BTreeSet::new();
         for entry in crate::core::catalog::ENTRIES {
             let recipe =
-                Recipe::parse(entry.text).map_err(|e| Error::InvalidBuiltin { error: e })?;
+                Recipe::parse(&entry.text()).map_err(|e| Error::InvalidBuiltin { error: e })?;
             if !reserved.insert(recipe.document().id) {
                 return Err(Error::DuplicateBuiltin {
                     id: recipe.document().id,
@@ -749,7 +749,8 @@ impl LibraryStore {
                     .clone();
                 let notes = recipe.description().and_then(|d| d.notes.clone());
                 let mut candidate = recipe.into_builder();
-                candidate.content.description = Some(crate::core::Description { title, notes });
+                candidate.content.description =
+                    Some(crate::core::provenance::Description { title, notes });
                 candidate.build().map_err(|error| Error::Recipe { error })?
             }
             _ => unreachable!("lifecycle operations handled above"),
@@ -777,7 +778,7 @@ impl LibraryStore {
             && old.snapshot.recipe().sound() != &proposal.content.sound
         {
             for evidence in &mut proposal.content.evidence {
-                evidence.scope = crate::core::EvidenceScope::Ancestor;
+                evidence.scope = crate::core::provenance::EvidenceScope::Ancestor;
             }
         }
         if kind == MutationKind::Create {
@@ -1111,12 +1112,12 @@ crate::core::diagnostic_codes! {
                 Self::OrphanMembership(id) => {
                     crate::core::diagnostic_params! {"document_id"=>id.to_string()}
                 }
-                _ => crate::core::Params::new(),
+                _ => crate::core::diagnostic::Params::new(),
             }
         }
     }
 }
-impl<E: crate::core::Code> crate::core::Code for DiagnosticDetail<E> {
+impl<E: crate::core::diagnostic::Code> crate::core::diagnostic::Code for DiagnosticDetail<E> {
     fn code(&self) -> &'static str {
         match self {
             Self::Notice(cause) => cause.code(),
@@ -1124,7 +1125,7 @@ impl<E: crate::core::Code> crate::core::Code for DiagnosticDetail<E> {
             Self::Failure(cause) => cause.code(),
         }
     }
-    fn params(&self) -> crate::core::Params {
+    fn params(&self) -> crate::core::diagnostic::Params {
         match self {
             Self::Notice(cause) => cause.params(),
             Self::Warning(cause) => cause.params(),
@@ -1132,11 +1133,11 @@ impl<E: crate::core::Code> crate::core::Code for DiagnosticDetail<E> {
         }
     }
 }
-impl<E: crate::core::Code> crate::core::Code for LibraryDiagnostic<E> {
+impl<E: crate::core::diagnostic::Code> crate::core::diagnostic::Code for LibraryDiagnostic<E> {
     fn code(&self) -> &'static str {
         self.detail.code()
     }
-    fn params(&self) -> crate::core::Params {
+    fn params(&self) -> crate::core::diagnostic::Params {
         let mut params = self.detail.params();
         params.insert("storage_id", self.storage_id.clone().into());
         params

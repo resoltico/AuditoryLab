@@ -34,7 +34,7 @@ impl OriginError {
 }
 impl std::fmt::Display for OriginError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for OriginError {}

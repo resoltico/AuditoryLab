@@ -6,7 +6,7 @@ use auditorylab_app::discovery::query::SortBy;
 use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::document::origin::VersionToken;
 use auditorylab_app::vocabulary::Operation;
-use auditorylab_core::{Code, Params};
+use auditorylab_core::{diagnostic::Code, diagnostic::Params};
 use serde::Serialize;
 use std::path::PathBuf;
 use {

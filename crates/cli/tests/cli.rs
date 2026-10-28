@@ -380,7 +380,7 @@ fn unicode_notes_roundtrip_and_terminal_controls_are_escaped_at_display_boundary
         auditorylab_app::core::Recipe::parse(std::str::from_utf8(silence().as_bytes()).unwrap())
             .unwrap()
             .into_builder();
-    recipe.content.description = Some(auditorylab_app::core::Description {
+    recipe.content.description = Some(auditorylab_app::core::provenance::Description {
         title: "Rīga \"🎧\"".into(),
         notes: Some("Line one\nLine two \u{1b}[31m \u{202e}reverse".into()),
     });

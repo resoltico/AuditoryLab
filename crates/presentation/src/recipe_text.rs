@@ -1,9 +1,9 @@
 //! Shared descriptions of authored content and its research context.
 use auditorylab_core::Component;
 use auditorylab_core::ComponentForm;
-use auditorylab_core::EvidenceScope;
 use auditorylab_core::Modulation;
 use auditorylab_core::Recipe;
+use auditorylab_core::provenance::EvidenceScope;
 
 /// Derived presentation of current title/notes and a primary current condition.
 /// This is a view, not a second persisted metadata authority.

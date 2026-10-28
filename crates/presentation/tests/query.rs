@@ -52,7 +52,7 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
         .collect(),
     )
     .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
-    recipe.content.description = Some(auditorylab_app::core::Description {
+    recipe.content.description = Some(auditorylab_app::core::provenance::Description {
         title: "Rīga reference 2015".into(),
         notes: Some("two words".into()),
     });
@@ -90,7 +90,9 @@ fn normalized_text_terms_are_anded_and_numeric_terms_are_not_substrings() {
 
 #[test]
 fn search_excludes_generated_labels_and_unknown_date_captions() {
-    use auditorylab_app::core::{Component, ComponentForm, ComponentId, Description, Ears};
+    use auditorylab_app::core::{
+        Component, ComponentForm, ComponentId, Ears, provenance::Description,
+    };
     let mut recipe = auditorylab_app::document::editing::Draft::new()
         .unwrap()
         .recipe()

@@ -6,8 +6,9 @@ use auditorylab_app::vocabulary::{Operation, Status};
 use auditorylab_core::rhythm::{Band, Completeness, Method};
 use auditorylab_core::vocabulary::Vocabulary;
 use auditorylab_core::{
-    CarrierKind, ConditionRole, Ear, Ears, EvidenceScope, Measure, ModulationKind, PairKind,
-    ParameterId, Population, SlotRole,
+    CarrierKind, Ear, Ears, ModulationKind, PairKind, ParameterId, SlotRole,
+    provenance::ConditionRole, provenance::EvidenceScope, provenance::Measure,
+    provenance::Population,
 };
 use std::collections::{BTreeMap, BTreeSet};
 fn keys<T: Vocabulary>() -> Vec<String> {
@@ -64,7 +65,7 @@ fn table(document: &str, marker: &str, header: &str) -> BTreeMap<String, Vec<Str
 #[test]
 fn vocabulary_and_query_tables_match_every_owned_key() {
     let mut expected = BTreeMap::new();
-    macro_rules! owner {($($kind:ty),+)=>{$(assert!(expected.insert(auditorylab_core::Code::code(&"".parse::<$kind>().expect_err("empty input is outside every vocabulary")).strip_prefix("vocabulary.").unwrap().to_owned(),keys::<$kind>()).is_none());)+};}
+    macro_rules! owner {($($kind:ty),+)=>{$(assert!(expected.insert(auditorylab_core::diagnostic::Code::code(&"".parse::<$kind>().expect_err("empty input is outside every vocabulary")).strip_prefix("vocabulary.").unwrap().to_owned(),keys::<$kind>()).is_none());)+};}
     owner!(
         Scope,
         SortBy,

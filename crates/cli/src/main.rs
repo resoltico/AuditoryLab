@@ -601,7 +601,7 @@ auditorylab_app::core::diagnostic_codes! {
 #[cfg(test)]
 mod diagnostic_tests {
     use super::*;
-    use auditorylab_app::core::{Code, ParamValue};
+    use auditorylab_app::core::{diagnostic::Code, diagnostic::ParamValue};
     #[test]
     fn owned_cli_codes_cover_their_variants_and_domain_errors_delegate() {
         let cases = [

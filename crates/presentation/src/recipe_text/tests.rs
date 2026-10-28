@@ -9,22 +9,24 @@ fn display_about_uses_population_and_condition_labels_for_every_declaration() {
     let source = auditorylab_core::catalog::ENTRIES
         .iter()
         .find_map(|entry| {
-            let recipe = Recipe::parse(entry.text).unwrap();
+            let recipe = Recipe::parse(&entry.text()).unwrap();
             recipe
                 .evidence()
                 .iter()
-                .any(|e| e.scope == auditorylab_core::EvidenceScope::ReferenceCondition)
+                .any(|e| e.scope == auditorylab_core::provenance::EvidenceScope::ReferenceCondition)
                 .then_some(recipe)
         })
         .unwrap();
-    for population in auditorylab_core::Population::ALL {
-        for role in auditorylab_core::ConditionRole::ALL {
+    for population in auditorylab_core::provenance::Population::ALL {
+        for role in auditorylab_core::provenance::ConditionRole::ALL {
             let mut builder = source.clone().into_builder();
             let evidence = builder
                 .content
                 .evidence
                 .iter_mut()
-                .find(|e| e.scope == auditorylab_core::EvidenceScope::ReferenceCondition)
+                .find(|e| {
+                    e.scope == auditorylab_core::provenance::EvidenceScope::ReferenceCondition
+                })
                 .unwrap();
             evidence.population = population;
             evidence.population_detail = None;
@@ -66,7 +68,7 @@ fn descriptive_text_supports_unicode_quotes_and_multiline() {
 fn every_entry_states_all_about_text_and_one_source_has_one_citation() {
     let mut citations = BTreeMap::new();
     for entry in catalog::ENTRIES {
-        let about = about(&Recipe::parse(entry.text).unwrap())
+        let about = about(&Recipe::parse(&entry.text()).unwrap())
             .unwrap_or_else(|| panic!("{} has no about table", entry.id));
         let field = |name: &str, value: &Option<String>| {
             value
@@ -232,8 +234,8 @@ fn independent_copies_store_the_attribution_and_ancestor_notes_verbatim() {
     use auditorylab_app::document::editing::Draft;
     use auditorylab_app::document::recipe::Origin;
     use auditorylab_app::document::recipe::RecipeSnapshot;
-    use auditorylab_core::Description;
     use auditorylab_core::DocumentIdentity;
+    use auditorylab_core::provenance::Description;
     for (notes, expected) in [
         (
             None,

@@ -18,9 +18,6 @@ libm.workspace = true
 serde.workspace = true
 toml.workspace = true
 
-[build-dependencies]
-toml.workspace = true
-
 [dev-dependencies]
 auditorylab-core = { path = ".", features = ["test-support"] }
 allocation-counter.workspace = true

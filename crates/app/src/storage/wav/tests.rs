@@ -158,7 +158,7 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
 }
 
 fn short_catalog_session(name: &str) -> Signal {
-    let mut sound = Recipe::parse(catalog::find(name).unwrap().text)
+    let mut sound = Recipe::parse(&catalog::find(name).unwrap().text())
         .unwrap()
         .sound()
         .clone();

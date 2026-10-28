@@ -4,7 +4,10 @@ use crate::discovery::query::{self, SearchIndex};
 use crate::discovery::query::{Direction, GroupBy, Scope, SortBy};
 use crate::document::origin::{LibraryKey, VersionToken};
 use crate::document::recipe::RecipeSnapshot;
-use auditorylab_core::{ConditionRole, EvidenceScope, Measure, Population};
+use auditorylab_core::{
+    provenance::ConditionRole, provenance::EvidenceScope, provenance::Measure,
+    provenance::Population,
+};
 use serde::Serialize;
 
 /// Storage ownership, independent of scientific source or authorship.

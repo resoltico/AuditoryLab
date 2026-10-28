@@ -232,7 +232,7 @@ impl Drop for LiveGenerator {
 
 impl std::fmt::Display for LiveUpdateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 
@@ -254,7 +254,7 @@ crate::core::diagnostic_codes! {
                 } => {
                     crate::core::diagnostic_params! {"target_hz"=>*target_hz,"session_hz"=>*session_hz}
                 }
-                _ => crate::core::Params::new(),
+                _ => crate::core::diagnostic::Params::new(),
             }
         }
     }

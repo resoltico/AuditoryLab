@@ -513,7 +513,7 @@ fn copies_keep_source_attribution_without_research_claims_and_match_recipe_ids()
         recipe
             .evidence()
             .iter()
-            .all(|e| e.scope == auditorylab_core::EvidenceScope::Ancestor)
+            .all(|e| e.scope == auditorylab_core::provenance::EvidenceScope::Ancestor)
     );
 }
 
@@ -577,7 +577,7 @@ fn derivatives_reopen_with_full_scoped_graph_and_bounded_flat_ancestry() {
                 .recipe()
                 .evidence()
                 .iter()
-                .all(|e| e.scope == auditorylab_core::EvidenceScope::Ancestor)
+                .all(|e| e.scope == auditorylab_core::provenance::EvidenceScope::Ancestor)
         );
         assert_eq!(reopened.recipe().sources(), original.sources());
         assert_eq!(reopened.recipe().lineage().len(), expected);
@@ -586,7 +586,7 @@ fn derivatives_reopen_with_full_scoped_graph_and_bounded_flat_ancestry() {
                 .recipe()
                 .evidence()
                 .iter()
-                .all(|e| e.scope == auditorylab_core::EvidenceScope::Ancestor)
+                .all(|e| e.scope == auditorylab_core::provenance::EvidenceScope::Ancestor)
         );
         assert!(!bytes.contains("reopened elsewhere"));
         if expected == 16 {
@@ -721,18 +721,18 @@ fn committed_sound_edits_never_repromote_evidence_by_merely_retuning_back() {
     editor.commit_field(title, "My title").unwrap().unwrap();
     assert_eq!(
         editor.draft().recipe().unwrap().evidence()[0].scope,
-        crate::core::EvidenceScope::ReferenceCondition
+        crate::core::provenance::EvidenceScope::ReferenceCondition
     );
     let offset = field(&editor, 0, ParameterId::PairOffset);
     editor.commit_field(offset, "6").unwrap().unwrap();
     assert_eq!(
         editor.draft().recipe().unwrap().evidence()[0].scope,
-        crate::core::EvidenceScope::Ancestor
+        crate::core::provenance::EvidenceScope::Ancestor
     );
     editor.commit_field(offset, "2").unwrap().unwrap();
     assert_eq!(
         editor.draft().recipe().unwrap().evidence()[0].scope,
-        crate::core::EvidenceScope::Ancestor
+        crate::core::provenance::EvidenceScope::Ancestor
     );
 }
 #[test]
@@ -748,7 +748,7 @@ fn complete_remove_undo_restores_full_metadata_but_partial_or_published_undo_can
             .unwrap();
         assert_eq!(
             editor.draft().recipe().unwrap().evidence()[0].scope,
-            crate::core::EvidenceScope::Ancestor
+            crate::core::provenance::EvidenceScope::Ancestor
         );
         if intervening == 1 {
             let notes = metadata(&editor, MetadataField::Summary);
@@ -762,9 +762,9 @@ fn complete_remove_undo_restores_full_metadata_but_partial_or_published_undo_can
         assert_eq!(
             editor.draft().recipe().unwrap().evidence()[0].scope,
             if intervening == 0 {
-                crate::core::EvidenceScope::ReferenceCondition
+                crate::core::provenance::EvidenceScope::ReferenceCondition
             } else {
-                crate::core::EvidenceScope::Ancestor
+                crate::core::provenance::EvidenceScope::Ancestor
             }
         );
         if intervening == 0 {

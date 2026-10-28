@@ -2,7 +2,7 @@
 use super::library::{LibraryJob, LibraryRequest};
 use super::*;
 use crate::core::rhythm::{Band, Completeness, Method};
-use crate::core::{ConditionRole, ParameterId, Population};
+use crate::core::{ParameterId, provenance::ConditionRole, provenance::Population};
 use crate::discovery::query::{Direction, GroupBy, RhythmState, Scope, SortBy};
 use crate::document::origin::{LibraryKey, VersionToken};
 use crate::services::library::{Library, Mutation, WriteOutcome};

@@ -51,7 +51,7 @@ impl IdentityError {
 
 impl std::fmt::Display for IdentityError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for IdentityError {
@@ -95,7 +95,10 @@ mod tests {
     fn random_failure_does_not_fall_back_to_clock_or_counter() {
         let error = super::generate_uuid(|_| Err(getrandom::Error::UNSUPPORTED)).unwrap_err();
         assert_eq!(error.outcome(), crate::outcome::Outcome::Identity);
-        assert_eq!(crate::core::Code::code(&error), "identity.entropy");
+        assert_eq!(
+            crate::core::diagnostic::Code::code(&error),
+            "identity.entropy"
+        );
         assert!(std::error::Error::source(&error).is_some());
     }
 }

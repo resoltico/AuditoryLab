@@ -10,7 +10,7 @@ pub(crate) enum ExportError {
 }
 impl std::fmt::Display for ExportError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl Error for ExportError {
@@ -38,7 +38,7 @@ crate::core::diagnostic_codes! {
         params(this) {
             match this {
                 Self::Io(error) => crate::core::diagnostic_params! {"cause"=>error.to_string()},
-                Self::Cancelled => crate::core::Params::new(),
+                Self::Cancelled => crate::core::diagnostic::Params::new(),
             }
         }
     }

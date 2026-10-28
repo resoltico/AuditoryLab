@@ -66,10 +66,10 @@ pub(super) struct QueryArgs {
     study: Vec<String>,
     /// Condition role correlated within the same evidence record.
     #[arg(long,value_parser=parse_role)]
-    role: Vec<lab::core::ConditionRole>,
+    role: Vec<lab::core::provenance::ConditionRole>,
     /// Population correlated within the same evidence record.
     #[arg(long,value_parser=parse_population)]
-    population: Vec<lab::core::Population>,
+    population: Vec<lab::core::provenance::Population>,
     /// Nominal analysis coverage: complete or invalid.
     #[arg(long,value_parser=parse_analysis)]
     analysis: Option<lab::core::rhythm::Completeness>,
@@ -296,10 +296,10 @@ fn parse_sort(text: &str) -> std::result::Result<SortBy, String> {
         .find(|value| value.key() == text)
         .ok_or_else(|| expected_choices(EXPLICIT.iter().map(|value| value.key())))
 }
-fn parse_role(text: &str) -> std::result::Result<lab::core::ConditionRole, String> {
+fn parse_role(text: &str) -> std::result::Result<lab::core::provenance::ConditionRole, String> {
     parse_choice(text)
 }
-fn parse_population(text: &str) -> std::result::Result<lab::core::Population, String> {
+fn parse_population(text: &str) -> std::result::Result<lab::core::provenance::Population, String> {
     parse_choice(text)
 }
 fn parse_analysis(text: &str) -> std::result::Result<lab::core::rhythm::Completeness, String> {
@@ -673,8 +673,8 @@ mod query_mapping_tests {
                     state: Some(auditorylab_app::discovery::query::RhythmState::OutsideBands),
                 },
                 studies: vec!["key:source".into()],
-                roles: vec![lab::core::ConditionRole::Comparison],
-                populations: vec![lab::core::Population::Mouse],
+                roles: vec![lab::core::provenance::ConditionRole::Comparison],
+                populations: vec![lab::core::provenance::Population::Mouse],
                 analysis: Some(lab::core::rhythm::Completeness::Invalid),
                 created: DateRange {
                     from: Some("2026-01-01T00:00:00Z".parse().unwrap()),

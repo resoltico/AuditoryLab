@@ -143,7 +143,7 @@ impl Diagnostics {
 
 impl std::fmt::Display for DeviceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 
@@ -184,7 +184,7 @@ crate::core::diagnostic_codes! {
                 Self::TooFewChannels { channels } => {
                     crate::core::diagnostic_params! {"channels"=>*channels}
                 }
-                _ => crate::core::Params::new(),
+                _ => crate::core::diagnostic::Params::new(),
             }
         }
     }

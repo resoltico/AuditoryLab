@@ -1,6 +1,6 @@
 //! Coherent bounded display captures and target-model provenance, shared by renderers.
 use crate::audio::session::{Meter, MonitorReader, SessionDescriptor};
-use crate::core::{Extent, Observation, SampleRate};
+use crate::core::{Observation, SampleRate, waveform::Extent};
 use auditorylab_core::{Target, rhythm::Structure, timing::TimingModel};
 /// A view cannot silently hide invalid samples or invent source coverage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -350,7 +350,7 @@ impl WaveformScale {
 
 impl std::fmt::Display for CaptureError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 
@@ -358,7 +358,7 @@ impl std::error::Error for CaptureError {}
 
 impl std::fmt::Display for MonitorWarning {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 

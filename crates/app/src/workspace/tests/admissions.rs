@@ -315,7 +315,7 @@ fn fixture(case: Case) -> TestWorkspace {
             .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
             if matches!(case, Case::FullLineage) {
                 recipe.content.lineage = (0..16)
-                    .map(|index| crate::core::Lineage {
+                    .map(|index| crate::core::provenance::Lineage {
                         title: format!("Ancestor {index}"),
                         note: "Retained relationship".into(),
                         document_id: None,

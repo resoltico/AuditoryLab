@@ -1,5 +1,5 @@
 //! Waveform extrema to SVG path commands.
-use auditorylab_app::core::Extent;
+use auditorylab_app::core::waveform::Extent;
 use std::fmt::Write;
 pub(crate) fn paths(bins: &[[Extent; 2]], limit: f64) -> [String; 2] {
     let mut paths = [String::new(), String::new()];

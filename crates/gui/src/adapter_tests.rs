@@ -755,7 +755,7 @@ fn an_imported_recipe_is_scrolled_into_view() {
     let path = directory.path().join("imported.toml");
     std::fs::write(&path, {
         let mut recipe = crate::test_recipes::silent(1.0, 0.01).into_builder();
-        recipe.content.description = Some(auditorylab_app::core::Description {
+        recipe.content.description = Some(auditorylab_app::core::provenance::Description {
             title: "Imported probe".into(),
             notes: None,
         });
@@ -2812,8 +2812,8 @@ fn filter_controls_map_to_independent_typed_queries() {
     h.wait_for_files();
     let expected = CatalogQuery {
         studies: vec!["key:source".into()],
-        populations: vec![auditorylab_app::core::Population::Mouse],
-        roles: vec![auditorylab_app::core::ConditionRole::Comparison],
+        populations: vec![auditorylab_app::core::provenance::Population::Mouse],
+        roles: vec![auditorylab_app::core::provenance::ConditionRole::Comparison],
         analysis: Some(auditorylab_app::core::rhythm::Completeness::Invalid),
         direction: Some(Direction::Desc),
         group_by: GroupBy::Study,
@@ -3581,7 +3581,7 @@ const fn finite(value: f64) -> auditorylab_app::core::Finite {
 #[test]
 fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
     use auditorylab_app::core::rhythm::Completeness;
-    use auditorylab_app::core::{ConditionRole, Population};
+    use auditorylab_app::core::{provenance::ConditionRole, provenance::Population};
     use auditorylab_app::discovery::query::{Direction, GroupBy};
     let h = Harness::new();
     let ui = h.ui();
@@ -3781,7 +3781,7 @@ fn real_worker_completion_reaches_projection_without_a_timer_and_wakes_coalesce(
 #[test]
 fn app_facet_selections_project_without_overwriting_pending_native_filter_edits() {
     use auditorylab_app::core::rhythm::Completeness;
-    use auditorylab_app::core::{ConditionRole, Population};
+    use auditorylab_app::core::{provenance::ConditionRole, provenance::Population};
     use auditorylab_app::discovery::collection::CatalogQuery;
     let (mut workspace, _root, _store) = bound_workspace(
         auditorylab_app::services::catalog().unwrap(),

@@ -32,7 +32,7 @@ pub struct ClockError {
 
 impl std::fmt::Display for ClockError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(crate::core::Code::code(self))
+        f.write_str(crate::core::diagnostic::Code::code(self))
     }
 }
 impl std::error::Error for ClockError {}

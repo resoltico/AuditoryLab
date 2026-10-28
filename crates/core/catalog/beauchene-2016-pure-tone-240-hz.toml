@@ -33,5 +33,4 @@ condition_role = "comparison"
 measures = ["eeg", "behavior"]
 methods_locator = "Pure-tone control: 240 Hz in both ears, the carrier of the binaural-beat conditions without a beat. One of six 5-minute sound conditions played in random order while 28 adults did a visuospatial working-memory task during EEG. Accuracy rose during the 15 Hz binaural beat and fell during the other conditions."
 summary = "A steady 240 Hz tone in both ears: the study's comparison sound, the binaural beats' tone without a beat. In one study, 28 adults heard it for 5 minutes during a visual memory task, and their accuracy fell slightly; only the 15 Hz binaural beat improved it. Reaction times did not differ significantly between the study's sounds."
-limitations = "Source findings concern the stated population and condition; adaptations do not establish efficacy for generated audio. See the summary and adaptation for study-specific limitations."
 adaptation = "The source generated the tones in MATLAB and let participants set the volume; it states no phase, ramps or sample rate. Tones start at phase zero with a -20 dBFS peak, uncalibrated, with 0.1 s fades added."

@@ -12,7 +12,7 @@ fn every_builtin_matches_bit_for_bit_after_both_startup_envelopes() {
     for hz in [44_100_u32, 48_000] {
         let rate = SampleRate::new(hz).unwrap();
         for entry in catalog::ENTRIES {
-            let recipe = Recipe::parse(entry.text).unwrap();
+            let recipe = Recipe::parse(&entry.text()).unwrap();
             let signal = recipe.sound().signal(rate).unwrap();
             let mut engine = Engine::new(rate);
             assert!(engine.set(&recipe.sound().target(rate).unwrap()));

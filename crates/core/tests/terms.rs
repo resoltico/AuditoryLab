@@ -1,7 +1,10 @@
 //! Public domain vocabulary follows the glossary in both grammatical forms.
 use auditorylab_core::{
-    CarrierKind, ConditionRole, Ear, Ears, EvidenceScope, Measure, ModulationKind, PairKind,
-    ParameterId, Population, SlotRole,
+    CarrierKind, Ear, Ears, ModulationKind, PairKind, ParameterId, SlotRole,
+    provenance::ConditionRole,
+    provenance::EvidenceScope,
+    provenance::Measure,
+    provenance::Population,
     rhythm::{Band, Completeness, Method},
 };
 

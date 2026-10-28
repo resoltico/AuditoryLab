@@ -86,7 +86,10 @@ fn a_route_change_keeps_the_native_cause() {
         cause.downcast_ref::<cpal::Error>().unwrap().kind(),
         ErrorKind::DeviceChanged
     );
-    assert_eq!(crate::core::Code::code(&changed), "device.route_changed");
+    assert_eq!(
+        crate::core::diagnostic::Code::code(&changed),
+        "device.route_changed"
+    );
 }
 
 #[test]

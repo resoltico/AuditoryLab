@@ -318,7 +318,10 @@ fn calendar_order_errors_name_visible_fields_and_same_day_is_inclusive() {
         (CalendarField::Added, "Added here"),
     ] {
         let error = local_range(field, "2026-10-26", "2026-10-25").unwrap_err();
-        assert_eq!(auditorylab_core::Code::code(&error), "query.local_order");
+        assert_eq!(
+            auditorylab_core::diagnostic::Code::code(&error),
+            "query.local_order"
+        );
         let error = error.explain();
         assert_eq!(
             error,
@@ -337,7 +340,7 @@ fn a_route_change_says_what_happened_and_what_to_do() {
     let changed =
         DeviceError::RouteChanged(BackendError::new(std::io::Error::other("route changed")));
     assert_eq!(
-        auditorylab_core::Code::code(&changed),
+        auditorylab_core::diagnostic::Code::code(&changed),
         "device.route_changed"
     );
     assert_eq!(
@@ -673,8 +676,8 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
     let query = CatalogQuery {
         search: "exact search".into(),
         studies: vec!["10.1234/exact".into()],
-        populations: vec![auditorylab_core::Population::Human],
-        roles: vec![auditorylab_core::ConditionRole::Comparison],
+        populations: vec![auditorylab_core::provenance::Population::Human],
+        roles: vec![auditorylab_core::provenance::ConditionRole::Comparison],
         analysis: Some(auditorylab_core::rhythm::Completeness::Invalid),
         rhythm: auditorylab_app::discovery::query::RhythmQuery {
             bands: vec![auditorylab_core::rhythm::Band::Delta],

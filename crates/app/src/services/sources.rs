@@ -83,13 +83,13 @@ pub fn resolve(source: Source<'_>, context: &LibraryContext) -> Result<Resolved,
         managed: None,
     })
 }
-/// Exact portable text; built-ins retain their embedded comments and whitespace.
+/// Exact portable text; built-ins return generated standalone TOML.
 ///
 /// # Errors
 /// Rejects temporary selectors and preserves managed input failures.
 pub fn portable_text(key: &LibraryKey, context: &LibraryContext) -> Result<String, LoadError> {
     match key {
-        LibraryKey::BuiltIn(id) => Ok(builtin_source(id.as_str())?.into()),
+        LibraryKey::BuiltIn(id) => builtin_source(id.as_str()),
         LibraryKey::User(_) => Ok(context.library()?.load(key)?.recipe_toml.to_string()),
         LibraryKey::External(_) => Err(LoadError::TemporarySelector { key: key.clone() }),
     }
@@ -115,14 +115,14 @@ fn entry(id: &str) -> Result<&'static auditorylab_core::catalog::Entry, LoadErro
 pub fn builtin(id: &str) -> Result<RecipeSnapshot, LoadError> {
     let entry = entry(id)?;
     load::parse(
-        entry.text.as_bytes(),
+        entry.text().as_bytes(),
         crate::document::recipe::Origin::BuiltIn(entry.id),
     )
 }
-/// Return the exact embedded portable text of a built-in.
+/// Return the generated standalone portable text of a built-in.
 ///
 /// # Errors
 /// Returns an unknown-selector failure.
-pub fn builtin_source(id: &str) -> Result<&'static str, LoadError> {
-    Ok(entry(id)?.text)
+pub fn builtin_source(id: &str) -> Result<String, LoadError> {
+    Ok(entry(id)?.text())
 }
