@@ -17,7 +17,7 @@ flowchart TD
 
 - [Core](../crates/core/src/lib.rs) is `no_std + alloc`: portable recipes, sound/research invariants, validation, structural analysis and synthesis. Its ordinary module tree groups [model](../crates/core/src/model/mod.rs), [analysis](../crates/core/src/analysis/mod.rs) and [rendering](../crates/core/src/render/mod.rs). Everyday types have one public root path; `catalog`, `provenance`, `vocabulary`, `diagnostic`, `rhythm`, `timing`, `live`, `waveform` and `finite_source` remain namespaced families.
 - [App](../crates/app/src/lib.rs) owns application decisions: editable documents, discovery, library/file operations, device preparation and interactive coordination. Private storage and audio adapters enforce rules against the resources used by the action.
-- [Presentation](../crates/presentation/src/lib.rs) owns rendering. `sound`, `recipe`, `library`, `workspace` and `numbers` expose typed free functions. The `errors` tree owns every `Explain` implementation, the single presentation extension trait retained for polymorphic error chains. `report` owns machine JSON and calls human wording only for documented message fields.
+- [Presentation](../crates/presentation/src/lib.rs) owns rendering. `sound`, `recipe`, `library`, `workspace` and `numbers` expose typed free functions. The `errors` tree owns every `Explain` implementation, the single presentation extension trait retained for polymorphic error chains. `report` owns machine JSON. It calls human renderers for diagnostic messages and schema-2 group display captions; group keys and membership stay independent.
 - [CLI](../crates/cli/src/main.rs) owns argument grammar, terminal I/O, interrupts and exit mapping. It passes explicit library overrides through the app constructor and renders app outcomes through presentation.
 - [GUI](../crates/gui/src/adapter.rs) owns desktop chrome, native windows/dialogs, focus, layout and reconciliation of retained Slint models. Its build script sees GUI-owned chrome, Slint and validated product metadata; it has no core or app build dependency.
 - [xtask](../xtask/src/main.rs) owns contributor gates, dependency notices, native resources, archives and independent extracted-package checks. [Packaging](releasing.md) defines supported inputs and deliverables.
@@ -71,7 +71,7 @@ Put shared policy and typed failures in the app owner/service. The CLI supplies 
 
 ### Change rendering or packaging
 
-Choose one presentation subject. Keep JSON schema logic in `report`, free of human rendering except message fields. Keep GUI sizing alternatives with GUI controls. Package changes belong in xtask and [release guidance](releasing.md), with extracted-content checks on the matching native OS/CPU.
+Choose one presentation subject. Keep JSON schema logic in `report`; human rendering is limited to diagnostic messages and the shared group-caption contract in [formats](formats.md#cli-json-output). Keep GUI sizing alternatives with GUI controls. Package changes belong in xtask and [release guidance](releasing.md), with extracted-content checks on the matching native OS/CPU.
 
 ## Shared terms
 
