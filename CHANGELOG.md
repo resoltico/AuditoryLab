@@ -8,6 +8,7 @@
 - CLI JSON schema 2 exposes expanded generator lanes under `voices`; update consumers of schema-1 reports. Operation values use shared snake_case keys.
 - Diagnostic `code` values are fixed identifiers; captured values move to optional `params`, including `storage_id`. Update scripts that extract values from codes.
 - The Rust app package is `auditorylab-app`, exposing core as `auditorylab_app::core`. Native storage/audio adapters are private; use typed services and workspace APIs.
+- App `LibraryError::{RecordRead,RecipeFile}` and `LoadError::Sound` box their causes; update direct constructors. This keeps Windows error sizes within Clippy limits.
 - Workspace mutations use `apply(Command)` and typed responses. Library row actions require app-issued `EntryHandle` values; superseded or foreign listing handles are refused.
 - Library services take one resolved `LibraryContext`; actions recheck current filesystem state. `export_rendition` exports the exact inspected rendition.
 - Core `interpretation` and `nominal` APIs move to `rhythm`; `rhythm::Method` replaces `ComponentRole`. Headings choose Gate, active AM, Clicks or Steady tone.

@@ -397,7 +397,7 @@ impl Explain for auditorylab_app::document::error::RenditionError {
         load_text(&LoadError::Sound {
             origin: self.origin.clone(),
             rate: self.rate,
-            error: self.error.clone(),
+            error: Box::new(self.error.clone()),
         })
     }
 }

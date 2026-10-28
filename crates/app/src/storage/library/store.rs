@@ -152,7 +152,7 @@ impl LoadedRecord {
     ) -> Result<Self, Error> {
         let recipe = Recipe::from_bytes(&bytes).map_err(|error| Error::RecipeFile {
             path: path.to_owned(),
-            error,
+            error: Box::new(error),
         })?;
         if recipe.document().id != id {
             return Err(Error::RecordIdentity {

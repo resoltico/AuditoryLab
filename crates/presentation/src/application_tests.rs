@@ -576,10 +576,10 @@ fn captured_error(
         Outcome::InvalidSound => LoadError::Sound {
             origin: auditorylab_app::document::recipe::Origin::Stream("captured".into()),
             rate: SampleRate::DEFAULT,
-            error: auditorylab_app::core::SoundError::Duration {
+            error: Box::new(auditorylab_app::core::SoundError::Duration {
                 seconds: 0.0,
                 sample_rate_hz: 48000,
-            },
+            }),
         }
         .into(),
         Outcome::InvalidArgument => LibraryError::PurgeUnconfirmed.into(),
@@ -1033,10 +1033,10 @@ fn preview_and_audio_failures_name_the_captured_rate() {
     let error = auditorylab_app::services::LoadError::Sound {
         origin: auditorylab_app::document::recipe::Origin::Stream("tone".into()),
         rate: SampleRate::new(8000).unwrap(),
-        error: auditorylab_core::SoundError::Duration {
+        error: Box::new(auditorylab_core::SoundError::Duration {
             seconds: 0.0,
             sample_rate_hz: 8000,
-        },
+        }),
     };
     assert!(
         auditorylab_app::workspace::status::AudioStatus::Failed(error.into())

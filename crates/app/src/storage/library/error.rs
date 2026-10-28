@@ -17,7 +17,10 @@ pub enum LibraryError {
     /// A read-only filesystem operation failed.
     Read { error: IoFailure },
     /// A managed record could not be read completely.
-    RecordRead { path: PathBuf, error: FileError },
+    RecordRead {
+        path: PathBuf,
+        error: Box<FileError>,
+    },
     /// A requested managed load could not establish complete readable state.
     IncompleteRead { error: Box<LibraryError> },
     /// Portable recipe bytes failed their required UTF-8 conversion.
@@ -26,7 +29,10 @@ pub enum LibraryError {
         error: std::string::FromUtf8Error,
     },
     /// A managed recipe failed its exact portable contract.
-    RecipeFile { path: PathBuf, error: RecipeError },
+    RecipeFile {
+        path: PathBuf,
+        error: Box<RecipeError>,
+    },
     /// A managed filename names a different document identity.
     RecordIdentity {
         path: PathBuf,
@@ -201,13 +207,13 @@ impl std::error::Error for LibraryError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Origin { error } => Some(error),
-            Self::File { error } | Self::RecordRead { error, .. } => Some(error),
+            Self::File { error } => Some(error),
+            Self::RecordRead { error, .. } => Some(error.as_ref()),
             Self::Read { error } => Some(error.cause.error()),
             Self::IncompleteRead { error } => Some(error.as_ref()),
             Self::RecipeUtf8 { error, .. } => Some(error),
-            Self::RecipeFile { error, .. }
-            | Self::Recipe { error }
-            | Self::InvalidBuiltin { error } => Some(error),
+            Self::RecipeFile { error, .. } => Some(error.as_ref()),
+            Self::Recipe { error } | Self::InvalidBuiltin { error } => Some(error),
             Self::MembershipUtf8 { error } | Self::MarkerUtf8 { error } => Some(error),
             Self::MembershipFormat { error } | Self::MarkerFormat { error } => Some(error),
             Self::MembershipEncode { error } => Some(error),

@@ -298,3 +298,76 @@ fn authored(components: &[auditorylab_core::Component]) -> Sound {
     Sound::new(finite(60.0), finite(0.1), components.to_vec())
         .unwrap_or_else(|error| panic!("invalid authored fixture: {error}"))
 }
+
+#[test]
+fn disclosed_intervals_and_display_labels_are_exact() {
+    for (band, label, interval) in [
+        (Band::Delta, "Delta", "0.1–<4 Hz"),
+        (Band::Theta, "Theta", "4–<8 Hz"),
+        (Band::Alpha, "Alpha", "8–13 Hz"),
+        (Band::Beta, "Beta", ">13–30 Hz"),
+        (Band::Gamma, "Gamma", ">30–80 Hz"),
+    ] {
+        assert_eq!(band.to_string(), label);
+        assert_eq!(band.interval(), interval);
+    }
+}
+
+#[test]
+fn rhythm_predicates_distinguish_empty_single_multiple_and_outside_rates() {
+    let clicks = |hz| ComponentForm::Clicks {
+        rate_hz: finite(hz),
+        width_seconds: finite(0.001),
+        peak_dbfs: finite(-30.0),
+        ears: Ears::Both,
+        modulation: None,
+    };
+    for (forms, multiple, outside) in [
+        (vec![], false, false),
+        (vec![tone(200.0, Ears::Both)], false, false),
+        (vec![clicks(40.0)], false, false),
+        (vec![clicks(90.0)], false, true),
+        (vec![clicks(40.0), clicks(40.0)], true, false),
+        (vec![clicks(40.0), clicks(90.0)], true, true),
+    ] {
+        let analysis = nominal(&sound(forms));
+        assert_eq!(analysis.multiple(), multiple);
+        assert_eq!(analysis.outside_bands(), outside);
+    }
+    let analysis = nominal(&sound(vec![clicks(40.0)]));
+    assert!(analysis.matches(&[], &[]));
+    assert!(!analysis.matches(&[Band::Theta], &[]));
+    assert!(!analysis.matches(&[], &[Method::Binaural]));
+}
+
+#[test]
+fn realized_interaural_rates_require_exactly_one_explicit_binaural_pair() {
+    use auditorylab_core::SampleRate;
+    let pair = ComponentForm::BinauralPair {
+        left_hz: finite(200.0),
+        offset_hz: finite(-6.0),
+        left_peak_dbfs: finite(-30.0),
+        right_peak_dbfs: finite(-30.0),
+    };
+    let mono = ComponentForm::MonauralPair {
+        ears: Ears::Both,
+        first_hz: finite(200.0),
+        offset_hz: finite(-6.0),
+        first_peak_dbfs: finite(-30.0),
+        second_peak_dbfs: finite(-30.0),
+    };
+    for (forms, expected) in [
+        (vec![pair], Some((200.0, 194.0))),
+        (vec![mono], None),
+        (vec![], None),
+        (vec![tone(200.0, Ears::Left)], None),
+        (
+            vec![tone(200.0, Ears::Left), tone(194.0, Ears::Right)],
+            None,
+        ),
+        (vec![pair, tone(400.0, Ears::Both)], None),
+    ] {
+        let target = sound(forms).target(SampleRate::DEFAULT).unwrap();
+        assert_eq!(realized(&target).interaural(), expected);
+    }
+}

@@ -1,6 +1,7 @@
 //! CLI contracts through the shipped executable.
 #![cfg(test)]
 use auditorylab_core::test_support as common;
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 use std::{
     fs,
@@ -479,20 +480,26 @@ const fn finite(value: f64) -> auditorylab_app::core::Finite {
 
 #[test]
 fn nonfinite_recipe_diagnostic_names_the_key_line_and_column() {
-    let directory = dir();
-    let path = directory.path().join("nonfinite.toml");
-    fs::write(
-        &path,
-        include_bytes!("../../core/tests/fixtures/invalid/nonfinite-offset.toml"),
-    )
-    .unwrap();
-    let output = cli(&["inspect", "--file", path.to_str().unwrap()]);
-    assert_eq!(output.status.code(), Some(2));
-    assert!(output.stdout.is_empty());
-    let message = String::from_utf8(output.stderr).unwrap();
-    assert!(message.contains("line 20, column 13"), "{message}");
-    assert!(message.contains("offset_hz = nan"), "{message}");
-    assert!(message.contains("expected a finite number"), "{message}");
+    for extra in [0, 29, 57, 91] {
+        let directory = dir();
+        // Different path lengths exercise wrapping through the location phrase.
+        let parent = directory.path().join("x".repeat(20 + extra));
+        fs::create_dir(&parent).unwrap();
+        let path = parent.join("nonfinite.toml");
+        fs::write(
+            &path,
+            include_bytes!("../../core/tests/fixtures/invalid/nonfinite-offset.toml"),
+        )
+        .unwrap();
+        let output = cli(&["inspect", "--file", path.to_str().unwrap()]);
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let message = String::from_utf8(output.stderr).unwrap();
+        let words = message.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(words.contains("line 20, column 13"), "{message}");
+        assert!(message.contains("offset_hz = nan"), "{message}");
+        assert!(words.contains("expected a finite number"), "{message}");
+    }
 }
 
 #[test]

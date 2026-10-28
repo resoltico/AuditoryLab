@@ -103,7 +103,7 @@ pub enum LoadError {
         /// Chosen rendering rate.
         rate: SampleRate,
         /// Acoustic failure.
-        error: SoundError,
+        error: Box<SoundError>,
     },
 }
 impl LoadError {
@@ -139,7 +139,7 @@ impl From<crate::document::error::RenditionError> for LoadError {
         Self::Sound {
             origin: error.origin,
             rate: error.rate,
-            error: error.error,
+            error: Box::new(error.error),
         }
     }
 }
@@ -156,7 +156,7 @@ impl std::error::Error for LoadError {
             Self::Read { cause, .. } => Some(cause.error()),
             Self::File(error) => Some(error),
             Self::Library(error) => Some(error),
-            Self::Sound { error, .. } => Some(error),
+            Self::Sound { error, .. } => Some(error.as_ref()),
             Self::UnknownBuiltin { .. } | Self::TemporarySelector { .. } => None,
             Self::Identity(error) => Some(error),
         }
@@ -198,5 +198,60 @@ crate::core::diagnostic_codes! {
                 _ => crate::core::Params::new(),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::*;
+    use crate::core::{Code, ParameterId, VoiceError};
+    use std::error::Error as _;
+
+    #[test]
+    fn boxed_causes_preserve_types_codes_parameters_and_outcomes() {
+        let sound = SoundError::Voice {
+            id: crate::core::ComponentId::new(7).unwrap().into(),
+            error: VoiceError::Frequency {
+                parameter: ParameterId::GateRate,
+                hz: 24_000.0,
+                sample_rate_hz: 48_000,
+            },
+        };
+        let load: LoadError = crate::document::error::RenditionError {
+            origin: Origin::Stream("captured".into()),
+            rate: SampleRate::DEFAULT,
+            error: sound.clone(),
+        }
+        .into();
+        assert_eq!(
+            load.source().unwrap().downcast_ref::<SoundError>(),
+            Some(&sound)
+        );
+        assert_eq!(load.code(), "voice.frequency");
+        assert_eq!(load.params()["hz"], crate::core::ParamValue::from(24_000.0));
+        assert_eq!(load.outcome(), Outcome::InvalidSound);
+        let recipe = LibraryError::RecipeFile {
+            path: "captured.toml".into(),
+            error: Box::new(RecipeError::UnsupportedVersion { found: 3 }),
+        };
+        assert!(matches!(
+            recipe.source().unwrap().downcast_ref::<RecipeError>(),
+            Some(RecipeError::UnsupportedVersion { found: 3 })
+        ));
+        assert_eq!(recipe.code(), "recipe.schema_version");
+        assert_eq!(recipe.outcome(), Outcome::IncompleteInventory);
+        let file = FileError::Changed {
+            path: "captured.toml".into(),
+        };
+        let record = LibraryError::RecordRead {
+            path: "captured.toml".into(),
+            error: Box::new(file.clone()),
+        };
+        assert_eq!(
+            record.source().unwrap().downcast_ref::<FileError>(),
+            Some(&file)
+        );
+        assert_eq!(record.code(), file.code());
+        assert_eq!(record.outcome(), Outcome::IncompleteInventory);
     }
 }

@@ -734,15 +734,26 @@ fn schema_three_library_diagnostic_keeps_path_version_and_original_bytes() {
             out.stdout
         })
         .unwrap();
-        // Text wrapping may break a long path at hyphens. JSON carries it verbatim.
+        // Decode JSON before checking paths: Windows separators are escaped on wire.
+        let report = if format == "json" {
+            let value: serde_json::Value = serde_json::from_str(&report).unwrap();
+            value["diagnostics"][0]["message"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        } else {
+            report
+        };
+        // Text wrapping may break a long path at hyphens.
         assert!(
             report
                 .replace('\n', "")
                 .contains(path.canonicalize().unwrap().to_str().unwrap()),
             "{report}"
         );
-        assert!(report.contains("schema_version 3"), "{report}");
-        assert!(report.contains("this build reads 4"), "{report}");
+        let words = report.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(words.contains("schema_version 3"), "{report}");
+        assert!(words.contains("this build reads 4"), "{report}");
         assert_eq!(fs::read(&path).unwrap(), bytes.as_bytes());
     }
 }

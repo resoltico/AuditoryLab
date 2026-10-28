@@ -99,3 +99,31 @@ fn edits_keep_owner_identity_order_and_signed_zero_content() {
         (-0.0_f64).to_bits()
     );
 }
+
+#[test]
+fn addition_preflight_checks_each_budget_without_changing_the_sound() {
+    for (components, form, expected) in [
+        (
+            (1..=16).map(tone).collect(),
+            tone(17).form,
+            Err(StructureError::ComponentBudget { count: 17 }),
+        ),
+        (
+            (1..=8).map(pair).collect(),
+            tone(9).form,
+            Err(StructureError::VoiceBudget { count: 17 }),
+        ),
+        (
+            (1..=15).map(tone).collect(),
+            pair(16).form,
+            Err(StructureError::VoiceBudget { count: 17 }),
+        ),
+        ((1..=15).map(tone).collect(), tone(16).form, Ok(())),
+        ((1..=7).map(pair).collect(), pair(8).form, Ok(())),
+    ] {
+        let sound = Sound::new(number(1.0), Finite::ZERO, components).unwrap();
+        let before = sound.clone();
+        assert_eq!(sound.check_addition(form), expected);
+        assert_eq!(sound, before);
+    }
+}

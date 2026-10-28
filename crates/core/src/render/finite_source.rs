@@ -156,6 +156,53 @@ mod tests {
     }
 
     #[test]
+    fn public_cursor_completion_and_split_stop_fade_follow_generated_frames() {
+        let reference = signal(2_000);
+        let mut source = FiniteSource::new(Arc::clone(&reference));
+        assert_eq!(source.generated(), 0);
+        assert!(!source.is_finished());
+        assert!(source.observation().is_none());
+        assert_eq!(source.render(&mut [[0.0; 2]; 100]), 100);
+        assert_eq!(source.generated(), 100);
+        assert!(!source.is_finished());
+        let before = source.observation().unwrap();
+        source.begin_buffer(false);
+        assert!(source.fade.is_none());
+        source.begin_buffer(true);
+        // Stop has not generated a frame: the preceding observation is unchanged.
+        assert_eq!(source.observation(), Some(before));
+        let mut first = [[9.0; 2]; 80];
+        assert_eq!(source.render(&mut first), 80);
+        assert_eq!(source.generated(), 180);
+        assert!(!source.is_finished());
+        let expected_gain = 1.0 - 80.0 / 240.0;
+        let observed = source.observation().unwrap();
+        let original = reference.observation(179).unwrap();
+        for (actual, expected) in observed.voices.iter().zip(original.voices) {
+            match (actual, expected) {
+                (Some(actual), Some(expected)) => {
+                    assert_eq!(actual.gains, expected.gains.map(|g| g * expected_gain))
+                }
+                (None, None) => {}
+                _ => panic!("Stop must retain the observed voices"),
+            }
+        }
+        // Repeated Stop must not restart the fade; only 160 frames remain.
+        source.begin_buffer(true);
+        let mut rest = [[9.0; 2]; 200];
+        assert_eq!(source.render(&mut rest), 160);
+        assert_eq!(source.generated(), 340);
+        assert!(source.is_finished());
+        assert_eq!(rest[159..], [[0.0; 2]; 41]);
+        let frozen = source.observation();
+        source.begin_buffer(true);
+        assert_eq!(source.render(&mut rest), 0);
+        assert_eq!(source.generated(), 340);
+        assert!(source.is_finished());
+        assert_eq!(source.observation(), frozen);
+    }
+
+    #[test]
     fn a_stop_fade_is_positive_capped_and_ends_at_zero_gain() {
         // 8 kHz ramp: 240 frames. Remaining 1, 100 and 1000 frames.
         for (total, at, expected_fade) in [
@@ -170,7 +217,7 @@ mod tests {
             let mut out = vec![[9.0; 2]; 400];
             let count = source.render(&mut out);
             assert_eq!(count, usize::try_from(expected_fade).unwrap());
-            assert!(source.ended);
+            assert!(source.is_finished());
             for (k, frame) in (0_u32..).zip(&out[..count]) {
                 let n = u64::from(at + k);
                 // Independent oracle from the stated fade contract.
@@ -187,7 +234,7 @@ mod tests {
     fn stop_after_generation_ended_creates_no_fade_and_freezes_the_observation() {
         let mut source = FiniteSource::new(signal(100));
         source.render(&mut [[0.0; 2]; 128]);
-        assert!(source.ended);
+        assert!(source.is_finished());
         let observation = source.observation();
         assert_eq!(observation.unwrap().frame, 99);
         source.begin_buffer(true);
@@ -195,7 +242,7 @@ mod tests {
         let mut out = [[9.0; 2]; 64];
         assert_eq!(source.render(&mut out), 0);
         assert_eq!(out, [[0.0; 2]; 64]);
-        assert_eq!(source.cursor, 100);
+        assert_eq!(source.generated(), 100);
         assert_eq!(source.observation(), observation);
         let gains: Vec<_> = observation
             .unwrap()

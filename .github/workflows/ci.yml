@@ -304,6 +304,15 @@ jobs:
                    --exclude-re 'replace < with <= in step$'
                    --exclude-re 'replace < with <= in times_at_most$')
           fi
+          if [[ "$MUTATION_SOURCE" == model/authored ]]; then
+            # ComponentForm has no identity; both unit-valued successes are Ok(()).
+            args+=(--exclude-re 'replace <impl FromComponentFields for ComponentForm>::identity.*with Ok\(Default::default\(\)\)$')
+          fi
+          if [[ "$MUTATION_SOURCE" == render/finite_source ]]; then
+            # Reachable non-ended sources have cursor < total; ended sources are
+            # rejected by the preceding !self.ended guard in begin_buffer.
+            args+=(--exclude-re 'replace < with <= in FiniteSource::begin_buffer$')
+          fi
           cargo mutants "${args[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
