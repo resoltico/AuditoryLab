@@ -22,11 +22,9 @@ The verifier authenticates archives before extraction, compares every source byt
 
 Application buttons use [the app-owned component](../crates/gui/ui/button.slint). It retains toolkit rendering, sizing and focus, exposes one accessible button, and forwards its `triggered` application callback only while enabled. `accessibility_presses_respect_disabled_buttons` exercises this component through the production accessibility action.
 
-The standard Slint application About item opens the toolkit's predefined native panel. The custom About event routes to the application's window containing its project and license actions. AppKit termination is intercepted through Winit's own application delegate; the delegate is not replaced. Repeated Quit joins one pending request; unavailable or abandoned handlers deny it.
+The macOS application menu's About item opens the application's window containing its project and license actions. AppKit termination is intercepted through Winit's own application delegate; the delegate is not replaced. Repeated Quit joins one pending request; unavailable or abandoned handlers deny it.
 
-The cache-signal fix is included in `accesskit_unix` 0.24.1; 0.24.0 still passes the struct fields as the message body. The fixed release requires AccessKit 0.25.2, while the pinned adapter uses AccessKit 0.24.1 and `accesskit_unix` 0.22.1. Removal therefore requires a compatible toolkit graph, not a standalone package substitution.
-
-The AccessKit Unix patch must satisfy the pinned `accesskit_winit` dependency range as well as the cache-signal contract. The exact patched version is recorded in [patches.toml](patches.toml) and resolved in [Cargo.lock](../Cargo.lock).
+The AccessKit Unix patch must satisfy the pinned `accesskit_winit` dependency range and cache-signal contract. The exact patched version is recorded in [patches.toml](patches.toml) and resolved in [Cargo.lock](../Cargo.lock). A replacement requires a compatible toolkit graph; substituting a package outside its declared range is insufficient.
 
 ## Dependency boundaries
 
@@ -48,4 +46,4 @@ On macOS, termination state tests exercise the request implementation:
 CARGO_TARGET_DIR="$PWD/target" cargo test --manifest-path third_party/winit/Cargo.toml --lib --locked termination
 ```
 
-Linux X11 scaling follows Xft DPI through Winit. On GNOME Wayland, the application reads only `text-scaling-factor` using GLib's `gsettings` utility, because the toolkit's font-name preference does not include that factor. The reader runs on one worker with bounded process waits; no native font-family parsing or Pango/GTK loading is involved. Native backend identity determines whether the reader starts, so an X11 window does not apply the factor twice. macOS uses AppKit's system size, and Windows uses message-font metrics at 96 DPI.
+Linux X11 scaling follows Xft DPI through Winit. The GNOME Wayland text-scaling reader obtains `text-scaling-factor` through GLib's `gsettings` utility because the toolkit's font-name preference does not include that factor. The reader runs on one worker with bounded process waits; no native font-family parsing or Pango/GTK loading is involved. Native backend identity determines whether the reader starts, so an X11 window does not apply the factor twice. macOS uses AppKit's system size, and Windows uses message-font metrics at 96 DPI.

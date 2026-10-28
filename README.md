@@ -50,7 +50,7 @@ Install [rustup](https://rustup.rs/); [rust-toolchain.toml](rust-toolchain.toml)
 - Debian/Ubuntu: install `build-essential pkg-config libasound2-dev libfontconfig1-dev libxkbcommon-x11-0 libglib2.0-bin`.
 - Windows: install Visual Studio Build Tools with Desktop development with C++, native MSVC tools and the Windows SDK. Use the native MSVC Rust host.
 
-The workspace separates `auditorylab-core`, `auditorylab-app`, `auditorylab-presentation`, CLI and GUI. The [architecture](docs/architecture.md) describes their public boundaries; the GUI build script uses core vocabulary only. Runtime library choices and command admission belong to app, and presentation renders the app’s typed views. Shared behavioral fixtures use core’s dev-only `test-support` feature.
+The Rust workspace contains core, app, presentation, CLI and GUI crates. See [architecture](docs/architecture.md) for their boundaries and [contributing](CONTRIBUTING.md) for checks and test fixtures.
 
 From a clean checkout:
 

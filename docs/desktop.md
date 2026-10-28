@@ -12,7 +12,17 @@ Search, Method and Sort apply immediately. Filters also offer study, population,
 
 Desktop date bounds are inclusive local days. The timezone is shown; **Exact UTC dates** provides canonical values. Created/Modified describe the recipe, while Added here/Trashed here describe this library. Unknown dates stay visible as Unknown and sort last.
 
-**Library options…** provides Open, Refresh, Show saved, filter resets and storage details, including when results are empty. **Show saved** reveals a confirmed saved entry and clears filters. Saving itself preserves the current query. Incomplete discovery keeps healthy and last-observed rows with a warning. Use Refresh and inspect the named files before editing a saved version.
+**Library options…** provides Open, Refresh, Show saved, filter resets and storage details, including when results are empty. Saving itself preserves the current query. **Show saved** selects the confirmed entry in User or Trash and restores an unrestricted query with automatic ordering and no grouping. Incomplete discovery keeps healthy and last-observed rows with a warning. Use Refresh and inspect the named files before editing a saved version.
+
+Filter resets have distinct scopes:
+
+| Action | Result |
+| --- | --- |
+| Clear rhythm filters | Clears band, method and special rhythm restrictions; retains every other query setting. |
+| Clear all filters | Clears search, rhythm, evidence and date restrictions; retains collection, sort, direction and grouping. |
+| Reset sort | Restores automatic sort/direction; retains filters, collection and grouping. |
+
+Clearing rhythm filters is available with the compact/list filter controls. Other resets are available through Library options or the filter popup. Unapplied advanced input survives unrelated selection and display updates; an explicit full reset or reveal discards it.
 
 The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBRARY_DIR`. Initialize an override through Library storage controls or `auditorylab --library-dir PATH library init`. Built-ins and independent external exports remain available when persistent storage is unavailable. See [library configuration](cli.md#root-and-lifecycle) and [unsupported-file recovery](formats.md#unsupported-and-unreadable-recipes).
 
