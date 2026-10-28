@@ -299,7 +299,7 @@ pub(crate) fn prepare_live(
         return Ok(Preparation::Stopped(report));
     }
     let generator = Box::new(LiveGenerator::with_state(
-        target,
+        &(target),
         Arc::clone(session.state()),
     ));
     let descriptor = SessionDescriptor {

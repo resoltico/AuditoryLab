@@ -283,17 +283,22 @@ crate::core::diagnostic_codes! {
         params(this) {
             match this {
                 Self::RecordRead { path, .. } | Self::RecipeFile { path, .. } => {
-                    crate::core::diagnostic_params! {"record_path"=>path.to_string_lossy().into_owned()}
+                    crate::core::diagnostic_params! {
+                        "record_path"=>path.to_string_lossy().into_owned()}
                 }
                 Self::RecipeUtf8 { path, error } => {
-                    crate::core::diagnostic_params! {"record_path"=>path.to_string_lossy().into_owned(),"valid_up_to"=>error.utf8_error().valid_up_to()}
+                    crate::core::diagnostic_params! {
+                        "record_path"=>path.to_string_lossy().into_owned(),"valid_up_t\
+                        o"=>error.utf8_error().valid_up_to()}
                 }
                 Self::RecordIdentity {
                     path,
                     expected,
                     found,
                 } => {
-                    crate::core::diagnostic_params! {"record_path"=>path.to_string_lossy().into_owned(),"expected"=>expected.to_string(),"found"=>found.to_string()}
+                    crate::core::diagnostic_params! {
+                        "record_path"=>path.to_string_lossy().into_owned(),
+                        "expected"=>expected.to_string(),"found"=>found.to_string()}
                 }
                 Self::DuplicateBuiltin { id }
                 | Self::ReservedBuiltin { id }
@@ -308,7 +313,8 @@ crate::core::diagnostic_codes! {
                     crate::core::diagnostic_params! {"document_id"=>id.to_string()}
                 }
                 Self::ProposedIdentity { expected, found } => {
-                    crate::core::diagnostic_params! {"expected"=>expected.to_string(),"found"=>found.to_string()}
+                    crate::core::diagnostic_params! {"expected"=>expected.to_string(),
+                        "found"=>found.to_string()}
                 }
                 Self::MembershipSize { bytes, limit } => {
                     crate::core::diagnostic_params! {"bytes"=>*bytes,"limit"=>*limit}
@@ -319,7 +325,8 @@ crate::core::diagnostic_codes! {
                 Self::RelativeRoot { path } => {
                     crate::core::diagnostic_params! {"path"=>path.to_string_lossy().into_owned()}
                 }
-                Self::UnsupportedLayout { found } => crate::core::diagnostic_params! {"found"=>*found},
+                Self::UnsupportedLayout { found } => crate::core::diagnostic_params! {
+                    "found"=>*found},
                 Self::LockUnavailable { error } => {
                     crate::core::diagnostic_params! {"cause"=>error.error().to_string()}
                 }

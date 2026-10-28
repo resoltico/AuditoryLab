@@ -533,7 +533,7 @@ impl Workspace {
                 if let Some(task) = self.audio.take_finished(job) {
                     rejected = task.protocol_failed || matches!(outcome, JobOutcome::File(_));
                     self.finish_audio(
-                        task,
+                        &task,
                         match outcome {
                             JobOutcome::Audio(result) => Ok(result.map_err(Error::from)),
                             JobOutcome::Failed(error) => Err(error),
@@ -547,7 +547,7 @@ impl Workspace {
                         JobOutcome::Failed(_) => false,
                     };
                     self.finish_file(
-                        task,
+                        &task,
                         match outcome {
                             JobOutcome::File(result) => Ok(result),
                             JobOutcome::Failed(error) => Err(error),
@@ -664,11 +664,10 @@ impl Workspace {
     /// current audio. Saves and imports always run to completion.
     fn schedule(&mut self, action: Action) {
         let (audio, file) = match &action {
-            Action::Document(DocumentAction::Close) | Action::Retry(DocumentAction::Close) => {
-                (true, true)
-            }
             Action::StartAudio(_) => (true, false),
-            Action::AfterSave {
+            Action::Document(DocumentAction::Close)
+            | Action::Retry(DocumentAction::Close)
+            | Action::AfterSave {
                 action: DocumentAction::Close,
                 ..
             } => (true, true),
@@ -864,15 +863,15 @@ impl Workspace {
 
     fn finish_audio(
         &mut self,
-        task: AudioTask,
+        task: &AudioTask,
         result: Result<Result<crate::audio::session::PlaybackReport, Error>, WorkerFailure>,
     ) {
-        let conclusion = self.audio.finish(&task, result);
+        let conclusion = self.audio.finish(task, result);
         self.conclude(task.id, true, conclusion, None);
         self.changed();
     }
 
-    fn finish_file(&mut self, task: FileTask, result: Result<FileOutcome, WorkerFailure>) {
+    fn finish_file(&mut self, task: &FileTask, result: Result<FileOutcome, WorkerFailure>) {
         let outcome = match result {
             Ok(outcome) if task.kind.accepts(&outcome) => outcome,
             result => {
@@ -1020,9 +1019,6 @@ impl Workspace {
     // ---- display policy ----
 }
 
-#[cfg(test)]
-mod tests;
-
 pub mod monitor;
 
 /// Editing gestures and display defaults.
@@ -1098,10 +1094,14 @@ crate::core::diagnostic_codes! {
                     crate::core::diagnostic_params! {"document_id"=>id.to_string()}
                 }
                 Self::Invalid { title, rate, .. } => {
-                    crate::core::diagnostic_params! {"title"=>title.clone(),"diagnostic_rate_hz"=>rate.hz()}
+                    crate::core::diagnostic_params! {"title"=>title.clone(),
+                        "diagnostic_rate_hz"=>rate.hz()}
                 }
                 _ => crate::core::diagnostic::Params::new(),
             }
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

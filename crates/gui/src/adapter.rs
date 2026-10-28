@@ -8,7 +8,10 @@
 //! Rendered fields carry application-owned opaque row keys. The editor validates
 //! the document, component and generation, so late callbacks cannot address a
 //! replacement document or a restored component lifetime.
+use auditorylab_app::vocabulary::{Operation, ViewCaption};
+use auditorylab_app::workspace::ControlMenu;
 use auditorylab_app::workspace::{ComponentView, EditorView, MetadataView, ParameterView};
+use slint::winit_030::WinitWindowAccessor;
 
 use auditorylab_presentation::numbers::NumberStyle;
 mod actions;
@@ -88,7 +91,7 @@ impl Windows {
             windows.main.global::<crate::generated::Terms>(),
             windows.about.global::<crate::generated::Terms>(),
         ] {
-            crate::native_text::initialize_identity(terms);
+            crate::native_text::initialize_identity(&terms);
         }
         Ok(windows)
     }
@@ -308,6 +311,7 @@ impl SlintAdapter {
         event: &slint::winit_030::winit::event::WindowEvent,
     ) {
         use slint::winit_030::winit::event::WindowEvent;
+
         match event {
             WindowEvent::Focused(focused) => {
                 if *focused {
@@ -353,16 +357,16 @@ impl SlintAdapter {
             {
                 return;
             }
-            use slint::winit_030::WinitWindowAccessor;
+
             monitor.invoke_sync_controls();
             if adapter.monitor_activation_pending.replace(false) {
                 adapter.restore_main_after_monitor.set(false);
                 monitor
                     .window()
-                    .with_winit_window(|native| native.focus_window());
+                    .with_winit_window(slint::winit_030::winit::window::Window::focus_window);
             } else if adapter.restore_main_after_monitor.replace(false) {
                 main.window()
-                    .with_winit_window(|native| native.focus_window());
+                    .with_winit_window(slint::winit_030::winit::window::Window::focus_window);
             }
         });
     }
@@ -685,11 +689,11 @@ impl SlintAdapter {
         self.reconcile_document(ui, &editor);
         if let Some(workspace) = self.workspace.borrow().as_ref() {
             ui.set_draft_location(
-                auditorylab_presentation::library::workspace_document_location_label(&(workspace))
+                auditorylab_presentation::library::workspace_document_location_label(workspace)
                     .into(),
             );
             ui.set_draft_location_details(read_only(
-                &auditorylab_presentation::library::workspace_document_location(&(workspace)),
+                &auditorylab_presentation::library::workspace_document_location(workspace),
             ));
         }
         ui.set_dirty(editor.dirty);
@@ -708,35 +712,35 @@ impl SlintAdapter {
 
         self.project_actions(&actions);
         let action_text = auditorylab_presentation::workspace::action_view(&actions);
-        ui.set_can_play(actions.can_play);
+        ui.set_can_play(actions.can_play());
         ui.set_library_play_action(action_text.library_play_label.into());
-        ui.set_can_import(actions.can_import);
-        ui.set_can_manage_library(actions.can_manage_library);
-        ui.set_can_add_to_library(actions.can_add_to_library);
-        ui.set_can_request_trash(actions.can_request_trash);
-        ui.set_can_new(actions.can_new);
-        ui.set_can_copy(actions.can_copy);
+        ui.set_can_import(actions.can_import());
+        ui.set_can_manage_library(actions.can_manage_library());
+        ui.set_can_add_to_library(actions.can_add_to_library());
+        ui.set_can_request_trash(actions.can_request_trash());
+        ui.set_can_new(actions.can_new());
+        ui.set_can_copy(actions.can_copy());
         ui.set_copy_reason(read_only(&action_text.copy_reason));
         ui.set_operation_summary(read_only(&action_text.operation_summary));
         ui.set_operation_outcome(read_only(&action_text.operation_outcome));
-        ui.set_can_preview(actions.can_preview);
+        ui.set_can_preview(actions.can_preview());
         ui.set_play_reason(read_only(&action_text.play_reason));
-        ui.set_can_save(actions.can_save);
-        ui.set_can_save_copy(actions.can_save_copy);
-        ui.set_can_export_recipe(actions.can_export_recipe);
+        ui.set_can_save(actions.can_save());
+        ui.set_can_save_copy(actions.can_save_copy());
+        ui.set_can_export_recipe(actions.can_export_recipe());
         ui.set_save_reason(read_only(&action_text.save_reason));
-        ui.set_can_export(actions.can_export);
+        ui.set_can_export(actions.can_export());
         ui.set_export_reason(read_only(&action_text.export_reason));
-        ui.set_can_edit(actions.can_edit);
-        ui.set_can_add_component(actions.can_add_component);
-        ui.set_can_add_pair(actions.can_add_pair);
+        ui.set_can_edit(actions.can_edit());
+        ui.set_can_add_component(actions.can_add_component());
+        ui.set_can_add_pair(actions.can_add_pair());
         ui.set_pair_add_reason(read_only(&action_text.pair_add_reason));
         ui.set_add_reason(read_only(&action_text.add_component_reason));
         ui.set_removed_component(read_only(&action_text.removed_component));
-        ui.set_can_restore_component(actions.can_restore_component);
-        ui.set_playback_busy(actions.playback_busy);
+        ui.set_can_restore_component(actions.can_restore_component());
+        ui.set_playback_busy(actions.playback_busy());
         ui.set_exporting(actions.exporting);
-        ui.set_transport_enabled(actions.transport_enabled);
+        ui.set_transport_enabled(actions.transport_enabled());
         ui.set_transport_action(read_only(&action_text.transport_label));
         ui.set_play_target(read_only(&action_text.play_target));
         ui.set_file_activity(read_only(&action_text.file_activity));
@@ -885,72 +889,7 @@ impl SlintAdapter {
             reason = "A 0..=1 display ratio rounds to the renderer's f32"
         )]
         ui.set_progress(progress as f32);
-        let changed = match (&*self.capture.borrow(), &output.capture) {
-            (Some(a), Some(b)) => !Arc::ptr_eq(a, b),
-            (None, None) => false,
-            _ => true,
-        };
-        if changed {
-            // Paths are rebuilt only for another capture, never for
-            // receipt age or other telemetry.
-            self.counts
-                .path_builds
-                .set(self.counts.path_builds.get() + 1);
-            if let Some(capture) = &output.capture {
-                let [left, right] = scope::paths(capture.bins(), capture.limit());
-                ui.set_left_path(left.into());
-                ui.set_right_path(right.into());
-                ui.set_scale_label(
-                    auditorylab_presentation::numbers::format(
-                        NumberStyle::AxisLimit,
-                        capture.limit(),
-                    )
-                    .into(),
-                );
-                ui.set_capture_duration(
-                    auditorylab_presentation::numbers::format(
-                        NumberStyle::CapturedMilliseconds,
-                        capture.milliseconds(),
-                    )
-                    .into(),
-                );
-            } else {
-                ui.set_left_path(SharedString::new());
-                ui.set_right_path(SharedString::new());
-            }
-            *self.capture.borrow_mut() = output.capture;
-        }
-        let model_changed = match (&*self.model.borrow(), &model) {
-            (Some(a), Some(b)) => !Arc::ptr_eq(a, b),
-            (None, None) => false,
-            _ => true,
-        };
-        if model_changed {
-            sync_rows(
-                &self.lanes,
-                model.as_ref().map_or_else(Vec::new, |model| {
-                    model
-                        .projection
-                        .lanes
-                        .iter()
-                        .map(|lane| {
-                            let stereo: Vec<_> = lane.columns.iter().map(|e| [*e; 2]).collect();
-                            let [trace, _] = scope::paths(&stereo, 1.0);
-                            ModelLane {
-                                component: lane.id.get().to_string().into(),
-                                label:
-                                    auditorylab_presentation::workspace::monitor::model_view_lane_label(
-                                        lane,
-                                    )
-                                    .into(),
-                                trace: trace.into(),
-                            }
-                        })
-                        .collect()
-                }),
-            );
-            *self.model.borrow_mut() = model;
-        }
+        self.project_waveforms(ui, output, model);
         ui.set_typography_origin(
             self.preferences
                 .borrow()
@@ -1039,30 +978,7 @@ impl SlintAdapter {
                 self.restore_main_after_monitor.set(false);
             }
         }
-        let audio = ui.get_playback_busy();
-        let controls = self.dialog_open.get() && audio && !cfg!(target_os = "macos");
-        if let Some(window) = self.audio_controls.upgrade() {
-            window.set_source(ui.get_player_title());
-            window.set_elapsed(ui.get_elapsed());
-            window.set_active(audio);
-            if controls != self.audio_controls_visible.get() {
-                let result = if controls {
-                    window.show()
-                } else {
-                    window.hide()
-                };
-                match result {
-                    Ok(()) => {
-                        self.audio_controls_visible.set(controls);
-                        self.controls_error.borrow_mut().clear();
-                    }
-                    Err(error) => {
-                        *self.controls_error.borrow_mut() =
-                            crate::native_text::InterfaceOperation::AudioControls.failure(error);
-                    }
-                }
-            }
-        }
+        self.sync_audio_controls(ui);
         ui.set_auxiliary_error(
             [
                 self.monitor_error.borrow().as_str(),
@@ -1308,9 +1224,9 @@ impl SlintAdapter {
         for captions in std::iter::once(ui.global::<crate::generated::ViewCaptions>()).chain(
             monitor
                 .as_ref()
-                .map(|w| w.global::<crate::generated::ViewCaptions>()),
+                .map(slint::ComponentHandle::global::<crate::generated::ViewCaptions>),
         ) {
-            project_captions(captions, editor.status);
+            project_captions(&captions, editor.status);
         }
     }
 
@@ -1319,10 +1235,10 @@ impl SlintAdapter {
         let audio_controls = self.audio_controls.upgrade();
         for actions in [
             main.as_ref()
-                .map(|w| w.global::<crate::generated::Actions>()),
+                .map(slint::ComponentHandle::global::<crate::generated::Actions>),
             audio_controls
                 .as_ref()
-                .map(|w| w.global::<crate::generated::Actions>()),
+                .map(slint::ComponentHandle::global::<crate::generated::Actions>),
         ]
         .into_iter()
         .flatten()
@@ -1333,7 +1249,7 @@ impl SlintAdapter {
                         .into(),
                     enabled: view.enabled,
                 };
-                use auditorylab_app::vocabulary::Operation;
+
                 match view.operation {
                     Operation::List => actions.set_list(action),
                     Operation::ListTrash => actions.set_list_trash(action),
@@ -1361,7 +1277,7 @@ impl SlintAdapter {
                     Operation::OpenRecipe => actions.set_open_recipe(action),
                     Operation::ExportRecipe => actions.set_export_recipe(action),
                     Operation::StopCurrentAndPlayRecipe => {
-                        actions.set_stop_current_and_play_recipe(action)
+                        actions.set_stop_current_and_play_recipe(action);
                     }
                     Operation::PlaySelectedSound => actions.set_play_selected_sound(action),
                     Operation::PlayLive => actions.set_play_live(action),
@@ -1379,7 +1295,6 @@ impl SlintAdapter {
     }
 
     fn project_control_choices(&self, ui: &MainWindow) {
-        use auditorylab_app::workspace::ControlMenu;
         let choices = self.control_choices.borrow();
         for menu in choices.iter() {
             let labels = menu
@@ -1456,10 +1371,10 @@ fn present_details<C: ComponentHandle + 'static>(window: &DetailsWindow, parent:
     details_parent::bind(window, parent);
     // show() is a no-op for an already-shown modeless reader. This is an
     // explicit user request, unlike automatic monitor reflow.
-    use slint::winit_030::WinitWindowAccessor;
+
     window
         .window()
-        .with_winit_window(|native| native.focus_window());
+        .with_winit_window(slint::winit_030::winit::window::Window::focus_window);
     window.invoke_focus_close();
 }
 
@@ -1496,11 +1411,8 @@ fn open_web(url: &str) {
 
 // Keep display escaping separate from lossless editable field models and bindings.
 fn read_only(text: &str) -> SharedString {
-    auditorylab_presentation::display_text(&(text)).into()
+    auditorylab_presentation::display_text(text).into()
 }
-
-#[cfg(test)]
-pub(crate) mod tests;
 
 fn control_index(
     choices: &[auditorylab_app::workspace::ControlChoices],
@@ -1514,99 +1426,190 @@ fn control_index(
 }
 
 pub(crate) fn project_captions(
-    captions: crate::generated::ViewCaptions<'_>,
+    captions: &crate::generated::ViewCaptions<'_>,
     status: auditorylab_app::vocabulary::EditorStatus,
 ) {
     captions.set_editor_status(auditorylab_presentation::workspace::editor_status(status).into());
     for caption in auditorylab_app::vocabulary::ViewCaption::VALUES {
         let label = auditorylab_presentation::workspace::view_caption(*caption).into();
-        use auditorylab_app::vocabulary::ViewCaption;
+
         match caption {
             ViewCaption::AddedHereThroughInclusiveLocalCalendarDate => {
-                captions.set_facet_added_here_through_inclusive_local_calendar_date(label)
+                captions.set_added_through_date(label);
             }
             ViewCaption::AddedHereThroughYyyyMmDd => {
-                captions.set_facet_added_here_through_yyyy_mm_dd(label)
+                captions.set_added_here_through_yyyy_mm_dd(label);
             }
-            ViewCaption::AddedHereFromLocalCalendarDate => {
-                captions.set_facet_added_here_from_local_calendar_date(label)
-            }
-            ViewCaption::AddedHereFromYyyyMmDd => {
-                captions.set_facet_added_here_from_yyyy_mm_dd(label)
-            }
-            ViewCaption::ExportSampleRate => captions.set_facet_export_sample_rate(label),
+            ViewCaption::AddedHereFromLocalCalendarDate => captions.set_added_from_date(label),
+            ViewCaption::AddedHereFromYyyyMmDd => captions.set_added_here_from_yyyy_mm_dd(label),
+            ViewCaption::ExportSampleRate => captions.set_export_sample_rate(label),
             ViewCaption::AppliedLibraryFiltersPrefix => {
-                captions.set_facet_applied_library_filters_prefix(label)
+                captions.set_applied_library_filters_prefix(label);
             }
-            ViewCaption::AppliedLibraryFilters => captions.set_facet_applied_library_filters(label),
-            ViewCaption::StudyEvidenceFilter => captions.set_facet_study_evidence_filter(label),
-            ViewCaption::PopulationEvidenceFilter => {
-                captions.set_facet_population_evidence_filter(label)
-            }
+            ViewCaption::AppliedLibraryFilters => captions.set_applied_library_filters(label),
+            ViewCaption::StudyEvidenceFilter => captions.set_study_evidence_filter(label),
+            ViewCaption::PopulationEvidenceFilter => captions.set_population_evidence_filter(label),
             ViewCaption::ConditionRoleEvidenceFilter => {
-                captions.set_facet_condition_role_evidence_filter(label)
+                captions.set_condition_role_evidence_filter(label);
             }
-            ViewCaption::NominalAnalysisCoverage => {
-                captions.set_facet_nominal_analysis_coverage(label)
-            }
-            ViewCaption::SortDirection => captions.set_facet_sort_direction(label),
-            ViewCaption::LibraryResultGrouping => captions.set_facet_library_result_grouping(label),
+            ViewCaption::NominalAnalysisCoverage => captions.set_nominal_analysis_coverage(label),
+            ViewCaption::SortDirection => captions.set_sort_direction(label),
+            ViewCaption::LibraryResultGrouping => captions.set_library_result_grouping(label),
             ViewCaption::CreatedFromLocalCalendarDate => {
-                captions.set_facet_created_from_local_calendar_date(label)
+                captions.set_created_from_local_calendar_date(label);
             }
             ViewCaption::CreatedThroughInclusiveLocalCalendarDate => {
-                captions.set_facet_created_through_inclusive_local_calendar_date(label)
+                captions.set_created_through_date(label);
             }
             ViewCaption::ModifiedFromLocalCalendarDate => {
-                captions.set_facet_modified_from_local_calendar_date(label)
+                captions.set_modified_from_local_calendar_date(label);
             }
             ViewCaption::ModifiedThroughInclusiveLocalCalendarDate => {
-                captions.set_facet_modified_through_inclusive_local_calendar_date(label)
+                captions.set_modified_through_date(label);
             }
-            ViewCaption::ExactUtcDates => captions.set_facet_exact_utc_dates(label),
+            ViewCaption::ExactUtcDates => captions.set_exact_utc_dates(label),
             ViewCaption::ExactUtcRecipeAndMembershipDates => {
-                captions.set_facet_exact_utc_recipe_and_membership_dates(label)
+                captions.set_exact_utc_dates_description(label);
             }
-            ViewCaption::Library => captions.set_caption_library(label),
-            ViewCaption::PlaybackTransport => captions.set_caption_playback_transport(label),
-            ViewCaption::CommittedLibraryQuery => {
-                captions.set_caption_committed_library_query(label)
-            }
-            ViewCaption::Collections => captions.set_caption_collections(label),
-            ViewCaption::DatesIdentity => captions.set_caption_dates_identity(label),
-            ViewCaption::SoundFacts => captions.set_caption_sound_facts(label),
-            ViewCaption::OutputMonitor => captions.set_caption_output_monitor(label),
-            ViewCaption::Left => captions.set_caption_left(label),
-            ViewCaption::Right => captions.set_caption_right(label),
-            ViewCaption::CapturedEnd => captions.set_caption_captured_end(label),
-            ViewCaption::WaveformTimeWindow => captions.set_caption_waveform_time_window(label),
-            ViewCaption::WaveformAmplitudeScale => {
-                captions.set_caption_waveform_amplitude_scale(label)
-            }
-            ViewCaption::WavExportProgress => captions.set_caption_wav_export_progress(label),
-            ViewCaption::LibraryCollection => captions.set_caption_library_collection(label),
+            ViewCaption::Library => captions.set_library(label),
+            ViewCaption::PlaybackTransport => captions.set_playback_transport(label),
+            ViewCaption::CommittedLibraryQuery => captions.set_committed_library_query(label),
+            ViewCaption::Collections => captions.set_collections(label),
+            ViewCaption::DatesIdentity => captions.set_dates_identity(label),
+            ViewCaption::SoundFacts => captions.set_sound_facts(label),
+            ViewCaption::OutputMonitor => captions.set_output_monitor(label),
+            ViewCaption::Left => captions.set_left(label),
+            ViewCaption::Right => captions.set_right(label),
+            ViewCaption::CapturedEnd => captions.set_captured_end(label),
+            ViewCaption::WaveformTimeWindow => captions.set_waveform_time_window(label),
+            ViewCaption::WaveformAmplitudeScale => captions.set_waveform_amplitude_scale(label),
+            ViewCaption::WavExportProgress => captions.set_wav_export_progress(label),
+            ViewCaption::LibraryCollection => captions.set_library_collection(label),
             ViewCaption::NominalRhythmReferenceBand => {
-                captions.set_caption_nominal_rhythm_reference_band(label)
+                captions.set_nominal_rhythm_reference_band(label);
             }
-            ViewCaption::StructuralMethod => captions.set_caption_structural_method(label),
-            ViewCaption::StudyDoiOrKeySource => captions.set_caption_study_doi_or_key_source(label),
-            ViewCaption::CreatedFromYyyyMmDd => captions.set_caption_created_from_yyyy_mm_dd(label),
-            ViewCaption::CreatedThroughYyyyMmDd => {
-                captions.set_caption_created_through_yyyy_mm_dd(label)
-            }
-            ViewCaption::ModifiedFromYyyyMmDd => {
-                captions.set_caption_modified_from_yyyy_mm_dd(label)
-            }
-            ViewCaption::ModifiedThroughYyyyMmDd => {
-                captions.set_caption_modified_through_yyyy_mm_dd(label)
-            }
-            ViewCaption::Workbench => captions.set_caption_workbench(label),
-            ViewCaption::SoundTitle => captions.set_caption_sound_title(label),
-            ViewCaption::Ears => captions.set_caption_ears(label),
-            ViewCaption::Carrier => captions.set_caption_carrier(label),
-            ViewCaption::Modulation => captions.set_caption_modulation(label),
-            ViewCaption::SoundNotes => captions.set_caption_sound_notes(label),
-            ViewCaption::AudioDetails => captions.set_caption_audio_details(label),
+            ViewCaption::StructuralMethod => captions.set_structural_method(label),
+            ViewCaption::StudyDoiOrKeySource => captions.set_study_doi_or_key_source(label),
+            ViewCaption::CreatedFromYyyyMmDd => captions.set_created_from_yyyy_mm_dd(label),
+            ViewCaption::CreatedThroughYyyyMmDd => captions.set_created_through_yyyy_mm_dd(label),
+            ViewCaption::ModifiedFromYyyyMmDd => captions.set_modified_from_yyyy_mm_dd(label),
+            ViewCaption::ModifiedThroughYyyyMmDd => captions.set_modified_through_yyyy_mm_dd(label),
+            ViewCaption::Workbench => captions.set_workbench(label),
+            ViewCaption::SoundTitle => captions.set_sound_title(label),
+            ViewCaption::Ears => captions.set_ears(label),
+            ViewCaption::Carrier => captions.set_carrier(label),
+            ViewCaption::Modulation => captions.set_modulation(label),
+            ViewCaption::SoundNotes => captions.set_sound_notes(label),
+            ViewCaption::AudioDetails => captions.set_audio_details(label),
         }
     }
 }
+
+impl SlintAdapter {
+    fn project_waveforms(
+        &self,
+        ui: &MainWindow,
+        output: auditorylab_app::workspace::output::OutputView,
+        model: Option<Arc<auditorylab_app::workspace::monitor::ModelView>>,
+    ) {
+        let changed = match (&*self.capture.borrow(), &output.capture) {
+            (Some(a), Some(b)) => !Arc::ptr_eq(a, b),
+            (None, None) => false,
+            _ => true,
+        };
+        if changed {
+            // Paths are rebuilt only for another capture, never for
+            // receipt age or other telemetry.
+            self.counts
+                .path_builds
+                .set(self.counts.path_builds.get() + 1);
+            if let Some(capture) = &output.capture {
+                let [left, right] = scope::paths(capture.bins(), capture.limit());
+                ui.set_left_path(left.into());
+                ui.set_right_path(right.into());
+                ui.set_scale_label(
+                    auditorylab_presentation::numbers::format(
+                        NumberStyle::AxisLimit,
+                        capture.limit(),
+                    )
+                    .into(),
+                );
+                ui.set_capture_duration(
+                    auditorylab_presentation::numbers::format(
+                        NumberStyle::CapturedMilliseconds,
+                        capture.milliseconds(),
+                    )
+                    .into(),
+                );
+            } else {
+                ui.set_left_path(SharedString::new());
+                ui.set_right_path(SharedString::new());
+            }
+            *self.capture.borrow_mut() = output.capture;
+        }
+        let model_changed = match (&*self.model.borrow(), &model) {
+            (Some(a), Some(b)) => !Arc::ptr_eq(a, b),
+            (None, None) => false,
+            _ => true,
+        };
+        if model_changed {
+            sync_rows(
+                &self.lanes,
+                model.as_ref().map_or_else(Vec::new, |model| {
+                    model
+                        .projection
+                        .lanes
+                        .iter()
+                        .map(|lane| {
+                            let stereo: Vec<_> = lane.columns.iter().map(|e| [*e; 2]).collect();
+                            let [trace, _] = scope::paths(&stereo, 1.0);
+                            ModelLane {
+                                component: lane.id.get().to_string().into(),
+                                label:
+
+                                auditorylab_presentation::workspace::monitor::model_view_lane_label(
+                                        lane,
+                                    )
+                                    .into(),
+                                trace: trace.into(),
+                            }
+                        })
+                        .collect()
+                }),
+            );
+            *self.model.borrow_mut() = model;
+        }
+    }
+}
+
+impl SlintAdapter {
+    fn sync_audio_controls(&self, ui: &MainWindow) {
+        let audio = ui.get_playback_busy();
+        let controls = self.dialog_open.get() && audio && !cfg!(target_os = "macos");
+        if let Some(window) = self.audio_controls.upgrade() {
+            window.set_source(ui.get_player_title());
+            window.set_elapsed(ui.get_elapsed());
+            window.set_active(audio);
+            if controls != self.audio_controls_visible.get() {
+                let result = if controls {
+                    window.show()
+                } else {
+                    window.hide()
+                };
+                match result {
+                    Ok(()) => {
+                        self.audio_controls_visible.set(controls);
+                        self.controls_error.borrow_mut().clear();
+                    }
+                    Err(error) => {
+                        *self.controls_error.borrow_mut() =
+                            crate::native_text::InterfaceOperation::AudioControls.failure(error);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests;

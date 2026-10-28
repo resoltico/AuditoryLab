@@ -81,8 +81,8 @@ impl OperationError {
     #[must_use]
     pub fn leftover(&self) -> Option<&std::path::Path> {
         match self {
-            Self::File(error) => error.leftover(),
-            Self::Save(SaveError::File { error })
+            Self::File(error)
+            | Self::Save(SaveError::File { error })
             | Self::Export(ExportError::File { error })
             | Self::Library(LibraryError::File { error }) => error.leftover(),
             _ => None,
@@ -90,9 +90,13 @@ impl OperationError {
     }
 }
 macro_rules! operation_from {
-    ($($ty:ty => $variant:ident),* $(,)?) => { $(impl From<$ty> for OperationError { fn from(error: $ty) -> Self { Self::$variant(error) } })* };
+    ($($ty:ty => $variant:ident),* $(,)?) => { $(impl From<$ty> for OperationError {
+        fn from(error: $ty) -> Self { Self::$variant(error) } })* };
 }
-operation_from! { LoadError => Load, LibraryError => Library, ExportError => Export, PlaybackError => Playback, SaveError => Save, EditorError => Editor, IdentityError => Identity, QueryError => Query, FileError => File, crate::core::RecipeError => Recipe, crate::core::SampleRateError => SampleRate }
+operation_from! { LoadError => Load, LibraryError => Library, ExportError => Export,
+PlaybackError => Playback, SaveError => Save, EditorError => Editor, IdentityError => Identity,
+QueryError => Query, FileError => File, crate::core::RecipeError => Recipe,
+crate::core::SampleRateError => SampleRate }
 
 impl From<crate::document::origin::OriginError> for OperationError {
     fn from(error: crate::document::origin::OriginError) -> Self {
@@ -149,9 +153,10 @@ crate::core::diagnostic_codes! {
         params(this) {
             match this {
                 Self::Sound { origin, rate, .. } => {
-                    crate::core::diagnostic_params! {"origin"=>origin.to_string(),"diagnostic_rate_hz"=>rate.hz()}
+                    crate::core::diagnostic_params! {"origin"=>origin.to_string(),"diagnostic_rate\
+                        _hz"=>rate.hz()}
                 }
-                _ => crate::core::diagnostic::Params::new(),
+                Self::File { .. } => crate::core::diagnostic::Params::new(),
             }
         }
     }

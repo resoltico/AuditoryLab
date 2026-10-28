@@ -140,8 +140,8 @@ fn idle_ticks_do_no_evaluation_or_preview_work() {
     for _ in 0..100 {
         assert!(!ws.poll());
     }
-    assert_eq!(ws.action_view().can_play, actions.can_play);
-    assert_eq!(ws.action_view().can_save, actions.can_save);
+    assert_eq!(ws.action_view().can_play(), actions.can_play());
+    assert_eq!(ws.action_view().can_save(), actions.can_save());
     assert_eq!(ws.audio.output().previews, previews);
     assert_eq!(ws.audio.output().models, models);
     assert_eq!(ws.editor.session().evaluations(), evaluations);
@@ -243,14 +243,14 @@ fn a_search_that_hides_every_recipe_leaves_nothing_to_play_or_export() {
             .all(|effect| !matches!(effect, Effect::Run(_))),
         "refused commands never admit jobs"
     );
-    assert!(!ws.action_view().can_play);
+    assert!(!ws.action_view().can_play());
     assert!(ws.library_view().selected.is_none());
     assert!(matches!(
         ws.apply(Command::Editor(EditorCommand::CopySelected)),
         Err(Refusal::NoSelection)
     ));
     assert_eq!(ws.view(), View::Library, "nothing to copy");
-    let _ = ws.apply(Command::Library(LibraryCommand::Search(("").to_string())));
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(String::new())));
     assert_eq!(
         ws.selected().unwrap().id(),
         chosen,
@@ -287,8 +287,8 @@ fn readiness_is_pure_and_failed_preparation_keeps_all_staged_text() {
     let effects = ws.take_effects();
     for _ in 0..10 {
         let actions = ws.action_view();
-        assert!(actions.can_save);
-        assert!(!actions.can_export);
+        assert!(actions.can_save());
+        assert!(!actions.can_export());
     }
     assert_eq!(ws.next_id, next_id);
     assert_eq!(ws.revision(), revision);
@@ -347,7 +347,7 @@ fn library_dependencies_exclude_editor_and_telemetry_but_include_selection_query
     )));
     let empty = ws.library_view();
     assert!(empty.rows.is_empty() && empty.snapshot.is_none());
-    let _ = ws.apply(Command::Library(LibraryCommand::Search(("").to_string())));
+    let _ = ws.apply(Command::Library(LibraryCommand::Search(String::new())));
     let _ = ws.apply(Command::Editor(EditorCommand::SetExportRate(
         SampleRate::new(96000).unwrap(),
     )));
@@ -438,7 +438,7 @@ fn search_includes_own_notes_and_attributed_persisted_source_context() {
     let _ = ws.apply(Command::Library(LibraryCommand::Search(
         ("not-present-anywhere-marker").to_string(),
     )));
-    assert!((ws.visible_count() == 0));
+    assert_eq!(ws.visible_count(), 0);
     let mut custom = Draft::new().unwrap();
     custom.set_summary("custom-notes-marker".into());
     ws.add_import(custom.snapshot().unwrap()).unwrap();
@@ -510,7 +510,7 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
     let mut bad =
         TestWorkspace::new(vec![snapshot.clone()], Capabilities::no_device_playback()).unwrap();
     for _ in 0..10 {
-        assert!(!bad.action_view().can_export);
+        assert!(!bad.action_view().can_export());
         let _ = bad.library_view();
     }
     assert_eq!(
@@ -518,7 +518,7 @@ fn readiness_details_and_export_share_actual_snapshot_realizations_including_err
         1,
         "failures cache at the real compile path too"
     );
-    for hz in [96000, 192000, 44100] {
+    for hz in [96000, 192_000, 44100] {
         snapshot.at(SampleRate::new(hz).unwrap()).unwrap_err();
     }
     assert_eq!(snapshot.cached_rates(), 2);
@@ -668,7 +668,7 @@ fn save_refusal_and_file_outcome_remain_independent() {
     }))
     .unwrap();
     let actions = ws.action_view();
-    assert!(!actions.can_save);
+    assert!(!actions.can_save());
     assert!(actions.save_reason.is_some());
     ws.files.record_status(FileStatus::Exported {
         path: PathBuf::from("capture.wav"),
@@ -843,14 +843,13 @@ fn take_path_prompt(workspace: &mut Workspace) -> (PromptId, PathPurpose, Option
 fn answer_path(workspace: &mut Workspace, purpose: PathPurpose, path: Option<PathBuf>) -> PromptId {
     let (prompt, actual, _) = take_path_prompt(workspace);
     assert_eq!(actual, purpose);
-    assert_eq!(
+    assert!(
         workspace
             .apply(Command::Answer {
                 prompt,
                 answer: PromptAnswer::Path(path)
             })
-            .is_ok(),
-        true
+            .is_ok()
     );
     prompt
 }
@@ -866,7 +865,8 @@ fn take_unsaved_prompt(workspace: &mut Workspace) -> PromptId {
 fn assert_close_resolution(workspace: &mut Workspace, approved: bool) {
     let effects = workspace.take_effects();
     assert!(
-        matches!(effects.as_slice(), [Effect::CloseResolved { approved: actual }] if *actual == approved),
+        matches!(effects.as_slice(), [Effect::CloseResolved { approved: actual }
+            ] if *actual == approved),
         "{effects:?}"
     );
 }
@@ -1006,14 +1006,13 @@ fn save_before_close_waits_for_the_captured_job_completion() {
     let _ = workspace.apply(Command::Close);
     let _ = workspace.apply(Command::Close);
     let prompt = take_unsaved_prompt(&mut workspace);
-    assert_eq!(
+    assert!(
         workspace
             .apply(Command::Answer {
                 prompt,
                 answer: PromptAnswer::Save
             })
-            .is_ok(),
-        true
+            .is_ok()
     );
     let job = take_file_job(&mut workspace);
     assert!(workspace.action_pending());
@@ -1110,36 +1109,33 @@ fn one_prompt_coalesces_quit_and_ignores_an_older_real_panel_answer() {
         ),
         "Stop admission is independent of a native panel"
     );
-    assert_eq!(
+    assert!(
         workspace
             .apply(Command::Answer {
                 prompt: stale,
                 answer: PromptAnswer::Discard
             })
-            .is_ok(),
-        true
+            .is_ok()
     );
     assert!(workspace.prompt_open());
-    assert_eq!(
+    assert!(
         workspace
             .apply(Command::Answer {
                 prompt,
                 answer: PromptAnswer::Failed("panel unavailable".into())
             })
-            .is_ok(),
-        true
+            .is_ok()
     );
     assert!(!workspace.prompt_open());
     assert!(workspace.editor().dirty());
     assert_close_resolution(&mut workspace, false);
-    assert_eq!(
+    assert!(
         workspace
             .apply(Command::Answer {
                 prompt,
                 answer: PromptAnswer::Discard
             })
-            .is_ok(),
-        true
+            .is_ok()
     );
     assert!(workspace.take_effects().is_empty());
 }
@@ -1156,14 +1152,13 @@ fn invalid_staged_input_denies_save_before_close_without_starting_a_job() {
         .unwrap();
     let _ = workspace.apply(Command::Close);
     let prompt = take_unsaved_prompt(&mut workspace);
-    assert_eq!(
+    assert!(
         workspace
             .apply(Command::Answer {
                 prompt,
                 answer: PromptAnswer::Save
             })
-            .is_ok(),
-        true
+            .is_ok()
     );
     assert_eq!(
         workspace.editor().staged(field.field),
@@ -1200,10 +1195,7 @@ fn actual_import_completion_controls_dependent_close_and_never_runs_on_poll() {
         }
         let count = workspace.catalog().len();
         workspace.apply(Command::File(FileCommand::Import)).unwrap();
-        assert!(matches!(
-            workspace.apply(Command::File(FileCommand::Save)),
-            Err(Refusal::PromptOpen)
-        ));
+        assert!(matches!(workspace.save(), Err(Refusal::PromptOpen)));
         answer_path(&mut workspace, PathPurpose::OpenRecipe, Some(path.clone()));
         let job = take_file_job(&mut workspace);
         assert!(
@@ -1509,14 +1501,16 @@ fn action_budget_refusals_distinguish_components_from_expanded_voices() {
             .unwrap();
         }
         let view = ws.action_view();
-        assert!(!view.can_add_pair);
+        assert!(!view.can_add_pair());
         assert!(
-            matches!(view.pair_add_reason, Some(Refusal::Edit(EditRefusal::BudgetExceeded { components:c, voices:v, additional_voices:2 })) if c==components && v==voices)
+            matches!(view.pair_add_reason, Some(Refusal::Edit(EditRefusal::BudgetExceeded {
+                components:c, voices:v, additional_voices:2 })) if c==components && v==voices)
         );
-        assert_eq!(view.can_add_component, voices < 16 && components < 16);
-        if !view.can_add_component {
+        assert_eq!(view.can_add_component(), voices < 16 && components < 16);
+        if !view.can_add_component() {
             assert!(
-                matches!(view.add_component_reason, Some(Refusal::Edit(EditRefusal::BudgetExceeded { components:c, voices:v, additional_voices:1 })) if c==components && v==voices)
+                matches!(view.add_component_reason, Some(Refusal::Edit(EditRefusal::BudgetExceeded {
+                    components:c, voices:v, additional_voices:1 })) if c==components && v==voices)
             );
         }
     }
@@ -1656,11 +1650,96 @@ fn file_activity_captures_the_operation_before_workers_run() {
     );
     ws.poll();
     assert!(!ws.file_busy());
-    ws.apply(Command::File(FileCommand::Save)).unwrap();
+    ws.save().unwrap();
     assert_eq!(
         ws.action_view().file_activity.unwrap().kind.operation(),
         Operation::Save
     );
     ws.poll();
     assert!(!ws.file_busy());
+}
+
+#[test]
+fn stale_surface_save_commands_do_not_start_jobs() {
+    use crate::vocabulary::Operation;
+    let mut unexpected = Vec::new();
+    for (command, operation) in [
+        (FileCommand::Save, Operation::Save),
+        (FileCommand::SaveCopy, Operation::SaveCopy),
+    ] {
+        let mut workspace = workspace();
+        workspace.apply(Command::SetView(View::Workbench)).unwrap();
+        assert!(
+            workspace
+                .action_view()
+                .operations
+                .iter()
+                .find(|view| view.operation == operation)
+                .unwrap()
+                .enabled
+        );
+        workspace.apply(Command::SetView(View::Library)).unwrap();
+        workspace.take_effects();
+        assert!(
+            !workspace
+                .action_view()
+                .operations
+                .iter()
+                .find(|view| view.operation == operation)
+                .unwrap()
+                .enabled
+        );
+        let next = workspace.next_id;
+        workspace.apply(Command::File(command)).unwrap();
+        if workspace.file_busy()
+            || !workspace.take_effects().is_empty()
+            || workspace.next_id != next
+        {
+            unexpected.push(operation);
+        }
+    }
+    assert_eq!(unexpected, Vec::<Operation>::new());
+}
+
+#[test]
+fn selected_sound_activation_cannot_start_workbench_audio_after_tab_change() {
+    use crate::vocabulary::Operation;
+    let mut workspace = workspace();
+    assert!(
+        workspace
+            .action_view()
+            .operations
+            .iter()
+            .find(|view| view.operation == Operation::PlaySelectedSound)
+            .unwrap()
+            .enabled
+    );
+    workspace.apply(Command::SetView(View::Workbench)).unwrap();
+    workspace.take_effects();
+    let next = workspace.next_id;
+    workspace
+        .apply(Command::Audio(AudioCommand::PlaySelected))
+        .unwrap();
+    assert!(!workspace.audio_busy());
+    assert!(workspace.take_effects().is_empty());
+    assert_eq!(workspace.next_id, next);
+}
+
+#[test]
+fn workbench_save_activations_capture_jobs() {
+    for command in [FileCommand::Save, FileCommand::SaveCopy] {
+        let mut workspace = workspace();
+        workspace.apply(Command::SetView(View::Workbench)).unwrap();
+        workspace.take_effects();
+        let next = workspace.next_id;
+        workspace.apply(Command::File(command)).unwrap();
+        assert!(workspace.file_busy());
+        assert!(
+            workspace
+                .take_effects()
+                .iter()
+                .any(|effect| matches!(effect, Effect::Run(job) if job.kind() == JobKind::File))
+        );
+        assert_eq!(workspace.next_id, next + 1);
+    }
 }

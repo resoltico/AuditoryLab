@@ -88,7 +88,11 @@ impl Source {
                 epoch: resolved,
             })
         } else {
-            let revision = supplied_revision.ok_or("Source tree without Git requires AUDITORYLAB_SOURCE_REVISION and SOURCE_DATE_EPOCH from the release commit")?;
+            let revision = supplied_revision.ok_or(
+                "Source tree without Git requires \
+                AUDITORYLAB_SOURCE_REVISION and SOURCE_DATE_EPOCH from the release \
+                commit",
+            )?;
             identity_input::revision(&revision)?;
             let seconds = supplied_epoch.ok_or(
                 "Source tree without Git requires SOURCE_DATE_EPOCH from the release commit",

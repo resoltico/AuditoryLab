@@ -5,7 +5,7 @@ impl crate::Explain for auditorylab_app::workspace::TaskFailure {
     fn explain(&self) -> String {
         match self {
             Self::Operation(error) => error.explain(),
-            Self::Worker(error) => crate::workspace::status::worker_failure_description(&(error)),
+            Self::Worker(error) => crate::workspace::status::worker_failure_description(error),
         }
     }
 }
@@ -29,17 +29,17 @@ impl crate::Explain for auditorylab_app::workspace::ShutdownError {
                     let error = match error {
                         TaskFailure::Operation(error) => error.explain(),
                         TaskFailure::Worker(error) => {
-                            crate::workspace::status::worker_failure_description(&(error))
+                            crate::workspace::status::worker_failure_description(error)
                         }
                     };
                     format!(
                         "{error}{}",
-                        crate::workspace::status::job_context_description(&(context))
+                        crate::workspace::status::job_context_description(context)
                     )
                 }
                 ShutdownIssue::EditorReset { error, context } => shutdown_reset_failure(
                     error,
-                    &crate::workspace::status::job_context_description(&(context)),
+                    &crate::workspace::status::job_context_description(context),
                 ),
             })
             .collect::<Vec<_>>()

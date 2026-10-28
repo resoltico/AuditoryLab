@@ -37,7 +37,7 @@ fn selectable_terms_expose_ordered_labels_and_running_text() {
         ]
     );
     assert_eq!(
-        Population::ALL.map(|v| v.phrase()),
+        Population::ALL.map(auditorylab_core::provenance::Population::phrase),
         [
             "human",
             "mouse",
@@ -48,7 +48,7 @@ fn selectable_terms_expose_ordered_labels_and_running_text() {
         ]
     );
     assert_eq!(
-        ConditionRole::ALL.map(|v| v.phrase()),
+        ConditionRole::ALL.map(auditorylab_core::provenance::ConditionRole::phrase),
         [
             "test condition",
             "comparison condition",
@@ -67,16 +67,19 @@ fn selectable_terms_expose_ordered_labels_and_running_text() {
         ]
     );
     assert_eq!(
-        Ears::ALL.map(|v| v.phrase()),
+        Ears::ALL.map(auditorylab_core::Ears::phrase),
         ["both ears", "left ear", "right ear"]
     );
-    assert_eq!(Ear::ALL.map(|v| v.phrase()), ["left ear", "right ear"]);
     assert_eq!(
-        EvidenceScope::ALL.map(|v| v.phrase()),
+        Ear::ALL.map(auditorylab_core::Ear::phrase),
+        ["left ear", "right ear"]
+    );
+    assert_eq!(
+        EvidenceScope::ALL.map(auditorylab_core::provenance::EvidenceScope::phrase),
         ["reference condition", "ancestor"]
     );
     assert_eq!(
-        Measure::ALL.map(|v| v.phrase()),
+        Measure::ALL.map(auditorylab_core::provenance::Measure::phrase),
         [
             "EEG",
             "behavior",
@@ -87,7 +90,7 @@ fn selectable_terms_expose_ordered_labels_and_running_text() {
         ]
     );
     assert_eq!(
-        Completeness::ALL.map(|v| v.phrase()),
+        Completeness::ALL.map(auditorylab_core::rhythm::Completeness::phrase),
         ["complete", "invalid"]
     );
     assert_eq!(
@@ -101,6 +104,6 @@ fn selectable_terms_expose_ordered_labels_and_running_text() {
     );
     for parameter in ParameterId::ALL {
         assert_eq!(parameter.label(), parameter.descriptor().label);
-        assert!(!parameter.phrase().is_empty());
+        assert_ne!(parameter.phrase(), "");
     }
 }

@@ -3,7 +3,15 @@
 
 use super::*;
 use crate::discovery::query::{Direction, GroupBy, SortBy};
+use crate::document::editing::{Draft, EditingField, EditorSession};
 use crate::services::library::Library;
+use crate::workspace::prompts::PromptState;
+use crate::workspace::tasks::Conclusion;
+use crate::workspace::{
+    Capabilities, Command, EditorCommand, Effect, FileCommand, Job, JobKind, JobOutcome,
+    LibraryCommand, PromptAnswer, QueryFacet, Response, ResponseDisposition, Runner, View,
+    WorkerFailure, Workspace,
+};
 
 fn fixture() -> (tempfile::TempDir, Library, Workspace) {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
@@ -193,7 +201,7 @@ fn save_publishes_captured_history_and_keeps_later_draft_and_filters() {
     user(&mut w);
     assert_eq!(w.selected().unwrap().title(), "captured");
     assert!(w.editor.session().dirty());
-    w.apply(Command::File(FileCommand::Save)).unwrap();
+    w.save().unwrap();
     idle(&mut w);
     assert!(!w.editor.session().dirty());
     assert_eq!(store.scan(&Cancel::default()).entries[0].title, "later");
@@ -201,7 +209,7 @@ fn save_publishes_captured_history_and_keeps_later_draft_and_filters() {
 #[test]
 fn two_editors_conflict_even_for_noop_and_refresh_preserves_draft() {
     let (_temp, store, mut w) = fixture();
-    w.apply(Command::File(FileCommand::Save)).unwrap();
+    w.save().unwrap();
     idle(&mut w);
     user(&mut w);
     let _ = w.apply(Command::Library(LibraryCommand::EditSelected));
@@ -222,10 +230,11 @@ fn two_editors_conflict_even_for_noop_and_refresh_preserves_draft() {
     }))
     .unwrap();
     idle(&mut w);
-    other.apply(Command::File(FileCommand::Save)).unwrap();
+    other.save().unwrap();
     idle(&mut other);
     assert!(
-        matches!(&other.files.status(),FileStatus::Library(LibraryStatus::Failed {error,..}) if error.outcome()==crate::outcome::Outcome::Conflict)
+        matches!(&other.files.status(),FileStatus::Library(LibraryStatus::Failed {error,..}
+            ) if error.outcome()==crate::outcome::Outcome::Conflict)
     );
     assert_eq!(other.editor.session().draft().title(), "Untitled sound");
     let _ = other.apply(Command::Library(LibraryCommand::Refresh));
@@ -247,7 +256,7 @@ fn two_editors_conflict_even_for_noop_and_refresh_preserves_draft() {
 #[test]
 fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     let (_temp, store, mut w) = fixture();
-    w.apply(Command::File(FileCommand::Save)).unwrap();
+    w.save().unwrap();
     idle(&mut w);
     user(&mut w);
     let (key, _, _) = binding(w.library_binding());
@@ -325,11 +334,12 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
     assert!(store.scan(&Cancel::default()).entries.is_empty());
     assert!(w.library_data().detached.is_some());
     assert!(
-        w.apply(Command::File(FileCommand::Save)).is_err(),
-        "purging a saved entry cannot turn the retained draft into an implicit Create with the old UUID"
+        w.save().is_err(),
+        "purging a saved entry cannot turn the retained draft into an implicit \
+            Create with the old UUID"
     );
     assert!(store.scan(&Cancel::default()).entries.is_empty());
-    w.apply(Command::File(FileCommand::SaveCopy)).unwrap();
+    w.save_independent_copy().unwrap();
     idle(&mut w);
     let inventory = store.scan(&Cancel::default());
     assert_eq!(inventory.entries.len(), 1);
@@ -338,7 +348,7 @@ fn trash_restore_and_purge_use_exact_gesture_and_explicit_prompt() {
 #[test]
 fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
     let (_temp, store, mut w) = fixture();
-    w.apply(Command::File(FileCommand::Save)).unwrap();
+    w.save().unwrap();
     idle(&mut w);
     user(&mut w);
     let (key, _, _) = binding(w.library_binding());
@@ -377,7 +387,7 @@ fn incomplete_scan_retains_old_rows_and_never_overwrites_open_editor() {
 #[test]
 fn save_before_trash_uses_confirmed_new_token_and_preserves_published_edit() {
     let (_temp, store, mut w) = fixture();
-    w.apply(Command::File(FileCommand::Save)).unwrap();
+    w.save().unwrap();
     idle(&mut w);
     user(&mut w);
     let _ = w.apply(Command::Library(LibraryCommand::EditSelected));
@@ -414,7 +424,7 @@ fn save_before_trash_uses_confirmed_new_token_and_preserves_published_edit() {
 
 fn discard_before_trash_preserves_edits_made_after_the_job_was_captured() {
     let (_temp, store, mut w) = fixture();
-    w.apply(Command::File(FileCommand::Save)).unwrap();
+    w.save().unwrap();
     idle(&mut w);
     user(&mut w);
     let _ = w.apply(Command::Library(LibraryCommand::EditSelected));
@@ -461,7 +471,7 @@ fn discard_before_trash_preserves_edits_made_after_the_job_was_captured() {
 #[test]
 fn managed_playback_worker_refuses_changed_or_trashed_observation() {
     let (_temp, store, mut w) = fixture();
-    w.apply(Command::File(FileCommand::Save)).unwrap();
+    w.save().unwrap();
     idle(&mut w);
     user(&mut w);
     let captured = w.selected().unwrap().clone();
@@ -490,7 +500,7 @@ fn managed_playback_worker_refuses_changed_or_trashed_observation() {
 #[test]
 fn retained_user_source_is_captured_temporary_content_not_a_fresh_user_selection() {
     let (_temp, store, mut w) = fixture();
-    w.apply(Command::File(FileCommand::Save)).unwrap();
+    w.save().unwrap();
     idle(&mut w);
     user(&mut w);
     let original = w.selected().unwrap().clone();
@@ -524,7 +534,7 @@ fn a_failed_completion_keeps_draft_and_retry_observes_actual_storage() {
     for applied in [false, true] {
         let (_temp, store, mut workspace) = fixture();
         title(&mut workspace, "Unsaved draft must survive");
-        workspace.apply(Command::File(FileCommand::Save)).unwrap();
+        workspace.save().unwrap();
         let job = workspace
             .take_effects()
             .into_iter()
@@ -551,16 +561,15 @@ fn a_failed_completion_keeps_draft_and_retry_observes_actual_storage() {
                 ..
             }
         ));
-        workspace.apply(Command::File(FileCommand::Save)).unwrap();
+        workspace.save().unwrap();
         idle(&mut workspace);
         if applied {
             assert!(workspace.editor().dirty());
             assert!(
-                matches!(&workspace.files.status(),FileStatus::Library(LibraryStatus::Failed {error,..}) if error.outcome()==crate::outcome::Outcome::Conflict)
+                matches!(&workspace.files.status(),FileStatus::Library(LibraryStatus::Failed {error,
+                    ..}) if error.outcome()==crate::outcome::Outcome::Conflict)
             );
-            workspace
-                .apply(Command::File(FileCommand::SaveCopy))
-                .unwrap();
+            workspace.save_independent_copy().unwrap();
             idle(&mut workspace);
             assert_eq!(store.scan(&Cancel::default()).entries.len(), 2);
         } else {
@@ -573,7 +582,7 @@ fn a_failed_completion_keeps_draft_and_retry_observes_actual_storage() {
 #[test]
 fn refresh_reloads_membership_state_even_when_recipe_sha_is_unchanged() {
     let (_temp, store, mut workspace) = fixture();
-    workspace.apply(Command::File(FileCommand::Save)).unwrap();
+    workspace.save().unwrap();
     idle(&mut workspace);
     user(&mut workspace);
     let (binding, token, _) = binding(workspace.library_binding());
@@ -589,10 +598,10 @@ fn refresh_reloads_membership_state_even_when_recipe_sha_is_unchanged() {
         .unwrap();
     std::fs::remove_file(store.path().join("membership.toml")).unwrap();
     workspace
-        .set_catalog_query(CatalogQuery {
+        .set_catalog_query(Box::new(CatalogQuery {
             scope: Scope::Trash,
             ..CatalogQuery::default()
-        })
+        }))
         .unwrap();
     let _ = workspace.apply(Command::Library(LibraryCommand::Refresh));
     idle(&mut workspace);
@@ -607,7 +616,7 @@ fn refresh_reloads_membership_state_even_when_recipe_sha_is_unchanged() {
 fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
     for invalid_editor in [false, true] {
         let (_temp, store, mut workspace) = fixture();
-        workspace.apply(Command::File(FileCommand::Save)).unwrap();
+        workspace.save().unwrap();
         idle(&mut workspace);
         let key = store.scan(&Cancel::default()).entries[0].key.clone();
         let record = store.load(&key).unwrap();
@@ -638,11 +647,11 @@ fn confirmed_trash_retains_reset_failure_and_blocks_dependent_completion() {
         let (status, confirmed) = workspace.finish_discard_reset(result, replacement);
         assert!(store.load(&key).unwrap().trashed);
         assert_eq!(workspace.editor().document(), retained);
+        assert!(matches!(workspace.editor.location(),
+                DocumentLocation::Detached(detached) if detached==&key));
         assert!(
-            matches!(workspace.editor.location(), DocumentLocation::Detached(detached) if detached==&key)
-        );
-        assert!(
-            matches!(&status, FileStatus::Library(LibraryStatus::Written { status, .. }) if *status==publication)
+            matches!(&status, FileStatus::Library(LibraryStatus::Written { status, .. }
+                ) if *status==publication)
         );
         assert!(status.editor_reset_error().is_some());
         assert_eq!(status.conclusion(Conclusion::Succeeded), Conclusion::Failed);
@@ -685,14 +694,14 @@ fn selected_users() -> (
     .unwrap();
     idle(&mut workspace);
     workspace
-        .set_catalog_query(CatalogQuery {
+        .set_catalog_query(Box::new(CatalogQuery {
             scope: Scope::User,
             search: "Shared".into(),
             sort: crate::discovery::query::SortBy::Title,
             direction: Some(crate::discovery::query::Direction::Desc),
             group_by: crate::discovery::query::GroupBy::Collection,
             ..CatalogQuery::default()
-        })
+        }))
         .unwrap();
     idle(&mut workspace);
     workspace
@@ -733,9 +742,9 @@ fn selected_ready(workspace: &mut Workspace, key: &LibraryKey, title: &str, quer
     let view = workspace.library_view();
     assert_eq!(view.snapshot.as_ref().unwrap().title(), title);
     let actions = workspace.action_view();
-    assert!(actions.can_play);
-    assert!(actions.can_copy);
-    assert!(actions.can_export);
+    assert!(actions.can_play());
+    assert!(actions.can_copy());
+    assert!(actions.can_export());
 }
 
 #[test]
@@ -744,9 +753,7 @@ fn independent_copy_save_keeps_the_original_selected_user_cache() {
     let query = workspace.catalog_query().clone();
     let selected = workspace.selected().unwrap().id();
     let _ = workspace.apply(Command::Editor(EditorCommand::CopySelected));
-    workspace
-        .apply(Command::File(FileCommand::SaveCopy))
-        .unwrap();
+    workspace.save_independent_copy().unwrap();
     let job = captured_file(&mut workspace);
     complete_file(&mut workspace, job);
     assert!(
@@ -790,7 +797,7 @@ fn saving_an_existing_nonselected_user_keeps_selected_details_and_filters() {
     idle(&mut workspace);
     let query = workspace.catalog_query().clone();
     let snapshot = workspace.selected().unwrap().id();
-    workspace.apply(Command::File(FileCommand::Save)).unwrap();
+    workspace.save().unwrap();
     let job = captured_file(&mut workspace);
     complete_file(&mut workspace, job);
     assert!(!workspace.file_busy());
@@ -815,7 +822,7 @@ fn captured_user_save_finishing_after_navigation_loads_only_the_current_selectio
     let _ = workspace.apply(Command::Library(LibraryCommand::EditSelected));
     title(&mut workspace, "Shared B captured");
     let query = workspace.catalog_query().clone();
-    workspace.apply(Command::File(FileCommand::Save)).unwrap();
+    workspace.save().unwrap();
     let save = captured_file(&mut workspace);
     workspace
         .apply(Command::Library(LibraryCommand::Select(
@@ -879,7 +886,7 @@ fn a_load_completed_after_navigation_cannot_own_the_cache_or_suppress_later_read
 #[test]
 fn retained_user_source_exports_its_captured_portable_text_without_reloading_user() {
     let (_temp, store, mut workspace) = fixture();
-    workspace.apply(Command::File(FileCommand::Save)).unwrap();
+    workspace.save().unwrap();
     idle(&mut workspace);
     user(&mut workspace);
     let original = workspace.selected().unwrap().clone();
@@ -899,7 +906,7 @@ fn retained_user_source_exports_its_captured_portable_text_without_reloading_use
     assert!(!workspace.library.selected_user());
     let next = workspace.next_id;
     for _ in 0..20 {
-        assert!(workspace.action_view().can_export_recipe);
+        assert!(workspace.action_view().can_export_recipe());
     }
     assert_eq!(workspace.next_id, next);
     let first = workspace.prepare_export_recipe().unwrap().0;
@@ -917,7 +924,10 @@ fn retained_user_source_exports_its_captured_portable_text_without_reloading_use
     let PromptState::ExportRecipe(text) = &prompt.state else {
         panic!("captured portable text");
     };
-    assert!(crate::core::Recipe::parse(text).unwrap() == *original.recipe());
+    assert_eq!(
+        crate::core::Recipe::parse(text).unwrap(),
+        *original.recipe()
+    );
     assert!(!text.contains("Current saved version"));
 }
 

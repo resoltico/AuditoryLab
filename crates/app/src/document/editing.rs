@@ -521,7 +521,7 @@ impl Draft {
             EditingField::Parameter(id, p) => self.component(id)?.get(p).map(Finite::get),
             EditingField::Metadata(MetadataField::Duration) => Some(self.duration_seconds()),
             EditingField::Metadata(MetadataField::Fade) => Some(self.fade_seconds()),
-            _ => None,
+            EditingField::Metadata(_) => None,
         }
     }
     fn set_value(&mut self, field: EditingField, value: Finite) -> bool {
@@ -545,7 +545,7 @@ impl Draft {
                 self.set_fade_seconds(value);
                 true
             }
-            _ => false,
+            EditingField::Metadata(_) => false,
         }
     }
     fn has_field(&self, field: EditingField) -> Result<(), EditRefusal> {
@@ -556,7 +556,7 @@ impl Draft {
                 .get(p)
                 .map(|_| ())
                 .ok_or(EditRefusal::Inapplicable),
-            _ => Ok(()),
+            EditingField::Metadata(_) => Ok(()),
         }
     }
     /// Complete authored sound, with pair intent and stable owners retained.
@@ -1116,9 +1116,9 @@ impl EditorSession {
         }
         self.structural(row, |c| match c {
             auditorylab_core::ComponentForm::Tone { ears: route, .. }
-            | auditorylab_core::ComponentForm::Clicks { ears: route, .. } => *route = ears,
-            auditorylab_core::ComponentForm::MonauralPair { ears: route, .. } => *route = ears,
-            _ => {}
+            | auditorylab_core::ComponentForm::Clicks { ears: route, .. }
+            | auditorylab_core::ComponentForm::MonauralPair { ears: route, .. } => *route = ears,
+            auditorylab_core::ComponentForm::BinauralPair { .. } => {}
         })
     }
 
@@ -1212,7 +1212,10 @@ impl EditorSession {
         let before = self.draft.recipe.clone();
         let (index, component) = self.draft.remove(id).ok_or(EditRefusal::UnknownComponent)?;
         let after = self.draft.recipe.clone();
-        let owned = |field: &EditingField| matches!(field, EditingField::Parameter(owner, _) if *owner == id);
+        let owned = |field: &EditingField| {
+            matches!(field, EditingField::Parameter(owner,
+            _) if *owner == id)
+        };
         let staged: Vec<_> = self
             .staged
             .iter()
@@ -1430,9 +1433,6 @@ fn apply_number(
     }
 }
 
-#[cfg(test)]
-mod tests;
-
 impl std::fmt::Display for EditRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(crate::core::diagnostic::Code::code(self))
@@ -1495,7 +1495,9 @@ crate::core::diagnostic_codes! {
                     voices,
                     additional_voices,
                 } => {
-                    crate::core::diagnostic_params! {"components"=>*components,"voices"=>*voices,"additional_voices"=>*additional_voices}
+                    crate::core::diagnostic_params! {"components"=>*components,"voices"=>*voices,
+                        "additional\
+                        _voices"=>*additional_voices}
                 }
                 _ => crate::core::diagnostic::Params::new(),
             }
@@ -1513,7 +1515,7 @@ crate::core::diagnostic_codes! {
                 Self::Input(problems) => {
                     crate::core::diagnostic_params! {"problem_count"=>problems.len()}
                 }
-                _ => crate::core::diagnostic::Params::new(),
+                Self::Document(_) => crate::core::diagnostic::Params::new(),
             }
         }
     }
@@ -1534,3 +1536,6 @@ crate::core::diagnostic_codes! {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -145,7 +145,7 @@ pub(crate) fn write(folder: &Path, out: &Path, format: Format, epoch: u64) -> Re
             let mut input = zip::ZipArchive::new(fs::File::open(&intermediate)?)?;
             let mut names = input
                 .file_names()
-                .map(|name| name.map(|name| name.into_owned()))
+                .map(|name| name.map(std::borrow::Cow::into_owned))
                 .collect::<zip::result::ZipResult<Vec<_>>>()?;
             names.sort();
             let mut output = zip::ZipWriter::new(fs::File::create(out)?);
@@ -184,7 +184,12 @@ pub(crate) fn extract(archive: &Path, out: &Path, format: Format) -> Result<()> 
 /// Selected Xcode is an explicit prerequisite; a flat fallback is not equivalent.
 pub(crate) fn actool() -> Result<PathBuf> {
     let value = capture(Command::new("xcrun").args(["--sdk", "macosx", "--find", "actool"]))
-        .map_err(|e| format!("macOS desktop packaging requires selected full Xcode with actool; set DEVELOPER_DIR or xcode-select. {e}"))?;
+        .map_err(|e| {
+            format!(
+                "macOS desktop packaging requires selected full Xcode with actool; \
+            set DEVELOPER_DIR or xcode-select. {e}"
+            )
+        })?;
     Ok(PathBuf::from(String::from_utf8(value)?.trim()))
 }
 
@@ -251,19 +256,19 @@ mod tests {
             verify_metadata(&a, format, 1_709_251_199).unwrap();
             assert!(verify_metadata(&a, format, 1_709_251_201).is_err());
             assert_eq!(fs::read(&a).unwrap(), fs::read(&b).unwrap(), "{format:?}");
-            if !matches!(format, Format::Tar) {
+            if matches!(format, Format::Tar) {
+                let mut tar =
+                    tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(a).unwrap()));
+                for member in tar.entries().unwrap() {
+                    assert_eq!(member.unwrap().header().mtime().unwrap(), 1_709_251_199);
+                }
+            } else {
                 let mut zip = zip::ZipArchive::new(fs::File::open(a).unwrap()).unwrap();
                 let member = zip.by_name("fixture/input").unwrap();
                 assert_eq!(
                     member.last_modified(),
                     Some(source::zip_time(1_709_251_199).unwrap())
                 );
-            } else {
-                let mut tar =
-                    tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(a).unwrap()));
-                for member in tar.entries().unwrap() {
-                    assert_eq!(member.unwrap().header().mtime().unwrap(), 1_709_251_199);
-                }
             }
         }
         assert!(write(&folder, &temp.path().join("invalid.zip"), Format::Zip, 0).is_err());

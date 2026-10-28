@@ -1,9 +1,8 @@
 //! workspace transport presentation.
+use crate::clock;
 use crate::numbers::NumberStyle;
-use crate::*;
 use auditorylab_core::Sound;
 /// Shared listening guidance.
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Notice {
     /// Start quietly.
@@ -27,18 +26,14 @@ impl std::fmt::Display for Notice {
 }
 
 /// A save completed for an older snapshot while newer edits remain.
-
 pub(crate) const SAVED_SNAPSHOT_STILL_DIRTY: &str =
     "Saved snapshot; newer edits remain unsaved. The sound remains open.";
 
 /// A worker thread panicked.
-
 pub(crate) const WORKER_FAILED: &str = "The operation thread failed.";
 
 /// A worker thread ended without reporting a result.
-
 /// An export ended at the person's request.
-
 pub(crate) const EXPORT_CANCELLED: &str = "Export cancelled; no file was written.";
 
 impl Notice {
@@ -64,7 +59,6 @@ impl Notice {
 }
 
 /// A monitored window that cannot be drawn truthfully.
-
 pub fn capture_error_description(
     value: auditorylab_app::workspace::monitor::CaptureError,
 ) -> String {
@@ -80,7 +74,6 @@ pub fn capture_error_description(
 }
 
 /// The result of a playback, for any frontend.
-
 pub fn playback_report_description(
     value: &auditorylab_app::services::playback::PlaybackReport,
 ) -> String {
@@ -106,7 +99,6 @@ pub fn playback_report_description(
 }
 
 /// One status line for a playing session.
-
 pub fn monitor_reader_status_text(
     value: &auditorylab_app::services::playback::MonitorReader,
 ) -> String {
@@ -125,12 +117,11 @@ pub fn monitor_reader_status_text(
             auditorylab_app::services::playback::ObservationFreshness::Current => "current",
             auditorylab_app::services::playback::ObservationFreshness::Stale => "stale",
         },
-        crate::optional_observation_summary(&(status.observation.as_ref()))
+        crate::optional_observation_summary(status.observation.as_ref())
     )
 }
 
 /// Estimated output frame count as a transport clock at this output's rate.
-
 pub fn output_info_elapsed(
     value: &auditorylab_app::services::playback::OutputInfo,
     frames: u64,
@@ -139,7 +130,6 @@ pub fn output_info_elapsed(
 }
 
 /// Explain why an editor command was refused without confusing authored components and voices.
-
 pub fn edit_refusal_description(value: auditorylab_app::document::editing::EditRefusal) -> String {
     use auditorylab_app::document::editing::EditRefusal;
     match value {
@@ -161,7 +151,9 @@ pub fn edit_refusal_description(value: auditorylab_app::document::editing::EditR
                 _ => format!("the {}-voice limit", Sound::MAX_VOICES),
             };
             format!(
-                "This sound has {components} authored components and {voices} expanded voices. Adding this component requires {additional_voices} more {}; it would exceed {limit}. Each pair uses two voices.",
+                "This sound has {components} authored components and {voices} expanded \
+                    voices. Adding this component requires {additional_voices} more {}; \
+                    it would exceed {limit}. Each pair uses two voices.",
                 if additional_voices == 1 {
                     "voice"
                 } else {
@@ -181,7 +173,6 @@ pub fn edit_refusal_description(value: auditorylab_app::document::editing::EditR
 }
 
 /// Human names for the actual device sample representation.
-
 pub fn sample_format_label(
     value: auditorylab_app::services::playback::SampleFormat,
 ) -> &'static str {

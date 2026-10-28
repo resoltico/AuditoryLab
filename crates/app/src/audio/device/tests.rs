@@ -31,9 +31,8 @@ fn discovery_requires_stereo_or_wider_and_a_supported_rate_and_format() {
             cpal::SupportedBufferSize::Unknown,
             cpal::SampleFormat::F32,
         );
-        assert!(
-            matches!(supported_format(&snapshot), Err(DeviceError::UnsupportedSampleRate(error)) if error.hz == hz)
-        );
+        assert!(matches!(supported_format(&snapshot),
+                Err(DeviceError::UnsupportedSampleRate(error)) if error.hz == hz));
     }
     let snapshot = cpal::SupportedStreamConfig::new(
         2,
@@ -158,7 +157,8 @@ fn a_winning_backend_failure_carries_its_own_payload() {
     );
     let resolved = resolve(&state, winner, local, &diagnostics).unwrap_err();
     assert!(
-        matches!(resolved,DeviceError::Backend(ref error) if error.to_string()=="original setup failure")
+        matches!(resolved,DeviceError::Backend(ref error) if error.to_string()=="original setup \
+            failure")
     );
 }
 

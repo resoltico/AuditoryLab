@@ -86,7 +86,7 @@ struct Version {
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct Document {
+struct RecipeDocument {
     schema_version: u32,
     document: DocumentIdentity,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -212,7 +212,7 @@ impl Recipe {
         {
             return Err(RecipeError::UnsupportedVersion { found });
         }
-        let d: Document = toml::from_str(text).map_err(RecipeError::Format)?;
+        let d: RecipeDocument = toml::from_str(text).map_err(RecipeError::Format)?;
         let mut value = Self {
             document: d.document,
             content: RecipeContent {
@@ -268,7 +268,7 @@ impl Recipe {
     /// # Errors
     /// Returns a TOML serialization error or refuses an over-limit serialized result.
     pub fn to_toml(&self) -> Result<String, RecipeError> {
-        let text = toml::to_string(&Document {
+        let text = toml::to_string(&RecipeDocument {
             schema_version: Self::SCHEMA_VERSION,
             document: self.document.clone(),
             description: self.content.description.clone(),
@@ -375,8 +375,6 @@ impl RecipeBuilder {
         &self.content
     }
 }
-#[cfg(test)]
-mod tests;
 
 crate::diagnostic_codes! {
     pub(crate) const CODES;
@@ -403,3 +401,6 @@ crate::diagnostic_codes! {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,4 +1,5 @@
-//! Offline rendering cost at 48 kHz: `cargo run -p auditorylab-core --example render_cost --release`.
+//! Offline rendering cost at 48 kHz: `cargo run -p auditorylab-core --example render_cost
+//! --release`.
 //! Each case renders twenty seconds. No audio device is opened.
 use auditorylab_core::{
     Component, ComponentForm, ComponentId, Ears, Modulation, SampleRate, Sound, live::Engine,

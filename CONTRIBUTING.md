@@ -1,6 +1,6 @@
 # Contributing
 
-Start from a clean checkout with the [source prerequisites](README.md#build-from-source). [rust-toolchain.toml](rust-toolchain.toml) owns the compiler/components; root [Cargo.toml](Cargo.toml) owns product name/copyright/version/build metadata, and [Cargo.lock](Cargo.lock) pins dependencies. [CI](.github/workflows/ci.yml) owns auxiliary tool versions and target/shard selection.
+Start from a clean checkout with the [source prerequisites](README.md#build-from-source). [rust-toolchain.toml](rust-toolchain.toml) owns the compiler/components; root [Cargo.toml](Cargo.toml) owns product name/copyright/version metadata, and [Cargo.lock](Cargo.lock) pins dependencies. [CI](.github/workflows/ci.yml) owns auxiliary tool versions and target/shard selection.
 
 ## Checks
 
@@ -10,6 +10,7 @@ Keep tool scratch under this checkout’s `target/`:
 mkdir -p target/tmp
 export TMPDIR="$PWD/target/tmp"
 cargo fmt --all -- --check
+cargo xtask check-style
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo test -p auditorylab-core --release --locked
@@ -19,9 +20,9 @@ cargo xtask verify-vendor
 actionlint
 ```
 
-The compiler warns about ordinary hygiene locally. Core emits missing-documentation warnings; unsafe-code rules remain denied. CI denies workspace Clippy warnings and documentation warnings without applying a global warning denial to vendored path dependencies.
+The compiler warns about ordinary hygiene locally. Core emits missing-documentation warnings; unsafe-code rules remain denied. CI denies workspace Clippy pedantic findings and documentation warnings without applying a global warning denial to vendored path dependencies.
 
-Use the CI-pinned cargo-deny, cargo-mutants, cargo-about and actionlint versions. On Windows, point TMP/TEMP to an absolute directory under `target/`. Linux calendar checks need system `tzdata`.
+Use the CI-pinned cargo-deny, cargo-mutants, cargo-about and actionlint versions. Install `slint-lsp` with `--locked --no-default-features` at the resolved Slint version in Cargo.lock; the style gate rejects a version mismatch. On Windows, point TMP/TEMP to an absolute directory under `target/`. Linux calendar checks need system `tzdata`.
 
 Unit tests exercise owners and private adapters; integration tests use public services and the actual CLI. GUI tests install production callbacks on an offscreen platform with an injected deterministic executor; a separate test uses the real Runner and Slint event proxy to cover completion with no redraw timer and notification coalescing. Startup installs that same wake path. App unit tests assert typed state and causes. Presentation unit and integration suites render through the public app API. Shared behavioral recipes come from core’s dev-only `test-support` feature. Use independent numerical/structural expectations, relevant failures and negative controls. Check discovered/ignored counts and retain useful failure evidence.
 
@@ -58,6 +59,12 @@ Preserve actual-rate validation, callback allocation/free/wait/I/O rules, typed 
 
 Prefer removing unnecessary work over lint suppression. For a necessary numeric conversion, generated boundary or native ABI, put a reasoned `#[expect(...)]` on the narrowest item. Keep native `SAFETY` reasoning next to the operation. Core/application forbid unsafe code; native GUI adapters and generated output have scoped boundaries.
 
+## Review checklist
+
+- What does this frontend change decide? Admission, defaults and validity belong to app/core owners.
+- Which owner holds the wording? Use its vocabulary/presentation function; labels are not protocol.
+- Does each module have one subject, with private state and explicit typed boundaries?
+
 ## Dependencies and native toolkit
 
 Review graph changes with Cargo.lock. `cargo deny check` covers advisories, source policy, duplicates and licenses. [Toolkit integration](third_party/README.md) records archive pins, patch behavior and retirement conditions. Update source, patch, digest and affected consumer checks together. `cargo xtask verify-vendor` authenticates, applies and compares every source byte and checks target/product resolution.
@@ -72,7 +79,7 @@ Isolated outputs use a temporary target directory, removed after required output
 
 ## Release summaries
 
-[AGENTS.md](AGENTS.md#changelog-rules) owns the changelog rules. Keep `Unreleased` cumulative against the latest published non-prerelease release, and verify that publication through GitHub. Describe implemented compatibility effects and required action. Documentation-only maintenance does not need a changelog entry.
+[AGENTS.md](AGENTS.md#changelog-rules) owns the changelog rules. Keep `Unreleased` cumulative against the latest published non-prerelease release, and verify that publication through GitHub. Describe implemented compatibility effects and required action. Documentation-only maintenance does not need a changelog entry. The Rust crates are internal and unpublished; their API changes are not release-note material.
 
 ## Packaging
 

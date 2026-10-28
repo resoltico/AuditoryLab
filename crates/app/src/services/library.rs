@@ -30,8 +30,8 @@ impl LibraryContext {
     ///
     /// # Errors
     /// Rejects a relative root without falling back or performing an operation.
-    pub fn from_override(path: PathBuf) -> Result<Self, LibraryError> {
-        let context = Self::resolve(Some(&path));
+    pub fn from_override(path: &Path) -> Result<Self, LibraryError> {
+        let context = Self::resolve(Some(path));
         if let Some(error @ LibraryError::RelativeRoot { .. }) = context.problem() {
             return Err(error.clone());
         }

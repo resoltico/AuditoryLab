@@ -267,7 +267,8 @@ fn bibliography_graph_has_strict_scopes_unique_keys_and_no_recursive_sources() {
         valid.replace("scope = \"ancestor\"", "scope = \"verified\""),
         valid.replace("source = \"ioannou-2015\"", "source = \"missing\""),
         format!(
-            "{valid}\n[[source]]\nkey='ioannou-2015'\nlabel='duplicate'\ncitation='c'\ndoi='10.1/x'\n"
+            "{valid}\n[[source]]\nkey='ioannou-2015'\nlabel='duplicate'\ncitation='\
+                c'\ndoi='10.1/x'\n"
         ),
         format!("{valid}\n[source.source]\npath='/private/path'\n"),
     ] {
@@ -356,44 +357,8 @@ fn bounded_property_roundtrips_preserve_all_finite_bits_and_authored_shapes() {
                 .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
                 let recipe = recipe.build().unwrap();
                 let back = Recipe::parse(&recipe.to_toml().unwrap()).unwrap();
-                let bits = |recipe: &Recipe| {
-                    let s = &recipe.content.sound;
-                    let mut values = vec![
-                        s.duration_seconds().get().to_bits(),
-                        s.fade_seconds().get().to_bits(),
-                    ];
-                    match s.components()[0].form {
-                        form @ ComponentForm::BinauralPair { .. } => {
-                            let p = form.pair().unwrap();
-                            values.extend(
-                                [
-                                    p.first_hz,
-                                    p.offset_hz,
-                                    p.first_peak_dbfs,
-                                    p.second_peak_dbfs,
-                                ]
-                                .map(|value| value.get().to_bits()),
-                            );
-                        }
-                        form @ ComponentForm::Clicks { .. } => {
-                            let c = form.primitive().unwrap();
-                            values.push(c.peak_dbfs.to_bits());
-                            if let Carrier::Clicks {
-                                rate_hz,
-                                width_seconds,
-                            } = c.carrier
-                            {
-                                values.extend([rate_hz.to_bits(), width_seconds.to_bits()]);
-                            }
-                            if let Some(crate::Modulation::Am { rate_hz, depth }) = c.modulation {
-                                values.extend([rate_hz.get().to_bits(), depth.get().to_bits()]);
-                            }
-                        }
-                        _ => panic!("fixture has exactly two alternatives"),
-                    };
-                    values
-                };
-                prop_assert_eq!(bits(&recipe), bits(&back));
+
+                prop_assert_eq!(authored_bits(&recipe), authored_bits(&back));
                 prop_assert_eq!(recipe, back);
                 Ok(())
             },
@@ -510,15 +475,13 @@ fn sound_is_required_for_silence_and_root_envelopes_are_rejected() {
     let silent = "schema_version = 4\n[document]\nid='00000000-0000-4000-8000-000000000001'\n";
     assert!(matches!(Recipe::parse(silent), Err(RecipeError::Format(_))));
     let valid = format!("{silent}[sound]\nduration_seconds=1\nfade_seconds=0\n");
-    assert!(
-        Recipe::parse(&valid)
-            .unwrap()
-            .content
-            .sound
-            .components()
-            .is_empty()
+    assert_eq!(
+        Recipe::parse(&valid).unwrap().content.sound.components(),
+        []
     );
-    let root_envelope = "schema_version = 4\nduration_seconds=1\nfade_seconds=0\n[document]\nid='00000000-0000-4000-8000-000000000001'\n[sound]\nduration_seconds=1\nfade_seconds=0\n";
+    let root_envelope = "schema_version = 4\nduration_seconds=1\nfade_seconds=0\n[document]\nid\
+        ='00000000-0000-4000-8000-000000000001'\n[sound]\nduration_seconds=1\n\
+        fade_seconds=0\n";
     assert!(matches!(
         Recipe::parse(root_envelope),
         Err(RecipeError::Format(_))
@@ -602,4 +565,42 @@ fn nonfinite_format_errors_locate_the_actual_component_and_modulation_fields() {
         panic!()
     };
     assert!(error.to_string().contains("line 20, column 13"));
+}
+
+fn authored_bits(recipe: &Recipe) -> Vec<u64> {
+    let s = &recipe.content.sound;
+    let mut values = vec![
+        s.duration_seconds().get().to_bits(),
+        s.fade_seconds().get().to_bits(),
+    ];
+    match s.components()[0].form {
+        form @ ComponentForm::BinauralPair { .. } => {
+            let p = form.pair().unwrap();
+            values.extend(
+                [
+                    p.first_hz,
+                    p.offset_hz,
+                    p.first_peak_dbfs,
+                    p.second_peak_dbfs,
+                ]
+                .map(|value| value.get().to_bits()),
+            );
+        }
+        form @ ComponentForm::Clicks { .. } => {
+            let c = form.primitive().unwrap();
+            values.push(c.peak_dbfs.to_bits());
+            if let Carrier::Clicks {
+                rate_hz,
+                width_seconds,
+            } = c.carrier
+            {
+                values.extend([rate_hz.to_bits(), width_seconds.to_bits()]);
+            }
+            if let Some(crate::Modulation::Am { rate_hz, depth }) = c.modulation {
+                values.extend([rate_hz.get().to_bits(), depth.get().to_bits()]);
+            }
+        }
+        _ => panic!("fixture has exactly two alternatives"),
+    }
+    values
 }

@@ -1,5 +1,5 @@
 //! sound presentation.
-use crate::*;
+use crate::{compact_number, format_dbfs};
 use auditorylab_core::{
     CarrierFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate, PulseFacts,
     VoiceFacts, VoiceObservation, rhythm::Method, rhythm::Structure,
@@ -26,9 +26,7 @@ pub(crate) fn pulse_brief(p: PulseFacts) -> String {
 }
 
 /// Requested and realized carrier and modulation quantities. Brief views
-
 /// state realized values; detail states both, with the rate.
-
 pub(crate) fn generator_description(facts: &VoiceFacts, detail: bool) -> String {
     let phase = |p: PhaseRate| {
         if detail && p.requested_hz != p.realized_hz {
@@ -75,9 +73,7 @@ pub(crate) const fn route(ears: Ears) -> &'static str {
 }
 
 /// A validated voice's quantities, route and peak bound. `detail` adds
-
 /// requested values and the rate they were resolved at.
-
 #[must_use]
 pub(crate) fn voice_description(facts: &VoiceFacts, detail: bool) -> String {
     let generated = format!(
@@ -88,7 +84,8 @@ pub(crate) fn voice_description(facts: &VoiceFacts, detail: bool) -> String {
     );
     if detail && let Some(pair) = facts.pair {
         format!(
-            "Authored pair {} · nominal signed offset {} Hz · requested carriers {} / {} Hz · {generated}",
+            "Authored pair {} · nominal signed offset {} Hz · requested carriers \
+                {} / {} Hz · {generated}",
             pair.owner, pair.offset_hz, pair.first_hz, pair.second_hz
         )
     } else {
@@ -123,7 +120,6 @@ pub(crate) fn observation_description(voice: &VoiceObservation) -> String {
 }
 
 /// Every generated voice with its role and actual per-ear gains.
-
 #[must_use]
 pub(crate) fn generated_details(observation: &Observation) -> String {
     observation
@@ -145,36 +141,10 @@ pub(crate) fn generated_details(observation: &Observation) -> String {
 }
 
 /// The physical structure in one line; no global frequency is guessed for
-
 /// independent processes and no perceptual effect is claimed.
-
 #[must_use]
 pub(crate) fn structure_description(structure: &Structure) -> String {
-    let relation = structure
-        .pairs
-        .first()
-        .filter(|_| structure.voices.len() == 2)
-        .map(|pair| match pair.kind {
-            auditorylab_core::PairKind::Binaural if pair.first == pair.second => format!(
-                "Unison · Left/right {} Hz steady tones",
-                compact_number(pair.first)
-            ),
-            auditorylab_core::PairKind::Binaural => format!(
-                "{} Hz interaural difference · Left {} / Right {} Hz steady tones",
-                compact_number((pair.first - pair.second).abs()),
-                compact_number(pair.first),
-                compact_number(pair.second)
-            ),
-            auditorylab_core::PairKind::Monaural if pair.first == pair.second => {
-                format!("Unison · {} Hz steady tones", compact_number(pair.first))
-            }
-            auditorylab_core::PairKind::Monaural => format!(
-                "{} Hz monaural beat · {} + {} Hz steady tones",
-                compact_number((pair.first - pair.second).abs()),
-                compact_number(pair.first),
-                compact_number(pair.second)
-            ),
-        });
+    let relation = pair_description(structure);
     let mut parts = Vec::new();
     for r in &structure.rhythms {
         let detail = structure
@@ -259,7 +229,6 @@ pub(crate) fn structure_description(structure: &Structure) -> String {
 }
 
 /// Nominal reference memberships and exact attributable rates; no EEG claim.
-
 #[must_use]
 pub(crate) fn nominal_description(analysis: &auditorylab_core::rhythm::Analysis) -> String {
     let mut labels: Vec<String> = analysis.bands.iter().map(ToString::to_string).collect();
@@ -305,15 +274,10 @@ pub(crate) fn nominal_description(analysis: &auditorylab_core::rhythm::Analysis)
 }
 
 /// Short display descriptions of acoustic facts and structures.
-
 /// Complete display facts, including rates, attribution and generated gains.
-
 /// Application text for editable core quantities.
-
 /// Application context attached to a rate-dependent acoustic validation failure.
-
 /// Escape stored content only at a read-only display boundary.
-
 pub fn voice_summary(value: &VoiceFacts) -> String {
     voice_description(value, false)
 }
@@ -334,7 +298,7 @@ pub fn observation_details(value: &Observation) -> String {
     generated_details(value)
 }
 
-pub fn optional_observation_summary(value: &Option<&Observation>) -> String {
+pub fn optional_observation_summary(value: Option<&Observation>) -> String {
     value.map_or_else(
         || {
             auditorylab_app::vocabulary::Status::WaitingForGeneratedAudio
@@ -369,10 +333,12 @@ pub fn parameter_help(value: ParameterId) -> &'static str {
         }
         ParameterId::GateRate => "How many times each second the gate opens.",
         ParameterId::GateWidth => {
-            "How long each gate stays open; generation rounds it to whole frames at the sample rate."
+            "How long each gate stays open; generation rounds it to whole frames \
+                at the sample rate."
         }
         ParameterId::PairFirstFrequency => {
-            "The first carrier; changing it also changes the second carrier through the signed offset."
+            "The first carrier; changing it also changes the second carrier \
+                through the signed offset."
         }
         ParameterId::PairOffset => {
             "Second carrier minus first carrier; its absolute value is the nominal pair rhythm."
@@ -385,7 +351,6 @@ pub fn parameter_help(value: ParameterId) -> &'static str {
 }
 
 /// A quantity's label with its unit, as on an input.
-
 pub fn parameter_input_label(value: ParameterId) -> String {
     let id = value;
     let descriptor = id.descriptor();
@@ -393,7 +358,6 @@ pub fn parameter_input_label(value: ParameterId) -> String {
 }
 
 /// Render a typed intrinsic rhythm-analysis diagnostic.
-
 #[must_use]
 pub fn rhythm_diagnostic(issue: &auditorylab_core::rhythm::Issue) -> String {
     use auditorylab_core::{ValueRule, rhythm::Issue};
@@ -425,8 +389,37 @@ pub(crate) const fn finite(value: f64) -> auditorylab_core::Finite {
     }
 }
 
+fn pair_description(structure: &Structure) -> Option<String> {
+    structure
+        .pairs
+        .first()
+        .filter(|_| structure.voices.len() == 2)
+        .map(|pair| match pair.kind {
+            auditorylab_core::PairKind::Binaural if pair.first == pair.second => format!(
+                "Unison · Left/right {} Hz steady tones",
+                compact_number(pair.first)
+            ),
+            auditorylab_core::PairKind::Binaural => format!(
+                "{} Hz interaural difference · Left {} / Right {} Hz steady tones",
+                compact_number((pair.first - pair.second).abs()),
+                compact_number(pair.first),
+                compact_number(pair.second)
+            ),
+            auditorylab_core::PairKind::Monaural if pair.first == pair.second => {
+                format!("Unison · {} Hz steady tones", compact_number(pair.first))
+            }
+            auditorylab_core::PairKind::Monaural => format!(
+                "{} Hz monaural beat · {} + {} Hz steady tones",
+                compact_number((pair.first - pair.second).abs()),
+                compact_number(pair.first),
+                compact_number(pair.second)
+            ),
+        })
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::NumberStyle;
     use auditorylab_core::{SampleRate, Sound};
     #[test]
     fn capacity_text_names_current_counts_and_the_exceeded_budget() {
@@ -526,18 +519,18 @@ mod tests {
             (3600.0, "1 h"),
             (5400.0, "1 h 30 min"),
             (307.2, "5 min 7.2 s"),
-            (59.9999999, "59.9999999 s"),
-            (3599.9999999, "59 min 59.9999999 s"),
-            (59.9999999999, "~1 min"),
-            (3599.9999999999, "~1 h"),
-            (1.0 / 768000.0, "~0.000001302 s"),
+            (59.999_999_9, "59.9999999 s"),
+            (3_599.999_999_9, "59 min 59.9999999 s"),
+            (59.999_999_999_9, "~1 min"),
+            (3_599.999_999_999_9, "~1 h"),
+            (1.0 / 768_000.0, "~0.000001302 s"),
             (1e-12, "1e-12 s"),
             (1e300, "1e300 s"),
             (-1.0, "-1 s"),
             (f64::NAN, "NaN s"),
             (f64::INFINITY, "inf s"),
             (f64::NEG_INFINITY, "-inf s"),
-            (18446744073709551616.0, "1.8446744073709552e19 s"),
+            (18_446_744_073_709_551_616.0, "1.8446744073709552e19 s"),
             (68_719_476_736.0, "19088743 h 32 min 16 s"),
         ] {
             assert_eq!(
@@ -547,7 +540,7 @@ mod tests {
             );
         }
         assert_eq!(
-            crate::numbers::format(NumberStyle::Decibels, -19.999999999999996),
+            crate::numbers::format(NumberStyle::Decibels, -19.999_999_999_999_996),
             "-20.0"
         );
         assert_eq!(
@@ -559,7 +552,7 @@ mod tests {
     #[test]
     fn editable_numbers_enter_the_same_model_value_again() {
         // 29 % is 0.29, whose naive display is 28.999999999999996.
-        assert_eq!(0.29 * 100.0, 28.999999999999996);
+        assert_eq!(0.29 * 100.0, 28.999_999_999_999_996);
         assert_eq!(
             auditorylab_app::document::input::parameter_text(ParameterId::AmDepth, 0.29),
             "29"
@@ -571,7 +564,7 @@ mod tests {
         assert_eq!(
             auditorylab_app::document::input::parameter_text(
                 ParameterId::ToneFrequency,
-                39.0625123456789
+                39.062_512_345_678_9
             ),
             "39.0625123456789"
         );
@@ -615,11 +608,11 @@ mod tests {
             "39.0625"
         );
         assert_eq!(
-            crate::numbers::format(NumberStyle::Compact, 39.0625123456789),
+            crate::numbers::format(NumberStyle::Compact, 39.062_512_345_678_9),
             "≈39.0625"
         );
         assert_eq!(
-            crate::numbers::format(NumberStyle::Compact, 100000.0),
+            crate::numbers::format(NumberStyle::Compact, 100_000.0),
             "100000"
         );
         assert!(!crate::numbers::format(NumberStyle::Compact, f64::from_bits(1)).starts_with('0'));

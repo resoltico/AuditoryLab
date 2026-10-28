@@ -16,7 +16,8 @@ fn keys<T: Vocabulary>() -> Vec<String> {
 }
 #[expect(
     clippy::expect_used,
-    reason = "Malformed reference markup must fail the contract test instead of omitting a documented key"
+    reason = "Malformed reference markup must fail the contract test instead of \
+        omitting a documented key"
 )]
 fn table(document: &str, marker: &str, header: &str) -> BTreeMap<String, Vec<String>> {
     let begin = format!("<!-- {marker}:begin -->");
@@ -65,7 +66,17 @@ fn table(document: &str, marker: &str, header: &str) -> BTreeMap<String, Vec<Str
 #[test]
 fn vocabulary_and_query_tables_match_every_owned_key() {
     let mut expected = BTreeMap::new();
-    macro_rules! owner {($($kind:ty),+)=>{$(assert!(expected.insert(auditorylab_core::diagnostic::Code::code(&"".parse::<$kind>().expect_err("empty input is outside every vocabulary")).strip_prefix("vocabulary.").unwrap().to_owned(),keys::<$kind>()).is_none());)+};}
+    macro_rules! owner {
+        ($($kind:ty),+) => {
+            $(
+                let code = auditorylab_core::diagnostic::Code::code(
+                    &"".parse::<$kind>().expect_err("empty input is outside every vocabulary")
+                );
+                let name = code.strip_prefix("vocabulary.").unwrap().to_owned();
+                assert!(expected.insert(name, keys::<$kind>()).is_none());
+            )+
+        };
+    }
     owner!(
         Scope,
         SortBy,

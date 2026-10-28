@@ -144,12 +144,12 @@ impl MonitorWriter {
         }
         self.next_sample = Some(start + frames.len() as u64);
     }
-    pub(crate) fn finish(&mut self, frame: u64, observation: Option<Observation>) {
+    pub(crate) fn finish(&mut self, frame: u64, observation: Option<&Observation>) {
         if frame != self.published.frame {
             self.published.sequence += 1;
         }
         self.published.frame = frame;
-        self.published.observation = observation;
+        self.published.observation = observation.copied();
         self.state.write(self.published);
     }
 }
@@ -427,7 +427,9 @@ pub struct Meter {
 /// Reduce a copied window outside the callback. Silence uses negative infinity.
 #[expect(
     clippy::cast_precision_loss,
-    reason = "RMS normalization divides by a positive slice length; binary64 count rounding is acceptable for the reported meter and never changes generated samples"
+    reason = "RMS normalization divides by a positive slice length; binary64 count \
+        rounding is acceptable for the reported meter and never changes \
+        generated samples"
 )]
 #[must_use]
 pub(crate) fn sample_meters(samples: &[[f64; 2]]) -> [Meter; 2] {

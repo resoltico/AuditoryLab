@@ -24,7 +24,13 @@ export struct ComponentRow {
     error: string,
     parameters: [ParameterRow],
 }
-export struct MetadataRow { key: string, label: string, text: string, staged: bool, diagnostic: string }
+export struct MetadataRow {
+    key: string,
+    label: string,
+    text: string,
+    staged: bool,
+    diagnostic: string,
+}
 export struct ModelLane { component: string, label: string, trace: string }
 
 // A process-local immutable snapshot binding, independent of row position.
@@ -32,9 +38,24 @@ import { EntryAddress } from "library-actions.slint";
 export struct CatalogRow {
     entry: EntryAddress,
     built-in: bool,
-    text: string, binding: string, title: string, collection: string,
-    summary: string, bands: string, duration: string, dates: string
+    text: string,
+    binding: string,
+    title: string,
+    collection: string,
+    summary: string,
+    bands: string,
+    duration: string,
+    dates: string
 }
-export struct LibraryFacet { choice-index: int, selected: bool, label: string, detail: string, count: string, text: string }
+export struct LibraryFacet {
+    choice-index: int,
+    selected: bool,
+    label: string,
+    detail: string,
+    count: string,
+    text: string
+}
 
 export struct ControlOption { label: string, enabled: bool }
+
+export struct DateInput { from-text: string, through-text: string }

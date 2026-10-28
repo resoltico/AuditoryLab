@@ -9,13 +9,12 @@ pub(crate) fn fresh_document()
     })
 }
 
-pub(crate) fn random_uuid() -> Result<auditorylab_core::DocumentUuid, crate::identity::IdentityError>
-{
+pub(crate) fn random_uuid() -> Result<crate::core::DocumentUuid, IdentityError> {
     generate_uuid(getrandom::fill)
 }
 fn generate_uuid(
     fill: impl FnOnce(&mut [u8]) -> Result<(), getrandom::Error>,
-) -> Result<auditorylab_core::DocumentUuid, crate::identity::IdentityError> {
+) -> Result<crate::core::DocumentUuid, IdentityError> {
     let mut bytes = [0_u8; 16];
     fill(&mut bytes).map_err(crate::identity::IdentityError::Entropy)?;
     Ok(auditorylab_core::DocumentUuid::from_random_bytes(bytes))
@@ -84,6 +83,29 @@ pub const SOURCE_URL: &str = env!("CARGO_PKG_REPOSITORY");
 /// Identity generated from workspace metadata.
 pub const BUILD_IDENTITY: BuildIdentity = generated::BUILD;
 
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    IdentityError {
+        codes {
+            Self::Entropy(..) => "identity.entropy",
+            Self::Exhausted(..) => "identity.exhausted",
+        }
+        delegates {}
+        params(this) {
+            match this {
+                Self::Entropy(error) => crate::core::diagnostic_params! {"cause"=>error.to_string()}
+                    ,
+                Self::Exhausted(scope) => {
+                    crate::core::diagnostic_params! {"scope"=>match scope {
+                        IdentityScope::Document=>"document",
+                        IdentityScope::ExternalEntry=>"external_e\
+                        ntry"}}
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -95,24 +117,5 @@ mod tests {
             "identity.entropy"
         );
         assert!(std::error::Error::source(&error).is_some());
-    }
-}
-
-crate::core::diagnostic_codes! {
-    pub(crate) const CODES;
-    IdentityError {
-        codes {
-            Self::Entropy(..) => "identity.entropy",
-            Self::Exhausted(..) => "identity.exhausted",
-        }
-        delegates {}
-        params(this) {
-            match this {
-                Self::Entropy(error) => crate::core::diagnostic_params! {"cause"=>error.to_string()},
-                Self::Exhausted(scope) => {
-                    crate::core::diagnostic_params! {"scope"=>match scope {IdentityScope::Document=>"document",IdentityScope::ExternalEntry=>"external_entry"}}
-                }
-            }
-        }
     }
 }

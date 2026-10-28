@@ -60,7 +60,7 @@ impl slint::winit_030::CustomApplicationHandler for ApplicationHandler {
     }
 }
 
-/// Answer AppKit's pending termination request.
+/// Answer `AppKit`'s pending termination request.
 pub(crate) fn reply_to_termination(request: TerminationRequest, approve: bool) {
     if let Err(error) = reply(request, approve) {
         eprintln!(
@@ -88,7 +88,8 @@ define_class!(
         fn stop_audio(&self, sender: &NSButton) {
             let requested = matches!(
                 self.ivars().control.request_stop(),
-                auditorylab_app::services::playback::StopRequest::Accepted | auditorylab_app::services::playback::StopRequest::AlreadyRequested
+                auditorylab_app::services::playback::StopRequest::Accepted |
+                    auditorylab_app::services::playback::StopRequest::AlreadyRequested
             );
             sender.setTitle(&NSString::from_str(if requested {
                 crate::terms::Status::StopInFilePanelRequested.label()
@@ -121,7 +122,8 @@ impl StopTarget {
 #[expect(
     unsafe_code,
     deprecated,
-    reason = "main-thread AppKit sheet/completion ABI; macOS 15-compatible extension filter and checked owned panel lifetime"
+    reason = "main-thread AppKit sheet/completion ABI; macOS 15-compatible \
+        extension filter and checked owned panel lifetime"
 )]
 pub(crate) async fn choose_file(
     ui: &crate::MainWindow,
@@ -131,6 +133,7 @@ pub(crate) async fn choose_file(
 ) -> Result<Option<std::path::PathBuf>, String> {
     use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use std::task::Poll;
+
     let mtm =
         MainThreadMarker::new().ok_or(crate::terms::Caption::NativeFilePanelUnavailable.label())?;
     let owner = ui.window().window_handle();

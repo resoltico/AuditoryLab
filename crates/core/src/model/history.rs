@@ -10,7 +10,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DocumentUuid([u8; 16]);
 impl DocumentUuid {
-    /// Set the UUIDv4 version/variant in cryptographically random caller bytes.
+    /// Set the `UUIDv4` version/variant in cryptographically random caller bytes.
     /// Randomness acquisition is fallible application work, never synthesis work.
     #[must_use]
     pub const fn from_random_bytes(mut bytes: [u8; 16]) -> Self {
@@ -78,7 +78,8 @@ impl Timestamp {
 impl FromStr for Timestamp {
     type Err = &'static str;
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        let error = "expected YYYY-MM-DDTHH:MM:SS[.1–9 digits]Z or an explicit numeric offset; no leap seconds or -00:00";
+        let error = "expected YYYY-MM-DDTHH:MM:SS[.1–9 digits]Z or an explicit numeric \
+            offset; no leap seconds or -00:00";
         let b = text.as_bytes();
         if b.len() < 20
             || !b[..4].iter().all(u8::is_ascii_digit)

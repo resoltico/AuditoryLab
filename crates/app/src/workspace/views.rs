@@ -193,48 +193,28 @@ pub struct ActionView {
 #[derive(Debug, Clone)]
 pub struct WorkspaceActions {
     pub operations: Vec<ActionView>,
-    /// Play (or replace playing audio) is admitted.
-    pub can_play: bool,
+    pub import: Result<(), Refusal>,
+    pub library: Result<(), Refusal>,
+    pub add_to_library: Result<(), Refusal>,
+    pub trash: Result<(), Refusal>,
+    pub start: Result<(), Refusal>,
+    pub preview: Result<(), Refusal>,
+    pub save_copy: Result<(), Refusal>,
+    pub export_recipe: Result<(), Refusal>,
+    pub editing: Result<(), Refusal>,
+    pub restore_component: Result<(), Refusal>,
     /// Label for Library playback or replacement.
     pub playing: bool,
-    /// A file import may be requested.
-    pub can_import: bool,
-    /// The library worker can accept an operation at this configured destination.
-    pub can_manage_library: bool,
-    /// The selected opened input can be explicitly imported.
-    pub can_add_to_library: bool,
-    /// Trash can start or queue the current managed draft decision.
-    pub can_request_trash: bool,
-    /// A document replacement/copy may be requested (possibly queued).
-    pub can_new: bool,
-    /// The current selection can be copied.
-    pub can_copy: bool,
     /// Actionable reason a selected source cannot be derived.
     pub copy_reason: Option<Refusal>,
     /// Bounded global refusal or task outcome beside persistent actions.
     pub operation_refusal: Option<Refusal>,
-    /// A static preview may replace the last session display.
-    pub can_preview: bool,
     /// Why Play is not admitted.
     pub play_reason: Option<Refusal>,
-    /// Save is admitted.
-    pub can_save: bool,
-    /// A complete independent copy can be created and saved.
-    pub can_save_copy: bool,
-    /// Current portable content can be captured for an external export.
-    pub can_export_recipe: bool,
     /// Why Save is not admitted.
     pub save_reason: Option<Refusal>,
-    /// Export is admitted.
-    pub can_export: bool,
     /// Why Export is not admitted.
     pub export_reason: Option<Refusal>,
-    /// Editing commands are accepted.
-    pub can_edit: bool,
-    /// Another component fits in the open sound.
-    pub can_add_component: bool,
-    /// Adding a pair requires room for both generator lanes.
-    pub can_add_pair: bool,
     /// Why a two-tone pair cannot currently be added.
     pub pair_add_reason: Option<Refusal>,
     /// Why no component can be added, when editing is otherwise allowed.
@@ -242,16 +222,10 @@ pub struct WorkspaceActions {
     /// The most recently removed component, which Undo remove restores;
     /// empty when there is none.
     pub removed_component: Option<auditorylab_core::Component>,
-    /// Undo remove is admitted.
-    pub can_restore_component: bool,
     /// A file task occupies its joined slot; prompt admission is separate.
     pub file_busy: bool,
-    /// An audio task occupies its slot.
-    pub playback_busy: bool,
     /// An export runs.
     pub exporting: bool,
-    /// The transport button is enabled.
-    pub transport_enabled: bool,
     /// The transport button's label.
     pub transport_action: crate::vocabulary::Operation,
     /// What the next Play would play.
@@ -330,5 +304,62 @@ crate::core::diagnostic_codes! {
             Self::Voice(cause) => cause,
             Self::Sound(cause) => cause,
         }
+    }
+}
+
+impl WorkspaceActions {
+    pub fn can_play(&self) -> bool {
+        self.play_reason.is_none()
+    }
+    pub fn can_import(&self) -> bool {
+        self.import.is_ok()
+    }
+    pub fn can_manage_library(&self) -> bool {
+        self.library.is_ok()
+    }
+    pub fn can_add_to_library(&self) -> bool {
+        self.add_to_library.is_ok()
+    }
+    pub fn can_request_trash(&self) -> bool {
+        self.trash.is_ok()
+    }
+    pub fn can_new(&self) -> bool {
+        self.start.is_ok()
+    }
+    pub fn can_copy(&self) -> bool {
+        self.copy_reason.is_none()
+    }
+    pub fn can_preview(&self) -> bool {
+        self.preview.is_ok()
+    }
+    pub fn can_save(&self) -> bool {
+        self.save_reason.is_none()
+    }
+    pub fn can_save_copy(&self) -> bool {
+        self.save_copy.is_ok()
+    }
+    pub fn can_export_recipe(&self) -> bool {
+        self.export_recipe.is_ok()
+    }
+    pub fn can_export(&self) -> bool {
+        self.export_reason.is_none()
+    }
+    pub fn can_edit(&self) -> bool {
+        self.editing.is_ok()
+    }
+    pub fn can_add_component(&self) -> bool {
+        self.add_component_reason.is_none()
+    }
+    pub fn can_add_pair(&self) -> bool {
+        self.pair_add_reason.is_none()
+    }
+    pub fn can_restore_component(&self) -> bool {
+        self.restore_component.is_ok()
+    }
+    pub fn playback_busy(&self) -> bool {
+        self.playing
+    }
+    pub fn transport_enabled(&self) -> bool {
+        self.playing || self.can_play()
     }
 }

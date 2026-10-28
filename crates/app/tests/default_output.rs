@@ -23,7 +23,7 @@ fn silent(
     )
     .unwrap();
     let snapshot = resolved.snapshot();
-    assert!(snapshot.sound().components().is_empty());
+    assert_eq!(snapshot.sound().components(), []);
     let session = Session::new();
     let control = session.control();
     let Preparation::Ready(playback) = prepare_playback(session, &resolved).unwrap() else {
@@ -74,7 +74,7 @@ fn silence_stops() {
 #[ignore = "plays one second of an empty live draft on the default output"]
 fn live_silence_stops() {
     let draft = Draft::new().unwrap();
-    assert!(draft.components().is_empty());
+    assert_eq!(draft.components(), []);
     let session = Session::new();
     let control = session.control();
     let Preparation::Ready(live) = prepare_live(session, &draft).unwrap() else {

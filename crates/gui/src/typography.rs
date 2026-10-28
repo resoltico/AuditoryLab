@@ -21,7 +21,8 @@ pub(super) fn resolve() -> Typography {
     let (size, origin) = {
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "AppKit systemFontSize returns the platform UI point size; rounding binary64 to the renderer f32 coordinate type is intentional"
+            reason = "AppKit systemFontSize returns the platform UI point size; rounding \
+                binary64 to the renderer f32 coordinate type is intentional"
         )]
         let size = objc2_app_kit::NSFont::systemFontSize() as f32;
         (size, "AppKit system UI / fontique SystemUi".to_owned())
@@ -100,6 +101,7 @@ impl TypographyService {
     #[cfg(target_os = "linux")]
     pub(super) fn bind_window(&mut self, window: &slint::Window, base: &Typography) {
         use slint::winit_030::{WinitWindowAccessor, winit::platform::wayland::WindowExtWayland};
+
         if self.backend_ready {
             return;
         }
@@ -153,13 +155,15 @@ impl Drop for TypographyService {
 #[expect(
     unsafe_code,
     clippy::cast_possible_truncation,
-    reason = "read-only Win32 metrics at 96 DPI use an initialized ABI structure with a fixed-size u32 length and UTF16 font name"
+    reason = "read-only Win32 metrics at 96 DPI use an initialized ABI structure \
+        with a fixed-size u32 length and UTF16 font name"
 )]
 fn windows_listener(sender: TypographySink, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
     use windows_sys::Win32::UI::{
         HiDpi::SystemParametersInfoForDpi,
         WindowsAndMessaging::{NONCLIENTMETRICSW, SPI_GETNONCLIENTMETRICS},
     };
+
     let mut last = None;
     while !stop.load(std::sync::atomic::Ordering::Relaxed) {
         // SAFETY: NONCLIENTMETRICSW is a plain initialized C record; GET fills exactly cbSize.
@@ -231,8 +235,8 @@ mod tests {
         };
         let sink = TypographySink {
             pending,
-            stop,
             wake,
+            stop,
         };
         sink.send(Typography {
             family: "First".into(),

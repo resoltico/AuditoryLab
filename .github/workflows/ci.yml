@@ -49,8 +49,31 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes build-essential pkg-config libasound2-dev libfontconfig1-dev libglib2.0-bin libxkbcommon-x11-0
+      - name: Read resolved Slint formatter version
+        if: github.event_name != 'schedule'
+        run: |
+          python3 - <<'PYTHON' >> "$GITHUB_ENV"
+          import tomllib
+          with open("Cargo.lock", "rb") as source:
+              lock = tomllib.load(source)
+          versions = [p["version"] for p in lock["package"] if p["name"] == "slint"]
+          assert len(versions) == 1, "one resolved Slint version is required"
+          print("SLINT_LSP_VERSION=" + versions[0])
+          PYTHON
+      - name: Cache Slint formatter
+        if: github.event_name != 'schedule'
+        id: slint-format-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ env.CARGO_HOME }}/bin/slint-lsp
+          key: slint-lsp-${{ runner.os }}-${{ runner.arch }}-${{ env.SLINT_LSP_VERSION }}-${{ hashFiles('rust-toolchain.toml', '.cargo/config.toml') }}
+      - name: Install Slint formatter
+        if: github.event_name != 'schedule' && steps.slint-format-cache.outputs.cache-hit != 'true'
+        run: cargo install slint-lsp --version "=$SLINT_LSP_VERSION" --locked --no-default-features
       - if: github.event_name != 'schedule'
         run: cargo fmt --all -- --check
+      - if: github.event_name != 'schedule'
+        run: cargo xtask check-style
       - name: Validate GitHub workflows
         if: github.event_name != 'schedule'
         run: |

@@ -79,7 +79,7 @@ impl FromComponentFields for ComponentForm {
     fn identity<E: serde::de::Error>(_: Option<ComponentId>) -> Result<Self::Identity, E> {
         Ok(())
     }
-    fn from_fields(_: Self::Identity, form: ComponentForm) -> Self {
+    fn from_fields((): Self::Identity, form: ComponentForm) -> Self {
         form
     }
 }
@@ -105,14 +105,17 @@ macro_rules! define_component_codec {
                 #[doc=concat!("Authored ",$key," quantities.")]
                 $kind {
                     $(#[doc="Requested route."] $route:component_field_type!($route),)?
-                    $(#[doc=concat!("Requested `",stringify!($quantity),"` in model units.")] $quantity:component_field_type!($quantity),)*
+                    $(#[doc=concat!("Requested `",stringify!($quantity),
+                        "` in model units.")] $quantity:component_field_type!($quantity),)*
                     $(#[doc="Requested peak level in dBFS."] $level:component_field_type!($level),)?
-                    $(#[doc="Optional authored modulation."] $modulation:component_field_type!($modulation),)?
+                    $(#[doc="Optional authored modulation."]
+                        $modulation:component_field_type!($modulation),)?
                 },
             )*
         }
         impl ComponentForm {
-            fn serialize_with_id<S:Serializer>(self,id:Option<ComponentId>,serializer:S)->Result<S::Ok,S::Error> {
+            fn serialize_with_id<S:Serializer>(self,id:Option<ComponentId>,
+                serializer:S)->Result<S::Ok,S::Error> {
                 use serde::ser::SerializeMap;
                 let mut map=serializer.serialize_map(None)?;
                 match self {
@@ -122,24 +125,29 @@ macro_rules! define_component_codec {
                         $(map.serialize_entry(stringify!($route),&$route)?;)?
                         $(map.serialize_entry(stringify!($quantity),&$quantity)?;)*
                         $(map.serialize_entry(stringify!($level),&$level)?;)?
-                        $(if let Some(modulation)=$modulation {map.serialize_entry(stringify!($modulation),&modulation)?;})?
+                        $(if let Some(modulation)=$modulation {
+                            map.serialize_entry(stringify!($modulation),&modulation)?;})?
                     },)*
                 }
                 map.end()
             }
             /// Shared route, absent for separate-ear pairs.
             #[must_use]
-            pub const fn route(self)->Option<Ears> {match self {$(Self::$kind {$($route,)?..}=>optional_route!($($route)?),)*}}
+            pub const fn route(self)->Option<Ears> {match self {$(Self::$kind {$($route,)?..}
+                =>optional_route!($($route)?),)*}}
             /// Optional modulation, when the kind permits it.
             #[must_use]
-            pub const fn modulation(self)->Option<Modulation> {match self {$(Self::$kind {$($modulation,)?..}=>optional_modulation!($($modulation)?),)*}}
+            pub const fn modulation(self)->Option<Modulation> {match self {$(Self::$kind {
+                $($modulation,)?..}=>optional_modulation!($($modulation)?),)*}}
             /// Replace modulation only on a kind that supports it.
-            pub fn set_modulation(&mut self,value:Option<Modulation>)->bool {match self {$(Self::$kind {$($modulation,)?..}=>replace_modulation!(value;$($modulation)?),)*}}
+            pub fn set_modulation(&mut self,value:Option<Modulation>)->bool {match self {
+                $(Self::$kind {$($modulation,)?..}=>replace_modulation!(value;$($modulation)?),)*}}
             /// Read an applicable authored quantity in model units.
             #[must_use]
             pub fn get(self,parameter:crate::ParameterId)->Option<Finite> {
                 match (parameter,self) {
-                    $($( (component_parameter!($quantity),Self::$kind {$quantity,..})=>Some($quantity),)*
+                    $($( (component_parameter!($quantity),Self::$kind {$quantity,..}
+                        )=>Some($quantity),)*
                       $((component_parameter!($level),Self::$kind {$level,..})=>Some($level),)?)*
                     _=>self.modulation().and_then(|modulation|modulation.get(parameter)),
                 }
@@ -148,7 +156,8 @@ macro_rules! define_component_codec {
             pub fn set(&mut self,parameter:crate::ParameterId,value:Finite)->bool {
                 match self {
                     $(Self::$kind { $($quantity,)* $($level,)? $($modulation,)? ..}=>{
-                        $(if parameter==component_parameter!($quantity) {*$quantity=value;return true;})*
+                        $(if parameter==component_parameter!($quantity) {*$quantity=value;
+                            return true;})*
                         $(if parameter==component_parameter!($level) {*$level=value;return true;})?
                         set_modulation_quantity!(parameter,value;$($modulation)?)
                     },)*
@@ -156,15 +165,18 @@ macro_rules! define_component_codec {
             }
         }
         impl Serialize for ComponentForm {
-            fn serialize<S:Serializer>(&self,serializer:S)->Result<S::Ok,S::Error> {self.serialize_with_id(None,serializer)}
+            fn serialize<S:Serializer>(&self,serializer:S)->Result<S::Ok,S::Error> {
+                self.serialize_with_id(None,serializer)}
         }
         impl Serialize for Component {
-            fn serialize<S:Serializer>(&self,serializer:S)->Result<S::Ok,S::Error> {self.form.serialize_with_id(Some(self.id),serializer)}
+            fn serialize<S:Serializer>(&self,serializer:S)->Result<S::Ok,S::Error> {
+                self.form.serialize_with_id(Some(self.id),serializer)}
         }
         struct ComponentVisitor<T>(core::marker::PhantomData<T>);
         impl<'de,T:FromComponentFields> serde::de::Visitor<'de> for ComponentVisitor<T> {
             type Value=T;
-            fn expecting(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {f.write_str("an authored component")}
+            fn expecting(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {f.write_str("an authored \
+                component")}
             fn visit_map<M:serde::de::MapAccess<'de>>(self,mut map:M)->Result<T,M::Error> {
                 use serde::de::Error;
                 let mut id:Option<ComponentId>=None;
@@ -172,10 +184,16 @@ macro_rules! define_component_codec {
                 $(let mut $wire:Option<$wire_type>=None;)*
                 while let Some(key)=map.next_key::<alloc::string::String>()? {
                     match key.as_str() {
-                        "id" if T::IDENTIFIED=>{if id.is_some(){return Err(M::Error::duplicate_field("id"));}id=Some(map.next_value()?);},
-                        "kind"=>{if kind.is_some(){return Err(M::Error::duplicate_field("kind"));}kind=Some(map.next_value()?);},
-                        $(stringify!($wire)=>{if $wire.is_some(){return Err(M::Error::duplicate_field(stringify!($wire)));}$wire=Some(map.next_value()?);},)*
-                        _=>return Err(M::Error::custom(alloc::format!("unknown component field `{key}`"))),
+                        "id" if T::IDENTIFIED=>{if id.is_some(){
+                            return Err(M::Error::duplicate_field("id"));}id=Some(map.next_value()?);
+                            },
+                        "kind"=>{if kind.is_some(){return Err(M::Error::duplicate_field("kind"));}
+                            kind=Some(map.next_value()?);},
+                        $(stringify!($wire)=>{if $wire.is_some(){
+                            return Err(M::Error::duplicate_field(stringify!($wire)));}
+                            $wire=Some(map.next_value()?);},)*
+                        _=>return Err(M::Error::custom(alloc::format!("unknown component field \
+                            `{key}`"))),
                     }
                 }
                 let id=T::identity(id)?;
@@ -183,12 +201,27 @@ macro_rules! define_component_codec {
                 let present=[$((stringify!($wire),$wire.is_some())),*];
                 let form=match kind.as_str() {
                     $($key=>{
-                        let allowed:&[&str]=&[$(stringify!($route),)?$(stringify!($quantity),)*$(stringify!($level),)?$(stringify!($modulation),)?];
-                        for (field,present) in present {if present&&!allowed.contains(&field) {return Err(M::Error::custom(alloc::format!("unknown field `{field}` for {kind}")));}}
+                        let allowed:&[&str]=&[$(stringify!($route),)?$(stringify!($quantity),
+                            )*$(stringify!($level),)?$(stringify!($modulation),)?];
+                        for (field,present) in present {if present&&!allowed.contains(&field) {
+                            return Err(M::Error::custom(alloc::format!("unknown \
+                            field `{field}` for {kind}")));}}
                         ComponentForm::$kind {
-                            $($route:$route.ok_or_else(||M::Error::missing_field(stringify!($route)))?,)?
-                            $($quantity:$quantity.ok_or_else(||M::Error::missing_field(stringify!($quantity)))?,)*
-                            $($level:$level.ok_or_else(||M::Error::missing_field(stringify!($level)))?,)?
+                            $(
+                                $route: $route.ok_or_else(
+                                    || M::Error::missing_field(stringify!($route))
+                                )?,
+                            )?
+                            $(
+                                $quantity: $quantity.ok_or_else(
+                                    || M::Error::missing_field(stringify!($quantity))
+                                )?,
+                            )*
+                            $(
+                                $level: $level.ok_or_else(
+                                    || M::Error::missing_field(stringify!($level))
+                                )?,
+                            )?
                             $($modulation:$modulation.unwrap_or(None),)?
                         }
                     },)*
@@ -198,10 +231,12 @@ macro_rules! define_component_codec {
             }
         }
         impl<'de> Deserialize<'de> for Component {
-            fn deserialize<D:Deserializer<'de>>(deserializer:D)->Result<Self,D::Error> {deserializer.deserialize_map(ComponentVisitor::<Self>(core::marker::PhantomData))}
+            fn deserialize<D:Deserializer<'de>>(deserializer:D)->Result<Self,D::Error> {
+                deserializer.deserialize_map(ComponentVisitor::<Self>(core::marker::PhantomData))}
         }
         impl<'de> Deserialize<'de> for ComponentForm {
-            fn deserialize<D:Deserializer<'de>>(deserializer:D)->Result<Self,D::Error> {deserializer.deserialize_map(ComponentVisitor::<Self>(core::marker::PhantomData))}
+            fn deserialize<D:Deserializer<'de>>(deserializer:D)->Result<Self,D::Error> {
+                deserializer.deserialize_map(ComponentVisitor::<Self>(core::marker::PhantomData))}
         }
     };
 }
@@ -501,7 +536,7 @@ impl Sound {
             self.duration_seconds.get(),
             self.fade_seconds.get(),
         )?;
-        Ok(crate::Signal::new(self.target(rate)?, envelope))
+        Ok(crate::Signal::new(&self.target(rate)?, envelope))
     }
     /// Whether any authored form needs separate ear channels.
     #[must_use]
@@ -642,9 +677,6 @@ crate::vocabulary::vocabulary! { PairKind,"pair_kind" {
     Monaural => ("monaural","Monaural pair","monaural pair"),
 }}
 
-#[cfg(test)]
-mod tests;
-
 crate::diagnostic_codes! {
     pub(crate) const CODES;
     PairIssue {
@@ -680,7 +712,11 @@ crate::diagnostic_codes! {
             Self { issue, .. } => issue,
         }
         params(this) {
-            crate::diagnostic_params! {"component_id"=>this.id.get(),"first_hz"=>this.first_hz,"offset_hz"=>this.offset_hz}
+            crate::diagnostic_params! {"component_id"=>this.id.get(),"first_hz"=>this.first_hz,
+                "offset_hz"=>this.offset_hz}
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

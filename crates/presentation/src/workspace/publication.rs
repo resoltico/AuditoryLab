@@ -2,7 +2,6 @@
 use auditorylab_app::services::Exported;
 use std::path::Path;
 /// Confirm completed export of the exact captured recipe text.
-
 #[must_use]
 pub fn recipe_exported(path: &Path) -> String {
     format!(
@@ -12,14 +11,12 @@ pub fn recipe_exported(path: &Path) -> String {
 }
 
 /// A storage stage retained for diagnosis.
-
 #[must_use]
 pub fn retained_stage(stage: &str) -> String {
-    format!("Retained stage: {}\n", crate::display_scalar(&(stage)))
+    format!("Retained stage: {}\n", crate::display_scalar(stage))
 }
 
 /// A selectable snapshot of the information shown by the desktop diagnostics reader.
-
 #[derive(Debug)]
 pub struct DesktopDiagnostics<'a> {
     /// Captured transport identity and phase.
@@ -58,7 +55,6 @@ pub fn desktop_diagnostics_text(value: &DesktopDiagnostics<'_>) -> String {
 }
 
 /// Explain the actual completed WAV container and frame count.
-
 pub fn exported_description(value: &Exported, path: &Path) -> String {
     format!(
         "Exported {} frames to {} ({}).",

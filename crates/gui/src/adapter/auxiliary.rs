@@ -1,5 +1,5 @@
 //! Monitor and auxiliary window callbacks.
-use super::*;
+use super::{ComponentHandle, Rc, SlintAdapter, Windows, open_web};
 use auditorylab_app::workspace::{AudioCommand, Command, OutputCommand};
 
 pub(super) fn install_monitor(adapter: &Rc<SlintAdapter>, windows: &Windows) {
@@ -112,7 +112,7 @@ pub(super) fn install_auxiliary(adapter: &Rc<SlintAdapter>, windows: &Windows) {
                         open_web(path);
                     }
                     None => {
-                        window.set_notice(crate::terms::Caption::NoticesPathError.label().into())
+                        window.set_notice(crate::terms::Caption::NoticesPathError.label().into());
                     }
                 },
                 Err(error) => window.set_notice(error.into()),

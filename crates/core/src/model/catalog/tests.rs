@@ -315,7 +315,7 @@ fn every_entry_has_its_independently_written_recipe() {
             );
             match (&component.carrier, *kind) {
                 (Carrier::Tone { frequency_hz, .. }, "tone") => {
-                    assert_eq!(frequency_hz, hz, "{name}")
+                    assert_eq!(frequency_hz, hz, "{name}");
                 }
                 (
                     Carrier::Clicks {
@@ -369,7 +369,7 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
                 let part = part.form.primitive().unwrap();
                 let pulse_rate = match part.carrier {
                     Carrier::Clicks { rate_hz, .. } => Some(rate_hz),
-                    _ => match part.modulation {
+                    Carrier::Tone { .. } => match part.modulation {
                         Some(Modulation::Gate { rate_hz, .. }) => Some(rate_hz.get()),
                         _ => None,
                     },

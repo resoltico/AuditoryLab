@@ -1,4 +1,18 @@
 //! Exclusive adjacent staging, atomic publication and verification of ambiguous I/O results.
+// Test-only injection is explicit at each I/O boundary; production has no hook function.
+macro_rules! inject_fault {
+    ($point:expr) => {{
+        #[cfg(test)]
+        {
+            fault_for_test($point)
+        }
+        #[cfg(not(test))]
+        {
+            let _ = $point;
+            Ok::<(), std::io::Error>(())
+        }
+    }};
+}
 use crate::document::origin::Fingerprint;
 use crate::job::{Cancel, Replace};
 use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt};
@@ -90,7 +104,11 @@ pub(crate) fn read_bounded_counted(
     Ok(bytes)
 }
 
-/// Pre-commit reads honor cancellation; post-commit verification passes None to preserve publication truth.
+// Bound stack use without introducing a post-publication heap allocation.
+const HASH_BLOCK_BYTES: usize = 16 * 1024;
+
+/// Pre-commit reads honor cancellation; post-commit verification passes None to preserve
+/// publication truth.
 fn hash(file: &mut File, path: &Path, cancel: Option<&Cancel>) -> Result<Fingerprint, Error> {
     if cancel.is_some_and(Cancel::is_requested) {
         return Err(cancelled(path));
@@ -98,7 +116,7 @@ fn hash(file: &mut File, path: &Path, cancel: Option<&Cancel>) -> Result<Fingerp
     file.seek(SeekFrom::Start(0))
         .map_err(|e| io(path, IoOperation::Seek, e))?;
     let mut digest = Sha256::new();
-    let mut block = [0; 64 * 1024];
+    let mut block = [0; HASH_BLOCK_BYTES];
     loop {
         if cancel.is_some_and(Cancel::is_requested) {
             return Err(cancelled(path));
@@ -151,7 +169,7 @@ fn failed(
     }
 }
 fn cleanup(dir: &Dir, stage: &Path, path: &Path, error: Error) -> Error {
-    match fault(FaultPoint::Cleanup).and_then(|()| dir.remove_file(stage)) {
+    match inject_fault!(FaultPoint::Cleanup).and_then(|()| dir.remove_file(stage)) {
         Ok(()) => error,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => error,
         Err(e) => error.with_leftover(path.parent().unwrap_or(Path::new(".")).join(stage), e),
@@ -208,145 +226,44 @@ pub(crate) fn publish_in<T>(
         use cap_std::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    fault(FaultPoint::StageCreate).map_err(|e| io(path, IoOperation::CreateStage, e))?;
+    inject_fault!(FaultPoint::StageCreate).map_err(|e| io(path, IoOperation::CreateStage, e))?;
     let mut file = dir
         .open_with(&stage, &options)
         .map_err(|e| io(path, IoOperation::CreateStage, e))?
         .into_std();
-    let prepared = (|| {
-        fault(FaultPoint::Write).map_err(|e| io(path, IoOperation::Write, e))?;
-        let value = write(&mut file)?;
-        file.flush()
-            .and_then(|()| fault(FaultPoint::FileSync))
-            .and_then(|()| file.sync_all())
-            .map_err(|e| io(path, IoOperation::SyncFile, e))?;
-        let fingerprint = hash(&mut file, path, Some(cancel))?;
-        if let Policy::ReplaceIfUnchanged {
-            fingerprint: expected,
-            identity,
-        } = policy
-        {
-            let mut latest = open_regular(dir, name)?;
-            let found = hash(&mut latest, path, Some(cancel))?;
-            let handle = same_file::Handle::from_file(latest)
-                .map_err(|e| io(path, IoOperation::CheckIdentity, e))?;
-            if found != expected || handle != *identity {
-                return Err(Error::Changed {
-                    path: path.to_owned(),
-                });
-            }
-        }
-        if cancel.is_requested() {
-            return Err(cancelled(path));
-        }
-        Ok((value, fingerprint))
-    })();
+    let prepared = prepare_stage(&mut file, dir, name, path, policy, cancel, write);
     let (value, candidate) = match prepared {
         Ok(v) => v,
         Err(e) => return Err(cleanup(dir, &stage, path, e)),
     };
     pause(FaultPoint::BeforePublish);
-    let publication = fault(FaultPoint::BeforePublish)
+    let publication = inject_fault!(FaultPoint::BeforePublish)
         .and_then(|()| match policy {
             Policy::CreateNew => dir.hard_link(&stage, dir, name),
             Policy::Replace | Policy::ReplaceIfUnchanged { .. } => dir.rename(&stage, dir, name),
         })
-        .and_then(|()| fault(FaultPoint::AfterPublish));
+        .and_then(|()| inject_fault!(FaultPoint::AfterPublish));
     pause(FaultPoint::AfterPublish);
     let mut warnings = Vec::new();
     if let Err(error) = publication {
-        if matches!(policy, Policy::CreateNew) && error.kind() == std::io::ErrorKind::AlreadyExists
-        {
-            return Err(cleanup(
-                dir,
-                &stage,
-                path,
-                Error::DestinationExists {
-                    path: path.to_owned(),
-                    cause: Some(IoCause::new(error)),
-                },
-            ));
-        }
-        let found = fault(FaultPoint::Verify)
-            .map_err(|e| io(path, IoOperation::Inspect, e))
-            .and_then(|()| observed(dir, name, None));
-        match found {
-            Ok(Some(fingerprint)) if fingerprint == candidate => {
-                warnings.push(crate::storage::warning::StorageWarning::SavedAfterIo {
-                    cause: crate::storage::error::IoCause::new(error),
-                })
-            }
-            Ok(found) if found == previous => {
-                return Err(cleanup(
-                    dir,
-                    &stage,
-                    path,
-                    failed(path, MutationPhase::Publish, Confirmation::Unchanged, error),
-                ));
-            }
-            Err(verification_error) => {
-                return Err(cleanup(
-                    dir,
-                    &stage,
-                    path,
-                    failed(
-                        path,
-                        MutationPhase::Publish,
-                        Confirmation::Unavailable(Box::new(verification_error)),
-                        error,
-                    ),
-                ));
-            }
-            Ok(_) => {
-                return Err(cleanup(
-                    dir,
-                    &stage,
-                    path,
-                    failed(path, MutationPhase::Publish, Confirmation::Different, error),
-                ));
-            }
-        }
+        let warning =
+            confirm_failed_publication(dir, name, path, policy, previous, candidate, error)
+                .map_err(|error| cleanup(dir, &stage, path, error))?;
+        warnings.push(warning);
     }
     drop(file);
-    if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
-        match observed(dir, name, None) {
-            Ok(Some(found)) if found == candidate => {
-                warnings.push(crate::storage::warning::StorageWarning::SavedDurability {
-                    cause: crate::storage::error::IoCause::new(error),
-                })
-            }
-            Ok(found) if found == previous => {
-                return Err(cleanup(
-                    dir,
-                    &stage,
-                    path,
-                    failed(
-                        path,
-                        MutationPhase::SyncPublication,
-                        Confirmation::Unchanged,
-                        error,
-                    ),
-                ));
-            }
-            found => {
-                let confirmation = match found {
-                    Ok(_) => Confirmation::Different,
-                    Err(error) => Confirmation::Unavailable(Box::new(error)),
-                };
-                return Err(cleanup(
-                    dir,
-                    &stage,
-                    path,
-                    failed(path, MutationPhase::SyncPublication, confirmation, error),
-                ));
-            }
-        }
+    if let Err(error) = inject_fault!(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir))
+    {
+        let warning = confirm_failed_sync(dir, name, path, previous, candidate, error)
+            .map_err(|error| cleanup(dir, &stage, path, error))?;
+        warnings.push(warning);
     }
     if matches!(policy, Policy::CreateNew)
-        && let Err(error) = fault(FaultPoint::Cleanup).and_then(|()| dir.remove_file(&stage))
+        && let Err(error) =
+            inject_fault!(FaultPoint::Cleanup).and_then(|()| dir.remove_file(&stage))
     {
         warnings.push(crate::storage::warning::StorageWarning::RetainedStage {
-            path: (stage).to_path_buf(),
+            path: (stage).clone(),
             cause: crate::storage::error::IoCause::new(error),
         });
     }
@@ -394,10 +311,14 @@ enum FaultPoint {
     AfterRemove,
 }
 #[cfg(test)]
-thread_local! {static HASH_BLOCK:std::cell::RefCell<Option<Box<dyn FnMut()>>>=const {std::cell::RefCell::new(None)};}
+thread_local! {static HASH_BLOCK:std::cell::RefCell<Option<Box<dyn FnMut()>>>=const {
+std::cell::RefCell::new(None)};}
 #[cfg(test)]
-thread_local! {static AFTER_PUBLISH: std::cell::RefCell<Option<Box<dyn FnOnce()>>>=const {std::cell::RefCell::new(None)};static INJECT: std::cell::RefCell<Vec<FaultPoint>>=const {std::cell::RefCell::new(Vec::new())};}
-fn fault(point: FaultPoint) -> std::io::Result<()> {
+thread_local! {static AFTER_PUBLISH: std::cell::RefCell<Option<Box<dyn FnOnce()>>>=const {
+std::cell::RefCell::new(None)};static INJECT: std::cell::RefCell<Vec<FaultPoint>>=const {
+std::cell::RefCell::new(Vec::new())};}
+#[cfg(test)]
+fn fault_for_test(point: FaultPoint) -> std::io::Result<()> {
     #[cfg(test)]
     {
         if point == FaultPoint::AfterPublish {
@@ -443,8 +364,6 @@ fn pause(point: FaultPoint) {
     }
     let _ = point;
 }
-#[cfg(test)]
-mod tests;
 
 pub(crate) fn same_file(
     first: &Dir,
@@ -492,22 +411,22 @@ pub(crate) fn relocate(
         return Err(cancelled(destination));
     }
     pause(FaultPoint::BeforeLink);
-    fault(FaultPoint::BeforeLink)
+    inject_fault!(FaultPoint::BeforeLink)
         .and_then(|()| from.hard_link(name, to, name))
         .map_err(|e| io(destination, IoOperation::Relocate, e))?;
     pause(FaultPoint::AfterLink);
-    let removal = fault(FaultPoint::AfterLink)
-        .and_then(|()| fault(FaultPoint::BeforeRemove))
+    let removal = inject_fault!(FaultPoint::AfterLink)
+        .and_then(|()| inject_fault!(FaultPoint::BeforeRemove))
         .and_then(|()| from.remove_file(name))
-        .and_then(|()| fault(FaultPoint::AfterRemove));
+        .and_then(|()| inject_fault!(FaultPoint::AfterRemove));
     pause(FaultPoint::AfterRemove);
     let mut warnings = Vec::new();
     if let Err(error) = removal {
-        match fault(FaultPoint::Verify).and_then(|()| from.symlink_metadata(name)) {
+        match inject_fault!(FaultPoint::Verify).and_then(|()| from.symlink_metadata(name)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 warnings.push(crate::storage::warning::StorageWarning::MovedAfterIo {
                     cause: crate::storage::error::IoCause::new(error),
-                })
+                });
             }
             Ok(_)
                 if destination.parent().and_then(Path::file_name)
@@ -517,7 +436,7 @@ pub(crate) fn relocate(
                 warnings.push(crate::storage::warning::StorageWarning::TrashLink {
                     path: (source).to_path_buf(),
                     cause: crate::storage::error::IoCause::new(error),
-                })
+                });
             }
             Ok(_) => {
                 return Err(failed(
@@ -543,7 +462,9 @@ pub(crate) fn relocate(
         }
     }
     for dir in [from, to] {
-        if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
+        if let Err(error) =
+            inject_fault!(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir))
+        {
             match observed(to, name, None) {
                 Ok(Some(found)) if found == expected => {}
                 found => {
@@ -571,17 +492,17 @@ pub(crate) fn remove(
     name: &Path,
     path: &Path,
 ) -> Result<Vec<crate::storage::warning::StorageWarning>, Error> {
-    let result = fault(FaultPoint::BeforeRemove)
+    let result = inject_fault!(FaultPoint::BeforeRemove)
         .and_then(|()| dir.remove_file(name))
-        .and_then(|()| fault(FaultPoint::AfterRemove));
+        .and_then(|()| inject_fault!(FaultPoint::AfterRemove));
     pause(FaultPoint::AfterRemove);
     let mut warnings = Vec::new();
     if let Err(error) = result {
-        match fault(FaultPoint::Verify).and_then(|()| dir.symlink_metadata(name)) {
+        match inject_fault!(FaultPoint::Verify).and_then(|()| dir.symlink_metadata(name)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 warnings.push(crate::storage::warning::StorageWarning::DeletedAfterIo {
                     cause: crate::storage::error::IoCause::new(error),
-                })
+                });
             }
             Ok(_) => {
                 return Err(failed(
@@ -602,12 +523,13 @@ pub(crate) fn remove(
             }
         }
     }
-    if let Err(error) = fault(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir)) {
+    if let Err(error) = inject_fault!(FaultPoint::DirectorySync).and_then(|()| sync_directory(dir))
+    {
         match dir.symlink_metadata(name) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 warnings.push(crate::storage::warning::StorageWarning::DeletedDurability {
                     cause: crate::storage::error::IoCause::new(error),
-                })
+                });
             }
             found => {
                 let confirmation = match found {
@@ -627,3 +549,121 @@ pub(crate) fn remove(
     }
     Ok(warnings)
 }
+
+fn prepare_stage<T>(
+    file: &mut File,
+    dir: &Dir,
+    name: &Path,
+    path: &Path,
+    policy: Policy<'_>,
+    cancel: &Cancel,
+    write: impl FnOnce(&mut File) -> Result<T, Error>,
+) -> Result<(T, Fingerprint), Error> {
+    inject_fault!(FaultPoint::Write).map_err(|e| io(path, IoOperation::Write, e))?;
+    let value = write(file)?;
+    file.flush()
+        .and_then(|()| inject_fault!(FaultPoint::FileSync))
+        .and_then(|()| file.sync_all())
+        .map_err(|e| io(path, IoOperation::SyncFile, e))?;
+    let fingerprint = hash(file, path, Some(cancel))?;
+    if let Policy::ReplaceIfUnchanged {
+        fingerprint: expected,
+        identity,
+    } = policy
+    {
+        let mut latest = open_regular(dir, name)?;
+        let found = hash(&mut latest, path, Some(cancel))?;
+        let handle = same_file::Handle::from_file(latest)
+            .map_err(|e| io(path, IoOperation::CheckIdentity, e))?;
+        if found != expected || handle != *identity {
+            return Err(Error::Changed {
+                path: path.to_owned(),
+            });
+        }
+    }
+    if cancel.is_requested() {
+        return Err(cancelled(path));
+    }
+    Ok((value, fingerprint))
+}
+fn confirm_failed_publication(
+    dir: &Dir,
+    name: &Path,
+    path: &Path,
+    policy: Policy<'_>,
+    previous: Option<Fingerprint>,
+    candidate: Fingerprint,
+    error: std::io::Error,
+) -> Result<crate::storage::warning::StorageWarning, Error> {
+    if matches!(policy, Policy::CreateNew) && error.kind() == std::io::ErrorKind::AlreadyExists {
+        return Err(Error::DestinationExists {
+            path: path.to_owned(),
+            cause: Some(IoCause::new(error)),
+        });
+    }
+    let found = inject_fault!(FaultPoint::Verify)
+        .map_err(|e| io(path, IoOperation::Inspect, e))
+        .and_then(|()| observed(dir, name, None));
+    match found {
+        Ok(Some(fingerprint)) if fingerprint == candidate => {
+            Ok(crate::storage::warning::StorageWarning::SavedAfterIo {
+                cause: IoCause::new(error),
+            })
+        }
+        Ok(found) if found == previous => Err(failed(
+            path,
+            MutationPhase::Publish,
+            Confirmation::Unchanged,
+            error,
+        )),
+        Err(verification_error) => Err(failed(
+            path,
+            MutationPhase::Publish,
+            Confirmation::Unavailable(Box::new(verification_error)),
+            error,
+        )),
+        Ok(_) => Err(failed(
+            path,
+            MutationPhase::Publish,
+            Confirmation::Different,
+            error,
+        )),
+    }
+}
+fn confirm_failed_sync(
+    dir: &Dir,
+    name: &Path,
+    path: &Path,
+    previous: Option<Fingerprint>,
+    candidate: Fingerprint,
+    error: std::io::Error,
+) -> Result<crate::storage::warning::StorageWarning, Error> {
+    match observed(dir, name, None) {
+        Ok(Some(found)) if found == candidate => {
+            Ok(crate::storage::warning::StorageWarning::SavedDurability {
+                cause: IoCause::new(error),
+            })
+        }
+        Ok(found) if found == previous => Err(failed(
+            path,
+            MutationPhase::SyncPublication,
+            Confirmation::Unchanged,
+            error,
+        )),
+        found => {
+            let confirmation = match found {
+                Ok(_) => Confirmation::Different,
+                Err(error) => Confirmation::Unavailable(Box::new(error)),
+            };
+            Err(failed(
+                path,
+                MutationPhase::SyncPublication,
+                confirmation,
+                error,
+            ))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

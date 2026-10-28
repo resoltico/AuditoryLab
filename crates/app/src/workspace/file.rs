@@ -1,5 +1,8 @@
 //! The occupied file slot and file-operation admission/transitions.
-use super::*;
+use super::{
+    Arc, Cancel, FileActivity, FileCommand, FileKind, FileStatus, FileTask, Job, Recipe,
+    RecipeSnapshot, Refusal, Rendition, TaskId,
+};
 #[derive(Default)]
 pub(super) struct FileState {
     slot: Option<FileTask>,

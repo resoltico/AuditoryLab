@@ -120,7 +120,11 @@ fn commit_is_atomic_over_the_whole_candidate() {
 
 #[test]
 fn staged_nonfinite_values_block_commit_save_until_repaired() {
-    let text = "schema_version=4\n[sound]\nduration_seconds=nan\nfade_seconds=0\n[[sound.component]]\nid=1\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=inf\n[[sound.component]]\nid=2\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequency_hz=440\n\n[document]\nid=\"00000000-0000-4000-8000-000000000001\"\n";
+    let text = "schema_version=4\n[sound]\nduration_seconds=nan\nfade_seconds=0\n[[sou\
+        nd.component]]\nid=1\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequen\
+        cy_hz=inf\n[[sound.component]]\nid=2\nears='both'\npeak_dbfs=-30\nkind\
+        ='tone'\nfrequency_hz=440\n\n[document]\nid=\"00000000-0000-4000-8000-\
+        000000000001\"\n";
     assert!(
         crate::storage::load::load_reader(text.as_bytes(), "nonfinite import").is_err(),
         "nonfinite portable files are rejected"
@@ -255,16 +259,11 @@ fn the_last_removal_can_be_restored_in_place_with_its_staged_text() {
     editor
         .remove_component(editor.component_key(middle).unwrap())
         .unwrap();
-    assert_eq!(
-        editor.removed(),
-        Some((
-            1,
-            &Component {
-                id: middle,
-                form: tone(550.0)
-            }
-        ))
-    );
+    let expected_removed = Component {
+        id: middle,
+        form: tone(550.0),
+    };
+    assert_eq!(editor.removed(), Some((1, &expected_removed)));
     assert_eq!(editor.staged(frequency.field), None);
     editor.stage(other, "450").unwrap();
 
@@ -967,7 +966,7 @@ fn row_generation_storage_is_bounded_and_exhaustion_never_wraps_or_drops_undo() 
         editor.remove_component(key),
         Err(EditRefusal::IdentitiesExhausted)
     );
-    assert!(editor.draft().recipe().unwrap().content() == before.content());
+    assert_eq!(editor.draft().recipe().unwrap().content(), before.content());
     assert!(editor.removed().is_none());
     editor.row_generations.insert(id, u64::MAX - 1);
     editor
@@ -978,7 +977,7 @@ fn row_generation_storage_is_bounded_and_exhaustion_never_wraps_or_drops_undo() 
         Err(EditRefusal::IdentitiesExhausted)
     );
     assert!(editor.removed().is_some());
-    assert!(editor.draft().components().is_empty());
+    assert_eq!(editor.draft().components(), []);
     assert!(editor.row_generations.is_empty());
 }
 
@@ -1102,7 +1101,7 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
 
 #[test]
 fn committing_an_unedited_display_preserves_unrepresentable_finite_model_bits() {
-    for width in [f64::from_bits(0x3f1a36e2eb1c4340), f64::MAX] {
+    for width in [f64::from_bits(0x3f1a_36e2_eb1c_4340), f64::MAX] {
         let mut draft = Draft::new().unwrap();
         draft
             .add_node(ComponentForm::Clicks {

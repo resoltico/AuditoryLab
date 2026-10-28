@@ -75,7 +75,7 @@ fn rms_of_one_impulse_in_four_is_half_the_peak_at_tiny_and_large_levels() {
         let samples = [[level, -level], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]];
         let meters = sample_meters(&samples);
         let expected_peak = 20.0 * level.log10();
-        let expected_rms = expected_peak - 6.020599913279624;
+        let expected_rms = expected_peak - 6.020_599_913_279_624;
         for meter in meters {
             assert!((meter.peak_dbfs - expected_peak).abs() < 1e-10);
             assert!((meter.rms_dbfs - expected_rms).abs() < 1e-10);
@@ -118,7 +118,7 @@ fn real_callback_samples_match_history_and_finite_stop() {
     let capture_context = (
         frozen.span(),
         frozen.sequence(),
-        frozen.observation().cloned(),
+        frozen.observation().copied(),
     );
     let captured_meters = frozen.meters();
     let captured_id = frozen.session().unwrap().id;
@@ -161,7 +161,7 @@ fn real_callback_samples_match_history_and_finite_stop() {
         (
             frozen.span(),
             frozen.sequence(),
-            frozen.observation().cloned()
+            frozen.observation().copied()
         ),
         capture_context
     );
@@ -175,7 +175,7 @@ fn real_callback_samples_match_history_and_finite_stop() {
 }
 #[test]
 fn ring_limits_wrap_large_writes_and_age_are_bounded() {
-    for hz in [1, 768000] {
+    for hz in [1, 768_000] {
         let m = PlaybackMonitor::new(
             descriptor(hz),
             MonitorDetail::Waveform,
@@ -242,7 +242,7 @@ fn callbacks_and_preallocated_reads_allocate_nothing() {
     let mut reader = m.reader().unwrap();
     let mut callback =
         Transport::new(finite_source(signal(8000)), 2, m.session()).with_monitor(Some(m));
-    let mut out = [0.0; 4096];
+    let mut out = std::vec![0.0; 4096];
     let measured = allocation_counter::measure(|| {
         callback.fill(&mut out, time(0), &|v| v);
         reader.poll(100);
@@ -255,13 +255,13 @@ fn callbacks_and_preallocated_reads_allocate_nothing() {
         SessionState::new(),
         None,
     );
-    assert!(m.reader().unwrap().samples.is_empty());
+    assert_eq!(m.reader().unwrap().samples, [] as [[f64; 2]; 0]);
 }
 #[test]
 fn digital_meters_and_extrema_use_the_entire_window() {
     let frames = [[0.5, 0.0], [-0.5, 0.0]];
     let meters = sample_meters(&frames);
-    assert!((meters[0].peak_dbfs + 6.020599913279624).abs() < 1e-12);
+    assert!((meters[0].peak_dbfs + 6.020_599_913_279_624).abs() < 1e-12);
     assert_eq!(meters[0].rms_dbfs, meters[0].peak_dbfs);
     assert_eq!(meters[1].peak_dbfs, f64::NEG_INFINITY);
     assert_eq!(sample_meters(&[])[0].rms_dbfs, f64::NEG_INFINITY);
@@ -297,8 +297,8 @@ fn actual_live_crossfades_and_stop_match_with_or_without_monitoring() {
         .collect();
     let monitored = SessionState::new();
     let other = SessionState::new();
-    let a = LiveGenerator::with_state(numbered(rate, &tones), Arc::clone(&monitored));
-    let b = LiveGenerator::with_state(numbered(rate, &tones), Arc::clone(&other));
+    let a = LiveGenerator::with_state(&(numbered(rate, &tones)), Arc::clone(&monitored));
+    let b = LiveGenerator::with_state(&(numbered(rate, &tones)), Arc::clone(&other));
     let ca = a.control();
     let cb = b.control();
     let mut desc = descriptor(rate.hz());
@@ -416,7 +416,7 @@ fn unchanged_receipts_do_not_hide_stale_observations() {
     }
     reader.poll(0);
     assert_eq!(reader.freshness(), ObservationFreshness::Current);
-    reader.received = Some(Instant::now() - Duration::from_secs(1));
+    reader.received = Some(Instant::now().checked_sub(Duration::from_secs(1)).unwrap());
     reader.poll(0);
     assert_eq!(reader.freshness(), ObservationFreshness::Stale);
 }
@@ -424,15 +424,16 @@ fn unchanged_receipts_do_not_hide_stale_observations() {
 #[ignore = "optimized callback median cost gate; qualify with --profile dist; no device is opened"]
 #[expect(
     clippy::assertions_on_constants,
-    reason = "The ignored cost gate rejects a debug-profile invocation instead of recording misleading regression measurements"
+    reason = "The ignored cost gate rejects a debug-profile invocation instead of \
+        recording misleading regression measurements"
 )]
 fn callback_cost() {
+    const WARMUP: u64 = 100;
+    const MEASURED: usize = 3_000;
     assert!(
         !cfg!(debug_assertions),
         "run callback_cost with --profile dist"
     );
-    const WARMUP: u64 = 100;
-    const MEASURED: usize = 3000;
     let mut failures = Vec::new();
     let mut configurations = 0;
     println!(
@@ -448,39 +449,9 @@ fn callback_cost() {
                 Some(MonitorDetail::Waveform),
             ] {
                 let rate = SampleRate::new(hz).unwrap();
-                let components: Vec<ComponentForm> = (0..16)
-                    .map(|n| ComponentForm::Tone {
-                        frequency_hz: finite(200.0 + f64::from(n) * 20.0),
-                        ears: Ears::Both,
-                        peak_dbfs: finite(-30.0),
-                        modulation: Some(crate::core::Modulation::Am {
-                            rate_hz: finite(23.0 + f64::from(n) * 0.75),
-                            depth: finite(1.0),
-                        }),
-                    })
-                    .collect();
-                let tones = numbered(rate, &components);
-                let pulses = numbered(
-                    rate,
-                    &components
-                        .iter()
-                        .enumerate()
-                        .map(|(n, c)| {
-                            let base = *c;
-                            ComponentForm::Clicks {
-                                rate_hz: finite(40.0 + f64::from(u32::try_from(n).unwrap())),
-                                width_seconds: finite(0.001),
-                                ears: base.route().unwrap(),
-                                peak_dbfs: base
-                                    .get(auditorylab_core::ParameterId::PeakLevel)
-                                    .unwrap(),
-                                modulation: base.modulation(),
-                            }
-                        })
-                        .collect::<Vec<_>>(),
-                );
+                let (tones, pulses) = callback_cost_targets(rate);
                 let shared = SessionState::new();
-                let generator = LiveGenerator::with_state(tones, Arc::clone(&shared));
+                let generator = LiveGenerator::with_state(&(tones), Arc::clone(&shared));
                 let control = generator.control();
                 let mut desc = descriptor(hz);
                 desc.frames = None;
@@ -535,10 +506,15 @@ fn callback_cost() {
                 let period_numerator = u128::from(frames as u64) * 1_000_000_000;
                 let period = period_numerator / u128::from(hz);
                 if median_twice * u128::from(hz) > period_numerator {
-                    failures.push(format!("{hz} Hz / {frames} frames / {detail:?}: median {median}{median_fraction} ns exceeds 50% of the buffer period"));
+                    failures.push(format!(
+                        "{hz} Hz / {frames} frames / {detail:?}: median \
+                        {median}{median_fraction} ns exceeds 50% of the buffer period"
+                    ));
                 }
                 println!(
-                    "rate_hz={hz} frames={frames} monitor={detail:?} median_ns={median}{median_fraction} p99_ns={p99} max_ns={maximum} buffer_period_ns={period} gaps={} backend_underruns={}",
+                    "rate_hz={hz} frames={frames} monitor={detail:?} \
+                        median_ns={median}{median_fraction} p99_ns={p99} max_ns={maximum} \
+                        buffer_period_ns={period} gaps={} backend_underruns={}",
                     reader.as_ref().map_or(0, |r| r.status().gaps),
                     shared.underruns()
                 );
@@ -592,7 +568,7 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
     );
     // A missed span is history; enough subsequent contiguous data repairs current coverage.
     {
-        writer.append(1024, &[[0.0; 2]; 2400]);
+        writer.append(1024, &std::vec![[0.0; 2]; 2400]);
         writer.finish(3424, None);
     }
     monitor.0.session.set_generated(3424);
@@ -607,7 +583,7 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
         output_monitor_state(Some(&reader), Some(&held), false, false),
         State::Live
     );
-    reader.received = Some(Instant::now() - Duration::from_secs(1));
+    reader.received = Some(Instant::now().checked_sub(Duration::from_secs(1)).unwrap());
     reader.poll(40);
     assert_eq!(
         output_monitor_state(Some(&reader), Some(&held), false, false),
@@ -617,24 +593,7 @@ fn current_impairment_recovers_without_erasing_historical_gaps_or_held_identity(
         monitor_warning(&reader, 40),
         Some(crate::workspace::monitor::MonitorWarning::Stale)
     );
-    let prior = (held.span(), held.sequence(), held.observation().cloned());
-    let another = PlaybackMonitor::new(
-        descriptor(48000),
-        MonitorDetail::Waveform,
-        SessionState::new(),
-        None,
-    );
-    let mut other = another.reader().unwrap();
-    other.poll(40);
-    assert_ne!(other.descriptor().id, held.session().unwrap().id);
-    assert_eq!(
-        output_monitor_state(Some(&other), Some(&held), true, true),
-        State::Held
-    );
-    assert_eq!(
-        (held.span(), held.sequence(), held.observation().cloned()),
-        prior
-    );
+    assert_foreign_monitor_keeps_held_identity(&held);
     {
         writer.append(3424, &[[0.0; 2]; 512]);
         writer.finish(3936, None);
@@ -675,7 +634,7 @@ fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
     use {crate::workspace::monitor::MonitorWarning, crate::workspace::monitor::monitor_warning};
     let rate = SampleRate::DEFAULT;
     let state = SessionState::new();
-    let generator = LiveGenerator::with_state(Target::silence(rate), Arc::clone(&state));
+    let generator = LiveGenerator::with_state(&(Target::silence(rate)), Arc::clone(&state));
     let mut desc = descriptor(rate.hz());
     desc.frames = None;
     let monitor = PlaybackMonitor::new(
@@ -724,7 +683,7 @@ fn recurring_coverage_gaps_are_readable_without_masking_backend_warnings() {
         assert_eq!(monitor_warning(&reader, 40), None);
         assert_eq!(reader.status().gaps, episode);
     }
-    reader.received = Some(Instant::now() - Duration::from_secs(1));
+    reader.received = Some(Instant::now().checked_sub(Duration::from_secs(1)).unwrap());
     assert_eq!(monitor_warning(&reader, 40), Some(MonitorWarning::Stale));
     assert!(monitor_warning(&reader, 40).unwrap().announces_changes());
 }
@@ -770,7 +729,7 @@ fn stationary_periodic_samples_have_advancing_real_publication_coverage() {
             signal.render(start, &mut samples);
             {
                 writer.append(start, &samples);
-                writer.finish(start + 512, signal.observation(start + 511));
+                writer.finish(start + 512, (signal.observation(start + 511)).as_ref());
             }
             reader.poll(2);
             assert!(reader.status().sequence > old_sequence);
@@ -834,7 +793,7 @@ fn maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots() {
             .collect::<Vec<_>>(),
     );
     let state = SessionState::new();
-    let generator = LiveGenerator::with_state(tones, Arc::clone(&state));
+    let generator = LiveGenerator::with_state(&(tones), Arc::clone(&state));
     let control = generator.control();
     let mut desc = descriptor(rate.hz());
     desc.frames = None;
@@ -852,14 +811,14 @@ fn maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots() {
     for block in 0..6 {
         callback.fill(
             &mut out,
-            time(block * 4096 * 1_000_000_000 / 768000),
+            time(block * 4096 * 1_000_000_000 / 768_000),
             &|v| v,
         );
         reader.poll(100);
     }
     control.update(&clicks).unwrap();
     let measured = allocation_counter::measure(|| {
-        callback.fill(&mut out, time(6 * 4096 * 1_000_000_000 / 768000), &|v| v);
+        callback.fill(&mut out, time(6 * 4096 * 1_000_000_000 / 768_000), &|v| v);
         reader.poll(100);
     });
     assert_eq!(measured.count_total, 0);
@@ -893,7 +852,7 @@ fn maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots() {
         for block in 7..30 {
             callback.fill(
                 &mut out,
-                time(block * 4096 * 1_000_000_000 / 768000),
+                time(block * 4096 * 1_000_000_000 / 768_000),
                 &|v| v,
             );
         }
@@ -984,4 +943,60 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
         Some(value) => value,
         None => panic!("nonfinite fixture value"),
     }
+}
+
+fn callback_cost_targets(rate: SampleRate) -> (Target, Target) {
+    let components: Vec<ComponentForm> = (0..16)
+        .map(|n| ComponentForm::Tone {
+            frequency_hz: finite(200.0 + f64::from(n) * 20.0),
+            ears: Ears::Both,
+            peak_dbfs: finite(-30.0),
+            modulation: Some(crate::core::Modulation::Am {
+                rate_hz: finite(23.0 + f64::from(n) * 0.75),
+                depth: finite(1.0),
+            }),
+        })
+        .collect();
+    let tones = numbered(rate, &components);
+    let pulses = numbered(
+        rate,
+        &components
+            .iter()
+            .enumerate()
+            .map(|(n, c)| {
+                let base = *c;
+                ComponentForm::Clicks {
+                    rate_hz: finite(40.0 + f64::from(u32::try_from(n).unwrap())),
+                    width_seconds: finite(0.001),
+                    ears: base.route().unwrap(),
+                    peak_dbfs: base.get(auditorylab_core::ParameterId::PeakLevel).unwrap(),
+                    modulation: base.modulation(),
+                }
+            })
+            .collect::<Vec<_>>(),
+    );
+
+    (tones, pulses)
+}
+
+fn assert_foreign_monitor_keeps_held_identity(held: &crate::workspace::monitor::WaveformCapture) {
+    use crate::workspace::monitor::{OutputMonitorState as State, output_monitor_state};
+    let prior = (held.span(), held.sequence(), held.observation().copied());
+    let another = PlaybackMonitor::new(
+        descriptor(48000),
+        MonitorDetail::Waveform,
+        SessionState::new(),
+        None,
+    );
+    let mut other = another.reader().unwrap();
+    other.poll(40);
+    assert_ne!(other.descriptor().id, held.session().unwrap().id);
+    assert_eq!(
+        output_monitor_state(Some(&other), Some(held), true, true),
+        State::Held
+    );
+    assert_eq!(
+        (held.span(), held.sequence(), held.observation().copied()),
+        prior
+    );
 }

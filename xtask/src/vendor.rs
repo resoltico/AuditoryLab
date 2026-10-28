@@ -11,6 +11,10 @@ fn digest(bytes: &[u8], expected: &str) -> Result<()> {
     Ok(())
 }
 
+#[expect(
+    clippy::unnecessary_debug_formatting,
+    reason = "Native diagnostic paths retain escaped, quoted bytes, including non-UTF-8 names"
+)]
 fn files(root: &Path, relative: &Path, out: &mut BTreeMap<String, Vec<u8>>) -> Result<()> {
     for entry in fs::read_dir(root.join(relative))? {
         let entry = entry?;
@@ -159,7 +163,9 @@ mod tests {
     use super::*;
     #[test]
     fn registry_or_other_checkout_cannot_replace_the_reviewed_source() {
-        let mut package = serde_json::json!({"version":"1.0.0", "source":null, "manifest_path":"vendor/Cargo.toml"});
+        let mut package = serde_json::json!({"version":"1.0.0", "source":null,
+            "manifest_path":"vendor/Car\
+            go.toml"});
         assert!(resolved_source(&package, "1.0.0", Path::new("vendor")));
         package["source"] = "registry+https://github.com/rust-lang/crates.io-index".into();
         assert!(!resolved_source(&package, "1.0.0", Path::new("vendor")));

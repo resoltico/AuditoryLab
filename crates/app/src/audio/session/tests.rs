@@ -152,7 +152,7 @@ fn an_abandoned_owner_closes_its_lifecycle_but_never_replaces_an_outcome() {
 fn live_admission_closes_at_stop_source_end_and_generator_drop() {
     let target = tone(440.0);
     // Accepted Stop.
-    let mut generator = LiveGenerator::new(target);
+    let mut generator = LiveGenerator::new(&(target));
     let control = generator.control();
     assert_eq!(control.update(&tone(441.0)), Ok(2));
     assert_eq!(
@@ -166,7 +166,7 @@ fn live_admission_closes_at_stop_source_end_and_generator_drop() {
         Err(LiveUpdateError::SessionClosed)
     );
     // Generation end without Stop (the engine stopped through the shared word).
-    let mut out = [[0.0; 2]; 4_000];
+    let mut out = std::vec![[0.0; 2]; 4_000];
     generator.render(&mut out);
     assert!(generator.is_finished());
     assert_eq!(
@@ -175,7 +175,7 @@ fn live_admission_closes_at_stop_source_end_and_generator_drop() {
         "harmless after the end"
     );
     // Generator drop closes a surviving control.
-    let generator = LiveGenerator::new(target);
+    let generator = LiveGenerator::new(&(target));
     let control = generator.control();
     drop(generator);
     assert_eq!(
@@ -183,7 +183,7 @@ fn live_admission_closes_at_stop_source_end_and_generator_drop() {
         Err(LiveUpdateError::SessionClosed)
     );
     // Another rate is refused before anything changes.
-    let generator = LiveGenerator::new(target);
+    let generator = LiveGenerator::new(&(target));
     let other = Target::silence(SampleRate::new(16_000).unwrap());
     assert_eq!(
         generator.control().update(&other),
@@ -197,7 +197,7 @@ fn live_admission_closes_at_stop_source_end_and_generator_drop() {
 
 #[test]
 fn an_update_accepted_before_stop_may_never_generate() {
-    let mut generator = LiveGenerator::new(tone(440.0));
+    let mut generator = LiveGenerator::new(&(tone(440.0)));
     let control = generator.control();
     let mut out = [[0.0; 2]; 512];
     generator.render(&mut out);
@@ -221,7 +221,7 @@ fn an_update_accepted_before_stop_may_never_generate() {
 
 #[test]
 fn the_revision_counter_fails_explicitly_instead_of_wrapping() {
-    let generator = LiveGenerator::new(tone(440.0));
+    let generator = LiveGenerator::new(&(tone(440.0)));
     generator.mailbox().lock().unwrap().accepted = Some((u64::MAX, tone(440.0)));
     assert_eq!(
         generator.control().update(&tone(441.0)),
@@ -231,7 +231,7 @@ fn the_revision_counter_fails_explicitly_instead_of_wrapping() {
 
 #[test]
 fn standalone_generation_has_no_transport_and_publishes_its_end() {
-    let mut generator = LiveGenerator::new(Target::silence(SampleRate::new(8_000).unwrap()));
+    let mut generator = LiveGenerator::new(&(Target::silence(SampleRate::new(8_000).unwrap())));
     let control = generator.control();
     let mut out = [[1.0; 2]; 800];
     assert_eq!(generator.render(&mut out), 800);

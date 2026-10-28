@@ -114,7 +114,9 @@ pub(crate) fn inspect(
             return Err("extracted binary has no executable permission".into());
         }
     }
-    if !target.contains("apple") {
+    if target.contains("apple") {
+        inspect_macos(&root, &executable, binary, target, version, bundle_version)?;
+    } else {
         let bytes = fs::read(&executable)?;
         architecture_header(&bytes, target)?;
         if target.contains("windows") {
@@ -134,54 +136,6 @@ pub(crate) fn inspect(
             {
                 return Err("desktop Icon identifier missing".into());
             }
-        }
-    } else {
-        let arches = String::from_utf8(capture(
-            Command::new("lipo").arg("-archs").arg(&executable),
-        )?)?;
-        architecture(
-            arches.trim(),
-            if target.starts_with("aarch64") {
-                "arm64"
-            } else {
-                "x86_64"
-            },
-        )?;
-        run(Command::new("codesign")
-            .args(["--verify", "--strict"])
-            .arg(&executable))?;
-        if binary == "auditorylab-gui" {
-            for file in crate::LEGAL_FILES {
-                if fs::read(app.join("Contents/Resources").join(file))?
-                    != fs::read(root.join(file))?
-                {
-                    return Err(format!("bundled legal resource differs: {file}").into());
-                }
-            }
-            for file in ["Assets.car", "AppIcon.icns", "icon-partial.plist"] {
-                if fs::metadata(app.join("Contents/Resources").join(file))?.len() == 0 {
-                    return Err(format!("missing icon resource: {file}").into());
-                }
-            }
-            for (key, expected) in [
-                ("CFBundleShortVersionString", version.to_owned()),
-                ("CFBundleVersion", bundle_version.to_string()),
-                ("LSMinimumSystemVersion", "15.0".into()),
-            ] {
-                let actual = String::from_utf8(capture(
-                    Command::new("/usr/libexec/PlistBuddy")
-                        .args(["-c", &format!("Print :{key}")])
-                        .arg(app.join("Contents/Info.plist")),
-                )?)?;
-                if actual.trim() != expected {
-                    return Err(
-                        format!("extracted plist {key} differs: {actual:?} vs {expected}").into(),
-                    );
-                }
-            }
-            run(Command::new("codesign")
-                .args(["--verify", "--deep", "--strict"])
-                .arg(&app))?;
         }
     }
     let actual = String::from_utf8(capture(Command::new(&executable).arg("--version"))?)?;
@@ -214,6 +168,103 @@ fn compare_tree(source: &Path, actual: &Path) -> Result<()> {
     }
     Ok(())
 }
+
+fn inspect_windows_identity(executable: &Path, version: &str) -> Result<()> {
+    if !cfg!(target_os = "windows") {
+        return Err("Windows resource inspection requires a native Windows host".into());
+    }
+    let manifest: toml::Value = toml::from_str(&fs::read_to_string("Cargo.toml")?)?;
+    let product = crate::source::identity_input::product(&manifest)?;
+    let output = capture(
+        Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "\n[Console]::OutputEncoding = \
+            [System.Text.UTF8Encoding]::new($false)\n$v = (Get-Item -LiteralPath \
+            $env:AUDITORYLAB_INSPECT_EXECUTABLE).VersionInfo\n@{\n    file = \
+            @($v.FileMajorPart, $v.FileMinorPart, $v.FileBuildPart, \
+            $v.FilePrivatePart)\n    product = @($v.ProductMajorPart, \
+            $v.ProductMinorPart, $v.ProductBuildPart, $v.ProductPrivatePart)\n    \
+            fileVersion = $v.FileVersion\n    productVersion = \
+            $v.ProductVersion\n    name = $v.ProductName\n    copyright = \
+            $v.LegalCopyright\n} | ConvertTo-Json -Compress\n",
+            ])
+            .env("AUDITORYLAB_INSPECT_EXECUTABLE", executable),
+    )?;
+    let actual: serde_json::Value = serde_json::from_slice(&output)?;
+    let mut components = version
+        .split('.')
+        .map(str::parse::<u32>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    components.push(0);
+    let native = format!("{version}.0");
+    let expected = serde_json::json!({"file": components, "product": components,
+        "fileVersion": native, "productVersion": native,
+        "name": product.name, "copyright": product.copyright});
+    if actual != expected {
+        return Err(format!("Windows VERSIONINFO differs: {actual} vs {expected}").into());
+    }
+    Ok(())
+}
+
+fn inspect_macos(
+    root: &Path,
+    executable: &Path,
+    binary: &str,
+    target: &str,
+    version: &str,
+    bundle_version: u32,
+) -> Result<()> {
+    let app = root.join("Auditory Lab.app");
+
+    let arches = String::from_utf8(capture(Command::new("lipo").arg("-archs").arg(executable))?)?;
+    architecture(
+        arches.trim(),
+        if target.starts_with("aarch64") {
+            "arm64"
+        } else {
+            "x86_64"
+        },
+    )?;
+    run(Command::new("codesign")
+        .args(["--verify", "--strict"])
+        .arg(executable))?;
+    if binary == "auditorylab-gui" {
+        for file in crate::LEGAL_FILES {
+            if fs::read(app.join("Contents/Resources").join(file))? != fs::read(root.join(file))? {
+                return Err(format!("bundled legal resource differs: {file}").into());
+            }
+        }
+        for file in ["Assets.car", "AppIcon.icns", "icon-partial.plist"] {
+            if fs::metadata(app.join("Contents/Resources").join(file))?.len() == 0 {
+                return Err(format!("missing icon resource: {file}").into());
+            }
+        }
+        for (key, expected) in [
+            ("CFBundleShortVersionString", version.to_owned()),
+            ("CFBundleVersion", bundle_version.to_string()),
+            ("LSMinimumSystemVersion", "15.0".into()),
+        ] {
+            let actual = String::from_utf8(capture(
+                Command::new("/usr/libexec/PlistBuddy")
+                    .args(["-c", &format!("Print :{key}")])
+                    .arg(app.join("Contents/Info.plist")),
+            )?)?;
+            if actual.trim() != expected {
+                return Err(
+                    format!("extracted plist {key} differs: {actual:?} vs {expected}").into(),
+                );
+            }
+        }
+        run(Command::new("codesign")
+            .args(["--verify", "--deep", "--strict"])
+            .arg(&app))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -334,39 +385,4 @@ mod tests {
             assert!(super::architecture(actual, "arm64").is_err());
         }
     }
-}
-
-fn inspect_windows_identity(executable: &Path, version: &str) -> Result<()> {
-    if !cfg!(target_os = "windows") {
-        return Err("Windows resource inspection requires a native Windows host".into());
-    }
-    let manifest: toml::Value = toml::from_str(&fs::read_to_string("Cargo.toml")?)?;
-    let product = crate::source::identity_input::product(&manifest)?;
-    let output = capture(Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", r#"
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$v = (Get-Item -LiteralPath $env:AUDITORYLAB_INSPECT_EXECUTABLE).VersionInfo
-@{
-    file = @($v.FileMajorPart, $v.FileMinorPart, $v.FileBuildPart, $v.FilePrivatePart)
-    product = @($v.ProductMajorPart, $v.ProductMinorPart, $v.ProductBuildPart, $v.ProductPrivatePart)
-    fileVersion = $v.FileVersion
-    productVersion = $v.ProductVersion
-    name = $v.ProductName
-    copyright = $v.LegalCopyright
-} | ConvertTo-Json -Compress
-"#]).env("AUDITORYLAB_INSPECT_EXECUTABLE", executable))?;
-    let actual: serde_json::Value = serde_json::from_slice(&output)?;
-    let mut components = version
-        .split('.')
-        .map(str::parse::<u32>)
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    components.push(0);
-    let native = format!("{version}.0");
-    let expected = serde_json::json!({"file": components, "product": components,
-        "fileVersion": native, "productVersion": native,
-        "name": product.name, "copyright": product.copyright});
-    if actual != expected {
-        return Err(format!("Windows VERSIONINFO differs: {actual} vs {expected}").into());
-    }
-    Ok(())
 }

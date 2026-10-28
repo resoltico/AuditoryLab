@@ -2,7 +2,13 @@ import { ViewCaptions } from "view-captions.slint";
 import { Actions } from "actions.slint";
 import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
-import { ComboBox, TextEdit, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import {
+    ComboBox,
+    TextEdit,
+    ScrollView,
+    VerticalBox,
+    HorizontalBox,
+} from "std-widgets.slint";
 export component Lane inherits Rectangle {
     in property <string> label;
     in property <string> trace;
@@ -10,50 +16,56 @@ export component Lane inherits Rectangle {
     in property <length> ui-size:13px;
     in property <length> label-column-width;
     out property <length> label-width:title.preferred-width;
-    property <length> axis-row-height: max(title.preferred-height, positive.preferred-height, zero.preferred-height, negative.preferred-height);
-    property <length> tick-width: max(positive.preferred-width, zero.preferred-width, negative.preferred-width);
+    property <length> axis-row-height: max(title.preferred-height, positive.preferred-height,
+        zero.preferred-height, negative.preferred-height);
+    property <length> tick-width: max(positive.preferred-width, zero.preferred-width,
+        negative.preferred-width);
     property <length> tick-x: root.label-column-width + 12px;
     property <length> axis-width: root.tick-x + root.tick-width + 6px;
     background: #131d2b;
-    preferred-height: root.axis-row-height*3;
-    min-height: root.axis-row-height*3;
+    preferred-height: root.axis-row-height * 3;
+    min-height: root.axis-row-height * 3;
     // Keep at least a 2:1 plotting area beside the full labels.
-    min-width: root.axis-width + root.axis-row-height*4 + 8px;
+    min-width: root.axis-width + root.axis-row-height * 4 + 8px;
     accessible-role: image;
     accessible-label: root.label + Terms.caption-samples-common-symmetric-scale + root.limit;
     title := Text {
         x: 6px;
-        y: root.axis-row-height*1.5 - self.preferred-height/2;
+        y: root.axis-row-height * 1.5 - self.preferred-height / 2;
         text: root.label;
         color: #e1eaf6;
-        font-size: root.ui-size*0.93;
+        font-size: root.ui-size * 0.93;
     }
+
     positive := Text {
         x: root.tick-x;
-        y: root.axis-row-height*0.5 - self.preferred-height/2;
-        text: "+"+root.limit;
+        y: root.axis-row-height * 0.5 - self.preferred-height / 2;
+        text: "+" + root.limit;
         color: #c6d0df;
         font-size: root.ui-size;
     }
+
     zero := Text {
         x: root.tick-x;
-        y:root.axis-row-height*1.5 - self.preferred-height/2;
+        y: root.axis-row-height * 1.5 - self.preferred-height / 2;
         text: "0";
         color: #c6d0df;
         font-size: root.ui-size;
     }
+
     negative := Text {
         x: root.tick-x;
-        y:root.axis-row-height*2.5 - self.preferred-height/2;
-        text: "−"+root.limit;
+        y: root.axis-row-height * 2.5 - self.preferred-height / 2;
+        text: "−" + root.limit;
         color: #c6d0df;
         font-size: root.ui-size;
     }
+
     Rectangle {
         x: root.axis-width;
-        y: root.axis-row-height*0.5;
+        y: root.axis-row-height * 0.5;
         width: max(1px, parent.width - root.axis-width - 8px);
-        height:root.axis-row-height*2;
+        height: root.axis-row-height * 2;
         clip: true;
         Rectangle {
             y: parent.height / 2;
@@ -61,6 +73,7 @@ export component Lane inherits Rectangle {
             width: parent.width;
             background: #43536b;
         }
+
         Path {
             width: parent.width;
             height: parent.height;
@@ -73,130 +86,370 @@ export component Lane inherits Rectangle {
         }
     }
 }
+
 export struct MonitorData {
-    state:string,age:string,caption:string,meters:string,warning:string,warninglive:bool,backendwarning:string,motion:string,
-    left:string,right:string,limit:string,spanlabel:string,spanchoice:int,scalechoice:int,held:bool,settingsenabled:bool,overridden:bool
+    state: string,
+    age: string,
+    caption: string,
+    meters: string,
+    warning: string,
+    warninglive: bool,
+    backendwarning: string,
+    motion: string,
+    left: string,
+    right: string,
+    limit: string,
+    spanlabel: string,
+    spanchoice: int,
+    scalechoice: int,
+    held: bool,
+    settingsenabled: bool,
+    overridden: bool
 }
 export component MonitorPanel inherits VerticalBox {
-    public function sync-controls() { span-choice.current-index = root.data.spanchoice; scale-choice.current-index = root.data.scalechoice; }
+    public function sync-controls() {
+        span-choice.current-index = root.data.spanchoice;
+        scale-choice.current-index = root.data.scalechoice;
+    }
     property <length> lane-label-width: max(left-lane.label-width, right-lane.label-width);
     in property <MonitorData> data;
     in property <[string]> span-choices;
     in property <[string]> scale-choices;
     in property <length> ui-size:13px;
-    callback span(int);callback scale(int);callback hold();callback follow();callback details();callback collapse();
-    spacing:4px;padding:0px;
-    HorizontalBox {padding:0px;vertical-stretch:0;cross-axis-alignment:center;
-        Text {min-width:0px;text:ViewCaptions.caption-output-monitor;font-weight:700;wrap:word-wrap;}
-        Text {text:root.data.state;font-weight:600;wrap:no-wrap;horizontal-stretch:0;}
-        Text {preferred-width:0px;horizontal-stretch:1;text:root.data.age;wrap:no-wrap;overflow:elide;accessible-label:root.data.age;}
-        Button {text:Terms.caption-details-dialog;accessible-label:Terms.caption-full-audio-diagnostics-and-capture-source;triggered =>{root.details();}}
-        Button {text:Terms.action-hide;accessible-label:Terms.action-hide-output-monitor;triggered =>{root.collapse();}}
-    }
-    HorizontalBox {padding:0px;spacing:12px;
-        VerticalBox {padding:0px;spacing:3px;
-            Text {min-width:0px;text:root.data.caption;max-height:root.ui-size*2.5;wrap:word-wrap;overflow:elide;}
-            left-lane := Lane {label:ViewCaptions.caption-left;trace:root.data.left;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
-            right-lane := Lane {label:ViewCaptions.caption-right;trace:root.data.right;limit:root.data.limit;ui-size:root.ui-size;label-column-width:root.lane-label-width;}
-            HorizontalBox {padding:0px;vertical-stretch:0;Text {text:"−"+root.data.spanlabel;}Rectangle {horizontal-stretch:1;}Text {text:ViewCaptions.caption-captured-end;}}
+    callback span(int);
+    callback scale(int);
+    callback hold();
+    callback follow();
+    callback details();
+    callback collapse();
+    spacing: 4px;
+    padding: 0px;
+    HorizontalBox {
+        padding: 0px;
+        vertical-stretch: 0;
+        cross-axis-alignment: center;
+        Text {
+            min-width: 0px;
+            text: ViewCaptions.output-monitor;
+            font-weight: 700;
+            wrap: word-wrap;
         }
-        VerticalBox {padding:0px;spacing:4px;preferred-width:root.ui-size*21;max-width:root.ui-size*25;
-            span-choice := ComboBox {model:root.span-choices;current-index:root.data.spanchoice;enabled:root.data.settingsenabled;accessible-label:ViewCaptions.caption-waveform-time-window;selected(v)=>{root.span(self.current-index);}}
-            scale-choice := ComboBox {model:root.scale-choices;current-index:root.data.scalechoice;enabled:root.data.settingsenabled;accessible-label:ViewCaptions.caption-waveform-amplitude-scale;selected(v)=>{root.scale(self.current-index);}}
-            HorizontalBox {padding:0px;spacing:4px;
-                Button {text:root.data.held ? Terms.action-return-to-live : Terms.action-hold-display;triggered =>{root.hold();}}
-                if root.data.overridden: Button {text:Terms.action-follow-system;accessible-label:Terms.action-follow-system-motion-preference;triggered =>{root.follow();}}
+
+        Text {
+            text: root.data.state;
+            font-weight: 600;
+            wrap: no-wrap;
+            horizontal-stretch: 0;
+        }
+
+        Text {
+            preferred-width: 0px;
+            horizontal-stretch: 1;
+            text: root.data.age;
+            wrap: no-wrap;
+            overflow: elide;
+            accessible-label: root.data.age;
+        }
+
+        Button {
+            text: Terms.caption-details-dialog;
+            accessible-label: Terms.caption-full-audio-diagnostics-and-capture-source;
+            triggered => { root.details(); }
+        }
+
+        Button {
+            text: Terms.action-hide;
+            accessible-label: Terms.action-hide-output-monitor;
+            triggered => { root.collapse(); }
+        }
+    }
+
+    HorizontalBox {
+        padding: 0px;
+        spacing: 12px;
+        VerticalBox {
+            padding: 0px;
+            spacing: 3px;
+            Text {
+                min-width: 0px;
+                text: root.data.caption;
+                max-height: root.ui-size * 2.5;
+                wrap: word-wrap;
+                overflow: elide;
             }
-            Text {min-width:0px;text:root.data.meters;max-height:root.ui-size*4;wrap:word-wrap;overflow:elide;}
+
+            left-lane := Lane {
+                label: ViewCaptions.left;
+                trace: root.data.left;
+                limit: root.data.limit;
+                ui-size: root.ui-size;
+                label-column-width: root.lane-label-width;
+            }
+
+            right-lane := Lane {
+                label: ViewCaptions.right;
+                trace: root.data.right;
+                limit: root.data.limit;
+                ui-size: root.ui-size;
+                label-column-width: root.lane-label-width;
+            }
+
+            HorizontalBox {
+                padding: 0px;
+                vertical-stretch: 0;
+                Text {
+                    text: "−" + root.data.spanlabel;
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+
+                Text {
+                    text: ViewCaptions.captured-end;
+                }
+            }
+        }
+
+        VerticalBox {
+            padding: 0px;
+            spacing: 4px;
+            preferred-width: root.ui-size * 21;
+            max-width: root.ui-size * 25;
+            span-choice := ComboBox {
+                model: root.span-choices;
+                current-index: root.data.spanchoice;
+                enabled: root.data.settingsenabled;
+                accessible-label: ViewCaptions.waveform-time-window;
+                selected(v) => { root.span(self.current-index); }
+            }
+
+            scale-choice := ComboBox {
+                model: root.scale-choices;
+                current-index: root.data.scalechoice;
+                enabled: root.data.settingsenabled;
+                accessible-label: ViewCaptions.waveform-amplitude-scale;
+                selected(v) => { root.scale(self.current-index); }
+            }
+
+            HorizontalBox {
+                padding: 0px;
+                spacing: 4px;
+                Button {
+                    text: root.data.held ? Terms.action-return-to-live : Terms.action-hold-display;
+                    triggered => { root.hold(); }
+                }
+
+                if root.data.overridden: Button {
+                    text: Terms.action-follow-system;
+                    accessible-label: Terms.action-follow-system-motion-preference;
+                    triggered => { root.follow(); }
+                }
+            }
+
+            Text {
+                min-width: 0px;
+                text: root.data.meters;
+                max-height: root.ui-size * 4;
+                wrap: word-wrap;
+                overflow: elide;
+            }
         }
     }
-    Text {min-width:0px;text:root.data.motion;wrap:word-wrap;vertical-stretch:0;max-height:root.ui-size*2.5;overflow:elide;}
+
+    Text {
+        min-width: 0px;
+        text: root.data.motion;
+        wrap: word-wrap;
+        vertical-stretch: 0;
+        max-height: root.ui-size * 2.5;
+        overflow: elide;
+    }
     // A reserved row keeps brief coverage changes from changing the responsive window choice.
     HorizontalBox {
-        padding:0px;spacing:8px;vertical-stretch:0;
-        min-height:root.ui-size*2.5;max-height:root.ui-size*2.5;
-        Text {text:root.data.warning;visible:root.data.warning!="";wrap:word-wrap;min-width:0px;preferred-width:0px;horizontal-stretch:1;max-height:root.ui-size*2.5;overflow:elide;accessible-live-region:root.data.warninglive ? polite : off;}
-        Text {text:root.data.backendwarning;visible:root.data.backendwarning!="";wrap:word-wrap;min-width:0px;preferred-width:0px;horizontal-stretch:1;max-height:root.ui-size*2.5;overflow:elide;accessible-live-region:polite;}
+        padding: 0px;
+        spacing: 8px;
+        vertical-stretch: 0;
+        min-height: root.ui-size * 2.5;
+        max-height: root.ui-size * 2.5;
+        Text {
+            text: root.data.warning;
+            visible: root.data.warning != "";
+            wrap: word-wrap;
+            min-width: 0px;
+            preferred-width: 0px;
+            horizontal-stretch: 1;
+            max-height: root.ui-size * 2.5;
+            overflow: elide;
+            accessible-live-region: root.data.warninglive ? polite : off;
+        }
+
+        Text {
+            text: root.data.backendwarning;
+            visible: root.data.backendwarning != "";
+            wrap: word-wrap;
+            min-width: 0px;
+            preferred-width: 0px;
+            horizontal-stretch: 1;
+            max-height: root.ui-size * 2.5;
+            overflow: elide;
+            accessible-live-region: polite;
+        }
     }
 }
+
 export component MonitorWindow inherits Window {
     public function sync-controls() { panel.sync-controls(); }
-    title:ViewCaptions.caption-output-monitor;
-    in property <string> ui-family;in property <length> ui-size:13px;
-    default-font-family:root.ui-family;default-font-size:root.ui-size;
-    preferred-width:950px;preferred-height:420px;
-    min-width:680px;min-height:400px;
+    title: ViewCaptions.output-monitor;
+    in property <string> ui-family;
+    in property <length> ui-size:13px;
+    default-font-family: root.ui-family;
+    default-font-size: root.ui-size;
+    preferred-width: 950px;
+    preferred-height: 420px;
+    min-width: 680px;
+    min-height: 400px;
     in property <MonitorData> data;
     in property <[string]> span-choices;
     in property <[string]> scale-choices;
-    callback span(int);callback scale(int);callback hold();callback follow();callback details();callback dismiss();
-    forward-focus:monitor-keys;
+    callback span(int);
+    callback scale(int);
+    callback hold();
+    callback follow();
+    callback details();
+    callback dismiss();
+    forward-focus: monitor-keys;
     monitor-keys := FocusScope {
-        width:parent.width;height:parent.height;
+        width: parent.width;
+        height: parent.height;
         // These controls have fixed choices; selectable text lives in Details.
-        capture-key-pressed(event)=>{
+        capture-key-pressed(event) => {
             if !event.modifiers.alt && !event.modifiers.meta && !event.modifiers.shift {
-                if !event.modifiers.control && event.text==Key.PageDown {
-                    monitor-scroll.content-y=max(min(0px,monitor-scroll.visible-height - monitor-scroll.content-height),monitor-scroll.content-y - monitor-scroll.visible-height);
+                if !event.modifiers.control && event.text == Key.PageDown {
+                    monitor-scroll.content-y = max(min(0px,
+                        monitor-scroll.visible-height - monitor-scroll.content-height),
+                        monitor-scroll.content-y - monitor-scroll.visible-height);
                     return accept;
                 }
-                if !event.modifiers.control && event.text==Key.PageUp {
-                    monitor-scroll.content-y=min(0px,monitor-scroll.content-y+monitor-scroll.visible-height);
+                if !event.modifiers.control && event.text == Key.PageUp {
+                    monitor-scroll.content-y = min(0px,
+                        monitor-scroll.content-y + monitor-scroll.visible-height);
                     return accept;
                 }
-                if event.modifiers.control && event.text==Key.Home {
-                    monitor-scroll.content-x=0px;monitor-scroll.content-y=0px;
+                if event.modifiers.control && event.text == Key.Home {
+                    monitor-scroll.content-x = 0px;
+                    monitor-scroll.content-y = 0px;
                     return accept;
                 }
-                if event.modifiers.control && event.text==Key.End {
-                    monitor-scroll.content-x=min(0px,monitor-scroll.visible-width - monitor-scroll.content-width);
-                    monitor-scroll.content-y=min(0px,monitor-scroll.visible-height - monitor-scroll.content-height);
+                if event.modifiers.control && event.text == Key.End {
+                    monitor-scroll.content-x = min(0px,
+                        monitor-scroll.visible-width - monitor-scroll.content-width);
+                    monitor-scroll.content-y = min(0px,
+                        monitor-scroll.visible-height - monitor-scroll.content-height);
                     return accept;
                 }
             }
             return reject;
         }
-    monitor-scroll := ScrollView {
-        VerticalBox {padding:16px;
-            panel := MonitorPanel {max-height:self.preferred-height;data:root.data;span-choices:root.span-choices;scale-choices:root.scale-choices;ui-size:root.ui-size;span(i)=>{root.span(i);}scale(i)=>{root.scale(i);}hold=>{root.hold();}follow=>{root.follow();}details=>{root.details();}collapse=>{root.dismiss();}}
+        monitor-scroll := ScrollView {
+            VerticalBox {
+                padding: 16px;
+                panel := MonitorPanel {
+                    max-height: self.preferred-height;
+                    data: root.data;
+                    span-choices: root.span-choices;
+                    scale-choices: root.scale-choices;
+                    ui-size: root.ui-size;
+                    span(i) => { root.span(i); }
+                    scale(i) => { root.scale(i); }
+                    hold => { root.hold(); }
+                    follow => { root.follow(); }
+                    details => { root.details(); }
+                    collapse => { root.dismiss(); }
+                }
+            }
         }
-    }
-    }
-}
-export component DetailsWindow inherits Window {
-    in property <string> ui-family;in property <length> ui-size:13px;
-    default-font-family:root.ui-family;default-font-size:root.ui-size;
-    in property <string> heading;title:root.heading;
-    in property <string> content;
-    in property <bool> can-refresh;
-    public function focus-close(){close.focus();}
-    callback refresh-content();
-    preferred-width:750px;preferred-height:600px;min-width:500px;min-height:350px;
-    callback dismiss();
-    FocusScope {
-        key-pressed(e)=>{if e.text==Key.Escape{root.dismiss();return accept;}return reject;}
-    VerticalBox {
-        Text {text:root.heading;font-weight:700;vertical-stretch:0;}
-        TextEdit {text:root.content;read-only:true;accessible-label:root.heading;}
-        if root.can-refresh: Button {text:Terms.action-refresh-diagnostics-snapshot;triggered =>{root.refresh-content();}}
-        close := Button {text:Terms.action-close;triggered =>{root.dismiss();}}
-    }
-}
-}
-export component AudioControlsWindow inherits Window {
-    title:Terms.caption-audio-controls;
-    in property <string> ui-family;in property <length> ui-size:13px;
-    default-font-family:root.ui-family;default-font-size:root.ui-size;
-    in property <string> source;in property <string> elapsed;in property <bool> active;
-    min-width:max(320px,controls.min-width);
-    min-height:controls.preferred-height;
-    preferred-width:400px;preferred-height:max(150px,self.min-height);
-    callback stop();
-    controls := VerticalBox {
-        padding:16px;spacing:8px;
-        Text {min-width:0px;text:root.source;overflow:elide;accessible-label:root.source;}
-        Text {text:root.elapsed;}
-        Button {text:Actions.stop.label;enabled: Actions.stop.enabled;triggered =>{root.stop();}}
     }
 }
 
+export component DetailsWindow inherits Window {
+    in property <string> ui-family;
+    in property <length> ui-size:13px;
+    default-font-family: root.ui-family;
+    default-font-size: root.ui-size;
+    in property <string> heading;
+    title: root.heading;
+    in property <string> content;
+    in property <bool> can-refresh;
+    public function focus-close() { close.focus(); }
+    callback refresh-content();
+    preferred-width: 750px;
+    preferred-height: 600px;
+    min-width: 500px;
+    min-height: 350px;
+    callback dismiss();
+    FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape { root.dismiss(); return accept; }
+            return reject;
+        }
+        VerticalBox {
+            Text {
+                text: root.heading;
+                font-weight: 700;
+                vertical-stretch: 0;
+            }
+
+            TextEdit {
+                text: root.content;
+                read-only: true;
+                accessible-label: root.heading;
+            }
+
+            if root.can-refresh: Button {
+                text: Terms.action-refresh-diagnostics-snapshot;
+                triggered => { root.refresh-content(); }
+            }
+            close := Button {
+                text: Terms.action-close;
+                triggered => { root.dismiss(); }
+            }
+        }
+    }
+}
+
+export component AudioControlsWindow inherits Window {
+    title: Terms.caption-audio-controls;
+    in property <string> ui-family;
+    in property <length> ui-size:13px;
+    default-font-family: root.ui-family;
+    default-font-size: root.ui-size;
+    in property <string> source;
+    in property <string> elapsed;
+    in property <bool> active;
+    min-width: max(320px,controls.min-width);
+    min-height: controls.preferred-height;
+    preferred-width: 400px;
+    preferred-height: max(150px,self.min-height);
+    callback stop();
+    controls := VerticalBox {
+        padding: 16px;
+        spacing: 8px;
+        Text {
+            min-width: 0px;
+            text: root.source;
+            overflow: elide;
+            accessible-label: root.source;
+        }
+
+        Text {
+            text: root.elapsed;
+        }
+
+        Button {
+            text: Actions.stop.label;
+            enabled: Actions.stop.enabled;
+            triggered => { root.stop(); }
+        }
+    }
+}

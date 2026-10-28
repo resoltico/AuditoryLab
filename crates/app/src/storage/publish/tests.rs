@@ -138,7 +138,10 @@ fn postcommit_failures_verify_candidate_previous_and_foreign_content() {
         fs::write(&path, b"previous").unwrap();
         inject(&[point]);
         let result = put(&dir, &path, Policy::Replace, b"candidate").unwrap();
-        assert!(!result.warnings.is_empty());
+        assert_ne!(
+            result.warnings,
+            [] as [crate::storage::warning::StorageWarning; 0]
+        );
         assert_eq!(fs::read(path).unwrap(), b"candidate");
     }
     let (_temp, dir, path) = fixture();
@@ -155,12 +158,13 @@ fn postcommit_failures_verify_candidate_previous_and_foreign_content() {
     assert_eq!(fs::read(&path).unwrap(), b"previous");
     let changed = path.clone();
     AFTER_PUBLISH.with(|slot| {
-        *slot.borrow_mut() = Some(Box::new(move || fs::write(changed, b"foreign").unwrap()))
+        *slot.borrow_mut() = Some(Box::new(move || fs::write(changed, b"foreign").unwrap()));
     });
     inject(&[FaultPoint::AfterPublish]);
     let error = put(&dir, &path, Policy::Replace, b"candidate").unwrap_err();
     assert!(
-        matches!(&error,Error::AfterMutation {path:observed,confirmation:Confirmation::Different,..} if observed==&path)
+        matches!(&error,Error::AfterMutation {path:observed,confirmation:Confirmation::Different,..}
+            if observed==&path)
     );
     assert_eq!(fs::read(path).unwrap(), b"foreign");
 }
@@ -185,7 +189,10 @@ fn no_clobber_race_and_cleanup_failure_preserve_publication_truth() {
     let (temp, dir, path) = fixture();
     inject(&[FaultPoint::Cleanup]);
     let result = put(&dir, &path, Policy::CreateNew, b"saved").unwrap();
-    assert!(!result.warnings.is_empty());
+    assert_ne!(
+        result.warnings,
+        [] as [crate::storage::warning::StorageWarning; 0]
+    );
     assert_eq!(fs::read(path).unwrap(), b"saved");
     assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
 }
@@ -219,7 +226,10 @@ fn purge_failures_distinguish_existing_destination_and_confirmed_absence() {
     assert!(remove(&dir, Path::new("entry"), &path).is_err());
     assert!(path.exists());
     inject(&[FaultPoint::AfterRemove]);
-    assert!(!remove(&dir, Path::new("entry"), &path).unwrap().is_empty());
+    assert_ne!(
+        remove(&dir, Path::new("entry"), &path).unwrap(),
+        [] as [crate::storage::warning::StorageWarning; 0]
+    );
     assert!(!path.exists());
 }
 #[test]
@@ -378,7 +388,10 @@ fn killed_recipe_writers_leave_old_or_complete_bytes_and_no_stage_is_promoted() 
                 &Cancel::default(),
             )
             .unwrap();
-        assert!(store.scan(&Cancel::default()).stages.is_empty());
+        assert_eq!(
+            store.scan(&Cancel::default()).stages,
+            [] as [std::path::PathBuf; 0]
+        );
         assert_eq!(store.load(&record.key).unwrap().recipe_toml, before);
     }
 }
@@ -620,7 +633,11 @@ fn precommit_hashing_checks_cancellation_between_blocks() {
         let request = cancel.clone();
         let blocks = Rc::new(Cell::new(0));
         let counted = blocks.clone();
-        let stop_after = if phase == "conditional" { 5 } else { 1 };
+        let stop_after = if phase == "conditional" {
+            2 * original.len().div_ceil(HASH_BLOCK_BYTES) + 1
+        } else {
+            1
+        };
         HASH_BLOCK.with(|slot| {
             *slot.borrow_mut() = Some(Box::new(move || {
                 let count = counted.get() + 1;
@@ -628,7 +645,7 @@ fn precommit_hashing_checks_cancellation_between_blocks() {
                 if count == stop_after {
                     request.request();
                 }
-            }))
+            }));
         });
         let written = Cell::new(false);
         let policy = match phase {
@@ -687,7 +704,10 @@ fn cancellation_after_publication_does_not_interrupt_truth_verification() {
     )
     .unwrap();
     assert!(cancel.is_requested());
-    assert!(!result.warnings.is_empty());
+    assert_ne!(
+        result.warnings,
+        [] as [crate::storage::warning::StorageWarning; 0]
+    );
     assert_eq!(fs::read(path).unwrap(), candidate);
 }
 
@@ -716,10 +736,9 @@ fn relocation_flushes_the_source_without_changing_bytes_or_file_identity() {
         fs::set_permissions(&source, fs::Permissions::from_mode(0o444)).unwrap();
     }
     let identity = same_file::Handle::from_file(open_regular(&from, name).unwrap()).unwrap();
-    assert!(
-        relocate(&from, &to, name, &source, &destination, &Cancel::default())
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        relocate(&from, &to, name, &source, &destination, &Cancel::default()).unwrap(),
+        [] as [crate::storage::warning::StorageWarning; 0]
     );
     assert!(!source.exists());
     assert_eq!(fs::read(&destination).unwrap(), bytes);
@@ -734,10 +753,9 @@ fn relocation_flushes_the_source_without_changing_bytes_or_file_identity() {
         );
     }
     // Restoring uses the same flush contract and retains the same file.
-    assert!(
-        relocate(&to, &from, name, &destination, &source, &Cancel::default())
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        relocate(&to, &from, name, &destination, &source, &Cancel::default()).unwrap(),
+        [] as [crate::storage::warning::StorageWarning; 0]
     );
     assert!(!destination.exists());
     assert_eq!(fs::read(&source).unwrap(), bytes);

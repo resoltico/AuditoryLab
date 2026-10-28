@@ -5,6 +5,7 @@ mod notices;
 mod package;
 mod pe_icon;
 mod source;
+mod style;
 mod targets;
 mod vendor;
 use serde_json::Value;
@@ -91,6 +92,10 @@ fn rust_version() -> Result<String> {
         .map(|v| v.trim_matches('"').to_owned())
         .ok_or_else(|| "pinned Rust version missing".into())
 }
+#[expect(
+    clippy::unnecessary_debug_formatting,
+    reason = "Native diagnostic paths retain escaped, quoted bytes, including non-UTF-8 names"
+)]
 fn rust_standard_library_copyright() -> Result<Vec<u8>> {
     let compiler = env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
     let actual = String::from_utf8(capture(Command::new(&compiler).arg("--version"))?)?;
@@ -113,7 +118,53 @@ fn rust_standard_library_copyright() -> Result<Vec<u8>> {
     Ok(bytes)
 }
 fn readme(version: &str, gui: bool, target: &str) -> String {
-    include_str!("../templates/archive-readme.txt").replace("{version}",version).replace("{product}",if gui {"Desktop"} else {"CLI"}).replace("{start}",if gui {"Open Auditory Lab.app on macOS, auditorylab-gui.exe on Windows, or auditorylab-gui on Linux. Select a sound, read its summary, then use Play selected sound or Export WAV…."} else {"Run auditorylab --help, then auditorylab list. Use auditorylab describe builtin:ID to read about a sound, and auditorylab recipe builtin:ID --output recipe.toml to edit one."}).replace("{platform_needs}",if target.contains("apple") {"macOS 15 or later. If first launch is blocked, use System Settings > Privacy & Security > Open Anyway after trying to open the app. Apple instructions: https://support.apple.com/en-us/102445"} else if target.contains("windows") {if gui { "Windows 10 or later on x86_64; Windows 11 on ARM64. Desktop drawing needs an OpenGL 2.0 or newer graphics driver." } else { "Windows 10 or later on x86_64; Windows 11 on ARM64." }} else {if gui { "Linux with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, xkbcommon (including its X11 library on X11), fonts, GLib gsettings for GNOME Wayland text scaling, OpenGL and an xdg-desktop-portal for file dialogs." } else { "Linux with glibc 2.35 or later and ALSA." }})
+    include_str!("../templates/archive-readme.txt")
+        .replace("{version}", version)
+        .replace("{product}", if gui { "Desktop" } else { "CLI" })
+        .replace(
+            "{start}",
+            if gui {
+                "Open \
+        Auditory Lab.app on macOS, auditorylab-gui.exe on Windows, or \
+        auditorylab-gui on Linux. Select a sound, read its summary, then use \
+        Play selected sound or Export WAV…."
+            } else {
+                "Run \
+        auditorylab --help, then auditorylab list. Use auditorylab describe \
+        builtin:ID to read about a sound, and auditorylab recipe builtin:ID \
+        --output recipe.toml to edit one."
+            },
+        )
+        .replace(
+            "{platform_\
+        needs}",
+            if target.contains("apple") {
+                "macOS 15 \
+        or later. If first launch is blocked, use System Settings > Privacy & \
+        Security > Open Anyway after trying to open the app. Apple \
+        instructions: https://support.apple.com/en-us/102445"
+            } else if target.contains("windows") {
+                if gui {
+                    "Windows \
+        10 or later on x86_64; Windows 11 on ARM64. Desktop drawing needs an \
+        OpenGL 2.0 or newer graphics driver."
+                } else {
+                    "Windows \
+        10 or later on x86_64; Windows 11 on ARM64."
+                }
+            } else {
+                if gui {
+                    "Linux \
+        with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, xkbcommon \
+        (including its X11 library on X11), fonts, GLib gsettings for GNOME \
+        Wayland text scaling, OpenGL and an xdg-desktop-portal for file \
+        dialogs."
+                } else {
+                    "Linux \
+        with glibc 2.35 or later and ALSA."
+                }
+            },
+        )
 }
 fn section<'a>(changelog: &'a str, version: &str) -> Result<(&'a str, &'a str)> {
     let marker = format!("## [{version}]");
@@ -252,7 +303,11 @@ fn version_line(binary: &str, version: &str, revision: Option<&str>) -> Result<S
     let source = match revision {
         Some(rev) => {
             if !matches!(rev.len(), 40 | 64) || !rev.bytes().all(|b| b.is_ascii_hexdigit()) {
-                return Err("AUDITORYLAB_SOURCE_REVISION must be a full 40- or 64-character ASCII hex commit ID".into());
+                return Err(
+                    "AUDITORYLAB_SOURCE_REVISION must be a full 40- or 64-character ASCII \
+                    hex commit ID"
+                        .into(),
+                );
             }
             format!(" ({rev})")
         }
@@ -260,6 +315,10 @@ fn version_line(binary: &str, version: &str, revision: Option<&str>) -> Result<S
     };
     Ok(format!("{binary} {version}{source}"))
 }
+#[expect(
+    clippy::unnecessary_debug_formatting,
+    reason = "Native diagnostic paths retain escaped, quoted bytes, including non-UTF-8 names"
+)]
 fn smoke(cli: &Path, scratch: &Path) -> Result<()> {
     let listing = String::from_utf8(capture(Command::new(cli).args([
         "list",
@@ -291,11 +350,10 @@ fn smoke(cli: &Path, scratch: &Path) -> Result<()> {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-        child
-            .stdin
-            .take()
-            .ok_or("stdin missing")?
-            .write_all(b"schema_version=4\n[sound]\nduration_seconds=0.000125\nfade_seconds=0\n[document]\nid='00000000-0000-4000-8000-000000000001'\n")?;
+        child.stdin.take().ok_or("stdin missing")?.write_all(
+            b"schema_version=4\n[sound]\nduration_seconds=0.000125\nfade_seconds=0\n\
+                [document]\nid='00000000-0000-4000-8000-000000000001'\n",
+        )?;
         let output = child.wait_with_output()?;
         if output.status.success() != expected_success {
             return Err(format!(
@@ -320,7 +378,13 @@ fn smoke(cli: &Path, scratch: &Path) -> Result<()> {
 }
 fn source_notice(version: &str, source: &source::Source) -> String {
     format!(
-        "Auditory Lab {version}\nSource revision: {}\nSource commit epoch: {} (Unix UTC seconds)\nCorresponding source: https://github.com/resoltico/AuditoryLab/tree/{}\nRelease source archives: https://github.com/resoltico/AuditoryLab/releases\nSoftware uses MPL-2.0; owner artwork has separate terms in LICENSE.\nRedistributors must provide corresponding MPL-covered source and tell recipients how to obtain it.\n",
+        "Auditory Lab {version}\nSource revision: {}\nSource commit epoch: {} \
+            (Unix UTC seconds)\nCorresponding source: \
+            https://github.com/resoltico/AuditoryLab/tree/{}\nRelease source \
+            archives: https://github.com/resoltico/AuditoryLab/releases\nSoftware \
+            uses MPL-2.0; owner artwork has separate terms in \
+            LICENSE.\nRedistributors must provide corresponding MPL-covered \
+            source and tell recipients how to obtain it.\n",
         source.revision, source.epoch, source.revision
     )
 }
@@ -344,37 +408,8 @@ fn dist(target: &str, out: &Path, icons: Option<&Path>) -> Result<()> {
     let version = version(&meta)?.to_owned();
     let bundle_version = native_bundle_version(&version)?;
     let source = source::Source::resolve()?;
-    if let Some(icons) = icons {
-        if !target.contains("apple") {
-            return Err("--icons is supported only for macOS distributions".into());
-        }
-        macos::validate_icons(icons, &source)?;
-    } else if target.contains("apple") {
-        archive::actool()?;
-    }
-    let rust_copyright = rust_standard_library_copyright()?;
-    capture(Command::new("cargo").args(["about","--version"]))
-        .map_err(|error| format!("cargo-about is required for dist; install it with its cli feature (see CONTRIBUTING.md).\n{error}"))?;
-    let mut command = Command::new("cargo");
-    command.args([
-        "build",
-        "--locked",
-        "--profile",
-        "dist",
-        "-p",
-        "auditorylab-cli",
-        "-p",
-        "auditorylab-gui",
-        "--target",
-        target,
-    ]);
-    if target.contains("apple") {
-        command.env("MACOSX_DEPLOYMENT_TARGET", "15.0");
-    }
-    command
-        .env("AUDITORYLAB_SOURCE_REVISION", &source.revision)
-        .env("SOURCE_DATE_EPOCH", source.epoch.to_string());
-    run(&mut command)?;
+    let rust_copyright = distribution_tools(target, icons, &source)?;
+    build_binaries(target, &source)?;
     let target_dir = PathBuf::from(
         meta["target_directory"]
             .as_str()
@@ -428,7 +463,9 @@ fn dist(target: &str, out: &Path, icons: Option<&Path>) -> Result<()> {
             if product == "gui" && target.contains("linux") {
                 fs::write(
                     folder.join("auditorylab-gui.desktop"),
-                    "[Desktop Entry]\nType=Application\nName=Auditory Lab\nExec=auditorylab-gui\nIcon=org.resoltico.auditorylab\nTerminal=false\nCategories=Science;\n",
+                    "[Desktop Entry]\nType=Application\nName=Auditory \
+                        Lab\nExec=auditorylab-gui\nIcon=org.resoltico.auditorylab\nTerminal=fa\
+                        lse\nCategories=Science;\n",
                 )?;
                 copy_tree(
                     Path::new("artwork/auditorylab-icon/assets/linux/hicolor"),
@@ -474,17 +511,155 @@ fn main() -> Result<()> {
     )?;
     let args: Vec<_> = env::args().skip(1).collect();
     match args.first().map(String::as_str) {
-        Some("verify-vendor") if args.len()==1 => vendor::verify(),
-        Some("dist") => { let mut target=None; let mut icons=None; let mut out=PathBuf::from("target/dist"); let mut i=1; while i<args.len() { let value=args.get(i+1).ok_or("missing option value")?; match args[i].as_str() { "--target"=>target=Some(value.as_str()),"--out"=>out=PathBuf::from(value),"--icons"=>icons=Some(Path::new(value)),_=>return Err("use dist --target TARGET [--out DIR] [--icons DIR]".into()) } i+=2; } dist(target.ok_or("dist requires --target")?,&out,icons) }
-        Some("compile-icons") if args.len()==2 => macos::compile_icons(Path::new(&args[1]), &source::Source::resolve()?),
-        Some("inspect-package") if args.len()==3 => { let meta=metadata(None)?; let _=package::inspect(Path::new(&args[2]), Path::new("target/package-inspection"), &args[1], version(&meta)?, native_bundle_version(version(&meta)?)?, &rust_standard_library_copyright()?, &source::Source::resolve()?)?; Ok(()) },
-        Some("collect-assets") if args.len()==4 => targets::collect(&args[1], Path::new(&args[2]), Path::new(&args[3])),
-        Some("notes") if args.len()==2 => { println!("{}",section(&fs::read_to_string("CHANGELOG.md")?,&args[1])?.1); Ok(()) }
-        Some("check-release") if args.len()==2 => { let meta=metadata(None)?; if version(&meta)?!=args[1] { return Err("workspace version differs from requested release".into()); } let text=fs::read_to_string("CHANGELOG.md")?; release_notes(&text,&args[1])?;  rust_standard_library_copyright()?; Ok(()) }
-        Some("notices") if args.len()==4 => { let meta=metadata(Some(&args[2]))?; fs::write(&args[3],about(&args[1],&args[2],&meta)?)?; Ok(()) }
-        _=>Err("use cargo xtask verify-vendor, dist --target TARGET [--out DIR] [--icons DIR], compile-icons OUTPUT, inspect-package TARGET ARCHIVE, collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT, notes VERSION, or check-release VERSION".into()),
+        Some("check-style") if args.len() == 1 => style::check(),
+        Some("verify-vendor") if args.len() == 1 => vendor::verify(),
+        Some("dist") => run_dist(&args),
+        Some("compile-icons") if args.len() == 2 => {
+            macos::compile_icons(Path::new(&args[1]), &source::Source::resolve()?)
+        }
+        Some("inspect-package") if args.len() == 3 => {
+            let meta = metadata(None)?;
+            let _ = package::inspect(
+                Path::new(&args[2]),
+                Path::new(
+                    "target/pac\
+            kage-inspection",
+                ),
+                &args[1],
+                version(&meta)?,
+                native_bundle_version(version(&meta)?)?,
+                &rust_standard_library_copyright()?,
+                &source::Source::resolve()?,
+            )?;
+            Ok(())
+        }
+        Some("collect-assets") if args.len() == 4 => {
+            targets::collect(&args[1], Path::new(&args[2]), Path::new(&args[3]))
+        }
+        Some("notes") if args.len() == 2 => {
+            println!(
+                "{}",
+                section(
+                    &fs::read_to_string(
+                        "CHANGELOG.m\
+            d"
+                    )?,
+                    &args[1]
+                )?
+                .1
+            );
+            Ok(())
+        }
+        Some("check-release") if args.len() == 2 => {
+            let meta = metadata(None)?;
+            if version(&meta)? != args[1] {
+                return Err("workspace \
+            version differs from requested release"
+                    .into());
+            }
+            let text = fs::read_to_string(
+                "CHANGELOG.\
+            md",
+            )?;
+            release_notes(&text, &args[1])?;
+            rust_standard_library_copyright()?;
+            Ok(())
+        }
+        Some("notices") if args.len() == 4 => {
+            let meta = metadata(Some(&args[2]))?;
+            fs::write(&args[3], about(&args[1], &args[2], &meta)?)?;
+            Ok(())
+        }
+        _ => Err(
+            "use cargo xtask check-style, verify-vendor, dist --target TARGET [--out DIR] \
+            [--icons DIR], compile-icons OUTPUT, inspect-package TARGET ARCHIVE, \
+            collect-assets VERSION INPUT OUTPUT, notices PRODUCT TARGET OUTPUT, \
+            notes VERSION, or check-release VERSION"
+                .into(),
+        ),
     }
 }
+
+fn distribution_tools(
+    target: &str,
+    icons: Option<&Path>,
+    source: &source::Source,
+) -> Result<Vec<u8>> {
+    if let Some(icons) = icons {
+        if !target.contains("apple") {
+            return Err("--icons is supported only for macOS distributions".into());
+        }
+        macos::validate_icons(icons, source)?;
+    } else if target.contains("apple") {
+        archive::actool()?;
+    }
+    let rust_copyright = rust_standard_library_copyright()?;
+    capture(Command::new("cargo").args(["about", "--version"])).map_err(|error| {
+        format!(
+            "cargo-about is required for dist; install it with its cli \
+            feature (see CONTRIBUTING.md).\n{error}"
+        )
+    })?;
+    Ok(rust_copyright)
+}
+fn build_binaries(target: &str, source: &source::Source) -> Result<()> {
+    let mut command = Command::new("cargo");
+    command.args([
+        "build",
+        "--locked",
+        "--profile",
+        "dist",
+        "-p",
+        "auditorylab-cli",
+        "-p",
+        "auditorylab-gui",
+        "--target",
+        target,
+    ]);
+    if target.contains("apple") {
+        command.env("MACOSX_DEPLOYMENT_TARGET", "15.0");
+    }
+    command
+        .env("AUDITORYLAB_SOURCE_REVISION", &source.revision)
+        .env("SOURCE_DATE_EPOCH", source.epoch.to_string());
+    run(&mut command)
+}
+
+fn run_dist(args: &[String]) -> Result<()> {
+    let mut target = None;
+    let mut icons = None;
+    let mut out = PathBuf::from(
+        "target/dis\
+            t",
+    );
+    let mut i = 1;
+    while i < args.len() {
+        let value = args.get(i + 1).ok_or(
+            "missing \
+            option value",
+        )?;
+        match args[i].as_str() {
+            "--target" => target = Some(value.as_str()),
+            "--out" => out = PathBuf::from(value),
+            "--icons" => icons = Some(Path::new(value)),
+            _ => {
+                return Err("use dist \
+            --target TARGET [--out DIR] [--icons DIR]"
+                    .into());
+            }
+        }
+        i += 2;
+    }
+    dist(
+        target.ok_or(
+            "dist \
+            requires --target",
+        )?,
+        &out,
+        icons,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

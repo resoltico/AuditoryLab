@@ -76,7 +76,11 @@ pub(crate) fn validate_icons(directory: &Path, source: &Source) -> Result<()> {
         .collect();
     expected.sort();
     if names != expected {
-        return Err("macOS icon input must contain exactly Assets.car, AppIcon.icns, icon-partial.plist and source-identity.txt".into());
+        return Err(
+            "macOS icon input must contain exactly Assets.car, AppIcon.icns, \
+            icon-partial.plist and source-identity.txt"
+                .into(),
+        );
     }
     let icns = fs::read(directory.join("AppIcon.icns"))?;
     if icns.len() <= 8
@@ -125,12 +129,11 @@ pub(crate) fn bundle(
     }
     let local_icons = root.join("compiled-icons");
     let compiled_locally = icons.is_none();
-    let icons = match icons {
-        Some(directory) => directory,
-        None => {
-            compile_icons(&local_icons, source)?;
-            &local_icons
-        }
+    let icons = if let Some(directory) = icons {
+        directory
+    } else {
+        compile_icons(&local_icons, source)?;
+        &local_icons
     };
     validate_icons(icons, source)?;
     for name in ICON_FILES {
@@ -144,7 +147,18 @@ pub(crate) fn bundle(
     fs::write(
         &plist,
         format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>org.resoltico.auditorylab</string><key>CFBundleName</key><string>Auditory Lab</string><key>CFBundleDisplayName</key><string>Auditory Lab</string><key>CFBundleExecutable</key><string>auditorylab-gui</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleShortVersionString</key><string>{version}</string><key>CFBundleVersion</key><string>{bundle_version}</string><key>LSMinimumSystemVersion</key><string>15.0</string><key>NSHighResolutionCapable</key><true/></dict></plist>"#
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \
+                \"-//Apple//DTD PLIST 1.0//EN\" \
+                \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist \
+                version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>org.resolti\
+                co.auditorylab</string><key>CFBundleName</key><string>Auditory \
+                Lab</string><key>CFBundleDisplayName</key><string>Auditory \
+                Lab</string><key>CFBundleExecutable</key><string>auditorylab-gui</stri\
+                ng><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleSho\
+                rtVersionString</key><string>{version}</string><key>CFBundleVersion</k\
+                ey><string>{bundle_version}</string><key>LSMinimumSystemVersion</key><\
+                string>15.0</string><key>NSHighResolutionCapable</key><true/></dict></\
+                plist>"
         ),
     )?;
     run(Command::new("/usr/libexec/PlistBuddy")
@@ -176,7 +190,14 @@ mod tests {
         .unwrap();
         fs::write(directory.join("Assets.car"), b"native catalog fixture").unwrap();
         fs::write(directory.join("AppIcon.icns"), b"icns\0\0\0\x09x").unwrap();
-        fs::write(directory.join("icon-partial.plist"), br#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIconFile</key><string>AppIcon</string><key>CFBundleIconName</key><string>AppIcon</string></dict></plist>"#).unwrap();
+        fs::write(
+            directory.join("icon-partial.plist"),
+            b"<?xml version=\"1.0\" \
+            encoding=\"UTF-8\"?><plist \
+            version=\"1.0\"><dict><key>CFBundleIconFile</key><string>AppIcon</stri\
+            ng><key>CFBundleIconName</key><string>AppIcon</string></dict></plist>",
+        )
+        .unwrap();
     }
 
     #[test]
@@ -240,7 +261,15 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         fixture(temp.path());
         validate_icons(temp.path(), &source()).unwrap();
-        fs::write(temp.path().join("icon-partial.plist"), br#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIconFile</key><string>AppIcon</string><key>CFBundleIconName</key><string>AppIcon</string><key>CFBundleExecutable</key><string>other</string></dict></plist>"#).unwrap();
+        fs::write(
+            temp.path().join("icon-partial.plist"),
+            b"<?xml version=\"1.0\" \
+            encoding=\"UTF-8\"?><plist \
+            version=\"1.0\"><dict><key>CFBundleIconFile</key><string>AppIcon</stri\
+            ng><key>CFBundleIconName</key><string>AppIcon</string><key>CFBundleExe\
+            cutable</key><string>other</string></dict></plist>",
+        )
+        .unwrap();
         assert!(
             validate_icons(temp.path(), &source())
                 .unwrap_err()

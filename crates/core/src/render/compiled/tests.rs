@@ -56,9 +56,10 @@ fn requested_and_realized_pulse_widths_keep_their_rate() {
     ] {
         let check = crate::test_support::check(rate(hz), &[(id(1), component)]);
         let facts = check.voices()[0].1.as_ref().unwrap();
-        let pulse = match (facts.carrier, facts.modulation) {
-            (CarrierFacts::Clicks(p), _) | (_, Some(ModulationFacts::Gate(p))) => p,
-            _ => panic!("pulse facts"),
+        let ((CarrierFacts::Clicks(pulse), _) | (_, Some(ModulationFacts::Gate(pulse)))) =
+            (facts.carrier, facts.modulation)
+        else {
+            panic!("pulse facts")
         };
         assert_eq!(pulse.width_frames, frames);
         assert_eq!(pulse.sample_rate, rate(hz));
@@ -186,7 +187,7 @@ fn identity_count_and_mix_errors_stay_global_with_their_established_precedence()
         check.result(),
         Err(SoundError::Peak { ear: Ear::Left, .. })
     ));
-    assert!(check.result().unwrap_err().parameters().is_empty());
+    assert_eq!(check.result().unwrap_err().parameters(), []);
     assert!(check.voices().iter().all(|(_, row)| row.is_ok()));
     // Capacity follows MAX_COMPONENTS and over-capacity input compiles nothing.
     for count in [0, Sound::MAX_COMPONENTS, Sound::MAX_COMPONENTS + 1] {

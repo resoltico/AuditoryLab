@@ -73,7 +73,9 @@ fn between(from: f64, to: f64, progress: f64) -> f64 {
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    reason = "Validated nonnegative phase steps below 2^63 interpolate within their endpoint range; rounding to binary64 and truncating back is the specified glide"
+    reason = "Validated nonnegative phase steps below 2^63 interpolate within their \
+        endpoint range; rounding to binary64 and truncating back is the \
+        specified glide"
 )]
 fn glide(from: u64, to: u64, progress: f64) -> u64 {
     if from == to || progress >= 1.0 {
@@ -278,7 +280,8 @@ impl Engine {
     /// of the stream; frames after the end are silence.
     #[expect(
         clippy::cast_precision_loss,
-        reason = "The 30 ms ramp is at most 23040 frames at the supported maximum sample rate; its counts fit binary64 exactly"
+        reason = "The 30 ms ramp is at most 23040 frames at the supported maximum \
+            sample rate; its counts fit binary64 exactly"
     )]
     pub fn render(&mut self, out: &mut [[f64; 2]]) -> usize {
         for index in 0..out.len() {
@@ -452,7 +455,8 @@ impl Engine {
     #[cfg(test)]
     #[expect(
         clippy::cast_precision_loss,
-        reason = "The ramp is at most 23040 frames; conversion to binary64 is exact in this test oracle"
+        reason = "The ramp is at most 23040 frames; conversion to binary64 is exact in \
+            this test oracle"
     )]
     fn level_sums(&self) -> [f64; 2] {
         let progress = self
@@ -637,7 +641,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; \
+            binary64 conversion is exact for these bounded fixtures"
     )]
     fn an_unedited_session_equals_the_signal_after_its_start_ramp() {
         let mut stimuli: Vec<crate::Sound> = crate::catalog::ENTRIES
@@ -725,7 +730,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_precision_loss,
-        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; \
+            binary64 conversion is exact for these bounded fixtures"
     )]
     fn a_retuned_tone_keeps_its_phase_and_a_reset_would_not() {
         let mut engine = Engine::new(rate());
@@ -752,7 +758,7 @@ mod tests {
         let reset: Vec<f64> = (0..4_827_u64)
             .map(|n| amplitude * libm::sin(core::f64::consts::TAU * 440.0 * n as f64 / 48_000.0))
             .chain((0..100).map(|n| {
-                amplitude * libm::sin(core::f64::consts::TAU * 880.0 * n as f64 / 48_000.0)
+                amplitude * libm::sin(core::f64::consts::TAU * 880.0 * f64::from(n) / 48_000.0)
             }))
             .collect();
         let jump = reset
@@ -766,7 +772,8 @@ mod tests {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_precision_loss,
-        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; \
+            binary64 conversion is exact for these bounded fixtures"
     )]
     fn a_level_change_moves_linearly_over_one_ramp() {
         // A pulse wider than the session holds the carrier at one.
@@ -801,7 +808,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; \
+            binary64 conversion is exact for these bounded fixtures"
     )]
     fn a_changed_pulse_crossfades_and_a_retuned_tone_does_not() {
         let mut engine = Engine::new(rate());
@@ -831,7 +839,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; \
+            binary64 conversion is exact for these bounded fixtures"
     )]
     fn targets_during_a_ramp_wait_and_only_the_newest_applies() {
         let mut engine = Engine::new(rate());
@@ -858,7 +867,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; \
+            binary64 conversion is exact for these bounded fixtures"
     )]
     fn stopping_fades_out_within_one_ramp_and_then_finishes() {
         let mut engine = Engine::new(rate());
@@ -900,7 +910,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_precision_loss,
-        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; \
+            binary64 conversion is exact for these bounded fixtures"
     )]
     fn random_edits_keep_every_ear_within_full_scale() {
         let component = (0_u8..3, 0_u8..4, 1.0_f64..20_000.0, 0.0_f64..1.0, 0_u32..4).prop_map(
@@ -1040,7 +1051,8 @@ mod tests {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_precision_loss,
-        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; \
+            binary64 conversion is exact for these bounded fixtures"
     )]
     fn frequencies_glide_through_intermediate_steps_during_a_ramp() {
         let am = |hz: f64, rate_hz: f64, depth: f64| Voice {
@@ -1084,7 +1096,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; \
+            binary64 conversion is exact for these bounded fixtures"
     )]
     fn pulses_started_mid_session_count_from_their_own_first_frame() {
         let reference = |n: u64| (n % 1_200) < 48;
@@ -1170,7 +1183,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; binary64 conversion is exact for these bounded fixtures"
+        reason = "Test-only frame indices and ramp lengths fit the allocated buffers; \
+            binary64 conversion is exact for these bounded fixtures"
     )]
     fn an_empty_target_plays_silence_until_stopped() {
         let mut engine = Engine::new(rate());

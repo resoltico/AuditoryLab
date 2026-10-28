@@ -1,6 +1,6 @@
 # Architecture
 
-Auditory Lab keeps authored documents, application coordination and human presentation in separate Rust owners. Arrows point from a consumer to its dependency; toolkit and serialization dependencies are omitted here.
+Auditory Lab separates authored sound and research, application decisions, and rendering. Arrows point from a consumer to its dependency; toolkit and serialization dependencies are omitted.
 
 ```mermaid
 flowchart TD
@@ -11,67 +11,87 @@ flowchart TD
     P --> APP
     P --> CORE[auditorylab-core]
     APP --> CORE
-    BUILD[GUI build script] --> CORE
 ```
 
-Inside app, a module may name a lower owner. These are the direct production dependencies:
+## Crates and owners
 
-```mermaid
-flowchart TD
-    workspace --> services & audio & storage & discovery & document & job & outcome
-    services --> audio & storage & discovery & document & identity & job & outcome
-    audio --> storage & document & outcome
-    storage --> discovery & document & clock & identity & job & outcome
-    discovery --> document & outcome
-    document --> identity & outcome
-    identity --> outcome
-```
+- [Core](../crates/core/src/lib.rs) is `no_std + alloc`: portable recipes, sound/research invariants, validation, structural analysis and synthesis. Its ordinary module tree groups [model](../crates/core/src/model/mod.rs), [analysis](../crates/core/src/analysis/mod.rs) and [rendering](../crates/core/src/render/mod.rs). Everyday types have one public root path; `catalog`, `provenance`, `vocabulary`, `diagnostic`, `rhythm`, `timing`, `live`, `waveform` and `finite_source` remain namespaced families.
+- [App](../crates/app/src/lib.rs) owns application decisions: editable documents, discovery, library/file operations, device preparation and interactive coordination. Private storage and audio adapters enforce rules against the resources used by the action.
+- [Presentation](../crates/presentation/src/lib.rs) owns rendering. `sound`, `recipe`, `library`, `workspace` and `numbers` expose typed free functions. The `errors` tree owns every `Explain` implementation, the single presentation extension trait retained for polymorphic error chains. `report` owns machine JSON and calls human wording only for documented message fields.
+- [CLI](../crates/cli/src/main.rs) owns argument grammar, terminal I/O, interrupts and exit mapping. It passes explicit library overrides through the app constructor and renders app outcomes through presentation.
+- [GUI](../crates/gui/src/adapter.rs) owns desktop chrome, native windows/dialogs, focus, layout and reconciliation of retained Slint models. Its build script sees GUI-owned chrome, Slint and validated product metadata; it has no core or app build dependency.
+- [xtask](../xtask/src/main.rs) owns contributor gates, dependency notices, native resources, archives and independent extracted-package checks. [Packaging](releasing.md) defines supported inputs and deliverables.
 
-## Owners
+A term lives with the type that gives it meaning. [Core vocabulary](../crates/core/src/model/vocabulary.rs) describes sound, research and portable document terms. [App vocabulary](../crates/app/src/vocabulary.rs) describes operations, statuses, query absence and application views. Discovery owns [query choices](../crates/app/src/discovery/query.rs), with defaults, reset behavior and execution in [collection queries](../crates/app/src/discovery/collection.rs). Desktop-only wording stays in [GUI terms](../crates/gui/src/terms.rs). Labels never identify commands or records. Both owners participate in the checked [diagnostic and vocabulary references](formats.md).
 
-### Core contracts and rendering
+The built-in [catalog](../crates/core/src/model/catalog.rs) contains curated condition/study lists. Requesting an entry merges its study citation and shared limitation into standalone schema-4 TOML without comments. Directory/order tests check the lists; [catalog documentation](catalog.md) supplies explanations.
 
-[Core](../crates/core/src/lib.rs) is `no_std + alloc`. It owns portable `Recipe`/`RecipeContent`, checked `Sound` and `ComponentForm`, finite numbers, validation, classification, compilation and synthesis. `ComponentId` identifies an authored component; `VoiceId` adds a generator lane. The lowered `Voice` is private. `Finite` equality and hashing preserve signed-zero bits.
+Root [Cargo.toml](../Cargo.toml) owns product name, copyright and version. Build readers share metadata validation. About and executable version text belong to [build-info presentation](../crates/presentation/src/build_info.rs); native version fields derive from the version. LICENSE supplies legal terms independently.
 
-Sources are grouped under `model/`, `analysis/` and `render/`; public types and module entry points are exported from the crate root. The [component schema](../crates/core/src/model/component_schema.rs) owns wire fields, quantity metadata, units, intrinsic rules and applicability. It generates the strict component decoder and parameter interfaces. Build portable edits with `into_builder()` and `build()` to enforce the recipe contract.
+## One desktop command end to end
 
-[Core vocabulary](../crates/core/src/model/vocabulary.rs) owns shared keys and domain terms, including facet absence labels and persisted title/copy defaults. GUI-only chrome belongs to the GUI. `Operation` supplies shared operation keys and terms; interface punctuation belongs to each frontend.
+An **Export WAV** click follows this path:
 
-The core `Code` contract supplies fixed diagnostic identifiers and structured parameters. Owner declarations generate enumerable registries. Wrappers delegate to typed causes; human explanations are rendered separately. The checked reference tables are in [formats](formats.md#diagnostic-codes).
+1. The Slint control receives an app-issued `ActionView` and a presentation-rendered label. Its callback becomes `Command::File(FileCommand::ExportWav)`; the adapter supplies no validity or admission rule.
+2. [Workspace commands](../crates/app/src/workspace/commands.rs) route through the file part's typed request. The coordinator checks prompts, pending work and both task slots. The library or editor part prepares captured content at the selected export rate.
+3. The coordinator emits `Effect::ChoosePath`. The native panel returns `Command::Answer { prompt, answer }`; stale answers change nothing. Admission is checked again against current state before work starts.
+4. The coordinator captures a file job and emits `Effect::Run`. [Runner](../crates/app/src/workspace/tasks.rs) executes the service on a worker. Storage publishes with cancellation, conflict and no-clobber protections.
+5. The executor joins the worker before delivering `Response::Finished`. `Response::Prepared` is the separate audio-preparation response; frontend answers never enter `respond`.
+6. The coordinator records typed outcomes, continues pending work and advances its revision. `poll` refreshes captures/models and `take_effects` drains requested frontend work.
+7. The adapter receives typed views, renders their text through presentation and updates retained Slint models. Callback handles keep their original document/component or listing lifetime across unrelated projections.
 
-### Application data and operations
+Library, editor, audio and file parts keep their fields private and accept their own typed commands/transitions. The coordinator alone owns cross-part admission, prompts, pending document actions, close/exit, effects and job context. `Workspace` implementations are confined to `mod.rs` and `commands.rs`.
 
-[Document](../crates/app/src/document) owns immutable snapshots/renditions, editable drafts, staged input and saved baselines. [Origin](../crates/app/src/document/origin.rs) owns catalog/user/temporary keys, exact-byte conflict tokens and opened-file identity. [Input](../crates/app/src/document/input.rs) owns editable numeric grammar in display units. Snapshots memoize canonical text, nominal facts and bounded rate-specific realizations without caching presentation views.
+Every menu uses an app-issued `ChoiceView`. Per-render tables retain the actual typed choices; callbacks select an offered option, not a domain `ALL` array. Field rows carry opaque `FieldHandle` strings. An absent route has no selection. Shared operation labels and accessible names arrive before first show, and an exhaustive operation match forces each GUI binding decision.
 
-[Discovery](../crates/app/src/discovery) executes correlated queries, unique groups and deterministic ordering. Query types own defaults and reset semantics. Core owns the choice enums, keys and terms. App resolves local calendar boundaries; presentation formats instants.
+## One CLI command end to end
 
-[Services](../crates/app/src/services) expose source resolution, listing, inspection, portable text, library lifecycle, export and playback preparation. `LibraryContext` captures one configured path, precedence source and configuration result. CLI commands and GUI bindings retain that context. Actions still validate current filesystem state; configuration availability does not cache admission. WAV export can accept the exact inspected `Rendition` through `export_rendition`.
+For `auditorylab list --collection builtin --band alpha --format json`:
 
-[Storage](../crates/app/src/storage) and [audio](../crates/app/src/audio) are private adapters. Storage enforces locks, file identity, byte limits, publication and ambiguous postconditions. Audio owns native preparation, streams, terminal outcomes and bounded monitor publication. Public device failures use app-owned variants and opaque `BackendError` sources; native CPAL types remain inside the adapter.
+1. Clap translates stable argument keys into app query types. An explicit `--library-dir` is validated by `LibraryContext::from_override`; environment/default configuration retains the app's non-failing resolution behavior.
+2. [Discovery services](../crates/app/src/services/discovery.rs) capture indexed recipe summaries. [Query execution](../crates/app/src/discovery/collection.rs) owns correlation, defaults, matching, sorting, grouping and unique-key counts. Listing opens no audio device.
+3. The CLI selects the JSON renderer in [report](../crates/presentation/src/report.rs), whose `json_bytes` serializer preserves the machine contract independently of human sentences.
+4. The CLI writes the bytes and maps the app outcome to the documented exit status. A relative explicit root is rejected before dispatch; an unusable absolute root remains a captured configuration diagnostic.
 
-[Clock](../crates/app/src/clock.rs), [identity](../crates/app/src/identity.rs), [outcome](../crates/app/src/outcome.rs) and [job controls](../crates/app/src/job.rs) own observed time, identity/build metadata, result categories and cancellation/progress/replacement policy. Root Cargo metadata owns product display identity; LICENSE owns legal terms.
+## Where changes go
 
-### Interactive workspace
+### Add a component kind or recipe field
 
-[Workspace](../crates/app/src/workspace) coordinates document, library, file, audio, output and prompt state. State-changing user input passes through `Workspace::apply(Command)`; typed responses return admitted work and prompt decisions. App owns the only typed view tree, including monitor/control models and defaults.
+Declare wire fields, units, applicability and intrinsic rules in the [component schema](../crates/core/src/model/component_schema.rs). Define lowering, validation, voice facts and relevant rhythm/timing behavior in core. Preserve authored order, owner/lane identity and sample contracts. Add independent structure, sample, round-trip and rejection expectations.
 
-`EntryHandle` binds a library action to its listing lifetime, indexed content version and membership. Stale or foreign handles are refused before admission. `EntryMutation` identifies the requested mutation; purge additionally requires a typed confirmation response. Slint entry addresses retain immutable per-render handle tables through gestures.
+Portable metadata belongs in the recipe contract, including checked construction and strict serialization. [Document editing](../crates/app/src/document/editing.rs) stages untrusted text and commits the complete candidate atomically. The app projects applicable fields and diagnostics; presentation renders them. The GUI consumes handles and choices without generating parameter enums or copying defaults.
 
-Runtime `ChoiceView` options carry keys and selected state. The adapter resolves callbacks through the actual rendered options. Rhythm navigation joins count metadata by key and carries explicit addresses into that same choice table. Headings and scope/date display flags read captured typed query state. Control indexes do not define query meaning. Advanced query edits validate dates and facets atomically; full-filter reset and reveal effects discard pending native input.
+### Add a query choice or application operation
 
-An injected `Executor` owns execution and joining. `Runner::new` supports explicit polling; a runner configured with a waker posts preparation and joined completion notifications. Its completion observer starts before the actual worker and joins that worker before posting the terminal response. Observers are reaped on later polls/admissions and all are joined at shutdown. A task slot cannot be released by an unjoined result.
+Put query meaning, defaults and reset behavior in discovery; put its application terms in the app vocabulary. Core must not name library, workspace, file-dialog or transport concepts. Update both checked format-reference tables where keys/codes change. New shared operations require app admission/projection and an exhaustive GUI binding.
 
-The GUI coalesces worker, bounded export-progress and native-preference notifications through Slint's event loop. Its repeating redraw timer runs only for bound audio or a visible monitor. macOS motion changes arrive through the NSWorkspace notification center. Projection counters measure the production path used by GUI tests.
+### Add a CLI command or desktop control
 
-### Presentation and frontends
+Put shared policy and typed failures in the app owner/service. The CLI supplies grammar and I/O; a desktop control supplies geometry, focus and platform interaction. Use typed commands, current admission and opaque app handles. Reuse presentation functions for shared wording and keep interface punctuation local. Test actual executable output or production GUI bindings, including refusals and stale gestures.
 
-[Presentation](../crates/presentation/src/lib.rs) owns sentences, research/About text, help, error explanations and JSON report objects. Render functions and extension traits consume app/core data. String-only `*Text` bundles describe one typed row or projection; they do not copy identities, child structure or admission flags. `Explain` retains human context independently of machine codes, and report serialization owns JSON escaping.
+### Change rendering or packaging
 
-[CLI](../crates/cli/src) owns grammar, terminal I/O, interrupts, exit-status mapping and CLI hints. [GUI](../crates/gui/src) owns windows/dialogs, Slint model reconciliation, focus, layout and chrome. Both render through presentation. The GUI build script reads core vocabulary and GUI terms without app/audio build dependencies; it generates the parameter enum and mappings from `ParameterId::ALL`.
+Choose one presentation subject. Keep JSON schema logic in `report`, free of human rendering except message fields. Keep GUI sizing alternatives with GUI controls. Package changes belong in xtask and [release guidance](releasing.md), with extracted-content checks on the matching native OS/CPU.
 
-[xtask](../xtask/src) owns native resources, notices, distributions and independent extracted-package checks. [Packaging](releasing.md) defines its supported inputs and delivered contents.
+## Shared terms
+
+| Term | Meaning |
+| --- | --- |
+| Recipe | Portable document identity/history, authored sound and attributed research. |
+| Component | One identified authored form; a pair expands into two generator lanes. |
+| Target | Sound validated and compiled at one sample rate, without a finite envelope. |
+| Signal | Target plus its finite duration and edge envelope. |
+| Snapshot | Immutable captured recipe with an origin and memoized interpretation. |
+| Rendition | Captured snapshot with its checked finite signal. |
+| Nominal analysis | Authored rhythmic meaning, independent of device realization. |
+| Observation | Facts about generated frames and transition roles. |
+| EntryHandle | Listing lifetime plus indexed identity/version and membership. |
+| FieldHandle | Document/component lifetime plus the addressed editable field. |
+| ChoiceView / ActionView | App-issued options or an operation with current availability. |
+| Effect / Response | Requested external work versus executor preparation/joined completion. |
 
 ## Invariants and checks
+
 
 - Authored numbers are finite, and equality/hash preserve signed-zero bits: [rejects_nonfinite_values_and_preserves_finite_bits](../crates/core/src/model/finite.rs).
 - Sound construction and mutation preserve unique positive owners and both budgets: [raw_component_budget_and_duplicate_owners_are_checked_at_the_authored_boundary](../crates/core/src/model/authored/tests.rs).
@@ -84,30 +104,12 @@ The GUI coalesces worker, bounded export-progress and native-preference notifica
 - The render callback performs no allocation/free, I/O or waiting; bounded waveform publication is checked at the maximum slot count: [maximum_rate_waveform_callback_does_not_allocate_or_free_at_32_slots](../crates/app/src/audio/session/monitor/tests.rs).
 - The first terminal session result is retained; later supervision cannot replace it with a timeout: [a_published_terminal_outcome_is_never_replaced_by_a_timeout](../crates/app/src/audio/session/supervisor.rs).
 
-External Save checks opened identity/bytes immediately before replacement; an uncooperating writer can still race the final check. Unix adapters explicitly synchronize directory entries; non-Unix adapters issue no separate directory-sync operation. Native filesystem guarantees remain platform-specific.
+- Catalog lists match condition/study directories and preserve ordering: [catalog tests](../crates/core/src/model/catalog/tests.rs).
+- Both diagnostic registries and all vocabulary keys match the format reference: [diagnostic registry](../crates/presentation/tests/diagnostic_registry.rs) and [vocabulary reference](../crates/presentation/tests/vocabulary_reference.rs).
+- First-show operation text has an accessible name: [window tests](../crates/gui/src/window_tests.rs).
 
-Generated frames, backend-submitted frames and estimated output position are distinct counters. A held capture retains samples, source, rate, span, observation, scale and meters together. Timing models project an origin-zero target; generated observations describe actual frames and transition roles. Preview, accepted model and generated output are labeled independently.
+App tests assert typed state, views and causes. GUI suites install production callbacks on an offscreen platform; the real-waker test also covers completion with the redraw timer stopped. Presentation suites retain wording assertions through the public app API. Core's dev-only `test-support` feature supplies behavioral fixtures, while numerical expectations and negative controls remain independent.
 
-## Change guides
+External saves recheck opened identity/bytes immediately before replacement; an uncooperating writer can still race the final check. Native filesystem guarantees remain platform-specific. Generated frames, submitted frames and estimated output position are distinct counters; held captures retain their samples and provenance together. Timing models describe origin-zero targets, while observations describe actual generated frames.
 
-### Add a component kind
-
-Declare its wire fields, parameter meaning and allowed shared fields in the [component schema](../crates/core/src/model/component_schema.rs). The schema generates forms, the strict visitor, quantity access, units and intrinsic rules. Define lowering, validation and voice facts, then classification/timing where applicable. Preserve authored order, owner/lane identity and serialization field order. Add independent structure/sample/rejection cases. Workspace chooses applicable controls and typed diagnostics; presentation supplies descriptions, while the GUI maps the resulting rows. The GUI build script generates `ParameterKey` and its mappings from `ParameterId::ALL`.
-
-### Add a CLI command
-
-Put shared operation policy and typed failures in the appropriate app owner/service. Define the CLI grammar and category-to-exit/hint handling in CLI. Use presentation-owned reports or explanations and its JSON byte serializer. Check the actual executable's output and relevant failures; a confirmed file operation remains confirmed if output writing fails.
-
-### Add a GUI control
-
-Define shared quantity meaning and terms in core. Put control ranges/defaults in [workspace controls](../crates/app/src/workspace/controls.rs), admission and state changes in app, wording in presentation, and geometry/focus/chrome in Slint. Send a typed `Command` and project app views into retained models. Use opaque row/field handles and rendered facet-option keys; preserve pending input across unrelated projections. Sound validity and save readiness remain app/core decisions.
-
-### Add a recipe field
-
-Define its meaning and checked construction in core, including equality and strict serialization. Update the schema/limits, source relationships and public getters together. Preserve or explicitly change the format contract, with independent round-trip/rejection cases. Editing stages untrusted text until the complete candidate can commit; presentation renders the resulting typed field and cause.
-
-## Test and format boundaries
-
-App unit suites assert typed state, views and causes. The real-waker GUI test delivers file completion through Slint’s event proxy with the redraw timer stopped and independently checks notification coalescing. Presentation unit suites and [integration tests](../crates/presentation/tests) assert wording through the public app API. Presentation is compiled as its own crate for every consumer. Core’s `test-support` feature supplies shared behavioral recipe builders through dev-dependencies; normal application graphs exclude it. The app dependency tree contains no presentation crate.
-
-[Formats](formats.md) owns schema/layout/JSON/exit-code reference. [Toolkit integration](../third_party/README.md) defines authenticated patches and replacement contracts; [packaging](releasing.md) defines native prerequisites and delivered contents. Core's sample tests use independent numerical expectations; xtask's version/package expectations remain independent from the product's formatters.
+[Formats](formats.md) owns schema/layout/JSON/exit contracts. [Toolkit integration](../third_party/README.md) records authenticated patches and retirement conditions. [Contributing](../CONTRIBUTING.md) lists executable gates and the review checklist.

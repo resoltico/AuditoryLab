@@ -25,7 +25,8 @@ fn clicks(rate_hz: f64, width_seconds: f64) -> ComponentForm {
 
 #[expect(
     clippy::unwrap_used,
-    reason = "Fixture helper panics if its fixed component stops validating, failing the calling test"
+    reason = "Fixture helper panics if its fixed component stops validating, \
+        failing the calling test"
 )]
 fn target(component: ComponentForm) -> Target {
     Sound::new(

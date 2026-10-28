@@ -26,7 +26,8 @@ slint::slint! {
         out property <length> scroll-x:outer.content-x;
         out property <length> scroll-y:outer.content-y;
         out property <int> popup-selection:choices.current-index;
-        public function reset-scroll() {outer.content-x=0px;outer.content-y=0px;nested.reset-scroll();nested-reference.reset-scroll();}
+        public function reset-scroll() {outer.content-x=0px;outer.content-y=0px;
+            nested.reset-scroll();nested-reference.reset-scroll();}
         public function scroll-to-end() {outer.content-y=-700px;}
         public function focus-target(index:int) {
             if index==0 {bottom.focus();}
@@ -44,15 +45,19 @@ slint::slint! {
             if index==12 {choices.focus();}
         }
         FocusScope {width:parent.width;height:parent.height;
-        capture-key-pressed(event)=>{if event.text=="k" {return accept;}if event.text=="j" {bottom.focus();return reject;}return reject;}
+        capture-key-pressed(event)=>{if event.text=="k" {return accept;}if event.text=="j" {
+            bottom.focus();return reject;}return reject;}
         outer := ScrollView {content-width:1000px;content-height:900px;
             Rectangle {width:1000px;height:900px;accessible-role:groupbox;
-                bottom := Button {x:800px;y:700px;width:150px;height:40px;text:"Bottom button";visible:!root.hide-button;}
+                bottom := Button {x:800px;y:700px;width:150px;height:40px;text:"Bottom button";
+                    visible:!root.hide-button;}
                 top := Button {x:40px;y:30px;width:150px;height:40px;text:"Top button";}
-                choices := ComboBox {x:40px;y:80px;width:180px;height:40px;model:["First","Second"];}
+                choices := ComboBox {x:40px;y:80px;width:180px;height:40px;model:["First","Second"];
+                    }
                 check := CheckBox {x:800px;y:100px;width:180px;height:40px;text:"Right checkbox";}
                 toggle := Switch {x:40px;y:700px;width:180px;height:40px;text:"Bottom switch";}
-                positive := FocusScope {x:500px;y:350px;width:80px;height:60px;accessible-role:button;accessible-label:"Positive focus";}
+                positive := FocusScope {x:500px;y:350px;width:80px;height:60px;
+                    accessible-role:button;accessible-label:"Positive focus";}
                 point := FocusScope {x:40px;y:30px;width:0px;height:0px;}
                 oversized := OversizedPointOwner {x:100px;y:100px;accessible-role:list-item;}
                 oversized-reference := OversizedPointOwner {x:100px;y:100px;}
@@ -61,7 +66,8 @@ slint::slint! {
                 Rectangle {x:300px;y:200px;width:100px;height:100px;clip:true;
                     clipped := FocusScope {x:120px;y:20px;width:40px;height:40px;}
                 }
-                read-only-input := TextInput {x:40px;y:150px;width:150px;height:40px;read-only:true;text:"Read-only selection";}
+                read-only-input := TextInput {x:40px;y:150px;width:150px;height:40px;read-only:true;
+                    text:"Read-only selection";}
 
             }
         }
@@ -80,6 +86,7 @@ slint::slint! {
 
 fn assert_orphaned_conditional_loses_focus() {
     use slint::private_unstable_api::re_exports::{FocusReason, ItemTreeRc, ItemWeak, TextInput};
+
     let probe = ConditionalLifetimeProbe::new().unwrap();
     let rows = std::rc::Rc::new(slint::VecModel::from(vec![1]));
     probe.set_entries(slint::ModelRc::from(rows.clone()));
@@ -130,7 +137,7 @@ fn assert_orphaned_conditional_loses_focus() {
         parent.upgrade().is_none(),
         "fixture must release the entire parent row, retaining only its nested input"
     );
-    assert!(inner.focus_item.borrow().upgrade().as_ref() == Some(&input));
+    assert_eq!(inner.focus_item.borrow().upgrade().as_ref(), Some(&input));
     probe
         .window()
         .dispatch_event(slint::platform::WindowEvent::PointerMoved {
@@ -144,21 +151,6 @@ fn assert_orphaned_conditional_loses_focus() {
 }
 
 pub(super) fn assert_control_focus_scrolls_into_view() {
-    fn settle(window: &slint::Window) {
-        slint::platform::update_timers_and_animations();
-        WindowInner::from_pub(window).draw_contents(|_, _| ());
-        slint::platform::update_timers_and_animations();
-    }
-    fn bounds(item: &ItemRc) -> (f32, f32, f32, f32) {
-        let geometry = item.geometry();
-        let origin = item.map_to_window(geometry.origin);
-        (
-            origin.x,
-            origin.y,
-            geometry.size.width,
-            geometry.size.height,
-        )
-    }
     let probe = FocusScrollProbe::new().unwrap();
     probe.show().unwrap();
     probe
@@ -195,43 +187,7 @@ pub(super) fn assert_control_focus_scrolls_into_view() {
             (x, y, width, height)
         );
     }
-    // Disabling semantic ownership exercises the unchanged original point path.
-    // Compare it with the semantic path for ownerless, oversized and nested points.
-    for (index, reference) in [(5, 5), (6, 8), (7, 9)] {
-        let mut observations = Vec::new();
-        for selected in [index, reference] {
-            probe.invoke_focus_target(1);
-            settle(probe.window());
-            probe.invoke_reset_scroll();
-            probe.invoke_focus_target(selected);
-            settle(probe.window());
-            let focused = inner.focus_item.borrow().upgrade().unwrap();
-            let point = bounds(&focused);
-            let _ = root.visit_descendants(|candidate| {
-                if candidate.downcast::<slint::private_unstable_api::re_exports::Flickable>().is_some() {
-                    let mut contains_focus = false;
-                    let _ = candidate.visit_descendants(|item| {
-                        contains_focus |= *item == focused;
-                        ControlFlow::<()>::Continue(())
-                    });
-                    if contains_focus {
-                        let viewport = bounds(candidate);
-                        assert!(point.0>=viewport.0-0.1 && point.1>=viewport.1-0.1
-                            && point.0+point.2<=viewport.0+viewport.2+0.1
-                            && point.1+point.3<=viewport.1+viewport.3+0.1,
-                            "point case{index} selected={selected}: {point:?} must fit actual viewport{viewport:?}");
-                    }
-                }
-                ControlFlow::<()>::Continue(())
-            });
-            observations.push((probe.get_scroll_x(), probe.get_scroll_y()));
-        }
-        assert!(
-            (observations[0].0 - observations[1].0).abs() < 0.1
-                && (observations[0].1 - observations[1].1).abs() < 0.1,
-            "point case{index} must preserve original point behavior: {observations:?}"
-        );
-    }
+    assert_original_point_cases(&probe);
     probe.invoke_focus_target(10);
     settle(probe.window());
     let clipped_focus = inner.focus_item.borrow().upgrade().unwrap();
@@ -253,6 +209,102 @@ pub(super) fn assert_control_focus_scrolls_into_view() {
             .is_none_or(|item| item != clipped_focus),
         "a non-Flickable clipping boundary must still clear focus"
     );
+    assert_readonly_clipped_shortcuts(&probe);
+    assert_hidden_focus_released(&probe);
+    probe.invoke_reset_scroll();
+    probe.invoke_focus_target(12);
+    settle(probe.window());
+    for key in [
+        slint::platform::Key::Return,
+        slint::platform::Key::DownArrow,
+        slint::platform::Key::Return,
+    ] {
+        let text: slint::SharedString = key.into();
+        probe
+            .window()
+            .dispatch_event(slint::platform::WindowEvent::KeyPressed { text: text.clone() });
+        probe
+            .window()
+            .dispatch_event(slint::platform::WindowEvent::KeyReleased { text });
+        settle(probe.window());
+    }
+    assert_eq!(
+        probe.get_popup_selection(),
+        1,
+        "actual widget popup must keep focus and select its second entry"
+    );
+    probe.hide().unwrap();
+    assert_orphaned_conditional_loses_focus();
+}
+
+fn settle(window: &slint::Window) {
+    slint::platform::update_timers_and_animations();
+    WindowInner::from_pub(window).draw_contents(|_, _| ());
+    slint::platform::update_timers_and_animations();
+}
+fn bounds(item: &ItemRc) -> (f32, f32, f32, f32) {
+    let geometry = item.geometry();
+    let origin = item.map_to_window(geometry.origin);
+    (
+        origin.x,
+        origin.y,
+        geometry.size.width,
+        geometry.size.height,
+    )
+}
+
+fn assert_original_point_cases(probe: &FocusScrollProbe) {
+    let inner = WindowInner::from_pub(probe.window());
+    let root = inner.window_item_rc().unwrap();
+    // Disabling semantic ownership exercises the unchanged original point path.
+    // Compare it with the semantic path for ownerless, oversized and nested points.
+    for (index, reference) in [(5, 5), (6, 8), (7, 9)] {
+        let mut observations = Vec::new();
+        for selected in [index, reference] {
+            probe.invoke_focus_target(1);
+            settle(probe.window());
+            probe.invoke_reset_scroll();
+            probe.invoke_focus_target(selected);
+            settle(probe.window());
+            let focused = inner.focus_item.borrow().upgrade().unwrap();
+            let point = bounds(&focused);
+            let _ = root.visit_descendants(|candidate| {
+                if candidate
+                    .downcast::<slint::private_unstable_api::re_exports::Flickable>()
+                    .is_some()
+                {
+                    let mut contains_focus = false;
+                    let _ = candidate.visit_descendants(|item| {
+                        contains_focus |= *item == focused;
+                        ControlFlow::<()>::Continue(())
+                    });
+                    if contains_focus {
+                        let viewport = bounds(candidate);
+                        assert!(
+                            point.0 >= viewport.0 - 0.1
+                                && point.1 >= viewport.1 - 0.1
+                                && point.0 + point.2 <= viewport.0 + viewport.2 + 0.1
+                                && point.1 + point.3 <= viewport.1 + viewport.3 + 0.1,
+                            "point case{index} selected={selected}: {point:?} must fit actual \
+                                viewport{viewport:?}"
+                        );
+                    }
+                }
+                ControlFlow::<()>::Continue(())
+            });
+            observations.push((probe.get_scroll_x(), probe.get_scroll_y()));
+        }
+        assert!(
+            (observations[0].0 - observations[1].0).abs() < 0.1
+                && (observations[0].1 - observations[1].1).abs() < 0.1,
+            "point case{index} must preserve original point behavior: {observations:?}"
+        );
+    }
+}
+
+fn assert_readonly_clipped_shortcuts(probe: &FocusScrollProbe) {
+    let inner = WindowInner::from_pub(probe.window());
+    let root = inner.window_item_rc().unwrap();
     probe.invoke_reset_scroll();
     probe.invoke_focus_target(11);
     settle(probe.window());
@@ -338,6 +390,10 @@ pub(super) fn assert_control_focus_scrolls_into_view() {
         "key reveal must not scroll the old target after capture changes focus: {:?}",
         (x, y, width, height)
     );
+}
+
+fn assert_hidden_focus_released(probe: &FocusScrollProbe) {
+    let inner = WindowInner::from_pub(probe.window());
     // A genuinely hidden control still loses focus through ordinary key handling.
     probe.invoke_focus_target(0);
     settle(probe.window());
@@ -364,30 +420,8 @@ pub(super) fn assert_control_focus_scrolls_into_view() {
         "genuinely hidden focus must not be retained"
     );
     eprintln!(
-        "Control focus: real Button/CheckBox/Switch, positive extent, ownerless point, oversized owner, nested Flickable and hidden control passed"
+        "Control focus: real Button/CheckBox/Switch, positive extent, \
+            ownerless point, oversized owner, nested Flickable and hidden control \
+            passed"
     );
-    probe.invoke_reset_scroll();
-    probe.invoke_focus_target(12);
-    settle(probe.window());
-    for key in [
-        slint::platform::Key::Return,
-        slint::platform::Key::DownArrow,
-        slint::platform::Key::Return,
-    ] {
-        let text: slint::SharedString = key.into();
-        probe
-            .window()
-            .dispatch_event(slint::platform::WindowEvent::KeyPressed { text: text.clone() });
-        probe
-            .window()
-            .dispatch_event(slint::platform::WindowEvent::KeyReleased { text });
-        settle(probe.window());
-    }
-    assert_eq!(
-        probe.get_popup_selection(),
-        1,
-        "actual widget popup must keep focus and select its second entry"
-    );
-    probe.hide().unwrap();
-    assert_orphaned_conditional_loses_focus();
 }

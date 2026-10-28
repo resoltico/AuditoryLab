@@ -1,5 +1,6 @@
 //! Per-product dependency license coverage and formatting.
 use serde_json::Value;
+use std::fmt::Write as _;
 use std::{collections::BTreeSet, fs, path::Path};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 fn string<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
@@ -77,12 +78,13 @@ pub(crate) fn assemble(
         }
         names.sort();
         if !names.is_empty() {
-            text.push_str(&format!(
+            let _ = write!(
+                text,
                 "{}\nUsed by: {}\n\n{}\n\n",
                 string(license, "name")?,
                 names.join(", "),
                 string(license, "text")?
-            ));
+            );
         }
     }
     let mut slint = Vec::new();
@@ -115,7 +117,13 @@ pub(crate) fn assemble(
             .ok_or("Slint directory missing")?
             .join("LICENSES/LicenseRef-Slint-Royalty-free-2.0.md");
         slint.sort();
-        text.push_str(&format!("Slint Royalty-free Desktop, Mobile, and Web Applications License 2.0\nUsed by: {}\n\n{}\n\n",slint.join(", "),fs::read_to_string(license)?));
+        let _ = write!(
+            text,
+            "Slint Royalty-free Desktop, Mobile, and Web Applications License \
+            2.0\nUsed by: {}\n\n{}\n\n",
+            slint.join(", "),
+            fs::read_to_string(license)?
+        );
     }
     let missing: Vec<_> = actual.difference(&covered).collect();
     if !missing.is_empty() {
@@ -137,7 +145,8 @@ mod tests {
     fn fixtures() -> (Value, Value) {
         let package = json!({"id":"p","name":"product","version":"1","license":"MIT"});
         (
-            json!({"crates":[{"package":package}],"licenses":[{"name":"MIT","text":"License text","used_by":[{"crate":package}]}]}),
+            json!({"crates":[{"package":package}],"licenses":[{"name":"MIT","text":"License text",
+                "used_by":[{"crate":package}]}]}),
             json!({"packages":[package],"resolve":{"nodes":[{"id":"p","deps":[]}]}}),
         )
     }
@@ -162,7 +171,12 @@ mod tests {
             .as_array_mut()
             .unwrap()
             .push(serde_json::json!({"package":package}));
-        about["licenses"].as_array_mut().unwrap().push(serde_json::json!({"name":"Build-only license","text":"Build-only text","used_by":[{"crate":package}]}));
+        about["licenses"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"name":"Build-only \
+            license","text":"Build-only\
+             text","used_by":[{"crate":package}]}));
         metadata["packages"].as_array_mut().unwrap().push(package);
         let full = BTreeSet::from(["p".into(), "build".into()]);
         let normal = BTreeSet::from(["p".into()]);

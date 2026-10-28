@@ -20,7 +20,8 @@ fn fixture() -> (tempfile::TempDir, PathBuf, Library) {
 }
 #[expect(
     clippy::unwrap_used,
-    reason = "A finite authored test recipe with a fresh provisional UUID must construct successfully"
+    reason = "A finite authored test recipe with a fresh provisional UUID must \
+        construct successfully"
 )]
 fn recipe(title: &str) -> Recipe {
     let mut draft = Draft::new().unwrap();
@@ -152,124 +153,8 @@ fn full_lifecycle_preserves_identity_history_external_originals_and_stale_intent
         .unwrap_err();
     assert_eq!(error.outcome(), Outcome::Conflict);
     assert_eq!(fs::read(&record_path).unwrap(), changed_bytes);
-    let mut wrong_history = changed.snapshot.recipe().clone().into_builder();
-    wrong_history.document.created_at = Some("2020-01-01T00:00:00Z".parse().unwrap());
-    assert_eq!(
-        store
-            .apply(
-                Mutation::Update {
-                    key: key.clone(),
-                    expect: Some(changed.version_token),
-                    recipe: Arc::new(wrong_history.build().unwrap())
-                },
-                &Cancel::default()
-            )
-            .unwrap_err()
-            .outcome(),
-        Outcome::HistoryConflict
-    );
-    let history = changed.snapshot.recipe().document().clone();
-    let trashed = store
-        .apply(
-            Mutation::Trash {
-                key: key.clone(),
-                expect: Some(changed.version_token),
-            },
-            &Cancel::default(),
-        )
-        .unwrap();
-    let trash = trashed.record.unwrap();
-    assert!(trash.trashed_at.is_some());
-    assert_eq!(trash.snapshot.recipe().document(), &history);
-    assert_eq!(trash.added_at, added);
-    assert_eq!(
-        store
-            .apply(
-                Mutation::Add(Arc::new(trash.snapshot.recipe().clone())),
-                &Cancel::default()
-            )
-            .unwrap_err()
-            .outcome(),
-        Outcome::Conflict
-    );
-    let restored = store
-        .apply(
-            Mutation::Restore {
-                key: key.clone(),
-                expect: Some(trash.version_token),
-            },
-            &Cancel::default(),
-        )
-        .unwrap()
-        .record
-        .unwrap();
-    assert_eq!(restored.trashed_at, None);
-    assert_eq!(restored.snapshot.recipe().document(), &history);
-    assert_eq!(restored.added_at, added);
-    assert!(
-        store
-            .apply(
-                Mutation::Purge {
-                    key: key.clone(),
-                    expect: Some(restored.version_token),
-                    confirmed: true
-                },
-                &Cancel::default()
-            )
-            .is_err()
-    );
-    let trash = store
-        .apply(
-            Mutation::Trash {
-                key: key.clone(),
-                expect: Some(restored.version_token),
-            },
-            &Cancel::default(),
-        )
-        .unwrap()
-        .record
-        .unwrap();
-    assert!(
-        store
-            .apply(
-                Mutation::Purge {
-                    key: key.clone(),
-                    expect: Some(trash.version_token),
-                    confirmed: false
-                },
-                &Cancel::default()
-            )
-            .is_err()
-    );
-    assert!(path.join("trash").join(format!("{id}.toml")).exists());
-    let purged = store
-        .apply(
-            Mutation::Purge {
-                key: key.clone(),
-                expect: Some(trash.version_token),
-                confirmed: true,
-            },
-            &Cancel::default(),
-        )
-        .unwrap();
-    assert!(matches!(
-        purged.status,
-        MutationStatus::Published | MutationStatus::PublishedWithWarning
-    ));
-    assert!(!record_path.exists());
-    assert_eq!(
-        store
-            .apply(
-                Mutation::Restore {
-                    key,
-                    expect: Some(trash.version_token)
-                },
-                &Cancel::default()
-            )
-            .unwrap_err()
-            .outcome(),
-        Outcome::Conflict
-    );
+    let trash = assert_trash_history(&store, &key, &changed);
+    assert_restore_and_purge(&store, &key, &trash, &record_path);
     assert_eq!(
         fs::read_to_string(external).unwrap(),
         text,
@@ -505,4 +390,152 @@ fn failed_report_completion_never_claims_a_failed_operation_was_confirmed() {
     let text = report.completion_failure(std::io::Error::other("closed output"));
     assert!(text.contains("Operation not completed"));
     assert!(!text.contains("Operation confirmed"));
+}
+
+#[expect(
+    clippy::unwrap_used,
+    reason = "Lifecycle fixture failures must fail their calling test"
+)]
+fn assert_trash_history(
+    store: &Library,
+    key: &LibraryKey,
+    changed: &auditorylab_app::services::library::LoadedRecord,
+) -> auditorylab_app::services::library::LoadedRecord {
+    let mut wrong_history = changed.snapshot.recipe().clone().into_builder();
+    wrong_history.document.created_at = Some("2020-01-01T00:00:00Z".parse().unwrap());
+    assert_eq!(
+        store
+            .apply(
+                Mutation::Update {
+                    key: key.clone(),
+                    expect: Some(changed.version_token),
+                    recipe: Arc::new(wrong_history.build().unwrap())
+                },
+                &Cancel::default()
+            )
+            .unwrap_err()
+            .outcome(),
+        Outcome::HistoryConflict
+    );
+    let history = changed.snapshot.recipe().document().clone();
+    let added = changed.added_at;
+    let trashed = store
+        .apply(
+            Mutation::Trash {
+                key: key.clone(),
+                expect: Some(changed.version_token),
+            },
+            &Cancel::default(),
+        )
+        .unwrap();
+    let trash = trashed.record.unwrap();
+    assert!(trash.trashed_at.is_some());
+    assert_eq!(trash.snapshot.recipe().document(), &history);
+    assert_eq!(trash.added_at, added);
+    assert_eq!(
+        store
+            .apply(
+                Mutation::Add(Arc::new(trash.snapshot.recipe().clone())),
+                &Cancel::default()
+            )
+            .unwrap_err()
+            .outcome(),
+        Outcome::Conflict
+    );
+
+    trash
+}
+
+#[expect(
+    clippy::unwrap_used,
+    reason = "Lifecycle fixture failures must fail their calling test"
+)]
+fn assert_restore_and_purge(
+    store: &Library,
+    key: &LibraryKey,
+    trash: &auditorylab_app::services::library::LoadedRecord,
+    record_path: &std::path::Path,
+) {
+    let path = record_path.parent().unwrap().parent().unwrap();
+    let id = trash.snapshot.recipe().document().id;
+    let history = trash.snapshot.recipe().document().clone();
+    let added = trash.added_at;
+    let restored = store
+        .apply(
+            Mutation::Restore {
+                key: key.clone(),
+                expect: Some(trash.version_token),
+            },
+            &Cancel::default(),
+        )
+        .unwrap()
+        .record
+        .unwrap();
+    assert_eq!(restored.trashed_at, None);
+    assert_eq!(restored.snapshot.recipe().document(), &history);
+    assert_eq!(restored.added_at, added);
+    assert!(
+        store
+            .apply(
+                Mutation::Purge {
+                    key: key.clone(),
+                    expect: Some(restored.version_token),
+                    confirmed: true
+                },
+                &Cancel::default()
+            )
+            .is_err()
+    );
+    let trash = store
+        .apply(
+            Mutation::Trash {
+                key: key.clone(),
+                expect: Some(restored.version_token),
+            },
+            &Cancel::default(),
+        )
+        .unwrap()
+        .record
+        .unwrap();
+    assert!(
+        store
+            .apply(
+                Mutation::Purge {
+                    key: key.clone(),
+                    expect: Some(trash.version_token),
+                    confirmed: false
+                },
+                &Cancel::default()
+            )
+            .is_err()
+    );
+    assert!(path.join("trash").join(format!("{id}.toml")).exists());
+    let purged = store
+        .apply(
+            Mutation::Purge {
+                key: key.clone(),
+                expect: Some(trash.version_token),
+                confirmed: true,
+            },
+            &Cancel::default(),
+        )
+        .unwrap();
+    assert!(matches!(
+        purged.status,
+        MutationStatus::Published | MutationStatus::PublishedWithWarning
+    ));
+    assert!(!record_path.exists());
+    assert_eq!(
+        store
+            .apply(
+                Mutation::Restore {
+                    key: key.clone(),
+                    expect: Some(trash.version_token)
+                },
+                &Cancel::default()
+            )
+            .unwrap_err()
+            .outcome(),
+        Outcome::Conflict
+    );
 }

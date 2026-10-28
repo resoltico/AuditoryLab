@@ -12,7 +12,8 @@ pub struct PhaseRate {
 impl PhaseRate {
     #[expect(
         clippy::cast_precision_loss,
-        reason = "Integer phase steps are rounded to binary64 for reported frequency; they are not used to reconstruct the renderer step"
+        reason = "Integer phase steps are rounded to binary64 for reported frequency; \
+            they are not used to reconstruct the renderer step"
     )]
     pub(crate) fn from_step(requested_hz: f64, step: u64, rate: SampleRate) -> Self {
         Self {
@@ -66,7 +67,7 @@ pub enum ModulationFacts {
     Gate(PulseFacts),
 }
 /// Authored pair intent retained with its generated lanes, never reconstructed
-/// by subtracting generated frequencies. Actual lane rates remain in CarrierFacts.
+/// by subtracting generated frequencies. Actual lane rates remain in `CarrierFacts`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct PairFacts {
     /// Authored primary owner shared by both lanes.

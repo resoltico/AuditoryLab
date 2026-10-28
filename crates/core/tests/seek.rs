@@ -3,9 +3,11 @@ use auditorylab_core::test_support as common;
 use auditorylab_core::{ComponentForm, Ears, Modulation, Recipe, SampleRate, catalog, waveform};
 use proptest::prelude::*;
 proptest! {
-    #![proptest_config(ProptestConfig { cases: 64, max_shrink_iters: 128, failure_persistence: None, .. ProptestConfig::default() })]
+    #![proptest_config(ProptestConfig { cases: 64, max_shrink_iters: 128, failure_persistence: None,
+        .. ProptestConfig::default() })]
     #[test]
-    fn arbitrary_windows_equal_a_full_render(start in 0_usize..5000, len in 0_usize..1000, entry in 0_usize..catalog::ENTRIES.len()) {
+    fn arbitrary_windows_equal_a_full_render(start in 0_usize..5000, len in 0_usize..1000,
+        entry in 0_usize..catalog::ENTRIES.len()) {
         let mut sound = Recipe::parse(&catalog::ENTRIES[entry].text()).unwrap().sound().clone();
         sound.set_duration(finite(0.1)); sound.set_fade(finite(0.01));
         let signal = sound.signal(SampleRate::DEFAULT).unwrap();
@@ -22,7 +24,7 @@ fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
         0.0,
         &[ComponentForm::Clicks {
             rate_hz: finite(3.0),
-            width_seconds: finite(0.000125),
+            width_seconds: finite(0.000_125),
             ears: Ears::Left,
             peak_dbfs: finite(-20.0),
             modulation: None,
@@ -95,7 +97,7 @@ fn fades_and_late_tones_follow_independent_sine_formulas() {
 #[test]
 fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
     let signal = common::recipe(
-        1431655.7653333333,
+        1_431_655.765_333_333_3,
         0.0,
         &[ComponentForm::Tone {
             frequency_hz: finite(8000.0),
@@ -111,7 +113,7 @@ fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
     .clone()
     .signal(SampleRate::DEFAULT)
     .unwrap();
-    for n in [0_u64, 1, 23456, 172800000, (1 << 36) - 100] {
+    for n in [0_u64, 1, 23456, 172_800_000, (1 << 36) - 100] {
         let carrier = f64::from(u32::try_from(u128::from(n) * 8000 % 48000).unwrap()) / 48000.0;
         let modulation = f64::from(u32::try_from(u128::from(n) * 625 % (48000 * 16)).unwrap())
             / (48000.0 * 16.0);
@@ -130,7 +132,7 @@ fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
 #[test]
 fn raised_cosine_is_symmetric_and_matches_sine_squared() {
     let signal = common::recipe(
-        0.125125,
+        0.125_125,
         0.008,
         &[ComponentForm::Clicks {
             rate_hz: finite(0.5),

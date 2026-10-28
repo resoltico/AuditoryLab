@@ -105,7 +105,7 @@ impl CommandProblem {
 }
 
 /// Populate the product metadata before a native window is shown.
-pub(crate) fn initialize_identity(terms: crate::generated::Terms<'_>) {
+pub(crate) fn initialize_identity(terms: &crate::generated::Terms<'_>) {
     let identity = &auditorylab_app::identity::BUILD_IDENTITY;
     terms.set_caption_product_name(identity.name.into());
     terms.set_caption_copyright(identity.copyright.into());

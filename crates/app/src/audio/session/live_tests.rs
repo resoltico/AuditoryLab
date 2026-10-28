@@ -31,7 +31,7 @@ fn difference(generator: &LiveGenerator) -> f64 {
         .flatten()
         .filter_map(|voice| match voice.facts.carrier {
             auditorylab_app::core::CarrierFacts::Tone(rate) => Some(rate.realized_hz),
-            _ => None,
+            auditorylab_app::core::CarrierFacts::Clicks(_) => None,
         })
         .collect();
     assert_eq!(rates.len(), 2);
@@ -49,10 +49,10 @@ fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarg
         .unwrap();
     draft.replace(left, component(380.0, Ears::Left)).unwrap();
     draft.replace(right, component(420.0, Ears::Right)).unwrap();
-    let mut generator = LiveGenerator::new(target(&draft));
+    let mut generator = LiveGenerator::new(&(target(&draft)));
     let control = generator.control();
     assert_eq!(control.update(&target(&draft)).unwrap(), 1);
-    let mut out = [[0.0; 2]; 2000];
+    let mut out = std::vec![[0.0; 2]; 2000];
     generator.render(&mut out);
     assert_eq!(difference(&generator), 40.0);
     draft.set_title("An edited research copy".into());
@@ -71,7 +71,7 @@ fn generated_quantities_follow_accepted_definitions_and_metadata_does_not_retarg
     assert_eq!(control.update(&target(&draft)).unwrap(), 3);
     draft.replace(right, component(448.0, Ears::Right)).unwrap();
     assert_eq!(control.update(&target(&draft)).unwrap(), 4);
-    generator.render(&mut [[0.0; 2]; 4000]);
+    generator.render(&mut std::vec![[0.0; 2]; 4000]);
     let settled = generator.observation().unwrap();
     assert_eq!((settled.active_revision, settled.settled_revision), (4, 4));
     assert_eq!(difference(&generator), 68.0);
@@ -145,10 +145,10 @@ fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarg
             controls::default_pair(PairKind::Binaural),
         )
         .unwrap();
-    let mut generator = LiveGenerator::new(target(editor.draft()));
+    let mut generator = LiveGenerator::new(&(target(editor.draft())));
     let control = generator.control();
     control.update(&target(editor.draft())).unwrap();
-    generator.render(&mut [[0.0; 2]; 2000]);
+    generator.render(&mut std::vec![[0.0; 2]; 2000]);
     let commit = |editor: &mut EditorSession, parameter, value: &str| {
         let handle = editor
             .handle(EditingField::Parameter(owner, parameter))
@@ -169,7 +169,7 @@ fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarg
         editor.stage(offset_handle, &offset.to_string()).unwrap();
         editor.commit().unwrap();
         control.update(&target(editor.draft())).unwrap();
-        generator.render(&mut [[0.0; 2]; 1440]);
+        generator.render(&mut std::vec![[0.0; 2]; 1440]);
         let observed = generator.observation().unwrap();
         let voices: Vec<_> = observed.voices.iter().flatten().collect();
         assert_eq!(voices.len(), 2);
@@ -195,7 +195,7 @@ fn first_class_pair_updates_both_lanes_atomically_and_invalid_pairs_never_retarg
         .unwrap();
     assert_eq!(control.update(&target(editor.draft())).unwrap(), revision);
     generator.stop();
-    let mut output = [[1.0; 2]; 4000];
+    let mut output = std::vec![[1.0; 2]; 4000];
     generator.render(&mut output);
     assert!(generator.is_finished());
     assert!(output[2880..].iter().all(|frame| *frame == [0.0; 2]));

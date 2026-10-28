@@ -6,10 +6,8 @@ use auditorylab_app::workspace::monitor::MonitorWarning;
 use auditorylab_app::workspace::monitor::OutputMonitorState;
 use auditorylab_app::workspace::monitor::WaveformCapture;
 use auditorylab_app::workspace::monitor::WaveformScale;
-/// Wording for the captured WaveformCapture data.
-
+/// Wording for the captured `WaveformCapture` data.
 /// Concise label derived only from this captured window, never current navigation.
-
 pub fn waveform_capture_label(value: &WaveformCapture, frozen: bool, ended: bool) -> String {
     format!(
         "{} · {} · {:.2} ms · {} ±{}",
@@ -33,11 +31,11 @@ pub fn waveform_capture_label(value: &WaveformCapture, frozen: bool, ended: bool
     )
 }
 /// Full frozen/retained context; current generated status is presented independently.
-
 pub fn waveform_capture_caption(value: &WaveformCapture, frozen: bool, ended: bool) -> String {
     format!(
-        "{} · session {} · sample rate {} Hz · frames {}..{} · snapshot {} · observed frame {} · captured gaps {} / underruns {} · exact scale ±{}",
-        crate::workspace::monitor::waveform_capture_label(&(value), frozen, ended),
+        "{} · session {} · sample rate {} Hz · frames {}..{} · snapshot {} · \
+            observed frame {} · captured gaps {} / underruns {} · exact scale ±{}",
+        crate::workspace::monitor::waveform_capture_label(value, frozen, ended),
         value
             .session()
             .map_or_else(|| "preview".into(), |session| session.id.to_string()),
@@ -54,10 +52,8 @@ pub fn waveform_capture_caption(value: &WaveformCapture, frozen: bool, ended: bo
     )
 }
 
-/// Wording for the captured ModelView data.
-
+/// Wording for the captured `ModelView` data.
 /// Explicit model rate/origin/provenance, with insufficient-cycle warning when capped.
-
 pub fn model_view_caption(value: &ModelView) -> String {
     format!(
         "Timing model · {} · {} · origin 0 · {} Hz · {:.1} ms · projection, not recorded output{}",
@@ -77,7 +73,6 @@ pub fn model_view_caption(value: &ModelView) -> String {
     )
 }
 /// Shared labels for physical lanes; a frontend only renders their geometry.
-
 pub fn model_view_lane_label(lane: &auditorylab_core::timing::ModelLane) -> String {
     use auditorylab_core::timing::ModelKind;
     let quantity = match lane.kind {
@@ -88,7 +83,7 @@ pub fn model_view_lane_label(lane: &auditorylab_core::timing::ModelLane) -> Stri
                     crate::numbers::format(NumberStyle::Compact, rate.realized_hz)
                 )
             }
-            _ => "Steady carrier".into(),
+            auditorylab_core::CarrierFacts::Clicks(_) => "Steady carrier".into(),
         },
         ModelKind::Clicks => match lane.facts.carrier {
             auditorylab_core::CarrierFacts::Clicks(p) => {
@@ -97,7 +92,7 @@ pub fn model_view_lane_label(lane: &auditorylab_core::timing::ModelLane) -> Stri
                     crate::numbers::format(NumberStyle::Compact, p.rate_hz)
                 )
             }
-            _ => unreachable!("click lane carrier"),
+            auditorylab_core::CarrierFacts::Tone(_) => unreachable!("click lane carrier"),
         },
         ModelKind::Gate => match lane.facts.modulation {
             Some(auditorylab_core::ModulationFacts::Gate(p)) => {
@@ -123,10 +118,9 @@ pub fn model_view_lane_label(lane: &auditorylab_core::timing::ModelLane) -> Stri
     )
 }
 /// Relate a model's accepted revision to actual generation without replaying live phases.
-
 pub fn model_view_generation_note(
     value: &ModelView,
-    status: auditorylab_app::services::playback::GeneratedStatus,
+    status: &auditorylab_app::services::playback::GeneratedStatus,
 ) -> String {
     let ModelSource::Accepted(revision) = value.source else {
         return String::new();
@@ -155,10 +149,8 @@ pub fn model_view_generation_note(
     }
 }
 
-/// Wording for the captured OutputMonitorState data.
-
+/// Wording for the captured `OutputMonitorState` data.
 /// Concise status for any frontend.
-
 pub fn output_monitor_state_label(value: OutputMonitorState) -> &'static str {
     match value {
         OutputMonitorState::Preview => "Preview",
@@ -171,10 +163,8 @@ pub fn output_monitor_state_label(value: OutputMonitorState) -> &'static str {
     }
 }
 
-/// Wording for the captured MonitorWarning data.
-
+/// Wording for the captured `MonitorWarning` data.
 /// Visible and accessible text for this current condition.
-
 pub fn monitor_warning_message(value: MonitorWarning) -> &'static str {
     match value {
         MonitorWarning::Stale => "Monitoring is stale; retained samples are not current output.",
@@ -182,13 +172,13 @@ pub fn monitor_warning_message(value: MonitorWarning) -> &'static str {
             "Incomplete current waveform coverage; waiting for a contiguous window."
         }
         MonitorWarning::FixedRangeExceeded => {
-            "Waveform exceeds the fixed display range; exact levels are retained. Use Fit to view the full extent."
+            "Waveform exceeds the fixed display range; exact levels are retained. \
+                Use Fit to view the full extent."
         }
     }
 }
 
-/// Wording for the captured WaveformScale data.
-
+/// Wording for the captured `WaveformScale` data.
 pub fn waveform_scale_terms(value: WaveformScale) -> (&'static str, &'static str) {
     match value {
         WaveformScale::Fixed => ("Fixed ±1", "fixed ±1"),
@@ -196,12 +186,10 @@ pub fn waveform_scale_terms(value: WaveformScale) -> (&'static str, &'static str
     }
 }
 /// Domain name for a heading or choice.
-
 pub fn waveform_scale_label(value: WaveformScale) -> &'static str {
     crate::workspace::monitor::waveform_scale_terms(value).0
 }
 /// Domain name within a sentence.
-
 pub fn waveform_scale_phrase(value: WaveformScale) -> &'static str {
     crate::workspace::monitor::waveform_scale_terms(value).1
 }

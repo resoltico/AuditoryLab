@@ -1,5 +1,9 @@
 //! Library model updates depend only on an immutable library projection.
-use super::*;
+use super::{
+    Arc, CatalogRow, MainWindow, Model, ModelRc, SharedString, SlintAdapter, VecModel, read_only,
+    sync_rows,
+};
+use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::workspace::{ChoiceView, FacetCounts, QueryFacet};
 
 struct EntryHandles(Vec<Option<auditorylab_app::workspace::EntryHandle>>);
@@ -237,49 +241,60 @@ impl SlintAdapter {
                 .iter()
                 .enumerate()
                 .map(|(index, source_row)| {
-                    let row=auditorylab_presentation::library::row(source_row,source.sort);
+                    let row = auditorylab_presentation::library::row(source_row, source.sort);
                     CatalogRow {
-                    entry: crate::generated::EntryAddress {
-                        table: table.clone(),
-                        row: i32::try_from(index).unwrap_or(-1),
-                    },
-                    built_in: matches!(source_row,auditorylab_app::workspace::LibraryRowView::Entry {entry,..} if matches!(entry.key,auditorylab_app::document::origin::LibraryKey::BuiltIn(_))),
-                    text: read_only(&row.text),
-                    binding: row.key.as_str().into(),
-                    title: read_only(&row.title),
-                    collection: read_only(&row.collection),
-                    summary: read_only(&row.summary),
-                    bands: read_only(&row.bands),
-                    duration: read_only(&row.duration),
-                    dates: read_only(&row.dates),
-                }})
+                        entry: crate::generated::EntryAddress {
+                            table: table.clone(),
+                            row: i32::try_from(index).unwrap_or(-1),
+                        },
+                        built_in: matches!(source_row,
+                        auditorylab_app::workspace::LibraryRowView::Entry {entry,..}
+                        if matches!(entry.key,LibraryKey::BuiltIn(_))),
+                        text: read_only(&row.text),
+                        binding: row.key.as_str().into(),
+                        title: read_only(&row.title),
+                        collection: read_only(&row.collection),
+                        summary: read_only(&row.summary),
+                        bands: read_only(&row.bands),
+                        duration: read_only(&row.duration),
+                        dates: read_only(&row.dates),
+                    }
+                })
                 .collect(),
         );
+        self.project_library_context(ui);
+        project_library_selection(ui, &source, &library);
+        *self.library.borrow_mut() = Some(source);
+    }
+}
+
+impl SlintAdapter {
+    fn project_library_context(&self, ui: &MainWindow) {
         if let Some(w) = self.workspace.borrow().as_ref() {
             let binding = auditorylab_presentation::library::selection_binding(w.library_binding());
             ui.set_library_key(binding.key.into());
             ui.set_library_token(binding.token.into());
             ui.set_library_trashed(binding.trashed);
             ui.set_library_status(read_only(
-                &auditorylab_presentation::library::workspace_library_status(&(w)),
+                &auditorylab_presentation::library::workspace_library_status(w),
             ));
             ui.set_library_alert(read_only(
-                &auditorylab_presentation::library::workspace_library_alert(&(w)),
+                &auditorylab_presentation::library::workspace_library_alert(w),
             ));
             ui.set_library_dates(read_only(
-                &auditorylab_presentation::library::workspace_library_dates(&(w)),
+                &auditorylab_presentation::library::workspace_library_dates(w),
             ));
             ui.set_library_dates_utc(read_only(
-                &auditorylab_presentation::library::workspace_library_dates_utc(&(w)),
+                &auditorylab_presentation::library::workspace_library_dates_utc(w),
             ));
             ui.set_library_count(read_only(
-                &auditorylab_presentation::library::workspace_library_count(&(w)),
+                &auditorylab_presentation::library::workspace_library_count(w),
             ));
             ui.set_library_overview(read_only(
-                &auditorylab_presentation::library::workspace_library_overview(&(w)),
+                &auditorylab_presentation::library::workspace_library_overview(w),
             ));
             ui.set_library_empty_message(read_only(
-                auditorylab_presentation::library::workspace_library_empty_message(&(w)),
+                auditorylab_presentation::library::workspace_library_empty_message(w),
             ));
             ui.set_library_filters_active(
                 *w.catalog_query() != w.catalog_query().cleared_filters(),
@@ -303,32 +318,38 @@ impl SlintAdapter {
                 auditorylab_presentation::library::calendar::local_context().into(),
             );
         }
-        // Virtual group/diagnostic rows do not create a selectable sound.
-        let has_results = source.rows.iter().any(|row| {
-            matches!(
-                row,
-                auditorylab_app::workspace::LibraryRowView::Entry { .. }
-            )
-        });
-        ui.set_has_results(has_results);
-        if !has_results {
-            ui.set_library_detail(false);
-        }
-        ui.set_selected(
-            source
-                .selected
-                .and_then(|i| i32::try_from(i).ok())
-                .unwrap_or(-1),
-        );
-        ui.set_sound_title(auditorylab_presentation::display_scalar(&(library.title)).into());
-        ui.set_structure(read_only(&library.structure));
-        ui.set_library_classification(read_only(&library.classification));
-        ui.set_library_ownership(read_only(&library.ownership));
-        ui.set_studied(read_only(&library.studied));
-        ui.set_recipe_timing(read_only(&library.timing));
-        ui.set_summary(read_only(&library.summary));
-        ui.set_details(read_only(&library.details));
-        ui.set_can_open_study(!library.study_url.is_empty());
-        *self.library.borrow_mut() = Some(source);
     }
+}
+
+fn project_library_selection(
+    ui: &MainWindow,
+    source: &auditorylab_app::workspace::LibraryView,
+    library: &auditorylab_presentation::workspace::LibraryText,
+) {
+    // Virtual group/diagnostic rows do not create a selectable sound.
+    let has_results = source.rows.iter().any(|row| {
+        matches!(
+            row,
+            auditorylab_app::workspace::LibraryRowView::Entry { .. }
+        )
+    });
+    ui.set_has_results(has_results);
+    if !has_results {
+        ui.set_library_detail(false);
+    }
+    ui.set_selected(
+        source
+            .selected
+            .and_then(|i| i32::try_from(i).ok())
+            .unwrap_or(-1),
+    );
+    ui.set_sound_title(auditorylab_presentation::display_scalar(&(library.title)).into());
+    ui.set_structure(read_only(&library.structure));
+    ui.set_library_classification(read_only(&library.classification));
+    ui.set_library_ownership(read_only(&library.ownership));
+    ui.set_studied(read_only(&library.studied));
+    ui.set_recipe_timing(read_only(&library.timing));
+    ui.set_summary(read_only(&library.summary));
+    ui.set_details(read_only(&library.details));
+    ui.set_can_open_study(!library.study_url.is_empty());
 }

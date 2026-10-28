@@ -67,6 +67,14 @@ broken_intra_doc_links = "deny"
 private_intra_doc_links = "deny"
 
 [workspace.lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+# Exact sample-bit expectations intentionally compare floating-point values.
+float_cmp = "allow"
+# These unpublished internal crates do not require must_use on every candidate.
+must_use_candidate = "allow"
+# Internal fallible APIs are documented by their contracts and exercised failures.
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
 all = { level = "deny", priority = -1 }
 cast_possible_truncation = "deny"
 cast_precision_loss = "deny"

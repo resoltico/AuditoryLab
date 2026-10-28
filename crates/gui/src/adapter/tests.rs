@@ -40,6 +40,7 @@ impl Executor for DeterministicExecutor {
 impl SlintAdapter {
     pub(crate) fn reverse_rendered_choices(&self) {
         use auditorylab_app::workspace::QueryFacet;
+
         let workspace = self.workspace.borrow();
         let workspace = workspace.as_ref().unwrap();
         let choices = [

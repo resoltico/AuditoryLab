@@ -14,7 +14,7 @@ impl EditorError {
     pub fn outcome(&self) -> Outcome {
         match self {
             Self::Identity(error) => error.outcome(),
-            _ => Outcome::InvalidRecipe,
+            Self::Recipe(_) => Outcome::InvalidRecipe,
         }
     }
 }
@@ -41,7 +41,7 @@ pub struct RenditionError {
 }
 impl RenditionError {
     /// Frontend-independent failure category.
-    pub const fn outcome(&self) -> crate::outcome::Outcome {
+    pub const fn outcome() -> crate::outcome::Outcome {
         crate::outcome::Outcome::InvalidSound
     }
 }
@@ -86,7 +86,8 @@ crate::core::diagnostic_codes! {
             Self { error, .. } => error,
         }
         params(this) {
-            crate::core::diagnostic_params! {"origin"=>this.origin.to_string(),"diagnostic_rate_hz"=>this.rate.hz()}
+            crate::core::diagnostic_params! {"origin"=>this.origin.to_string(),
+                "diagnostic_rate_hz"=>this.rate.hz()}
         }
     }
 }

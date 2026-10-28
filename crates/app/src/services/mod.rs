@@ -28,7 +28,7 @@ use crate::{storage::publish, storage::wav};
 pub use discovery::{ListRequest, Listing, list};
 pub use inspection::{Description, Inspection, describe, inspect};
 pub use sources::{Resolved, Source, builtin, builtin_source, catalog, portable_text, resolve};
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 /// Confirmed recipe-file publication and any durability or cleanup warnings.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -103,7 +103,7 @@ pub fn save_recipe_text(
     replace: Replace,
 ) -> Result<SaveOutcome, SaveError> {
     Recipe::parse(text)?;
-    publish_text(&text, path, replace)
+    publish_text(text, path, replace)
 }
 /// Save validated portable content with staged publication.
 ///
@@ -159,14 +159,14 @@ pub fn read_source(
 /// Preserves captured-version conflicts and truthful publication/cleanup failures.
 pub fn save_external(
     expected: &ObservedFile,
-    recipe: Arc<Recipe>,
+    recipe: &Recipe,
     cancel: &Cancel,
 ) -> Result<crate::storage::external::ExternalOutcome, SaveError> {
-    crate::storage::external::ExternalWriter.save(expected, recipe, cancel)
+    crate::storage::external::save(expected, recipe, cancel)
 }
-
-#[cfg(test)]
-mod tests;
 
 /// Typed nonfatal storage outcomes.
 pub use crate::storage::warning::StorageWarning;
+
+#[cfg(test)]
+mod tests;

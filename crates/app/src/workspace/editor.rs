@@ -1,5 +1,11 @@
 //! The editable document, location and editor admission/transitions.
-use super::*;
+use super::{
+    Arc, AudioRequest, CarrierKind, CommitRefusal, DocumentId, Draft, Ears, EditRefusal,
+    EditStatus, EditingField, EditorCommand, EditorSession, FieldHandle, ModulationKind, Recipe,
+    Refusal, RowKey, SampleRate, SaveFeedback, SaveRefusal, controls, file, file_name,
+};
+use super::{ComponentView, EditorView, FieldDiagnostic, MetadataView, ParameterView};
+use crate::core::ParameterId;
 #[derive(Debug, Clone, Default)]
 pub(super) enum DocumentLocation {
     #[default]
@@ -389,4 +395,188 @@ pub(super) enum EditorTransition {
     Staged(Result<(), Refusal>),
     Committed(Result<(), Refusal>),
     Refused(Refusal),
+}
+
+impl EditorState {
+    pub(super) fn view(
+        &mut self,
+        rate: SampleRate,
+        live: bool,
+        unrelated_title: Option<String>,
+    ) -> EditorView {
+        let candidate = self.candidate();
+        let analysis = self.candidate_analysis(rate);
+        let committed_analysis = self.committed_analysis(rate);
+        let nominal = self.nominal();
+        let metadata = self.metadata_rows(&candidate, &analysis);
+        let components = self
+            .session()
+            .draft()
+            .components()
+            .iter()
+            .map(|component| self.component_row(component, &candidate, &analysis, rate))
+            .collect();
+        EditorView {
+            status: if self.session().dirty() {
+                crate::vocabulary::EditorStatus::UnsavedChanges
+            } else {
+                crate::vocabulary::EditorStatus::UnmodifiedDraft
+            },
+            key: self.session().document_key(),
+            metadata,
+            components,
+            dirty: self.session().dirty(),
+            pending: self.session().has_staged(),
+            rate,
+            live,
+            target: analysis.check().result().copied().map_err(Clone::clone),
+            committed: committed_analysis
+                .target()
+                .map(auditorylab_core::rhythm::realized),
+            nominal,
+            saved: self.session().saved_nominal().cloned(),
+            based_on: self.session().draft().based_on().cloned(),
+            unrelated_title,
+        }
+    }
+    fn metadata_rows(
+        &self,
+        candidate: &crate::document::editing::Candidate,
+        analysis: &crate::document::editing::Analysis,
+    ) -> [MetadataView; 4] {
+        crate::document::editing::MetadataField::ALL.map(|field| {
+            let editing = crate::document::editing::EditingField::Metadata(field);
+            MetadataView {
+                handle: self
+                    .session()
+                    .handle(editing)
+                    .unwrap_or_else(|_| unreachable!("existing metadata")),
+                field,
+                text: self.session().text(editing),
+                staged: self.session().staged(editing).is_some(),
+                diagnostic: input_diagnostic(candidate, editing).or_else(|| {
+                    field.parameter().and_then(|p| {
+                        analysis
+                            .envelope()
+                            .err()
+                            .filter(|e| e.parameters().contains(&p))
+                            .cloned()
+                            .map(FieldDiagnostic::Sound)
+                    })
+                }),
+            }
+        })
+    }
+    fn component_row(
+        &self,
+        component: &crate::core::Component,
+        candidate: &crate::document::editing::Candidate,
+        analysis: &crate::document::editing::Analysis,
+        rate: SampleRate,
+    ) -> ComponentView {
+        use crate::document::editing::EditingField;
+        let id = component.id;
+        let committed = component.form;
+        let shown = candidate
+            .draft()
+            .component(id)
+            .copied()
+            .unwrap_or(committed);
+        let own = analysis.check().voice(id.into());
+        let acoustic = own.and_then(|r| r.as_ref().err());
+        let second = analysis
+            .check()
+            .voice(id.with_lane(auditorylab_core::Lane::Secondary))
+            .and_then(|r| r.as_ref().err());
+        let coupled = analysis.check().result().err().filter(|error| match error {
+            auditorylab_core::SoundError::Pair(auditorylab_core::PairError {
+                id: owner, ..
+            }) => *owner == id,
+            auditorylab_core::SoundError::PairCarrier { id: owner, .. } => owner.component == id,
+            _ => false,
+        });
+        let parameters = ParameterId::COMPONENT
+            .into_iter()
+            .filter(|p| committed.get(*p).is_some())
+            .map(|parameter| {
+                let field = EditingField::Parameter(id, parameter);
+                let diagnostic = input_diagnostic(candidate, field)
+                    .or_else(|| {
+                        coupled
+                            .filter(|e| e.parameters().contains(&parameter))
+                            .cloned()
+                            .map(FieldDiagnostic::Sound)
+                    })
+                    .or_else(|| {
+                        let error = if parameter == ParameterId::PairSecondLevel {
+                            second
+                        } else {
+                            acoustic
+                        };
+                        error
+                            .filter(|e| {
+                                e.parameters().contains(&parameter)
+                                    || matches!(
+                                        parameter,
+                                        ParameterId::PairFirstLevel | ParameterId::PairSecondLevel
+                                    ) && matches!(
+                                        e,
+                                        auditorylab_core::VoiceError::PeakDbfs { .. }
+                                    )
+                            })
+                            .cloned()
+                            .map(FieldDiagnostic::Voice)
+                    });
+                ParameterView {
+                    handle: self
+                        .session()
+                        .handle(field)
+                        .unwrap_or_else(|_| unreachable!("existing component field")),
+                    parameter,
+                    text: self.session().text(field),
+                    staged: self.session().staged(field).is_some(),
+                    slider: committed
+                        .get(parameter)
+                        .and_then(|v| controls::slider_position(parameter, rate, v.get())),
+                    diagnostic,
+                }
+            })
+            .collect();
+        let diagnostics = candidate
+            .problems()
+            .iter()
+            .filter(|(f, _)| matches!(f,EditingField::Parameter(owner,_) if *owner==id))
+            .map(|(f, p)| FieldDiagnostic::Input(*f, *p))
+            .chain(
+                [acoustic, second]
+                    .into_iter()
+                    .flatten()
+                    .cloned()
+                    .map(FieldDiagnostic::Voice),
+            )
+            .chain(coupled.cloned().map(FieldDiagnostic::Sound))
+            .collect();
+        ComponentView {
+            key: self
+                .session()
+                .component_key(id)
+                .unwrap_or_else(|| unreachable!("existing component lifetime")),
+            id,
+            committed,
+            shown,
+            facts: own.and_then(|r| r.as_ref().ok()).copied(),
+            diagnostics,
+            parameters,
+        }
+    }
+}
+fn input_diagnostic(
+    candidate: &crate::document::editing::Candidate,
+    field: EditingField,
+) -> Option<FieldDiagnostic> {
+    candidate
+        .problems()
+        .iter()
+        .find(|(owner, _)| *owner == field)
+        .map(|(owner, problem)| FieldDiagnostic::Input(*owner, *problem))
 }

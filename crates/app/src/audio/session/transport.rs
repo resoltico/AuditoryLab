@@ -115,9 +115,11 @@ impl Transport {
         if output.is_empty() {
             return;
         }
-        if time.playback < time.callback
-            || self.last_callback.is_some_and(|last| time.callback < last)
-        {
+        let Some(latency) = time.playback.checked_sub(time.callback) else {
+            self.state.finish(Outcome::InvalidTiming);
+            return;
+        };
+        if self.last_callback.is_some_and(|last| time.callback < last) {
             self.state.finish(Outcome::InvalidTiming);
             return;
         }
@@ -128,7 +130,6 @@ impl Transport {
         let generated = self.source.generated();
         // floor(S - latency*rate) = S - ceil(latency*rate), bounded by G and
         // never moving backwards.
-        let latency = time.playback - time.callback;
         let latency_frames =
             u64::try_from((latency.as_nanos() * u128::from(self.rate_hz)).div_ceil(1_000_000_000))
                 .unwrap_or(u64::MAX);
@@ -153,12 +154,11 @@ impl Transport {
         if let Some(end) = self.end {
             let candidate = if end >= self.submitted {
                 let ahead = frame_duration(end - self.submitted, self.rate_hz, Rounding::Up);
-                match time.playback.checked_add(ahead) {
-                    Some(candidate) => Some(candidate),
-                    None => {
-                        self.state.finish(Outcome::InvalidTiming);
-                        return;
-                    }
+                if let Some(candidate) = time.playback.checked_add(ahead) {
+                    Some(candidate)
+                } else {
+                    self.state.finish(Outcome::InvalidTiming);
+                    return;
                 }
             } else {
                 // After an underrun the backend can place this buffer so early that the
@@ -210,7 +210,10 @@ impl Transport {
             }
         }
         if let Some(publication) = publication.as_mut() {
-            publication.finish(self.source.generated(), self.source.observation());
+            publication.finish(
+                self.source.generated(),
+                (self.source.observation()).as_ref(),
+            );
         }
         active
     }

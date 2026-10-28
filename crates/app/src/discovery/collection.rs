@@ -555,31 +555,7 @@ impl CatalogQuery {
             }
         }
         let mut groups = groups.into_values().collect::<Vec<_>>();
-        if self.group_by == GroupBy::Band {
-            let order = [
-                "delta",
-                "theta",
-                "alpha",
-                "beta",
-                "gamma",
-                "other_rates",
-                "no_rhythm",
-                "multiple_rhythms",
-                "needs_review",
-            ];
-            groups.sort_by_key(|group| {
-                order
-                    .iter()
-                    .position(|key| *key == group.key)
-                    .unwrap_or(order.len())
-            });
-        }
-        if self.group_by == GroupBy::Collection {
-            groups.sort_by_key(|group| match group.label {
-                GroupLabel::Collection(collection) => collection,
-                _ => unreachable!("collection grouping emits only collection labels"),
-            });
-        }
+        order_groups(&mut groups, self.group_by);
         groups
     }
 }
@@ -616,4 +592,32 @@ fn study(entry: &EntrySummary) -> Option<String> {
         .filter(|e| e.scope == EvidenceScope::ReferenceCondition)
         .map(|e| e.doi.as_deref().unwrap_or(&e.source).to_owned())
         .min()
+}
+
+fn order_groups(groups: &mut [ResultGroup], group_by: GroupBy) {
+    if group_by == GroupBy::Band {
+        let order = [
+            "delta",
+            "theta",
+            "alpha",
+            "beta",
+            "gamma",
+            "other_rates",
+            "no_rhythm",
+            "multiple_rhythms",
+            "needs_review",
+        ];
+        groups.sort_by_key(|group| {
+            order
+                .iter()
+                .position(|key| *key == group.key)
+                .unwrap_or(order.len())
+        });
+    }
+    if group_by == GroupBy::Collection {
+        groups.sort_by_key(|group| match group.label {
+            GroupLabel::Collection(collection) => collection,
+            _ => unreachable!("collection grouping emits only collection labels"),
+        });
+    }
 }

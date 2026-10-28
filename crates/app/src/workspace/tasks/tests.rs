@@ -7,7 +7,7 @@ use crate::core::{CarrierKind, ParameterId, SampleRate};
 use crate::document::editing::{EditingField, FieldHandle};
 use crate::services::library::{Library, Mutation};
 use crate::workspace::status::{AudioStatus, FileStatus};
-use crate::workspace::{AudioCommand, Command, EditorCommand, FileCommand, LibraryCommand};
+use crate::workspace::{AudioCommand, Command, EditorCommand, LibraryCommand};
 use crate::workspace::{
     Capabilities, Effect, PromptAnswer, ResponseDisposition, View, WorkerFailure,
 };
@@ -167,7 +167,7 @@ fn prepared(
             return Err(error);
         }
     };
-    let generator = LiveGenerator::with_state(target, Arc::clone(session.state()));
+    let generator = LiveGenerator::with_state(&(target), Arc::clone(session.state()));
     let live = matches!(kind, AudioKind::Live(_)).then(|| generator.control());
     let monitor = PlaybackMonitor::new(
         SessionDescriptor {
@@ -251,7 +251,8 @@ fn a_panic_after_actual_publication_retains_dirty_state_and_denies_close() {
     assert!(workspace.editor().dirty());
     assert!(closed(&mut workspace, false));
     assert!(
-        matches!(workspace.files.status(),FileStatus::WorkerFailed {error:WorkerFailure::Panicked,activity} if activity.path==store.path())
+        matches!(workspace.files.status(),FileStatus::WorkerFailed {error:WorkerFailure::Panicked,
+            activity} if activity.path==store.path())
     );
 }
 #[test]
@@ -283,7 +284,8 @@ fn stop_before_job_execution_returns_a_real_stopped_report_without_discovery() {
     workspace.apply(Command::Audio(AudioCommand::Stop)).unwrap();
     let response = job.execute(|_| panic!("stopped audio must not prepare a device"));
     assert!(
-        matches!(&response,Response::Finished {outcome:JobOutcome::Audio(Ok(report)),..} if report.end==EndReason::Stopped && report.generated_frames==0)
+        matches!(&response,Response::Finished {outcome:JobOutcome::Audio(Ok(report)),..}
+            if report.end==EndReason::Stopped && report.generated_frames==0)
     );
     assert_eq!(workspace.respond(response), ResponseDisposition::Applied);
     assert!(!workspace.audio_busy());
@@ -328,7 +330,7 @@ fn actual_rate_preparation_submits_committed_edits_but_never_staged_text() {
     assert_eq!(workspace.editor().staged(frequency.field), Some("500"));
     assert_eq!(workspace.diagnostic_rate().hz(), 96000);
     assert_eq!(workspace.export_rate(), SampleRate::DEFAULT);
-    assert!(!workspace.action_view().can_export);
+    assert!(!workspace.action_view().can_export());
     workspace
         .apply(Command::Editor(EditorCommand::CommitField {
             field: frequency,
@@ -361,9 +363,8 @@ fn device_rate_validation_is_independent_of_export_rate() {
     )));
     workspace.apply(Command::Audio(AudioCommand::Play)).unwrap();
     let job = take_job(&mut workspace, JobKind::Audio);
-    let error = match prepared(&job, SampleRate::new(8000).unwrap()) {
-        Err(error) => error,
-        Ok(_) => panic!("invalid at actual rate"),
+    let Err(error) = prepared(&job, SampleRate::new(8000).unwrap()) else {
+        panic!("invalid at actual rate")
     };
     assert_eq!(error.outcome(), crate::outcome::Outcome::InvalidSound);
     workspace.respond(Response::Finished {
@@ -436,7 +437,7 @@ fn wrong_preparation_kind_rate_and_session_are_rejected() {
             _ => {
                 let other = Session::new();
                 let target = crate::core::Target::silence(rate);
-                let foreign = LiveGenerator::with_state(target, Arc::clone(other.state()));
+                let foreign = LiveGenerator::with_state(&(target), Arc::clone(other.state()));
                 let control = foreign.control();
                 Response::Prepared {
                     job: job.id(),
@@ -538,7 +539,7 @@ fn wrong_library_identity_or_kind_cannot_mark_a_clean_draft_saved_or_close_it() 
     for fault in 0..3 {
         let (_directory, store, mut workspace) = fixture();
         let original = workspace.editor().document();
-        workspace.apply(Command::File(FileCommand::Save)).unwrap();
+        workspace.save().unwrap();
         let job = take_job(&mut workspace, JobKind::File);
         let id = job.id();
         let _ = workspace.apply(Command::Close);
@@ -597,14 +598,14 @@ fn wrong_library_identity_or_kind_cannot_mark_a_clean_draft_saved_or_close_it() 
 #[test]
 fn wrong_loaded_identity_cannot_replace_the_selected_record() {
     let (_directory, store, mut workspace) = fixture();
-    workspace.apply(Command::File(FileCommand::Save)).unwrap();
+    workspace.save().unwrap();
     idle_files(&mut workspace);
     let a = store.scan(&Cancel::default()).entries[0].key.clone();
     workspace
-        .set_catalog_query(crate::discovery::collection::CatalogQuery {
+        .set_catalog_query(Box::new(crate::discovery::collection::CatalogQuery {
             scope: crate::discovery::query::Scope::User,
             ..Default::default()
-        })
+        }))
         .unwrap();
     idle_files(&mut workspace);
     assert_eq!(
@@ -675,7 +676,7 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
 #[test]
 fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
     let (_directory, store, mut workspace) = fixture();
-    workspace.apply(Command::File(FileCommand::Save)).unwrap();
+    workspace.save().unwrap();
     idle_files(&mut workspace);
     let record = store.scan(&Cancel::default()).entries[0].key.clone();
     let original = workspace.editor().document();
@@ -743,7 +744,7 @@ fn shutdown_reports_prior_rejected_preparation_even_when_real_job_stops_ok() {
 fn shutdown_reports_wrong_kind_success_after_coordinator_validation() {
     let (_directory, _store, mut workspace) = fixture();
     tone(&mut workspace, "440");
-    workspace.apply(Command::File(FileCommand::Save)).unwrap();
+    workspace.save().unwrap();
     let job = take_job(&mut workspace, JobKind::File);
     let id = job.id();
     drop(job);
@@ -784,7 +785,7 @@ fn real_conflicting_save_reports_captured_selector_and_location_without_uncertai
     for shutdown in [false, true] {
         let (_directory, store, mut workspace) = fixture();
         let field = tone(&mut workspace, "440");
-        workspace.apply(Command::File(FileCommand::Save)).unwrap();
+        workspace.save().unwrap();
         idle_files(&mut workspace);
         let key = store.scan(&Cancel::default()).entries[0].key.clone();
         let observed = store.load(&key).unwrap();
@@ -883,7 +884,7 @@ fn completion_notification_waits_for_real_worker_exit_and_preserves_join_ownersh
     let mut runner = Runner::with_waker(wake.clone());
     let (terminal, completed) = mpsc::channel();
     let observer =
-        thread::spawn(move || Runner::post_joined(id, Ok(worker), terminal, wake.as_ref()));
+        thread::spawn(move || Runner::post_joined(id, Ok(worker), &terminal, wake.as_ref()));
     let (_, prepared) = mpsc::channel();
     runner.running.push(Running {
         id,

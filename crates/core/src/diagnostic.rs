@@ -40,10 +40,12 @@ impl<T: Code + ?Sized> Code for Box<T> {
         (**self).params()
     }
 }
-macro_rules! unsigned {($($ty:ty),*)=>{$(impl From<$ty> for ParamValue {fn from(value:$ty)->Self {Self::Unsigned(value as u128)}})*};}
-macro_rules! signed {($($ty:ty),*)=>{$(impl From<$ty> for ParamValue {fn from(value:$ty)->Self {Self::Signed(value as i128)}})*};}
-unsigned!(u8, u16, u32, u64, usize);
-signed!(i8, i16, i32, i64, isize);
+macro_rules! unsigned {($($ty:ty),*)=>{$(impl From<$ty> for ParamValue {fn from(value:$ty)->Self {
+    Self::Unsigned(u128::from(value))}})*};}
+macro_rules! signed {($($ty:ty),*)=>{$(impl From<$ty> for ParamValue {fn from(value:$ty)->Self {
+    Self::Signed(i128::from(value))}})*};}
+unsigned!(u8, u16, u32, u64);
+signed!(i8, i16, i32, i64);
 impl From<f64> for ParamValue {
     fn from(value: f64) -> Self {
         match crate::Finite::new(value) {
@@ -84,14 +86,16 @@ macro_rules! diagnostic_codes {
         $visibility const $registry:&[&str]=&[$($($code,)*)*];
         $(impl $crate::diagnostic::Code for $ty {
             fn code(&self)->&'static str {
-                match self {$( $pattern=>$code, )* $( $delegate=>$crate::diagnostic::Code::code($cause), )*}
+                match self {$( $pattern=>$code,
+                    )* $( $delegate=>$crate::diagnostic::Code::code($cause), )*}
             }
             fn params(&self)->$crate::diagnostic::Params {
                 let params=match self {
                     $( $pattern=>$crate::diagnostic::Params::new(), )*
                     $( $delegate=>$crate::diagnostic::Code::params($cause), )*
                 };
-                $(let $this=self; let params={let mut combined=params;combined.extend($extra);combined};)?
+                $(let $this=self; let params={let mut combined=params;combined.extend($extra);
+                    combined};)?
                 params
             }
         })*
@@ -118,14 +122,25 @@ pub const OWNERS: &[&[&str]] = &[
     crate::vocabulary::CODES,
 ];
 
+impl From<usize> for ParamValue {
+    fn from(value: usize) -> Self {
+        Self::Unsigned(value as u128)
+    }
+}
+impl From<isize> for ParamValue {
+    fn from(value: isize) -> Self {
+        Self::Signed(value as i128)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn values_stay_out_of_codes_and_survive_delegating_wrappers() {
-        let rate = crate::SampleRateError { hz: 768001 };
+        let rate = crate::SampleRateError { hz: 768_001 };
         assert_eq!(rate.code(), "sample_rate.range");
-        assert_eq!(rate.params()["hz"], ParamValue::Unsigned(768001));
+        assert_eq!(rate.params()["hz"], ParamValue::Unsigned(768_001));
         let structure = crate::StructureError::Identity {
             id: crate::ComponentId::new(17).unwrap(),
         };

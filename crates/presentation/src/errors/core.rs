@@ -8,7 +8,7 @@ use auditorylab_core::Sound;
 use auditorylab_core::StructureError;
 /// Explain a rejected rate using the core's supported bounds.
 #[must_use]
-pub fn sample_rate_error(error: &auditorylab_core::SampleRateError) -> String {
+pub fn sample_rate_error(error: auditorylab_core::SampleRateError) -> String {
     format!(
         "sample rate {} Hz must be from {} to {} Hz",
         error.hz,
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn messages_say_what_is_wrong_with_the_recipe() {
         assert_eq!(
-            sample_rate_error(&auditorylab_core::SampleRateError { hz: 0 }),
+            sample_rate_error(auditorylab_core::SampleRateError { hz: 0 }),
             "sample rate 0 Hz must be from 1 to 768000 Hz"
         );
         assert_eq!(

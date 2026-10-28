@@ -156,7 +156,8 @@ mod order_tests {
                 "query.local_order"
             );
             assert!(
-                matches!(error,Error::LocalOrder {field:retained, ref from, ref through} if retained==field && from=="2026-10-26" && through=="2026-10-25")
+                matches!(error,Error::LocalOrder {field:retained, ref from, ref through}
+                    if retained==field && from=="2026-10-26" && through=="2026-10-25")
             );
             let range = local_range(field, "2026-10-25", "2026-10-25").unwrap();
             assert!(range.from.unwrap() < range.before.unwrap());

@@ -78,30 +78,7 @@ fn file_text(error: &FileError) -> String {
             confirmation,
             cause,
         } => {
-            use {
-                auditorylab_app::services::Confirmation as C,
-                auditorylab_app::services::MutationPhase as P,
-            };
-            let explanation = match (phase, confirmation) {
-                (P::Publish, C::Unchanged) => "publication failed; previous content remains".into(),
-                (P::Publish, C::Different) => "publication failed and destination differs from both previous and candidate bytes; inspect this path before retrying".into(),
-                (P::Publish, C::Unavailable(error)) => format!("publication outcome is unconfirmed; destination could not be verified ({error}); inspect this path before retrying", error=error.explain()),
-                (P::SyncPublication, C::Unchanged) => "directory sync failed and previous bytes remain".into(),
-                (P::SyncPublication, C::Different) => "directory sync failed and candidate bytes could not be verified; inspect this path".into(),
-                (P::SyncPublication, C::Unavailable(error)) => format!("directory sync outcome is unconfirmed; destination could not be verified ({error}); inspect this path", error=error.explain()),
-                (P::Relocate { .. }, C::Unchanged) => "relocation did not remove its source; Trash remains authoritative for same-file links".into(),
-                (P::Relocate { source }, C::Unavailable(error)) => format!("relocation outcome is unconfirmed; source {} could not be inspected ({error}); recheck before retrying", path_text(source), error=error.explain()),
-                (P::SyncRelocation, C::Different) => "relocation durability failed and destination changed".into(),
-                (P::SyncRelocation, C::Unavailable(error)) => format!("relocation durability is unconfirmed; destination could not be verified ({error}); recheck before retrying", error=error.explain()),
-                (P::Remove, C::Unchanged) => "deletion was not applied; the destination remains".into(),
-                (P::Remove, C::Unavailable(error)) => format!("deletion outcome is unconfirmed; destination could not be inspected ({error}); recheck before retrying", error=error.explain()),
-                (P::SyncRemoval, C::Different) => "deletion durability failed and the destination is present".into(),
-                (P::SyncRemoval, C::Unavailable(error)) => format!("deletion durability is unconfirmed; destination could not be inspected ({error}); recheck before retrying", error=error.explain()),
-                // These combinations are not emitted by the adapter. Retain conservative
-                // wording for public error values without claiming a verified outcome.
-                (_, C::Different) => "expected state was not found; inspect this path before retrying".into(),
-                (_, C::Unchanged) => "previous state remains".into(),
-            };
+            let explanation = mutation_explanation(phase, confirmation);
             format!(
                 "{}: {explanation}: {cause}",
                 path_text(path),
@@ -154,47 +131,77 @@ fn load_text(error: &LoadError) -> String {
 }
 fn library_text(error: &LibraryError) -> String {
     use LibraryError as E;
-    match error { E::Origin {error}=>origin_error(error),
-        E::File { error } => file_text(error), E::Read { error } => io_text(error),
+    match error {
+        E::Origin { error } => origin_error(error),
+        E::File { error } => file_text(error),
+        E::Read { error } => io_text(error),
         E::IncompleteRead { error } => library_text(error),
         E::RecipeUtf8 { path, .. } => format!("{}: recipe is not UTF-8", path_text(path)),
-        E::RecordRead { path, error } => format!("{}: {}", path_text(path),error.explain()),
-        E::RecipeFile { path, error } => format!("{}: {}; file was left intact", path_text(path), recipe_error(error)),
-        E::RecordIdentity { path, expected, found } => format!("{}: filename UUID {expected} does not match document.id {found}", path_text(path)),
+        E::RecordRead { path, error } => format!("{}: {}", path_text(path), error.explain()),
+        E::RecipeFile { path, error } => format!(
+            "{}: {}; file was left intact",
+            path_text(path),
+            recipe_error(error)
+        ),
+        E::RecordIdentity {
+            path,
+            expected,
+            found,
+        } => format!(
+            "{}: filename UUID {expected} does \
+            not match document.id {found}",
+            path_text(path)
+        ),
         E::Recipe { error } => recipe_error(error),
         E::InvalidBuiltin { error } => format!("invalid shipped identity: {}", recipe_error(error)),
         E::DuplicateBuiltin { id } => format!("duplicate shipped UUID {id}"),
-        E::ReservedBuiltin { id } => format!("document UUID {id} belongs to a built-in; explicitly create a copy"),
-        E::NotInitialized => "library is not initialized".into(), E::UnknownManaged { id } => format!("unknown managed recipe user:{id}"),
-        E::RootMissing => "configured root is missing; initialize it explicitly".into(), E::RootDisappeared => "initialization did not create a root".into(),
-        E::MissingMarkerOnCreate | E::MissingMarkerOnMutation => "library is not initialized; existing content was not recreated".into(),
-        E::StaleContent { id } => format!("saved recipe changed or disappeared (user:{id}); retain the draft and reload or save a copy"),
-        E::EntryDisappeared { id } => format!("selected entry user:{id} disappeared; it was not recreated"),
-        E::IdentityExists { id } => format!("identity already exists (user:{id}), including Trash; restore or create an independent copy"),
-        E::ProposedIdentity { expected, found } => format!("proposed document identity {found} differs from selected user:{expected}"),
+        E::ReservedBuiltin { id } => format!(
+            "document UUID {id} belongs to a built-in; \
+            explicitly create a copy"
+        ),
+        E::NotInitialized => "library is not initialized".into(),
+        E::UnknownManaged { id } => format!(
+            "unknown \
+            managed recipe user:{id}"
+        ),
+        E::RootMissing => "configured root is missing; initialize it explicitly".into(),
+        E::RootDisappeared => "initializa\
+            tion did not create a root"
+            .into(),
+        E::MissingMarkerOnCreate | E::MissingMarkerOnMutation => "library is not initialized; \
+            existing content was not recreated"
+            .into(),
+        E::StaleContent { id } => format!(
+            "saved recipe changed or disappeared (user:{id}); \
+            retain the draft and reload or save a copy"
+        ),
+        E::EntryDisappeared { id } => format!(
+            "selected entry user:{id} disappeared; it was not \
+            recreated"
+        ),
+        E::IdentityExists { id } => format!(
+            "identity already exists (user:{id}), including \
+            Trash; restore or create an independent copy"
+        ),
+        E::ProposedIdentity { expected, found } => format!(
+            "proposed document identity {found} \
+            differs from selected user:{expected}"
+        ),
         E::MustRestore { id } => format!("restore trashed entry user:{id} before editing it"),
-        E::PurgeRequiresTrash { id } => format!("only entries in Trash can be permanently deleted: user:{id}"),
+        E::PurgeRequiresTrash { id } => format!(
+            "only entries in Trash can be permanently \
+            deleted: user:{id}"
+        ),
         E::PurgeUnconfirmed => "permanent deletion requires explicit confirmation".into(),
-        E::HistoryReplacement { id } => format!("an update cannot replace user:{id}'s creation history"),
-        E::MembershipUtf8 { .. } => "membership.toml is not UTF-8".into(), E::MembershipFormat { .. } => "invalid membership.toml timestamps".into(),
-        E::MembershipEncode { error } => format!("cannot encode membership timestamps: {error}"),
-        E::MembershipSize { bytes, limit } => format!("membership timestamps contain {bytes} bytes, exceeding their {limit}-byte limit"),
-        E::AmbiguousRecord { id } => format!("user:{id}: different recipe files exist in recipes and trash; both were retained"),
-        E::Cancelled => "library operation cancelled before publication".into(), E::ScanBudget => "library scan budget exhausted; inventory is incomplete".into(),
-        E::Clock { .. } => "observed system time is outside the supported UTC timestamp range".into(),
-        E::ReadOnlyBuiltin { id } => format!("shipped recipe builtin:{id} cannot be renamed, replaced, trashed or purged; edit a copy"),
-        E::TemporarySelection => "temporary files must be explicitly added or copied before managed operations".into(),
-        E::NativeRootUnavailable => "cannot resolve native per-user application data; configure an absolute library directory".into(),
-        E::RelativeRoot { path } => format!("library directory {} must be absolute; no fallback was used", path_text(path)),
-        E::LockNotRegular => "library lock must be a regular persistent file".into(), E::Busy => "Library busy; retry after the other operation finishes".into(),
-        E::LockUnavailable { error } => format!("required library locking assurance is unavailable; no unlocked fallback: {}",error.explain()),
-        E::MarkerUtf8 { .. } => "layout marker is not UTF-8".into(), E::MarkerFormat { .. } => "invalid library.toml layout marker".into(),
-        E::UnsupportedLayout { found } => format!("unsupported library layout {found}; this build reads {}", auditorylab_app::services::library::LIBRARY_LAYOUT),
-        E::MembershipWithoutMarker => "nonempty membership exists without a layout marker; initialization left it intact".into(),
-        E::RecipesWithoutMarker => "recipes exist without a supported marker; initialization left them unchanged".into(),
-        E::UnknownRootContents => "unknown existing root contents; initialization refused without changing them".into(),
+        E::HistoryReplacement { id } => format!(
+            "an update cannot replace user:{id}'s creation \
+            history"
+        ),
         E::ExpectedUser => "expected a captured User selection".into(),
-        E::StalePlayback => "Saved selection changed or moved to Trash. Refresh before starting playback; no audio was started.".into(),
+        E::StalePlayback => "Saved selection changed or moved to Trash. Refresh before starting \
+            playback; no audio was started."
+            .into(),
+        other => library_layout_text(other),
     }
 }
 fn identity_text(error: &IdentityError) -> String {
@@ -213,7 +220,16 @@ fn editor_text(error: &EditorError) -> String {
     }
 }
 fn save_text(error: &SaveError) -> String {
-    match error { SaveError::Clock { error } => error.explain(), SaveError::Load { error } => load_text(error), SaveError::File { error } => file_text(error), SaveError::Recipe { error } => recipe_error(error), SaveError::HistoryReplacement => "external Save must retain identity and creation history; save an independent copy instead".into() }
+    match error {
+        SaveError::Clock { error } => error.explain(),
+        SaveError::Load { error } => load_text(error),
+        SaveError::File { error } => file_text(error),
+        SaveError::Recipe { error } => recipe_error(error),
+        SaveError::HistoryReplacement => "external \
+        Save must retain identity and creation history; save an independent \
+        copy instead"
+            .into(),
+    }
 }
 fn export_text(error: &ExportError) -> String {
     match error {
@@ -279,9 +295,7 @@ fn query_text(error: &QueryError) -> String {
 }
 
 /// Human explanation of a retained inventory diagnostic.
-
 /// Render the retained typed cause or inventory notice.
-
 pub fn library_diagnostic_message<E: Explain>(
     value: &auditorylab_app::services::library::LibraryDiagnostic<E>,
 ) -> String {
@@ -374,7 +388,7 @@ impl Explain for auditorylab_app::services::OperationError {
     fn explain(&self) -> String {
         use auditorylab_app::services::OperationError as E;
         match self {
-            E::SampleRate(error) => crate::errors::core::sample_rate_error(error),
+            E::SampleRate(error) => crate::errors::core::sample_rate_error(*error),
             E::Load(error) => error.explain(),
             E::Library(error) => error.explain(),
             E::Export(error) => error.explain(),
@@ -406,7 +420,8 @@ impl std::fmt::Display for Human<'_, auditorylab_app::services::playback::Device
             auditorylab_app::services::playback::DeviceError::RouteChanged(_) => {
                 write!(
                     f,
-                    "the audio output route changed and playback stopped; select the intended output and play again"
+                    "the audio output route changed and playback stopped; select the \
+                        intended output and play again"
                 )
             }
             auditorylab_app::services::playback::DeviceError::Backend(error) => {
@@ -428,7 +443,8 @@ impl std::fmt::Display for Human<'_, auditorylab_app::services::playback::Device
             auditorylab_app::services::playback::DeviceError::TooFewChannels { channels } => {
                 write!(
                     f,
-                    "the default output device has {channels} channel{}; stimuli need two, one for each ear",
+                    "the default output device has {channels} channel{}; stimuli need two, \
+                        one for each ear",
                     if *channels == 1 { "" } else { "s" }
                 )
             }
@@ -465,7 +481,8 @@ impl std::fmt::Display for Human<'_, auditorylab_app::services::playback::LiveUp
                 session_hz,
             } => write!(
                 f,
-                "the change was checked at {target_hz} Hz but the live session runs at {session_hz} Hz"
+                "the change was checked at {target_hz} Hz but the live session runs at \
+                    {session_hz} Hz"
             ),
             auditorylab_app::services::playback::LiveUpdateError::RevisionLimit => {
                 f.write_str("the live session's revision limit is reached")
@@ -489,7 +506,7 @@ impl std::fmt::Display for Human<'_, auditorylab_app::document::recipe::Origin> 
             auditorylab_app::document::recipe::Origin::File(path) => f.write_str(&path_text(path)),
             auditorylab_app::document::recipe::Origin::Stream(label)
             | auditorylab_app::document::recipe::Origin::Draft(label) => {
-                f.write_str(&crate::display_scalar(&(label)))
+                f.write_str(&crate::display_scalar(label))
             }
         }
     }
@@ -523,3 +540,146 @@ pub mod publication;
 pub use context::*;
 
 mod workspace;
+
+fn mutation_explanation(
+    phase: &auditorylab_app::services::MutationPhase,
+    confirmation: &auditorylab_app::services::Confirmation,
+) -> String {
+    use {
+        auditorylab_app::services::Confirmation as C, auditorylab_app::services::MutationPhase as P,
+    };
+    match (phase, confirmation) {
+        (P::Publish, C::Unchanged) => "publication failed; previous content remains".into(),
+        (P::Publish, C::Different) => "publication failed and destination differs from \
+                    both previous and candidate bytes; inspect this path before retrying"
+            .into(),
+        (P::Publish, C::Unavailable(error)) => format!(
+            "publication outcome is \
+                    unconfirmed; destination could not be verified ({error}); inspect \
+                    this path before retrying",
+            error = error.explain()
+        ),
+        (P::SyncPublication, C::Unchanged) => "directory sync failed and previous bytes \
+                    remain"
+            .into(),
+        (P::SyncPublication, C::Different) => "directory sync failed and candidate bytes \
+                    could not be verified; inspect this path"
+            .into(),
+        (P::SyncPublication, C::Unavailable(error)) => format!(
+            "directory sync outcome is \
+                    unconfirmed; destination could not be verified ({error}); inspect \
+                    this path",
+            error = error.explain()
+        ),
+        (P::Relocate { .. }, C::Unchanged) => "relocation did not remove its source; \
+                    Trash remains authoritative for same-file links"
+            .into(),
+        (P::Relocate { source }, C::Unavailable(error)) => format!(
+            "relocation outcome is \
+                    unconfirmed; source {} could not be inspected ({error}); recheck \
+                    before retrying",
+            path_text(source),
+            error = error.explain()
+        ),
+        (P::SyncRelocation, C::Different) => "relocation durability failed and \
+                    destination changed"
+            .into(),
+        (P::SyncRelocation, C::Unavailable(error)) => format!(
+            "relocation durability is \
+                    unconfirmed; destination could not be verified ({error}); recheck \
+                    before retrying",
+            error = error.explain()
+        ),
+        (P::Remove, C::Unchanged) => "deletion was not applied; the destination remains".into(),
+        (P::Remove, C::Unavailable(error)) => format!(
+            "deletion outcome is unconfirmed; \
+                    destination could not be inspected ({error}); recheck before retrying",
+            error = error.explain()
+        ),
+        (P::SyncRemoval, C::Different) => "deletion durability failed and the destination \
+                    is present"
+            .into(),
+        (P::SyncRemoval, C::Unavailable(error)) => format!(
+            "deletion durability is \
+                    unconfirmed; destination could not be inspected ({error}); recheck \
+                    before retrying",
+            error = error.explain()
+        ),
+        // These combinations are not emitted by the adapter. Retain conservative
+        // wording for public error values without claiming a verified outcome.
+        (_, C::Different) => "expected state was not found; inspect this path before \
+                    retrying"
+            .into(),
+        (_, C::Unchanged) => "previous state remains".into(),
+    }
+}
+
+fn library_layout_text(error: &LibraryError) -> String {
+    use LibraryError as E;
+    match error {
+        E::MembershipUtf8 { .. } => "membership.toml is not UTF-8".into(),
+        E::MembershipFormat { .. } => "invalid \
+            membership.toml timestamps"
+            .into(),
+        E::MembershipEncode { error } => format!("cannot encode membership timestamps: {error}"),
+        E::MembershipSize { bytes, limit } => format!(
+            "membership timestamps contain {bytes} \
+            bytes, exceeding their {limit}-byte limit"
+        ),
+        E::AmbiguousRecord { id } => format!(
+            "user:{id}: different recipe files exist in recipes \
+            and trash; both were retained"
+        ),
+        E::Cancelled => "library operation cancelled before publication".into(),
+        E::ScanBudget => "library \
+            scan budget exhausted; inventory is incomplete"
+            .into(),
+        E::Clock { .. } => {
+            "observed system time is outside the supported UTC timestamp range".into()
+        }
+        E::ReadOnlyBuiltin { id } => format!(
+            "shipped recipe builtin:{id} cannot be renamed, \
+            replaced, trashed or purged; edit a copy"
+        ),
+        E::TemporarySelection => "temporary files must be explicitly added or copied before \
+            managed operations"
+            .into(),
+        E::NativeRootUnavailable => "cannot resolve native per-user application data; configure \
+            an absolute library directory"
+            .into(),
+        E::RelativeRoot { path } => format!(
+            "library directory {} must be absolute; no fallback \
+            was used",
+            path_text(path)
+        ),
+        E::LockNotRegular => "library lock must be a regular persistent file".into(),
+        E::Busy => "Library \
+            busy; retry after the other operation finishes"
+            .into(),
+        E::LockUnavailable { error } => format!(
+            "required library locking assurance is \
+            unavailable; no unlocked fallback: {}",
+            error.explain()
+        ),
+        E::MarkerUtf8 { .. } => "layout marker is not UTF-8".into(),
+        E::MarkerFormat { .. } => "invalid \
+            library.toml layout marker"
+            .into(),
+        E::UnsupportedLayout { found } => format!(
+            "unsupported library layout {found}; this build \
+            reads {}",
+            auditorylab_app::services::library::LIBRARY_LAYOUT
+        ),
+        E::MembershipWithoutMarker => "nonempty membership exists without a layout marker; \
+            initialization left it intact"
+            .into(),
+        E::RecipesWithoutMarker => "recipes exist without a supported marker; initialization left \
+            them unchanged"
+            .into(),
+        E::UnknownRootContents => "unknown existing root contents; initialization refused without \
+            changing them"
+            .into(),
+
+        _ => unreachable!("handled by library_text"),
+    }
+}

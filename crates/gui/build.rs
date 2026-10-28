@@ -1,5 +1,6 @@
 //! Compile the desktop interface.
 // The desktop build script and binary share the same desktop-owned chrome inventory.
+use std::fmt::Write as _;
 #[path = "src/terms.rs"]
 mod terms;
 // Native resources and app identity validate the same workspace-owned metadata.
@@ -68,9 +69,10 @@ fn append_term(
     if !properties.insert(property.into()) {
         return Err(format!("duplicate Slint vocabulary property {property}").into());
     }
-    output.push_str(&format!(
-        "    in-out property <string> {property}: {label:?};\n"
-    ));
+    let _ = writeln!(
+        output,
+        "    in-out property <string> {property}: {label:?};"
+    );
     Ok(())
 }
 fn write_generated(path: &std::path::Path, contents: &str) -> std::io::Result<()> {

@@ -1,6 +1,6 @@
 //! Completed library/operations descriptions.
+use crate::Explain;
 use crate::numbers::NumberStyle;
-use crate::*;
 use auditorylab_app::discovery::collection::EntrySummary;
 use auditorylab_app::services::library::Initialization;
 use auditorylab_app::services::library::Inventory;
@@ -12,7 +12,6 @@ fn date(value: Option<Timestamp>) -> String {
 }
 
 /// Name of the configuration source without exposing its internal enum spelling.
-
 pub fn root_source_label(value: auditorylab_app::services::library::RootSource) -> &'static str {
     match value {
         auditorylab_app::services::library::RootSource::CommandLine => "Command line",
@@ -22,7 +21,6 @@ pub fn root_source_label(value: auditorylab_app::services::library::RootSource) 
 }
 
 /// Summary of a bounded storage inspection, without suppressing incompleteness.
-
 pub fn inventory_description(value: &Inventory) -> String {
     format!(
         "Library check: {} managed records · complete={}\n",
@@ -32,7 +30,6 @@ pub fn inventory_description(value: &Inventory) -> String {
 }
 
 /// Whether this request initialized the selected root or found it initialized.
-
 pub fn initialization_description(value: &Initialization) -> String {
     format!(
         "Library {}: {}\n",
@@ -46,7 +43,6 @@ pub fn initialization_description(value: &Initialization) -> String {
 }
 
 /// An inspection failure preserves what is known and marks initialization unverified.
-
 pub fn location_inspection_failure(
     value: &auditorylab_app::services::library::Location,
     exists: Option<bool>,
@@ -62,7 +58,6 @@ pub fn location_inspection_failure(
 }
 
 /// Human-readable root inspection, without changing initialization state.
-
 pub fn root_info_description(value: &RootInfo) -> String {
     format!(
         "{}\nExists: {} · Initialized: {} · Source: {}\n",
@@ -74,7 +69,6 @@ pub fn root_info_description(value: &RootInfo) -> String {
 }
 
 /// One complete discovery row, including explicit declared and membership dates.
-
 pub fn entry_summary_list_description(value: &EntrySummary) -> String {
     format!(
         "{}\n  {}\n  {} · {}\n  Created {} · Edited {} · Added here {}\n",
@@ -89,7 +83,6 @@ pub fn entry_summary_list_description(value: &EntrySummary) -> String {
 }
 
 /// Membership details shown next to the selected portable description.
-
 pub fn entry_summary_membership_description(value: &EntrySummary) -> String {
     if !matches!(
         value.key,
@@ -113,11 +106,9 @@ pub fn entry_summary_membership_description(value: &EntrySummary) -> String {
 }
 
 /// Incomplete discovery cannot establish an empty library.
-
 pub const INVENTORY_INCOMPLETE: &str =
     "Incomplete inventory: valid results above do not establish an empty/complete library.";
 
 /// No saved recipe matches the current query.
-
 pub const EMPTY_FILTERED_LIBRARY: &str =
     "No recipes match the current filters. Clear the restrictions to see every recipe.";

@@ -29,7 +29,11 @@ pub enum OriginError {
 impl OriginError {
     /// Frontend-independent failure category.
     pub const fn outcome(&self) -> crate::outcome::Outcome {
-        crate::outcome::Outcome::InvalidArgument
+        match self {
+            Self::InvalidSelector { .. } | Self::InvalidFingerprint { .. } => {
+                crate::outcome::Outcome::InvalidArgument
+            }
+        }
     }
 }
 impl std::fmt::Display for OriginError {

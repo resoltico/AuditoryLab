@@ -181,7 +181,7 @@ mod tests {
         for (actual, expected) in observed.voices.iter().zip(original.voices) {
             match (actual, expected) {
                 (Some(actual), Some(expected)) => {
-                    assert_eq!(actual.gains, expected.gains.map(|g| g * expected_gain))
+                    assert_eq!(actual.gains, expected.gains.map(|g| g * expected_gain));
                 }
                 (None, None) => {}
                 _ => panic!("Stop must retain the observed voices"),

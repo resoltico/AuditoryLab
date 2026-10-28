@@ -270,7 +270,7 @@ impl OutputState {
         };
         self.model = Some((
             key,
-            model.map(|(target, title, source)| Arc::new(ModelView::new(target, title, source))),
+            model.map(|(target, title, source)| Arc::new(ModelView::new(&(target), title, source))),
         ));
         true
     }
@@ -361,14 +361,15 @@ impl OutputState {
         scale: WaveformScale,
     ) {
         let source = match view {
-            View::Library => match selected {
-                Some(snapshot) => SourceKey::Snapshot(snapshot.id()),
-                None => {
+            View::Library => {
+                if let Some(snapshot) = selected {
+                    SourceKey::Snapshot(snapshot.id())
+                } else {
                     self.preview = None;
                     self.scaled_preview = None;
                     return;
                 }
-            },
+            }
             View::Workbench => SourceKey::Draft(
                 editor.session().document(),
                 editor.session().draft_revision(),
@@ -494,9 +495,10 @@ crate::core::diagnostic_codes! {
         params(this) {
             match this {
                 Self::Acoustic { title, rate, .. } => {
-                    crate::core::diagnostic_params! {"title"=>title.clone(),"diagnostic_rate_hz"=>rate.hz()}
+                    crate::core::diagnostic_params! {"title"=>title.clone(),
+                        "diagnostic_rate_hz"=>rate.hz()}
                 }
-                _ => crate::core::diagnostic::Params::new(),
+                Self::Snapshot(_) => crate::core::diagnostic::Params::new(),
             }
         }
     }

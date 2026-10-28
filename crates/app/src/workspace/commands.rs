@@ -1,8 +1,18 @@
 //! Typed user input; handlers retain their owner-specific admission/status rules.
 use super::library::{LibraryJob, LibraryRequest};
-use super::*;
+use super::{
+    Action, ActionView, Arc, AudioRequest, AudioStatus, Capabilities, CarrierKind, ChoiceOption,
+    ChoiceView, ControlChoices, ControlMenu, ControlValue, DocumentAction, DocumentId,
+    DocumentLocation, Draft, Ears, EditorSession, EditorState, EditorView, Effect, EntryHandle,
+    EntryMutation, Error, FacetCounts, FieldHandle, FileKind, FileNotice, FileStatus, FilterInput,
+    LibraryBinding, LibraryData, LibraryOutcome, LibraryStatus, LibraryView, ModulationKind,
+    MonitorView, MotionPreference, OutputState, OutputView, PathPurpose, PlaybackControl,
+    PlaybackPhase, PromptAnswer, PromptId, PromptState, QueryFacet, Recipe, RecipeSnapshot,
+    Refusal, RowKey, SampleRate, SaveFeedback, SelectionBinding, TaskId, TransportView, View,
+    Workspace, WorkspaceActions, audio, controls, editor, file, file_name, library,
+};
 use crate::core::rhythm::{Band, Completeness, Method};
-use crate::core::{ParameterId, provenance::ConditionRole, provenance::Population};
+use crate::core::{provenance::ConditionRole, provenance::Population};
 use crate::discovery::query::{Direction, GroupBy, RhythmState, Scope, SortBy};
 use crate::document::origin::{LibraryKey, VersionToken};
 use crate::services::library::{Library, Mutation, WriteOutcome};
@@ -118,6 +128,8 @@ pub enum LibraryCommand {
 #[derive(Debug, Clone, Copy)]
 pub enum AudioCommand {
     Play,
+    /// Play the Library selection only while that surface remains current.
+    PlaySelected,
     Toggle,
     Stop,
 }
@@ -161,94 +173,46 @@ impl Workspace {
             }
             Command::Close => self.close(),
             Command::Editor(command) => self.apply_editor(command),
-            Command::Library(command) => match command {
-                LibraryCommand::SetFacets(facets) => self.edit_facets(facets),
-                LibraryCommand::SetFilters(input) => self.edit_filters(*input),
-                LibraryCommand::ClearFilters => {
-                    let query = self.catalog_query().cleared_filters();
-                    self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))?;
-                    self.effects.push(Effect::ResetLibraryInputs);
-                    Ok(())
-                }
-                LibraryCommand::ClearRhythmFilters => {
-                    let query = self.catalog_query().cleared_rhythm();
-                    self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))
-                }
-                LibraryCommand::ResetSort => {
-                    let query = self.catalog_query().reset_sort();
-                    self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))
-                }
-                LibraryCommand::SetQuery(query) => {
-                    self.set_catalog_query(*query).map_err(|error| {
-                        self.library_filter_error(error.clone());
-                        Refusal::Document(Box::new(error.into()))
-                    })
-                }
-                LibraryCommand::Search(text) => {
-                    self.set_query(&text);
-                    Ok(())
-                }
-                LibraryCommand::SetRhythm(query) => {
-                    self.set_rhythm_query(query);
-                    Ok(())
-                }
-                LibraryCommand::Select(entry) => self.select_entry(entry),
-                LibraryCommand::Navigate(direction) => {
-                    self.navigate_library(match direction {
-                        Navigation::Previous => -1,
-                        Navigation::Next => 1,
-                        Navigation::First => -2,
-                        Navigation::Last => 2,
-                    });
-                    Ok(())
-                }
-                LibraryCommand::Refresh => {
-                    self.refresh_library();
-                    Ok(())
-                }
-                LibraryCommand::Initialize => self.initialize_library(),
-                LibraryCommand::EditSelected => self.edit_selected(),
-                LibraryCommand::EditEntry(entry) => self.edit_entry(entry),
-                LibraryCommand::AddSelected => self.add_selected_to_library(),
-                LibraryCommand::AddEntry(entry) => self.add_entry(entry),
-                LibraryCommand::Mutate { entry, mutation } => self.mutate_entry(entry, mutation),
-                LibraryCommand::CloseSelected => {
-                    self.close_open_file();
-                    Ok(())
-                }
-                LibraryCommand::CloseEntry(entry) => self.close_entry(entry),
-                LibraryCommand::ShowSaved => {
-                    if self.show_saved() {
-                        self.effects.push(Effect::ResetLibraryInputs);
-                    }
-                    Ok(())
-                }
-            },
+            Command::Library(command) => self.apply_library(command),
             Command::Audio(command) => match self.audio.apply(command) {
                 Ok(audio::AudioTransition::Play) => self.play(),
+                Ok(audio::AudioTransition::PlaySelected) => {
+                    if self.view == View::Library {
+                        self.play()
+                    } else {
+                        Ok(())
+                    }
+                }
                 result => {
                     self.changed();
                     result.map(|_| ())
                 }
             },
-            Command::File(command) => match self.files.apply(command)? {
-                Some(file::FileRequest::Import) => self.import(),
-                Some(file::FileRequest::Save) => self.save(),
-                Some(file::FileRequest::SaveCopy) => self.save_independent_copy(),
-                Some(file::FileRequest::ExportRecipe) => self.export_recipe(),
-                Some(file::FileRequest::ExportWav) => self.export(),
-                None => Ok(()),
-            },
+            Command::File(command) => {
+                if matches!(command, FileCommand::Save | FileCommand::SaveCopy)
+                    && self.view != View::Workbench
+                {
+                    return Ok(());
+                }
+                match self.files.apply(command)? {
+                    Some(file::FileRequest::Import) => self.import(),
+                    Some(file::FileRequest::Save) => self.save(),
+                    Some(file::FileRequest::SaveCopy) => self.save_independent_copy(),
+                    Some(file::FileRequest::ExportRecipe) => self.export_recipe(),
+                    Some(file::FileRequest::ExportWav) => self.export(),
+                    None => Ok(()),
+                }
+            }
             Command::Output(command) => {
                 match command {
                     OutputCommand::SetMotion(preference) => self.set_motion_preference(preference),
                     OutputCommand::SetHold(held) => self.set_hold(held),
                     OutputCommand::FollowMotion => self.follow_motion(),
                     OutputCommand::SetWaveform { span_ms, scale } => {
-                        self.set_waveform(span_ms, scale)
+                        self.set_waveform(span_ms, scale);
                     }
                     OutputCommand::Preview => self.preview_current(),
-                };
+                }
                 Ok(())
             }
         }
@@ -512,7 +476,7 @@ impl Workspace {
     /// The open document's editor.
     #[must_use]
     pub const fn editor(&self) -> &EditorSession {
-        &self.editor.session()
+        self.editor.session()
     }
     /// The selected inspection and export rate; device rates are separate.
     #[must_use]
@@ -566,7 +530,7 @@ impl Workspace {
                 label,
                 selected,
                 enabled: true,
-            })
+            });
         };
         macro_rules! values {
             ($kind:ty, $selected:expr) => {
@@ -653,14 +617,14 @@ impl Workspace {
             }
             match facet {
                 QueryFacet::Scope => {
-                    query.scope = key.parse().map_err(|_| Refusal::SelectionChanged)?
+                    query.scope = key.parse().map_err(|_| Refusal::SelectionChanged)?;
                 }
                 QueryFacet::Sort => {
-                    query.sort = key.parse().map_err(|_| Refusal::SelectionChanged)?
+                    query.sort = key.parse().map_err(|_| Refusal::SelectionChanged)?;
                 }
                 QueryFacet::Direction => query.direction = key.parse().ok(),
                 QueryFacet::Group => {
-                    query.group_by = key.parse().map_err(|_| Refusal::SelectionChanged)?
+                    query.group_by = key.parse().map_err(|_| Refusal::SelectionChanged)?;
                 }
                 QueryFacet::Band => {
                     query.rhythm.bands = key.parse::<Band>().into_iter().collect();
@@ -716,121 +680,141 @@ impl Workspace {
     /// Every menu, including its current selection and typed command payloads.
     #[must_use]
     pub fn control_choices(&self) -> Vec<ControlChoices> {
-        use ControlValue as V;
         let document = self.editor.session().document_key();
         let mut menus = Vec::new();
-        let mut add = |menu, row, values: Vec<(V, &'static str)>, selected: Option<V>| {
-            menus.push(ControlChoices {
-                menu,
-                row,
-                view: ChoiceView {
-                    options: values
-                        .into_iter()
-                        .map(|(key, label)| ChoiceOption {
-                            key,
-                            label,
-                            selected: selected == Some(key),
-                            enabled: match key {
-                                ControlValue::AddCarrier(kind) => {
-                                    self.component_add_admission(row, kind).is_ok()
-                                }
-                                ControlValue::AddPair(kind) => {
-                                    self.pair_add_admission(row, kind).is_ok()
-                                }
-                                ControlValue::MonitorSpan(_) | ControlValue::WaveformScale(_) => {
-                                    !self.audio.output().held()
-                                }
-                                _ => true,
-                            },
-                        })
-                        .collect(),
-                },
-            });
-        };
         for component in self.editor.session().draft().components() {
             let row = self
                 .editor
                 .session()
                 .component_key(component.id)
                 .unwrap_or_else(|| unreachable!("component"));
-            add(
-                ControlMenu::Ears,
-                row,
-                Ears::ALL
-                    .into_iter()
-                    .map(|v| (V::Ears(v), v.label()))
-                    .collect(),
-                component.form.route().map(V::Ears),
+            menus.push(
+                self.control_menu(
+                    ControlMenu::Ears,
+                    row,
+                    Ears::ALL
+                        .into_iter()
+                        .map(|v| (ControlValue::Ears(v), v.label()))
+                        .collect(),
+                    component.form.route().map(ControlValue::Ears),
+                ),
             );
-            add(
-                ControlMenu::Carrier,
-                row,
-                CarrierKind::ALL
-                    .into_iter()
-                    .map(|v| (V::Carrier(v), v.label()))
-                    .collect(),
-                component.form.primitive_kind().map(V::Carrier),
+            menus.push(
+                self.control_menu(
+                    ControlMenu::Carrier,
+                    row,
+                    CarrierKind::ALL
+                        .into_iter()
+                        .map(|v| (ControlValue::Carrier(v), v.label()))
+                        .collect(),
+                    component.form.primitive_kind().map(ControlValue::Carrier),
+                ),
             );
-            add(
-                ControlMenu::Modulation,
-                row,
-                controls::modulation_choices()
-                    .into_iter()
-                    .map(|v| {
-                        (
-                            V::Modulation(v),
-                            v.map_or(
-                                crate::core::vocabulary::NO_MODULATION.label,
-                                ModulationKind::label,
-                            ),
-                        )
-                    })
-                    .collect(),
-                Some(V::Modulation(component.form.modulation_kind())),
+            menus.push(
+                self.control_menu(
+                    ControlMenu::Modulation,
+                    row,
+                    controls::modulation_choices()
+                        .into_iter()
+                        .map(|v| {
+                            (
+                                ControlValue::Modulation(v),
+                                v.map_or(
+                                    crate::core::vocabulary::NO_MODULATION.label,
+                                    ModulationKind::label,
+                                ),
+                            )
+                        })
+                        .collect(),
+                    Some(ControlValue::Modulation(component.form.modulation_kind())),
+                ),
             );
         }
-        add(
-            ControlMenu::AddComponent,
-            document,
-            CarrierKind::ALL
-                .into_iter()
-                .map(|v| (V::AddCarrier(v), ""))
-                .chain(
-                    crate::core::PairKind::ALL
-                        .into_iter()
-                        .map(|v| (V::AddPair(v), "")),
-                )
-                .collect(),
-            None,
+        menus.push(
+            self.control_menu(
+                ControlMenu::AddComponent,
+                document,
+                CarrierKind::ALL
+                    .into_iter()
+                    .map(|v| (ControlValue::AddCarrier(v), ""))
+                    .chain(
+                        crate::core::PairKind::ALL
+                            .into_iter()
+                            .map(|v| (ControlValue::AddPair(v), "")),
+                    )
+                    .collect(),
+                None,
+            ),
         );
-        add(
-            ControlMenu::MonitorSpan,
-            document,
-            controls::MONITOR_SPANS_MS
-                .into_iter()
-                .map(|v| (V::MonitorSpan(v), ""))
-                .collect(),
-            Some(V::MonitorSpan(self.audio.output().span_ms())),
+        menus.push(
+            self.control_menu(
+                ControlMenu::MonitorSpan,
+                document,
+                controls::MONITOR_SPANS_MS
+                    .into_iter()
+                    .map(|v| (ControlValue::MonitorSpan(v), ""))
+                    .collect(),
+                Some(ControlValue::MonitorSpan(self.audio.output().span_ms())),
+            ),
         );
-        add(
-            ControlMenu::WaveformScale,
-            document,
-            crate::workspace::monitor::WaveformScale::ALL
-                .into_iter()
-                .map(|v| (V::WaveformScale(v), ""))
-                .collect(),
-            Some(V::WaveformScale(self.audio.output().scale())),
+        menus.push(
+            self.control_menu(
+                ControlMenu::WaveformScale,
+                document,
+                crate::workspace::monitor::WaveformScale::ALL
+                    .into_iter()
+                    .map(|v| (ControlValue::WaveformScale(v), ""))
+                    .collect(),
+                Some(ControlValue::WaveformScale(self.audio.output().scale())),
+            ),
         );
-        add(
-            ControlMenu::ExportRate,
-            document,
-            controls::EXPORT_RATES
-                .into_iter()
-                .map(|v| (V::ExportRate(v), ""))
-                .collect(),
-            Some(V::ExportRate(self.editor.export_rate())),
+        menus.push(
+            self.control_menu(
+                ControlMenu::ExportRate,
+                document,
+                controls::EXPORT_RATES
+                    .into_iter()
+                    .map(|v| (ControlValue::ExportRate(v), ""))
+                    .collect(),
+                Some(ControlValue::ExportRate(self.editor.export_rate())),
+            ),
         );
         menus
+    }
+
+    fn control_menu(
+        &self,
+        menu: ControlMenu,
+        row: RowKey,
+        values: Vec<(ControlValue, &'static str)>,
+        selected: Option<ControlValue>,
+    ) -> ControlChoices {
+        ControlChoices {
+            menu,
+            row,
+            view: ChoiceView {
+                options: values
+                    .into_iter()
+                    .map(|(key, label)| ChoiceOption {
+                        key,
+                        label,
+                        selected: selected == Some(key),
+                        enabled: match key {
+                            ControlValue::AddCarrier(kind) => {
+                                self.component_add_admission(row, kind).is_ok()
+                            }
+                            ControlValue::AddPair(kind) => {
+                                self.pair_add_admission(row, kind).is_ok()
+                            }
+                            ControlValue::MonitorSpan(_) | ControlValue::WaveformScale(_) => {
+                                !self.audio.output().held()
+                            }
+                            _ => true,
+                        },
+                    })
+                    .collect(),
+            },
+        }
     }
     pub(super) fn choose_control(
         &mut self,
@@ -913,172 +897,11 @@ impl Workspace {
     /// selected export rate; each is labelled.
     pub fn editor_view(&mut self) -> EditorView {
         let rate = self.diagnostic_rate();
-        let candidate = self.editor.candidate();
-        let analysis = self.editor.candidate_analysis(rate);
-        let committed_analysis = self.editor.committed_analysis(rate);
-        let nominal = self.editor.nominal();
-        let input = |field| {
-            candidate
-                .problems()
-                .iter()
-                .find(|(f, _)| *f == field)
-                .map(|(f, p)| FieldDiagnostic::Input(*f, *p))
-        };
-        let metadata = crate::document::editing::MetadataField::ALL.map(|field| {
-            let editing = crate::document::editing::EditingField::Metadata(field);
-            MetadataView {
-                handle: self
-                    .editor
-                    .session()
-                    .handle(editing)
-                    .unwrap_or_else(|_| unreachable!("existing metadata")),
-                field,
-                text: self.editor.session().text(editing),
-                staged: self.editor.session().staged(editing).is_some(),
-                diagnostic: input(editing).or_else(|| {
-                    field.parameter().and_then(|p| {
-                        analysis
-                            .envelope()
-                            .err()
-                            .filter(|e| e.parameters().contains(&p))
-                            .cloned()
-                            .map(FieldDiagnostic::Sound)
-                    })
-                }),
-            }
-        });
-        let components =
-            self.editor
-                .session()
-                .draft()
-                .components()
-                .iter()
-                .map(|component| {
-                    use crate::document::editing::EditingField;
-                    let id = component.id;
-                    let committed = component.form;
-                    let shown = candidate
-                        .draft()
-                        .component(id)
-                        .copied()
-                        .unwrap_or(committed);
-                    let own = analysis.check().voice(id.into());
-                    let acoustic = own.and_then(|r| r.as_ref().err());
-                    let second = analysis
-                        .check()
-                        .voice(id.with_lane(auditorylab_core::Lane::Secondary))
-                        .and_then(|r| r.as_ref().err());
-                    let coupled = analysis.check().result().err().filter(|error| match error {
-                        auditorylab_core::SoundError::Pair(auditorylab_core::PairError {
-                            id: owner,
-                            ..
-                        }) => *owner == id,
-                        auditorylab_core::SoundError::PairCarrier { id: owner, .. } => {
-                            owner.component == id
-                        }
-                        _ => false,
-                    });
-                    let parameters =
-                        ParameterId::COMPONENT
-                            .into_iter()
-                            .filter(|p| committed.get(*p).is_some())
-                            .map(|parameter| {
-                                let field = EditingField::Parameter(id, parameter);
-                                let diagnostic = input(field)
-                                    .or_else(|| {
-                                        coupled
-                                            .filter(|e| e.parameters().contains(&parameter))
-                                            .cloned()
-                                            .map(FieldDiagnostic::Sound)
-                                    })
-                                    .or_else(|| {
-                                        let error = if parameter == ParameterId::PairSecondLevel {
-                                            second
-                                        } else {
-                                            acoustic
-                                        };
-                                        error
-                                    .filter(|e| {
-                                        e.parameters().contains(&parameter)
-                                            || matches!(
-                                                parameter,
-                                                ParameterId::PairFirstLevel
-                                                    | ParameterId::PairSecondLevel
-                                            ) && matches!(
-                                                e,
-                                                auditorylab_core::VoiceError::PeakDbfs { .. }
-                                            )
-                                    })
-                                    .cloned()
-                                    .map(FieldDiagnostic::Voice)
-                                    });
-                                ParameterView {
-                                    handle: self.editor.session().handle(field).unwrap_or_else(
-                                        |_| unreachable!("existing component field"),
-                                    ),
-                                    parameter,
-                                    text: self.editor.session().text(field),
-                                    staged: self.editor.session().staged(field).is_some(),
-                                    slider: committed.get(parameter).and_then(|v| {
-                                        controls::slider_position(parameter, rate, v.get())
-                                    }),
-                                    diagnostic,
-                                }
-                            })
-                            .collect();
-                    let diagnostics = candidate
-                        .problems()
-                        .iter()
-                        .filter(|(f, _)| matches!(f,EditingField::Parameter(owner,_) if *owner==id))
-                        .map(|(f, p)| FieldDiagnostic::Input(*f, *p))
-                        .chain(
-                            [acoustic, second]
-                                .into_iter()
-                                .flatten()
-                                .cloned()
-                                .map(FieldDiagnostic::Voice),
-                        )
-                        .chain(coupled.cloned().map(FieldDiagnostic::Sound))
-                        .collect();
-                    ComponentView {
-                        key: self
-                            .editor
-                            .session()
-                            .component_key(id)
-                            .unwrap_or_else(|| unreachable!("existing component lifetime")),
-                        id,
-                        committed,
-                        shown,
-                        facts: own.and_then(|r| r.as_ref().ok()).copied(),
-                        diagnostics,
-                        parameters,
-                    }
-                })
-                .collect();
-        let unrelated = self.audio.task().filter(|task| self.view == View::Workbench
-            && !matches!(task.kind, super::AudioKind::Live(d) if d == self.editor.session().document()));
-        EditorView {
-            status: if self.editor.session().dirty() {
-                crate::vocabulary::EditorStatus::UnsavedChanges
-            } else {
-                crate::vocabulary::EditorStatus::UnmodifiedDraft
-            },
-            key: self.editor.session().document_key(),
-            metadata,
-            components,
-            dirty: self.editor.session().dirty(),
-            pending: self.editor.session().has_staged(),
-            rate,
-            live: self.live_rate().is_some(),
-            target: analysis.check().result().copied().map_err(Clone::clone),
-            committed: committed_analysis
-                .target()
-                .map(auditorylab_core::rhythm::realized),
-            nominal,
-            saved: self.editor.session().saved_nominal().cloned(),
-            based_on: self.editor.session().draft().based_on().cloned(),
-            unrelated_title: unrelated.map(|t| t.title.clone()),
-        }
+        let live = self.live_rate().is_some();
+        let unrelated_title = (self.view == View::Workbench)
+            .then(|| self.audio.unrelated_title(self.editor.session().document()))
+            .flatten();
+        self.editor.view(rate, live, unrelated_title)
     }
 
     /// The library rows and the selected recipe at the export rate.
@@ -1116,30 +939,26 @@ impl Workspace {
         let progress = self.export_progress();
         let mut view = WorkspaceActions {
             operations: Vec::new(),
-            can_play: play.is_ok(),
-            playing,
-            can_import: self.import_admission().is_ok(),
-            can_manage_library: self.library_job_admission().is_ok(),
-            can_add_to_library: self.prepare_add_to_library().is_ok(),
-            can_request_trash: self
+            import: self.import_admission(),
+            library: self.library_job_admission(),
+            add_to_library: self.prepare_add_to_library().map(|_| ()),
+            trash: self
                 .library
                 .selected_key()
-                .is_some_and(|key| self.trash_request_admission(key).is_ok()),
-            can_new: self.start_allowed().is_ok(),
-            can_copy: copy.is_ok(),
+                .ok_or(Refusal::NoSelection)
+                .and_then(|key| self.trash_request_admission(key)),
+            start: self.start_allowed(),
+            preview: self.preview_admission(),
+            save_copy: save_copy.map(|_| ()),
+            export_recipe: export_recipe.map(|_| ()),
+            editing: self.editing_allowed(),
+            restore_component,
+            playing,
             copy_reason: copy.err(),
             operation_refusal,
-            can_preview: self.preview_admission().is_ok(),
             play_reason: play.as_ref().err().cloned(),
-            can_save: save.is_ok(),
-            can_save_copy: save_copy.is_ok(),
-            can_export_recipe: export_recipe.is_ok(),
             save_reason: save.err(),
-            can_export: export.is_ok(),
             export_reason: export.err(),
-            can_edit: self.can_edit(),
-            can_add_component: component_add.is_ok(),
-            can_add_pair: pair_add.is_ok(),
             pair_add_reason: pair_add.err(),
             add_component_reason: component_add.err(),
             removed_component: self
@@ -1147,11 +966,8 @@ impl Workspace {
                 .session()
                 .removed()
                 .map(|(_, component)| *component),
-            can_restore_component: restore_component.is_ok(),
             file_busy: self.file_busy(),
-            playback_busy: playing,
             exporting,
-            transport_enabled: self.audio.stop_admission().is_ok() || play.is_ok(),
             transport_action: if playing {
                 crate::vocabulary::Operation::Stop
             } else if self.view == View::Workbench {
@@ -1175,34 +991,38 @@ impl Workspace {
                 .task()
                 .map(|task| super::status::FileActivity::from_kind(&task.kind)),
         };
-        view.operations = crate::vocabulary::Operation::ALL
+        view.operations = self.operation_views(&view);
+        view
+    }
+
+    fn operation_views(&self, view: &WorkspaceActions) -> Vec<ActionView> {
+        crate::vocabulary::Operation::ALL
             .into_iter()
             .map(|operation| {
                 use crate::vocabulary::Operation as O;
                 let enabled = match operation {
-                    O::Save => self.view == View::Workbench && view.can_save,
-                    O::SaveCopy => self.view == View::Workbench && view.can_save_copy,
-                    O::NewSound => view.can_new,
-                    O::EditCopy => view.can_copy,
-                    O::OpenRecipe => view.can_import,
-                    O::ExportRecipe => view.can_export_recipe,
-                    O::Export => view.can_export,
+                    O::Save => self.view == View::Workbench && view.can_save(),
+                    O::SaveCopy => self.view == View::Workbench && view.can_save_copy(),
+                    O::NewSound | O::EditSavedRecipe | O::EditExternalFile => view.can_new(),
+                    O::EditCopy => view.can_copy(),
+                    O::OpenRecipe => view.can_import(),
+                    O::ExportRecipe => view.can_export_recipe(),
+                    O::Export => view.can_export(),
                     O::Play | O::PlaySelectedSound | O::StopCurrentAndPlayRecipe => {
-                        self.view == View::Library && view.can_play
+                        self.view == View::Library && view.can_play()
                     }
-                    O::PlayLive => self.view == View::Workbench && view.can_play,
-                    O::Stop => view.playback_busy,
+                    O::PlayLive => self.view == View::Workbench && view.can_play(),
+                    O::Stop => view.playback_busy(),
                     O::CancelExport => view.exporting,
-                    O::AddComponent | O::RemoveComponent => view.can_edit,
-                    O::UndoRemove => view.can_restore_component,
-                    O::EditSavedRecipe | O::EditExternalFile => view.can_new,
-                    O::LibraryAdd => view.can_add_to_library,
-                    O::LibraryTrash => view.can_request_trash,
+                    O::AddComponent | O::RemoveComponent => view.can_edit(),
+                    O::UndoRemove => view.can_restore_component(),
+                    O::LibraryAdd => view.can_add_to_library(),
+                    O::LibraryTrash => view.can_request_trash(),
                     O::LibraryInit
                     | O::LibraryUpdate
                     | O::LibraryRename
                     | O::LibraryRestore
-                    | O::LibraryPurge => view.can_manage_library,
+                    | O::LibraryPurge => view.can_manage_library(),
                     O::List
                     | O::ListTrash
                     | O::Describe
@@ -1217,10 +1037,8 @@ impl Workspace {
                 };
                 ActionView { operation, enabled }
             })
-            .collect();
-        view
+            .collect()
     }
-
     /// The running export's completed fraction, from 0 to 1; 0 otherwise.
     #[must_use]
     pub fn export_progress(&self) -> f64 {
@@ -1352,7 +1170,7 @@ impl Workspace {
     /// An invalid range leaves the previous query and selection intact.
     pub(super) fn set_catalog_query(
         &mut self,
-        query: CatalogQuery,
+        query: Box<CatalogQuery>,
     ) -> Result<(), crate::discovery::query::QueryError> {
         self.library.apply(library::LibraryInput::Query(query))?;
         self.load_library_selection();
@@ -1361,9 +1179,9 @@ impl Workspace {
     }
     /// Select only a key that still belongs to the rendered query. Old row
     /// positions and stale callbacks cannot address replacement entries.
-    pub(super) fn select_entry(&mut self, entry: EntryHandle) -> Result<(), Refusal> {
+    pub(super) fn select_entry(&mut self, entry: &EntryHandle) -> Result<(), Refusal> {
         let result = self
-            .resolve_entry_handle(&entry, false)
+            .resolve_entry_handle(entry, false)
             .map(|(key, _, _)| key);
         match result {
             Ok(key) => {
@@ -1424,9 +1242,9 @@ impl Workspace {
         }
     }
     /// Edit only the managed version bound to the activated control.
-    pub(super) fn edit_entry(&mut self, entry: EntryHandle) -> Result<(), Refusal> {
+    pub(super) fn edit_entry(&mut self, entry: &EntryHandle) -> Result<(), Refusal> {
         let result = (|| {
-            let (key, version, trashed) = self.resolve_entry_handle(&entry, false)?;
+            let (key, version, trashed) = self.resolve_entry_handle(entry, false)?;
             if self.library.selected_key() != Some(&key) {
                 return Err(Refusal::SelectionChanged);
             }
@@ -1488,9 +1306,9 @@ impl Workspace {
     ///
     /// # Errors
     /// Refuses a changed/hidden selection rather than adding a replacement row.
-    pub(super) fn add_entry(&mut self, entry: EntryHandle) -> Result<(), Refusal> {
+    pub(super) fn add_entry(&mut self, entry: &EntryHandle) -> Result<(), Refusal> {
         let result = (|| {
-            let (key, _, _) = self.resolve_entry_handle(&entry, false)?;
+            let (key, _, _) = self.resolve_entry_handle(entry, false)?;
             if self.library.selected_key() != Some(&key) {
                 return Err(Refusal::SelectionChanged);
             }
@@ -1535,7 +1353,7 @@ impl Workspace {
     /// are refused before filesystem access. Purge requires separate confirmation.
     pub(super) fn mutate_entry(
         &mut self,
-        entry: EntryHandle,
+        entry: &EntryHandle,
         mutation: EntryMutation,
     ) -> Result<(), Refusal> {
         let result = self.mutate_entry_inner(entry, mutation);
@@ -1548,11 +1366,11 @@ impl Workspace {
     }
     fn mutate_entry_inner(
         &mut self,
-        entry: EntryHandle,
+        entry: &EntryHandle,
         mutation: EntryMutation,
     ) -> Result<(), Refusal> {
         let purge = matches!(mutation, EntryMutation::RequestPurge);
-        let (key, version, trashed) = self.resolve_entry_handle(&entry, purge)?;
+        let (key, version, trashed) = self.resolve_entry_handle(entry, purge)?;
         crate::storage::library::require_user(&key)
             .map_err(|error| Refusal::Document(Box::new(error.into())))?;
         let expect = version.ok_or(if purge {
@@ -1634,9 +1452,9 @@ impl Workspace {
         result
     }
     /// Close only a still-selected temporary entry captured at activation.
-    pub(super) fn close_entry(&mut self, entry: EntryHandle) -> Result<(), Refusal> {
+    pub(super) fn close_entry(&mut self, entry: &EntryHandle) -> Result<(), Refusal> {
         let result = self
-            .resolve_entry_handle(&entry, false)
+            .resolve_entry_handle(entry, false)
             .and_then(|(key, _, _)| {
                 if self.library.selected_key() != Some(&key) {
                     return Err(Refusal::SelectionChanged);
@@ -1928,9 +1746,72 @@ impl Workspace {
     /// Borrow the exact currently indexed library and captured edit location.
     #[must_use]
     pub fn library_data(&self) -> LibraryData<'_> {
-        self.library.library_data(&self.editor.location())
+        self.library.library_data(self.editor.location())
     }
 
+    fn apply_library(&mut self, command: LibraryCommand) -> Result<(), Refusal> {
+        match command {
+            LibraryCommand::SetFacets(facets) => self.edit_facets(facets),
+            LibraryCommand::SetFilters(input) => self.edit_filters(*input),
+            LibraryCommand::ClearFilters => {
+                let query = self.catalog_query().cleared_filters();
+                self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))?;
+                self.effects.push(Effect::ResetLibraryInputs);
+                Ok(())
+            }
+            LibraryCommand::ClearRhythmFilters => {
+                let query = self.catalog_query().cleared_rhythm();
+                self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))
+            }
+            LibraryCommand::ResetSort => {
+                let query = self.catalog_query().reset_sort();
+                self.apply(Command::Library(LibraryCommand::SetQuery(Box::new(query))))
+            }
+            LibraryCommand::SetQuery(query) => self.set_catalog_query(query).map_err(|error| {
+                self.library_filter_error(error.clone());
+                Refusal::Document(Box::new(error.into()))
+            }),
+            LibraryCommand::Search(text) => {
+                self.set_query(&text);
+                Ok(())
+            }
+            LibraryCommand::SetRhythm(query) => {
+                self.set_rhythm_query(query);
+                Ok(())
+            }
+            LibraryCommand::Select(entry) => self.select_entry(&entry),
+            LibraryCommand::Navigate(direction) => {
+                self.navigate_library(match direction {
+                    Navigation::Previous => -1,
+                    Navigation::Next => 1,
+                    Navigation::First => -2,
+                    Navigation::Last => 2,
+                });
+                Ok(())
+            }
+            LibraryCommand::Refresh => {
+                self.refresh_library();
+                Ok(())
+            }
+            LibraryCommand::Initialize => self.initialize_library(),
+            LibraryCommand::EditSelected => self.edit_selected(),
+            LibraryCommand::EditEntry(entry) => self.edit_entry(&entry),
+            LibraryCommand::AddSelected => self.add_selected_to_library(),
+            LibraryCommand::AddEntry(entry) => self.add_entry(&entry),
+            LibraryCommand::Mutate { entry, mutation } => self.mutate_entry(&entry, mutation),
+            LibraryCommand::CloseSelected => {
+                self.close_open_file();
+                Ok(())
+            }
+            LibraryCommand::CloseEntry(entry) => self.close_entry(&entry),
+            LibraryCommand::ShowSaved => {
+                if self.show_saved() {
+                    self.effects.push(Effect::ResetLibraryInputs);
+                }
+                Ok(())
+            }
+        }
+    }
     fn apply_editor(&mut self, command: EditorCommand) -> Result<(), Refusal> {
         let rate = self.diagnostic_rate();
         let command = if let EditorCommand::Slide { field, position } = command {
@@ -1944,7 +1825,7 @@ impl Workspace {
             | EditorCommand::ShowBasedOnSource
             | EditorCommand::SetExportRate(_) => {}
             EditorCommand::AddComponent { row, kind } => {
-                self.component_add_admission(*row, *kind)?
+                self.component_add_admission(*row, *kind)?;
             }
             EditorCommand::AddPair { row, kind } => self.pair_add_admission(*row, *kind)?,
             EditorCommand::RestoreComponent(row) => self.restore_component_admission(*row)?,

@@ -1,7 +1,8 @@
 //! Generate product identity from the canonical workspace manifest.
 #[expect(
     dead_code,
-    reason = "Shared build readers use different parts of identity validation and native resource generation"
+    reason = "Shared build readers use different parts of identity validation and \
+        native resource generation"
 )]
 mod identity_input;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,7 +21,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         identity_input::revision(value)?;
     }
     let source = format!(
-        "/// Canonical identity resolved from workspace metadata.\npub(super) const BUILD: BuildIdentity = BuildIdentity {{ name: {name:?}, copyright: {copyright:?}, version: {:?}, revision: {:?} }};",
+        "/// Canonical identity resolved from workspace metadata.\npub(super) \
+            const BUILD: BuildIdentity = BuildIdentity {{ name: {name:?}, \
+            copyright: {copyright:?}, version: {:?}, revision: {:?} }};",
         std::env::var("CARGO_PKG_VERSION")?,
         revision.as_deref()
     );

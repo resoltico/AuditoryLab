@@ -40,16 +40,18 @@ pub(crate) fn step(hz: f64, fs: u32) -> Option<u64> {
 #[inline]
 #[expect(
     clippy::cast_precision_loss,
-    reason = "Arithmetic shift retains a signed 53-bit phase before binary64 conversion; the intentionally reduced phase bounds sine input"
+    reason = "Arithmetic shift retains a signed 53-bit phase before binary64 \
+        conversion; the intentionally reduced phase bounds sine input"
 )]
 pub(crate) fn sine(phase: u64) -> f64 {
-    let cycles = ((phase as i64) >> 11) as f64 / 9_007_199_254_740_992.0;
+    let cycles = (phase.cast_signed() >> 11) as f64 / 9_007_199_254_740_992.0;
     libm::sin(TAU * cycles)
 }
 /// Whether x × k ≤ fs, exactly, for non-negative finite x, positive k and a valid sample rate.
 #[expect(
     clippy::cast_sign_loss,
-    reason = "Binary64 decomposition and the early exponent guards make the negated exponent nonnegative before converting to a shift"
+    reason = "Binary64 decomposition and the early exponent guards make the negated \
+        exponent nonnegative before converting to a shift"
 )]
 pub(crate) fn times_at_most(x: f64, k: u64, fs: u32) -> bool {
     if !(x >= 0.0 && x.is_finite()) {
@@ -66,11 +68,11 @@ pub(crate) fn times_at_most(x: f64, k: u64, fs: u32) -> bool {
     let shift = (-exponent) as u32;
     let whole = product.checked_shr(shift).unwrap_or(0);
     let fs = u128::from(fs);
-    if whole != fs {
-        whole < fs
-    } else {
+    if whole == fs {
         // Equality of the nonzero whole parts proves this shift fits u128.
         product == fs << shift
+    } else {
+        whole < fs
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,7 +86,7 @@ impl Pulse {
     pub(crate) const fn frames(self) -> u64 {
         self.frames
     }
-    /// floor(n × rate), with n below Signal::MAX_FRAMES.
+    /// floor(n × rate), with n below `Signal::MAX_FRAMES`.
     #[inline]
     #[expect(
         clippy::cast_possible_truncation,
@@ -141,7 +143,8 @@ impl Pulse {
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "Width is checked whole and in 1..=2^36; admitted sub-Nyquist rate has a negative decomposition exponent"
+    reason = "Width is checked whole and in 1..=2^36; admitted sub-Nyquist rate has \
+        a negative decomposition exponent"
 )]
 pub(crate) fn pulse(width_seconds: f64, rate_hz: f64, fs: u32) -> Option<Pulse> {
     let frames = libm::round(width_seconds * f64::from(fs));
@@ -236,7 +239,9 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_precision_loss,
-        reason = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
+        reason = "Independent rational test oracles intentionally convert integer \
+            ratios and rounded millisecond widths; fixture widths and indices are \
+            nonnegative and fit u64"
     )]
     fn steps_are_exactly_rounded_for_representable_frequencies() {
         for rate in [1_u32, 8_000, 44_100, 48_000, 96_000, 768_000] {
@@ -286,7 +291,9 @@ mod tests {
     #[test]
     #[expect(
         clippy::cast_precision_loss,
-        reason = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
+        reason = "Independent rational test oracles intentionally convert integer \
+            ratios and rounded millisecond widths; fixture widths and indices are \
+            nonnegative and fit u64"
     )]
     fn phase_at_any_frame_matches_the_exact_rational_phase_within_a_constant() {
         // Phase error of n*step versus exact n*f/fs: less than n * 2^-64 cycles
@@ -329,10 +336,12 @@ mod pulses {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
+        reason = "Independent rational test oracles intentionally convert integer \
+            ratios and rounded millisecond widths; fixture widths and indices are \
+            nonnegative and fit u64"
     )]
     fn pulses_match_independent_integer_onsets_at_early_and_late_frames() {
-        for fs in [8000, 44100, 48000, 96000, 768000] {
+        for fs in [8000, 44100, 48000, 96000, 768_000] {
             for rate in [8_u32, 40, 80, 1000] {
                 let Some(pulse) = pulse(0.001, f64::from(rate), fs) else {
                     continue;
@@ -354,16 +363,18 @@ mod pulses {
         clippy::cast_possible_truncation,
         clippy::cast_precision_loss,
         clippy::cast_sign_loss,
-        reason = "Independent rational test oracles intentionally convert integer ratios and rounded millisecond widths; fixture widths and indices are nonnegative and fit u64"
+        reason = "Independent rational test oracles intentionally convert integer \
+            ratios and rounded millisecond widths; fixture widths and indices are \
+            nonnegative and fit u64"
     )]
     fn fractional_and_slow_rates_do_not_open_before_the_exact_onset() {
         for (p, q) in [
-            (9007199254740991_u128, 1_u128 << 53),
-            (7205759403792793, 1 << 56),
+            (9_007_199_254_740_991_u128, 1_u128 << 53),
+            (7_205_759_403_792_793, 1 << 56),
             (1, 1 << 20),
             (625, 16),
         ] {
-            for fs in [8000, 44100, 48000, 96000, 768000] {
+            for fs in [8000, 44100, 48000, 96000, 768_000] {
                 let rate = p as f64 / q as f64;
                 let clock = pulse(0.001, rate, fs).unwrap();
                 let width = (0.001 * f64::from(fs)).round() as u64;
@@ -389,8 +400,8 @@ mod pulses {
         assert_eq!(clock.sample(48000), 0.0);
         assert_eq!(clock.sample(48001), 1.0);
         let slow = pulse(0.001, 2.0_f64.powi(-20), 48000).unwrap();
-        assert_eq!(slow.sample(50331647999), 0.0);
-        assert_eq!(slow.sample(50331648000), 1.0);
+        assert_eq!(slow.sample(50_331_647_999), 0.0);
+        assert_eq!(slow.sample(50_331_648_000), 1.0);
     }
     #[test]
     fn exact_gates_keep_the_tones_bits_and_have_half_open_edges() {
@@ -444,7 +455,7 @@ mod pulses {
         assert!(times_at_most(f64::from_bits(1), u64::MAX, 1));
         assert!(times_at_most(0.0, u64::MAX, 1));
         for x in [-40.0, f64::NAN, f64::INFINITY, 1e300] {
-            assert!(!times_at_most(x, 1, 768000));
+            assert!(!times_at_most(x, 1, 768_000));
         }
         assert!(!times_at_most(0.1, u64::MAX, 1));
     }

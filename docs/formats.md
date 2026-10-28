@@ -119,7 +119,7 @@ Unknown dates fail bounded filters and sort last in either direction. Date sorts
 
 ### Vocabulary keys
 
-These are the owning core vocabulary keys used by queries, portable choices and JSON values. CLI options expose the subsets above; `automatic` sorting and `open_files`/`trash` scope also describe app query state. GUI absence options use the explicit key `any`; direction uses `automatic` for its query-owned default.
+These are the vocabulary keys used by queries, portable choices and JSON values. Sound/research terms belong to core; query choices, operations and statuses belong to app. Both compiled registries are checked against this table. CLI options expose the subsets above; `automatic` sorting and `open_files`/`trash` scope also describe app query state. GUI absence options use the explicit key `any`; direction uses `automatic` for its query-owned default.
 
 <!-- vocabulary-keys:begin -->
 | Vocabulary | Keys |

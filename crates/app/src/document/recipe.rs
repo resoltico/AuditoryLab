@@ -45,10 +45,12 @@ impl SnapshotId {
     }
 
     fn next() -> Self {
-        match NEXT_SNAPSHOT.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1)) {
-            Ok(value) => Self(value),
-            Err(_) => panic!("process-local snapshot identities exhausted"),
-        }
+        NEXT_SNAPSHOT
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .map_or_else(
+                |_| panic!("process-local snapshot identities exhausted"),
+                Self,
+            )
     }
 }
 

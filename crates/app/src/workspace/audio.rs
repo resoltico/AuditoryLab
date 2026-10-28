@@ -1,5 +1,10 @@
 //! The occupied audio slot, live binding and playback transitions.
-use super::*;
+use super::{
+    Arc, AudioCommand, AudioKind, AudioStatus, AudioTask, Capabilities, Conclusion, DocumentId,
+    EditorState, Error, Job, MotionPreference, OutputState, PlaybackControl, RecipeSnapshot,
+    Refusal, ResponseDisposition, SampleRate, Session, StopRequest, TaskId, View, WorkerFailure,
+    monitor,
+};
 pub(super) struct AudioState {
     slot: Option<AudioTask>,
     status: AudioStatus,
@@ -226,6 +231,7 @@ impl AudioState {
     pub(super) fn apply(&mut self, command: AudioCommand) -> Result<AudioTransition, Refusal> {
         match command {
             AudioCommand::Play => Ok(AudioTransition::Play),
+            AudioCommand::PlaySelected => Ok(AudioTransition::PlaySelected),
             AudioCommand::Toggle if !self.busy() => Ok(AudioTransition::Play),
             AudioCommand::Toggle | AudioCommand::Stop => {
                 self.stop().map(|_| AudioTransition::Stopped)
@@ -255,5 +261,15 @@ impl AudioState {
 
 pub(super) enum AudioTransition {
     Play,
+    PlaySelected,
     Stopped,
+}
+
+impl AudioState {
+    pub(super) fn unrelated_title(&self, document: DocumentId) -> Option<String> {
+        self.slot
+            .as_ref()
+            .filter(|task| !matches!(task.kind, AudioKind::Live(owner) if owner == document))
+            .map(|task| task.title.clone())
+    }
 }

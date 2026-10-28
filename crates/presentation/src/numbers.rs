@@ -1,6 +1,5 @@
 //! numbers presentation.
 /// Format seconds as hours, minutes and seconds; `~` marks nanosecond rounding.
-
 #[must_use]
 pub(crate) fn human_duration(value: f64) -> String {
     fn scalar(value: f64) -> String {
@@ -42,9 +41,7 @@ pub(crate) fn human_duration(value: f64) -> String {
 }
 
 /// A transport clock of whole seconds: `m:ss`, or `h:mm:ss` from one hour.
-
 /// Partial seconds are dropped, so the clock advances once per second.
-
 #[must_use]
 pub(crate) fn clock(seconds: f64) -> String {
     let whole = std::time::Duration::try_from_secs_f64(seconds.max(0.0))
@@ -58,7 +55,6 @@ pub(crate) fn clock(seconds: f64) -> String {
 }
 
 /// A waveform axis limit with three significant digits, for tick labels.
-
 #[must_use]
 pub(crate) fn axis_limit(limit: f64) -> String {
     if !limit.is_finite() || limit <= 0.0 {
@@ -67,7 +63,8 @@ pub(crate) fn axis_limit(limit: f64) -> String {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "A positive finite magnitude's decimal exponent is clamped to 0..=12 before use as a digit count"
+        reason = "A positive finite magnitude's decimal exponent is clamped to 0..=12 \
+            before use as a digit count"
     )]
     let decimals = (2.0 - limit.log10().floor()).clamp(0.0, 12.0) as usize;
     let text = format!("{limit:.decimals$}");
@@ -79,7 +76,6 @@ pub(crate) fn axis_limit(limit: f64) -> String {
 }
 
 /// One-decimal digital level; silence uses the minus-infinity symbol.
-
 #[must_use]
 pub(crate) fn format_dbfs(value: f64) -> String {
     if value == f64::NEG_INFINITY {
@@ -90,13 +86,12 @@ pub(crate) fn format_dbfs(value: f64) -> String {
 }
 
 /// Compact six-significant-digit number; approximation is explicit and
-
 /// positive tiny values never become zero.
-
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "The decimal count is clamped to the finite integer range 0..=12 before casting to usize; rounding formats presentation text only"
+    reason = "The decimal count is clamped to the finite integer range 0..=12 \
+        before casting to usize; rounding formats presentation text only"
 )]
 #[must_use]
 pub(crate) fn compact_number(value: f64) -> String {
@@ -139,7 +134,6 @@ pub fn format(style: NumberStyle, value: f64) -> String {
 }
 
 /// Numeric display policy, separate from exact model values and input text.
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NumberStyle {
     /// Requested durations with meaningful units and explicit rounding.

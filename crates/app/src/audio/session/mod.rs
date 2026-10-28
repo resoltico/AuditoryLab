@@ -6,7 +6,7 @@
 //! source holds the control of its particular session.
 //!
 //! One atomic word arbitrates the lifecycle. Its two active states are
-//! Running and StopRequested; the rest are terminal outcomes. Accepting Stop
+//! Running and `StopRequested`; the rest are terminal outcomes. Accepting Stop
 //! is a compare-and-swap from Running, and the first terminal publication
 //! wins. Generation ending is a separate fact that closes live-update
 //! admission even while the device drains.
@@ -26,8 +26,6 @@ pub use monitor::{
     SessionDescriptor,
 };
 pub use output::{OutputInfo, SampleFormat};
-#[cfg(test)]
-mod live_tests;
 
 use std::sync::{
     Arc,
@@ -176,7 +174,7 @@ impl SessionState {
         }
     }
 
-    /// Publish successful drain: Completed or FrameLimit while running,
+    /// Publish successful drain: Completed or `FrameLimit` while running,
     /// Stopped when Stop was accepted first. The choice and the publication
     /// use the same word, so Stop cannot slip between them.
     pub(crate) fn finish_drained(&self, natural: Outcome) -> Outcome {
@@ -461,6 +459,9 @@ impl PlaybackPhase {
         )
     }
 }
+
+#[cfg(test)]
+mod live_tests;
 
 #[cfg(test)]
 mod tests;

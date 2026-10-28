@@ -1,6 +1,5 @@
 //! Read-only native motion preferences, coalesced off UI and audio processing.
-#[cfg(all(target_os = "linux", test))]
-mod gnome_tests;
+
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -63,8 +62,8 @@ impl Service {
         }
         Self {
             pending,
-            wake,
             stop,
+            wake,
             #[cfg(not(target_os = "macos"))]
             handle: Some(handle),
             #[cfg(target_os = "macos")]
@@ -95,7 +94,8 @@ impl Drop for Service {
 #[cfg(target_os = "macos")]
 #[expect(
     unsafe_code,
-    reason = "Register a sendable read-only block with NSWorkspace's documented notification center; retain and remove its observer before shutdown"
+    reason = "Register a sendable read-only block with NSWorkspace's documented \
+        notification center; retain and remove its observer before shutdown"
 )]
 fn observe(
     pending: Arc<Mutex<Option<Preference>>>,
@@ -166,6 +166,7 @@ fn query() -> Preference {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW,
     };
+
     let mut enabled: windows_sys::core::BOOL = 1;
     // SAFETY: the documented GET expects a writable BOOL, live for this call.
     let result = unsafe {
@@ -225,14 +226,17 @@ fn query() -> Preference {
 #[cfg(target_os = "linux")]
 #[expect(
     unsafe_code,
-    reason = "checked native GSettings C ABI; schema/key admission precedes reading, owned references are released"
+    reason = "checked native GSettings C ABI; schema/key admission precedes \
+        reading, owned references are released"
 )]
 fn gnome_reduced() -> Option<bool> {
     use std::ffi::{c_char, c_void};
+
     // Native GObject registrations may outlive this read; keep their libraries mapped.
     static GIO: std::sync::OnceLock<Option<libloading::Library>> = std::sync::OnceLock::new();
     static OBJECT: std::sync::OnceLock<Option<libloading::Library>> = std::sync::OnceLock::new();
-    // SAFETY: fixed system libraries and exact public GIO signatures; all returned pointers checked.
+    // SAFETY: fixed system libraries and exact public GIO signatures; all returned pointers
+    // checked.
     unsafe {
         let gio = GIO
             .get_or_init(|| libloading::Library::new("libgio-2.0.so.0").ok())
@@ -307,6 +311,10 @@ fn desktop_has(name: &str) -> bool {
         .split(':')
         .any(|value| value.eq_ignore_ascii_case(name))
 }
+
+#[cfg(all(target_os = "linux", test))]
+mod gnome_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,6 +322,7 @@ mod tests {
     #[test]
     fn kde_duration_accepts_both_portal_reply_shapes_and_rejects_invalid_values() {
         use zbus::{OwnedVariant, Variant};
+
         for (value, expected) in [
             (0.0, Some(true)),
             (1.0, Some(false)),

@@ -99,10 +99,22 @@ pub enum FileOutcome {
 impl FileOutcome {
     pub(crate) fn conclusion(&self) -> Conclusion {
         let outcome = match self {
-            Self::Managed(result) => result.as_ref().err().map(|error| error.outcome()),
-            Self::Imported(result) => result.as_ref().err().map(|error| error.outcome()),
-            Self::RecipeExported(result) => result.as_ref().err().map(|error| error.outcome()),
-            Self::Exported(result) => result.as_ref().err().map(|error| error.outcome()),
+            Self::Managed(result) => result
+                .as_ref()
+                .err()
+                .map(crate::services::OperationError::outcome),
+            Self::Imported(result) => result
+                .as_ref()
+                .err()
+                .map(crate::services::LoadError::outcome),
+            Self::RecipeExported(result) => result
+                .as_ref()
+                .err()
+                .map(crate::services::SaveError::outcome),
+            Self::Exported(result) => result
+                .as_ref()
+                .err()
+                .map(crate::services::ExportError::outcome),
         };
         match outcome {
             None => Conclusion::Succeeded,
@@ -123,11 +135,11 @@ impl FileKind {
     }
     pub(crate) fn accepts(&self, outcome: &FileOutcome) -> bool {
         match (self, outcome) {
+            (Self::Managed(job), FileOutcome::Managed(Ok(outcome))) => job.accepts(outcome),
             (Self::Import(_), FileOutcome::Imported(_))
             | (Self::ExportRecipe { .. }, FileOutcome::RecipeExported(_))
-            | (Self::Export { .. }, FileOutcome::Exported(_)) => true,
-            (Self::Managed(job), FileOutcome::Managed(Ok(outcome))) => job.accepts(outcome),
-            (Self::Managed(_), FileOutcome::Managed(Err(_))) => true,
+            | (Self::Export { .. }, FileOutcome::Exported(_))
+            | (Self::Managed(_), FileOutcome::Managed(Err(_))) => true,
             _ => false,
         }
     }
@@ -212,7 +224,7 @@ impl JobOutcome {
                 FileOutcome::Exported(Err(error)) => error.clone().into(),
                 _ => return None,
             },
-            _ => return None,
+            Self::Audio(_) => return None,
         };
         (error.outcome() != Outcome::Cancelled).then_some(TaskFailure::Operation(error))
     }
@@ -355,7 +367,8 @@ enum Worker {
 /// Execution strategy for admitted jobs, retaining each capture until completion.
 /// Preparation responses may arrive before a worker exits; final responses require joining it.
 pub trait Executor: std::any::Any {
-    /// Install the event-loop notification before admitting work. Deterministic executors may ignore it.
+    /// Install the event-loop notification before admitting work. Deterministic executors may
+    /// ignore it.
     fn set_waker(&mut self, _wake: Arc<dyn Fn() + Send + Sync>) {}
     /// Accept one immutable admitted job; launch failure is returned through polling.
     fn start(&mut self, job: Job);
@@ -421,7 +434,7 @@ impl Runner {
     fn post_joined(
         id: TaskId,
         started: std::io::Result<JoinHandle<Response>>,
-        terminal: mpsc::Sender<Response>,
+        terminal: &mpsc::Sender<Response>,
         wake: &dyn Fn(),
     ) {
         let response = match started {
@@ -432,7 +445,7 @@ impl Runner {
             wake();
         }
     }
-    fn start_notifying(&mut self, mut job: Job, wake: Arc<dyn Fn() + Send + Sync>) {
+    fn start_notifying(&mut self, mut job: Job, wake: &Arc<dyn Fn() + Send + Sync>) {
         if let Work::File(FileKind::Export {
             progress, frames, ..
         }) = job.work.as_mut()
@@ -457,7 +470,7 @@ impl Runner {
                             }
                         })
                     });
-                Self::post_joined(id, started, terminal, notify.as_ref());
+                Self::post_joined(id, started, &terminal, notify.as_ref());
             });
         match observer {
             Ok(observer) => self.running.push(Running {
@@ -478,7 +491,7 @@ impl Runner {
     pub fn start(&mut self, job: Job) {
         self.reap_observers();
         if let Some(wake) = self.wake.clone() {
-            self.start_notifying(job, wake);
+            self.start_notifying(job, &wake);
             return;
         }
         let id = job.id;
@@ -595,12 +608,11 @@ impl Runner {
                 Some((
                     outcome.failure(),
                     workspace.job_context(*job),
-                    workspace
-                        .files.task()
-                        .is_some_and(|task| {
-                            task.id == *job
-                                && !matches!(&task.kind, FileKind::Managed(job) if job.background_read())
-                        }),
+                    workspace.files.task().is_some_and(|task| {
+                        task.id == *job
+                            && !matches!(&task.kind,
+                                FileKind::Managed(job) if job.background_read())
+                    }),
                 ))
             } else {
                 None
@@ -658,9 +670,6 @@ impl Runner {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;
 
 impl std::fmt::Display for WorkerFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -803,3 +812,6 @@ crate::core::diagnostic_codes! {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

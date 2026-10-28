@@ -37,7 +37,7 @@ fn clicks(hz: f64, width: f64) -> ComponentForm {
 }
 #[test]
 fn every_column_contains_all_rational_pulses_including_single_frame_impulses() {
-    for fs in [44100, 48000, 768000] {
+    for fs in [44100, 48000, 768_000] {
         for (num, den, width) in [
             (8_u64, 1_u64, 0.001),
             (625, 16, 0.001),
@@ -97,7 +97,8 @@ fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
     assert_eq!(model.lanes[0].kind, ModelKind::Gate);
     assert_eq!(model.lanes[0].columns[0].max, 1.0);
     assert_eq!(model.lanes[0].columns[0].min, 0.0);
-    // Negative control: the single point at a selected point just after the midpoint misses every one-frame pulse.
+    // Negative control: the single point at a selected point just after the midpoint misses every
+    // one-frame pulse.
     let point = model.frames / 2 + 1;
     assert_ne!(point % 1200, 0);
     let signal = auditorylab_core::Sound::new(
@@ -115,7 +116,7 @@ fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
     .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .signal(rate)
     .unwrap();
-    let mut out = [[0.0; 2]; 1201];
+    let mut out = std::vec![[0.0; 2]; 1201];
     signal.render(0, &mut out);
     assert!(
         out.iter()
@@ -126,11 +127,11 @@ fn gate_projection_matches_signal_and_dense_extrema_defeat_point_sampling() {
 #[test]
 fn bounded_spans_multiple_processes_and_observation_independence() {
     let rate = SampleRate::new(48000).unwrap();
-    let c = clicks(0.1, 0.001);
+    let component_form = clicks(0.1, 0.001);
     let muted = target(
         rate,
         &[(id(1), {
-            let mut form = c;
+            let mut form = component_form;
             form.set(auditorylab_core::ParameterId::PeakLevel, finite(-10000.0));
             form
         })],
@@ -139,14 +140,14 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
     .timing_model(512);
     assert!(muted.lanes.is_empty());
     assert_eq!(muted.frames, 12000);
-    let t = target(rate, &[(id(1), c)]).unwrap();
-    let m = t.timing_model(usize::MAX);
-    assert_eq!(m.frames, 192000);
-    assert!(m.insufficient_cycle);
-    assert_eq!(m.lanes[0].columns.len(), 512);
-    let t = target(rate, &[(id(1), clicks(8.0, 0.001))]).unwrap();
-    assert_eq!(t.timing_model(256).frames, 24000);
-    let c = {
+    let compiled = target(rate, &[(id(1), component_form)]).unwrap();
+    let projection = compiled.timing_model(usize::MAX);
+    assert_eq!(projection.frames, 192_000);
+    assert!(projection.insufficient_cycle);
+    assert_eq!(projection.lanes[0].columns.len(), 512);
+    let compiled = target(rate, &[(id(1), clicks(8.0, 0.001))]).unwrap();
+    assert_eq!(compiled.timing_model(256).frames, 24000);
+    let component_form = {
         let mut form = clicks(40.0, 0.001);
         form.set_modulation(Some(Modulation::Am {
             rate_hz: finite(39.0625),
@@ -154,29 +155,29 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
         }));
         form
     };
-    let t = target(rate, &[(id(1), c)]).unwrap();
-    let m = t.timing_model(256);
-    assert_eq!(m.lanes.len(), 2);
-    assert_eq!(m.lanes[1].kind, ModelKind::Envelope);
+    let compiled = target(rate, &[(id(1), component_form)]).unwrap();
+    let projection = compiled.timing_model(256);
+    assert_eq!(projection.lanes.len(), 2);
+    assert_eq!(projection.lanes[1].kind, ModelKind::Envelope);
     assert!(
-        m.lanes[1]
+        projection.lanes[1]
             .columns
             .iter()
             .all(|e| 0.0 <= e.min && e.min <= e.max && e.max <= 1.0)
     );
-    let mut a = Engine::new(rate);
-    a.set(&t);
-    let mut b = a.clone();
+    let mut running = Engine::new(rate);
+    running.set(&compiled);
+    let mut control = running.clone();
     for _ in 0..5 {
-        let _ = t.timing_model(256);
+        let _ = compiled.timing_model(256);
     }
-    let mut x = [[0.0; 2]; 4000];
-    let mut y = x;
-    a.render(&mut x);
-    b.render(&mut y);
-    assert_eq!(x, y);
-    assert_eq!(a.observation(), b.observation());
-    let all: Vec<_> = (1..=16).map(|n| (id(n), c)).collect();
+    let mut rendered = std::vec![[0.0; 2]; 4000];
+    let mut control_frames = rendered.clone();
+    running.render(&mut rendered);
+    control.render(&mut control_frames);
+    assert_eq!(rendered, control_frames);
+    assert_eq!(running.observation(), control.observation());
+    let all: Vec<_> = (1..=16).map(|n| (id(n), component_form)).collect();
     assert_eq!(
         target(rate, &all).unwrap().timing_model(512).lanes.len(),
         32
@@ -185,7 +186,7 @@ fn bounded_spans_multiple_processes_and_observation_independence() {
 
 #[test]
 fn am_bounds_contain_independent_sine_samples_and_depth_zero_is_steady() {
-    for fs in [44100, 48000, 768000] {
+    for fs in [44100, 48000, 768_000] {
         for depth in [0.0, 0.5, 1.0] {
             let rate = SampleRate::new(fs).unwrap();
             let c = {
@@ -222,11 +223,11 @@ fn am_bounds_contain_independent_sine_samples_and_depth_zero_is_steady() {
 }
 #[test]
 fn maximum_rate_projection_has_fixed_storage_and_measured_cost() {
-    let rate = SampleRate::new(768000).unwrap();
+    let rate = SampleRate::new(768_000).unwrap();
     let c = {
-        let mut form = clicks(383999.0, 1.0 / 768000.0);
+        let mut form = clicks(383_999.0, 1.0 / 768_000.0);
         form.set_modulation(Some(Modulation::Am {
-            rate_hz: finite(383999.0),
+            rate_hz: finite(383_999.0),
             depth: finite(1.0),
         }));
         form

@@ -2,14 +2,10 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod adapter;
-#[cfg(test)]
-mod adapter_tests;
+
 mod details_parent;
 mod dialogs;
-#[cfg(test)]
-mod focus_reflow_tests;
-#[cfg(test)]
-mod focus_scroll_tests;
+
 mod licenses;
 mod motion;
 #[cfg(target_os = "macos")]
@@ -19,21 +15,22 @@ mod preference_wake;
 mod scope;
 #[expect(
     dead_code,
-    reason = "the shared build-time table constructs Slint-only terms in build.rs; native menus use a subset"
+    reason = "the shared build-time table constructs Slint-only terms in build.rs; \
+        native menus use a subset"
 )]
 mod terms;
 #[cfg(test)]
 mod test_platform;
-#[cfg(test)]
-mod text_edit_tests;
+
 mod typography;
-#[cfg(test)]
-mod window_tests;
+
 #[expect(
     unreachable_pub,
     clippy::unwrap_used,
     clippy::todo,
-    reason = "Slint 1.18.1 generates unreachable public UI items, unwraps and TODO branches; removing these exceptions produces compiler/Clippy errors in generated output. This module contains only include_modules"
+    reason = "Slint 1.18.1 generates unreachable public UI items, unwraps and TODO \
+        branches; removing these exceptions produces compiler/Clippy errors \
+        in generated output. This module contains only include_modules"
 )]
 mod generated {
     slint::include_modules!();
@@ -116,3 +113,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 use auditorylab_core::test_support as test_recipes;
 
 mod labels;
+
+#[cfg(test)]
+mod adapter_tests;
+
+#[cfg(test)]
+mod focus_reflow_tests;
+
+#[cfg(test)]
+mod focus_scroll_tests;
+
+#[cfg(test)]
+mod text_edit_tests;
+
+#[cfg(test)]
+mod window_tests;

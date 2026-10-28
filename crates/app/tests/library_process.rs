@@ -142,7 +142,8 @@ fn controlled_child() {
             serde_json::json!({"code":0,"status":format!("{:?}",result.status)})
         }
         Err(error) => {
-            serde_json::json!({"code":match error.outcome(){Outcome::Conflict=>3,Outcome::Busy=>4,_=>1},"error":error.to_string()})
+            serde_json::json!({"code":match error.outcome(){Outcome::Conflict=>3,Outcome::Busy=>4,
+                _=>1},"error":error.to_string()})
         }
     };
     fs::write(

@@ -6,12 +6,12 @@
 use crate::storage::wav::{Container, Exported, encode};
 use auditorylab_core::{ComponentForm, Ears, Recipe, SampleRate, Signal, Sound, catalog};
 fn export(
-    session: Signal,
+    session: &Signal,
     path: &Path,
     cancel: &AtomicBool,
 ) -> Result<Exported, crate::storage::wav::ExportError> {
     encode(
-        &session,
+        session,
         &mut fs::File::create(path).unwrap(),
         cancel,
         &crate::job::Progress::default(),
@@ -90,7 +90,7 @@ fn an_independent_decoder_reads_the_format_length_and_nearest_f32_samples() {
         let frames = 20_000;
         let path = directory.path().join(format!("{hz}.wav"));
         assert_eq!(
-            export(tone_session(frames, sample_rate), &path, &never()).unwrap(),
+            export(&(tone_session(frames, sample_rate)), &path, &never()).unwrap(),
             Exported {
                 warnings: Vec::new(),
                 frames: u64::from(frames),
@@ -137,7 +137,7 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
     .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .signal(rate())
     .unwrap();
-    export(silence, &path, &never()).unwrap();
+    export(&(silence), &path, &never()).unwrap();
     let bytes = fs::read(&path).unwrap();
     assert_eq!(bytes.len(), 58 + 5 * 8);
     assert_eq!(&bytes[..4], b"RIFF");
@@ -179,7 +179,7 @@ fn a_shortened_monaural_catalog_entry_has_identical_channels_and_independent_sam
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("monaural.wav");
     export(
-        short_catalog_session("orozco-perez-2020-monaural-7-hz"),
+        &(short_catalog_session("orozco-perez-2020-monaural-7-hz")),
         &path,
         &never(),
     )
@@ -205,7 +205,7 @@ fn a_shortened_left_ear_sam_catalog_entry_has_a_silent_right_channel() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("sam.wav");
     export(
-        short_catalog_session("van-eeckhoutte-2018-am-500-hz"),
+        &(short_catalog_session("van-eeckhoutte-2018-am-500-hz")),
         &path,
         &never(),
     )
@@ -312,7 +312,8 @@ fn writer_failures_in_the_header_and_payload_keep_the_original_error() {
         )
         .unwrap_err();
         assert!(
-            matches!(error,crate::storage::wav::ExportError::Io(ref e) if e.to_string()=="injected writer failure")
+            matches!(error,crate::storage::wav::ExportError::Io(ref e) if e.to_string()=="injected \
+                writer failure")
         );
         assert_eq!(writer.calls, fail_on);
     }

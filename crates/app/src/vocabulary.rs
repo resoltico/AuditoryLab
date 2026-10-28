@@ -135,7 +135,8 @@ vocabulary! {Operation,"operation" {
     SaveCopy => ("save_copy","Save independent copy","save independent copy"),
     OpenRecipe => ("open_recipe","Open Recipe","open Recipe"),
     ExportRecipe => ("export_recipe","Export portable recipe","export portable recipe"),
-    StopCurrentAndPlayRecipe => ("stop_current_and_play_recipe","Stop current & play recipe","stop current & play recipe"),
+    StopCurrentAndPlayRecipe => ("stop_current_and_play_recipe","Stop current & play recipe","stop \
+        current & play recipe"),
     PlaySelectedSound => ("play_selected_sound","Play selected sound","play selected sound"),
     PlayLive => ("play_live","Play live","play live"),
     EditSavedRecipe => ("edit_saved_recipe","Edit saved User recipe","edit saved User recipe"),
@@ -174,75 +175,23 @@ vocabulary! { Status,"status" {
     Unchanged => ("unchanged","Unchanged","unchanged"),
     Unknown => ("unknown","Unknown","unknown"),
     None => ("none","None","none"),
-    OperationIncomplete => ("operation_incomplete","Operation not completed","operation not completed"),
+    OperationIncomplete => ("operation_incomplete","Operation not completed","operation not \
+        completed"),
     OperationConfirmed => ("operation_confirmed","Operation confirmed","operation confirmed"),
-    WaitingForGeneratedAudio => ("waiting_for_generated_audio","Waiting for generated audio","waiting for generated audio"),
+    WaitingForGeneratedAudio => ("waiting_for_generated_audio","Waiting for generated audio",
+        "waiting \
+        for generated audio"),
 }}
 
 macro_rules! vocabularies {($consumer:ident)=>{$consumer! {
-        scope:crate::discovery::query::Scope,sort:crate::discovery::query::SortBy,direction:crate::discovery::query::Direction,group:crate::discovery::query::GroupBy,rhythm_state:crate::discovery::query::RhythmState,
+        scope:crate::discovery::query::Scope,sort:crate::discovery::query::SortBy,
+            direction:crate::discovery::query::Direction,group:crate::discovery::query::GroupBy,
+            rhythm_state:crate::discovery::query::RhythmState,
         calendar_field:crate::discovery::query::CalendarField,operation:Operation,status:Status,
 }};}
-macro_rules! registry {($($name:ident:$kind:ty),* $(,)?)=>{pub(crate) const CODES:&[&str]=&[$(<$kind>::INVALID_CODE),*];};}
+macro_rules! registry {($($name:ident:$kind:ty),* $(,)?)=>{
+    pub(crate) const CODES:&[&str]=&[$(<$kind>::INVALID_CODE),*];};}
 vocabularies!(registry);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use auditorylab_core::diagnostic::Code;
-    use auditorylab_core::vocabulary::{Vocabulary, VocabularyError};
-    use serde::Serialize;
-    use std::collections::BTreeSet;
-    fn check<
-        T: Vocabulary
-            + Serialize
-            + serde::de::DeserializeOwned
-            + core::str::FromStr<Err = VocabularyError>
-            + core::fmt::Debug
-            + Eq,
-    >() {
-        #[derive(Serialize, serde::Deserialize)]
-        struct Wire<T> {
-            value: T,
-        }
-        let mut keys = BTreeSet::new();
-        assert!(!T::ALL.is_empty());
-        for value in T::ALL.iter().copied() {
-            assert!(keys.insert(value.key()), "duplicate key {}", value.key());
-            assert!(
-                value
-                    .key()
-                    .as_bytes()
-                    .first()
-                    .is_some_and(u8::is_ascii_lowercase)
-            );
-            assert!(
-                value.key().split('_').all(|word| !word.is_empty()
-                    && word
-                        .bytes()
-                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())),
-                "not snake_case: {}",
-                value.key()
-            );
-            assert!(!value.term().label.is_empty() && !value.term().phrase.is_empty());
-            let serialized = toml::to_string(&Wire { value })
-                .unwrap_or_else(|error| panic!("vocabulary serialization: {error}"));
-            assert_eq!(serialized, format!("value = {:?}\n", value.key()));
-            assert_eq!(value.key().parse::<T>(), Ok(value));
-            assert_eq!(toml::from_str::<Wire<T>>(&serialized).unwrap().value, value);
-        }
-        let error = "__unknown__".parse::<T>().unwrap_err();
-        assert!(error.code().starts_with("vocabulary."));
-        assert!(
-            error
-                .code()
-                .bytes()
-                .all(|ch| ch.is_ascii_lowercase() || ch == b'.' || ch == b'_')
-        );
-    }
-    macro_rules! checks {($($test:ident:$kind:ty),* $(,)?)=>{$(#[test] fn $test(){check::<$kind>();})*};}
-    vocabularies!(checks);
-}
 
 /// Captions for application views, independent of a desktop widget.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -419,4 +368,63 @@ impl EditorStatus {
             Self::UnmodifiedDraft => "Unmodified draft",
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use auditorylab_core::diagnostic::Code;
+    use auditorylab_core::vocabulary::{Vocabulary, VocabularyError};
+    use serde::Serialize;
+    use std::collections::BTreeSet;
+    fn check<
+        T: Vocabulary
+            + Serialize
+            + serde::de::DeserializeOwned
+            + core::str::FromStr<Err = VocabularyError>
+            + core::fmt::Debug
+            + Eq,
+    >() {
+        #[derive(Serialize, serde::Deserialize)]
+        struct Wire<T> {
+            value: T,
+        }
+        let mut keys = BTreeSet::new();
+        assert_ne!(T::ALL, []);
+        for value in T::ALL.iter().copied() {
+            assert!(keys.insert(value.key()), "duplicate key {}", value.key());
+            assert!(
+                value
+                    .key()
+                    .as_bytes()
+                    .first()
+                    .is_some_and(u8::is_ascii_lowercase)
+            );
+            assert!(
+                value.key().split('_').all(|word| !word.is_empty()
+                    && word
+                        .bytes()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())),
+                "not snake_case: {}",
+                value.key()
+            );
+            assert!(!value.term().label.is_empty() && !value.term().phrase.is_empty());
+            let serialized = toml::to_string(&Wire { value })
+                .unwrap_or_else(|error| panic!("vocabulary serialization: {error}"));
+            assert_eq!(serialized, format!("value = {:?}\n", value.key()));
+            assert_eq!(value.key().parse::<T>(), Ok(value));
+            assert_eq!(toml::from_str::<Wire<T>>(&serialized).unwrap().value, value);
+        }
+        let error = "__unknown__".parse::<T>().unwrap_err();
+        assert!(error.code().starts_with("vocabulary."));
+        assert!(
+            error
+                .code()
+                .bytes()
+                .all(|ch| ch.is_ascii_lowercase() || ch == b'.' || ch == b'_')
+        );
+    }
+    macro_rules! checks {($($test:ident:$kind:ty),* $(,)?)=>{$(#[test] fn $test(){check::<$kind>();}
+        )*};}
+    vocabularies!(checks);
 }

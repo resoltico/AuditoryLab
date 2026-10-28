@@ -146,7 +146,8 @@ crate::diagnostic_codes! {
                 Self::DuplicateSourceKey { key }
                 | Self::EmptySourceLabel { key }
                 | Self::EmptySourceCitation { key }
-                | Self::MissingLocator { key } => crate::diagnostic_params! {"source_key"=>key.clone()},
+                | Self::MissingLocator { key } => crate::diagnostic_params! {
+                    "source_key"=>key.clone()},
                 Self::UrlScheme { key, url } | Self::InvalidUrl { key, url } => {
                     crate::diagnostic_params! {"source_key"=>key.clone(),"url"=>url.clone()}
                 }
@@ -158,7 +159,8 @@ crate::diagnostic_codes! {
                         ReferenceOwner::Evidence(index) => ("evidence", *index),
                         ReferenceOwner::Lineage(index) => ("lineage", *index),
                     };
-                    crate::diagnostic_params! {"record_kind"=>kind,"record_index"=>index,"source_key"=>key.clone()}
+                    crate::diagnostic_params! {"record_kind"=>kind,"record_index"=>index,
+                        "source_key"=>key.clone()}
                 }
                 Self::ReusedCopyIdentity { id } => {
                     crate::diagnostic_params! {"document_id"=>id.to_string()}

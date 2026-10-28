@@ -1,3 +1,5 @@
+export { DateInput } from "models.slint";
+import { DateInput } from "models.slint";
 import { ControlOption } from "models.slint";
 export { ViewCaptions } from "view-captions.slint";
 import { ViewCaptions } from "view-captions.slint";
@@ -13,13 +15,41 @@ import { Button } from "button.slint";
 import { WorkspaceNavigation } from "workspace-navigation.slint";
 export { Terms } from "vocabulary.slint";
 import { Terms } from "vocabulary.slint";
-import { Palette, VerticalBox, HorizontalBox, ProgressIndicator } from "std-widgets.slint";
-export { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
-import { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ParameterRow, ComponentRow, MetadataRow, ModelLane } from "models.slint";
+import {
+    Palette,
+    VerticalBox,
+    HorizontalBox,
+    ProgressIndicator,
+} from "std-widgets.slint";
+export {
+    EntryAddress,
+    LibraryMutationAction,
+    CatalogRow,
+    LibraryFacet,
+    ParameterRow,
+    ComponentRow,
+    MetadataRow,
+    ModelLane,
+} from "models.slint";
+import {
+    EntryAddress,
+    LibraryMutationAction,
+    CatalogRow,
+    LibraryFacet,
+    ParameterRow,
+    ComponentRow,
+    MetadataRow,
+    ModelLane,
+} from "models.slint";
 import { StableButton } from "editor.slint";
 export { AboutWindow, LicenseWindow } from "about.slint";
 
-export { MonitorWindow, DetailsWindow, AudioControlsWindow, MonitorData } from "monitor.slint";
+export {
+    MonitorWindow,
+    DetailsWindow,
+    AudioControlsWindow,
+    MonitorData,
+} from "monitor.slint";
 import { MonitorPanel, MonitorData } from "monitor.slint";
 
 export component MainWindow inherits Window {
@@ -61,7 +91,7 @@ export component MainWindow inherits Window {
     callback remove-component(string);
     callback restore-component(string);
     callback add-component(string, int);
-    function open-component-menu(){dialogs.open-component-menu();}
+    function open-component-menu() { dialogs.open-component-menu(); }
 
     in property <string> output-state;
     in property <string> receipt-age;
@@ -74,21 +104,46 @@ export component MainWindow inherits Window {
     property <length> available-monitor-height:0px;
     property <length> minimum-monitor-height: max(240px, drawer-content.preferred-height);
     property <length> maximum-monitor-height: min(360px, root.available-monitor-height);
-    out property <bool> drawer-fits: root.minimum-monitor-height <= root.maximum-monitor-height && drawer-content.min-width <= root.width - workspace-layout.padding-left - workspace-layout.padding-right;
-    out property <length> effective-drawer-height: max(root.minimum-monitor-height, min(root.monitor-height, root.maximum-monitor-height));
-    function update-monitor-layout(){
+    out property <bool> drawer-fits: root.minimum-monitor-height <= root.maximum-monitor-height &&
+        drawer-content.min-width <= root.width - workspace-layout.padding-left -
+        workspace-layout.padding-right;
+    out property <length> effective-drawer-height: max(root.minimum-monitor-height,
+        min(root.monitor-height, root.maximum-monitor-height));
+    function update-monitor-layout() {
         // Snapshot viewport space on layout changes to avoid feeding the window's
         // inferred minimum height back into its own layout constraint binding.
-        root.available-monitor-height=max(0px, root.height - toolbar.preferred-height - transport.preferred-height - 16px - 280px);
+        root.available-monitor-height = max(0px,
+            root.height - toolbar.preferred-height - transport.preferred-height - 16px - 280px);
         root.window-changed();
     }
-    changed drawer-fits=>{root.update-monitor-layout();}
-    changed height=>{root.update-monitor-layout();}
-    changed monitor-height=>{root.update-monitor-layout();}
-    public function resize-monitor(pixels:float){root.monitor-height=max(240px,min(360px,pixels*1px));}
-    public function focus-monitor-opener(){monitor-opener.focus-button();}
+    changed drawer-fits => { root.update-monitor-layout(); }
+    changed height => { root.update-monitor-layout(); }
+    changed monitor-height => { root.update-monitor-layout(); }
+    public function resize-monitor(pixels: float) {
+        root.monitor-height = max(240px,min(360px,
+        pixels * 1px));
+    }
+    public function focus-monitor-opener() { monitor-opener.focus-button(); }
     in property <bool> can-change-waveform;
-    out property <MonitorData> monitor-data:{state:root.output-state,age:root.receipt-age,caption:root.waveform-caption,meters:root.meters,warning:root.monitor-warning,warninglive:root.monitor-warning-live,backendwarning:root.backend-warning,motion:root.motion-reason,left:root.left-path,right:root.right-path,limit:root.scale-label,spanlabel:root.capture-duration,spanchoice:root.window-index,scalechoice:root.scale-index,held:root.held,settingsenabled:root.can-change-waveform,overridden:root.motion-overridden};
+    out property <MonitorData> monitor-data:{
+        state:root.output-state,
+        age:root.receipt-age,
+        caption:root.waveform-caption,
+        meters:root.meters,
+        warning:root.monitor-warning,
+        warninglive:root.monitor-warning-live,
+        backendwarning:root.backend-warning,
+        motion:root.motion-reason,
+        left:root.left-path,
+        right:root.right-path,
+        limit:root.scale-label,
+        spanlabel:root.capture-duration,
+        spanchoice:root.window-index,
+        scalechoice:root.scale-index,
+        held:root.held,
+        settingsenabled:root.can-change-waveform,
+        overridden:root.motion-overridden
+    };
     callback show-diagnostics();
     callback show-research();
     callback hold-changed();
@@ -124,10 +179,10 @@ export component MainWindow inherits Window {
     in-out property <bool> library-wide: false;
     out property <bool> library-tools-open: dialogs.library-tools-open;
     out property <bool> library-query-open: dialogs.library-query-open;
-    public function open-query-details(){dialogs.open-query-details();}
-    public function close-query-details(){dialogs.close-query-details();}
-    public function open-library-filters(){dialogs.open-library-filters();}
-    public function close-library-filters(){dialogs.close-library-filters();}
+    public function open-query-details() { dialogs.open-query-details(); }
+    public function close-query-details() { dialogs.close-query-details(); }
+    public function open-library-filters() { dialogs.open-library-filters(); }
+    public function close-library-filters() { dialogs.close-library-filters(); }
     in-out property <int> selected: 0;
     in property <string> sound-title;
     in property <string> studied;
@@ -204,16 +259,20 @@ export component MainWindow inherits Window {
     in-out property <length> library-scroll-y: 0px;
     in-out property <bool> export-settings: false;
     in-out property <length> sidebar-width: 330px;
-    public function resize-library-pane(pixels:float) {
-        root.sidebar-width=max(230px,min(500px,pixels*1px));
+    public function resize-library-pane(pixels: float) {
+        root.sidebar-width = max(230px,min(500px,pixels * 1px));
     }
     in-out property <string> query;
     in property <bool> has-results;
     in-out property <bool> compact: false;
-    changed ui-size => {root.compact = root.width < root.ui-size*70;root.library-wide = root.width >= root.ui-size*90;root.update-monitor-layout();}
+    changed ui-size => {
+        root.compact = root.width < root.ui-size * 70;
+        root.library-wide = root.width >= root.ui-size * 90;
+        root.update-monitor-layout();
+    }
     changed width => {
-        root.compact = self.width < root.ui-size*70;
-        root.library-wide = self.width >= root.ui-size*90;
+        root.compact = self.width < root.ui-size * 70;
+        root.library-wide = self.width >= root.ui-size * 90;
         root.update-monitor-layout();
     }
     callback select(EntryAddress);
@@ -231,10 +290,10 @@ export component MainWindow inherits Window {
     in property <string> calendar-context;
     in property <[string]> band-labels;
     in property <[string]> method-labels;
-    callback more-filters(string, int, int, int, int, int, string, string, string, string, string, string);
+    callback more-filters(string, int, int, int, int, int, DateInput, DateInput, DateInput);
     callback clear-library-filters();
     callback reset-library-sort();
-    function clear-applied-filters(){dialogs.clear-applied-filters();}
+    function clear-applied-filters() { dialogs.clear-applied-filters(); }
     in-out property <string> study-query;
     in-out property <int> population-choice:0;
     in-out property <int> role-choice:0;
@@ -247,7 +306,6 @@ export component MainWindow inherits Window {
     in-out property <string> modified-through;
     in-out property <string> added-from;
     in-out property <string> added-through;
-
 
     in property <[string]> collection-labels;
     in property <[string]> sort-labels;
@@ -291,11 +349,13 @@ export component MainWindow inherits Window {
     callback new-draft();
     callback save-recipe();
     dialogs := Dialogs {
-        window-width:root.width;window-height:root.height;toolbar-height:toolbar.height;
+        window-width: root.width;
+        window-height: root.height;
+        toolbar-height: toolbar.height;
         add-choices: root.add-choices;
-        add-binaural-label:root.add-binaural-label;
-        add-monaural-label:root.add-monaural-label;
-        add-component(arg0, arg1) => {root.add-component(arg0, arg1);}
+        add-binaural-label: root.add-binaural-label;
+        add-monaural-label: root.add-monaural-label;
+        add-component(arg0, arg1) => { root.add-component(arg0, arg1); }
         add-reason: root.add-reason;
         added-from <=> root.added-from;
         added-through <=> root.added-through;
@@ -307,9 +367,9 @@ export component MainWindow inherits Window {
         can-add-pair: root.can-add-pair;
         can-import: root.can-import;
         can-manage-library: root.can-manage-library;
-        clear-library-filters() => {root.clear-library-filters();}
+        clear-library-filters() => { root.clear-library-filters(); }
         collection-choice <=> root.collection-choice;
-        collection-filter(arg0, arg1) => {root.collection-filter(arg0, arg1);}
+        collection-filter(arg0, arg1) => { root.collection-filter(arg0, arg1); }
         compact <=> root.compact;
         created-from <=> root.created-from;
         created-through <=> root.created-through;
@@ -318,7 +378,7 @@ export component MainWindow inherits Window {
         document: root.document;
         group-choice <=> root.group-choice;
         group-labels: root.group-labels;
-        initialize-library() => {root.initialize-library();}
+        initialize-library() => { root.initialize-library(); }
         library-alert: root.library-alert;
         library-count: root.library-count;
         library-status: root.library-status;
@@ -326,24 +386,27 @@ export component MainWindow inherits Window {
         method-labels: root.method-labels;
         modified-from <=> root.modified-from;
         modified-through <=> root.modified-through;
-        more-filters(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) => {root.more-filters(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);}
-        open-recipe() => {root.open-recipe();}
+        more-filters(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) => {
+            root.more-filters(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+        }
+        open-recipe() => { root.open-recipe(); }
         pair-add-reason: root.pair-add-reason;
         population-choice <=> root.population-choice;
         population-labels: root.population-labels;
         query <=> root.query;
-        refresh-library() => {root.refresh-library();}
-        reset-library-sort() => {root.reset-library-sort();}
-        rhythm-filter(arg0, arg1) => {root.rhythm-filter(arg0, arg1);}
+        refresh-library() => { root.refresh-library(); }
+        reset-library-sort() => { root.reset-library-sort(); }
+        rhythm-filter(arg0, arg1) => { root.rhythm-filter(arg0, arg1); }
         role-choice <=> root.role-choice;
         role-labels: root.role-labels;
-        show-saved() => {root.show-saved();}
+        show-saved() => { root.show-saved(); }
         sort-choice <=> root.sort-choice;
         sort-labels: root.sort-labels;
         storage-open <=> root.storage-open;
         study-query <=> root.study-query;
         ui-size: root.ui-size;
     }
+
     MenuBar {
         Menu {
             title: Terms.caption-file;
@@ -354,6 +417,7 @@ export component MainWindow inherits Window {
                     root.new-draft();
                 }
             }
+
             MenuItem {
                 title: (Actions.open-recipe.label + "…");
                 enabled: Actions.open-recipe.enabled;
@@ -361,6 +425,7 @@ export component MainWindow inherits Window {
                     root.open-recipe();
                 }
             }
+
             MenuItem {
                 title: Actions.save.label;
                 enabled: Actions.save.enabled;
@@ -368,8 +433,19 @@ export component MainWindow inherits Window {
                     root.save-recipe();
                 }
             }
-            MenuItem {title:Actions.save-copy.label;enabled: Actions.save-copy.enabled;activated=>{root.save-copy();}}
-            MenuItem {title:(Actions.export-recipe.label + "…");enabled: Actions.export-recipe.enabled;activated=>{root.export-recipe();}}
+
+            MenuItem {
+                title: Actions.save-copy.label;
+                enabled: Actions.save-copy.enabled;
+                activated => { root.save-copy(); }
+            }
+
+            MenuItem {
+                title: (Actions.export-recipe.label + "…");
+                enabled: Actions.export-recipe.enabled;
+                activated => { root.export-recipe(); }
+            }
+
             MenuItem {
                 title: (Actions.export.label + "…");
                 enabled: Actions.export.enabled;
@@ -377,8 +453,19 @@ export component MainWindow inherits Window {
                     root.export-wav();
                 }
             }
-            MenuItem {title:root.library-play-action;enabled: Actions.play-selected-sound.enabled;activated=>{root.play-recipe();}}
-            MenuItem {title:Actions.stop.label;enabled: Actions.stop.enabled;activated=>{root.stop-audio();}}
+
+            MenuItem {
+                title: root.library-play-action;
+                enabled: Actions.play-selected-sound.enabled;
+                activated => { root.play-recipe(); }
+            }
+
+            MenuItem {
+                title: Actions.stop.label;
+                enabled: Actions.stop.enabled;
+                activated => { root.stop-audio(); }
+            }
+
             MenuItem {
                 title: Terms.action-quit;
                 activated => {
@@ -386,6 +473,7 @@ export component MainWindow inherits Window {
                 }
             }
         }
+
         if !root.native-mac: Menu {
             title: Terms.caption-help;
             MenuItem {
@@ -401,34 +489,61 @@ export component MainWindow inherits Window {
     workspace-layout := VerticalBox {
         spacing: 0px;
         toolbar := HorizontalBox {
-            changed preferred-height=>{root.update-monitor-layout();}
-            vertical-stretch:0;
-            min-height:root.ui-size*3;
-            padding:4px;
+            changed preferred-height => { root.update-monitor-layout(); }
+            vertical-stretch: 0;
+            min-height: root.ui-size * 3;
+            padding: 4px;
             WorkspaceNavigation {
                 current <=> root.tab-index;
-                text-size:root.ui-size;
-                selected(index)=>{root.tab-changed(index);}
+                text-size: root.ui-size;
+                selected(index) => { root.tab-changed(index); }
             }
-            Rectangle {horizontal-stretch:1;}
-            if root.tab-index==0: Button {text:Terms.caption-library-options;triggered =>{dialogs.open-library-options();}}
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            if root.tab-index == 0: Button {
+                text: Terms.caption-library-options;
+                triggered => { dialogs.open-library-options(); }
+            }
             // Left of the lasting controls, so a late press on Cancel export
             // lands in the space it leaves rather than on another control.
-            if root.exporting: ProgressIndicator {progress:root.progress;accessible-label:ViewCaptions.caption-wav-export-progress;max-width:120px;}
-            if root.exporting: Button { enabled: Actions.cancel-export.enabled;text:Actions.cancel-export.label;triggered =>{root.cancel-file();}}
-            if root.status != "" || root.auxiliary-error != "": Button {text:Terms.caption-task-details-dialog;triggered =>{root.show-diagnostics();}}
-            if root.tab-index==1: Button {text:Actions.save.label;enabled: Actions.save.enabled;accessible-description:root.save-reason;triggered =>{root.save-recipe();}}
+            if root.exporting: ProgressIndicator {
+                progress: root.progress;
+                accessible-label: ViewCaptions.wav-export-progress;
+                max-width: 120px;
+            }
+            if root.exporting: Button {
+                enabled: Actions.cancel-export.enabled;
+                text: Actions.cancel-export.label;
+                triggered => { root.cancel-file(); }
+            }
+            if root.status != "" || root.auxiliary-error != "": Button {
+                text: Terms.caption-task-details-dialog;
+                triggered => { root.show-diagnostics(); }
+            }
+            if root.tab-index == 1: Button {
+                text: Actions.save.label;
+                enabled: Actions.save.enabled;
+                accessible-description: root.save-reason;
+                triggered => { root.save-recipe(); }
+            }
             monitor-opener := StableButton {
-                text:root.monitor-open ? Terms.action-hide-monitor : Terms.action-show-monitor;
-                labels:[Terms.action-hide-monitor,Terms.action-show-monitor];
-                accessible-name:(root.monitor-open ? Terms.action-hide-output-monitor : Terms.action-show-output-monitor);expanded:root.monitor-open;
-                clicked=>{root.monitor-open=!root.monitor-open;root.window-changed();}
+                text: root.monitor-open ? Terms.action-hide-monitor : Terms.action-show-monitor;
+                labels: [Terms.action-hide-monitor, Terms.action-show-monitor];
+                accessible-name: (root.monitor-open ? Terms.action-hide-output-monitor :
+                    Terms.action-show-output-monitor);
+                expanded: root.monitor-open;
+                clicked => { root.monitor-open = !root.monitor-open; root.window-changed(); }
             }
         }
+
         Rectangle {
-            min-height:0px;
+            min-height: 0px;
             library-page := LibraryPane {
-                width:parent.width;height:parent.height;
+                width: parent.width;
+                height: parent.height;
                 add-to-library(arg0) => { root.add-to-library(arg0); }
                 band-choice <=> root.band-choice;
                 band-labels: root.band-labels;
@@ -437,7 +552,7 @@ export component MainWindow inherits Window {
                 rhythm-filtered: root.rhythm-filtered;
                 show-built-in-dates: root.show-built-in-dates;
                 open-files-scope: root.open-files-scope;
-                clear-rhythm-filters() => {root.clear-rhythm-filters();}
+                clear-rhythm-filters() => { root.clear-rhythm-filters(); }
                 can-add-to-library: root.can-add-to-library;
                 can-copy: root.can-copy;
                 can-export: root.can-export;
@@ -472,7 +587,7 @@ export component MainWindow inherits Window {
                 library-detail <=> root.library-detail;
                 library-empty-message: root.library-empty-message;
                 library-filters-active: root.library-filters-active;
-                library-entry:root.library-entry;
+                library-entry: root.library-entry;
                 library-key: root.library-key;
                 library-overview: root.library-overview;
                 library-ownership: root.library-ownership;
@@ -514,8 +629,10 @@ export component MainWindow inherits Window {
                 tab-index <=> root.tab-index;
                 ui-size: root.ui-size;
             }
+
             WorkbenchPane {
-                width:parent.width;height:parent.height;
+                width: parent.width;
+                height: parent.height;
                 add-reason: root.add-reason;
                 based-on: root.based-on;
                 based-on-source() => { root.based-on-source(); }
@@ -577,56 +694,105 @@ export component MainWindow inherits Window {
                 ui-size: root.ui-size;
             }
         }
+
         Rectangle {
-            visible:root.monitor-open && root.drawer-fits;
-            clip:true;
-            preferred-height:self.visible ? root.effective-drawer-height : 0px;
-            min-height:self.visible ? root.effective-drawer-height : 0px;
-            max-height:self.visible ? root.effective-drawer-height : 0px;
-            vertical-stretch:0;
-            background:Palette.control-background;
-            border-width:1px;border-color:Palette.border;
-            drawer-content := VerticalBox {padding:8px;spacing:3px;
+            visible: root.monitor-open && root.drawer-fits;
+            clip: true;
+            preferred-height: self.visible ? root.effective-drawer-height : 0px;
+            min-height: self.visible ? root.effective-drawer-height : 0px;
+            max-height: self.visible ? root.effective-drawer-height : 0px;
+            vertical-stretch: 0;
+            background: Palette.control-background;
+            border-width: 1px;
+            border-color: Palette.border;
+            drawer-content := VerticalBox {
+                padding: 8px;
+                spacing: 3px;
                 Rectangle {
-                    height:6px;background:grip-touch.has-hover || grip-focus.has-focus ? Palette.accent-background : Palette.border;
-                    accessible-role:slider;accessible-label:Terms.caption-output-monitor-height;
-                    accessible-value:root.effective-drawer-height/1px;accessible-value-minimum:root.minimum-monitor-height/1px;accessible-value-maximum:max(root.minimum-monitor-height,root.maximum-monitor-height)/1px;accessible-value-step:16;
-                    accessible-action-set-value(v)=>{if v.is-float(){root.resize-monitor(v.to-float());}}
-                    accessible-action-increment=>{root.resize-monitor(root.effective-drawer-height/1px+16);}
-                    accessible-action-decrement=>{root.resize-monitor(root.effective-drawer-height/1px-16);}
-                    forward-focus:grip-focus;
-                    grip-focus := FocusScope {key-pressed(e)=>{if e.text==Key.UpArrow{root.resize-monitor(root.effective-drawer-height/1px+16);return accept;}if e.text==Key.DownArrow{root.resize-monitor(root.effective-drawer-height/1px-16);return accept;}return reject;}}
-                    grip-touch := TouchArea {mouse-cursor:row-resize;moved=>{if self.pressed{root.resize-monitor((root.effective-drawer-height + self.pressed-y - self.mouse-y)/1px);}}clicked=>{grip-focus.focus();}}
+                    height: 6px;
+                    background: grip-touch.has-hover || grip-focus.has-focus ?
+                        Palette.accent-background : Palette.border;
+                    accessible-role: slider;
+                    accessible-label: Terms.caption-output-monitor-height;
+                    accessible-value: root.effective-drawer-height / 1px;
+                    accessible-value-minimum: root.minimum-monitor-height / 1px;
+                    accessible-value-maximum: max(root.minimum-monitor-height,
+                        root.maximum-monitor-height) / 1px;
+                    accessible-value-step: 16;
+                    accessible-action-set-value(v) => {
+                        if v.is-float() {
+                            root.resize-monitor(v.to-float());
+                        }
+                    }
+                    accessible-action-increment => {
+                        root.resize-monitor(root.effective-drawer-height / 1px + 16);
+                    }
+                    accessible-action-decrement => {
+                        root.resize-monitor(root.effective-drawer-height / 1px - 16);
+                    }
+                    forward-focus: grip-focus;
+                    grip-focus := FocusScope {
+                        key-pressed(e) => {
+                            if e.text == Key.UpArrow {
+                                root.resize-monitor(root.effective-drawer-height / 1px + 16);
+                                return accept;
+                            }
+                            if e.text == Key.DownArrow {
+                                root.resize-monitor(root.effective-drawer-height / 1px - 16);
+                                return accept;
+                            }
+                            return reject;
+                        }
+                    }
+
+                    grip-touch := TouchArea {
+                        mouse-cursor: row-resize;
+                        moved => {
+                            if self.pressed {
+                                root.resize-monitor((root.effective-drawer-height + self.pressed-y -
+                                    self.mouse-y) / 1px);
+                            }
+                        }
+                        clicked => { grip-focus.focus(); }
+                    }
                 }
+
                 MonitorPanel {
-                    data:root.monitor-data;ui-size:root.ui-size;
-                    span-choices:root.span-choices;scale-choices:root.scale-choices;
-                    span(i)=>{root.window-index=i;root.window-changed();}
-                    scale(i)=>{root.scale-index=i;root.window-changed();}
-                    hold=>{root.held=!root.held;root.hold-changed();}
-                    follow=>{root.follow-motion();}
-                    details=>{root.show-diagnostics();}
-                    collapse=>{root.monitor-open=false;monitor-opener.focus-button();root.window-changed();}
+                    data: root.monitor-data;
+                    ui-size: root.ui-size;
+                    span-choices: root.span-choices;
+                    scale-choices: root.scale-choices;
+                    span(i) => { root.window-index = i; root.window-changed(); }
+                    scale(i) => { root.scale-index = i; root.window-changed(); }
+                    hold => { root.held = !root.held; root.hold-changed(); }
+                    follow => { root.follow-motion(); }
+                    details => { root.show-diagnostics(); }
+                    collapse => {
+                        root.monitor-open = false;
+                        monitor-opener.focus-button();
+                        root.window-changed();
+                    }
                 }
             }
         }
+
         transport := TransportBar {
-                auxiliary-error: root.auxiliary-error;
-                elapsed: root.elapsed;
-                generated: root.generated;
-                guidance: root.guidance;
-                operation-outcome: root.operation-outcome;
-                operation-summary: root.operation-summary;
-                play-stop() => { root.play-stop(); }
-                play-target: root.play-target;
-                playback-busy: root.playback-busy;
-                player-title: root.player-title;
-                show-diagnostics() => { root.show-diagnostics(); }
-                transport-action: root.transport-action;
-                transport-enabled: root.transport-enabled;
-                transport-labels: root.transport-labels;
-                ui-size: root.ui-size;
-                update-monitor-layout() => { root.update-monitor-layout(); }
-            }
+            auxiliary-error: root.auxiliary-error;
+            elapsed: root.elapsed;
+            generated: root.generated;
+            guidance: root.guidance;
+            operation-outcome: root.operation-outcome;
+            operation-summary: root.operation-summary;
+            play-stop() => { root.play-stop(); }
+            play-target: root.play-target;
+            playback-busy: root.playback-busy;
+            player-title: root.player-title;
+            show-diagnostics() => { root.show-diagnostics(); }
+            transport-action: root.transport-action;
+            transport-enabled: root.transport-enabled;
+            transport-labels: root.transport-labels;
+            ui-size: root.ui-size;
+            update-monitor-layout() => { root.update-monitor-layout(); }
+        }
     }
 }

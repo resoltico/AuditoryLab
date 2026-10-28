@@ -3,7 +3,8 @@ use std::{collections::BTreeSet, fs, path::Path};
 
 #[expect(
     clippy::expect_used,
-    reason = "A malformed authoritative declaration must fail this contract test rather than skip a diagnostic owner"
+    reason = "A malformed authoritative declaration must fail this contract test \
+        rather than skip a diagnostic owner"
 )]
 fn braced(text: &str) -> (&str, &str) {
     let start = text.find('{').expect("declaration group");
@@ -37,7 +38,8 @@ fn braced(text: &str) -> (&str, &str) {
 }
 #[expect(
     clippy::expect_used,
-    reason = "Missing literal codes in the diagnostic declaration are test failures, not recoverable product input"
+    reason = "Missing literal codes in the diagnostic declaration are test \
+        failures, not recoverable product input"
 )]
 fn code_literals(declaration: &str) -> Vec<String> {
     let mut rest = declaration;
@@ -63,7 +65,8 @@ fn code_literals(declaration: &str) -> Vec<String> {
 }
 #[expect(
     clippy::expect_used,
-    reason = "Unreadable source or an invalid vocabulary declaration must fail registry completeness verification"
+    reason = "Unreadable source or an invalid vocabulary declaration must fail \
+        registry completeness verification"
 )]
 fn source_codes(path: &Path, declared: &mut BTreeSet<String>) {
     for entry in fs::read_dir(path).expect("source directory") {

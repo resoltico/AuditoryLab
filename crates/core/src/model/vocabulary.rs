@@ -50,7 +50,8 @@ impl core::error::Error for VocabularyError {}
 /// Declare stable keys and wording alongside their owning type.
 #[macro_export]
 macro_rules! vocabulary {
-    ($name:ident,$kind:literal { $($variant:ident => ($key:expr,$label:expr,$phrase:expr)),+ $(,)? }) => {
+    ($name:ident,$kind:literal { $($variant:ident => ($key:expr,$label:expr,$phrase:expr)),+ $(,)? }
+        ) => {
         impl $name {
             #[doc(hidden)]
             pub const INVALID_CODE:&'static str=concat!("vocabulary.",$kind);
@@ -58,7 +59,8 @@ macro_rules! vocabulary {
             pub const ALL:[Self;[$(stringify!($variant)),+].len()]=[$(Self::$variant),+];
             /// Heading and sentence wording owned by this vocabulary.
             #[must_use]
-            pub const fn term(self)->$crate::vocabulary::Term {match self {$(Self::$variant=>$crate::vocabulary::Term {label:$label,phrase:$phrase}),+}}
+            pub const fn term(self)->$crate::vocabulary::Term {match self {
+                $(Self::$variant=>$crate::vocabulary::Term {label:$label,phrase:$phrase}),+}}
             /// Heading or choice label.
             #[must_use]
             pub const fn label(self)->&'static str {self.term().label}
@@ -88,7 +90,9 @@ macro_rules! vocabulary {
         impl core::str::FromStr for $name {
             type Err=$crate::vocabulary::VocabularyError;
             fn from_str(text:&str)->Result<Self,Self::Err> {
-                Self::ALL.into_iter().find(|value|value.key()==text).ok_or($crate::vocabulary::VocabularyError::new(Self::INVALID_CODE))
+                Self::ALL.into_iter()
+                    .find(|value| value.key() == text)
+                    .ok_or($crate::vocabulary::VocabularyError::new(Self::INVALID_CODE))
             }
         }
     };
@@ -100,14 +104,22 @@ impl crate::Code for VocabularyError {
         self.0
     }
 }
-macro_rules! vocabularies {($consumer:ident)=>{$consumer! {
-        ears:crate::Ears,ear:crate::Ear,pair_kind:crate::PairKind,slot_role:crate::SlotRole,
-        parameters:crate::ParameterId,carrier_kind:crate::CarrierKind,modulation_kind:crate::ModulationKind,
-        population:crate::Population,condition_role:crate::ConditionRole,evidence_scope:crate::EvidenceScope,measure:crate::Measure,
-        band:crate::rhythm::Band,method:crate::rhythm::Method,completeness:crate::rhythm::Completeness,
+macro_rules! vocabularies {
+    ($consumer:ident) => {
+        $consumer! {
+                ears:crate::Ears,ear:crate::Ear,pair_kind:crate::PairKind,slot_role:crate::SlotRole,
+                parameters:crate::ParameterId,carrier_kind:crate::CarrierKind,
+                    modulation_kind:crate::ModulationKind,
+                population:crate::Population,condition_role:crate::ConditionRole,
+                    evidence_scope:crate::EvidenceScope,measure:crate::Measure,
+                band:crate::rhythm::Band,method:crate::rhythm::Method,
+                    completeness:crate::rhythm::Completeness,
 
-}};}
-macro_rules! registry {($($name:ident:$kind:ty),* $(,)?)=>{pub(crate) const CODES:&[&str]=&[$(<$kind>::INVALID_CODE),*];};}
+        }
+    };
+}
+macro_rules! registry {($($name:ident:$kind:ty),* $(,)?)=>{
+    pub(crate) const CODES:&[&str]=&[$(<$kind>::INVALID_CODE),*];};}
 vocabularies!(registry);
 
 /// Persisted title of an untitled authored sound.
@@ -120,10 +132,19 @@ pub fn copy_title(title: &str) -> String {
 /// Attribution content persisted into an independent copy.
 #[must_use]
 pub fn copy_note(recipe: &crate::Recipe) -> String {
-    recipe.description().and_then(|description|description.notes.as_deref()).filter(|notes|!notes.is_empty()).map_or_else(
-        ||"Attributed copy; source findings concern the ancestor, not this sound.".into(),
-        |notes|format!("Attributed copy; source findings concern the ancestor, not this sound. Ancestor notes: {notes}"),
-    )
+    recipe
+        .description()
+        .and_then(|description| description.notes.as_deref())
+        .filter(|notes| !notes.is_empty())
+        .map_or_else(
+            || "Attributed copy; source findings concern the ancestor, not this sound.".into(),
+            |notes| {
+                format!(
+                    "Attributed copy; source findings concern the ancestor, not this \
+            sound. Ancestor notes: {notes}"
+                )
+            },
+        )
 }
 /// The absence of authored amplitude modulation.
 pub const NO_MODULATION: Term = Term {
@@ -131,75 +152,19 @@ pub const NO_MODULATION: Term = Term {
     phrase: "no modulation",
 };
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use alloc::{collections::BTreeSet, format};
-    use serde::Serialize;
-    fn check<
-        T: Vocabulary
-            + Serialize
-            + serde::de::DeserializeOwned
-            + core::str::FromStr<Err = VocabularyError>
-            + core::fmt::Debug
-            + Eq,
-    >() {
-        #[derive(Serialize, serde::Deserialize)]
-        struct Wire<T> {
-            value: T,
-        }
-        let mut keys = BTreeSet::new();
-        assert!(!T::ALL.is_empty());
-        for value in T::ALL.iter().copied() {
-            assert!(keys.insert(value.key()), "duplicate key {}", value.key());
-            assert!(
-                value
-                    .key()
-                    .as_bytes()
-                    .first()
-                    .is_some_and(u8::is_ascii_lowercase)
-            );
-            assert!(
-                value.key().split('_').all(|word| !word.is_empty()
-                    && word
-                        .bytes()
-                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())),
-                "not snake_case: {}",
-                value.key()
-            );
-            assert!(!value.term().label.is_empty() && !value.term().phrase.is_empty());
-            let serialized = toml::to_string(&Wire { value })
-                .unwrap_or_else(|error| panic!("vocabulary serialization: {error}"));
-            assert_eq!(serialized, format!("value = {:?}\n", value.key()));
-            assert_eq!(value.key().parse::<T>(), Ok(value));
-            assert_eq!(toml::from_str::<Wire<T>>(&serialized).unwrap().value, value);
-        }
-        let error = "__unknown__".parse::<T>().unwrap_err();
-        assert!(error.0.starts_with("vocabulary."));
-        assert!(
-            error
-                .0
-                .bytes()
-                .all(|ch| ch.is_ascii_lowercase() || ch == b'.' || ch == b'_')
-        );
-    }
-    macro_rules! checks {($($test:ident:$kind:ty),* $(,)?)=>{$(#[test] fn $test(){check::<$kind>();})*};}
-    vocabularies!(checks);
-}
-
-/// Heading for the SoundFacts domain concept.
+/// Heading for the `SoundFacts` domain concept.
 pub const SOUND: Term = Term {
     label: "Sound",
     phrase: "Sound",
 };
 
-/// Heading for the NominalRhythmReferenceBand domain concept.
+/// Heading for the `NominalRhythmReferenceBand` domain concept.
 pub const NOMINAL_RHYTHM_REFERENCE_BAND: Term = Term {
     label: "Nominal rhythm reference band",
     phrase: "Nominal rhythm reference band",
 };
 
-/// Heading for the StructuralMethod domain concept.
+/// Heading for the `StructuralMethod` domain concept.
 pub const STRUCTURAL_METHOD: Term = Term {
     label: "Structural method",
     phrase: "Structural method",
@@ -233,3 +198,60 @@ pub const RIGHT_CHANNEL: Term = Term {
     label: "Right",
     phrase: "right",
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::{collections::BTreeSet, format};
+    use serde::Serialize;
+    fn check<
+        T: Vocabulary
+            + Serialize
+            + serde::de::DeserializeOwned
+            + core::str::FromStr<Err = VocabularyError>
+            + core::fmt::Debug
+            + Eq,
+    >() {
+        #[derive(Serialize, serde::Deserialize)]
+        struct Wire<T> {
+            value: T,
+        }
+        let mut keys = BTreeSet::new();
+        assert_ne!(T::ALL, []);
+        for value in T::ALL.iter().copied() {
+            assert!(keys.insert(value.key()), "duplicate key {}", value.key());
+            assert!(
+                value
+                    .key()
+                    .as_bytes()
+                    .first()
+                    .is_some_and(u8::is_ascii_lowercase)
+            );
+            assert!(
+                value.key().split('_').all(|word| !word.is_empty()
+                    && word
+                        .bytes()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())),
+                "not snake_case: {}",
+                value.key()
+            );
+            assert!(!value.term().label.is_empty() && !value.term().phrase.is_empty());
+            let serialized = toml::to_string(&Wire { value })
+                .unwrap_or_else(|error| panic!("vocabulary serialization: {error}"));
+            assert_eq!(serialized, format!("value = {:?}\n", value.key()));
+            assert_eq!(value.key().parse::<T>(), Ok(value));
+            assert_eq!(toml::from_str::<Wire<T>>(&serialized).unwrap().value, value);
+        }
+        let error = "__unknown__".parse::<T>().unwrap_err();
+        assert!(error.0.starts_with("vocabulary."));
+        assert!(
+            error
+                .0
+                .bytes()
+                .all(|ch| ch.is_ascii_lowercase() || ch == b'.' || ch == b'_')
+        );
+    }
+    macro_rules! checks {($($test:ident:$kind:ty),* $(,)?)=>{$(#[test] fn $test(){check::<$kind>();}
+        )*};}
+    vocabularies!(checks);
+}

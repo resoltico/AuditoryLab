@@ -113,7 +113,8 @@ impl Display for SoundText<'_> {
                 let seconds = |n: u64| frames_to_f64(n) / f64::from(*sample_rate_hz);
                 write!(
                     f,
-                    "a {} s fade at each edge does not fit in {} s; the two fades together must be shorter than the duration",
+                    "a {} s fade at each edge does not fit in {} s; the two fades together \
+                        must be shorter than the duration",
                     Number(seconds(*fade_frames)),
                     Number(seconds(*frames))
                 )
@@ -131,7 +132,8 @@ impl Display for SoundText<'_> {
                 };
                 write!(
                     f,
-                    "the components for the {} add up to a peak of {level} dBFS, above full scale; lower their peak levels",
+                    "the components for the {} add up to a peak of {level} dBFS, above \
+                        full scale; lower their peak levels",
                     ear.phrase()
                 )
             }
@@ -148,7 +150,8 @@ impl Display for VoiceText<'_> {
                 sample_rate_hz,
             } => write!(
                 f,
-                "{} must be finite, positive and below {} Hz, half the {sample_rate_hz} Hz sample rate",
+                "{} must be finite, positive and below {} Hz, half the \
+                    {sample_rate_hz} Hz sample rate",
                 Quantity(*parameter, *hz),
                 f64::from(*sample_rate_hz) / 2.0
             ),
@@ -170,7 +173,8 @@ impl Display for VoiceText<'_> {
                 sample_rate_hz,
             } => write!(
                 f,
-                "{} must give 1 to {} frames at {sample_rate_hz} Hz and leave at least one closed frame in each 1/{} s period",
+                "{} must give 1 to {} frames at {sample_rate_hz} Hz and leave at least \
+                    one closed frame in each 1/{} s period",
                 Quantity(*parameter, *width_seconds),
                 Signal::MAX_FRAMES,
                 Number(*rate_hz)
@@ -186,6 +190,23 @@ impl Display for VoiceText<'_> {
                 Quantity(ParameterId::AmDepth, *depth)
             ),
         }
+    }
+}
+
+/// The authored component and, for a pair, its secondary tone.
+#[must_use]
+pub fn voice_reference(id: VoiceId) -> String {
+    match id.lane {
+        Lane::Primary => format!("Component {}", id.component),
+        Lane::Secondary => format!("Component {} · second tone", id.component),
+    }
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
     }
 }
 
@@ -260,17 +281,9 @@ mod tests {
         });
         assert_eq!(
             overlap,
-            "a 0.5 s fade at each edge does not fit in 1 s; the two fades together must be shorter than the duration"
+            "a 0.5 s fade at each edge does not fit in 1 s; the two fades together \
+                must be shorter than the duration"
         );
-    }
-}
-
-/// The authored component and, for a pair, its secondary tone.
-#[must_use]
-pub fn voice_reference(id: VoiceId) -> String {
-    match id.lane {
-        Lane::Primary => format!("Component {}", id.component),
-        Lane::Secondary => format!("Component {} · second tone", id.component),
     }
 }
 
@@ -297,13 +310,5 @@ mod reference_tests {
             error,
         };
         assert!(sound_error(&secondary).starts_with("Component 9 · second tone: "));
-    }
-}
-
-#[cfg(test)]
-const fn finite(value: f64) -> auditorylab_core::Finite {
-    match auditorylab_core::Finite::new(value) {
-        Some(value) => value,
-        None => panic!("nonfinite fixture value"),
     }
 }

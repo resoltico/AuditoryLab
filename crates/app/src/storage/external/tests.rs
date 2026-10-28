@@ -21,13 +21,7 @@ fn unchanged_save_preserves_exact_bytes_and_changed_save_keeps_identity_and_crea
     let (temp, path, snapshot) = fixture();
     let original = fs::read(&path).unwrap();
     let expected = snapshot.external_file().unwrap();
-    let same = ExternalWriter
-        .save(
-            expected,
-            Arc::new(snapshot.recipe().clone()),
-            &Cancel::default(),
-        )
-        .unwrap();
+    let same = super::save(expected, &(snapshot.recipe().clone()), &Cancel::default()).unwrap();
     assert_eq!(same.status, MutationStatus::Unchanged);
     assert_eq!(fs::read(&path).unwrap(), original);
     let mut recipe = snapshot.recipe().clone().into_builder();
@@ -35,13 +29,7 @@ fn unchanged_save_preserves_exact_bytes_and_changed_save_keeps_identity_and_crea
         title: "Edited external".into(),
         notes: Some("own notes".into()),
     });
-    let outcome = ExternalWriter
-        .save(
-            expected,
-            Arc::new(recipe.build().unwrap()),
-            &Cancel::default(),
-        )
-        .unwrap();
+    let outcome = super::save(expected, &(recipe.build().unwrap()), &Cancel::default()).unwrap();
     assert_eq!(
         outcome.recipe.document().id,
         snapshot.recipe().document().id
@@ -77,14 +65,13 @@ fn stale_bytes_or_same_bytes_in_a_new_file_refuse_even_noop_save() {
         }
         let before = fs::read(&path).unwrap();
         assert_eq!(
-            ExternalWriter
-                .save(
-                    snapshot.external_file().unwrap(),
-                    Arc::new(snapshot.recipe().clone()),
-                    &Cancel::default()
-                )
-                .unwrap_err()
-                .outcome(),
+            super::save(
+                snapshot.external_file().unwrap(),
+                &(snapshot.recipe().clone()),
+                &Cancel::default()
+            )
+            .unwrap_err()
+            .outcome(),
             crate::outcome::Outcome::Conflict
         );
         assert_eq!(fs::read(path).unwrap(), before);
@@ -98,12 +85,7 @@ fn history_change_and_cancel_are_refused_without_a_stage_or_file_replacement() {
     let mut changed = snapshot.recipe().clone().into_builder();
     changed.document.created_at = Some("2020-01-01T00:00:00Z".parse().unwrap());
     assert_eq!(
-        ExternalWriter
-            .save(
-                expected,
-                Arc::new(changed.build().unwrap()),
-                &Cancel::default()
-            )
+        super::save(expected, &(changed.build().unwrap()), &Cancel::default())
             .unwrap_err()
             .outcome(),
         crate::outcome::Outcome::HistoryConflict
@@ -111,8 +93,7 @@ fn history_change_and_cancel_are_refused_without_a_stage_or_file_replacement() {
     let cancel = Cancel::default();
     cancel.request();
     assert_eq!(
-        ExternalWriter
-            .save(expected, Arc::new(snapshot.recipe().clone()), &cancel)
+        super::save(expected, &(snapshot.recipe().clone()), &cancel)
             .unwrap_err()
             .outcome(),
         crate::outcome::Outcome::Cancelled
@@ -134,15 +115,7 @@ fn changed_symlink_and_fifo_are_never_followed_or_waited_on() {
     fs::write(&outside, b"secret outside bytes").unwrap();
     fs::remove_file(&path).unwrap();
     symlink(&outside, &path).unwrap();
-    assert!(
-        ExternalWriter
-            .save(
-                expected,
-                Arc::new(snapshot.recipe().clone()),
-                &Cancel::default()
-            )
-            .is_err()
-    );
+    assert!(super::save(expected, &(snapshot.recipe().clone()), &Cancel::default()).is_err());
     assert_eq!(fs::read(outside).unwrap(), b"secret outside bytes");
     fs::remove_file(&path).unwrap();
     assert!(
@@ -153,14 +126,6 @@ fn changed_symlink_and_fifo_are_never_followed_or_waited_on() {
             .success()
     );
     let start = Instant::now();
-    assert!(
-        ExternalWriter
-            .save(
-                expected,
-                Arc::new(snapshot.recipe().clone()),
-                &Cancel::default()
-            )
-            .is_err()
-    );
+    assert!(super::save(expected, &(snapshot.recipe().clone()), &Cancel::default()).is_err());
     assert!(start.elapsed() < Duration::from_secs(1));
 }

@@ -47,175 +47,168 @@ impl Case {
         Self::OpenFilePrompt,
         Self::OpenFileBusy,
     ];
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Independent data table lists permitted observations for every named fixture case"
+    )]
     fn expected(self) -> Expected {
-        let idle = Expected {
-            play: true,
-            import: true,
-            new: true,
-            copy: true,
-            save: true,
-            save_copy: true,
-            export: true,
-            portable: true,
-            preview: true,
-            edit: true,
-            add: true,
-            pair: true,
-            restore: false,
-            file_busy: false,
-            audio: false,
-            cancel: false,
-            manage: true,
-            add_file: false,
-        };
+        let idle = Expected::empty()
+            .with(&[
+                Permission::Play,
+                Permission::Import,
+                Permission::New,
+                Permission::Copy,
+                Permission::Save,
+                Permission::SaveCopy,
+                Permission::Export,
+                Permission::Portable,
+                Permission::Preview,
+                Permission::Edit,
+                Permission::Add,
+                Permission::Pair,
+                Permission::Manage,
+            ])
+            .without(&[
+                Permission::Restore,
+                Permission::FileBusy,
+                Permission::Audio,
+                Permission::Cancel,
+                Permission::AddFile,
+            ]);
         match self {
             Self::Idle => idle,
-            Self::Prompt | Self::OpenFilePrompt => Expected {
-                play: false,
-                manage: false,
-                import: false,
-                new: false,
-                copy: false,
-                save: false,
-                save_copy: false,
-                export: false,
-                portable: false,
-                edit: false,
-                add: false,
-                pair: false,
-                ..idle
-            },
-            Self::PendingFile => Expected {
-                play: false,
-                import: false,
-                new: false,
-                copy: false,
-                save: false,
-                save_copy: false,
-                export: false,
-                portable: false,
-                edit: false,
-                add: false,
-                pair: false,
-                file_busy: true,
-                manage: false,
-                ..idle
-            },
-            Self::Import => Expected {
-                import: false,
-                save: false,
-                save_copy: false,
-                export: false,
-                portable: false,
-                edit: false,
-                add: false,
-                pair: false,
-                file_busy: true,
-                manage: false,
-                ..idle
-            },
-            Self::Export | Self::ExportAtEnd => Expected {
-                play: false,
-                import: false,
-                save: false,
-                save_copy: false,
-                export: false,
-                portable: false,
-                edit: false,
-                add: false,
-                pair: false,
-                file_busy: true,
-                manage: false,
-                cancel: true,
-                ..idle
-            },
-            Self::Background | Self::OpenFileBusy => Expected {
-                import: false,
-                save: false,
-                save_copy: false,
-                export: false,
-                portable: false,
-                file_busy: true,
-                manage: false,
-                ..idle
-            },
-            Self::Audio => Expected {
-                export: false,
-                preview: false,
-                audio: true,
-                ..idle
-            },
-            Self::InvalidText => Expected {
-                play: false,
-                save: false,
-                save_copy: false,
-                export: false,
-                portable: false,
-                ..idle
-            },
-            Self::AcousticInvalid => Expected {
-                export: false,
-                ..idle
-            },
-            Self::Full | Self::Exhausted => Expected {
-                add: false,
-                pair: false,
-                ..idle
-            },
-            Self::RestorableExhausted => Expected {
-                add: false,
-                pair: false,
-                restore: true,
-                ..idle
-            },
-            Self::Unavailable => Expected {
-                save: false,
-                manage: false,
-                save_copy: false,
-                ..idle
-            },
-            Self::NoSelection => Expected {
-                play: false,
-                copy: false,
-                export: false,
-                portable: false,
-                ..idle
-            },
-            Self::FullLineage => Expected {
-                save_copy: false,
-                ..idle
-            },
-            Self::OpenFile => Expected {
-                add_file: true,
-                ..idle
-            },
-            Self::NoDevice => Expected {
-                play: false,
-                ..idle
-            },
+            Self::Prompt | Self::OpenFilePrompt => idle.without(&[
+                Permission::Play,
+                Permission::Manage,
+                Permission::Import,
+                Permission::New,
+                Permission::Copy,
+                Permission::Save,
+                Permission::SaveCopy,
+                Permission::Export,
+                Permission::Portable,
+                Permission::Edit,
+                Permission::Add,
+                Permission::Pair,
+            ]),
+            Self::PendingFile => idle.with(&[Permission::FileBusy]).without(&[
+                Permission::Play,
+                Permission::Import,
+                Permission::New,
+                Permission::Copy,
+                Permission::Save,
+                Permission::SaveCopy,
+                Permission::Export,
+                Permission::Portable,
+                Permission::Edit,
+                Permission::Add,
+                Permission::Pair,
+                Permission::Manage,
+            ]),
+            Self::Import => idle.with(&[Permission::FileBusy]).without(&[
+                Permission::Import,
+                Permission::Save,
+                Permission::SaveCopy,
+                Permission::Export,
+                Permission::Portable,
+                Permission::Edit,
+                Permission::Add,
+                Permission::Pair,
+                Permission::Manage,
+            ]),
+            Self::Export | Self::ExportAtEnd => idle
+                .with(&[Permission::FileBusy, Permission::Cancel])
+                .without(&[
+                    Permission::Play,
+                    Permission::Import,
+                    Permission::Save,
+                    Permission::SaveCopy,
+                    Permission::Export,
+                    Permission::Portable,
+                    Permission::Edit,
+                    Permission::Add,
+                    Permission::Pair,
+                    Permission::Manage,
+                ]),
+            Self::Background | Self::OpenFileBusy => idle.with(&[Permission::FileBusy]).without(&[
+                Permission::Import,
+                Permission::Save,
+                Permission::SaveCopy,
+                Permission::Export,
+                Permission::Portable,
+                Permission::Manage,
+            ]),
+            Self::Audio => idle
+                .with(&[Permission::Audio])
+                .without(&[Permission::Export, Permission::Preview]),
+            Self::InvalidText => idle.without(&[
+                Permission::Play,
+                Permission::Save,
+                Permission::SaveCopy,
+                Permission::Export,
+                Permission::Portable,
+            ]),
+            Self::AcousticInvalid => idle.without(&[Permission::Export]),
+            Self::Full | Self::Exhausted => idle.without(&[Permission::Add, Permission::Pair]),
+            Self::RestorableExhausted => idle
+                .with(&[Permission::Restore])
+                .without(&[Permission::Add, Permission::Pair]),
+            Self::Unavailable => {
+                idle.without(&[Permission::Save, Permission::Manage, Permission::SaveCopy])
+            }
+            Self::NoSelection => idle.without(&[
+                Permission::Play,
+                Permission::Copy,
+                Permission::Export,
+                Permission::Portable,
+            ]),
+            Self::FullLineage => idle.without(&[Permission::SaveCopy]),
+            Self::OpenFile => idle.with(&[Permission::AddFile]),
+            Self::NoDevice => idle.without(&[Permission::Play]),
         }
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Permission {
+    Play,
+    Import,
+    New,
+    Copy,
+    Save,
+    SaveCopy,
+    Export,
+    Portable,
+    Preview,
+    Edit,
+    Add,
+    Pair,
+    Restore,
+    FileBusy,
+    Audio,
+    Cancel,
+    Manage,
+    AddFile,
+}
 struct Expected {
-    play: bool,
-    import: bool,
-    new: bool,
-    copy: bool,
-    save: bool,
-    save_copy: bool,
-    export: bool,
-    portable: bool,
-    preview: bool,
-    edit: bool,
-    add: bool,
-    pair: bool,
-    restore: bool,
-    file_busy: bool,
-    audio: bool,
-    cancel: bool,
-    manage: bool,
-    add_file: bool,
+    permitted: std::collections::BTreeSet<Permission>,
+}
+impl Expected {
+    fn empty() -> Self {
+        Self {
+            permitted: std::collections::BTreeSet::new(),
+        }
+    }
+    fn with(mut self, values: &[Permission]) -> Self {
+        self.permitted.extend(values);
+        self
+    }
+    fn without(mut self, values: &[Permission]) -> Self {
+        self.permitted.retain(|value| !values.contains(value));
+        self
+    }
+    fn allows(&self, value: Permission) -> bool {
+        self.permitted.contains(&value)
+    }
 }
 
 fn fixture(case: Case) -> TestWorkspace {
@@ -278,63 +271,7 @@ fn fixture(case: Case) -> TestWorkspace {
         | Case::Exhausted
         | Case::RestorableExhausted
         | Case::FullLineage => {
-            let mut recipe = ws.editor().draft().recipe().unwrap().into_builder();
-            let count = if matches!(case, Case::Full) {
-                16
-            } else if matches!(case, Case::FullLineage) {
-                0
-            } else {
-                1
-            };
-            recipe.content.sound = auditorylab_core::Sound::new(
-                recipe.content.sound.duration_seconds(),
-                recipe.content.sound.fade_seconds(),
-                (0..count)
-                    .map(|index| crate::core::Component {
-                        id: ComponentId::new(
-                            if matches!(case, Case::Exhausted | Case::RestorableExhausted) {
-                                u32::MAX
-                            } else {
-                                index + 1
-                            },
-                        )
-                        .unwrap(),
-                        form: crate::core::ComponentForm::Tone {
-                            frequency_hz: if matches!(case, Case::AcousticInvalid) {
-                                finite(30000.0)
-                            } else {
-                                finite(440.0)
-                            },
-                            ears: crate::core::Ears::Both,
-                            peak_dbfs: finite(-40.0),
-                            modulation: None,
-                        },
-                    })
-                    .collect(),
-            )
-            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
-            if matches!(case, Case::FullLineage) {
-                recipe.content.lineage = (0..16)
-                    .map(|index| crate::core::provenance::Lineage {
-                        title: format!("Ancestor {index}"),
-                        note: "Retained relationship".into(),
-                        document_id: None,
-                        catalog_id: None,
-                        source_keys: Vec::new(),
-                    })
-                    .collect();
-            }
-            ws.install_document(
-                EditorSession::new(Draft::from_recipe(recipe.build().unwrap())).unwrap(),
-            );
-            if matches!(case, Case::RestorableExhausted) {
-                let row = ws
-                    .editor()
-                    .component_key(ComponentId::new(u32::MAX).unwrap())
-                    .unwrap();
-                ws.apply(Command::Editor(EditorCommand::RemoveComponent(row)))
-                    .unwrap();
-            }
+            prepare_document_case(&mut ws, case);
         }
         Case::Unavailable => {
             ws.library.replace_binding(
@@ -379,10 +316,10 @@ macro_rules! action_matrix {
         fn $name() {
             for case in Case::ALL {
                 let mut ws = fixture(case);
-                let expected = case.expected().$expected;
+                let expected = case.expected().allows(Permission::$expected);
                 let next = ws.next_id;
                 let view = ws.action_view();
-                assert_eq!(view.$field, expected, "view: {case:?}");
+                assert_eq!(view.$field(), expected, "view: {case:?}");
                 assert_eq!(
                     ($admit)(&mut ws.inner).is_ok(),
                     expected,
@@ -403,49 +340,49 @@ macro_rules! action_matrix {
 action_matrix!(
     play_admission_matches_view_and_action,
     can_play,
-    play,
+    Play,
     |ws: &mut Workspace| ws.play_readiness(),
     |ws: &mut Workspace| ws.apply(Command::Audio(AudioCommand::Play))
 );
 action_matrix!(
     import_admission_matches_view_and_action,
     can_import,
-    import,
+    Import,
     |ws: &mut Workspace| ws.import_admission(),
     |ws: &mut Workspace| ws.apply(Command::File(FileCommand::Import))
 );
 action_matrix!(
     save_admission_matches_view_and_action,
     can_save,
-    save,
+    Save,
     |ws: &mut Workspace| ws.prepare_save().map(|_| ()),
-    |ws: &mut Workspace| ws.apply(Command::File(FileCommand::Save))
+    |ws: &mut Workspace| ws.save()
 );
 action_matrix!(
     save_copy_admission_matches_view_and_action,
     can_save_copy,
-    save_copy,
+    SaveCopy,
     |ws: &mut Workspace| ws.prepare_save_copy().map(|_| ()),
-    |ws: &mut Workspace| ws.apply(Command::File(FileCommand::SaveCopy))
+    |ws: &mut Workspace| ws.save_independent_copy()
 );
 action_matrix!(
     export_admission_matches_view_and_action,
     can_export,
-    export,
+    Export,
     |ws: &mut Workspace| ws.prepare_export().map(|_| ()),
     |ws: &mut Workspace| ws.apply(Command::File(FileCommand::ExportWav))
 );
 action_matrix!(
     portable_export_admission_matches_view_and_action,
     can_export_recipe,
-    portable,
+    Portable,
     |ws: &mut Workspace| ws.prepare_export_recipe().map(|_| ()),
     |ws: &mut Workspace| ws.apply(Command::File(FileCommand::ExportRecipe))
 );
 action_matrix!(
     component_admission_matches_view_and_action,
     can_add_component,
-    add,
+    Add,
     |ws: &mut Workspace| ws.component_add_admission(ws.editor().document_key(), CarrierKind::Tone),
     |ws: &mut Workspace| ws.apply(Command::Editor(EditorCommand::AddComponent {
         row: ws.editor().document_key(),
@@ -455,7 +392,7 @@ action_matrix!(
 action_matrix!(
     pair_admission_matches_view_and_action,
     can_add_pair,
-    pair,
+    Pair,
     |ws: &mut Workspace| ws
         .pair_add_admission(ws.editor().document_key(), crate::core::PairKind::Binaural),
     |ws: &mut Workspace| ws.apply(Command::Editor(EditorCommand::AddPair {
@@ -466,7 +403,7 @@ action_matrix!(
 action_matrix!(
     restore_admission_matches_view_and_action,
     can_restore_component,
-    restore,
+    Restore,
     |ws: &mut Workspace| ws.restore_component_admission(ws.editor().document_key()),
     |ws: &mut Workspace| ws.apply(Command::Editor(EditorCommand::RestoreComponent(
         ws.editor().document_key()
@@ -476,14 +413,14 @@ action_matrix!(
 action_matrix!(
     new_admission_matches_view_and_action,
     can_new,
-    new,
+    New,
     |ws: &mut Workspace| ws.start_allowed(),
     |ws: &mut Workspace| ws.apply(Command::Editor(EditorCommand::New))
 );
 action_matrix!(
     copy_admission_matches_view_and_action,
     can_copy,
-    copy,
+    Copy,
     |ws: &mut Workspace| ws.copy_admission(),
     |ws: &mut Workspace| ws.apply(Command::Editor(EditorCommand::CopySelected))
 );
@@ -494,13 +431,33 @@ fn preview_admission_and_file_busy_use_owned_resource_state() {
         let mut ws = fixture(case);
         let expected = case.expected();
         let view = ws.action_view();
-        assert_eq!(view.can_preview, expected.preview, "{case:?}");
-        assert_eq!(ws.preview_admission().is_ok(), expected.preview, "{case:?}");
-        assert_eq!(view.file_busy, expected.file_busy, "{case:?}");
-        assert_eq!(ws.file_busy(), expected.file_busy, "{case:?}");
+        assert_eq!(
+            view.can_preview(),
+            expected.allows(Permission::Preview),
+            "{case:?}"
+        );
+        assert_eq!(
+            ws.preview_admission().is_ok(),
+            expected.allows(Permission::Preview),
+            "{case:?}"
+        );
+        assert_eq!(
+            view.file_busy,
+            expected.allows(Permission::FileBusy),
+            "{case:?}"
+        );
+        assert_eq!(
+            ws.file_busy(),
+            expected.allows(Permission::FileBusy),
+            "{case:?}"
+        );
         let revision = ws.revision();
         let _ = ws.apply(Command::Output(OutputCommand::Preview));
-        assert_eq!(ws.revision() != revision, expected.preview, "{case:?}");
+        assert_eq!(
+            ws.revision() != revision,
+            expected.allows(Permission::Preview),
+            "{case:?}"
+        );
     }
 }
 #[test]
@@ -509,41 +466,49 @@ fn stop_and_cancel_stay_independent_of_other_admissions_until_join() {
         let mut ws = fixture(case);
         let expected = case.expected();
         let view = ws.action_view();
-        assert_eq!(view.playback_busy, expected.audio, "{case:?}");
-        assert_eq!(view.exporting, expected.cancel, "{case:?}");
         assert_eq!(
-            view.transport_enabled,
-            expected.audio || expected.play,
+            view.playback_busy(),
+            expected.allows(Permission::Audio),
+            "{case:?}"
+        );
+        assert_eq!(
+            view.exporting,
+            expected.allows(Permission::Cancel),
+            "{case:?}"
+        );
+        assert_eq!(
+            view.transport_enabled(),
+            expected.allows(Permission::Audio) || expected.allows(Permission::Play),
             "{case:?}"
         );
         assert_eq!(
             ws.audio.stop_admission().is_ok(),
-            expected.audio,
+            expected.allows(Permission::Audio),
             "{case:?}"
         );
         assert_eq!(
             ws.files.cancel_admission().is_ok(),
-            expected.cancel,
+            expected.allows(Permission::Cancel),
             "{case:?}"
         );
         assert_eq!(
             ws.apply(Command::Audio(AudioCommand::Stop)).is_ok(),
-            expected.audio,
+            expected.allows(Permission::Audio),
             "{case:?}"
         );
         assert_eq!(
             ws.apply(Command::File(FileCommand::CancelExport)).is_ok(),
-            expected.cancel,
+            expected.allows(Permission::Cancel),
             "{case:?}"
         );
         assert_eq!(
             ws.audio_busy(),
-            expected.audio,
+            expected.allows(Permission::Audio),
             "Stop cannot release an unjoined slot: {case:?}"
         );
         assert_eq!(
             ws.file_busy(),
-            expected.file_busy,
+            expected.allows(Permission::FileBusy),
             "Cancel cannot release an unjoined slot: {case:?}"
         );
     }
@@ -554,8 +519,16 @@ fn editor_actions_share_the_owned_gate() {
         let mut ws = fixture(case);
         let expected = case.expected();
         let view = ws.action_view();
-        assert_eq!(view.can_edit, expected.edit, "{case:?}");
-        assert_eq!(ws.editing_allowed().is_ok(), expected.edit, "{case:?}");
+        assert_eq!(
+            view.can_edit(),
+            expected.allows(Permission::Edit),
+            "{case:?}"
+        );
+        assert_eq!(
+            ws.editing_allowed().is_ok(),
+            expected.allows(Permission::Edit),
+            "{case:?}"
+        );
         let handle = ws
             .editor()
             .handle(EditingField::Metadata(
@@ -565,7 +538,7 @@ fn editor_actions_share_the_owned_gate() {
         assert_eq!(
             ws.apply(Command::Editor(EditorCommand::Restore(handle)))
                 .is_ok(),
-            expected.edit,
+            expected.allows(Permission::Edit),
             "{case:?}"
         );
     }
@@ -574,14 +547,14 @@ fn editor_actions_share_the_owned_gate() {
 action_matrix!(
     library_worker_admission_matches_view_and_action,
     can_manage_library,
-    manage,
+    Manage,
     |ws: &mut Workspace| ws.library_job_admission(),
     |ws: &mut Workspace| ws.apply(Command::Library(LibraryCommand::Initialize))
 );
 action_matrix!(
     add_input_admission_matches_view_and_action,
     can_add_to_library,
-    add_file,
+    AddFile,
     |ws: &mut Workspace| ws.prepare_add_to_library().map(|_| ()),
     |ws: &mut Workspace| ws.apply(Command::Library(LibraryCommand::AddSelected))
 );
@@ -591,5 +564,61 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
     match auditorylab_core::Finite::new(value) {
         Some(value) => value,
         None => panic!("nonfinite fixture value"),
+    }
+}
+
+fn prepare_document_case(ws: &mut TestWorkspace, case: Case) {
+    let mut recipe = ws.editor().draft().recipe().unwrap().into_builder();
+    let count = if matches!(case, Case::Full) {
+        16
+    } else {
+        u32::from(!matches!(case, Case::FullLineage))
+    };
+    recipe.content.sound = auditorylab_core::Sound::new(
+        recipe.content.sound.duration_seconds(),
+        recipe.content.sound.fade_seconds(),
+        (0..count)
+            .map(|index| crate::core::Component {
+                id: ComponentId::new(
+                    if matches!(case, Case::Exhausted | Case::RestorableExhausted) {
+                        u32::MAX
+                    } else {
+                        index + 1
+                    },
+                )
+                .unwrap(),
+                form: crate::core::ComponentForm::Tone {
+                    frequency_hz: if matches!(case, Case::AcousticInvalid) {
+                        finite(30000.0)
+                    } else {
+                        finite(440.0)
+                    },
+                    ears: crate::core::Ears::Both,
+                    peak_dbfs: finite(-40.0),
+                    modulation: None,
+                },
+            })
+            .collect(),
+    )
+    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+    if matches!(case, Case::FullLineage) {
+        recipe.content.lineage = (0..16)
+            .map(|index| crate::core::provenance::Lineage {
+                title: format!("Ancestor {index}"),
+                note: "Retained relationship".into(),
+                document_id: None,
+                catalog_id: None,
+                source_keys: Vec::new(),
+            })
+            .collect();
+    }
+    ws.install_document(EditorSession::new(Draft::from_recipe(recipe.build().unwrap())).unwrap());
+    if matches!(case, Case::RestorableExhausted) {
+        let row = ws
+            .editor()
+            .component_key(ComponentId::new(u32::MAX).unwrap())
+            .unwrap();
+        ws.apply(Command::Editor(EditorCommand::RemoveComponent(row)))
+            .unwrap();
     }
 }

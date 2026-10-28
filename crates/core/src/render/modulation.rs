@@ -115,10 +115,12 @@ macro_rules! define_modulation_quantities {
      modulation_quantities {$( $kind:ident {$($field:ident=>$parameter:ident),*} )*})=>{
         impl Modulation {
             pub(crate) fn get(self,parameter:crate::ParameterId)->Option<crate::Finite> {
-                match (parameter,self) {$($( (crate::ParameterId::$parameter,Self::$kind {$field,..})=>Some($field),)*)* _=>None,}
+                match (parameter,self) {$($( (crate::ParameterId::$parameter,Self::$kind {$field,..}
+                    )=>Some($field),)*)* _=>None,}
             }
             pub(crate) fn set(&mut self,parameter:crate::ParameterId,value:crate::Finite)->bool {
-                let field=match (parameter,self) {$($( (crate::ParameterId::$parameter,Self::$kind {$field,..})=>$field,)*)* _=>return false,};
+                let field=match (parameter,self) {$($( (crate::ParameterId::$parameter,Self::$kind {
+                    $field,..})=>$field,)*)* _=>return false,};
                 *field=value;true
             }
         }

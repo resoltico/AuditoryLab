@@ -20,7 +20,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 struct Harness {
     workspace: Workspace,
-    _root: tempfile::TempDir,
+    root: tempfile::TempDir,
 }
 impl Deref for Harness {
     type Target = Workspace;
@@ -44,10 +44,7 @@ fn workspace() -> Harness {
         library,
     )
     .unwrap();
-    let mut harness = Harness {
-        workspace,
-        _root: root,
-    };
+    let mut harness = Harness { workspace, root };
     idle(&mut harness);
     harness
 }
@@ -188,16 +185,16 @@ fn action_budget_messages_distinguish_components_from_expanded_voices() {
             .unwrap();
         }
         let view = crate::workspace::action_view(&ws.action_view());
-        assert!(!ws.action_view().can_add_pair);
+        assert!(!ws.action_view().can_add_pair());
         assert!(view.pair_add_reason.contains(&format!(
             "{components} authored components and {voices} expanded voices"
         )));
         assert!(view.pair_add_reason.contains("2 more voices"));
         assert_eq!(
-            ws.action_view().can_add_component,
+            ws.action_view().can_add_component(),
             voices < 16 && components < 16
         );
-        if !ws.action_view().can_add_component {
+        if !ws.action_view().can_add_component() {
             assert!(view.add_component_reason.contains(&format!(
                 "{components} authored components and {voices} expanded voices"
             )));
@@ -295,7 +292,7 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
         transitioning: true,
         voices,
     };
-    let text = crate::optional_observation_summary(&(Some(&observation)));
+    let text = crate::optional_observation_summary(Some(&observation));
     assert!(text.contains("Both ears"), "{text}");
     assert!(crate::observation_details(&(observation)).contains("gain L -26.0 / R -26.0 dBFS"));
     assert!(
@@ -341,7 +338,8 @@ fn a_route_change_says_what_happened_and_what_to_do() {
     );
     assert_eq!(
         changed.explain(),
-        "the audio output route changed and playback stopped; select the intended output and play again"
+        "the audio output route changed and playback stopped; select the \
+            intended output and play again"
     );
     let busy = DeviceError::Backend(BackendError::new(std::io::Error::other("in use")));
     assert_eq!(busy.explain(), "audio backend: in use");
@@ -368,7 +366,9 @@ fn source_errors_keep_raw_path_data_and_escape_it_only_for_display() {
     std::fs::write(&path, &bytes).unwrap();
     let error = auditorylab_app::services::open_file(&path).unwrap_err();
     assert!(
-        matches!(&error, auditorylab_app::services::LoadError::Recipe { origin: auditorylab_app::document::recipe::Origin::File(original), .. } if original == &path)
+        matches!(&error, auditorylab_app::services::LoadError::Recipe {
+            origin: auditorylab_app::document::recipe::Origin::File(original), .. }
+            if original == &path)
     );
     let text = error.explain();
     assert!(
@@ -410,103 +410,27 @@ fn fixture() -> (
     let harness = workspace();
     let path = harness.workspace.library_data().path.unwrap().to_owned();
     (
-        harness._root,
+        harness.root,
         auditorylab_app::services::library::Library::at_path(path).unwrap(),
         harness.workspace,
     )
 }
 fn idle_files(w: &mut Workspace) {
-    idle(w)
+    idle(w);
 }
 
 #[test]
 fn library_failure_notices_keep_conflicts_refusals_and_publication_io_distinct() {
     let (_directory, store, mut workspace) = fixture();
+    workspace
+        .apply(Command::SetView(
+            auditorylab_app::workspace::View::Workbench,
+        ))
+        .unwrap();
     workspace.apply(Command::File(FileCommand::Save)).unwrap();
     idle_files(&mut workspace);
     let key = store.scan(&Cancel::default()).entries[0].key.clone();
-    for (kind, publishing, inspect, replacement) in [
-        (
-            auditorylab_app::outcome::Outcome::HistoryConflict,
-            true,
-            false,
-            true,
-        ),
-        (
-            auditorylab_app::outcome::Outcome::Conflict,
-            false,
-            false,
-            false,
-        ),
-        (
-            auditorylab_app::outcome::Outcome::HistoryConflict,
-            false,
-            false,
-            false,
-        ),
-        (auditorylab_app::outcome::Outcome::Write, true, true, false),
-        (
-            auditorylab_app::outcome::Outcome::Unreadable,
-            true,
-            true,
-            false,
-        ),
-        (
-            auditorylab_app::outcome::Outcome::IncompleteInventory,
-            true,
-            true,
-            false,
-        ),
-        (
-            auditorylab_app::outcome::Outcome::Write,
-            false,
-            false,
-            false,
-        ),
-        (auditorylab_app::outcome::Outcome::Busy, true, false, false),
-        (
-            auditorylab_app::outcome::Outcome::LockUnavailable,
-            true,
-            false,
-            false,
-        ),
-        (
-            auditorylab_app::outcome::Outcome::Cancelled,
-            true,
-            false,
-            false,
-        ),
-        (
-            auditorylab_app::outcome::Outcome::ReadOnlyBuiltIn,
-            true,
-            false,
-            false,
-        ),
-        (
-            auditorylab_app::outcome::Outcome::InvalidRecipe,
-            true,
-            false,
-            false,
-        ),
-        (
-            auditorylab_app::outcome::Outcome::InvalidSound,
-            true,
-            false,
-            false,
-        ),
-        (
-            auditorylab_app::outcome::Outcome::InvalidArgument,
-            true,
-            false,
-            false,
-        ),
-        (
-            auditorylab_app::outcome::Outcome::Identity,
-            true,
-            false,
-            false,
-        ),
-    ] {
+    for (kind, publishing, inspect, replacement) in library_failure_cases() {
         let status =
             FileStatus::Library(auditorylab_app::workspace::status::LibraryStatus::Failed {
                 error: captured_error(kind),
@@ -630,7 +554,7 @@ fn global_summary_preserves_full_refusal_and_outcome_independent_of_editor_scrol
     .unwrap();
     let mut typed = ws.action_view();
     let actions = crate::workspace::action_view(&typed);
-    assert!(!typed.can_save);
+    assert!(!typed.can_save());
     assert!(actions.operation_summary.contains("65536"));
     typed.file_status = FileStatus::Exported {
         path: PathBuf::from("capture.wav"),
@@ -1036,7 +960,7 @@ fn repeated_views_keep_all_rendered_fields_and_empty_selection_clears_text() {
     assert!(
         ws.library_view().rows.is_empty() && empty.title.is_empty() && empty.details.is_empty()
     );
-    assert!(!ws.action_view().can_play);
+    assert!(!ws.action_view().can_play());
 }
 
 #[test]
@@ -1104,4 +1028,89 @@ fn file_activity_uses_the_captured_shared_operation_term() {
         );
         assert!(crate::workspace::file_activity(Some(kind)).starts_with(label));
     }
+}
+
+fn library_failure_cases() -> [(auditorylab_app::outcome::Outcome, bool, bool, bool); 15] {
+    [
+        (
+            auditorylab_app::outcome::Outcome::HistoryConflict,
+            true,
+            false,
+            true,
+        ),
+        (
+            auditorylab_app::outcome::Outcome::Conflict,
+            false,
+            false,
+            false,
+        ),
+        (
+            auditorylab_app::outcome::Outcome::HistoryConflict,
+            false,
+            false,
+            false,
+        ),
+        (auditorylab_app::outcome::Outcome::Write, true, true, false),
+        (
+            auditorylab_app::outcome::Outcome::Unreadable,
+            true,
+            true,
+            false,
+        ),
+        (
+            auditorylab_app::outcome::Outcome::IncompleteInventory,
+            true,
+            true,
+            false,
+        ),
+        (
+            auditorylab_app::outcome::Outcome::Write,
+            false,
+            false,
+            false,
+        ),
+        (auditorylab_app::outcome::Outcome::Busy, true, false, false),
+        (
+            auditorylab_app::outcome::Outcome::LockUnavailable,
+            true,
+            false,
+            false,
+        ),
+        (
+            auditorylab_app::outcome::Outcome::Cancelled,
+            true,
+            false,
+            false,
+        ),
+        (
+            auditorylab_app::outcome::Outcome::ReadOnlyBuiltIn,
+            true,
+            false,
+            false,
+        ),
+        (
+            auditorylab_app::outcome::Outcome::InvalidRecipe,
+            true,
+            false,
+            false,
+        ),
+        (
+            auditorylab_app::outcome::Outcome::InvalidSound,
+            true,
+            false,
+            false,
+        ),
+        (
+            auditorylab_app::outcome::Outcome::InvalidArgument,
+            true,
+            false,
+            false,
+        ),
+        (
+            auditorylab_app::outcome::Outcome::Identity,
+            true,
+            false,
+            false,
+        ),
+    ]
 }

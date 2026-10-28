@@ -4,12 +4,33 @@ import { Button } from "button.slint";
 import { BoundButton, BoundTitleEdit } from "library-controls.slint";
 import { LibraryNavigationItem } from "library-navigation.slint";
 import { Terms } from "vocabulary.slint";
-import { Palette, ComboBox, TextEdit, LineEdit, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
-import { EntryAddress, LibraryMutationAction, CatalogRow, LibraryFacet, ModelLane } from "models.slint";
+import {
+    Palette,
+    ComboBox,
+    TextEdit,
+    LineEdit,
+    VerticalBox,
+    HorizontalBox,
+    ScrollView,
+} from "std-widgets.slint";
+import {
+    EntryAddress,
+    LibraryMutationAction,
+    CatalogRow,
+    LibraryFacet,
+    ModelLane,
+} from "models.slint";
 import { Disclosure, ExportRate } from "editor.slint";
 
 
 export component LibraryPane inherits Rectangle {
+    function navigation-step(key: string) -> int {
+        if key == Key.DownArrow { return 1; }
+        if key == Key.UpArrow { return -1; }
+        if key == Key.Home { return -2; }
+        return 2;
+    }
+
     callback add-to-library(EntryAddress);
     in-out property <int> band-choice;
     in property <[string]> band-labels;
@@ -97,99 +118,146 @@ export component LibraryPane inherits Rectangle {
     in-out property <int> tab-index;
     in property <length> ui-size;
 
-                accessible-role:tab-panel;accessible-label:ViewCaptions.caption-library;
-                visible:root.tab-index==0;
+    accessible-role: tab-panel;
+    accessible-label: ViewCaptions.library;
+    visible: root.tab-index == 0;
 
+    VerticalBox {
+        spacing: 0px;
+        padding: 0px;
+        if root.library-wide: HorizontalBox {
+            vertical-stretch: 0;
+            padding: 12px;
+            spacing: 10px;
+            LineEdit {
+                text <=> root.query;
+                placeholder-text: Terms.caption-title-id-sound-or-study-topic;
+                accessible-label: Terms.caption-find-arecipe;
+                horizontal-stretch: 1;
+                edited(value) => { root.search(value); }
+            }
 
+            ComboBox {
+                model: root.method-labels;
+                current-index <=> root.method-choice;
+                accessible-label: ViewCaptions.structural-method;
+                selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
+            }
 
+            ComboBox {
+                model: root.sort-labels;
+                current-index <=> root.sort-choice;
+                accessible-label: Terms.facet-sort-library;
+                selected(value) => {
+                    root.collection-filter(root.collection-choice,
+                    root.sort-choice);
+                }
+            }
+
+            Button {
+                text: Terms.caption-library-filters;
+                triggered => { root.open-library-filters(); }
+            }
+        }
+        HorizontalBox {
+            padding: 0px;
+            vertical-stretch: 1;
+            if root.library-wide: navigation-scroll := ScrollView {
+                preferred-width: 220px;
+                max-width: 250px;
+                min-width: 190px;
+                horizontal-stretch: 0;
+                accessible-role: groupbox;
+                accessible-label: Terms.caption-browse-rhythm;
                 VerticalBox {
-                    spacing: 0px;
-                    padding: 0px;
-                    if root.library-wide: HorizontalBox {
+                    width: navigation-scroll.visible-width;
+                    padding: 10px;
+                    spacing: 4px;
+                    Text {
+                        text: ViewCaptions.collections;
+                        font-weight: 600;
                         vertical-stretch: 0;
-                        padding: 12px;
-                        spacing: 10px;
-                        LineEdit {
-                            text <=> root.query;
-                            placeholder-text: Terms.caption-title-id-sound-or-study-topic;
-                            accessible-label: Terms.caption-find-arecipe;
-                            horizontal-stretch: 1;
-                            edited(value) => {root.search(value);}
-                        }
-                        ComboBox {
-                            model: root.method-labels;
-                            current-index <=> root.method-choice;
-                            accessible-label: ViewCaptions.caption-structural-method;
-                            selected(value) => {root.rhythm-filter(root.band-choice, root.method-choice);}
-                        }
-                        ComboBox {
-                            model: root.sort-labels;
-                            current-index <=> root.sort-choice;
-                            accessible-label: Terms.facet-sort-library;
-                            selected(value) => {root.collection-filter(root.collection-choice, root.sort-choice);}
-                        }
-                        Button {text:Terms.caption-library-filters;triggered =>{root.open-library-filters();}}
+                    }
 
+                    for label[index] in root.collection-labels: LibraryNavigationItem {
+                        label: label;
+                        description: label;
+                        selected: root.collection-choice == index;
+                        text-size: root.ui-size;
+                        activated => { root.collection-filter(index,root.sort-choice); }
                     }
-                HorizontalBox {
+                    Rectangle {
+                        height: 1px;
+                        background: Palette.border;
+                        vertical-stretch: 0;
+                    }
+
+                    Text {
+                        text: Terms.caption-browse-rhythm;
+                        font-weight: 600;
+                        vertical-stretch: 0;
+                    }
+
+                    for facet in root.band-navigation: LibraryNavigationItem {
+                        label: facet.label;
+                        detail: facet.detail;
+                        count: facet.count;
+                        description: facet.text;
+                        selected: facet.selected;
+                        text-size: root.ui-size;
+                        activated => { root.rhythm-filter(facet.choice-index,root.method-choice); }
+                    }
+                    Rectangle {
+                        vertical-stretch: 1;
+                    }
+                }
+            }
+            if !root.compact || !root.library-detail: VerticalBox {
+                preferred-width: root.has-results && !root.compact ? root.sidebar-width : 600px;
+                max-width: root.has-results && !root.compact ? root.sidebar-width : 3000px;
+                if !root.library-wide: VerticalBox {
+                    vertical-stretch: 0;
                     padding: 0px;
-                    vertical-stretch: 1;
-                    if root.library-wide: navigation-scroll := ScrollView {
-                        preferred-width: 220px;
-                        max-width: 250px;
-                        min-width: 190px;
-                        horizontal-stretch: 0;
-                        accessible-role: groupbox;
-                        accessible-label: Terms.caption-browse-rhythm;
-                        VerticalBox {
-                            width: navigation-scroll.visible-width;
-                            padding: 10px;
-                            spacing: 4px;
-                            Text {text:ViewCaptions.caption-collections;font-weight:600;vertical-stretch:0;}
-                            for label[index] in root.collection-labels: LibraryNavigationItem {
-                                label:label; description:label; selected:root.collection-choice==index;
-                                text-size:root.ui-size;
-                                activated=>{root.collection-filter(index,root.sort-choice);}
-                            }
-                            Rectangle {height:1px;background:Palette.border;vertical-stretch:0;}
-                            Text {text:Terms.caption-browse-rhythm;font-weight:600;vertical-stretch:0;}
-                            for facet in root.band-navigation: LibraryNavigationItem {
-                                label:facet.label;detail:facet.detail;count:facet.count;description:facet.text;
-                                selected:facet.selected;text-size:root.ui-size;
-                                activated=>{root.rhythm-filter(facet.choice-index,root.method-choice);}
-                            }
-                            Rectangle {vertical-stretch:1;}
-                        }
-                    }
-                    if !root.compact || !root.library-detail: VerticalBox {
-                        preferred-width: root.has-results && !root.compact ? root.sidebar-width : 600px;
-                        max-width: root.has-results && !root.compact ? root.sidebar-width : 3000px;
-                        if !root.library-wide: VerticalBox {
-                            vertical-stretch:0;padding:0px;spacing:4px;
-                        HorizontalBox {padding:0px;vertical-stretch:0;
+                    spacing: 4px;
+                    HorizontalBox {
+                        padding: 0px;
+                        vertical-stretch: 0;
                         ComboBox {
-                            min-width:0px;
+                            min-width: 0px;
                             model: root.collection-labels;
                             current-index <=> root.collection-choice;
-                            accessible-label: ViewCaptions.caption-library-collection;
-                            selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
+                            accessible-label: ViewCaptions.library-collection;
+                            selected(value) => {
+                                root.collection-filter(root.collection-choice,
+                                root.sort-choice);
+                            }
                         }
+
                         if !root.compact: ComboBox {
-                            min-width:0px;
+                            min-width: 0px;
                             model: root.sort-labels;
                             current-index <=> root.sort-choice;
                             accessible-label: Terms.facet-sort-library;
-                            selected(value) => { root.collection-filter(root.collection-choice, root.sort-choice); }
+                            selected(value) => {
+                                root.collection-filter(root.collection-choice,
+                                root.sort-choice);
+                            }
                         }
                         if root.compact: ComboBox {
-                            min-width:0px;
+                            min-width: 0px;
                             model: root.band-labels;
                             current-index <=> root.band-choice;
-                            accessible-label: ViewCaptions.caption-nominal-rhythm-reference-band;
-                            selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
+                            accessible-label: ViewCaptions.nominal-rhythm-reference-band;
+                            selected(value) => {
+                                root.rhythm-filter(root.band-choice,
+                                root.method-choice);
+                            }
                         }
-                        }
-                        HorizontalBox {padding:0px;vertical-stretch:0;
+                    }
+
+                    HorizontalBox {
+                        padding: 0px;
+                        vertical-stretch: 0;
                         LineEdit {
                             text <=> root.query;
                             placeholder-text: Terms.caption-title-id-sound-or-study-topic;
@@ -198,349 +266,643 @@ export component LibraryPane inherits Rectangle {
                                 root.search(value);
                             }
                         }
-                            Button {text:Terms.caption-library-filters;triggered =>{root.open-library-filters();}}
+
+                        Button {
+                            text: Terms.caption-library-filters;
+                            triggered => { root.open-library-filters(); }
                         }
-                        if !root.compact: HorizontalBox {padding:0px;vertical-stretch:0;
+                    }
+
+                    if !root.compact: HorizontalBox {
+                        padding: 0px;
+                        vertical-stretch: 0;
                         ComboBox {
-                            min-width:0px;
+                            min-width: 0px;
                             model: root.band-labels;
                             current-index <=> root.band-choice;
-                            accessible-label: ViewCaptions.caption-nominal-rhythm-reference-band;
-                            selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
+                            accessible-label: ViewCaptions.nominal-rhythm-reference-band;
+                            selected(value) => {
+                                root.rhythm-filter(root.band-choice,
+                                root.method-choice);
+                            }
                         }
+
                         ComboBox {
-                            min-width:0px;
+                            min-width: 0px;
                             model: root.method-labels;
                             current-index <=> root.method-choice;
-                            accessible-label: ViewCaptions.caption-structural-method;
-                            selected(value) => { root.rhythm-filter(root.band-choice, root.method-choice); }
-                        }
-                        }
-                        if root.rhythm-filtered: Button {
-                            text: Terms.action-clear-rhythm-filters;
-                            triggered => {root.clear-rhythm-filters();}
-                        }
-
-                        if root.query != "": Button {
-                            text: Terms.action-clear-search;
-                            triggered => {
-                                root.query="";
-                                root.search("");
+                            accessible-label: ViewCaptions.structural-method;
+                            selected(value) => {
+                                root.rhythm-filter(root.band-choice,
+                                root.method-choice);
                             }
                         }
+                    }
+                    if root.rhythm-filtered: Button {
+                        text: Terms.action-clear-rhythm-filters;
+                        triggered => { root.clear-rhythm-filters(); }
+                    }
 
+                    if root.query != "": Button {
+                        text: Terms.action-clear-search;
+                        triggered => {
+                            root.query = "";
+                            root.search("");
                         }
-                        if root.library-wide: VerticalBox {
-                            vertical-stretch:0;padding:12px;spacing:8px;
-                            Text {text:root.library-heading;font-size:root.ui-size*1.4;font-weight:700;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
+                    }
+                }
+                if root.library-wide: VerticalBox {
+                    vertical-stretch: 0;
+                    padding: 12px;
+                    spacing: 8px;
+                    Text {
+                        text: root.library-heading;
+                        font-size: root.ui-size * 1.4;
+                        font-weight: 700;
+                        wrap: word-wrap;
+                        min-width: 0px;
+                        vertical-stretch: 0;
+                    }
+                }
+                HorizontalBox {
+                    padding: 0px;
+                    vertical-stretch: 0;
+                    Text {
+                        text: root.library-overview;
+                        min-width: 0px;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
 
+                    Button {
+                        text: Terms.action-query-details;
+                        accessible-label: ViewCaptions.applied-library-filters;
+                        accessible-expanded: root.library-query-open;
+                        triggered => { root.open-query-details(); }
+                    }
+                }
 
+                entries := ScrollView {
+                    min-height: max(64px,root.ui-size * 3);
+                    content-y: root.library-scroll-y;
+                    changed content-y => {
+                        if !root.library-restoring {
+                            root.library-scroll-y = self.content-y;
                         }
-                                HorizontalBox {padding:0px;vertical-stretch:0;
-                                    Text {text:root.library-overview;min-width:0px;wrap:word-wrap;vertical-alignment:center;horizontal-stretch:1;}
-                                    Button {text:Terms.action-query-details;accessible-label:ViewCaptions.facet-applied-library-filters;accessible-expanded:root.library-query-open;triggered =>{root.open-query-details();}}
+                    }
+                    accessible-role: list;
+                    accessible-label: Terms.caption-library-results;
+                    VerticalBox {
+                        spacing: 4px;
+                        width: entries.visible-width;
+                        if root.library-alert != "": Text {
+                            text: root.library-alert;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            vertical-stretch: 0;
+                            accessible-live-region: polite;
+                        }
+                        if !root.has-results && root.file-activity != "": Text {
+                            text: root.file-activity;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            vertical-stretch: 0;
+                        }
+                        if !root.has-results: Text {
+                            text: root.library-empty-message;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            vertical-stretch: 0;
+                        }
+                        if !root.has-results && root.library-filters-active: Button {
+                            text: Terms.action-clear-all-filters;
+                            triggered => { root.clear-applied-filters(); }
+                        }
+
+                        if !root.has-results: HorizontalBox {
+                            vertical-stretch: 0;
+                            Button {
+                                horizontal-stretch: 0;
+                                text: (Actions.open-recipe.label + "…");
+                                enabled: Actions.open-recipe.enabled;
+                                triggered => {
+                                    root.open-recipe();
                                 }
+                            }
 
-                        catalog-scroll := ScrollView {
-                            min-height:max(64px,root.ui-size*3);
-                            content-y: root.library-scroll-y;
-                            changed content-y => {if !root.library-restoring {root.library-scroll-y=self.content-y;}}
-                            accessible-role:list;
-                            accessible-label:Terms.caption-library-results;
-                            VerticalBox {
-                                spacing: 4px;
-                                width:catalog-scroll.visible-width;
-                                if root.library-alert != "": Text {text:root.library-alert;wrap:word-wrap;min-width:0px;vertical-stretch:0;accessible-live-region:polite;}
-                                if !root.has-results && root.file-activity != "": Text {text:root.file-activity;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                                if !root.has-results: Text {text:root.library-empty-message;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                                if !root.has-results && root.library-filters-active: Button {text:Terms.action-clear-all-filters;triggered =>{root.clear-applied-filters();}}
+                            Button {
+                                horizontal-stretch: 0;
+                                text: Terms.caption-create-sound;
+                                enabled: root.can-new;
+                                triggered => { root.new-draft(); }
+                            }
 
-                        if !root.has-results: HorizontalBox { vertical-stretch:0;
-                        Button {
-                            horizontal-stretch:0;
-                            text: (Actions.open-recipe.label + "…");
-                            enabled: Actions.open-recipe.enabled;
-                            triggered => {
-                                root.open-recipe();
+                            Rectangle {
+                                horizontal-stretch: 1;
                             }
                         }
-                        Button {
-                            horizontal-stretch:0;
-                            text:Terms.caption-create-sound;
-                            enabled:root.can-new;
-                            triggered =>{root.new-draft();}
-                        }
-                        Rectangle {horizontal-stretch:1;}
-                        }
 
-
-                                for item[index] in root.catalog: catalog-row := Rectangle {
-                                    property <bool> selected-row: root.selected==index;
+                        for item[index] in root.catalog: catalog-row := Rectangle {
+                            property <bool> selected-row: root.selected == index;
                                     // A row created already selected, such as a new import,
                                     // reveals itself once it has been laid out.
                                     initial-reveal := Timer {
-                                        interval: 1ms;
-                                        running: catalog-row.selected-row;
-                                        triggered => {
-                                            self.running = false;
-                                            if root.library-restoring {root.library-restore-ready=true;}
-                                            else {catalog-row.reveal();}
-                                        }
-                                    }
-                                    function reveal() {
-                                        if self.selected-row && !root.library-restoring {
-                                            if self.y + catalog-scroll.content-y < 0px {catalog-scroll.content-y=-self.y;}
-                                            else if self.y+self.height+catalog-scroll.content-y > catalog-scroll.visible-height {catalog-scroll.content-y=catalog-scroll.visible-height - self.y - self.height;}
-                                        }
-                                    }
-                                    changed selected-row => {self.reveal();}
-                                    changed y => {self.reveal();}
-                                    changed height => {self.reveal();}
+                                interval: 1ms;
+                                running: catalog-row.selected-row;
+                                triggered => {
+                                    self.running = false;
+                                    if root.library-restoring { root.library-restore-ready = true; }
+                                    else { catalog-row.reveal(); }
+                                }
+                            }
 
-                                    height: max(root.ui-size*3.5, card-content.preferred-height + 16px);
-                                    border-radius: 6px;
-                                    background: self.selected-row ? Palette.accent-background.with-alpha(0.12) : Palette.background;
-                                    border-width: focus.has-focus ? 2px : 0px;
-                                    border-color: root.selected == index ? Palette.accent-background : Palette.border;
-                                    accessible-role: list-item;
-                                    accessible-label: item.text;
-                                    accessible-item-selectable: item.binding != "";
-                                    accessible-item-selected: self.selected-row;
-                                    property <bool> wants-focus: self.selected-row && item.binding != "" && root.focused-library-key == item.binding;
-                                    changed wants-focus => {if self.wants-focus {focus.focus();}}
-
-                                    accessible-action-default => {
-                                        touch.clicked();
+                            function reveal() {
+                                if self.selected-row && !root.library-restoring {
+                                    if self.y + entries.content-y < 0px {
+                                        entries.content-y = -self.y;
                                     }
-                                    card-content := VerticalLayout {
-                                        x:10px;y:8px;width:parent.width - 20px;height:parent.height - 16px;spacing:4px;
-                                        Text {text:item.title;font-size:root.ui-size*1.08;font-weight:600;min-width:0px;wrap:word-wrap;color:Palette.control-foreground;}
-                                        if !item.built-in && item.collection != "": Text {text:item.collection;min-width:0px;wrap:word-wrap;color:Palette.control-foreground;}
-
-                                        if item.summary != "": Text {text:item.summary;min-width:0px;wrap:word-wrap;color:Palette.control-foreground;}
-                                        if item.duration != "": Text {text:item.duration;min-width:0px;wrap:word-wrap;color:Palette.control-foreground;}
-                                        if item.dates != "" && (!item.built-in || root.show-built-in-dates): Text {text:item.dates;min-width:0px;wrap:word-wrap;font-size:root.ui-size*0.9;color:Palette.control-foreground;}
+                                    else if self.y + self.height + entries.content-y >
+                                        entries.visible-height {
+                                        entries.content-y = entries.visible-height - self.y -
+                                            self.height;
                                     }
-                                    focus := FocusScope {
-                                        enabled:item.binding != "";
-                                        focus-on-tab-navigation:catalog-row.selected-row && item.binding != "";
-                                        changed has-focus => { if self.has-focus {root.focused-library-key=item.binding;} else if catalog-row.selected-row && root.focused-library-key==item.binding {root.focused-library-key="";} }
-                                        key-pressed(event) => {
-                                            if event.text == Key.DownArrow || event.text == Key.UpArrow || event.text == Key.Home || event.text == Key.End {
-                                                root.navigate-library(event.text == Key.DownArrow ? 1 : event.text == Key.UpArrow ? -1 : event.text == Key.Home ? -2 : 2);
-                                                root.focused-library-key=root.library-key;
-                                                return accept;
-                                            }
+                                }
+                            }
+                            changed selected-row => { self.reveal(); }
+                            changed y => { self.reveal(); }
+                            changed height => { self.reveal(); }
 
-                                            if event.text == Terms.caption-line-break || event.text == " " {
-                                                root.select(item.entry);
-                                                root.library-detail=true;
-                                                return accept;
-                                            }
-                                            return reject;
-                                        }
+                            height: max(root.ui-size * 3.5, card-content.preferred-height + 16px);
+                            border-radius: 6px;
+                            background: self.selected-row ?
+                                Palette.accent-background.with-alpha(0.12) : Palette.background;
+                            border-width: focus.has-focus ? 2px : 0px;
+                            border-color: root.selected == index ? Palette.accent-background :
+                                Palette.border;
+                            accessible-role: list-item;
+                            accessible-label: item.text;
+                            accessible-item-selectable: item.binding != "";
+                            accessible-item-selected: self.selected-row;
+                            property <bool> wants-focus: self.selected-row && item.binding != "" &&
+                                root.focused-library-key == item.binding;
+                            changed wants-focus => { if self.wants-focus { focus.focus(); } }
+
+                            accessible-action-default => {
+                                touch.clicked();
+                            }
+                            card-content := VerticalLayout {
+                                x: 10px;
+                                y: 8px;
+                                width: parent.width - 20px;
+                                height: parent.height - 16px;
+                                spacing: 4px;
+                                Text {
+                                    text: item.title;
+                                    font-size: root.ui-size * 1.08;
+                                    font-weight: 600;
+                                    min-width: 0px;
+                                    wrap: word-wrap;
+                                    color: Palette.control-foreground;
+                                }
+
+                                if !item.built-in && item.collection != "": Text {
+                                    text: item.collection;
+                                    min-width: 0px;
+                                    wrap: word-wrap;
+                                    color: Palette.control-foreground;
+                                }
+
+                                if item.summary != "": Text {
+                                    text: item.summary;
+                                    min-width: 0px;
+                                    wrap: word-wrap;
+                                    color: Palette.control-foreground;
+                                }
+                                if item.duration != "": Text {
+                                    text: item.duration;
+                                    min-width: 0px;
+                                    wrap: word-wrap;
+                                    color: Palette.control-foreground;
+                                }
+                                if item.dates != "" && (!item.built-in ||
+                                    root.show-built-in-dates): Text {
+                                    text: item.dates;
+                                    min-width: 0px;
+                                    wrap: word-wrap;
+                                    font-size: root.ui-size * 0.9;
+                                    color: Palette.control-foreground;
+                                }
+                            }
+
+                            focus := FocusScope {
+                                enabled: item.binding != "";
+                                focus-on-tab-navigation: catalog-row.selected-row && item.binding
+                                    != "";
+                                changed has-focus => {
+                                    if self.has-focus {
+                                        root.focused-library-key = item.binding;
                                     }
+                                    else if catalog-row.selected-row && root.focused-library-key ==
+                                        item.binding { root.focused-library-key = ""; }
+                                }
+                                key-pressed(event) => {
+                                    if event.text == Key.DownArrow || event.text == Key.UpArrow ||
+                                        event.text == Key.Home || event.text == Key.End {
+                                        root.navigate-library(root.navigation-step(event.text));
+                                        root.focused-library-key = root.library-key;
+                                        return accept;
+                                    }
+                                    if event.text == Terms.caption-line-break || event.text == " " {
+                                        root.select(item.entry);
+                                        root.library-detail = true;
+                                        return accept;
+                                    }
+                                    return reject;
+                                }
+                            }
                                     // Above the focus scope, so a pointer press reaches it.
                                     touch := TouchArea {
-                                        enabled:item.binding != "";
-                                        private property <EntryAddress> captured;
-                                        private property <bool> armed:false;
-                                        changed pressed => {if self.pressed {self.captured=item.entry;self.armed=true;}}
-                                        clicked => {
-                                            focus.focus();
-                                            root.select(self.armed ? self.captured : item.entry);
-                                            self.armed=false;
-
-                                            root.library-detail=true;
-                                        }
+                                enabled: item.binding != "";
+                                private property <EntryAddress> captured;
+                                private property <bool> armed:false;
+                                changed pressed => {
+                                    if self.pressed {
+                                        self.captured = item.entry;
+                                        self.armed = true;
                                     }
                                 }
-                                Rectangle {
-                                    vertical-stretch: 1;
+                                clicked => {
+                                    focus.focus();
+                                    root.select(self.armed ? self.captured : item.entry);
+                                    self.armed = false;
+
+                                    root.library-detail = true;
                                 }
                             }
                         }
+                        Rectangle {
+                            vertical-stretch: 1;
+                        }
+                    }
+                }
                         // Re-created compact list rows must not replace the saved
                         // scroll position with their initial selection reveal.
-                        Timer { interval:1ms;running:root.library-restoring && (root.library-restore-ready || !root.has-results);
-                            triggered=>{
-                                catalog-scroll.content-y=max(min(0px,root.library-scroll-y),min(0px,catalog-scroll.visible-height - catalog-scroll.content-height));
-                                root.library-scroll-y=catalog-scroll.content-y;
-                                root.library-restoring=false;
-                            }
-                        }
-
+                        Timer {
+                    interval: 1ms;
+                    running: root.library-restoring && (root.library-restore-ready ||
+                        !root.has-results);
+                    triggered => {
+                        entries.content-y = max(min(0px,root.library-scroll-y),min(0px,
+                            entries.visible-height - entries.content-height));
+                        root.library-scroll-y = entries.content-y;
+                        root.library-restoring = false;
                     }
-                    if !root.compact && root.has-results: Rectangle {
-                        width: 6px;
-                        background: resize-touch.has-hover || resize-focus.has-focus ? Palette.accent-background : Palette.border;
-                        accessible-role: slider;
-                        accessible-label: Terms.caption-library-pane-width;
-                        accessible-value: root.sidebar-width / 1px;
-                        accessible-value-minimum: 230;
-                        accessible-value-maximum: 500;
-                        accessible-value-step: 16;
-                        accessible-action-set-value(v) => {
-                            if v.is-float() {
-                                root.resize-library-pane(v.to-float());
-                            }
+                }
+            }
+            if !root.compact && root.has-results: Rectangle {
+                width: 6px;
+                background: resize-touch.has-hover || resize-focus.has-focus ?
+                    Palette.accent-background : Palette.border;
+                accessible-role: slider;
+                accessible-label: Terms.caption-library-pane-width;
+                accessible-value: root.sidebar-width / 1px;
+                accessible-value-minimum: 230;
+                accessible-value-maximum: 500;
+                accessible-value-step: 16;
+                accessible-action-set-value(v) => {
+                    if v.is-float() {
+                        root.resize-library-pane(v.to-float());
+                    }
+                }
+                accessible-action-increment => {
+                    root.resize-library-pane(root.sidebar-width / 1px + 16);
+                }
+                accessible-action-decrement => {
+                    root.resize-library-pane(root.sidebar-width / 1px - 16);
+                }
+                forward-focus: resize-focus;
+                resize-focus := FocusScope {
+                    key-pressed(event) => {
+                        if event.text == Key.LeftArrow {
+                            root.resize-library-pane(root.sidebar-width / 1px - 16);
+                            return accept;
                         }
-                        accessible-action-increment => {
-                            root.resize-library-pane(root.sidebar-width/1px + 16);
+                        if event.text == Key.RightArrow {
+                            root.resize-library-pane(root.sidebar-width / 1px + 16);
+                            return accept;
                         }
-                        accessible-action-decrement => {
-                            root.resize-library-pane(root.sidebar-width/1px - 16);
-                        }
-                        forward-focus: resize-focus;
-                        resize-focus := FocusScope {
-                            key-pressed(event)=> {
-                                if event.text==Key.LeftArrow {
-                                    root.resize-library-pane(root.sidebar-width/1px - 16);
-                                    return accept;
-                                }
-                                if event.text==Key.RightArrow {
-                                    root.resize-library-pane(root.sidebar-width/1px + 16);
-                                    return accept;
-                                }
-                                return reject;
-                            }
-                        }
+                        return reject;
+                    }
+                }
                         // Above the focus scope, so a pointer press reaches it.
                         resize-touch := TouchArea {
-                            mouse-cursor:col-resize;
-                            clicked=> {
-                                resize-focus.focus();
-                            }
-                            moved=> {
-                                if self.pressed {
-                                    root.resize-library-pane((root.sidebar-width + self.mouse-x - self.pressed-x)/1px);
-                                }
-                            }
+                    mouse-cursor: col-resize;
+                    clicked => {
+                        resize-focus.focus();
+                    }
+                    moved => {
+                        if self.pressed {
+                            root.resize-library-pane((root.sidebar-width + self.mouse-x -
+                                self.pressed-x) / 1px);
                         }
                     }
-                    if root.has-results && (!root.compact || root.library-detail): detail-scroll := ScrollView {
-                        // Follow the visible width so long text wraps rather than widening the page.
+                }
+            }
+            if root.has-results && (!root.compact || root.library-detail): details := ScrollView {
+                        // Follow the visible width so long text wraps rather than widening the
+                        // page.
                         VerticalBox {
-                            width: detail-scroll.visible-width;
-                            spacing: 10px;
-                            if root.compact: Button {
-                                text:Terms.action-back-to-recipes;
+                    width: details.visible-width;
+                    spacing: 10px;
+                    if root.compact: Button {
+                        text: Terms.action-back-to-recipes;
+                        triggered => {
+                            root.library-restore-ready = false;
+                            root.library-restoring = true;
+                            root.library-detail = false;
+                        }
+                    }
+
+                    if root.file-activity != "": Text {
+                        min-width: 0px;
+                        text: root.file-activity;
+                        wrap: word-wrap;
+                        vertical-stretch: 0;
+                    }
+
+                    if root.has-results: VerticalBox {
+                        vertical-stretch: 0;
+                        if root.library-ownership != "": Text {
+                            text: root.library-ownership;
+                            font-weight: 600;
+                            min-width: 0px;
+                            wrap: word-wrap;
+                            vertical-stretch: 0;
+                        }
+                        Text {
+                            min-width: 0px;
+                            text: root.sound-title;
+                            font-size: root.ui-size * 1.85;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                            vertical-stretch: 0;
+                        }
+
+                        Text {
+                            min-width: 0px;
+                            text: root.structure;
+                            wrap: word-wrap;
+                            vertical-stretch: 0;
+                        }
+
+                        Text {
+                            min-width: 0px;
+                            text: root.recipe-timing;
+                            wrap: word-wrap;
+                            vertical-stretch: 0;
+                        }
+
+                        HorizontalBox {
+                            padding: 0px;
+                            vertical-stretch: 0;
+
+                            Button {
+                                text: Terms.action-preview-waveform;
+                                enabled: root.can-preview;
+                                triggered => { root.preview-selected(); }
+                            }
+
+                            Button {
+                                text: Actions.edit-copy.label;
+                                enabled: Actions.edit-copy.enabled;
+                                accessible-description: root.copy-reason;
                                 triggered => {
-                                    root.library-restore-ready=false;
-                                    root.library-restoring=true;
-                                    root.library-detail=false;
+                                    root.open-workbench();
                                 }
                             }
 
-
-                            if root.file-activity != "": Text {min-width:0px;text:root.file-activity;wrap:word-wrap;vertical-stretch:0;}
-
-                            if root.has-results: VerticalBox {
-                                vertical-stretch: 0;
-                                if root.library-ownership != "": Text {text:root.library-ownership;font-weight:600;min-width:0px;wrap:word-wrap;vertical-stretch:0;}
-                                Text {min-width:0px;
-                                    text:root.sound-title;
-                                    font-size:root.ui-size*1.85;
-                                    font-weight:600;
-                                    wrap:word-wrap;
-                                    vertical-stretch:0;
+                            Button {
+                                text: (Actions.export.label + "…");
+                                enabled: Actions.export.enabled;
+                                triggered => {
+                                    root.export-wav();
                                 }
-
-                                Text {min-width:0px;
-                                    text:root.structure;
-                                    wrap:word-wrap;
-                                    vertical-stretch:0;
-                                }
-                                Text {min-width:0px;
-                                    text:root.recipe-timing;
-                                    wrap:word-wrap;
-                                    vertical-stretch:0;
-                                }
-                                HorizontalBox {
-                                    padding: 0px;
-                                    vertical-stretch: 0;
-
-                                    Button {text:Terms.action-preview-waveform;enabled:root.can-preview;triggered =>{root.preview-selected();}}
-                                    Button {
-                                        text:Actions.edit-copy.label;
-                                        enabled: Actions.edit-copy.enabled;
-                                        accessible-description:root.copy-reason;
-                                        triggered => {
-                                            root.open-workbench();
-                                        }
-                                    }
-                                    Button {
-                                        text:(Actions.export.label + "…");
-                                        enabled: Actions.export.enabled;
-                                        triggered => {
-                                            root.export-wav();
-                                        }
-                                    }
-
-                                }
+                            }
+                        }
                                 // A custom recipe has no study or summary to show.
-                                if root.studied != "": Text {min-width:0px;text:root.studied;wrap:word-wrap;vertical-stretch:0;}
-                                if root.summary != "": VerticalBox {padding:0px;vertical-stretch:0;
-                                summary-disclosure := Disclosure {label:Terms.caption-research-summary;}
-                                if summary-disclosure.expanded: Text {min-width:0px;text:root.summary;wrap:word-wrap;vertical-stretch:0;}
+                                if root.studied != "": Text {
+                            min-width: 0px;
+                            text: root.studied;
+                            wrap: word-wrap;
+                            vertical-stretch: 0;
+                        }
+                        if root.summary != "": VerticalBox {
+                            padding: 0px;
+                            vertical-stretch: 0;
+                            summary-disclosure := Disclosure {
+                                label: Terms.caption-research-summary;
+                            }
 
+                            if summary-disclosure.expanded: Text {
+                                min-width: 0px;
+                                text: root.summary;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                            }
+                        }
+                        Rectangle {
+                            height: 1px;
+                            background: Palette.border;
+                            vertical-stretch: 0;
+                        }
 
-                                }
-                                Rectangle {height:1px;background:Palette.border;vertical-stretch:0;}
-                                Text {text:Terms.caption-classification;font-weight:600;vertical-stretch:0;}
-                                Text {text:root.library-classification;wrap:word-wrap;min-width:0px;vertical-stretch:0;}
-                                metadata-disclosure := Disclosure {label:Terms.caption-source-dates-details;}
-                                if metadata-disclosure.expanded: VerticalBox {vertical-stretch:0;
-                                Rectangle {height:1px;background:Palette.border;vertical-stretch:0;}
+                        Text {
+                            text: Terms.caption-classification;
+                            font-weight: 600;
+                            vertical-stretch: 0;
+                        }
 
-                                if root.library-dates != "": Text {text:root.library-dates;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
-                                utc-dates := Disclosure {label:ViewCaptions.facet-exact-utc-dates;}
-                                if utc-dates.expanded: TextEdit {text:root.library-dates-utc;read-only:true;wrap:word-wrap;accessible-label:ViewCaptions.facet-exact-utc-recipe-and-membership-dates;min-width:0px;height:root.ui-size*8;vertical-stretch:0;}
-                                if root.library-key != "": Text {text:root.library-key;wrap:word-wrap;vertical-stretch:0;min-width:0px;}
+                        Text {
+                            text: root.library-classification;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            vertical-stretch: 0;
+                        }
+
+                        metadata-disclosure := Disclosure {
+                            label: Terms.caption-source-dates-details;
+                        }
+
+                        if metadata-disclosure.expanded: VerticalBox {
+                            vertical-stretch: 0;
+                            Rectangle {
+                                height: 1px;
+                                background: Palette.border;
+                                vertical-stretch: 0;
+                            }
+
+                            if root.library-dates != "": Text {
+                                text: root.library-dates;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                                min-width: 0px;
+                            }
+                            utc-dates := Disclosure {
+                                label: ViewCaptions.exact-utc-dates;
+                            }
+
+                            if utc-dates.expanded: TextEdit {
+                                text: root.library-dates-utc;
+                                read-only: true;
+                                wrap: word-wrap;
+                                accessible-label: ViewCaptions.exact-utc-dates-description;
+                                min-width: 0px;
+                                height: root.ui-size * 8;
+                                vertical-stretch: 0;
+                            }
+                            if root.library-key != "": Text {
+                                text: root.library-key;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                                min-width: 0px;
+                            }
+                        }
+                        if root.library-token != "" && !root.library-trashed: BoundButton {
+                            enabled: Actions.edit-saved-recipe.enabled;
+                            text: Actions.edit-saved-recipe.label;
+                            entry: root.library-entry;
+                            activated(entry) => { root.edit-saved(entry); }
+                        }
+                        Button {
+                            text: (Actions.export-recipe.label + "…");
+                            enabled: Actions.export-recipe.enabled;
+                            triggered => { root.export-recipe(); }
+                        }
+
+                        if root.open-files-scope: BoundButton {
+                            enabled: Actions.close-open-file.enabled;
+                            text: Actions.close-open-file.label;
+                            entry: root.library-entry;
+                            activated(entry) => { root.close-open-file(entry); }
+                        }
+                        if root.open-files-scope: BoundButton {
+                            enabled: Actions.edit-external-file.enabled;
+                            text: Actions.edit-external-file.label;
+                            entry: root.library-entry;
+                            activated(entry) => { root.edit-saved(entry); }
+                        }
+                        if root.open-files-scope: BoundButton {
+                            enabled: Actions.library-add.enabled;
+                            text: Actions.library-add.label;
+                            entry: root.library-entry;
+                            activated(entry) => { root.add-to-library(entry); }
+                        }
+                        if root.library-token != "": VerticalBox {
+                            vertical-stretch: 0;
+                            if !root.library-trashed: BoundTitleEdit {
+                                enabled: Actions.library-rename.enabled;
+                                entry: root.library-entry;
+                                placeholder-text: Terms.caption-new-title;
+                                accessible-label: Actions.library-rename.label;
+                                rename(entry, value) => {
+                                    root.library-action(entry,
+                                LibraryMutationAction.rename,value);
                                 }
-                                if root.library-token != "" && !root.library-trashed: BoundButton {enabled: Actions.edit-saved-recipe.enabled;text:Actions.edit-saved-recipe.label;entry:root.library-entry;activated(entry)=>{root.edit-saved(entry);}}
-                                Button {text:(Actions.export-recipe.label + "…");enabled: Actions.export-recipe.enabled;triggered =>{root.export-recipe();}}
-                                if root.open-files-scope: BoundButton { enabled: Actions.close-open-file.enabled;text:Actions.close-open-file.label;entry:root.library-entry;activated(entry)=>{root.close-open-file(entry);}}
-                                if root.open-files-scope: BoundButton {enabled: Actions.edit-external-file.enabled;text:Actions.edit-external-file.label;entry:root.library-entry;activated(entry)=>{root.edit-saved(entry);}}
-                                if root.open-files-scope: BoundButton {enabled: Actions.library-add.enabled;text:Actions.library-add.label;entry:root.library-entry;activated(entry)=>{root.add-to-library(entry);}}
-                                if root.library-token != "": VerticalBox { vertical-stretch:0;
-                                    if !root.library-trashed: BoundTitleEdit {enabled: Actions.library-rename.enabled;entry:root.library-entry;placeholder-text:Terms.caption-new-title;accessible-label:Actions.library-rename.label;rename(entry,value)=>{root.library-action(entry,LibraryMutationAction.rename,value);} }
-                                    BoundButton {enabled: root.library-trashed ? Actions.library-restore.enabled : Actions.library-trash.enabled;text:root.library-trashed ? Actions.library-restore.label : Actions.library-trash.label;entry:root.library-entry;action:root.library-trashed ? LibraryMutationAction.restore : LibraryMutationAction.trash;dispatch(entry,action)=>{root.library-action(entry,action,"");}}
-                                    if root.library-trashed: BoundButton {enabled: Actions.library-purge.enabled;text:(Actions.library-purge.label + "…");entry:root.library-entry;activated(entry)=>{root.library-action(entry,LibraryMutationAction.request-purge,"");}}
+                            }
+                            BoundButton {
+                                enabled: root.library-trashed ? Actions.library-restore.enabled :
+                                    Actions.library-trash.enabled;
+                                text: root.library-trashed ? Actions.library-restore.label :
+                                    Actions.library-trash.label;
+                                entry: root.library-entry;
+                                action: root.library-trashed ? LibraryMutationAction.restore :
+                                    LibraryMutationAction.trash;
+                                dispatch(entry, action) => { root.library-action(entry,action,""); }
+                            }
+
+                            if root.library-trashed: BoundButton {
+                                enabled: Actions.library-purge.enabled;
+                                text: (Actions.library-purge.label + "…");
+                                entry: root.library-entry;
+                                activated(entry) => {
+                                    root.library-action(entry,
+                                LibraryMutationAction.request-purge,"");
                                 }
-                                Disclosure {label:Terms.caption-research-citation-and-sound-adaptations;expanded <=> root.research;}
-                                if root.research && root.can-open-study: Button {text:Terms.action-open-study-source;triggered =>{root.open-study();}}
-                                if root.research: Button {text:Terms.action-read-selectable-research-and-recipe-details-dialog;triggered =>{root.show-research();}}
-                                library-pattern := Disclosure {label:Terms.caption-pattern-explained-static-core-model;}
-                                if library-pattern.expanded: VerticalBox {
-                                    vertical-stretch:0;
-                                    Text {min-width:0px;text:root.model-caption;wrap:word-wrap;vertical-stretch:0;}
-                                    for lane in root.model-lanes: VerticalBox {
-                                        vertical-stretch:0;
-                                        Text {min-width:0px;text:lane.label;wrap:word-wrap;vertical-stretch:0;}
-                                        Rectangle {height:30px;background:Palette.control-background;
-                                            accessible-role:image;accessible-label:lane.label+Terms.caption-static-model;
-                                            Path {width:parent.width;height:parent.height;viewbox-width:1024;viewbox-height:100;fit:fill;commands:lane.trace;stroke:Palette.accent-background;stroke-width:2px;}
-                                        }
-                                    }
+                            }
+                        }
+                        Disclosure {
+                            label: Terms.caption-research-citation-and-sound-adaptations;
+                            expanded <=> root.research;
+                        }
+
+                        if root.research && root.can-open-study: Button {
+                            text: Terms.action-open-study-source;
+                            triggered => { root.open-study(); }
+                        }
+                        if root.research: Button {
+                            text: Terms.action-read-selectable-research-and-recipe-details-dialog;
+                            triggered => { root.show-research(); }
+                        }
+                        library-pattern := Disclosure {
+                            label: Terms.caption-pattern-explained-static-core-model;
+                        }
+
+                        if library-pattern.expanded: VerticalBox {
+                            vertical-stretch: 0;
+                            Text {
+                                min-width: 0px;
+                                text: root.model-caption;
+                                wrap: word-wrap;
+                                vertical-stretch: 0;
+                            }
+
+                            for lane in root.model-lanes: VerticalBox {
+                                vertical-stretch: 0;
+                                Text {
+                                    min-width: 0px;
+                                    text: lane.label;
+                                    wrap: word-wrap;
+                                    vertical-stretch: 0;
                                 }
-                                Disclosure {label:Terms.action-export-settings;expanded <=> root.export-settings;}
-                                if root.export-settings: ExportRate {
-                                    choices:root.export-rates;
-                                    selected <=> root.rate-index;
-                                    edit-enabled:true;
-                                    changed(i)=> {
-                                        root.rate-changed(i);
+
+                                Rectangle {
+                                    height: 30px;
+                                    background: Palette.control-background;
+                                    accessible-role: image;
+                                    accessible-label: lane.label + Terms.caption-static-model;
+                                    Path {
+                                        width: parent.width;
+                                        height: parent.height;
+                                        viewbox-width: 1024;
+                                        viewbox-height: 100;
+                                        fit: fill;
+                                        commands: lane.trace;
+                                        stroke: Palette.accent-background;
+                                        stroke-width: 2px;
                                     }
                                 }
                             }
-                            Rectangle {
-                                vertical-stretch:1;
+                        }
+                        Disclosure {
+                            label: Terms.action-export-settings;
+                            expanded <=> root.export-settings;
+                        }
+
+                        if root.export-settings: ExportRate {
+                            choices: root.export-rates;
+                            selected <=> root.rate-index;
+                            edit-enabled: true;
+                            changed(i) => {
+                                root.rate-changed(i);
                             }
                         }
                     }
+                    Rectangle {
+                        vertical-stretch: 1;
+                    }
                 }
-                }
-
-
+            }
+        }
+    }
 }

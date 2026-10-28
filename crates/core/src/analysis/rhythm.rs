@@ -253,7 +253,7 @@ fn describe(input: Input, rhythms: &mut Vec<Descriptor>, methods: &mut Vec<Metho
                 None | Some(Periodic::Am { depth: 0.0, .. })
             ) =>
         {
-            add(Method::SteadyTone, None)
+            add(Method::SteadyTone, None);
         }
         Carrier::Tone { .. } => {}
     }
@@ -280,52 +280,49 @@ pub fn nominal(sound: &crate::Sound) -> Analysis {
     };
     for component in components {
         let owner = component.id.into();
-        let (carrier, modulation, pair) = match component.form.primitive() {
-            Some(voice) => {
-                result.diagnostics.extend(
-                    component
-                        .form
-                        .intrinsic_issues()
-                        .map(|issue| Issue::Value { owner, issue }),
-                );
-                (voice.carrier, voice.modulation.map(Periodic::from), None)
-            }
-            None => {
-                let form = component.form;
-                let pair = form.pair().unwrap_or_else(|| unreachable!("pair form"));
-                let kind = form
-                    .pair_kind()
-                    .unwrap_or_else(|| unreachable!("pair form"));
-                for (parameter, value, lane) in [
-                    (
-                        ParameterId::PairFirstLevel,
-                        pair.first_peak_dbfs.get(),
-                        Lane::Primary,
-                    ),
-                    (
-                        ParameterId::PairSecondLevel,
-                        pair.second_peak_dbfs.get(),
-                        Lane::Secondary,
-                    ),
-                ] {
-                    if let Err(issue) = validity::check_value(parameter, value) {
-                        result.diagnostics.push(Issue::Value {
-                            owner: component.id.with_lane(lane),
-                            issue,
-                        });
-                    }
-                }
-                if let Err(error) = crate::authored::lower(component) {
-                    result.diagnostics.push(Issue::Pair(error));
-                }
+        let (carrier, modulation, pair) = if let Some(voice) = component.form.primitive() {
+            result.diagnostics.extend(
+                component
+                    .form
+                    .intrinsic_issues()
+                    .map(|issue| Issue::Value { owner, issue }),
+            );
+            (voice.carrier, voice.modulation.map(Periodic::from), None)
+        } else {
+            let form = component.form;
+            let pair = form.pair().unwrap_or_else(|| unreachable!("pair form"));
+            let kind = form
+                .pair_kind()
+                .unwrap_or_else(|| unreachable!("pair form"));
+            for (parameter, value, lane) in [
                 (
-                    Carrier::Tone {
-                        frequency_hz: pair.first_hz.get(),
-                    },
-                    None,
-                    Some((kind, Some(pair.offset_hz.get().abs()))),
-                )
+                    ParameterId::PairFirstLevel,
+                    pair.first_peak_dbfs.get(),
+                    Lane::Primary,
+                ),
+                (
+                    ParameterId::PairSecondLevel,
+                    pair.second_peak_dbfs.get(),
+                    Lane::Secondary,
+                ),
+            ] {
+                if let Err(issue) = validity::check_value(parameter, value) {
+                    result.diagnostics.push(Issue::Value {
+                        owner: component.id.with_lane(lane),
+                        issue,
+                    });
+                }
             }
+            if let Err(error) = crate::authored::lower(component) {
+                result.diagnostics.push(Issue::Pair(error));
+            }
+            (
+                Carrier::Tone {
+                    frequency_hz: pair.first_hz.get(),
+                },
+                None,
+                Some((kind, Some(pair.offset_hz.get().abs()))),
+            )
         };
         describe(
             Input {
@@ -532,6 +529,25 @@ impl core::error::Error for Issue {
     }
 }
 
+crate::diagnostic_codes! {
+    pub(crate) const CODES;
+    Issue {
+        codes {}
+        delegates {
+            Self::Value { issue, .. } => issue,
+            Self::Pair(error) => error,
+        }
+        params(this) {
+            match this {
+                Self::Value { owner, .. } => {
+                    crate::diagnostic_params! {"owner"=>alloc::string::ToString::to_string(owner)}
+                }
+                Self::Pair(_) => crate::Params::new(),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod primary_tests {
     use super::*;
@@ -600,24 +616,5 @@ mod primary_tests {
             }),
             Method::Monaural
         );
-    }
-}
-
-crate::diagnostic_codes! {
-    pub(crate) const CODES;
-    Issue {
-        codes {}
-        delegates {
-            Self::Value { issue, .. } => issue,
-            Self::Pair(error) => error,
-        }
-        params(this) {
-            match this {
-                Self::Value { owner, .. } => {
-                    crate::diagnostic_params! {"owner"=>alloc::string::ToString::to_string(owner)}
-                }
-                Self::Pair(_) => crate::Params::new(),
-            }
-        }
     }
 }

@@ -114,10 +114,82 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
     use auditorylab_app::document::recipe::RecipeSnapshot;
     use auditorylab_core::ComponentId;
     use auditorylab_core::DocumentIdentity;
-    use auditorylab_core::Ears;
-    use auditorylab_core::Pair;
     use auditorylab_core::SampleRate;
     use auditorylab_core::Sound;
+    for (form, expected) in authored_description_cases() {
+        let c = Component {
+            id: ComponentId::new(7).unwrap(),
+            form,
+        };
+        assert_eq!(component(&c), expected);
+        let mut candidate = Recipe::builder(DocumentIdentity {
+            id: "00000000-0000-4000-8000-000000000001".parse().unwrap(),
+            created_at: None,
+            modified_at: None,
+        });
+        candidate.content.sound = Sound::new(finite(2.0), finite(0.1), vec![c])
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+        let recipe = candidate.build().unwrap();
+        let snapshot = RecipeSnapshot::new(Origin::Stream("test".into()), recipe);
+        assert!(crate::snapshot_details_at(&(snapshot), SampleRate::DEFAULT).contains(expected));
+        if snapshot.at(SampleRate::DEFAULT).is_err() {
+            assert!(crate::snapshot_description(&(snapshot)).contains(expected));
+        }
+    }
+}
+
+#[test]
+fn independent_copies_store_the_attribution_and_ancestor_notes_verbatim() {
+    use auditorylab_app::document::editing::Draft;
+    use auditorylab_app::document::recipe::Origin;
+    use auditorylab_app::document::recipe::RecipeSnapshot;
+    use auditorylab_core::DocumentIdentity;
+    use auditorylab_core::provenance::Description;
+    for (notes, expected) in [
+        (
+            None,
+            "Attributed copy; source findings concern the ancestor, not this sound.",
+        ),
+        (
+            Some(""),
+            "Attributed copy; source findings concern the ancestor, not this sound.",
+        ),
+        (
+            Some("Parent notes."),
+            "Attributed copy; source findings concern the ancestor, not this \
+                sound. Ancestor notes: Parent notes.",
+        ),
+    ] {
+        let mut candidate = Recipe::builder(DocumentIdentity {
+            id: "00000000-0000-4000-8000-000000000001".parse().unwrap(),
+            created_at: None,
+            modified_at: None,
+        });
+        candidate.content.description = Some(Description {
+            title: "Parent".into(),
+            notes: notes.map(str::to_owned),
+        });
+        let recipe = candidate.build().unwrap();
+        let snapshot = RecipeSnapshot::new(Origin::Stream("test".into()), recipe);
+        let copy = Draft::from_snapshot(&snapshot).unwrap().recipe().unwrap();
+        assert_eq!(copy.lineage().last().unwrap().note, expected);
+        assert_eq!(
+            copy.lineage().last().unwrap().document_id,
+            Some(snapshot.recipe().document().id)
+        );
+    }
+}
+
+#[cfg(test)]
+const fn finite(value: f64) -> auditorylab_core::Finite {
+    match auditorylab_core::Finite::new(value) {
+        Some(value) => value,
+        None => panic!("nonfinite fixture value"),
+    }
+}
+
+fn authored_description_cases() -> [(ComponentForm, &'static str); 7] {
+    use auditorylab_core::{Ears, Pair};
     let plain = ComponentForm::Tone {
         frequency_hz: finite(437.0),
         ears: Ears::Left,
@@ -130,7 +202,7 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
         first_peak_dbfs: finite(-20.0),
         second_peak_dbfs: finite(-30.0),
     };
-    for (form, expected) in [
+    [
         (plain, "tone 437 Hz, peak -24 dBFS, left ear"),
         (
             {
@@ -206,73 +278,5 @@ fn authored_descriptions_are_used_by_snapshot_details_and_invalid_reports() {
             },
             "tone -437 Hz, peak -24 dBFS, left ear",
         ),
-    ] {
-        let c = Component {
-            id: ComponentId::new(7).unwrap(),
-            form,
-        };
-        assert_eq!(component(&c), expected);
-        let mut candidate = Recipe::builder(DocumentIdentity {
-            id: "00000000-0000-4000-8000-000000000001".parse().unwrap(),
-            created_at: None,
-            modified_at: None,
-        });
-        candidate.content.sound = Sound::new(finite(2.0), finite(0.1), vec![c])
-            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
-        let recipe = candidate.build().unwrap();
-        let snapshot = RecipeSnapshot::new(Origin::Stream("test".into()), recipe);
-        assert!(crate::snapshot_details_at(&(snapshot), SampleRate::DEFAULT).contains(expected));
-        if snapshot.at(SampleRate::DEFAULT).is_err() {
-            assert!(crate::snapshot_description(&(snapshot)).contains(expected));
-        }
-    }
-}
-
-#[test]
-fn independent_copies_store_the_attribution_and_ancestor_notes_verbatim() {
-    use auditorylab_app::document::editing::Draft;
-    use auditorylab_app::document::recipe::Origin;
-    use auditorylab_app::document::recipe::RecipeSnapshot;
-    use auditorylab_core::DocumentIdentity;
-    use auditorylab_core::provenance::Description;
-    for (notes, expected) in [
-        (
-            None,
-            "Attributed copy; source findings concern the ancestor, not this sound.",
-        ),
-        (
-            Some(""),
-            "Attributed copy; source findings concern the ancestor, not this sound.",
-        ),
-        (
-            Some("Parent notes."),
-            "Attributed copy; source findings concern the ancestor, not this sound. Ancestor notes: Parent notes.",
-        ),
-    ] {
-        let mut candidate = Recipe::builder(DocumentIdentity {
-            id: "00000000-0000-4000-8000-000000000001".parse().unwrap(),
-            created_at: None,
-            modified_at: None,
-        });
-        candidate.content.description = Some(Description {
-            title: "Parent".into(),
-            notes: notes.map(str::to_owned),
-        });
-        let recipe = candidate.build().unwrap();
-        let snapshot = RecipeSnapshot::new(Origin::Stream("test".into()), recipe);
-        let copy = Draft::from_snapshot(&snapshot).unwrap().recipe().unwrap();
-        assert_eq!(copy.lineage().last().unwrap().note, expected);
-        assert_eq!(
-            copy.lineage().last().unwrap().document_id,
-            Some(snapshot.recipe().document().id)
-        );
-    }
-}
-
-#[cfg(test)]
-const fn finite(value: f64) -> auditorylab_core::Finite {
-    match auditorylab_core::Finite::new(value) {
-        Some(value) => value,
-        None => panic!("nonfinite fixture value"),
-    }
+    ]
 }

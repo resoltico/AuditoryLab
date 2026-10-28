@@ -1,5 +1,5 @@
 //! Coalesced worker/preference notification of the owning Slint event loop.
-use super::*;
+use super::{Arc, ComponentHandle, MainWindow};
 use std::sync::atomic::{AtomicBool, Ordering};
 pub(super) struct Wake {
     main: slint::Weak<MainWindow>,

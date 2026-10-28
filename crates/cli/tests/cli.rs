@@ -35,8 +35,8 @@ fn commands_sources_and_exit_codes() {
         vec!["recipe", ID],
     ] {
         let out = cli(&args);
-        assert!(out.status.success(), "{args:?}: {:?}", out);
-        assert!(!out.stdout.is_empty());
+        assert!(out.status.success(), "{args:?}: {out:?}");
+        assert_ne!(out.stdout, [] as [u8; 0]);
     }
     for args in [
         vec!["inspect"],
@@ -125,7 +125,7 @@ fn broken_pipe_is_quiet_success() {
         .unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(out.status.success());
-    assert!(out.stderr.is_empty());
+    assert_eq!(out.stderr, [] as [u8; 0]);
 }
 #[test]
 #[ignore = "plays one second of component-free silence on the default output"]
@@ -150,7 +150,7 @@ fn play_reads_stdin_and_reports_native_silent_playback() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(String::from_utf8_lossy(&out.stderr).contains("Played "));
-    assert!(out.stdout.is_empty());
+    assert_eq!(out.stdout, [] as [u8; 0]);
     let start = String::from_utf8(out.stderr).unwrap();
     assert!(start.contains("Press Ctrl-C to stop") && start.contains("Turn the volume down"));
 }
@@ -162,7 +162,10 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
     let output = dir.path().join("long.wav");
     fs::write(
         &input,
-        common::silent(1000000.0, 0.0).to_toml().unwrap().as_bytes(),
+        common::silent(1_000_000.0, 0.0)
+            .to_toml()
+            .unwrap()
+            .as_bytes(),
     )
     .unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_auditorylab"))
@@ -204,85 +207,10 @@ fn sigint_cancels_a_long_silent_export_and_removes_the_stage() {
 
 #[test]
 fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
-    use auditorylab_app::core::{Component, ComponentForm, ComponentId, Ears, Pair};
+    use auditorylab_app::core::{Component, ComponentId};
     let d = dir();
     let file = d.path().join("meaning.toml");
-    let tone = |frequency_hz: f64, ears, peak_dbfs: f64| ComponentForm::Tone {
-        frequency_hz: finite(frequency_hz),
-        ears,
-        peak_dbfs: finite(peak_dbfs),
-        modulation: None,
-    };
-    let forms = |voices: Vec<ComponentForm>| voices.into_iter().collect::<Vec<_>>();
-    let click = ComponentForm::Clicks {
-        rate_hz: finite(40.0),
-        width_seconds: finite(0.001),
-        ears: Ears::Both,
-        peak_dbfs: finite(-40.0),
-        modulation: None,
-    };
-    let pair = Pair {
-        first_hz: finite(380.0),
-        offset_hz: finite(40.0),
-        first_peak_dbfs: finite(-40.0),
-        second_peak_dbfs: finite(-41.0),
-    };
-    for (components, needle, rejected) in [
-        (
-            forms(vec![click, tone(440.0, Ears::Both, -40.0)]),
-            "40 Hz clicks",
-            "400 Hz",
-        ),
-        (
-            forms(vec![
-                tone(380.0, Ears::Left, -40.0),
-                tone(420.0, Ears::Right, -40.0),
-            ]),
-            "380 Hz steady tone",
-            "interaural difference",
-        ),
-        (
-            forms(vec![
-                tone(380.0, Ears::Both, -40.0),
-                tone(420.0, Ears::Both, -40.0),
-            ]),
-            "380 Hz steady tone",
-            "monaural",
-        ),
-        (
-            forms(vec![
-                tone(380.0, Ears::Both, -40.0),
-                tone(420.0, Ears::Both, -41.0),
-            ]),
-            "380 Hz steady tone",
-            "monaural",
-        ),
-        (
-            vec![{
-                ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
-                }
-            }],
-            "40 Hz interaural difference",
-            "monaural",
-        ),
-        (
-            vec![{
-                ComponentForm::MonauralPair {
-                    ears: Ears::Both,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
-                }
-            }],
-            "40 Hz monaural",
-            "interaural",
-        ),
-    ] {
+    for (components, needle, rejected) in cli_meaning_cases() {
         let mut recipe = common::silent(1.0, 0.0).into_builder();
         recipe.content.sound = auditorylab_app::core::Sound::new(
             recipe.content.sound.duration_seconds(),
@@ -429,7 +357,7 @@ fn nominal_list_filters_use_the_shared_band_and_method_contract() {
         "steady_tone",
     ]);
     assert!(out.status.success());
-    assert!(String::from_utf8(out.stdout).unwrap().trim().is_empty());
+    assert_eq!(String::from_utf8(out.stdout).unwrap().trim(), "");
     let serialized = cli(&[
         "list",
         "--collection",
@@ -442,7 +370,8 @@ fn nominal_list_filters_use_the_shared_band_and_method_contract() {
     assert!(serialized.status.success());
     let serialized: serde_json::Value = serde_json::from_slice(&serialized.stdout).unwrap();
     let entries = serialized["entries"].as_array().unwrap();
-    assert!(!entries.is_empty());
+    let empty: &[serde_json::Value] = &[];
+    assert_ne!(entries.as_slice(), empty);
     assert!(
         entries
             .iter()
@@ -493,7 +422,7 @@ fn nonfinite_recipe_diagnostic_names_the_key_line_and_column() {
         .unwrap();
         let output = cli(&["inspect", "--file", path.to_str().unwrap()]);
         assert_eq!(output.status.code(), Some(2));
-        assert!(output.stdout.is_empty());
+        assert_eq!(output.stdout, [] as [u8; 0]);
         let message = String::from_utf8(output.stderr).unwrap();
         let words = message.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(words.contains("line 20, column 13"), "{message}");
@@ -534,11 +463,12 @@ fn json_failures_keep_fixed_codes_and_structured_values() {
     assert_eq!(value["diagnostics"][0]["code"], "sample_rate.range");
     assert_eq!(
         value["diagnostics"][0]["params"],
-        serde_json::json!({"hz":0,"min_hz":1,"max_hz":768000})
+        serde_json::json!({"hz":0,"min_hz":1,"max_hz":768_000})
     );
     assert!(!missing.exists(), "range refusal precedes source access");
 
-    let component = "\n[[sound.component]]\nid = 7\nkind = \"tone\"\nears = \"both\"\nfrequency_hz = 440.0\npeak_dbfs = -40.0\n";
+    let component = "\n[[sound.component]]\nid = 7\nkind = \"tone\"\nears = \
+        \"both\"\nfrequency_hz = 440.0\npeak_dbfs = -40.0\n";
     let duplicate = format!("{}{}{}", silence(), component, component);
     let unsupported = silence().replacen("schema_version = 4", "schema_version = 3", 1);
     for (name, text, code, parameter, expected) in [
@@ -577,4 +507,88 @@ fn json_failures_keep_fixed_codes_and_structured_values() {
         }
         assert_eq!(fs::read(&file).unwrap(), text.as_bytes());
     }
+}
+
+fn cli_meaning_cases() -> [(
+    Vec<auditorylab_app::core::ComponentForm>,
+    &'static str,
+    &'static str,
+); 6] {
+    use auditorylab_app::core::{ComponentForm, Ears, Pair};
+    let tone = |frequency_hz: f64, ears, peak_dbfs: f64| ComponentForm::Tone {
+        frequency_hz: finite(frequency_hz),
+        ears,
+        peak_dbfs: finite(peak_dbfs),
+        modulation: None,
+    };
+    let forms = |voices: Vec<ComponentForm>| voices.into_iter().collect::<Vec<_>>();
+    let click = ComponentForm::Clicks {
+        rate_hz: finite(40.0),
+        width_seconds: finite(0.001),
+        ears: Ears::Both,
+        peak_dbfs: finite(-40.0),
+        modulation: None,
+    };
+    let pair = Pair {
+        first_hz: finite(380.0),
+        offset_hz: finite(40.0),
+        first_peak_dbfs: finite(-40.0),
+        second_peak_dbfs: finite(-41.0),
+    };
+    [
+        (
+            forms(vec![click, tone(440.0, Ears::Both, -40.0)]),
+            "40 Hz clicks",
+            "400 Hz",
+        ),
+        (
+            forms(vec![
+                tone(380.0, Ears::Left, -40.0),
+                tone(420.0, Ears::Right, -40.0),
+            ]),
+            "380 Hz steady tone",
+            "interaural difference",
+        ),
+        (
+            forms(vec![
+                tone(380.0, Ears::Both, -40.0),
+                tone(420.0, Ears::Both, -40.0),
+            ]),
+            "380 Hz steady tone",
+            "monaural",
+        ),
+        (
+            forms(vec![
+                tone(380.0, Ears::Both, -40.0),
+                tone(420.0, Ears::Both, -41.0),
+            ]),
+            "380 Hz steady tone",
+            "monaural",
+        ),
+        (
+            vec![{
+                ComponentForm::BinauralPair {
+                    left_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    left_peak_dbfs: pair.first_peak_dbfs,
+                    right_peak_dbfs: pair.second_peak_dbfs,
+                }
+            }],
+            "40 Hz interaural difference",
+            "monaural",
+        ),
+        (
+            vec![{
+                ComponentForm::MonauralPair {
+                    ears: Ears::Both,
+                    first_hz: pair.first_hz,
+                    offset_hz: pair.offset_hz,
+                    first_peak_dbfs: pair.first_peak_dbfs,
+                    second_peak_dbfs: pair.second_peak_dbfs,
+                }
+            }],
+            "40 Hz monaural",
+            "interaural",
+        ),
+    ]
 }

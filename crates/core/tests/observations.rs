@@ -13,7 +13,9 @@ fn tone(hz: f64, ears: Ears) -> ComponentForm {
 }
 #[expect(
     clippy::unwrap_used,
-    reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
+    reason = "Test fixture helper deliberately panics if its specified \
+        component/rate becomes invalid, causing the calling observation test \
+        to fail"
 )]
 fn target(rate: SampleRate, component: ComponentForm) -> Target {
     Sound::new(
@@ -30,7 +32,9 @@ fn target(rate: SampleRate, component: ComponentForm) -> Target {
 }
 #[expect(
     clippy::unwrap_used,
-    reason = "Test fixture helper deliberately panics if its specified component/rate becomes invalid, causing the calling observation test to fail"
+    reason = "Test fixture helper deliberately panics if its specified \
+        component/rate becomes invalid, causing the calling observation test \
+        to fail"
 )]
 fn facts(component: ComponentForm, rate: SampleRate) -> VoiceFacts {
     let check = auditorylab_core::Sound::new(
@@ -56,7 +60,7 @@ fn observations_identify_last_frame_without_advancing_phase() {
     e.render(&mut []);
     assert_eq!(e.observation(), None);
     e.set_revision(&target(rate, tone(380.0, Ears::Left)), 10);
-    let mut out = [[0.0; 2]; 1440];
+    let mut out = std::vec![[0.0; 2]; 1440];
     e.render(&mut out);
     let obs = e.observation().unwrap();
     assert_eq!(obs.frame, 1439);
@@ -122,7 +126,7 @@ fn changed_pulses_preserve_both_real_rates_and_roles() {
     };
     let mut e = Engine::new(rate);
     e.set(&target(rate, clicks(finite(40.0))));
-    e.render(&mut [[0.0; 2]; 2000]);
+    e.render(&mut std::vec![[0.0; 2]; 2000]);
     e.set(&target(rate, clicks(finite(80.0))));
     e.render(&mut [[0.0; 2]; 1]);
     let obs = e.observation().unwrap();
@@ -137,7 +141,7 @@ fn changed_pulses_preserve_both_real_rates_and_roles() {
                 assert_eq!(p.width_frames, 48);
                 p.rate_hz
             }
-            _ => panic!(),
+            CarrierFacts::Tone(_) => panic!(),
         })
         .collect();
     assert_eq!(rates, [40.0, 80.0]);
@@ -171,13 +175,13 @@ fn latest_revision_wins_and_stop_does_not_claim_the_skipped_target() {
         );
         e.render(&mut [[0.0; 2]; 1]);
     }
-    e.render(&mut [[0.0; 2]; 3000]);
+    e.render(&mut std::vec![[0.0; 2]; 3000]);
     assert_eq!(e.observation().unwrap().settled_revision, 3);
     e.set_revision(&target(rate, tone(800.0, Ears::Both)), 4);
     e.render(&mut [[0.0; 2]; 1]);
     e.set_revision(&target(rate, tone(900.0, Ears::Both)), 5);
     e.stop();
-    e.render(&mut [[0.0; 2]; 4000]);
+    e.render(&mut std::vec![[0.0; 2]; 4000]);
     assert!(e.is_finished());
     assert_eq!(e.observation().unwrap().active_revision, 4);
 }
@@ -187,7 +191,7 @@ fn latest_revision_wins_and_stop_does_not_claim_the_skipped_target() {
     reason = "independent integer-rational phase oracle is converted for presentation comparison"
 )]
 fn realized_rates_widths_depth_and_tiny_frequencies_are_explicit() {
-    for hz in [44100, 48000, 768000] {
+    for hz in [44100, 48000, 768_000] {
         let rate = SampleRate::new(hz).unwrap();
         let c = {
             let mut form = tone(1000.0, Ears::Both);
@@ -202,7 +206,10 @@ fn realized_rates_widths_depth_and_tiny_frequencies_are_explicit() {
             panic!()
         };
         let step = ((1000_u128 << 64).div_ceil(u128::from(hz))) as f64;
-        assert_eq!(t.realized_hz, step * f64::from(hz) / 18446744073709551616.0);
+        assert_eq!(
+            t.realized_hz,
+            step * f64::from(hz) / 18_446_744_073_709_551_616.0
+        );
         assert!(matches!(
             f.modulation,
             Some(ModulationFacts::Am { depth: 0.0, .. })

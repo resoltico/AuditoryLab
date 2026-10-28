@@ -125,7 +125,7 @@ mod tests {
         assert!(resumed.expired(Duration::from_secs(50), 1));
         let limit = time_limit(1, rate(8_001));
         let mut exact = Watchdog::new(Some(limit));
-        assert!(!exact.expired(limit - Duration::from_nanos(1), 1));
+        assert!(!exact.expired(limit.checked_sub(Duration::from_nanos(1)).unwrap(), 1));
         assert!(exact.expired(limit, 2));
         let mut live = Watchdog::new(None);
         for i in 0..200_u64 {

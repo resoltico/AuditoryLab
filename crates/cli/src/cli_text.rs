@@ -57,7 +57,8 @@ impl Caption {
         match self {
             Self::StopKeyboardHint => "Press Ctrl-C to stop.",
             Self::PasteRecipe => {
-                "Paste a UTF-8 TOML recipe, then end input with Ctrl-D (Unix) or Ctrl-Z followed by Enter (Windows)."
+                "Paste a UTF-8 TOML recipe, then end input with Ctrl-D (Unix) or \
+                    Ctrl-Z followed by Enter (Windows)."
             }
             Self::StandardInput => "standard input",
             Self::MonitorAlreadyInUse => "Output monitoring is already in use.",

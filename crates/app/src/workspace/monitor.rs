@@ -150,7 +150,8 @@ impl WaveformCapture {
             .min(signal.frames() - start);
         let mut samples = vec![[0.0; 2]; usize::try_from(count).unwrap_or(76_800)];
         signal.render(start, &mut samples);
-        // Validated synthesis is finite; if that invariant changes, fail visibly rather than draw stale geometry.
+        // Validated synthesis is finite; if that invariant changes, fail visibly rather than draw
+        // stale geometry.
         Self::samples(
             title,
             signal.sample_rate(),
@@ -203,9 +204,8 @@ fn limit(bins: &[[Extent; 2]], scale: WaveformScale) -> f64 {
         .flatten()
         .fold(0.0_f64, |p, e| p.max(e.min.abs()).max(e.max.abs()));
     match scale {
-        WaveformScale::Fixed => 1.0,
         WaveformScale::Fit if peak > 0.0 => peak,
-        WaveformScale::Fit => 1.0,
+        WaveformScale::Fixed | WaveformScale::Fit => 1.0,
     }
 }
 
@@ -235,13 +235,13 @@ pub struct ModelView {
 }
 impl ModelView {
     /// Construct off the callback; at most32lanes×512columns regardless of rates.
-    pub fn new(target: Target, title: String, source: ModelSource) -> Self {
+    pub fn new(target: &Target, title: String, source: ModelSource) -> Self {
         Self {
-            target,
+            target: *target,
             title,
             source,
             projection: target.timing_model(256),
-            structure: crate::core::rhythm::realized(&target),
+            structure: crate::core::rhythm::realized(target),
         }
     }
 }
@@ -292,14 +292,14 @@ pub fn output_monitor_state(
         };
     }
     match reader.freshness() {
-        crate::audio::session::ObservationFreshness::Waiting => OutputMonitorState::Waiting,
         crate::audio::session::ObservationFreshness::Stale => OutputMonitorState::Stale,
         crate::audio::session::ObservationFreshness::Current
             if capture.is_some() && reader.has_current_window() =>
         {
             OutputMonitorState::Live
         }
-        crate::audio::session::ObservationFreshness::Current => OutputMonitorState::Waiting,
+        crate::audio::session::ObservationFreshness::Waiting
+        | crate::audio::session::ObservationFreshness::Current => OutputMonitorState::Waiting,
     }
 }
 /// A monitor-data or display warning, independent of backend-reported output underruns.

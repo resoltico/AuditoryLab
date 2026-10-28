@@ -51,6 +51,10 @@ pub(crate) fn validate_names(version: &str, names: &[String]) -> Result<()> {
     Ok(())
 }
 /// Read every file, including unexpected suffixes; never silently filter stale assets.
+#[expect(
+    clippy::unnecessary_debug_formatting,
+    reason = "Native diagnostic paths retain escaped, quoted bytes, including non-UTF-8 names"
+)]
 pub(crate) fn collect(version: &str, input: &Path, output: &Path) -> Result<()> {
     let mut paths = Vec::<PathBuf>::new();
     for artifact in fs::read_dir(input)? {

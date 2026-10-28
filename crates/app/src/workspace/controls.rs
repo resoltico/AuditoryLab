@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn slider_gestures_have_bounded_quantization_and_preserve_positive_endpoints() {
-        for hz in [1, 8000, 44100, 48000, 768000] {
+        for hz in [1, 8000, 44100, 48000, 768_000] {
             let rate = SampleRate::new(hz).unwrap();
             for id in ParameterId::COMPONENT {
                 let r = range(id, rate).unwrap();
@@ -270,8 +270,8 @@ mod tests {
                     let tolerance = match id {
                         ParameterId::PeakLevel
                         | ParameterId::PairFirstLevel
-                        | ParameterId::PairSecondLevel => 0.0500001,
-                        ParameterId::AmDepth => 0.500001,
+                        | ParameterId::PairSecondLevel => 0.050_000_1,
+                        ParameterId::AmDepth => 0.500_001,
                         _ => raw.abs() * 0.005 + 1e-12,
                     };
                     assert!(
@@ -285,9 +285,12 @@ mod tests {
                 }
             }
         }
-        assert_eq!(quantize(ParameterId::ClickRate, 117.7690703440134), 118.0);
+        assert_eq!(
+            quantize(ParameterId::ClickRate, 117.769_070_344_013_4),
+            118.0
+        );
         assert_eq!(quantize(ParameterId::ClickRate, 39.0625), 39.1);
-        assert_eq!(quantize(ParameterId::AmRate, 0.123456), 0.123);
+        assert_eq!(quantize(ParameterId::AmRate, 0.123_456), 0.123);
         assert_eq!(quantize(ParameterId::PeakLevel, -30.123), -30.1);
         assert_eq!(quantize(ParameterId::AmDepth, 39.6), 40.0);
         assert_eq!(range(ParameterId::Duration, SampleRate::DEFAULT), None);

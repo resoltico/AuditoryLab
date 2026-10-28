@@ -1,5 +1,5 @@
 //! Runtime library choices and atomic query edits.
-use super::*;
+use super::{CarrierKind, Ears, ModulationKind, RowKey, SampleRate};
 
 /// One library query facet, independent of control position or wording.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

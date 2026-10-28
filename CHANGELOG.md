@@ -2,9 +2,13 @@
 
 ## [Unreleased]
 
+- Contributors must install `slint-lsp` at the resolved Slint version and run `cargo xtask check-style` for source width and Slint formatting.
+- CI denies Clippy pedantic findings; intentional escaped native-path diagnostics have narrow, reasoned expectations.
+
 - About and `--version` show the product version and optional source revision without a separate build counter.
 - macOS `CFBundleVersion` derives from `X*10000 + Y*100 + Z`; packaging rejects version suffixes and minor or patch values above 99.
 - Windows CLI and desktop executables include version, product name and copyright details.
+- Relative `--library-dir` errors use the shared path-bearing explanation; they still exit 2 before listing.
 
 ## [0.7.0] - 2026-10-28
 

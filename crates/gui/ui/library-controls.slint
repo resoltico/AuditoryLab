@@ -9,16 +9,30 @@ export component BoundButton inherits Button {
     private property <LibraryMutationAction> captured-action;
     private property <bool> armed:false;
     callback activated(EntryAddress);
-    callback dispatch(EntryAddress,LibraryMutationAction);
-    changed pressed => {if self.pressed {root.captured-entry=root.entry;root.captured-action=root.action;root.armed=true;}}
-    triggered => {root.activated(root.armed ? root.captured-entry : root.entry);root.dispatch(root.armed ? root.captured-entry : root.entry,root.armed ? root.captured-action : root.action);root.armed=false;}
+    callback dispatch(EntryAddress, LibraryMutationAction);
+    changed pressed => {
+        if self.pressed {
+            root.captured-entry = root.entry;
+            root.captured-action = root.action;
+            root.armed = true;
+        }
+    }
+    triggered => {
+        root.activated(root.armed ? root.captured-entry : root.entry);
+        root.dispatch(root.armed ? root.captured-entry : root.entry,
+        root.armed ? root.captured-action : root.action);
+        root.armed = false;
+    }
 }
 // Rename retains the handle on which text entry began.
 export component BoundTitleEdit inherits LineEdit {
     in property <EntryAddress> entry;
     private property <EntryAddress> captured-entry;
     private property <bool> dirty:false;
-    callback rename(EntryAddress,string);
-    edited(value)=>{if !root.dirty {root.captured-entry=root.entry;root.dirty=true;}}
-    accepted(value)=>{root.rename(root.dirty ? root.captured-entry : root.entry,value);root.dirty=false;}
+    callback rename(EntryAddress, string);
+    edited(value) => { if !root.dirty { root.captured-entry = root.entry; root.dirty = true; } }
+    accepted(value) => {
+        root.rename(root.dirty ? root.captured-entry : root.entry,value);
+        root.dirty = false;
+    }
 }

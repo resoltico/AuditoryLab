@@ -66,10 +66,11 @@ impl From<&auditorylab_app::services::StorageWarning> for DiagnosticMessage {
 }
 impl<E: Code + super::Explain> From<&LibraryDiagnostic<E>> for DiagnosticMessage {
     fn from(value: &LibraryDiagnostic<E>) -> Self {
-        Self::new(value, crate::errors::library_diagnostic_message(&(value)))
+        Self::new(value, crate::errors::library_diagnostic_message(value))
     }
 }
-report_struct!(InitializationReport { created: bool, path: PathBuf, warnings: Vec<DiagnosticMessage> });
+report_struct!(InitializationReport { created: bool, path: PathBuf,
+    warnings: Vec<DiagnosticMessage> });
 report_struct!(GroupReport {key:String,label:String,keys:Vec<LibraryKey>});
 impl From<&ResultGroup> for GroupReport {
     fn from(group: &ResultGroup) -> Self {
@@ -148,9 +149,11 @@ pub enum Validation {
 report_struct!(EntryReport {
     key: LibraryKey, collection: Collection, title: String, document_id: DocumentUuid,
     duration_seconds: f64, created_at: Option<Timestamp>, modified_at: Option<Timestamp>,
-    added_at: Option<Timestamp>, trashed_at: Option<Timestamp>, trashed: bool, version_token: Option<VersionToken>,
+    added_at: Option<Timestamp>, trashed_at: Option<Timestamp>, trashed: bool,
+        version_token: Option<VersionToken>,
     nominal: NominalReport, evidence: Vec<EvidenceFacet>, validation: Validation,
-    #[serde(skip_serializing_if = "Option::is_none")] history_warnings: Option<Vec<DiagnosticMessage>>,
+    #[serde(skip_serializing_if = "Option::is_none")] history_warnings:
+        Option<Vec<DiagnosticMessage>>,
     #[serde(skip_serializing_if = "Option::is_none")] recipe_toml: Option<String>,
 });
 impl From<&EntrySummary> for EntryReport {
@@ -217,7 +220,8 @@ pub enum ReportStatus {
 }
 report_struct!(Report {
     output_schema_version: u32, operation: Operation, complete: bool, convention: &'static str,
-    query: Option<CatalogQuery>, unique_count: usize, entries: Vec<EntryReport>, groups: Vec<GroupReport>,
+    query: Option<CatalogQuery>, unique_count: usize, entries: Vec<EntryReport>,
+        groups: Vec<GroupReport>,
     diagnostics: Vec<DiagnosticMessage>,
     #[serde(skip_serializing_if = "Option::is_none")] classifier_revision: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")] effective_sort: Option<(SortBy, Direction)>,
@@ -289,7 +293,7 @@ impl Report {
         report
     }
     /// Full portable content and declared-history diagnostics.
-    pub fn describe(description: auditorylab_app::services::Description<'_>) -> Self {
+    pub fn describe(description: &auditorylab_app::services::Description<'_>) -> Self {
         let source = description.source();
         let text = description.portable_text();
         let history = description.history_warnings();
@@ -454,7 +458,14 @@ pub fn json_bytes(value: &Report) -> Result<Vec<u8>, serde_json::Error> {
     let text = serde_json::to_string(value)?;
     let mut output = String::with_capacity(text.len());
     for c in text.chars() {
-        if matches!(c,'\u{061c}'|'\u{200e}'|'\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2066}'..='\u{2069}'|'\u{2028}'|'\u{2029}')
+        if matches!(c,
+                '\u{061c}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+                | '\u{2028}'
+                | '\u{2029}')
         {
             use std::fmt::Write;
             write!(&mut output, "\\u{:04x}", u32::from(c))

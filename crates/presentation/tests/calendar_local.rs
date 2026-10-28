@@ -3,7 +3,8 @@
 #![cfg(unix)]
 use std::{fs, process::Command};
 #[test]
-#[ignore = "subprocess fixture, explicitly invoked by native_calendar_uses_actual_timezone_database"]
+#[ignore = "subprocess fixture, explicitly invoked by \
+    native_calendar_uses_actual_timezone_database"]
 fn calendar_child() {
     let date = std::env::var("AUDITORYLAB_CALENDAR_TEST_DATE").unwrap();
     let range = auditorylab_app::discovery::calendar::local_range(
@@ -21,7 +22,14 @@ fn calendar_child() {
     .into_iter()
     .map(|s| auditorylab_presentation::library::calendar::local_timestamp(s.parse().unwrap()))
     .collect();
-    fs::write(std::env::var_os("AUDITORYLAB_CALENDAR_TEST_RESULT").unwrap(),serde_json::to_vec(&serde_json::json!({"from":range.from,"before":range.before,"context":auditorylab_presentation::library::calendar::local_context(),"shown":shown})).unwrap()).unwrap();
+    fs::write(
+        std::env::var_os("AUDITORYLAB_CALENDAR_TEST_RESULT").unwrap(),
+        serde_json::to_vec(&serde_json::json!({"from":range.from,"before":range.before,
+        "context":auditorylab_presentation::library::calendar::local_context(),"shown":shown}
+        ))
+        .unwrap(),
+    )
+    .unwrap();
 }
 #[test]
 fn native_calendar_uses_actual_timezone_database() {
@@ -54,7 +62,8 @@ fn native_calendar_uses_actual_timezone_database() {
         let value: serde_json::Value = serde_json::from_slice(&fs::read(result).unwrap()).unwrap();
         assert_eq!(
             value["from"], from,
-            "native calendar tests require Europe/Riga in the host timezone database; install tzdata if missing"
+            "native calendar tests require Europe/Riga in the host timezone \
+                database; install tzdata if missing"
         );
         assert_eq!(value["before"], before);
         assert_eq!(

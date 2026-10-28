@@ -4,6 +4,7 @@ use auditorylab_core::ComponentForm;
 use auditorylab_core::Modulation;
 use auditorylab_core::Recipe;
 use auditorylab_core::provenance::EvidenceScope;
+use std::fmt::Write as _;
 
 /// Derived presentation of current title/notes and a primary current condition.
 /// This is a view, not a second persisted metadata authority.
@@ -117,7 +118,8 @@ fn voice(form: ComponentForm) -> String {
             .phrase()
     );
     if let Some(modulation) = form.modulation() {
-        text.push_str(&format!(
+        let _ = write!(
+            text,
             ", {}",
             match modulation {
                 Modulation::Am { rate_hz, depth } =>
@@ -130,19 +132,18 @@ fn voice(form: ComponentForm) -> String {
                     modulation.kind().phrase()
                 ),
             }
-        ));
+        );
     }
     text
 }
 
-#[cfg(test)]
-mod tests;
-
 /// Derived descriptions of immutable snapshot content.
-
 pub fn snapshot_about(value: &auditorylab_app::document::recipe::RecipeSnapshot) -> Option<About> {
     about(value.recipe())
 }
 
 mod render;
 pub use render::*;
+
+#[cfg(test)]
+mod tests;

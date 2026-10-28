@@ -44,7 +44,8 @@ pub struct TimingModel {
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "The clamped model spans at most four seconds at 768 kHz; positive frame counts fit u64 and usize on supported 64-bit targets"
+    reason = "The clamped model spans at most four seconds at 768 kHz; positive \
+        frame counts fit u64 and usize on supported 64-bit targets"
 )]
 pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
     let rate = mix.rate();
@@ -87,10 +88,10 @@ pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
         match voice.modulation {
             Some(Modulator::Gate(pulse)) => lane(ModelKind::Gate, &|s, e| pulse.extent(s, e)),
             Some(Modulator::Am { step, depth }) if depth > 0.0 => {
-                lane(ModelKind::Envelope, &|s, e| envelope(step, depth, s, e))
+                lane(ModelKind::Envelope, &|s, e| envelope(step, depth, s, e));
             }
             _ if matches!(voice.carrier, Carrier::Tone { .. }) => {
-                lane(ModelKind::Steady, &|_, _| Extent { min: 1.0, max: 1.0 })
+                lane(ModelKind::Steady, &|_, _| Extent { min: 1.0, max: 1.0 });
             }
             _ => {}
         }
@@ -101,7 +102,8 @@ pub(crate) fn project(mix: &CompiledMix, bins: usize) -> TimingModel {
 // column covering an entire period is the full envelope range, not a sampled peak.
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "Truncation deliberately takes the low 64 phase bits of the u128 product, matching wrapping synthesis phase"
+    reason = "Truncation deliberately takes the low 64 phase bits of the u128 \
+        product, matching wrapping synthesis phase"
 )]
 fn envelope(step: u64, depth: f64, start: u64, end: u64) -> Extent {
     let a = u128::from(start) * u128::from(step);

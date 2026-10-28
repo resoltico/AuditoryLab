@@ -47,13 +47,12 @@ pub fn find(name: &str) -> Option<&'static Entry> {
     ENTRIES.iter().find(|entry| entry.id == name)
 }
 
-#[cfg(test)]
-mod tests;
-
 use alloc::{boxed::Box, string::String};
 
 /// Recipes adapted from published conditions share this evidence boundary.
-const LIMITATIONS: &str = "Source findings concern the stated population and condition; adaptations do not establish efficacy for generated audio. See the summary and adaptation for study-specific limitations.";
+const LIMITATIONS: &str = "Source findings concern the stated population and condition; \
+    adaptations do not establish efficacy for generated audio. See the \
+    summary and adaptation for study-specific limitations.";
 
 /// Built-in recipes in curated natural ID order.
 pub const ENTRIES: &[Entry] = &[
@@ -256,3 +255,6 @@ fn generated_recipe(
     }
     Ok(toml::to_string(&document)?)
 }
+
+#[cfg(test)]
+mod tests;

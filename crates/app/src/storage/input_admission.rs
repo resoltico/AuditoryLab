@@ -2,6 +2,8 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use std::{
     fs::{File, OpenOptions},
     io,
@@ -24,7 +26,6 @@ fn open_handle(path: &Path) -> io::Result<File> {
     // path being replaced by a FIFO before open. Regular-file reads are unchanged.
     #[cfg(unix)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
         options.custom_flags(libc::O_NONBLOCK);
     }
     options.open(path)
@@ -97,7 +98,6 @@ mod tests {
         // even if the pathname is replaced with a regular file before admission.
         // Fixture opening is independently nonblocking even if production's
         // flag regresses; the bounded integration child detects that regression.
-        use std::os::unix::fs::OpenOptionsExt;
         let fifo = OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_NONBLOCK)

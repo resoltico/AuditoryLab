@@ -119,14 +119,14 @@ impl LiveGenerator {
     /// Allocation happens here, never while rendering.
     #[must_use]
     #[cfg(test)]
-    pub(crate) fn new(target: Target) -> Self {
+    pub(crate) fn new(target: &Target) -> Self {
         Self::with_state(target, SessionState::new())
     }
 
-    pub(crate) fn with_state(target: Target, state: Arc<SessionState>) -> Self {
+    pub(crate) fn with_state(target: &Target, state: Arc<SessionState>) -> Self {
         let updates = Updates {
-            pending: Some((1, target)),
-            accepted: Some((1, target)),
+            pending: Some((1, *target)),
+            accepted: Some((1, *target)),
         };
         let mailbox = Arc::new(Mutex::new(updates));
         // Darwin's std mutex lazily allocates its OS storage. Initialize it
@@ -252,7 +252,8 @@ crate::core::diagnostic_codes! {
                     target_hz,
                     session_hz,
                 } => {
-                    crate::core::diagnostic_params! {"target_hz"=>*target_hz,"session_hz"=>*session_hz}
+                    crate::core::diagnostic_params! {"target_hz"=>*target_hz,
+                        "session_hz"=>*session_hz}
                 }
                 _ => crate::core::diagnostic::Params::new(),
             }

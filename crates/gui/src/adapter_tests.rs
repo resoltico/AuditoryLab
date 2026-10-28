@@ -336,46 +336,7 @@ fn generated_editing_callbacks_reach_the_workspace_and_project_its_results() {
     assert_eq!(shown.text, "3750");
     assert!(!shown.staged);
 
-    let title = EditingField::Metadata(MetadataField::Title);
-    ui.invoke_commit_metadata(
-        metadata_field_handle(&ui.get_document(), MetadataField::Title),
-        "Probe".into(),
-    );
-    assert_eq!(
-        h.adapter.inspect(|w| w.editor().draft().title().to_owned()),
-        "Probe"
-    );
-    assert_eq!(ui.get_title_field().text, "Probe");
-    ui.invoke_stage_metadata(
-        metadata_field_handle(&ui.get_document(), MetadataField::Title),
-        "Draft".into(),
-    );
-    assert_eq!(
-        h.adapter
-            .inspect(|w| w.editor().staged(title).map(str::to_owned)),
-        Some("Draft".to_owned())
-    );
-    ui.invoke_restore_metadata(metadata_field_handle(
-        &ui.get_document(),
-        MetadataField::Title,
-    ));
-    assert_eq!(ui.get_title_field().text, "Probe");
-
-    ui.invoke_set_modulation(binding.clone(), 1);
-    assert_eq!(ui.get_components().row_data(0).unwrap().modulation, 1);
-    assert_eq!(
-        h.keys(0),
-        [
-            ParameterId::ToneFrequency,
-            ParameterId::PeakLevel,
-            ParameterId::AmRate,
-            ParameterId::AmDepth
-        ]
-    );
-    ui.invoke_set_ears(binding.clone(), 1);
-    assert_eq!(ui.get_components().row_data(0).unwrap().ears, 1);
-    ui.invoke_remove_component(binding.clone());
-    assert_eq!(ui.get_components().row_count(), 0);
+    assert_metadata_and_component_callbacks(&h);
 }
 
 #[test]
@@ -484,7 +445,7 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
                 let id = field_parameter(&shown.key);
                 assert_eq!(
                     shown.label,
-                    auditorylab_presentation::parameter_input_label((id))
+                    auditorylab_presentation::parameter_input_label(id)
                 );
                 assert_eq!(shown.help, auditorylab_presentation::parameter_help(id));
                 assert_eq!(
@@ -626,7 +587,7 @@ fn callbacks_from_a_replaced_document_are_refused() {
     ui.invoke_add_component(old_document.clone(), 1);
     h.adapter.inspect(|w| {
         assert_eq!(w.editor().draft().title(), fresh_title);
-        assert!(w.editor().draft().components().is_empty());
+        assert_eq!(w.editor().draft().components(), []);
         assert!(!w.editor().has_staged());
         assert!(!w.editor().dirty());
     });
@@ -670,6 +631,7 @@ fn a_tab_choice_survives_a_projection_before_its_change_handler_runs() {
 #[test]
 fn a_dragged_slider_keeps_following_typed_values() {
     use slint::platform::PointerEventButton;
+
     let h = Harness::new();
     let ui = h.ui();
     h.workbench();
@@ -828,7 +790,7 @@ fn clicking_a_recipe_row_selects_it() {
         if bottom - top > 8.0 {
             pointer = Some(slint::LogicalPosition::new(
                 row_origin.x + row_bounds.size.width / 2.0,
-                (top + bottom) / 2.0,
+                f32::midpoint(top, bottom),
             ));
             break;
         }
@@ -988,6 +950,7 @@ fn centre(item: &ItemRc) -> slint::LogicalPosition {
 /// Press the left button at `from`, move to `to` and release there.
 fn drag(ui: &MainWindow, from: slint::LogicalPosition, to: slint::LogicalPosition) {
     use slint::platform::PointerEventButton;
+
     let button = PointerEventButton::Left;
     let window = ui.window();
     window.dispatch_event(WindowEvent::PointerPressed {
@@ -1300,6 +1263,7 @@ fn library_play_command_obeys_unavailable_playback_capability() {
 #[test]
 fn notes_return_stages_newlines_and_save_preserves_exact_multiline_text() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
+
     let h = Harness::new();
     let ui = h.ui();
     h.workbench();
@@ -1332,7 +1296,7 @@ fn notes_return_stages_newlines_and_save_preserves_exact_multiline_text() {
     assert_eq!(text_of(&input), "");
     h.key("A\nB\n\n測定 🎧");
     ui.invoke_save_recipe();
-    assert!(h.take().is_empty());
+    assert_eq!(h.take(), [] as [Request; 0]);
     h.wait_for_files();
     let entry = h
         .store()
@@ -1352,6 +1316,7 @@ fn notes_return_stages_newlines_and_save_preserves_exact_multiline_text() {
 #[test]
 fn native_event_filter_keeps_focus_suspension_after_frame_readiness() {
     use slint::winit_030::winit::event::WindowEvent;
+
     let h = Harness::new();
     h.adapter.main_window_event(&WindowEvent::Focused(false));
     assert!(h.ui().get_edits_suspended());
@@ -1585,7 +1550,7 @@ fn authored_pair_controls_validate_both_coupled_fields_and_both_voice_budgets() 
     });
     assert_eq!(
         value.get().to_bits(),
-        200.00000000000003_f64.to_bits(),
+        200.000_000_000_000_03_f64.to_bits(),
         "text never passes through a Slint f32 property"
     );
     for _ in 0..6 {
@@ -1737,52 +1702,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
     assert_eq!(ui.get_sound_title(), "Native managed copy");
     assert!(ui.get_catalog().row_data(0).unwrap().text.contains("Theta"));
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
-    let key = ui.get_library_key();
-    ui.invoke_library_action(
-        ui.get_library_entry(),
-        crate::generated::LibraryMutationAction::Trash,
-        "".into(),
-    );
-    h.wait_for_files();
-    ui.invoke_collection_filter(4, 0);
-    h.wait_for_files();
-    assert!(ui.get_library_trashed());
-    assert!(!ui.get_can_play());
-    ui.invoke_library_action(
-        ui.get_library_entry(),
-        crate::generated::LibraryMutationAction::Restore,
-        "".into(),
-    );
-    h.wait_for_files();
-    ui.invoke_collection_filter(2, 0);
-    h.wait_for_files();
-    ui.invoke_library_action(
-        ui.get_library_entry(),
-        crate::generated::LibraryMutationAction::Trash,
-        "".into(),
-    );
-    h.wait_for_files();
-    ui.invoke_collection_filter(4, 0);
-    h.wait_for_files();
-    ui.invoke_library_action(
-        ui.get_library_entry(),
-        crate::generated::LibraryMutationAction::RequestPurge,
-        "".into(),
-    );
-    let [Request::Purge(prompt, ref prompted, ref title)] = h.take()[..] else {
-        panic!("native purge confirmation missing")
-    };
-    assert_eq!(prompted, key.as_str());
-    assert_eq!(title, "Native managed copy");
-    assert!(store.load(&key.parse().unwrap()).is_ok());
-    h.adapter.respond(prompt, PromptAnswer::Confirm);
-    h.wait_for_files();
-    assert!(
-        store
-            .scan(&auditorylab_app::job::Cancel::default())
-            .entries
-            .is_empty()
-    );
+    assert_managed_trash_controls(&h, &store);
 }
 
 #[test]
@@ -1809,12 +1729,18 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
         0,
         0,
         1,
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
     );
     let expected = h.adapter.inspect(|w| {
         w.catalog_query()
@@ -1849,36 +1775,7 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
         ui.get_catalog().row_count() > expected,
         "virtual band groups repeat references, not counted sounds"
     );
-    ui.invoke_more_filters(
-        "".into(),
-        0,
-        0,
-        0,
-        0,
-        1,
-        "2026-10-24".into(),
-        "2026-10-23".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-    );
-    assert!(
-        h.adapter
-            .inspect(|w| w.catalog_query().created.from.is_none())
-    );
-    assert!(
-        !ui.get_library_alert().is_empty(),
-        "the rejected range is shown in the library's live diagnostic banner"
-    );
-    let date_error = ui.get_library_alert();
-    assert!(
-        date_error.contains("Created through")
-            && date_error.contains("Created from")
-            && date_error.contains("on or after")
-    );
-    assert!(!date_error.contains("before"));
-    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    assert_invalid_native_dates(&h);
 }
 
 slint::slint! {
@@ -1890,7 +1787,8 @@ slint::slint! {
         in-out property <EntryAddress> entry;
         in-out property <LibraryMutationAction> operation;
         callback delivered(EntryAddress,LibraryMutationAction);
-        BoundButton {x:10px;y:10px;width:220px;height:50px;text:"Bound library action";entry:root.entry;action:root.operation;dispatch(e,a)=>{root.delivered(e,a);}}
+        BoundButton {x:10px;y:10px;width:220px;height:50px;text:"Bound library action";
+            entry:root.entry;action:root.operation;dispatch(e,a)=>{root.delivered(e,a);}}
     }
 }
 #[test]
@@ -2063,45 +1961,7 @@ fn native_open_add_external_save_conflict_and_independent_copy_keep_originals_di
         "External original"
     );
     assert!(!ui.get_dirty());
-    let mut other = auditorylab_app::services::open_file(&file)
-        .unwrap()
-        .recipe()
-        .clone()
-        .into_builder();
-    other.content.description.as_mut().unwrap().title = "Other application".into();
-    std::fs::write(&file, other.build().unwrap().to_toml().unwrap()).unwrap();
-    ui.invoke_commit_metadata(
-        metadata_field_handle(&ui.get_document(), MetadataField::Title),
-        "Retained after conflict".into(),
-    );
-    ui.invoke_save_recipe();
-    h.wait_for_files();
-    assert!(ui.get_dirty());
-    assert!(ui.get_status().contains("changed identity or bytes"));
-    assert_eq!(
-        auditorylab_app::services::open_file(&file).unwrap().title(),
-        "Other application"
-    );
-    ui.invoke_save_copy();
-    h.wait_for_files();
-    assert!(!ui.get_dirty());
-    assert_ne!(
-        h.adapter
-            .inspect(|w| w.editor().draft().recipe().unwrap().document().id),
-        original.document().id
-    );
-    assert_eq!(
-        store
-            .scan(&auditorylab_app::job::Cancel::default())
-            .entries
-            .len(),
-        2
-    );
-    assert_eq!(
-        auditorylab_app::services::open_file(&file).unwrap().title(),
-        "Other application"
-    );
-    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    assert_external_conflict_and_copy(&h, &file, &original, &store);
 }
 
 #[test]
@@ -2237,6 +2097,7 @@ fn reveal_library_control(h: &Harness, prefix: &str) -> ItemRc {
 #[test]
 fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
+
     let temp = tempfile::tempdir().unwrap();
     let root =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
@@ -2315,40 +2176,13 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
     h.settle();
     assert_eq!(ui.get_catalog().row_count(), 23);
     assert!(ui.get_library_count().contains("Applied filters: None"));
-    for scope in [2, 3, 4] {
-        ui.invoke_collection_filter(scope, 2);
-        h.settle();
-        assert_eq!(ui.get_catalog().row_count(), 0);
-        action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
-        h.settle();
-        if !ui.get_storage_open() {
-            reveal_library_control(&h, "Library storage and recovery")
-                .accessible_action(&AccessibilityAction::Default);
-        }
-        h.settle();
-        assert!(reveal_library_control(&h, "Initialize configured library").is_visible());
-        ui.invoke_close_library_filters();
-        h.settle();
-        let refresh = centre(&action_button(ui, "Refresh"));
-        drag(ui, refresh, refresh);
-        h.wait_for_files();
-        assert_eq!(
-            h.adapter.inspect(|w| w.catalog_query().sort),
-            auditorylab_app::discovery::query::SortBy::Title
-        );
-        assert_eq!(ui.get_collection_choice(), scope);
-    }
-    ui.invoke_collection_filter(2, 0);
-    h.settle();
-    action_button(ui, "Create sound").accessible_action(&AccessibilityAction::Default);
-    h.settle();
-    assert_eq!(h.adapter.inspect(|w| w.view()), View::Workbench);
-    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+    assert_empty_scope_recovery(&h);
 }
 
 #[test]
 fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
+
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("library");
     let root = auditorylab_app::services::library::Library::at_path(path.clone()).unwrap();
@@ -2375,90 +2209,7 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
     ui.invoke_search("missing".into());
     h.settle();
     assert!(ui.get_library_filters_active());
-    for size in [13.0, 26.0] {
-        ui.set_ui_size(size);
-        ui.window().set_size(slint::LogicalSize::new(800.0, 600.0));
-        h.settle();
-        for name in [
-            "Filters",
-            "Library options…",
-            "Clear all filters",
-            "Open Recipe…",
-            "Create sound",
-            "Play selected sound",
-        ] {
-            let item = if matches!(name, "Clear all filters" | "Open Recipe…" | "Create sound") {
-                find_control(ui, |item| {
-                    item.is_accessible()
-                        && item
-                            .accessible_string_property(AccessibleStringProperty::Label)
-                            .as_deref()
-                            == Some(name)
-                })
-                .expect("scrollable action exists")
-            } else {
-                action_button(ui, name)
-            };
-            if matches!(name, "Clear all filters" | "Open Recipe…" | "Create sound") {
-                let owns_focus = || {
-                    let focused = WindowInner::from_pub(ui.window())
-                        .focus_item
-                        .borrow()
-                        .upgrade();
-                    focused.is_some_and(|focus| {
-                        focus == item
-                            || item
-                                .visit_descendants(|child| {
-                                    if child == &focus {
-                                        ControlFlow::Break(())
-                                    } else {
-                                        ControlFlow::Continue(())
-                                    }
-                                })
-                                .is_some()
-                    })
-                };
-                for _ in 0..80 {
-                    if owns_focus() {
-                        break;
-                    }
-                    h.key(Key::Tab);
-                }
-                assert!(owns_focus(), "Tab must reach {name} at {size}px");
-                h.settle();
-                let scroll = labelled(ui, "Library results");
-                let viewport = scroll
-                    .visit_descendants(|child| {
-                        if child
-                            .downcast::<slint::private_unstable_api::re_exports::Flickable>()
-                            .is_some()
-                        {
-                            ControlFlow::Break(child.clone())
-                        } else {
-                            ControlFlow::Continue(())
-                        }
-                    })
-                    .expect("result scroll exposes its actual viewport");
-                let view_bounds = viewport.geometry();
-                let view_origin = viewport.map_to_native_window(view_bounds.origin);
-                let bounds = item.geometry();
-                let origin = item.map_to_native_window(bounds.origin);
-                assert!(
-                    origin.y >= view_origin.y
-                        && origin.y + bounds.size.height <= view_origin.y + view_bounds.size.height,
-                    "{name} must be revealed inside the result viewport at {size}px: item={origin:?} size={:?}; view={view_origin:?} size={:?}; scroll={}",
-                    bounds.size,
-                    view_bounds.size,
-                    ui.get_library_scroll_y()
-                );
-            }
-            let position = centre(&item);
-            assert!(
-                position.x >= 0.0 && position.x < 800.0 && position.y >= 0.0 && position.y < 600.0,
-                "{name} must remain reachable at {size}px, got {position:?}"
-            );
-        }
-    }
+    assert_unavailable_root_sizes(&h);
     ui.set_ui_size(13.0);
     ui.window().set_size(slint::LogicalSize::new(800.0, 900.0));
     h.settle();
@@ -2481,6 +2232,7 @@ fn compact_unavailable_root_keeps_recovery_and_non_authoritative_counts_visible(
 #[test]
 fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
+
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
@@ -2533,12 +2285,18 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
         0,
         0,
         0,
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
     );
     h.settle();
     ui.invoke_close_library_filters();
@@ -2556,36 +2314,14 @@ fn compact_back_keeps_result_scroll_and_large_text_rows_wrap_with_summary_dates(
     );
     action_button(ui, "Clear all filters").accessible_action(&AccessibilityAction::Default);
     h.settle();
-    ui.set_ui_size(26.0);
-    h.settle();
-    let label = ui.get_catalog().row_data(0).unwrap().text;
-    assert!(label.contains("Duration") && label.contains("Created: Unknown"));
-    let row = labelled(ui, &label);
-    let row_rect = row.geometry();
-    assert!(
-        row_rect.size.width <= 800.0 && row_rect.size.height >= 26.0 * 3.5,
-        "multi-line row grows rather than clipping its new metadata"
-    );
-    let child = row.visit_descendants(|item| {
-        if item
-            .accessible_string_property(AccessibleStringProperty::Label)
-            .as_deref()
-            == Some(ui.get_catalog().row_data(0).unwrap().title.as_str())
-            && item.geometry().size.width < row_rect.size.width
-        {
-            ControlFlow::Break(item.clone())
-        } else {
-            ControlFlow::Continue(())
-        }
-    });
-    let child = child.expect("wrapped row text is present within the row");
-    assert!(child.geometry().size.height <= row_rect.size.height);
+    assert_large_text_catalog_row(&h);
 }
 
 #[test]
 fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     use auditorylab_app::services::library::Mutation;
     use slint::private_unstable_api::re_exports::AccessibilityAction;
+
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
@@ -2690,10 +2426,10 @@ fn changing_display_vocabulary_preserves_typed_library_search() {
     assert_eq!(before.len(), 1);
     h.ui()
         .global::<crate::generated::ViewCaptions>()
-        .set_caption_structural_method("Different display wording".into());
+        .set_structural_method("Different display wording".into());
     h.ui()
         .global::<crate::generated::ViewCaptions>()
-        .set_caption_library("Different collection wording".into());
+        .set_library("Different collection wording".into());
     h.ui().invoke_search("".into());
     h.wait_for_files();
     assert!(h.ui().get_catalog().row_count() > before.len());
@@ -2711,8 +2447,9 @@ fn changing_display_vocabulary_preserves_typed_library_search() {
 #[test]
 fn filter_controls_map_to_independent_typed_queries() {
     use auditorylab_app::core::rhythm::{Band, Method};
-    use auditorylab_app::discovery::collection::{CatalogQuery, DateRange};
+    use auditorylab_app::discovery::collection::CatalogQuery;
     use auditorylab_app::discovery::query::RhythmQuery;
+
     let temp = tempfile::tempdir().unwrap();
     let store =
         auditorylab_app::services::library::Library::at_path(temp.path().join("library")).unwrap();
@@ -2800,62 +2537,7 @@ fn filter_controls_map_to_independent_typed_queries() {
                 .inspect(|w| assert_eq!(w.catalog_query(), &expected));
         }
     }
-    ui.invoke_rhythm_filter(0, 0);
-    h.wait_for_files();
-    ui.invoke_more_filters(
-        "key:source".into(),
-        2,
-        2,
-        2,
-        2,
-        3,
-        "2026-01-01".into(),
-        "2026-01-02".into(),
-        "2026-03-01".into(),
-        "2026-03-02".into(),
-        "2026-05-01".into(),
-        "2026-05-02".into(),
-    );
-    h.wait_for_files();
-    let expected = CatalogQuery {
-        studies: vec!["key:source".into()],
-        populations: vec![auditorylab_app::core::provenance::Population::Mouse],
-        roles: vec![auditorylab_app::core::provenance::ConditionRole::Comparison],
-        analysis: Some(auditorylab_app::core::rhythm::Completeness::Invalid),
-        direction: Some(Direction::Desc),
-        group_by: GroupBy::Study,
-        created: auditorylab_app::discovery::calendar::local_range(
-            auditorylab_app::discovery::query::CalendarField::Created,
-            "2026-01-01",
-            "2026-01-02",
-        )
-        .unwrap(),
-        modified: auditorylab_app::discovery::calendar::local_range(
-            auditorylab_app::discovery::query::CalendarField::Modified,
-            "2026-03-01",
-            "2026-03-02",
-        )
-        .unwrap(),
-        added: auditorylab_app::discovery::calendar::local_range(
-            auditorylab_app::discovery::query::CalendarField::Added,
-            "2026-05-01",
-            "2026-05-02",
-        )
-        .unwrap(),
-        ..CatalogQuery::default()
-    };
-    h.adapter
-        .inspect(|w| assert_eq!(w.catalog_query(), &expected));
-    ui.invoke_clear_library_filters();
-    h.wait_for_files();
-    let cleared = CatalogQuery {
-        direction: Some(Direction::Desc),
-        group_by: GroupBy::Study,
-        created: DateRange::default(),
-        ..CatalogQuery::default()
-    };
-    h.adapter
-        .inspect(|w| assert_eq!(w.catalog_query(), &cleared));
+    assert_evidence_date_filters(&h);
 }
 
 #[test]
@@ -2869,7 +2551,7 @@ fn real_save_capture_and_delayed_completion_preserve_newer_edits_and_close_promp
     );
     ui.invoke_save_recipe();
     let save = take_job(&h, JobKind::File);
-    assert!(h.take().is_empty());
+    assert_eq!(h.take(), [] as [Request; 0]);
     let document = ui.get_document();
     ui.invoke_commit_metadata(
         metadata_field_handle(&ui.get_document(), MetadataField::Title),
@@ -2907,6 +2589,7 @@ fn real_save_capture_and_delayed_completion_preserve_newer_edits_and_close_promp
 #[test]
 fn background_refresh_does_not_hide_a_failed_captured_save() {
     use auditorylab_app::services::library::Mutation;
+
     let h = Harness::new();
     let ui = h.ui();
     h.workbench();
@@ -2959,98 +2642,8 @@ fn background_refresh_does_not_hide_a_failed_captured_save() {
 #[test]
 fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
     let h = Harness::new();
-    let ui = h.ui();
     for (field, label) in [(0, "Created"), (1, "Modified"), (2, "Added here")] {
-        ui.invoke_clear_library_filters();
-        h.wait_for_files();
-        ui.set_created_from("".into());
-        ui.set_created_through("".into());
-        ui.set_modified_from("".into());
-        ui.set_modified_through("".into());
-        ui.set_added_from("".into());
-        ui.set_added_through("".into());
-        let previous = h.adapter.inspect(|w| w.catalog_query().clone());
-        let mut from = ["", "", ""];
-        let mut through = ["", "", ""];
-        from[field] = "2026-10-26";
-        through[field] = "2026-10-25";
-        match field {
-            0 => {
-                ui.set_created_from(from[field].into());
-                ui.set_created_through(through[field].into());
-            }
-            1 => {
-                ui.set_modified_from(from[field].into());
-                ui.set_modified_through(through[field].into());
-            }
-            _ => {
-                ui.set_added_from(from[field].into());
-                ui.set_added_through(through[field].into());
-            }
-        }
-        ui.invoke_more_filters(
-            "".into(),
-            0,
-            0,
-            0,
-            0,
-            0,
-            from[0].into(),
-            through[0].into(),
-            from[1].into(),
-            through[1].into(),
-            from[2].into(),
-            through[2].into(),
-        );
-        h.wait_for_files();
-        h.adapter.inspect(|w| {
-            assert_eq!(w.catalog_query(), &previous);
-            let error = auditorylab_presentation::library::workspace_library_alert(&(w));
-            assert!(error.contains(&format!(
-                "{label} through (2026-10-25) must be on or after {label} from (2026-10-26)."
-            )));
-            assert!(!error.contains("before"));
-        });
-        let values = match field {
-            0 => (ui.get_created_from(), ui.get_created_through()),
-            1 => (ui.get_modified_from(), ui.get_modified_through()),
-            _ => (ui.get_added_from(), ui.get_added_through()),
-        };
-        assert_eq!(
-            (values.0.as_str(), values.1.as_str()),
-            ("2026-10-26", "2026-10-25")
-        );
-        from[field] = "2026-10-25";
-        match field {
-            0 => ui.set_created_from(from[field].into()),
-            1 => ui.set_modified_from(from[field].into()),
-            _ => ui.set_added_from(from[field].into()),
-        }
-        ui.invoke_more_filters(
-            "".into(),
-            0,
-            0,
-            0,
-            0,
-            0,
-            from[0].into(),
-            through[0].into(),
-            from[1].into(),
-            through[1].into(),
-            from[2].into(),
-            through[2].into(),
-        );
-        h.wait_for_files();
-        h.adapter.inspect(|w| {
-            assert!(auditorylab_presentation::library::workspace_library_alert(&(w)).is_empty());
-            let query = w.catalog_query();
-            let range = match field {
-                0 => &query.created,
-                1 => &query.modified,
-                _ => &query.added,
-            };
-            assert!(range.from.unwrap() < range.before.unwrap());
-        });
+        assert_inclusive_date_error(&h, field, label);
     }
 }
 
@@ -3058,6 +2651,7 @@ fn inclusive_date_errors_name_each_visible_pair_and_keep_inputs_and_query() {
 fn wide_library_navigation_uses_real_shared_filters_and_structured_cards() {
     use auditorylab_app::core::rhythm::Band;
     use slint::private_unstable_api::re_exports::AccessibilityAction;
+
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
@@ -3131,12 +2725,18 @@ fn wide_library_group_headings_have_no_selectable_identity() {
         0,
         0,
         1,
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
     );
     h.settle();
     let rows = ui.get_catalog();
@@ -3156,6 +2756,7 @@ fn wide_library_group_headings_have_no_selectable_identity() {
 #[ignore = "explicit silent native visual evidence, not a device test"]
 fn library_review_screenshots() {
     use std::io::Write;
+
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
@@ -3198,12 +2799,18 @@ fn applied_filters_remain_readable_when_library_tools_are_closed() {
             0,
             0,
             0,
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
+            crate::generated::DateInput {
+                from_text: "".into(),
+                through_text: "".into(),
+            },
+            crate::generated::DateInput {
+                from_text: "".into(),
+                through_text: "".into(),
+            },
+            crate::generated::DateInput {
+                from_text: "".into(),
+                through_text: "".into(),
+            },
         );
         h.settle();
         ui.invoke_open_query_details();
@@ -3224,6 +2831,7 @@ fn applied_filters_remain_readable_when_library_tools_are_closed() {
 #[test]
 fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
+
     let (workspace, _directory, _store) = bound_workspace(
         auditorylab_app::services::catalog().unwrap(),
         Capabilities::no_device_playback(),
@@ -3281,6 +2889,7 @@ fn startup_exposes_all_five_bands_and_monitor_is_an_explicit_choice() {
 #[test]
 fn library_ux_preview_reveals_monitor_and_quiet_rows_preserve_identity() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
+
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
@@ -3385,6 +2994,7 @@ fn library_ux_empty_collection_is_distinct_from_filtered_or_incomplete_results()
 #[test]
 fn library_ux_filters_overlay_keeps_selection_and_geometry_and_escape_closes_it() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
+
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
@@ -3410,6 +3020,7 @@ fn library_ux_filters_overlay_keeps_selection_and_geometry_and_escape_closes_it(
 #[test]
 fn library_ux_component_menu_adds_every_kind_and_retains_its_document() {
     use slint::private_unstable_api::re_exports::AccessibilityAction;
+
     let h = Harness::new();
     h.workbench();
     let ui = h.ui();
@@ -3590,25 +3201,8 @@ fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
     use auditorylab_app::core::rhythm::Completeness;
     use auditorylab_app::core::{provenance::ConditionRole, provenance::Population};
     use auditorylab_app::discovery::query::{Direction, GroupBy};
+
     let h = Harness::new();
-    let ui = h.ui();
-    let apply = |population, role, analysis, direction, group| {
-        ui.invoke_more_filters(
-            "".into(),
-            population,
-            role,
-            analysis,
-            direction,
-            group,
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
-            "".into(),
-        );
-        h.wait_for_files();
-    };
     for (index, expected) in std::iter::once(None)
         .chain(
             [
@@ -3624,12 +3218,12 @@ fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
         )
         .enumerate()
     {
-        apply(i32::try_from(index).unwrap(), 0, 0, 0, 0);
+        apply_runtime_facets(&h, i32::try_from(index).unwrap(), 0, 0, 0, 0);
         h.adapter.inspect(|w| {
             assert_eq!(
                 w.catalog_query().populations,
                 expected.into_iter().collect::<Vec<_>>()
-            )
+            );
         });
     }
     for (index, expected) in std::iter::once(None)
@@ -3645,12 +3239,12 @@ fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
         )
         .enumerate()
     {
-        apply(0, i32::try_from(index).unwrap(), 0, 0, 0);
+        apply_runtime_facets(&h, 0, i32::try_from(index).unwrap(), 0, 0, 0);
         h.adapter.inspect(|w| {
             assert_eq!(
                 w.catalog_query().roles,
                 expected.into_iter().collect::<Vec<_>>()
-            )
+            );
         });
     }
     for (index, expected) in std::iter::once(None)
@@ -3661,7 +3255,7 @@ fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
         )
         .enumerate()
     {
-        apply(0, 0, i32::try_from(index).unwrap(), 0, 0);
+        apply_runtime_facets(&h, 0, 0, i32::try_from(index).unwrap(), 0, 0);
         h.adapter
             .inspect(|w| assert_eq!(w.catalog_query().analysis, expected));
     }
@@ -3669,7 +3263,7 @@ fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
         .chain([Direction::Asc, Direction::Desc].into_iter().map(Some))
         .enumerate()
     {
-        apply(0, 0, 0, i32::try_from(index).unwrap(), 0);
+        apply_runtime_facets(&h, 0, 0, 0, i32::try_from(index).unwrap(), 0);
         h.adapter
             .inspect(|w| assert_eq!(w.catalog_query().direction, expected));
     }
@@ -3683,31 +3277,11 @@ fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
     .into_iter()
     .enumerate()
     {
-        apply(0, 0, 0, 0, i32::try_from(index).unwrap());
+        apply_runtime_facets(&h, 0, 0, 0, 0, i32::try_from(index).unwrap());
         h.adapter
             .inspect(|w| assert_eq!(w.catalog_query().group_by, expected));
     }
-    apply(0, 0, 0, 0, 0);
-    ui.invoke_more_filters(
-        "".into(),
-        999,
-        0,
-        0,
-        0,
-        0,
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-        "".into(),
-    );
-    h.adapter.inspect(|w| {
-        assert_eq!(
-            w.catalog_query(),
-            &auditorylab_app::discovery::collection::CatalogQuery::default()
-        )
-    });
+    assert_invalid_runtime_facet(&h);
 }
 
 #[test]
@@ -3790,6 +3364,7 @@ fn app_facet_selections_project_without_overwriting_pending_native_filter_edits(
     use auditorylab_app::core::rhythm::Completeness;
     use auditorylab_app::core::{provenance::ConditionRole, provenance::Population};
     use auditorylab_app::discovery::collection::CatalogQuery;
+
     let (mut workspace, _root, _store) = bound_workspace(
         auditorylab_app::services::catalog().unwrap(),
         Capabilities::no_device_playback(),
@@ -3835,7 +3410,10 @@ fn app_facet_selections_project_without_overwriting_pending_native_filter_edits(
     assert_eq!(ui.get_created_from(), "");
     assert_eq!(ui.get_group_choice(), 3);
     h.adapter.inspect(|workspace| {
-        assert!(workspace.catalog_query().populations.is_empty());
+        assert_eq!(
+            workspace.catalog_query().populations,
+            [] as [auditorylab_core::provenance::Population; 0]
+        );
         assert_eq!(workspace.catalog_query().group_by, GroupBy::Study);
         assert_eq!(workspace.catalog_query().direction, None);
     });
@@ -3844,8 +3422,8 @@ fn app_facet_selections_project_without_overwriting_pending_native_filter_edits(
 #[test]
 fn runtime_query_controls_keep_semantics_when_rendered_options_are_reordered() {
     use auditorylab_app::core::rhythm::Band;
-    use auditorylab_app::discovery::collection::CatalogQuery;
     use slint::private_unstable_api::re_exports::AccessibilityAction;
+
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
@@ -3886,6 +3464,553 @@ fn runtime_query_controls_keep_semantics_when_rendered_options_are_reordered() {
     h.adapter
         .inspect(|workspace| assert_eq!(workspace.catalog_query().rhythm.bands, vec![Band::Gamma]));
     assert_eq!(ui.get_library_heading(), "Gamma");
+    assert_reordered_sort_and_clear(&h);
+}
+
+fn parameter_field(row: &str, parameter: ParameterId) -> slint::SharedString {
+    row.parse::<auditorylab_app::document::editing::RowKey>()
+        .unwrap()
+        .parameter(parameter)
+        .unwrap()
+        .to_string()
+        .into()
+}
+fn metadata_field_handle(row: &str, field: MetadataField) -> slint::SharedString {
+    row.parse::<auditorylab_app::document::editing::RowKey>()
+        .unwrap()
+        .metadata(field)
+        .unwrap()
+        .to_string()
+        .into()
+}
+fn field_parameter(handle: &str) -> ParameterId {
+    let field = handle
+        .parse::<auditorylab_app::document::editing::FieldHandle>()
+        .unwrap();
+    match field.field {
+        auditorylab_app::document::editing::EditingField::Parameter(_, parameter) => parameter,
+        auditorylab_app::document::editing::EditingField::Metadata(_) => {
+            panic!("expected a component parameter")
+        }
+    }
+}
+
+fn assert_metadata_and_component_callbacks(h: &Harness) {
+    let ui = h.ui();
+    let binding = h.component_key(0);
+    let title = EditingField::Metadata(MetadataField::Title);
+    ui.invoke_commit_metadata(
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
+        "Probe".into(),
+    );
+    assert_eq!(
+        h.adapter.inspect(|w| w.editor().draft().title().to_owned()),
+        "Probe"
+    );
+    assert_eq!(ui.get_title_field().text, "Probe");
+    ui.invoke_stage_metadata(
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
+        "Draft".into(),
+    );
+    assert_eq!(
+        h.adapter
+            .inspect(|w| w.editor().staged(title).map(str::to_owned)),
+        Some("Draft".to_owned())
+    );
+    ui.invoke_restore_metadata(metadata_field_handle(
+        &ui.get_document(),
+        MetadataField::Title,
+    ));
+    assert_eq!(ui.get_title_field().text, "Probe");
+
+    ui.invoke_set_modulation(binding.clone(), 1);
+    assert_eq!(ui.get_components().row_data(0).unwrap().modulation, 1);
+    assert_eq!(
+        h.keys(0),
+        [
+            ParameterId::ToneFrequency,
+            ParameterId::PeakLevel,
+            ParameterId::AmRate,
+            ParameterId::AmDepth
+        ]
+    );
+    ui.invoke_set_ears(binding.clone(), 1);
+    assert_eq!(ui.get_components().row_data(0).unwrap().ears, 1);
+    ui.invoke_remove_component(binding.clone());
+    assert_eq!(ui.get_components().row_count(), 0);
+}
+
+fn assert_managed_trash_controls(h: &Harness, store: &auditorylab_app::services::library::Library) {
+    let ui = h.ui();
+    let key = ui.get_library_key();
+    ui.invoke_library_action(
+        ui.get_library_entry(),
+        crate::generated::LibraryMutationAction::Trash,
+        "".into(),
+    );
+    h.wait_for_files();
+    ui.invoke_collection_filter(4, 0);
+    h.wait_for_files();
+    assert!(ui.get_library_trashed());
+    assert!(!ui.get_can_play());
+    ui.invoke_library_action(
+        ui.get_library_entry(),
+        crate::generated::LibraryMutationAction::Restore,
+        "".into(),
+    );
+    h.wait_for_files();
+    ui.invoke_collection_filter(2, 0);
+    h.wait_for_files();
+    ui.invoke_library_action(
+        ui.get_library_entry(),
+        crate::generated::LibraryMutationAction::Trash,
+        "".into(),
+    );
+    h.wait_for_files();
+    ui.invoke_collection_filter(4, 0);
+    h.wait_for_files();
+    ui.invoke_library_action(
+        ui.get_library_entry(),
+        crate::generated::LibraryMutationAction::RequestPurge,
+        "".into(),
+    );
+    let [Request::Purge(prompt, ref prompted, ref title)] = h.take()[..] else {
+        panic!("native purge confirmation missing")
+    };
+    assert_eq!(prompted, key.as_str());
+    assert_eq!(title, "Native managed copy");
+    assert!(store.load(&key.parse().unwrap()).is_ok());
+    h.adapter.respond(prompt, PromptAnswer::Confirm);
+    h.wait_for_files();
+    assert!(
+        store
+            .scan(&auditorylab_app::job::Cancel::default())
+            .entries
+            .is_empty()
+    );
+}
+
+fn assert_invalid_native_dates(h: &Harness) {
+    let ui = h.ui();
+    ui.invoke_more_filters(
+        "".into(),
+        0,
+        0,
+        0,
+        0,
+        1,
+        crate::generated::DateInput {
+            from_text: "2026-10-24".into(),
+            through_text: "2026-10-23".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+    );
+    assert!(
+        h.adapter
+            .inspect(|w| w.catalog_query().created.from.is_none())
+    );
+    assert!(
+        !ui.get_library_alert().is_empty(),
+        "the rejected range is shown in the library's live diagnostic banner"
+    );
+    let date_error = ui.get_library_alert();
+    assert!(
+        date_error.contains("Created through")
+            && date_error.contains("Created from")
+            && date_error.contains("on or after")
+    );
+    assert!(!date_error.contains("before"));
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+fn assert_external_conflict_and_copy(
+    h: &Harness,
+    file: &std::path::Path,
+    original: &auditorylab_app::core::Recipe,
+    store: &auditorylab_app::services::library::Library,
+) {
+    let ui = h.ui();
+    let mut other = auditorylab_app::services::open_file(file)
+        .unwrap()
+        .recipe()
+        .clone()
+        .into_builder();
+    other.content.description.as_mut().unwrap().title = "Other application".into();
+    std::fs::write(file, other.build().unwrap().to_toml().unwrap()).unwrap();
+    ui.invoke_commit_metadata(
+        metadata_field_handle(&ui.get_document(), MetadataField::Title),
+        "Retained after conflict".into(),
+    );
+    ui.invoke_save_recipe();
+    h.wait_for_files();
+    assert!(ui.get_dirty());
+    assert!(ui.get_status().contains("changed identity or bytes"));
+    assert_eq!(
+        auditorylab_app::services::open_file(file).unwrap().title(),
+        "Other application"
+    );
+    ui.invoke_save_copy();
+    h.wait_for_files();
+    assert!(!ui.get_dirty());
+    assert_ne!(
+        h.adapter
+            .inspect(|w| w.editor().draft().recipe().unwrap().document().id),
+        original.document().id
+    );
+    assert_eq!(
+        store
+            .scan(&auditorylab_app::job::Cancel::default())
+            .entries
+            .len(),
+        2
+    );
+    assert_eq!(
+        auditorylab_app::services::open_file(file).unwrap().title(),
+        "Other application"
+    );
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+fn assert_empty_scope_recovery(h: &Harness) {
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+
+    let ui = h.ui();
+
+    for scope in [2, 3, 4] {
+        ui.invoke_collection_filter(scope, 2);
+        h.settle();
+        assert_eq!(ui.get_catalog().row_count(), 0);
+        action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
+        h.settle();
+        if !ui.get_storage_open() {
+            reveal_library_control(h, "Library storage and recovery")
+                .accessible_action(&AccessibilityAction::Default);
+        }
+        h.settle();
+        assert!(reveal_library_control(h, "Initialize configured library").is_visible());
+        ui.invoke_close_library_filters();
+        h.settle();
+        let refresh = centre(&action_button(ui, "Refresh"));
+        drag(ui, refresh, refresh);
+        h.wait_for_files();
+        assert_eq!(
+            h.adapter.inspect(|w| w.catalog_query().sort),
+            auditorylab_app::discovery::query::SortBy::Title
+        );
+        assert_eq!(ui.get_collection_choice(), scope);
+    }
+    ui.invoke_collection_filter(2, 0);
+    h.settle();
+    action_button(ui, "Create sound").accessible_action(&AccessibilityAction::Default);
+    h.settle();
+    assert_eq!(h.adapter.inspect(|w| w.view()), View::Workbench);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+fn assert_unavailable_root_sizes(h: &Harness) {
+    let ui = h.ui();
+    for size in [13.0, 26.0] {
+        ui.set_ui_size(size);
+        ui.window().set_size(slint::LogicalSize::new(800.0, 600.0));
+        h.settle();
+        for name in [
+            "Filters",
+            "Library options…",
+            "Clear all filters",
+            "Open Recipe…",
+            "Create sound",
+            "Play selected sound",
+        ] {
+            let item = if matches!(name, "Clear all filters" | "Open Recipe…" | "Create sound") {
+                find_control(ui, |item| {
+                    item.is_accessible()
+                        && item
+                            .accessible_string_property(AccessibleStringProperty::Label)
+                            .as_deref()
+                            == Some(name)
+                })
+                .expect("scrollable action exists")
+            } else {
+                action_button(ui, name)
+            };
+            if matches!(name, "Clear all filters" | "Open Recipe…" | "Create sound") {
+                let owns_focus = || {
+                    let focused = WindowInner::from_pub(ui.window())
+                        .focus_item
+                        .borrow()
+                        .upgrade();
+                    focused.is_some_and(|focus| {
+                        focus == item
+                            || item
+                                .visit_descendants(|child| {
+                                    if child == &focus {
+                                        ControlFlow::Break(())
+                                    } else {
+                                        ControlFlow::Continue(())
+                                    }
+                                })
+                                .is_some()
+                    })
+                };
+                for _ in 0..80 {
+                    if owns_focus() {
+                        break;
+                    }
+                    h.key(Key::Tab);
+                }
+                assert!(owns_focus(), "Tab must reach {name} at {size}px");
+                h.settle();
+                let scroll = labelled(ui, "Library results");
+                let viewport = scroll
+                    .visit_descendants(|child| {
+                        if child
+                            .downcast::<slint::private_unstable_api::re_exports::Flickable>()
+                            .is_some()
+                        {
+                            ControlFlow::Break(child.clone())
+                        } else {
+                            ControlFlow::Continue(())
+                        }
+                    })
+                    .expect("result scroll exposes its actual viewport");
+                let view_bounds = viewport.geometry();
+                let view_origin = viewport.map_to_native_window(view_bounds.origin);
+                let bounds = item.geometry();
+                let origin = item.map_to_native_window(bounds.origin);
+                assert!(
+                    origin.y >= view_origin.y
+                        && origin.y + bounds.size.height <= view_origin.y + view_bounds.size.height,
+                    "{name} must be revealed inside the result viewport at {size}px: \
+                        item={origin:?} size={:?}; view={view_origin:?} size={:?}; scroll={}",
+                    bounds.size,
+                    view_bounds.size,
+                    ui.get_library_scroll_y()
+                );
+            }
+            let position = centre(&item);
+            assert!(
+                position.x >= 0.0 && position.x < 800.0 && position.y >= 0.0 && position.y < 600.0,
+                "{name} must remain reachable at {size}px, got {position:?}"
+            );
+        }
+    }
+}
+
+fn assert_large_text_catalog_row(h: &Harness) {
+    let ui = h.ui();
+    ui.set_ui_size(26.0);
+    h.settle();
+    let label = ui.get_catalog().row_data(0).unwrap().text;
+    assert!(label.contains("Duration") && label.contains("Created: Unknown"));
+    let row = labelled(ui, &label);
+    let row_rect = row.geometry();
+    assert!(
+        row_rect.size.width <= 800.0 && row_rect.size.height >= 26.0 * 3.5,
+        "multi-line row grows rather than clipping its new metadata"
+    );
+    let child = row.visit_descendants(|item| {
+        if item
+            .accessible_string_property(AccessibleStringProperty::Label)
+            .as_deref()
+            == Some(ui.get_catalog().row_data(0).unwrap().title.as_str())
+            && item.geometry().size.width < row_rect.size.width
+        {
+            ControlFlow::Break(item.clone())
+        } else {
+            ControlFlow::Continue(())
+        }
+    });
+    let child = child.expect("wrapped row text is present within the row");
+    assert!(child.geometry().size.height <= row_rect.size.height);
+}
+
+fn assert_evidence_date_filters(h: &Harness) {
+    use auditorylab_app::discovery::collection::{CatalogQuery, DateRange};
+
+    let ui = h.ui();
+
+    ui.invoke_rhythm_filter(0, 0);
+    h.wait_for_files();
+    ui.invoke_more_filters(
+        "key:source".into(),
+        2,
+        2,
+        2,
+        2,
+        3,
+        crate::generated::DateInput {
+            from_text: "2026-01-01".into(),
+            through_text: "2026-01-02".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "2026-03-01".into(),
+            through_text: "2026-03-02".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "2026-05-01".into(),
+            through_text: "2026-05-02".into(),
+        },
+    );
+    h.wait_for_files();
+    let expected = CatalogQuery {
+        studies: vec!["key:source".into()],
+        populations: vec![auditorylab_app::core::provenance::Population::Mouse],
+        roles: vec![auditorylab_app::core::provenance::ConditionRole::Comparison],
+        analysis: Some(auditorylab_app::core::rhythm::Completeness::Invalid),
+        direction: Some(Direction::Desc),
+        group_by: GroupBy::Study,
+        created: auditorylab_app::discovery::calendar::local_range(
+            auditorylab_app::discovery::query::CalendarField::Created,
+            "2026-01-01",
+            "2026-01-02",
+        )
+        .unwrap(),
+        modified: auditorylab_app::discovery::calendar::local_range(
+            auditorylab_app::discovery::query::CalendarField::Modified,
+            "2026-03-01",
+            "2026-03-02",
+        )
+        .unwrap(),
+        added: auditorylab_app::discovery::calendar::local_range(
+            auditorylab_app::discovery::query::CalendarField::Added,
+            "2026-05-01",
+            "2026-05-02",
+        )
+        .unwrap(),
+        ..CatalogQuery::default()
+    };
+    h.adapter
+        .inspect(|w| assert_eq!(w.catalog_query(), &expected));
+    ui.invoke_clear_library_filters();
+    h.wait_for_files();
+    let cleared = CatalogQuery {
+        direction: Some(Direction::Desc),
+        group_by: GroupBy::Study,
+        created: DateRange::default(),
+        ..CatalogQuery::default()
+    };
+    h.adapter
+        .inspect(|w| assert_eq!(w.catalog_query(), &cleared));
+}
+
+fn assert_inclusive_date_error(h: &Harness, field: usize, label: &str) {
+    let ui = h.ui();
+
+    ui.invoke_clear_library_filters();
+    h.wait_for_files();
+    ui.set_created_from("".into());
+    ui.set_created_through("".into());
+    ui.set_modified_from("".into());
+    ui.set_modified_through("".into());
+    ui.set_added_from("".into());
+    ui.set_added_through("".into());
+    let previous = h.adapter.inspect(|w| w.catalog_query().clone());
+    let mut from = ["", "", ""];
+    let mut through = ["", "", ""];
+    from[field] = "2026-10-26";
+    through[field] = "2026-10-25";
+    match field {
+        0 => {
+            ui.set_created_from(from[field].into());
+            ui.set_created_through(through[field].into());
+        }
+        1 => {
+            ui.set_modified_from(from[field].into());
+            ui.set_modified_through(through[field].into());
+        }
+        _ => {
+            ui.set_added_from(from[field].into());
+            ui.set_added_through(through[field].into());
+        }
+    }
+    submit_date_inputs(ui, from, through);
+    h.wait_for_files();
+    h.adapter.inspect(|w| {
+        assert_eq!(w.catalog_query(), &previous);
+        let error = auditorylab_presentation::library::workspace_library_alert(w);
+        assert!(error.contains(&format!(
+            "{label} through (2026-10-25) must be on or after {label} from (2026-10-26)."
+        )));
+        assert!(!error.contains("before"));
+    });
+    let values = match field {
+        0 => (ui.get_created_from(), ui.get_created_through()),
+        1 => (ui.get_modified_from(), ui.get_modified_through()),
+        _ => (ui.get_added_from(), ui.get_added_through()),
+    };
+    assert_eq!(
+        (values.0.as_str(), values.1.as_str()),
+        ("2026-10-26", "2026-10-25")
+    );
+    from[field] = "2026-10-25";
+    match field {
+        0 => ui.set_created_from(from[field].into()),
+        1 => ui.set_modified_from(from[field].into()),
+        _ => ui.set_added_from(from[field].into()),
+    }
+    submit_date_inputs(ui, from, through);
+    h.wait_for_files();
+    h.adapter.inspect(|w| {
+        assert_eq!(
+            auditorylab_presentation::library::workspace_library_alert(w),
+            ""
+        );
+        let query = w.catalog_query();
+        let range = match field {
+            0 => &query.created,
+            1 => &query.modified,
+            _ => &query.added,
+        };
+        assert!(range.from.unwrap() < range.before.unwrap());
+    });
+}
+
+fn apply_runtime_facets(
+    h: &Harness,
+    population: i32,
+    role: i32,
+    analysis: i32,
+    direction: i32,
+    group: i32,
+) {
+    let ui = h.ui();
+
+    ui.invoke_more_filters(
+        "".into(),
+        population,
+        role,
+        analysis,
+        direction,
+        group,
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+    );
+    h.wait_for_files();
+}
+
+fn assert_reordered_sort_and_clear(h: &Harness) {
+    use auditorylab_app::discovery::collection::CatalogQuery;
+    use slint::private_unstable_api::re_exports::AccessibilityAction;
+
+    let ui = h.ui();
+
     let mut query = h
         .adapter
         .inspect(|workspace| workspace.catalog_query().clone());
@@ -3935,7 +4060,7 @@ fn runtime_query_controls_keep_semantics_when_rendered_options_are_reordered() {
     labelled(ui, "Clear rhythm filters").accessible_action(&AccessibilityAction::Default);
     h.settle();
     let expected = CatalogQuery {
-        rhythm: Default::default(),
+        rhythm: auditorylab_app::discovery::query::RhythmQuery::default(),
         ..before
     };
     h.adapter
@@ -3959,28 +4084,56 @@ fn runtime_query_controls_keep_semantics_when_rendered_options_are_reordered() {
     );
 }
 
-fn parameter_field(row: &str, parameter: ParameterId) -> slint::SharedString {
-    row.parse::<auditorylab_app::document::editing::RowKey>()
-        .unwrap()
-        .parameter(parameter)
-        .unwrap()
-        .to_string()
-        .into()
+fn assert_invalid_runtime_facet(h: &Harness) {
+    let ui = h.ui();
+    apply_runtime_facets(h, 0, 0, 0, 0, 0);
+    ui.invoke_more_filters(
+        "".into(),
+        999,
+        0,
+        0,
+        0,
+        0,
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+        crate::generated::DateInput {
+            from_text: "".into(),
+            through_text: "".into(),
+        },
+    );
+    h.adapter.inspect(|w| {
+        assert_eq!(
+            w.catalog_query(),
+            &auditorylab_app::discovery::collection::CatalogQuery::default()
+        );
+    });
 }
-fn metadata_field_handle(row: &str, field: MetadataField) -> slint::SharedString {
-    row.parse::<auditorylab_app::document::editing::RowKey>()
-        .unwrap()
-        .metadata(field)
-        .unwrap()
-        .to_string()
-        .into()
-}
-fn field_parameter(handle: &str) -> ParameterId {
-    let field = handle
-        .parse::<auditorylab_app::document::editing::FieldHandle>()
-        .unwrap();
-    match field.field {
-        auditorylab_app::document::editing::EditingField::Parameter(_, parameter) => parameter,
-        _ => panic!("expected a component parameter"),
-    }
+
+fn submit_date_inputs(ui: &MainWindow, from: [&str; 3], through: [&str; 3]) {
+    ui.invoke_more_filters(
+        "".into(),
+        0,
+        0,
+        0,
+        0,
+        0,
+        crate::generated::DateInput {
+            from_text: from[0].into(),
+            through_text: through[0].into(),
+        },
+        crate::generated::DateInput {
+            from_text: from[1].into(),
+            through_text: through[1].into(),
+        },
+        crate::generated::DateInput {
+            from_text: from[2].into(),
+            through_text: through[2].into(),
+        },
+    );
 }

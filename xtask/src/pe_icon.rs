@@ -113,10 +113,10 @@ mod tests {
     fn actual_resource_tree_and_image_bytes_are_required() {
         let mut pe = vec![0_u8; 1024];
         let put16 = |bytes: &mut [u8], at, value: u16| {
-            bytes[at..at + 2].copy_from_slice(&value.to_le_bytes())
+            bytes[at..at + 2].copy_from_slice(&value.to_le_bytes());
         };
         let put32 = |bytes: &mut [u8], at, value: u32| {
-            bytes[at..at + 4].copy_from_slice(&value.to_le_bytes())
+            bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
         };
         put32(&mut pe, 0x3c, 0x80);
         put16(&mut pe, 0x86, 1);
@@ -129,14 +129,14 @@ mod tests {
         // resource root: RT_ICON=3 and RT_GROUP_ICON=14
         put16(&mut pe, 512 + 14, 2);
         put32(&mut pe, 528, 3);
-        put32(&mut pe, 532, 0x80000030);
+        put32(&mut pe, 532, 0x8000_0030);
         put32(&mut pe, 536, 14);
-        put32(&mut pe, 540, 0x80000050);
+        put32(&mut pe, 540, 0x8000_0050);
         // one image ID 7; group ID 1
         for (directory, id, next) in [(48, 7, 80_u32 + 32), (80, 1, 144)] {
             put16(&mut pe, 512 + directory + 14, 1);
             put32(&mut pe, 512 + directory + 16, id);
-            put32(&mut pe, 512 + directory + 20, 0x80000000 + next);
+            put32(&mut pe, 512 + directory + 20, 0x8000_0000 + next);
         }
         for (directory, data) in [(112, 176), (144, 192)] {
             put16(&mut pe, 512 + directory + 14, 1);

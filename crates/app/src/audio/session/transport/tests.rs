@@ -69,8 +69,8 @@ fn complete(callback: &Transport) -> bool {
     callback.state.outcome() == Outcome::Completed
 }
 
-fn terminal_is(callback: &Transport, expected: &Outcome) -> bool {
-    callback.state.outcome() == *expected
+fn terminal_is(callback: &Transport, expected: Outcome) -> bool {
+    callback.state.outcome() == expected
 }
 
 #[test]
@@ -151,7 +151,7 @@ fn frame_durations_round_to_the_requested_side_of_a_nanosecond() {
 
 #[test]
 fn the_signal_is_rendered_in_order_across_buffers_and_followed_by_silence() {
-    let mut expected = [[0.0; 2]; 3_000];
+    let mut expected = std::vec![[0.0; 2]; 3_000];
     signal(3_000, 8_000).render(0, &mut expected);
     let mut c = callback(3_000, 8_000);
     // The first buffer spans more than two scratch blocks.
@@ -174,10 +174,10 @@ fn a_huge_final_buffer_is_not_completion_and_the_end_is_placed_within_it() {
     fill(&mut c, 8_000, time(0, 1_000));
     assert!(running(&c));
     // 1 s, plus 2050 frames at 8000 Hz.
-    assert_eq!(c.deadline(), Some(Duration::from_nanos(1_256_250_000)));
+    assert_eq!(c.deadline(), Some(Duration::from_micros(1_256_250)));
     fill(&mut c, 8, time(1_000, 2_000));
     assert!(running(&c));
-    assert_eq!(c.deadline(), Some(Duration::from_nanos(1_256_250_000)));
+    assert_eq!(c.deadline(), Some(Duration::from_micros(1_256_250)));
     fill(&mut c, 8, time(1_500, 2_001));
     assert!(complete(&c));
 }
@@ -244,7 +244,7 @@ fn an_estimate_before_the_stream_origin_or_an_earlier_one_keeps_the_expected_end
     let mut c = callback(1, 8_000);
     fill(&mut c, 8_000, time(0, 0));
     let target = c.deadline();
-    assert_eq!(target, Some(Duration::from_nanos(125_000)));
+    assert_eq!(target, Some(Duration::from_micros(125)));
     // The end would lie a second before the origin.
     fill(&mut c, 8, time(0, 0));
     assert_eq!(c.deadline(), target);
@@ -270,7 +270,7 @@ fn clocks_that_run_backwards_or_beyond_their_range_end_playback() {
         assert_eq!(fill(&mut c, 1, time(3, 3)), [0.0; 2]);
         assert!(running(&c));
         assert_eq!(fill(&mut c, 1, at), [0.0; 2]);
-        assert!(terminal_is(&c, &Outcome::InvalidTiming));
+        assert!(terminal_is(&c, Outcome::InvalidTiming));
         assert_eq!(c.source.generated(), 1);
     }
     // An equal callback time is not a regression.
@@ -289,7 +289,7 @@ fn clocks_that_run_backwards_or_beyond_their_range_end_playback() {
             playback: last,
         },
     );
-    assert!(terminal_is(&c, &Outcome::InvalidTiming));
+    assert!(terminal_is(&c, Outcome::InvalidTiming));
     assert_eq!(output, [0.0; 2]);
 }
 
@@ -352,7 +352,7 @@ fn a_terminal_publication_during_a_buffer_silences_it_and_rendering_never_resume
             value
         });
         assert!(output.iter().all(|s| *s == 0.0));
-        assert!(terminal_is(&c, &terminal));
+        assert!(terminal_is(&c, terminal));
         let generated = c.source.generated();
         assert_eq!(fill(&mut c, 4_096, time(1, 1)), vec![0.0; 8_192]);
         assert_eq!(c.source.generated(), generated);
@@ -377,7 +377,7 @@ fn a_failure_while_the_last_silence_is_written_precedes_completion() {
             sample
         }
     });
-    assert!(terminal_is(&c, &Outcome::StoppedDrained));
+    assert!(terminal_is(&c, Outcome::StoppedDrained));
     assert_eq!(output, [0.0; 2]);
 }
 
@@ -388,7 +388,7 @@ fn a_buffer_holding_a_partial_frame_is_silenced_and_ends_playback() {
     let mut partial = [1.0; 3];
     c.fill(&mut partial, time(0, 0), &|sample| sample);
     assert_eq!(partial, [0.0; 3]);
-    assert!(terminal_is(&c, &Outcome::MisalignedBuffer));
+    assert!(terminal_is(&c, Outcome::MisalignedBuffer));
     assert_eq!(c.source.generated(), 0);
     let mut aligned = [1.0; 4];
     c.fill(&mut aligned, time(1, 1), &|sample| sample);
@@ -410,7 +410,7 @@ fn finite_stop_fades_then_waits_for_the_device_to_drain() {
     fill(&mut c, 8, time(83, 114));
     assert!(running(&c));
     fill(&mut c, 8, time(84, 115));
-    assert!(terminal_is(&c, &Outcome::StoppedDrained));
+    assert!(terminal_is(&c, Outcome::StoppedDrained));
     let report = c.state.report().unwrap();
     assert_eq!(report.end, crate::audio::session::EndReason::Stopped);
     assert!(report.drained);
@@ -455,7 +455,7 @@ fn a_finite_stop_uses_only_the_remaining_frames() {
 }
 fn live_callback() -> (Transport, crate::audio::session::live::Mailbox) {
     let state = SessionState::new();
-    let generator = LiveGenerator::with_state(Target::silence(rate(8_000)), Arc::clone(&state));
+    let generator = LiveGenerator::with_state(&(Target::silence(rate(8_000))), Arc::clone(&state));
     let mailbox = Arc::clone(generator.mailbox());
     (
         Transport::new(Source::Live(Box::new(generator)), 2, state),
@@ -481,7 +481,7 @@ fn mailbox_is_polled_once_per_buffer_and_updates_wait_for_the_next_buffer() {
     .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .target(rate(8_000))
     .unwrap();
-    let mut output = [1.0; 4_096];
+    let mut output = std::vec![1.0; 4_096];
     let calls = std::cell::Cell::new(0);
     c.fill(&mut output, time(0, 0), &|v| {
         if calls.replace(calls.get() + 1) == 0 {
@@ -670,7 +670,7 @@ fn callback_paths_allocate_nothing_including_terminal_buffers() {
             });
             assert_eq!(count.count_total, 0);
             assert_eq!(count.bytes_total, 0);
-            assert!(c.state.outcome() != Outcome::Running);
+            assert_ne!(c.state.outcome(), Outcome::Running);
             assert!(buffer.iter().all(|x| *x == 0.0));
         }
     }
@@ -692,7 +692,7 @@ fn callback_paths_allocate_nothing_including_terminal_buffers() {
         });
         assert_eq!(count.count_total, 0);
         assert_eq!(count.bytes_total, 0);
-        assert!(callback.state.outcome() != Outcome::Running);
+        assert_ne!(callback.state.outcome(), Outcome::Running);
         assert_eq!(buffer, [0.0; 18]);
     }
 }
@@ -713,7 +713,7 @@ fn every_terminal_code_silences_without_rendering_or_allocating() {
         callback.state.finish(terminal);
         let mut buffer = [1.0; 18];
         let count = allocation_counter::measure(|| {
-            callback.fill(&mut buffer, time(0, 1), &|sample| sample)
+            callback.fill(&mut buffer, time(0, 1), &|sample| sample);
         });
         assert_eq!(count.count_total, 0);
         assert_eq!(count.bytes_total, 0);
@@ -730,7 +730,7 @@ fn callback_measurement_detects_allocating_conversion() {
         c.fill(&mut buffer, time(0, 1), &|x| {
             std::hint::black_box(vec![0.5; 2]);
             x
-        })
+        });
     });
     assert!(count.count_total > 0);
     assert!(count.bytes_total > 0);
@@ -847,7 +847,7 @@ fn empty_and_malformed_buffers_establish_nothing() {
         c.submitted(),
     );
     let out = fill(&mut c, 0, time(5, 5));
-    assert!(out.is_empty());
+    assert_eq!(out, [] as [f64; 0]);
     assert_eq!(
         (
             c.source.generated(),
@@ -861,12 +861,12 @@ fn empty_and_malformed_buffers_establish_nothing() {
     let mut partial = [1.0; 3];
     c.fill(&mut partial, time(6, 6), &|s| s);
     assert_eq!(partial, [0.0; 3]);
-    assert!(terminal_is(&c, &Outcome::MisalignedBuffer));
+    assert!(terminal_is(&c, Outcome::MisalignedBuffer));
     assert_eq!(c.source.generated(), 0);
     let mut c = callback(100, 8_000);
     fill(&mut c, 8, time(10, 9));
     assert!(
-        terminal_is(&c, &Outcome::InvalidTiming),
+        terminal_is(&c, Outcome::InvalidTiming),
         "playback before its callback"
     );
     assert_eq!(c.source.generated(), 0);
@@ -875,7 +875,7 @@ fn empty_and_malformed_buffers_establish_nothing() {
 #[test]
 fn a_stalled_monitor_reader_cannot_postpone_generation_end_or_admission_closure() {
     let state = SessionState::new();
-    let generator = LiveGenerator::with_state(Target::silence(rate(8_000)), Arc::clone(&state));
+    let generator = LiveGenerator::with_state(&(Target::silence(rate(8_000))), Arc::clone(&state));
     let control = generator.control();
     let descriptor = crate::audio::session::SessionDescriptor {
         id: state.id(),
@@ -901,7 +901,7 @@ fn a_stalled_monitor_reader_cannot_postpone_generation_end_or_admission_closure(
         .with_monitor(Some(monitor.clone()));
     fill(&mut c, 512, time(0, 0));
     reader.poll(40);
-    let stale = reader.status().observation;
+    let previous_observation = reader.status().observation;
     for n in 1..4 {
         fill(&mut c, 512, time(n * 64, n * 64));
     }
@@ -929,7 +929,7 @@ fn a_stalled_monitor_reader_cannot_postpone_generation_end_or_admission_closure(
     );
     assert_ne!(
         reader.status().observation,
-        stale,
+        previous_observation,
         "generated state remains current while the sample consumer stalls"
     );
     assert!(reader.status().gaps > 0);

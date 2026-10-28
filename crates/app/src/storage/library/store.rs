@@ -436,224 +436,36 @@ impl LibraryStore {
                 Memberships::default()
             }
         };
-        let mut count = 0;
-        let mut total = 0;
-        let mut seen = BTreeSet::new();
-        for entry in lease
-            .dir
-            .entries()
-            .map_err(|e| root::io(IoOperation::Read, e))?
-        {
-            if cancel.is_requested() {
-                return Err(cancelled());
-            }
-            let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
-            let name = entry.file_name();
-            if matches!(
-                name.to_str(),
-                Some(
-                    "library.toml"
-                        | ".library.lock"
-                        | "membership.toml"
-                        | "recipes"
-                        | "trash"
-                        | ".stage"
-                )
-            ) {
-                continue;
-            }
-            count += 1;
-            if count > limits.entries {
-                return Err(budget());
-            }
-            if root::owned_stage(&name) {
-                result.stages.push(name.into());
-            } else {
-                result.note(name.to_string_lossy(), InventoryNotice::UnknownRootEntry);
-            }
+        LibraryScan {
+            store: self,
+            lease: &lease,
+            cancel,
+            limits,
+            result,
+            memberships,
+            count: 0,
+            total: 0,
+            seen: BTreeSet::new(),
+            duplicates: BTreeSet::new(),
         }
-        let mut duplicates = BTreeSet::new();
-        for (directory, trashed) in [("recipes", false), ("trash", true)] {
-            let dir = lease.directory(directory)?;
-            for entry in dir.entries().map_err(|e| root::io(IoOperation::Read, e))? {
-                if cancel.is_requested() {
-                    return Err(cancelled());
-                }
-                let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
-                count += 1;
-                if count > limits.entries {
-                    return Err(budget());
-                }
-                let name = entry.file_name();
-                let relative = format!("{directory}/{}", name.to_string_lossy());
-                if root::owned_stage(&name) {
-                    result.stages.push(relative.into());
-                    continue;
-                }
-                let Some(stem) = name.to_str().and_then(|n| n.strip_suffix(".toml")) else {
-                    result.note(relative, InventoryNotice::UnknownEntry);
-                    continue;
-                };
-                let id = match stem.parse::<DocumentUuid>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        result.error(
-                            relative,
-                            InventoryNotice::UuidFilenameRequired,
-                            Outcome::IncompleteInventory,
-                        );
-                        continue;
-                    }
-                };
-                if !seen.insert(id) {
-                    duplicates.insert(id);
-                }
-                if self.reserved(id).is_err() {
-                    result.error(
-                        relative,
-                        InventoryNotice::ReservedBuiltinIdentity,
-                        Outcome::IncompleteInventory,
-                    );
-                    continue;
-                }
-                if total >= limits.raw || total >= limits.decoded {
-                    return Err(budget());
-                }
-                let allowance = Recipe::MAX_BYTES
-                    .min(limits.raw - total)
-                    .min(limits.decoded - total);
-                let bytes = match publish::read_bounded_counted(
-                    &dir,
-                    Path::new(&name),
-                    allowance,
-                    &mut total,
-                ) {
-                    Ok(bytes) => bytes,
-                    Err(error) => {
-                        result.error(relative, error, Outcome::IncompleteInventory);
-                        continue;
-                    }
-                };
-                match LoadedRecord::decode(
-                    id,
-                    &self.root.path().join(&relative),
-                    bytes,
-                    trashed,
-                    memberships.entries.get(&id),
-                ) {
-                    Ok(record) => result.entries.push(record.summary()),
-                    Err(error) => result.error(relative, error, Outcome::IncompleteInventory),
-                }
-            }
-        }
-        for id in duplicates {
-            let recipes = lease.directory("recipes")?;
-            let trash = lease.directory("trash")?;
-            let name = format!("{id}.toml");
-            let same = publish::same_file(&recipes, Path::new(&name), &trash, Path::new(&name))
-                .unwrap_or(false);
-            if same {
-                result
-                    .entries
-                    .retain(|entry| entry.key != LibraryKey::User(id) || entry.trashed);
-                result.note(name, InventoryNotice::InterruptedMove);
-            } else {
-                result
-                    .entries
-                    .retain(|entry| entry.key != LibraryKey::User(id));
-                result.error(
-                    name,
-                    InventoryNotice::DuplicateIdentity,
-                    Outcome::IncompleteInventory,
-                );
-            }
-        }
-        for id in memberships.entries.keys().filter(|id| !seen.contains(id)) {
-            result.note(MEMBERSHIP, InventoryNotice::OrphanMembership(*id));
-        }
-        let stages = lease.directory(".stage")?;
-        for entry in stages
-            .entries()
-            .map_err(|e| root::io(IoOperation::Read, e))?
-        {
-            if cancel.is_requested() {
-                return Err(cancelled());
-            }
-            count += 1;
-            if count > limits.entries {
-                return Err(budget());
-            }
-            let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
-            result
-                .stages
-                .push(std::path::Path::new(".stage").join(entry.file_name()));
-        }
-        result.entries.sort_by(|a, b| {
-            a.normalized_title
-                .cmp(&b.normalized_title)
-                .then(a.key.cmp(&b.key))
-        });
-        result.stages.sort();
-        Ok(())
+        .run()
     }
     /// Execute a single locked read/check/publish/verify operation.
     ///
     /// # Errors
-    /// Rejects invalid/stale intent before publication, and names the path if a failed I/O result cannot be verified.
+    /// Rejects invalid/stale intent before publication, and names the path if a failed I/O result
+    /// cannot be verified.
     pub(crate) fn apply(&self, mutation: Mutation, cancel: &Cancel) -> Result<WriteOutcome, Error> {
-        let (key, kind, expected) = match &mutation {
-            Mutation::Create(recipe) => (
-                LibraryKey::User(recipe.document().id),
-                MutationKind::Create,
-                None,
-            ),
-            Mutation::Add(recipe) => (
-                LibraryKey::User(recipe.document().id),
-                MutationKind::Add,
-                None,
-            ),
-            Mutation::Update { key, expect, .. } => (key.clone(), MutationKind::Update, *expect),
-            Mutation::Rename { key, expect, .. } => (key.clone(), MutationKind::Rename, *expect),
-            Mutation::Trash { key, expect } => (key.clone(), MutationKind::Trash, *expect),
-            Mutation::Restore { key, expect } => (key.clone(), MutationKind::Restore, *expect),
-            Mutation::Purge { key, expect, .. } => (key.clone(), MutationKind::Purge, *expect),
-        };
+        let (key, kind, expected) = mutation_address(&mutation);
         let id = crate::storage::library::require_user(&key)?;
         self.reserved(id)?;
-        if let Mutation::Create(recipe) | Mutation::Add(recipe) | Mutation::Update { recipe, .. } =
-            &mutation
-            && recipe.document().id != id
-        {
-            return Err(Error::ProposedIdentity {
-                expected: id,
-                found: recipe.document().id,
-            });
-        }
-        if let Mutation::Purge {
-            confirmed: false, ..
-        } = mutation
-        {
-            return Err(Error::PurgeUnconfirmed);
-        }
+        validate_mutation_intent(&mutation, id)?;
         if cancel.is_requested() {
             return Err(cancelled());
         }
         let creating = matches!(kind, MutationKind::Create | MutationKind::Add);
         let mut diagnostics = Vec::new();
-        let lease = match self.root.lock(true, false)? {
-            Some(lease) => lease,
-            None if creating && self.root.missing_is_empty() => {
-                diagnostics.extend(self.root.initialize()?.warnings);
-                self.root.lock(true, false)?.ok_or(Error::RootDisappeared)?
-            }
-            None => {
-                return Err(if creating {
-                    Error::MissingMarkerOnCreate
-                } else {
-                    Error::MissingMarkerOnMutation
-                });
-            }
-        };
+        let lease = self.mutation_lease(creating, &mut diagnostics)?;
         root::validate_marker(&lease.dir)?;
         let mut memberships = read_memberships(&lease.dir)?;
         for directory in ["recipes", "trash", ".stage"] {
@@ -690,71 +502,22 @@ impl LibraryStore {
             return Err(Error::IdentityExists { id });
         }
         let now = observed_now()?;
-        let name = format!("{id}.toml");
         if matches!(kind, MutationKind::Purge) {
-            let old = old.ok_or(Error::EntryDisappeared { id })?;
-            if !old.trashed {
-                return Err(Error::PurgeRequiresTrash { id });
-            }
-            let trash = lease.directory("trash")?;
-            diagnostics.extend(publish::remove(
-                &trash,
-                Path::new(&name),
-                &lease.canonical.join("trash").join(&name),
-            )?);
-            memberships.entries.remove(&id);
-            persist_memberships(&lease, &memberships, cancel, &mut diagnostics);
-            return Ok(outcome(key, kind, None, diagnostics));
+            return purge_record(&lease, id, old, &mut memberships, cancel, diagnostics);
         }
         if matches!(kind, MutationKind::Trash | MutationKind::Restore) {
-            let mut record = old.ok_or(Error::EntryDisappeared { id })?;
-            let trashed = kind == MutationKind::Trash;
-            if record.trashed == trashed {
-                return Ok(unchanged(key, kind, record, diagnostics));
-            }
-            let (source, destination) = if trashed {
-                ("recipes", "trash")
-            } else {
-                ("trash", "recipes")
-            };
-            let from = lease.directory(source)?;
-            let to = lease.directory(destination)?;
-            diagnostics.extend(publish::relocate(
-                &from,
-                &to,
-                Path::new(&name),
-                &lease.canonical.join(source).join(&name),
-                &lease.canonical.join(destination).join(&name),
+            let record = old.ok_or(Error::EntryDisappeared { id })?;
+            return relocate_record(
+                &lease,
+                kind,
+                record,
+                &mut memberships,
+                now,
                 cancel,
-            )?);
-            let membership = memberships.entries.entry(id).or_default();
-            membership.trashed_at = if trashed { Some(now) } else { None };
-            record.trashed = trashed;
-            record.trashed_at = membership.trashed_at;
-            if !persist_memberships(&lease, &memberships, cancel, &mut diagnostics) {
-                refresh_membership(&lease, &mut record, &mut diagnostics);
-            }
-            return Ok(outcome(key, kind, Some(record), diagnostics));
+                diagnostics,
+            );
         }
-        let recipe = match mutation {
-            Mutation::Create(recipe) | Mutation::Add(recipe) | Mutation::Update { recipe, .. } => {
-                (*recipe).clone()
-            }
-            Mutation::Rename { title, .. } => {
-                let recipe = old
-                    .as_ref()
-                    .ok_or(Error::EntryDisappeared { id })?
-                    .snapshot
-                    .recipe()
-                    .clone();
-                let notes = recipe.description().and_then(|d| d.notes.clone());
-                let mut candidate = recipe.into_builder();
-                candidate.content.description =
-                    Some(crate::core::provenance::Description { title, notes });
-                candidate.build().map_err(|error| Error::Recipe { error })?
-            }
-            _ => unreachable!("lifecycle operations handled above"),
-        };
+        let recipe = requested_recipe(mutation, old.as_ref(), id)?;
         if recipe.document().id != id {
             return Err(Error::ProposedIdentity {
                 expected: id,
@@ -773,70 +536,185 @@ impl LibraryStore {
                 return Ok(unchanged(key, kind, old.clone(), diagnostics));
             }
         }
-        let mut proposal = recipe.into_builder();
-        if let Some(old) = &old
-            && old.snapshot.recipe().sound() != &proposal.content.sound
-        {
-            for evidence in &mut proposal.content.evidence {
-                evidence.scope = crate::core::provenance::EvidenceScope::Ancestor;
-            }
-        }
-        if kind == MutationKind::Create {
-            proposal.document.created_at = Some(now);
-            proposal.document.modified_at = Some(now);
-        } else if !creating {
-            proposal.document.modified_at = Some(now);
-        }
-        let recipe = proposal.build().map_err(|e| Error::Recipe { error: e })?;
-        diagnostics.extend(chronology(
+        let recipe = prepare_proposal(recipe, kind, old.as_ref(), now, &mut diagnostics)?;
+        publish_record(
+            &lease,
+            kind,
             &recipe,
-            old.as_ref().map(|r| r.snapshot.recipe()),
+            &mut memberships,
             now,
-        ));
-        let bytes = recipe
-            .to_toml()
-            .map_err(|e| Error::Recipe { error: e })?
-            .into_bytes();
-        let recipes = lease.directory("recipes")?;
-        let publication = publish::publish_in(
-            &recipes,
-            Path::new(&name),
-            &lease.canonical.join("recipes").join(&name),
-            if creating {
-                Policy::CreateNew
-            } else {
-                Policy::Replace
-            },
             cancel,
-            |file| {
-                file.write_all(&bytes).map_err(|e| {
-                    FileError::Io(IoFailure::new(
-                        IoOperation::Write,
-                        Some(lease.canonical.join("recipes").join(&name)),
-                        e,
-                    ))
-                })
-            },
-        )?;
-        diagnostics.extend(publication.warnings);
-        let membership = memberships.entries.entry(id).or_default();
-        if creating {
-            membership.added_at = Some(now);
-            membership.trashed_at = None;
-        }
-        let mut record = LoadedRecord::decode(
-            id,
-            &lease.canonical.join("recipes").join(&name),
-            bytes,
-            false,
-            Some(membership),
-        )?;
-        if !persist_memberships(&lease, &memberships, cancel, &mut diagnostics) {
-            refresh_membership(&lease, &mut record, &mut diagnostics);
-        }
-        Ok(outcome(key, kind, Some(record), diagnostics))
+            diagnostics,
+        )
     }
 }
+impl LibraryStore {
+    fn mutation_lease(
+        &self,
+        creating: bool,
+        diagnostics: &mut Vec<crate::storage::warning::StorageWarning>,
+    ) -> Result<root::Lease, Error> {
+        Ok(match self.root.lock(true, false)? {
+            Some(lease) => lease,
+            None if creating && self.root.missing_is_empty() => {
+                diagnostics.extend(self.root.initialize()?.warnings);
+                self.root.lock(true, false)?.ok_or(Error::RootDisappeared)?
+            }
+            None => {
+                return Err(if creating {
+                    Error::MissingMarkerOnCreate
+                } else {
+                    Error::MissingMarkerOnMutation
+                });
+            }
+        })
+    }
+}
+
+fn mutation_address(mutation: &Mutation) -> (LibraryKey, MutationKind, Option<VersionToken>) {
+    match mutation {
+        Mutation::Create(recipe) => (
+            LibraryKey::User(recipe.document().id),
+            MutationKind::Create,
+            None,
+        ),
+        Mutation::Add(recipe) => (
+            LibraryKey::User(recipe.document().id),
+            MutationKind::Add,
+            None,
+        ),
+        Mutation::Update { key, expect, .. } => (key.clone(), MutationKind::Update, *expect),
+        Mutation::Rename { key, expect, .. } => (key.clone(), MutationKind::Rename, *expect),
+        Mutation::Trash { key, expect } => (key.clone(), MutationKind::Trash, *expect),
+        Mutation::Restore { key, expect } => (key.clone(), MutationKind::Restore, *expect),
+        Mutation::Purge { key, expect, .. } => (key.clone(), MutationKind::Purge, *expect),
+    }
+}
+
+fn purge_record(
+    lease: &root::Lease,
+    id: DocumentUuid,
+    old: Option<LoadedRecord>,
+    memberships: &mut Memberships,
+    cancel: &Cancel,
+    mut diagnostics: Vec<crate::storage::warning::StorageWarning>,
+) -> Result<WriteOutcome, Error> {
+    let name = format!("{id}.toml");
+
+    let old = old.ok_or(Error::EntryDisappeared { id })?;
+    if !old.trashed {
+        return Err(Error::PurgeRequiresTrash { id });
+    }
+    let trash = lease.directory("trash")?;
+    diagnostics.extend(publish::remove(
+        &trash,
+        Path::new(&name),
+        &lease.canonical.join("trash").join(&name),
+    )?);
+    memberships.entries.remove(&id);
+    persist_memberships(lease, memberships, cancel, &mut diagnostics);
+    Ok(outcome(
+        LibraryKey::User(id),
+        MutationKind::Purge,
+        None,
+        diagnostics,
+    ))
+}
+
+fn relocate_record(
+    lease: &root::Lease,
+    kind: MutationKind,
+    mut record: LoadedRecord,
+    memberships: &mut Memberships,
+    now: Timestamp,
+    cancel: &Cancel,
+    mut diagnostics: Vec<crate::storage::warning::StorageWarning>,
+) -> Result<WriteOutcome, Error> {
+    let id = super::require_user(&record.key)?;
+    let key = record.key.clone();
+    let name = format!("{id}.toml");
+
+    let trashed = kind == MutationKind::Trash;
+    if record.trashed == trashed {
+        return Ok(unchanged(key, kind, record, diagnostics));
+    }
+    let (source, destination) = if trashed {
+        ("recipes", "trash")
+    } else {
+        ("trash", "recipes")
+    };
+    let from = lease.directory(source)?;
+    let to = lease.directory(destination)?;
+    diagnostics.extend(publish::relocate(
+        &from,
+        &to,
+        Path::new(&name),
+        &lease.canonical.join(source).join(&name),
+        &lease.canonical.join(destination).join(&name),
+        cancel,
+    )?);
+    let membership = memberships.entries.entry(id).or_default();
+    membership.trashed_at = if trashed { Some(now) } else { None };
+    record.trashed = trashed;
+    record.trashed_at = membership.trashed_at;
+    if !persist_memberships(lease, memberships, cancel, &mut diagnostics) {
+        refresh_membership(lease, &mut record, &mut diagnostics);
+    }
+    Ok(outcome(key, kind, Some(record), diagnostics))
+}
+
+fn requested_recipe(
+    mutation: Mutation,
+    old: Option<&LoadedRecord>,
+    id: DocumentUuid,
+) -> Result<Recipe, Error> {
+    Ok(match mutation {
+        Mutation::Create(recipe) | Mutation::Add(recipe) | Mutation::Update { recipe, .. } => {
+            (*recipe).clone()
+        }
+        Mutation::Rename { title, .. } => {
+            let recipe = old
+                .ok_or(Error::EntryDisappeared { id })?
+                .snapshot
+                .recipe()
+                .clone();
+            let notes = recipe.description().and_then(|d| d.notes.clone());
+            let mut candidate = recipe.into_builder();
+            candidate.content.description =
+                Some(crate::core::provenance::Description { title, notes });
+            candidate.build().map_err(|error| Error::Recipe { error })?
+        }
+        _ => unreachable!("lifecycle operations handled above"),
+    })
+}
+
+fn prepare_proposal(
+    recipe: Recipe,
+    kind: MutationKind,
+    old: Option<&LoadedRecord>,
+    now: Timestamp,
+    diagnostics: &mut Vec<crate::storage::warning::StorageWarning>,
+) -> Result<Recipe, Error> {
+    let creating = matches!(kind, MutationKind::Create | MutationKind::Add);
+    let mut proposal = recipe.into_builder();
+    if let Some(old) = old
+        && old.snapshot.recipe().sound() != &proposal.content.sound
+    {
+        for evidence in &mut proposal.content.evidence {
+            evidence.scope = crate::core::provenance::EvidenceScope::Ancestor;
+        }
+    }
+    if kind == MutationKind::Create {
+        proposal.document.created_at = Some(now);
+        proposal.document.modified_at = Some(now);
+    } else if !creating {
+        proposal.document.modified_at = Some(now);
+    }
+    let recipe = proposal.build().map_err(|e| Error::Recipe { error: e })?;
+    diagnostics.extend(chronology(&recipe, old.map(|r| r.snapshot.recipe()), now));
+    Ok(recipe)
+}
+
 fn read_memberships(dir: &Dir) -> Result<Memberships, Error> {
     if let Err(error) = dir.symlink_metadata(MEMBERSHIP)
         && error.kind() == std::io::ErrorKind::NotFound
@@ -853,7 +731,8 @@ fn persist_memberships(
     _cancel: &Cancel,
     warnings: &mut Vec<crate::storage::warning::StorageWarning>,
 ) -> bool {
-    // The primary recipe already committed; cancellation cannot undo it or skip best-effort timestamps.
+    // The primary recipe already committed; cancellation cannot undo it or skip best-effort
+    // timestamps.
     let result = (|| {
         let text =
             toml::to_string(memberships).map_err(|e| Error::MembershipEncode { error: e })?;
@@ -1007,7 +886,7 @@ fn reconcile_moves(
                 .remove_file(&name)
                 .map_err(|e| root::io(IoOperation::Remove, e))?;
             warnings.push(crate::storage::warning::StorageWarning::RecoveredMove {
-                name: (name).to_owned(),
+                name: (name).clone(),
             });
         }
     }
@@ -1091,9 +970,6 @@ pub fn history_warnings(recipe: &Recipe) -> Vec<crate::storage::warning::Storage
     )
 }
 
-#[cfg(test)]
-mod tests;
-
 crate::core::diagnostic_codes! {
     pub(crate) const CODES;
     InventoryNotice {
@@ -1143,3 +1019,281 @@ impl<E: crate::core::diagnostic::Code> crate::core::diagnostic::Code for Library
         params
     }
 }
+
+/// One bounded traversal under the exact read lease used for its records.
+struct LibraryScan<'a> {
+    store: &'a LibraryStore,
+    lease: &'a root::Lease,
+    cancel: &'a Cancel,
+    limits: ScanLimits,
+    result: &'a mut Inventory,
+    memberships: Memberships,
+    count: usize,
+    total: usize,
+    seen: BTreeSet<DocumentUuid>,
+    duplicates: BTreeSet<DocumentUuid>,
+}
+impl LibraryScan<'_> {
+    fn run(mut self) -> Result<(), Error> {
+        self.root_entries()?;
+        self.records()?;
+        self.reconcile_duplicates()?;
+
+        for id in self
+            .memberships
+            .entries
+            .keys()
+            .filter(|id| !self.seen.contains(id))
+        {
+            self.result
+                .note(MEMBERSHIP, InventoryNotice::OrphanMembership(*id));
+        }
+        self.stages()?;
+        self.result.entries.sort_by(|a, b| {
+            a.normalized_title
+                .cmp(&b.normalized_title)
+                .then(a.key.cmp(&b.key))
+        });
+        self.result.stages.sort();
+        Ok(())
+    }
+    fn root_entries(&mut self) -> Result<(), Error> {
+        for entry in self
+            .lease
+            .dir
+            .entries()
+            .map_err(|e| root::io(IoOperation::Read, e))?
+        {
+            if self.cancel.is_requested() {
+                return Err(cancelled());
+            }
+            let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
+            let name = entry.file_name();
+            if matches!(
+                name.to_str(),
+                Some(
+                    "library.toml"
+                        | ".library.lock"
+                        | "membership.toml"
+                        | "recipes"
+                        | "trash"
+                        | ".stage"
+                )
+            ) {
+                continue;
+            }
+            self.count += 1;
+            if self.count > self.limits.entries {
+                return Err(budget());
+            }
+            if root::owned_stage(&name) {
+                self.result.stages.push(name.into());
+            } else {
+                self.result
+                    .note(name.to_string_lossy(), InventoryNotice::UnknownRootEntry);
+            }
+        }
+        Ok(())
+    }
+    fn records(&mut self) -> Result<(), Error> {
+        for (directory, trashed) in [("recipes", false), ("trash", true)] {
+            let dir = self.lease.directory(directory)?;
+            for entry in dir.entries().map_err(|e| root::io(IoOperation::Read, e))? {
+                if self.cancel.is_requested() {
+                    return Err(cancelled());
+                }
+                let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
+                self.count += 1;
+                if self.count > self.limits.entries {
+                    return Err(budget());
+                }
+                let name = entry.file_name();
+                let relative = format!("{directory}/{}", name.to_string_lossy());
+                if root::owned_stage(&name) {
+                    self.result.stages.push(relative.into());
+                    continue;
+                }
+                let Some(stem) = name.to_str().and_then(|n| n.strip_suffix(".toml")) else {
+                    self.result.note(relative, InventoryNotice::UnknownEntry);
+                    continue;
+                };
+                let Ok(id) = stem.parse::<DocumentUuid>() else {
+                    self.result.error(
+                        relative,
+                        InventoryNotice::UuidFilenameRequired,
+                        Outcome::IncompleteInventory,
+                    );
+                    continue;
+                };
+                if !self.seen.insert(id) {
+                    self.duplicates.insert(id);
+                }
+                if self.store.reserved(id).is_err() {
+                    self.result.error(
+                        relative,
+                        InventoryNotice::ReservedBuiltinIdentity,
+                        Outcome::IncompleteInventory,
+                    );
+                    continue;
+                }
+                if self.total >= self.limits.raw || self.total >= self.limits.decoded {
+                    return Err(budget());
+                }
+                let allowance = Recipe::MAX_BYTES
+                    .min(self.limits.raw - self.total)
+                    .min(self.limits.decoded - self.total);
+                let bytes = match publish::read_bounded_counted(
+                    &dir,
+                    Path::new(&name),
+                    allowance,
+                    &mut self.total,
+                ) {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        self.result
+                            .error(relative, error, Outcome::IncompleteInventory);
+                        continue;
+                    }
+                };
+                match LoadedRecord::decode(
+                    id,
+                    &self.store.root.path().join(&relative),
+                    bytes,
+                    trashed,
+                    self.memberships.entries.get(&id),
+                ) {
+                    Ok(record) => self.result.entries.push(record.summary()),
+                    Err(error) => self
+                        .result
+                        .error(relative, error, Outcome::IncompleteInventory),
+                }
+            }
+        }
+        Ok(())
+    }
+    fn reconcile_duplicates(&mut self) -> Result<(), Error> {
+        for id in std::mem::take(&mut self.duplicates) {
+            let recipes = self.lease.directory("recipes")?;
+            let trash = self.lease.directory("trash")?;
+            let name = format!("{id}.toml");
+            let same = publish::same_file(&recipes, Path::new(&name), &trash, Path::new(&name))
+                .unwrap_or(false);
+            if same {
+                self.result
+                    .entries
+                    .retain(|entry| entry.key != LibraryKey::User(id) || entry.trashed);
+                self.result.note(name, InventoryNotice::InterruptedMove);
+            } else {
+                self.result
+                    .entries
+                    .retain(|entry| entry.key != LibraryKey::User(id));
+                self.result.error(
+                    name,
+                    InventoryNotice::DuplicateIdentity,
+                    Outcome::IncompleteInventory,
+                );
+            }
+        }
+        Ok(())
+    }
+    fn stages(&mut self) -> Result<(), Error> {
+        let stages = self.lease.directory(".stage")?;
+        for entry in stages
+            .entries()
+            .map_err(|e| root::io(IoOperation::Read, e))?
+        {
+            if self.cancel.is_requested() {
+                return Err(cancelled());
+            }
+            self.count += 1;
+            if self.count > self.limits.entries {
+                return Err(budget());
+            }
+            let entry = entry.map_err(|e| root::io(IoOperation::Inspect, e))?;
+            self.result
+                .stages
+                .push(std::path::Path::new(".stage").join(entry.file_name()));
+        }
+        Ok(())
+    }
+}
+
+fn publish_record(
+    lease: &root::Lease,
+    kind: MutationKind,
+    recipe: &Recipe,
+    memberships: &mut Memberships,
+    now: Timestamp,
+    cancel: &Cancel,
+    mut diagnostics: Vec<crate::storage::warning::StorageWarning>,
+) -> Result<WriteOutcome, Error> {
+    let id = recipe.document().id;
+    let key = LibraryKey::User(id);
+    let name = format!("{id}.toml");
+    let creating = matches!(kind, MutationKind::Create | MutationKind::Add);
+    let bytes = recipe
+        .to_toml()
+        .map_err(|e| Error::Recipe { error: e })?
+        .into_bytes();
+    let recipes = lease.directory("recipes")?;
+    let publication = publish::publish_in(
+        &recipes,
+        Path::new(&name),
+        &lease.canonical.join("recipes").join(&name),
+        if creating {
+            Policy::CreateNew
+        } else {
+            Policy::Replace
+        },
+        cancel,
+        |file| {
+            file.write_all(&bytes).map_err(|e| {
+                FileError::Io(IoFailure::new(
+                    IoOperation::Write,
+                    Some(lease.canonical.join("recipes").join(&name)),
+                    e,
+                ))
+            })
+        },
+    )?;
+    diagnostics.extend(publication.warnings);
+    let membership = memberships.entries.entry(id).or_default();
+    if creating {
+        membership.added_at = Some(now);
+        membership.trashed_at = None;
+    }
+    let mut record = LoadedRecord::decode(
+        id,
+        &lease.canonical.join("recipes").join(&name),
+        bytes,
+        false,
+        Some(membership),
+    )?;
+    if !persist_memberships(lease, memberships, cancel, &mut diagnostics) {
+        refresh_membership(lease, &mut record, &mut diagnostics);
+    }
+    Ok(outcome(key, kind, Some(record), diagnostics))
+}
+
+fn validate_mutation_intent(mutation: &Mutation, id: DocumentUuid) -> Result<(), Error> {
+    if let Mutation::Create(recipe) | Mutation::Add(recipe) | Mutation::Update { recipe, .. } =
+        mutation
+        && recipe.document().id != id
+    {
+        return Err(Error::ProposedIdentity {
+            expected: id,
+            found: recipe.document().id,
+        });
+    }
+    if let Mutation::Purge {
+        confirmed: false, ..
+    } = mutation
+    {
+        return Err(Error::PurgeUnconfirmed);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests;

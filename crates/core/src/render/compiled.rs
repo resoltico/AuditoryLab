@@ -160,7 +160,7 @@ impl Target {
     /// [`SoundError::FadesOverlap`].
     pub fn signal(&self, duration_seconds: f64, fade_seconds: f64) -> Result<Signal, SoundError> {
         let envelope = Envelope::resolve(self.mix.rate, duration_seconds, fade_seconds)?;
-        Ok(Signal::new(*self, envelope))
+        Ok(Signal::new(self, envelope))
     }
 }
 
@@ -232,25 +232,24 @@ impl TargetCheck {
                 }
             }
         }
-        let result = match first {
-            Some(error) => Err(error),
-            None => {
-                // Summed in rendering order, so that no rendered sample can exceed it.
-                for entry in mix.entries[..mix.len].iter().flatten() {
-                    if entry.voice.left {
-                        mix.peak[0] += entry.voice.amplitude;
-                    }
-                    if entry.voice.right {
-                        mix.peak[1] += entry.voice.amplitude;
-                    }
+        let result = if let Some(error) = first {
+            Err(error)
+        } else {
+            // Summed in rendering order, so that no rendered sample can exceed it.
+            for entry in mix.entries[..mix.len].iter().flatten() {
+                if entry.voice.left {
+                    mix.peak[0] += entry.voice.amplitude;
                 }
-                [(Ear::Left, mix.peak[0]), (Ear::Right, mix.peak[1])]
-                    .into_iter()
-                    .find(|(_, amplitude)| *amplitude > 1.0)
-                    .map_or(Ok(Target { mix }), |(ear, amplitude)| {
-                        Err(SoundError::Peak { ear, amplitude })
-                    })
+                if entry.voice.right {
+                    mix.peak[1] += entry.voice.amplitude;
+                }
             }
+            [(Ear::Left, mix.peak[0]), (Ear::Right, mix.peak[1])]
+                .into_iter()
+                .find(|(_, amplitude)| *amplitude > 1.0)
+                .map_or(Ok(Target { mix }), |(ear, amplitude)| {
+                    Err(SoundError::Peak { ear, amplitude })
+                })
         };
         Self {
             rate,

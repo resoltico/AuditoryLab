@@ -120,8 +120,7 @@ fn search_excludes_generated_labels_and_unknown_date_captions() {
     // These captions are deliberately present in display output, not authored facts.
     assert!(auditorylab_presentation::snapshot_description(&(snapshot)).contains("Unknown"));
     assert!(
-        auditorylab_presentation::analysis_summary(&(snapshot.nominal()))
-            .contains("No rhythmic rate")
+        auditorylab_presentation::analysis_summary(snapshot.nominal()).contains("No rhythmic rate")
     );
     for caption in ["unknown", "document", "rhythmic"] {
         assert!(

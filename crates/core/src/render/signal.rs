@@ -76,8 +76,11 @@ impl Signal {
     /// exact in binary64.
     pub const MAX_FRAMES: u64 = 1 << 36;
 
-    pub(crate) const fn new(target: Target, envelope: Envelope) -> Self {
-        Self { target, envelope }
+    pub(crate) const fn new(target: &Target, envelope: Envelope) -> Self {
+        Self {
+            target: *target,
+            envelope,
+        }
     }
 
     /// Check a duration and fade at `rate` with the same rules and order as

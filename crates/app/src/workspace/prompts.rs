@@ -1,5 +1,5 @@
 //! One current prompt; pending cross-state actions remain with the coordinator.
-use super::*;
+use super::{Arc, DocumentAction, PromptId, Refusal, Rendition};
 #[derive(Debug)]
 pub(super) enum PromptState {
     Unsaved(DocumentAction),

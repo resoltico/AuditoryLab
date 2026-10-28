@@ -153,8 +153,12 @@ impl Unit {
 
 macro_rules! define_parameters {
     (parameters {
-        component {$( $(#[$component_doc:meta])* $component:ident => ($component_key:literal,$component_label:expr,$component_phrase:expr,$component_unit:ident,$component_rule:expr); )*}
-        envelope {$( $(#[$envelope_doc:meta])* $envelope:ident => ($envelope_key:literal,$envelope_label:expr,$envelope_phrase:expr,$envelope_unit:ident,$envelope_rule:expr); )*}
+        component {$( $(#[$component_doc:meta])* $component:ident => ($component_key:literal,
+            $component_label:expr,$component_phrase:expr,$component_unit:ident,
+            $component_rule:expr); )*}
+        envelope {$( $(#[$envelope_doc:meta])* $envelope:ident => ($envelope_key:literal,
+            $envelope_label:expr,$envelope_phrase:expr,$envelope_unit:ident,$envelope_rule:expr);
+            )*}
     } $($rest:tt)*)=>{
         /// One editable recipe quantity.
         #[derive(Debug,Clone,Copy,PartialEq,Eq,PartialOrd,Ord,Hash)]
@@ -169,14 +173,19 @@ macro_rules! define_parameters {
         impl ParameterId {
             /// Rust variant identifier for generated source; use key() for wire data.
             #[doc(hidden)]
-            pub const fn variant_name(self)->&'static str {match self {$(Self::$component=>stringify!($component),)*$(Self::$envelope=>stringify!($envelope),)*}}
+            pub const fn variant_name(self)->&'static str {match self {
+                $(Self::$component=>stringify!($component),
+                )*$(Self::$envelope=>stringify!($envelope),)*}}
             /// Quantities applicable to components, in display order.
             pub const COMPONENT:[Self;[$(stringify!($component)),*].len()]=[$(Self::$component),*];
             /// Whether this quantity belongs to a component.
             #[must_use]
-            pub const fn is_component(self)->bool {match self {$(Self::$component=>true,)*$(Self::$envelope=>false,)*}}
-            const fn unit(self)->Unit {match self {$(Self::$component=>Unit::$component_unit,)*$(Self::$envelope=>Unit::$envelope_unit,)*}}
-            pub(crate) const fn value_rule(self)->Option<crate::ValueRule> {match self {$(Self::$component=>$component_rule,)*$(Self::$envelope=>$envelope_rule,)*}}
+            pub const fn is_component(self)->bool {match self {$(Self::$component=>true,
+                )*$(Self::$envelope=>false,)*}}
+            const fn unit(self)->Unit {match self {$(Self::$component=>Unit::$component_unit,
+                )*$(Self::$envelope=>Unit::$envelope_unit,)*}}
+            pub(crate) const fn value_rule(self)->Option<crate::ValueRule> {match self {
+                $(Self::$component=>$component_rule,)*$(Self::$envelope=>$envelope_rule,)*}}
         }
     };
 }

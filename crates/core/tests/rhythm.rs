@@ -51,7 +51,7 @@ fn carrier_is_not_a_band_and_nominal_am_survives_target_invalidity() {
     for hz in [10.0, 40.0, 240.0] {
         let a = nominal(&sound(vec![tone(hz, Ears::Both)]));
         assert!(a.no_rhythm());
-        assert!(a.bands.is_empty());
+        assert_eq!(a.bands, [] as [auditorylab_core::rhythm::Band; 0]);
     }
     let mut c = tone(1_000.0, Ears::Both);
     c.set_modulation(Some(Modulation::Am {
@@ -109,7 +109,7 @@ fn independent_processes_deduplicate_bands_but_never_rates() {
         }
         let a = nominal(&sound(vec![click(finite(hz))]));
         assert_eq!(a.completeness, Completeness::Invalid);
-        assert!(a.rhythms.is_empty());
+        assert_eq!(a.rhythms, [] as [auditorylab_core::rhythm::Descriptor; 0]);
         assert!(!a.no_rhythm());
     }
 }
@@ -128,7 +128,7 @@ fn plain_tones_never_infer_a_pair_or_a_rhythmic_band() {
         assert_eq!(analysis.methods, [Method::SteadyTone]);
         assert_eq!(analysis.completeness, Completeness::Complete);
         assert!(analysis.no_rhythm());
-        assert!(analysis.bands.is_empty());
+        assert_eq!(analysis.bands, [] as [auditorylab_core::rhythm::Band; 0]);
     }
 }
 

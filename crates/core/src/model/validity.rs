@@ -50,24 +50,6 @@ impl core::fmt::Display for ValueIssue {
 }
 impl core::error::Error for ValueIssue {}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn intrinsic_failures_expose_stable_codes_and_exact_requested_values() {
-        for (parameter, value, code) in [
-            (ParameterId::ToneFrequency, 0.0, "value.positive"),
-            (ParameterId::PeakLevel, 1.0, "value.peak"),
-            (ParameterId::AmDepth, 1.25, "value.depth"),
-        ] {
-            let failure = check_value(parameter, value).unwrap_err();
-            assert_eq!(crate::Code::code(&failure), code);
-            assert_eq!(failure.parameter, parameter);
-            assert_eq!(failure.value.to_bits(), value.to_bits());
-        }
-    }
-}
-
 crate::diagnostic_codes! {
     pub(crate) const CODES;
     ValueIssue {
@@ -88,6 +70,24 @@ crate::diagnostic_codes! {
         delegates {}
         params(this) {
             crate::diagnostic_params! {"parameter"=>this.parameter.key(),"value"=>this.value}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn intrinsic_failures_expose_stable_codes_and_exact_requested_values() {
+        for (parameter, value, code) in [
+            (ParameterId::ToneFrequency, 0.0, "value.positive"),
+            (ParameterId::PeakLevel, 1.0, "value.peak"),
+            (ParameterId::AmDepth, 1.25, "value.depth"),
+        ] {
+            let failure = check_value(parameter, value).unwrap_err();
+            assert_eq!(crate::Code::code(&failure), code);
+            assert_eq!(failure.parameter, parameter);
+            assert_eq!(failure.value.to_bits(), value.to_bits());
         }
     }
 }

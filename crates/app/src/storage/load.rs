@@ -115,8 +115,9 @@ impl LoadError {
             Self::TemporarySelector { .. } => Outcome::InvalidArgument,
             Self::Identity(error) => error.outcome(),
             Self::Recipe { .. } => Outcome::InvalidRecipe,
-            Self::Read { .. } => Outcome::Unreadable,
-            Self::File(FileError::Io(_) | FileError::NotRegular { .. }) => Outcome::Unreadable,
+            Self::Read { .. } | Self::File(FileError::Io(_) | FileError::NotRegular { .. }) => {
+                Outcome::Unreadable
+            }
             Self::File(error) => error.outcome(),
             Self::Library(error) => error.outcome(),
             Self::Sound { .. } => Outcome::InvalidSound,

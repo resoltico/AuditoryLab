@@ -1,7 +1,15 @@
 import { ViewCaptions } from "view-captions.slint";
 import { Button } from "button.slint";
 import { Terms } from "vocabulary.slint";
-import { Palette, LineEdit, TextEdit, Slider, HorizontalBox, VerticalBox, ComboBox } from "std-widgets.slint";
+import {
+    Palette,
+    LineEdit,
+    TextEdit,
+    Slider,
+    HorizontalBox,
+    VerticalBox,
+    ComboBox,
+} from "std-widgets.slint";
 import { ParameterRow, MetadataRow } from "models.slint";
 // A compact disclosure: as wide as its label, aligned with the content it opens.
 export component Disclosure inherits Rectangle {
@@ -21,9 +29,10 @@ export component Disclosure inherits Rectangle {
         width: parent.width;
         height: parent.height;
         text: (root.expanded ? "▾ " : "▸ ") + root.label;
-        accessible-label: root.accessible-name + (root.expanded ? Terms.caption-expanded : Terms.caption-collapsed);
+        accessible-label: root.accessible-name + (root.expanded ? Terms.caption-expanded :
+            Terms.caption-collapsed);
         accessible-expanded: root.expanded;
-        triggered => {root.expanded = !root.expanded;}
+        triggered => { root.expanded = !root.expanded; }
     }
 }
 // Uncommitted text, caret and focus stay local. Model refreshes replace only
@@ -50,11 +59,15 @@ export component NumericField inherits LineEdit {
         if root.staged && !root.dirty { root.captured = root.binding; }
         root.dirty = root.staged;
     }
-    init => {self.text=root.display-text;root.dirty=root.staged;root.captured=root.binding;}
+    init => {
+        self.text = root.display-text;
+        root.dirty = root.staged;
+        root.captured = root.binding;
+    }
     changed display-text => {
         if !self.has-focus {
             self.text = root.display-text;
-            root.dirty=root.staged;
+            root.dirty = root.staged;
         }
     }
     edited(value) => {
@@ -83,6 +96,7 @@ export component NumericField inherits LineEdit {
         }
     }
 }
+
 export component ParameterControl inherits VerticalBox {
     in property <ParameterRow> parameter;
     in property <string> owner;
@@ -98,60 +112,75 @@ export component ParameterControl inherits VerticalBox {
     padding: 0px;
     vertical-stretch: 0;
     HorizontalBox {
-    padding:0px;vertical-stretch:0;
-    Text {
-        text: root.parameter.label;
-        vertical-alignment: center;
-        min-width:root.ui-size*(root.compact ? 4 : 12.5);
-        max-width:root.ui-size*(root.compact ? 7 : 16);
-        wrap: word-wrap;
-    }
-    if !root.compact && root.parameter.has-slider: Slider {
-        enabled: root.edit-enabled;
-        minimum: 0;
-        maximum: 1;
-        step: 0.001;
-        value: root.parameter.position;
+        padding: 0px;
+        vertical-stretch: 0;
+        Text {
+            text: root.parameter.label;
+            vertical-alignment: center;
+            min-width: root.ui-size * (root.compact ? 4 : 12.5);
+            max-width: root.ui-size * (root.compact ? 7 : 16);
+            wrap: word-wrap;
+        }
+
+        if !root.compact && root.parameter.has-slider: Slider {
+            enabled: root.edit-enabled;
+            minimum: 0;
+            maximum: 1;
+            step: 0.001;
+            value: root.parameter.position;
         // Dragging replaces the value binding; keep following committed values.
         property <float> committed: root.parameter.position;
-        changed committed => { self.value = self.committed; }
-        accessible-label: root.context+": "+root.parameter.label + Terms.caption-slider;
-        changed(value) => {
-            root.slide(root.parameter.key, value);
+            changed committed => { self.value = self.committed; }
+            accessible-label: root.context + ": " + root.parameter.label + Terms.caption-slider;
+            changed(value) => {
+                root.slide(root.parameter.key, value);
+            }
+        }
+        Rectangle {
+            preferred-width: root.ui-size * (root.compact ? 7 : 12);
+            max-width: root.ui-size * (root.compact ? 7 : 12);
+            preferred-height: field.preferred-height;
+            min-height: field.min-height;
+            horizontal-stretch: 0;
+            field := NumericField {
+                width: parent.width;
+                height: parent.height;
+                enabled: root.edit-enabled;
+                binding: root.parameter.key;
+                display-text: root.parameter.text;
+                edits-suspended: root.edits-suspended;
+                staged: root.parameter.staged;
+                horizontal-stretch: 0;
+                accessible-label: root.context + ": " + root.parameter.label;
+                accessible-description: root.parameter.diagnostic != "" ? root.parameter.diagnostic
+                    : root.parameter.help;
+                restore(owner) => { root.restore(owner); }
+                stage(owner, value) => { root.stage(owner, value); }
+                commit(owner, value) => { root.commit(owner, value); }
+            }
+
+            if root.parameter.diagnostic != "": Rectangle {
+                width: parent.width;
+                height: parent.height;
+                background: transparent;
+                border-width: 2px;
+                border-color: Palette.accent-background;
+                border-radius: 3px;
+            }
         }
     }
-    Rectangle {
-        preferred-width:root.ui-size*(root.compact ? 7 : 12);
-        max-width:root.ui-size*(root.compact ? 7 : 12);
-        preferred-height:field.preferred-height;min-height:field.min-height;
-        horizontal-stretch:0;
-    field := NumericField {
-        width:parent.width;height:parent.height;
-        enabled: root.edit-enabled;
-        binding: root.parameter.key;
-        display-text: root.parameter.text;
-        edits-suspended:root.edits-suspended;
-        staged:root.parameter.staged;
-        horizontal-stretch: 0;
-        accessible-label: root.context+": "+root.parameter.label;
-        accessible-description: root.parameter.diagnostic != "" ? root.parameter.diagnostic : root.parameter.help;
-        restore(owner) => { root.restore(owner); }
-        stage(owner, value) => { root.stage(owner, value); }
-        commit(owner, value) => { root.commit(owner, value); }
-    }
-    if root.parameter.diagnostic != "": Rectangle {
-        width:parent.width;height:parent.height;background:transparent;
-        border-width:2px;border-color:Palette.accent-background;border-radius:3px;
-    }
-    }
-    }
+
     if root.parameter.show-diagnostic: Text {
-        text:root.parameter.diagnostic;
-        wrap:word-wrap;min-width:0px;vertical-stretch:0;
-        accessible-label:root.context+": "+root.parameter.label+" · "+root.parameter.diagnostic;
-        accessible-live-region:polite;
+        text: root.parameter.diagnostic;
+        wrap: word-wrap;
+        min-width: 0px;
+        vertical-stretch: 0;
+        accessible-label: root.context + ": " + root.parameter.label + " · " +
+            root.parameter.diagnostic;
+        accessible-live-region: polite;
     }
 }
+
 export component NotesInput inherits TextEdit {
     min-height: 96px;
     preferred-height: 120px;
@@ -177,11 +206,15 @@ export component NotesInput inherits TextEdit {
         if root.staged && !root.dirty { root.captured = root.binding; }
         root.dirty = root.staged;
     }
-    init => {self.text=root.display-text;root.dirty=root.staged;root.captured=root.binding;}
+    init => {
+        self.text = root.display-text;
+        root.dirty = root.staged;
+        root.captured = root.binding;
+    }
     changed display-text => {
         if !self.has-focus {
             self.text = root.display-text;
-            root.dirty=root.staged;
+            root.dirty = root.staged;
         }
     }
     edited(value) => {
@@ -205,6 +238,7 @@ export component NotesInput inherits TextEdit {
         }
     }
 }
+
 export component MetadataField inherits NumericField {
     in property <MetadataRow> field;
     callback stage-field(string, string);
@@ -218,6 +252,7 @@ export component MetadataField inherits NumericField {
     commit(owner, value) => { root.commit-field(owner, value); }
     restore(owner) => { root.restore-field(owner); }
 }
+
 export component NotesField inherits NotesInput {
     in property <MetadataRow> field;
     callback stage-field(string, string);
@@ -255,8 +290,12 @@ export component StableButton inherits Rectangle {
     horizontal-stretch: 0;
     measure := VerticalLayout {
         visible: false;
-        for label in root.labels: Button { text: label; primary: root.primary; }
+        for label in root.labels: Button {
+            text: label;
+            primary: root.primary;
+        }
     }
+
     button := Button {
         x: 0px;
         y: 0px;
@@ -270,6 +309,7 @@ export component StableButton inherits Rectangle {
         triggered => { root.clicked(); }
     }
 }
+
 export component ExportRate inherits HorizontalBox {
     padding: 0px;
     vertical-stretch: 0;
@@ -278,15 +318,16 @@ export component ExportRate inherits HorizontalBox {
     in property <bool> edit-enabled;
     callback changed(int);
     Text {
-        text:ViewCaptions.facet-export-sample-rate;
-        vertical-alignment:center;
+        text: ViewCaptions.export-sample-rate;
+        vertical-alignment: center;
     }
+
     ComboBox {
-        horizontal-stretch:0;
-        model:root.choices;
+        horizontal-stretch: 0;
+        model: root.choices;
         current-index <=> root.selected;
-        enabled:root.edit-enabled;
-        selected(v)=> {
+        enabled: root.edit-enabled;
+        selected(v) => {
             root.changed(self.current-index);
         }
     }

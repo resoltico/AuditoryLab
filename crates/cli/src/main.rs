@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 use auditorylab_app::job::{Cancel, Progress, Replace};
 
-use auditorylab_presentation::*;
+use auditorylab_presentation::Explain;
 mod cli_text;
 mod library_cli;
 use auditorylab_app::core::SampleRate;
@@ -19,7 +19,10 @@ use std::{
     process::ExitCode,
 };
 #[derive(Parser)]
-#[command(name = "auditorylab", about = "Explore, export and play auditory recipes", version = auditorylab_presentation::build_info::build_identity_version_text(auditorylab_app::identity::BUILD_IDENTITY))]
+#[command(name = "auditorylab", about = "Explore, export and play auditory recipes",
+    version = auditorylab_presentation::build_info::build_identity_version_text(
+        auditorylab_app::identity::BUILD_IDENTITY
+    ))]
 struct Cli {
     /// Absolute persistent User Library override (then environment, then native data).
     #[arg(long,global=true,value_name="ABSOLUTE_PATH",value_parser=library_override)]
@@ -55,7 +58,8 @@ enum Command {
         format: library_cli::ReadFormat,
         #[command(flatten)]
         source: Source,
-        #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(), value_parser=clap::value_parser!(u32), value_name="HZ")]
+        #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(),
+            value_parser=clap::value_parser!(u32), value_name="HZ")]
         sample_rate: u32,
     },
     /// Play on the default audio output device.
@@ -66,7 +70,8 @@ enum Command {
         source: Source,
         #[arg(long, value_name = "PATH")]
         output: PathBuf,
-        #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(), value_parser=clap::value_parser!(u32), value_name="HZ")]
+        #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(),
+            value_parser=clap::value_parser!(u32), value_name="HZ")]
         sample_rate: u32,
     },
 }
@@ -85,7 +90,7 @@ struct Source {
 }
 
 fn library_override(text: &str) -> Result<lab::services::LibraryContext, String> {
-    lab::services::LibraryContext::from_override(PathBuf::from(text))
+    lab::services::LibraryContext::from_override(std::path::Path::new(text))
         .map_err(|error| error.explain())
 }
 #[derive(Debug)]
@@ -150,9 +155,14 @@ impl std::error::Error for CliError {
     }
 }
 macro_rules! operation_errors {
-    ($($ty:ty),* $(,)?) => { $(impl From<$ty> for CliError { fn from(error: $ty) -> Self { Self::Operation(Box::new(error.into())) } })* };
+    ($($ty:ty),* $(,)?) => { $(impl From<$ty> for CliError { fn from(error: $ty) -> Self {
+        Self::Operation(Box::new(error.into())) } })* };
 }
-operation_errors! { auditorylab_app::services::OperationError, auditorylab_app::services::LoadError, auditorylab_app::services::library::LibraryError, auditorylab_app::services::SaveError, auditorylab_app::services::ExportError, auditorylab_app::services::playback::PlaybackError, auditorylab_app::document::error::EditorError, auditorylab_app::identity::IdentityError, auditorylab_app::discovery::query::QueryError, lab::core::RecipeError }
+operation_errors! { auditorylab_app::services::OperationError, auditorylab_app::services::LoadError,
+auditorylab_app::services::library::LibraryError, auditorylab_app::services::SaveError,
+auditorylab_app::services::ExportError, auditorylab_app::services::playback::PlaybackError,
+auditorylab_app::document::error::EditorError, auditorylab_app::identity::IdentityError,
+auditorylab_app::discovery::query::QueryError, lab::core::RecipeError }
 impl From<lab::document::origin::OriginError> for CliError {
     fn from(error: lab::document::origin::OriginError) -> Self {
         Self::Operation(Box::new(error.into()))
@@ -217,7 +227,7 @@ fn prose(text: &str) -> String {
         78
     };
     text.lines()
-        .map(|line| textwrap::fill(&auditorylab_presentation::display_text(&(line)), width))
+        .map(|line| textwrap::fill(&auditorylab_presentation::display_text(line), width))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -263,7 +273,7 @@ impl StatusLine {
         let _ = write!(
             io::stderr(),
             "\r\x1b[2K{}",
-            auditorylab_presentation::display_text(&(text))
+            auditorylab_presentation::display_text(text)
         );
         let _ = io::stderr().flush();
     }
@@ -304,7 +314,7 @@ fn play(resolved: &lab::services::Resolved) -> Result<Ended, CliError> {
     eprintln!(
         "{}\n{}",
         prose(&auditorylab_presentation::snapshot_playback_preamble(
-            &(playback.rendition().snapshot()),
+            playback.rendition().snapshot(),
             playback.output(),
             playback.signal()
         )),
@@ -314,8 +324,7 @@ fn play(resolved: &lab::services::Resolved) -> Result<Ended, CliError> {
     eprintln!(
         "{}",
         prose(&auditorylab_presentation::rendition_description(
-            &(sound),
-            false
+            sound, false
         ))
     );
     let report = if io::stderr().is_terminal() {
@@ -382,31 +391,10 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             selector,
             output: path,
         } => {
-            let key: auditorylab_app::document::origin::LibraryKey = selector.parse()?;
-            if matches!(
-                key,
-                auditorylab_app::document::origin::LibraryKey::External(_)
-            ) {
-                return Err(usage(CommandProblem::TemporaryRecipeSelector.message()));
-            }
-            let text = lab::services::portable_text(&key, &context)?;
-            if let Some(path) = path {
-                let saved = lab::services::save_recipe_text(&text, &path, Replace::Never)?;
-                for warning in saved.warnings {
-                    eprintln!(
-                        "{}",
-                        prose(&auditorylab_presentation::errors::publication::warning(
-                            &warning
-                        ))
-                    );
-                }
-                completed(&auditorylab_presentation::recipe_exported(&path));
-            } else {
-                output(text.as_bytes())?;
-            }
+            export_recipe(&selector, path, &context)?;
         }
         Command::Describe { source, format } => {
-            library_cli::describe(&library_cli::resolve(source, &context)?, format)?
+            library_cli::describe(&library_cli::resolve(source, &context)?, format)?;
         }
         Command::Inspect {
             source,
@@ -437,8 +425,7 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             eprintln!(
                 "{}",
                 prose(&auditorylab_presentation::rendition_export_preamble(
-                    &(sound),
-                    &path
+                    sound, &path
                 ))
             );
             let result = lab::services::export_rendition(
@@ -468,8 +455,8 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
     }
     Ok(Ended::Normally)
 }
-fn command_output(command: &Option<Command>) -> Option<(bool, Operation)> {
-    Some(match command.as_ref()? {
+fn command_output(command: Option<&Command>) -> Option<(bool, Operation)> {
+    Some(match command? {
         Command::List(args) => (args.json(), Operation::List),
         Command::Library { command } => (command.json(), command.operation()),
         Command::Describe { format, .. } => (
@@ -502,7 +489,7 @@ fn main() -> ExitCode {
         }
         Err(e) => e.exit(),
     };
-    let selected_output = command_output(&cli.command);
+    let selected_output = command_output(cli.command.as_ref());
     match run(cli) {
         Ok(Ended::Normally) => ExitCode::SUCCESS,
         Ok(Ended::Stopped) => ExitCode::from(130),
@@ -523,6 +510,54 @@ fn main() -> ExitCode {
             ExitCode::from(code)
         }
     }
+}
+
+// diagnostic-codes:begin
+// The presentation reference test reads this declaration because CLI is a binary.
+auditorylab_app::core::diagnostic_codes! {
+    #[cfg(test)]
+    pub(crate) const CODES;
+    CliError {
+        codes {
+            Self::Usage(_)=>"cli.argument",
+            Self::Io(_)=>"cli.output",
+            Self::Interrupt(_)=>"cli.interrupt",
+            Self::Json(_)=>"cli.json",
+            Self::Formatting(_)=>"cli.format",
+        }
+        delegates {Self::Operation(error)=>error,}
+    }
+}
+// diagnostic-codes:end
+
+fn export_recipe(
+    selector: &str,
+    path: Option<PathBuf>,
+    context: &lab::services::LibraryContext,
+) -> Result<(), CliError> {
+    let key: auditorylab_app::document::origin::LibraryKey = selector.parse()?;
+    if matches!(
+        key,
+        auditorylab_app::document::origin::LibraryKey::External(_)
+    ) {
+        return Err(usage(CommandProblem::TemporaryRecipeSelector.message()));
+    }
+    let text = lab::services::portable_text(&key, context)?;
+    if let Some(path) = path {
+        let saved = lab::services::save_recipe_text(&text, &path, Replace::Never)?;
+        for warning in saved.warnings {
+            eprintln!(
+                "{}",
+                prose(&auditorylab_presentation::errors::publication::warning(
+                    &warning
+                ))
+            );
+        }
+        completed(&auditorylab_presentation::recipe_exported(&path));
+    } else {
+        output(text.as_bytes())?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -565,7 +600,7 @@ mod operation_tests {
             let parsed =
                 Cli::try_parse_from(std::iter::once("auditorylab").chain(args.iter().copied()))
                     .unwrap();
-            let (_, actual) = command_output(&parsed.command).unwrap();
+            let (_, actual) = command_output(parsed.command.as_ref()).unwrap();
             assert_eq!(actual, *expected);
             assert!(
                 operations.insert(actual),
@@ -604,27 +639,9 @@ mod operation_tests {
             names, grammar,
             "every offered CLI command needs an independent operation expectation"
         );
-        assert!(command_output(&None).is_none());
+        assert!(command_output(None).is_none());
     }
 }
-
-// diagnostic-codes:begin
-// The presentation reference test reads this declaration because CLI is a binary.
-auditorylab_app::core::diagnostic_codes! {
-    #[cfg(test)]
-    pub(crate) const CODES;
-    CliError {
-        codes {
-            Self::Usage(_)=>"cli.argument",
-            Self::Io(_)=>"cli.output",
-            Self::Interrupt(_)=>"cli.interrupt",
-            Self::Json(_)=>"cli.json",
-            Self::Formatting(_)=>"cli.format",
-        }
-        delegates {Self::Operation(error)=>error,}
-    }
-}
-// diagnostic-codes:end
 
 #[cfg(test)]
 mod diagnostic_tests {

@@ -95,7 +95,8 @@ pub(super) fn assert_cursor_rect_scrolls_into_view() {
                     "real text input must have positive geometry"
                 );
                 eprintln!(
-                    "TextEdit {size}px window{height}px offset{offset}: cursor={rect:?} scroll={} viewport={viewport}",
+                    "TextEdit {size}px window{height}px offset{offset}: cursor={rect:?} \
+                        scroll={} viewport={viewport}",
                     probe.get_scroll_y()
                 );
                 assert!(

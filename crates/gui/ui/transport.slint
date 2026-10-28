@@ -26,40 +26,114 @@ export component TransportBar inherits Rectangle {
     in property <length> ui-size;
     callback update-monitor-layout();
 
-            accessible-role:groupbox;accessible-label:ViewCaptions.caption-playback-transport;
-            changed preferred-height=>{root.update-monitor-layout();}
-            preferred-height: content.preferred-height;
-            min-height:content.preferred-height;max-height:content.preferred-height;
-            vertical-stretch:0;
-            background:Palette.control-background;border-width:1px;border-color:Palette.border;
-            content := VerticalBox {padding:8px;spacing:3px;
-                HorizontalBox {vertical-stretch:0;padding:0px;
-                    StableButton {text:root.transport-action;labels:root.transport-labels;primary:true;enabled:root.transport-enabled;accessible-name:root.transport-action+(root.playback-busy || root.play-target == "" ? "" : " · "+root.play-target);clicked=>{root.play-stop();}}
-                    VerticalBox {padding:0px;spacing:2px;horizontal-stretch:1;
-                        // One line each: the transport keeps its height; Details has the full text.
-                        Text {min-width:0px;text:root.player-title+(root.playback-busy || root.play-target == "" ? "" : Terms.caption-next-play-prefix+root.play-target);wrap:no-wrap;overflow:elide;}
-                        Text {min-width:0px;text:root.generated;wrap:no-wrap;overflow:elide;}
-                    }
-                    // Sized for the longest clock, so ticking never reflows the row.
-                    Rectangle {
-                        horizontal-stretch:0;
-                        min-width:elapsed-template.preferred-width;
-                        preferred-width:elapsed-template.preferred-width;
-                        min-height:elapsed-text.preferred-height;
-                        elapsed-template := Text {visible:false;text:"00:00:00 / 00:00:00";}
-                        elapsed-text := Text {width:parent.width;height:parent.height;text:root.elapsed;horizontal-alignment:right;vertical-alignment:center;}
-                    }
-                    Button {text:Terms.caption-details-dialog;horizontal-stretch:0;accessible-label:ViewCaptions.caption-audio-details;triggered =>{root.show-diagnostics();}}
-                }
-                if root.auxiliary-error != "" || root.operation-summary != "" || root.operation-outcome != "": VerticalBox {
-                    padding:0px; spacing:0px; min-height:root.ui-size*2.5; max-height:root.ui-size*2.5; vertical-stretch:0;
-                    Text { min-width:0px; min-height:root.ui-size*1.25; max-height:root.ui-size*1.25;
-                        text:root.auxiliary-error != "" ? root.auxiliary-error : root.operation-summary;
-                        wrap:no-wrap; overflow:elide; accessible-label:self.text; accessible-live-region:polite; }
-                    Text { min-width:0px; min-height:root.ui-size*1.25; max-height:root.ui-size*1.25;
-                        text:root.operation-outcome; wrap:no-wrap; overflow:elide; accessible-label:self.text; accessible-live-region:polite; }
-                }
-                Text {min-width:0px;text:root.guidance;wrap:word-wrap;vertical-stretch:0;}
+    accessible-role: groupbox;
+    accessible-label: ViewCaptions.playback-transport;
+    changed preferred-height => { root.update-monitor-layout(); }
+    preferred-height: content.preferred-height;
+    min-height: content.preferred-height;
+    max-height: content.preferred-height;
+    vertical-stretch: 0;
+    background: Palette.control-background;
+    border-width: 1px;
+    border-color: Palette.border;
+    content := VerticalBox {
+        padding: 8px;
+        spacing: 3px;
+        HorizontalBox {
+            vertical-stretch: 0;
+            padding: 0px;
+            StableButton {
+                text: root.transport-action;
+                labels: root.transport-labels;
+                primary: true;
+                enabled: root.transport-enabled;
+                accessible-name: root.transport-action + (root.playback-busy || root.play-target ==
+                    "" ? "" : " · " + root.play-target);
+                clicked => { root.play-stop(); }
             }
 
+            VerticalBox {
+                padding: 0px;
+                spacing: 2px;
+                horizontal-stretch: 1;
+                        // One line each: the transport keeps its height; Details has the full text.
+                        Text {
+                    min-width: 0px;
+                    text: root.player-title + (root.playback-busy || root.play-target == "" ? "" :
+                        Terms.caption-next-play-prefix + root.play-target);
+                    wrap: no-wrap;
+                    overflow: elide;
+                }
+
+                Text {
+                    min-width: 0px;
+                    text: root.generated;
+                    wrap: no-wrap;
+                    overflow: elide;
+                }
+            }
+                    // Sized for the longest clock, so ticking never reflows the row.
+                    Rectangle {
+                horizontal-stretch: 0;
+                min-width: elapsed-template.preferred-width;
+                preferred-width: elapsed-template.preferred-width;
+                min-height: elapsed-text.preferred-height;
+                elapsed-template := Text {
+                    visible: false;
+                    text: "00:00:00 / 00:00:00";
+                }
+
+                elapsed-text := Text {
+                    width: parent.width;
+                    height: parent.height;
+                    text: root.elapsed;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+
+            Button {
+                text: Terms.caption-details-dialog;
+                horizontal-stretch: 0;
+                accessible-label: ViewCaptions.audio-details;
+                triggered => { root.show-diagnostics(); }
+            }
+        }
+
+        if root.auxiliary-error != "" || root.operation-summary != "" || root.operation-outcome !=
+            "": VerticalBox {
+            padding: 0px;
+            spacing: 0px;
+            min-height: root.ui-size * 2.5;
+            max-height: root.ui-size * 2.5;
+            vertical-stretch: 0;
+            Text {
+                min-width: 0px;
+                min-height: root.ui-size * 1.25;
+                max-height: root.ui-size * 1.25;
+                text: root.auxiliary-error != "" ? root.auxiliary-error : root.operation-summary;
+                wrap: no-wrap;
+                overflow: elide;
+                accessible-label: self.text;
+                accessible-live-region: polite;
+            }
+
+            Text {
+                min-width: 0px;
+                min-height: root.ui-size * 1.25;
+                max-height: root.ui-size * 1.25;
+                text: root.operation-outcome;
+                wrap: no-wrap;
+                overflow: elide;
+                accessible-label: self.text;
+                accessible-live-region: polite;
+            }
+        }
+        Text {
+            min-width: 0px;
+            text: root.guidance;
+            wrap: word-wrap;
+            vertical-stretch: 0;
+        }
+    }
 }

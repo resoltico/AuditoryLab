@@ -15,7 +15,10 @@ use std::path::Path;
 pub(crate) fn refusal_text(refusal: &Refusal) -> String {
     match refusal {
         Refusal::LibraryUnavailable(problem) => {
-            format!("User Library unavailable: {}", crate::errors::library_diagnostic_message(&(problem)))
+            format!(
+                "User Library unavailable: {}",
+                crate::errors::library_diagnostic_message(problem)
+            )
         }
         Refusal::DevicePlaybackUnavailable => {
             "Device playback is disabled for this workspace.".into()
@@ -36,15 +39,27 @@ pub(crate) fn refusal_text(refusal: &Refusal) -> String {
         Refusal::NotFinite => "The recipe's numbers must all be finite before it can play.".into(),
         Refusal::Document(error) => error.explain(),
         Refusal::SelectionChanged => "Library selection changed; activate the action again.".into(),
-        Refusal::TemporaryRequired => "Select an Open file to add; use Edit a copy for Built-in content.".into(),
-        Refusal::PurgeSelectionChanged => "Select the current trashed version before permanent deletion.".into(),
-        Refusal::DetachedDraft(key) => format!("Detached draft from {key}. Edit the restored saved entry or Save independent copy; the old identity is not recreated."),
-        Refusal::ExistingSavedIdentity(_) => "Detached draft belongs to an existing saved identity. Restore/edit that version or Save independent copy.".into(),
-        Refusal::SavedEntryUnreadable => "Saved entry is unreadable; the retained snapshot is for inspection. Refresh or recover an independent copy before playback.".into(),
+        Refusal::TemporaryRequired => "Select an Open file to add; use Edit a copy for Built-in \
+            content."
+            .into(),
+        Refusal::PurgeSelectionChanged => "Select the current trashed version before permanent \
+            deletion."
+            .into(),
+        Refusal::DetachedDraft(key) => format!(
+            "Detached draft from {key}. Edit the restored \
+            saved entry or Save independent copy; the old identity is not \
+            recreated."
+        ),
+        Refusal::ExistingSavedIdentity(_) => "Detached draft belongs to an existing saved \
+            identity. Restore/edit that version or Save independent copy."
+            .into(),
+        Refusal::SavedEntryUnreadable => "Saved entry is unreadable; the retained snapshot is for \
+            inspection. Refresh or recover an independent copy before playback."
+            .into(),
         Refusal::RestoreBeforePlayback => "Restore this saved recipe before playback.".into(),
         Refusal::Invalid { title, rate, error } => error.as_ref().map_or_else(
             || format!("Could not prepare “{title}” at {} Hz.", rate.hz()),
-            |error| crate::sound_error_at_rate(&((error)), title, *rate),
+            |error| crate::sound_error_at_rate(error, title, *rate),
         ),
         Refusal::Edit(error) => crate::edit_refusal_description(*(error)),
     }
@@ -278,8 +293,31 @@ pub fn component_text(
         .collect::<Vec<_>>();
     errors.retain(|error| !parameters.contains(error));
     errors.dedup();
-    ComponentText {heading:component.shown.heading(),name:format!("{} · Component {}",component.shown.heading(),component.id),
-    context:component.shown.pair().map_or_else(||component.facts.as_ref().map(crate::voice_summary).unwrap_or_default(),|pair|format!("Requested second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} dBFS",pair.first_hz.get()+pair.offset_hz.get(),pair.offset_hz.get().abs(),pair.first_peak_dbfs,pair.second_peak_dbfs)),error:errors.join("; ")}
+    ComponentText {
+        heading: component.shown.heading(),
+        name: format!("{} · Component {}", component.shown.heading(), component.id),
+        context: component.shown.pair().map_or_else(
+            || {
+                component
+                    .facts
+                    .as_ref()
+                    .map(crate::voice_summary)
+                    .unwrap_or_default()
+            },
+            |pair| {
+                format!(
+                    "Requested \
+        second carrier: {} Hz · nominal difference: {} Hz · levels {} / {} \
+        dBFS",
+                    pair.first_hz.get() + pair.offset_hz.get(),
+                    pair.offset_hz.get().abs(),
+                    pair.first_peak_dbfs,
+                    pair.second_peak_dbfs
+                )
+            },
+        ),
+        error: errors.join("; "),
+    }
 }
 /// Render document wording without copying its structure or admission state.
 #[must_use]
@@ -324,7 +362,7 @@ pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorText 
         crate::analysis_summary(&(view.nominal)),
         view.saved
             .as_ref()
-            .map_or_else(|| "Not saved".into(), |a| crate::analysis_summary(&(a))),
+            .map_or_else(|| "Not saved".into(), crate::analysis_summary),
         generated_brief
     );
     let based_on = view.based_on.as_ref();
@@ -339,7 +377,7 @@ pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorText 
             )
         }),
         based_on: based_on.map_or_else(String::new, |p| {
-            let about = crate::recipe::snapshot_about(&(p));
+            let about = crate::recipe::snapshot_about(p);
             format!(
                 "Based on “{}” · {}\n{}\nResearch findings describe the source recipe.",
                 p.title(),
@@ -379,7 +417,17 @@ pub(crate) fn retained_warning(
     } else {
         ""
     };
-    unrelated_title.map_or_else(|| retained.to_owned(), |title| format!("Editing a separate sound; current audio remains “{title}”. Stop, then Play this sound to replace it.{}{retained}", if retained.is_empty() { "" } else { "\n" }))
+    unrelated_title.map_or_else(
+        || retained.to_owned(),
+        |title| {
+            format!(
+                "Editing a separate \
+        sound; current audio remains “{title}”. Stop, then Play this sound to \
+        replace it.{}{retained}",
+                if retained.is_empty() { "" } else { "\n" }
+            )
+        },
+    )
 }
 
 /// The transport and monitor text.
@@ -419,18 +467,13 @@ pub struct TransportText {
 #[must_use]
 pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> TransportText {
     use crate::numbers::NumberStyle;
-    use crate::workspace::monitor::output_underrun_warning;
-    use crate::workspace::monitor::phase_text;
     use auditorylab_app::workspace::MotionPreference;
-    use auditorylab_app::workspace::View;
     let output = &data.output;
     let reader = data.monitor.as_ref();
     let audio = data.task_title.is_some();
     let held = output.held;
     let ended = reader.is_some_and(|r| r.status.phase.is_terminal());
     let export_rate = data.export_rate;
-    let task_title = data.task_title.as_deref();
-    let view_kind = data.view;
     let mut view = TransportText {
         player_title: String::new(),
         elapsed: String::new(),
@@ -460,127 +503,22 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
             }
         ),
     };
-    if let Some(reader) = reader {
-        let status = reader.status;
-        let descriptor = &reader.descriptor;
-        view.player_title = format!(
-            "{} · {} · {}",
-            phase_text(status.phase),
-            descriptor.title,
-            match (descriptor.frames, status.phase.is_terminal()) {
-                (None, false) => "Live · until stopped",
-                (None, true) => "Last live session",
-                (Some(_), _) => "Finite recipe",
-            }
-        );
-        let elapsed = crate::numbers::format(
-            NumberStyle::Clock,
-            (descriptor.output.sample_rate).seconds_in(status.estimated_output_frames),
-        );
-        view.elapsed = descriptor.frames.map_or_else(
-            || elapsed.clone(),
-            |frames| {
-                format!(
-                    "{elapsed} / {}",
-                    crate::numbers::format(
-                        NumberStyle::Clock,
-                        descriptor.output.sample_rate.seconds_in(frames)
-                    )
-                )
-            },
-        );
-        view.generated = if status.phase.is_terminal() {
-            format!(
-                "{} · {}",
-                if descriptor.frames.is_some() {
-                    "Captured recipe"
-                } else {
-                    "Last accepted target"
-                },
-                crate::structure_summary(&(auditorylab_core::rhythm::realized(&reader.accepted)))
-            )
-        } else {
-            status.observation.as_ref().map_or_else(
-                || crate::optional_observation_summary(&(None)),
-                |o| {
-                    format!(
-                        "Generated audio · {}",
-                        crate::optional_observation_summary(&(Some(o)))
-                    )
-                },
-            )
-        };
-        view.generated_details = status.observation.map_or_else(String::new, |o| {
-            format!(
-                "Observed generated frame {} · accepted revision {} · active revision {} · settled revision {}\n{}",
-                o.frame,
-                status.accepted_revision,
-                o.active_revision,
-                o.settled_revision,
-                crate::observation_details(&(o))
-            )
-        });
-        view.device = format!(
-            "{} · {} Hz · {} channels · {} · output elapsed is estimated",
-            descriptor
-                .output
-                .name
-                .as_deref()
-                .unwrap_or("Default output"),
-            descriptor.output.sample_rate.hz(),
-            descriptor.output.channels,
-            crate::sample_format_label(descriptor.output.format)
-        );
-        let warning = reader.warning;
-        view.warning = warning.map_or_else(String::new, |warning| {
-            crate::workspace::monitor::monitor_warning_message(warning).into()
-        });
-        view.backend_warning = output_underrun_warning(status.underruns);
-        view.receipt_age = reader.age.map_or_else(
-            || "No generated publication received".into(),
-            |age| received_text(age, held),
-        );
-        view.monitor_state = format!(
-            "Current session {}: observed frame {} · gaps {} · output underruns {}",
-            status.session_id,
-            status
-                .observation
-                .map_or_else(|| "none yet".to_owned(), |o| o.frame.to_string()),
-            status.gaps,
-            status.underruns
-        );
-    } else {
-        view.player_title = if let Some(title) = data.failed_title.as_deref() {
-            format!("Failed · {title}")
-        } else if let Some(title) = task_title {
-            format!("Preparing · {title}")
-        } else if view_kind == View::Workbench {
-            "Draft preview · not playing".into()
-        } else {
-            "Recipe preview · not playing".into()
-        };
-        view.receipt_age = "No generated publication received".into();
-        view.monitor_state = if audio {
-            "Waiting for generated samples".into()
-        } else {
-            "Seekable preview; not generated playback".into()
-        };
-    }
+    render_transport_session(&mut view, data);
     view.model_caption = data.model.as_ref().map_or_else(
         || "No valid timing model available".to_owned(),
         |model| {
             format!(
                 "{}{}\n{}",
-                crate::workspace::monitor::model_view_caption(&(model)),
+                crate::workspace::monitor::model_view_caption(model),
                 reader.map_or_else(String::new, |r| {
-                    crate::workspace::monitor::model_view_generation_note(&(model), r.status)
+                    crate::workspace::monitor::model_view_generation_note(model, &r.status)
                 }),
                 crate::structure_summary(&(model.structure))
             )
         },
     );
     if let Some(reason) = &output.unavailable {
-        view.warning = crate::workspace::status::output_issue_description(&(reason));
+        view.warning = crate::workspace::status::output_issue_description(reason);
     }
     if let Some(capture) = &output.capture {
         view.meters = format!(
@@ -590,10 +528,10 @@ pub fn transport_view(data: &auditorylab_app::workspace::TransportView) -> Trans
             crate::numbers::format(NumberStyle::Decibels, capture.meters()[0].rms_dbfs),
             crate::numbers::format(NumberStyle::Decibels, capture.meters()[1].rms_dbfs)
         );
-        view.caption = crate::workspace::monitor::waveform_capture_label(&(capture), held, ended);
+        view.caption = crate::workspace::monitor::waveform_capture_label(capture, held, ended);
         view.monitor_state = format!(
             "{}\n{}",
-            crate::workspace::monitor::waveform_capture_caption(&(capture), held, ended),
+            crate::workspace::monitor::waveform_capture_caption(capture, held, ended),
             view.monitor_state
         );
         if capture.clipped() {
@@ -712,7 +650,7 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryTe
             study_url: String::new(),
         };
     };
-    let about = crate::recipe::snapshot_about(&(snapshot));
+    let about = crate::recipe::snapshot_about(snapshot);
     let ownership = data
         .selected
         .and_then(|index| data.rows.get(index))
@@ -723,7 +661,7 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryTe
         title: snapshot.title(),
         classification: format!(
             "{}\nReference: {}. This describes the sound, not measured brain activity.",
-            crate::analysis_summary(&(snapshot.nominal())),
+            crate::analysis_summary(snapshot.nominal()),
             auditorylab_core::rhythm::CONVENTION
         ),
         ownership,
@@ -751,7 +689,7 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryTe
                     .or_else(|| a.research.as_ref().and_then(|r| r.summary.clone()))
             })
             .unwrap_or_default(),
-        details: crate::snapshot_details_at(&(snapshot), rate),
+        details: crate::snapshot_details_at(snapshot, rate),
         study_url: about
             .as_ref()
             .and_then(|a| a.research.as_ref())
@@ -782,22 +720,6 @@ pub(crate) fn file_activity(
         FileAction::Import => "The playing source remains unchanged.",
     };
     format!("{} · {context}", kind.operation().label())
-}
-#[cfg(test)]
-mod diagnostic_tests {
-    #[test]
-    fn frequency_limits_retain_the_half_hertz_boundary_at_odd_sample_rates() {
-        let error = auditorylab_core::VoiceError::Frequency {
-            parameter: auditorylab_core::ParameterId::ToneFrequency,
-            hz: 22050.5,
-            sample_rate_hz: 44101,
-        };
-        let message = super::component_diagnostic(&error, "at the 44101 Hz export rate");
-        assert_eq!(
-            message,
-            "Frequency 22050.5 Hz must be finite, above 0 and below 22050.5 Hz (at the 44101 Hz export rate)."
-        );
-    }
 }
 
 /// Which actions are available and why not.
@@ -979,3 +901,152 @@ mod transport;
 pub use controls::*;
 pub use publication::*;
 pub use transport::*;
+
+fn render_transport_session(
+    view: &mut TransportText,
+    data: &auditorylab_app::workspace::TransportView,
+) {
+    use crate::numbers::NumberStyle;
+    use crate::workspace::monitor::phase_text;
+    use auditorylab_app::workspace::View;
+    let reader = data.monitor.as_ref();
+    let held = data.output.held;
+    let task_title = data.task_title.as_deref();
+    let view_kind = data.view;
+    let audio = task_title.is_some();
+    if let Some(reader) = reader {
+        let status = reader.status;
+        let descriptor = &reader.descriptor;
+        view.player_title = format!(
+            "{} · {} · {}",
+            phase_text(status.phase),
+            descriptor.title,
+            match (descriptor.frames, status.phase.is_terminal()) {
+                (None, false) => "Live · until stopped",
+                (None, true) => "Last live session",
+                (Some(_), _) => "Finite recipe",
+            }
+        );
+        let elapsed = crate::numbers::format(
+            NumberStyle::Clock,
+            (descriptor.output.sample_rate).seconds_in(status.estimated_output_frames),
+        );
+        view.elapsed = descriptor.frames.map_or_else(
+            || elapsed.clone(),
+            |frames| {
+                format!(
+                    "{elapsed} / {}",
+                    crate::numbers::format(
+                        NumberStyle::Clock,
+                        descriptor.output.sample_rate.seconds_in(frames)
+                    )
+                )
+            },
+        );
+        view.generated = if status.phase.is_terminal() {
+            format!(
+                "{} · {}",
+                if descriptor.frames.is_some() {
+                    "Captured recipe"
+                } else {
+                    "Last accepted target"
+                },
+                crate::structure_summary(&(auditorylab_core::rhythm::realized(&reader.accepted)))
+            )
+        } else {
+            status.observation.as_ref().map_or_else(
+                || crate::optional_observation_summary(None),
+                |o| {
+                    format!(
+                        "Generated audio · {}",
+                        crate::optional_observation_summary(Some(o))
+                    )
+                },
+            )
+        };
+        view.generated_details = status.observation.map_or_else(String::new, |o| {
+            format!(
+                "Observed generated frame {} · accepted revision {} · active revision \
+                    {} · settled revision {}\n{}",
+                o.frame,
+                status.accepted_revision,
+                o.active_revision,
+                o.settled_revision,
+                crate::observation_details(&(o))
+            )
+        });
+        render_transport_output(view, reader, held);
+    } else {
+        view.player_title = if let Some(title) = data.failed_title.as_deref() {
+            format!("Failed · {title}")
+        } else if let Some(title) = task_title {
+            format!("Preparing · {title}")
+        } else if view_kind == View::Workbench {
+            "Draft preview · not playing".into()
+        } else {
+            "Recipe preview · not playing".into()
+        };
+        view.receipt_age = "No generated publication received".into();
+        view.monitor_state = if audio {
+            "Waiting for generated samples".into()
+        } else {
+            "Seekable preview; not generated playback".into()
+        };
+    }
+}
+
+fn render_transport_output(
+    view: &mut TransportText,
+    reader: &auditorylab_app::workspace::MonitorView,
+    held: bool,
+) {
+    let status = reader.status;
+    let descriptor = &reader.descriptor;
+    view.device = format!(
+        "{} · {} Hz · {} channels · {} · output elapsed is estimated",
+        descriptor
+            .output
+            .name
+            .as_deref()
+            .unwrap_or("Default output"),
+        descriptor.output.sample_rate.hz(),
+        descriptor.output.channels,
+        crate::sample_format_label(descriptor.output.format)
+    );
+    let warning = reader.warning;
+    view.warning = warning.map_or_else(String::new, |warning| {
+        crate::workspace::monitor::monitor_warning_message(warning).into()
+    });
+    view.backend_warning = crate::workspace::monitor::output_underrun_warning(status.underruns);
+    view.receipt_age = reader.age.map_or_else(
+        || "No generated publication received".into(),
+        |age| received_text(age, held),
+    );
+    view.monitor_state = format!(
+        "Current session {}: observed frame {} · gaps {} · output underruns {}",
+        status.session_id,
+        status
+            .observation
+            .map_or_else(|| "none yet".to_owned(), |o| o.frame.to_string()),
+        status.gaps,
+        status.underruns
+    );
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    #[test]
+    fn frequency_limits_retain_the_half_hertz_boundary_at_odd_sample_rates() {
+        let error = auditorylab_core::VoiceError::Frequency {
+            parameter: auditorylab_core::ParameterId::ToneFrequency,
+            hz: 22050.5,
+            sample_rate_hz: 44101,
+        };
+        let message = super::component_diagnostic(&error, "at the 44101 Hz export rate");
+        assert_eq!(
+            message,
+            "Frequency 22050.5 Hz must be finite, above 0 and below 22050.5 Hz (at \
+                the 44101 Hz export rate)."
+        );
+    }
+}

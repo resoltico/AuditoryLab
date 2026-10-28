@@ -126,8 +126,8 @@ mod tests {
         assert_ne!(samples[0][0], out[0][0].max); // sparse negative control misses the impulse
         samples[32][1] = f64::NAN;
         assert_eq!(sample_trace(&samples, 0, &mut out), Err(NonFiniteSample));
-        assert!(out.is_empty());
+        assert_eq!(out, [] as [[crate::waveform::Extent; 2]; 0]);
         assert_eq!(sample_trace(&[], 8, &mut out), Ok(()));
-        assert!(out.is_empty());
+        assert_eq!(out, [] as [[crate::waveform::Extent; 2]; 0]);
     }
 }

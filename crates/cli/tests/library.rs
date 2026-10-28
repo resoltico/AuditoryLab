@@ -96,7 +96,7 @@ fn root_precedence_path_and_builtin_only_reads_never_initialize() {
     assert!(!flag.exists());
     let missing = cli(&flag, &["list", "--collection", "user", "--format", "ids"]);
     assert_eq!(missing.status.code(), Some(5));
-    assert!(missing.stdout.is_empty());
+    assert_eq!(missing.stdout, [] as [u8; 0]);
     assert!(!flag.exists());
     let relative = Command::new(env!("CARGO_BIN_EXE_auditorylab"))
         .args(["--library-dir", "relative", "library", "path"])
@@ -182,134 +182,12 @@ fn native_cli_lifecycle_conflicts_dates_export_and_trash_are_shared_store_operat
     );
     assert!(rename.status.success(), "{rename:?}");
     let renamed = json(&rename);
-    let next = renamed["version_token"].as_str().unwrap();
-    assert_ne!(next, token);
+    assert_ne!(renamed["version_token"].as_str().unwrap(), token);
     assert_eq!(renamed["entries"][0]["created_at"], serde_json::Value::Null);
     assert!(renamed["entries"][0]["modified_at"].is_string());
     assert_eq!(renamed["entries"][0]["added_at"], added_at);
-    let stale = cli(
-        &root,
-        &[
-            "library",
-            "update",
-            &key,
-            "--file",
-            file.to_str().unwrap(),
-            "--expect",
-            token,
-            "--format",
-            "json",
-        ],
-    );
-    assert_eq!(stale.status.code(), Some(3));
-    assert_eq!(json(&stale)["status"], "conflict");
-    let export = cli(&root, &["recipe", &key]);
-    assert!(export.status.success());
-    let exported = auditorylab_app::core::Recipe::from_bytes(&export.stdout).unwrap();
-    assert_eq!(exported.document().id, original.document().id);
-    assert!(exported.to_toml().unwrap().contains("A renamed sound"));
-    assert!(!String::from_utf8_lossy(&export.stdout).contains("added_at"));
-    assert_eq!(fs::read(&file).unwrap(), bytes);
-    let inspect = cli(&root, &["inspect", &key, "--format", "json"]);
-    assert!(inspect.status.success(), "{inspect:?}");
-    assert_eq!(
-        json(&inspect)["entries"][0]["validation"]["sample_rate_hz"],
-        48000
-    );
-    assert_eq!(
-        json(&inspect)["entries"][0]["validation"]["voices"][0]["facts"]["carrier"]["rate_hz"],
-        2.0
-    );
-    let trash = cli(
-        &root,
-        &[
-            "library", "trash", &key, "--expect", next, "--format", "json",
-        ],
-    );
-    assert!(trash.status.success());
-    let trashed = json(&trash);
-    let trash_token = trashed["version_token"].as_str().unwrap();
-    assert_eq!(
-        trashed["entries"][0]["modified_at"],
-        renamed["entries"][0]["modified_at"]
-    );
-    assert_eq!(trashed["entries"][0]["added_at"], added_at);
-    let active = cli(&root, &["list", "--collection", "user", "--format", "ids"]);
-    assert!(active.status.success());
-    assert!(active.stdout.is_empty());
-    let trash_list = cli(&root, &["library", "list-trash", "--format", "ids"]);
-    assert_eq!(
-        String::from_utf8(trash_list.stdout).unwrap(),
-        format!("{key}\n")
-    );
-    let restored = cli(
-        &root,
-        &[
-            "library",
-            "restore",
-            &key,
-            "--expect",
-            trash_token,
-            "--format",
-            "json",
-        ],
-    );
-    assert!(restored.status.success());
-    let restored = json(&restored);
-    assert_eq!(restored["entries"][0]["added_at"], added_at);
-    assert_eq!(
-        restored["entries"][0]["modified_at"],
-        renamed["entries"][0]["modified_at"]
-    );
-    assert_eq!(
-        restored["entries"][0]["trashed_at"],
-        serde_json::Value::Null
-    );
-    let again = cli(
-        &root,
-        &[
-            "library",
-            "trash",
-            &key,
-            "--expect",
-            restored["version_token"].as_str().unwrap(),
-            "--format",
-            "json",
-        ],
-    );
-    assert!(again.status.success());
-    let again = json(&again);
-    let trash_token = again["version_token"].as_str().unwrap();
-    let no_confirm = cli(
-        &root,
-        &[
-            "library",
-            "purge",
-            &key,
-            "--expect",
-            trash_token,
-            "--format",
-            "json",
-        ],
-    );
-    assert_eq!(no_confirm.status.code(), Some(2));
-    let purged = cli(
-        &root,
-        &[
-            "library",
-            "purge",
-            &key,
-            "--expect",
-            trash_token,
-            "--yes",
-            "--format",
-            "json",
-        ],
-    );
-    assert!(purged.status.success());
-    assert_eq!(json(&purged)["status"], "published");
-    assert_eq!(json(&purged)["version_token"], serde_json::Value::Null);
-    assert_eq!(fs::read(file).unwrap(), bytes);
+    assert_cli_renamed(&root, &file, &key, &original, &bytes, token);
+    assert_cli_trash(&root, &file, &key, &bytes, &renamed);
 }
 #[test]
 fn incomplete_json_keeps_healthy_rows_but_ids_emit_no_stdout_and_busy_is_distinct() {
@@ -330,11 +208,14 @@ fn incomplete_json_keeps_healthy_rows_but_ids_emit_no_stdout_and_busy_is_distinc
     let partial = json(&partial);
     assert_eq!(partial["complete"], false);
     assert_eq!(partial["unique_count"], 1);
-    assert!(!partial["diagnostics"].as_array().unwrap().is_empty());
+    assert_ne!(
+        partial["diagnostics"].as_array().unwrap().as_slice(),
+        [] as [serde_json::Value; 0]
+    );
     assert_eq!(fs::read(&bad).unwrap(), b"corrupt bytes retained");
     let ids = cli(&root, &["list", "--collection", "user", "--format", "ids"]);
     assert_eq!(ids.status.code(), Some(5));
-    assert!(ids.stdout.is_empty());
+    assert_eq!(ids.stdout, [] as [u8; 0]);
     let lock = fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -343,7 +224,7 @@ fn incomplete_json_keeps_healthy_rows_but_ids_emit_no_stdout_and_busy_is_distinc
     lock.try_lock().unwrap();
     let busy = cli(&root, &["list", "--collection", "user", "--format", "ids"]);
     assert_eq!(busy.status.code(), Some(4));
-    assert!(busy.stdout.is_empty());
+    assert_eq!(busy.stdout, [] as [u8; 0]);
     drop(lock);
     assert_eq!(
         cli(&root, &["list", "--format", "ids", "--group-by", "band"])
@@ -783,7 +664,7 @@ fn explicit_relative_root_is_usage_error_before_any_listing() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
     let error = String::from_utf8(output.stderr).unwrap();
     assert!(error.contains("relative-root-probe"));
     assert!(error.contains("must be absolute; no fallback was used"));
@@ -799,5 +680,171 @@ fn unusable_absolute_override_remains_a_listing_diagnostic() {
         &["list", "--collection", "user", "--format", "ids"],
     );
     assert_eq!(output.status.code(), Some(5));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
+}
+
+#[expect(
+    clippy::unwrap_used,
+    reason = "A lifecycle fixture failure must fail the calling test"
+)]
+fn assert_cli_renamed(
+    root: &Path,
+    file: &Path,
+    key: &str,
+    original: &auditorylab_app::core::Recipe,
+    bytes: &[u8],
+    token: &str,
+) {
+    let stale = cli(
+        root,
+        &[
+            "library",
+            "update",
+            key,
+            "--file",
+            file.to_str().unwrap(),
+            "--expect",
+            token,
+            "--format",
+            "json",
+        ],
+    );
+    assert_eq!(stale.status.code(), Some(3));
+    assert_eq!(json(&stale)["status"], "conflict");
+    let export = cli(root, &["recipe", key]);
+    assert!(export.status.success());
+    let exported = auditorylab_app::core::Recipe::from_bytes(&export.stdout).unwrap();
+    assert_eq!(exported.document().id, original.document().id);
+    assert!(exported.to_toml().unwrap().contains("A renamed sound"));
+    assert!(!String::from_utf8_lossy(&export.stdout).contains("added_at"));
+    assert_eq!(fs::read(file).unwrap(), bytes);
+    let inspect = cli(root, &["inspect", key, "--format", "json"]);
+    assert!(inspect.status.success(), "{inspect:?}");
+    assert_eq!(
+        json(&inspect)["entries"][0]["validation"]["sample_rate_hz"],
+        48000
+    );
+    assert_eq!(
+        json(&inspect)["entries"][0]["validation"]["voices"][0]["facts"]["carrier"]["rate_hz"],
+        2.0
+    );
+}
+
+#[expect(
+    clippy::unwrap_used,
+    reason = "A lifecycle fixture failure must fail the calling test"
+)]
+fn assert_cli_trash(
+    root: &Path,
+    file: &Path,
+    key: &str,
+    bytes: &[u8],
+    renamed: &serde_json::Value,
+) {
+    let next = renamed["version_token"].as_str().unwrap();
+    let added_at = renamed["entries"][0]["added_at"].clone();
+    let trash = cli(
+        root,
+        &[
+            "library", "trash", key, "--expect", next, "--format", "json",
+        ],
+    );
+    assert!(trash.status.success());
+    let trashed = json(&trash);
+    let trash_token = trashed["version_token"].as_str().unwrap();
+    assert_eq!(
+        trashed["entries"][0]["modified_at"],
+        renamed["entries"][0]["modified_at"]
+    );
+    assert_eq!(trashed["entries"][0]["added_at"], added_at);
+    let active = cli(root, &["list", "--collection", "user", "--format", "ids"]);
+    assert!(active.status.success());
+    assert_eq!(active.stdout, [] as [u8; 0]);
+    let trash_list = cli(root, &["library", "list-trash", "--format", "ids"]);
+    assert_eq!(
+        String::from_utf8(trash_list.stdout).unwrap(),
+        format!("{key}\n")
+    );
+    let restored = cli(
+        root,
+        &[
+            "library",
+            "restore",
+            key,
+            "--expect",
+            trash_token,
+            "--format",
+            "json",
+        ],
+    );
+    assert!(restored.status.success());
+    let restored = json(&restored);
+    assert_eq!(restored["entries"][0]["added_at"], added_at);
+    assert_eq!(
+        restored["entries"][0]["modified_at"],
+        renamed["entries"][0]["modified_at"]
+    );
+    assert_eq!(
+        restored["entries"][0]["trashed_at"],
+        serde_json::Value::Null
+    );
+    assert_cli_purge(root, file, key, bytes, &restored);
+}
+
+#[expect(
+    clippy::unwrap_used,
+    reason = "A lifecycle fixture failure must fail the calling test"
+)]
+fn assert_cli_purge(
+    root: &Path,
+    file: &Path,
+    key: &str,
+    bytes: &[u8],
+    restored: &serde_json::Value,
+) {
+    let again = cli(
+        root,
+        &[
+            "library",
+            "trash",
+            key,
+            "--expect",
+            restored["version_token"].as_str().unwrap(),
+            "--format",
+            "json",
+        ],
+    );
+    assert!(again.status.success());
+    let again = json(&again);
+    let trash_token = again["version_token"].as_str().unwrap();
+    let no_confirm = cli(
+        root,
+        &[
+            "library",
+            "purge",
+            key,
+            "--expect",
+            trash_token,
+            "--format",
+            "json",
+        ],
+    );
+    assert_eq!(no_confirm.status.code(), Some(2));
+    let purged = cli(
+        root,
+        &[
+            "library",
+            "purge",
+            key,
+            "--expect",
+            trash_token,
+            "--yes",
+            "--format",
+            "json",
+        ],
+    );
+    assert!(purged.status.success());
+    assert_eq!(json(&purged)["status"], "published");
+    assert_eq!(json(&purged)["version_token"], serde_json::Value::Null);
+    assert_eq!(fs::read(file).unwrap(), bytes);
 }

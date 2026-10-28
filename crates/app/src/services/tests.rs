@@ -38,9 +38,9 @@ fn unavailable_root_keeps_builtin_rows_and_its_typed_failure() {
             .iter()
             .all(|entry| matches!(entry.key, LibraryKey::BuiltIn(_)))
     );
-    assert!(
-        matches!(&listing.diagnostics()[0].detail, DiagnosticDetail::Failure(error) if matches!(error.as_ref(), LibraryError::RelativeRoot { path } if path == unavailable))
-    );
+    assert!(matches!(&listing.diagnostics()[0].detail,
+            DiagnosticDetail::Failure(error) if matches!(error.as_ref(),
+            LibraryError::RelativeRoot { path } if path == unavailable)));
     let builtin = list(
         ListRequest {
             query: CatalogQuery {
@@ -131,9 +131,8 @@ fn trash_membership_refuses_current_and_captured_playback_before_device_access()
     for (source, captured_before_trash) in [(&before, true), (&trashed, false)] {
         let session = playback::Session::new();
         let control = session.control();
-        let error = match playback::prepare_playback(session, source) {
-            Err(error) => error,
-            Ok(_) => panic!("Trash must be refused before native preparation"),
+        let Err(error) = playback::prepare_playback(session, source) else {
+            panic!("Trash must be refused before native preparation")
         };
         if captured_before_trash {
             assert!(matches!(
@@ -205,9 +204,8 @@ fn source_errors_keep_raw_path_data() {
         .replacen("schema_version = 4", "schema_version = 3", 1);
     std::fs::write(&path, &bytes).unwrap();
     let error = open_file(&path).unwrap_err();
-    assert!(
-        matches!(&error, crate::storage::load::LoadError::Recipe { origin: crate::document::recipe::Origin::File(original), .. } if original == &path)
-    );
+    assert!(matches!(&error, crate::storage::load::LoadError::Recipe {
+            origin: crate::document::recipe::Origin::File(original), .. } if original == &path));
     assert_eq!(std::fs::read(&path).unwrap(), bytes.as_bytes());
 }
 
@@ -267,7 +265,14 @@ fn library_context_keeps_its_captured_root_and_revalidates_action_state() {
         changed.entries().is_empty(),
         "a failed captured root never falls back to the replacement alias"
     );
-    assert!(changed.diagnostics().iter().any(|diagnostic|matches!(&diagnostic.detail,DiagnosticDetail::Failure(error) if matches!(error.as_ref(),LibraryError::UnsupportedLayout {found:999}))));
+    assert!(
+        changed
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| matches!(&diagnostic.detail,
+        DiagnosticDetail::Failure(error) if matches!(error.as_ref(),
+        LibraryError::UnsupportedLayout {found:999})))
+    );
 }
 
 #[test]
@@ -279,7 +284,7 @@ fn export_rendition_uses_the_capture_even_after_its_cache_entry_is_evicted() {
     );
     let captured = snapshot.at(SampleRate::DEFAULT).unwrap();
     snapshot.at(SampleRate::new(96000).unwrap()).unwrap();
-    snapshot.at(SampleRate::new(192000).unwrap()).unwrap();
+    snapshot.at(SampleRate::new(192_000).unwrap()).unwrap();
     assert_eq!(snapshot.cached_rates(), 2);
     let compilations = snapshot.realization_count();
     assert_eq!(compilations, 3);

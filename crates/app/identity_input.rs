@@ -4,24 +4,9 @@ pub(crate) fn revision(value: &str) -> Result<(), &'static str> {
         Ok(())
     } else {
         Err(
-            "AUDITORYLAB_SOURCE_REVISION must contain a full 40- or 64-character ASCII hexadecimal commit ID",
+            "AUDITORYLAB_SOURCE_REVISION must contain a full 40- or 64-character \
+                ASCII hexadecimal commit ID",
         )
-    }
-}
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn revision_validation_rejects_partial_and_non_ascii_values() {
-        for value in [
-            "",
-            "abc",
-            "éééééééééééééééééééé",
-            "gggggggggggggggggggggggggggggggggggggggg",
-        ] {
-            assert!(super::revision(value).is_err());
-        }
-        assert!(super::revision(&"a".repeat(40)).is_ok());
-        assert!(super::revision(&"F".repeat(64)).is_ok());
     }
 }
 
@@ -95,11 +80,32 @@ END
 }
 
 #[cfg(test)]
+mod tests {
+    #[test]
+    fn revision_validation_rejects_partial_and_non_ascii_values() {
+        for value in [
+            "",
+            "abc",
+            "éééééééééééééééééééé",
+            "gggggggggggggggggggggggggggggggggggggggg",
+        ] {
+            assert!(super::revision(value).is_err());
+        }
+        assert!(super::revision(&"a".repeat(40)).is_ok());
+        assert!(super::revision(&"F".repeat(64)).is_ok());
+    }
+}
+
+#[cfg(test)]
 mod product_tests {
     use super::*;
     #[test]
     fn product_identity_requires_nonempty_canonical_fields() {
-        let manifest: toml::Value = toml::from_str("[workspace.metadata.auditorylab]\nproduct-name='Auditory Lab'\ncopyright='Copyright © 2026'\n").unwrap();
+        let manifest: toml::Value = toml::from_str(
+            "[workspace.metadata.auditorylab]\nproduct-name\
+            ='Auditory Lab'\ncopyright='Copyright © 2026'\n",
+        )
+        .unwrap();
         let identity = product(&manifest).unwrap();
         assert_eq!(identity.name, "Auditory Lab");
         assert_eq!(identity.copyright, "Copyright © 2026");

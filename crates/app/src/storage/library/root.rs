@@ -26,7 +26,7 @@ pub const LIBRARY_LAYOUT: u32 = 1;
 pub enum RootSource {
     /// Explicit absolute command-line path.
     CommandLine,
-    /// AUDITORYLAB_LIBRARY_DIR environment override.
+    /// `AUDITORYLAB_LIBRARY_DIR` environment override.
     Environment,
     /// Native per-user persistent application data.
     Default,
@@ -390,7 +390,7 @@ pub(super) fn cleanup_stages(
             dir.remove_file(&name)
                 .map_err(|e| io(IoOperation::Remove, e))?;
             warnings.push(crate::storage::warning::StorageWarning::RemovedStage {
-                path: (path.join(name)).to_path_buf(),
+                path: (path.join(name)).clone(),
             });
         }
     }

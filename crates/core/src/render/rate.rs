@@ -74,6 +74,20 @@ impl SampleRate {
     }
 }
 
+crate::diagnostic_codes! {
+    pub(crate) const CODES;
+    SampleRateError {
+        codes {
+            Self { .. } => "sample_rate.range",
+        }
+        delegates {}
+        params(this) {
+            crate::diagnostic_params! {"hz"=>this.hz,"min_hz"=>SampleRate::MIN_HZ,
+                "max_hz"=>SampleRate::MAX_HZ}
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,18 +123,5 @@ mod tests {
         assert_eq!(unit.frames_in(68_719_476_736.0), Some(Signal::MAX_FRAMES));
         assert_eq!(unit.frames_in(68_719_476_736.5), None);
         assert_eq!(rate(48_000).seconds_in(72_000), 1.5);
-    }
-}
-
-crate::diagnostic_codes! {
-    pub(crate) const CODES;
-    SampleRateError {
-        codes {
-            Self { .. } => "sample_rate.range",
-        }
-        delegates {}
-        params(this) {
-            crate::diagnostic_params! {"hz"=>this.hz,"min_hz"=>SampleRate::MIN_HZ,"max_hz"=>SampleRate::MAX_HZ}
-        }
     }
 }

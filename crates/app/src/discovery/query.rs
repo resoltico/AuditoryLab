@@ -45,7 +45,6 @@ pub(crate) struct SearchIndex {
 }
 impl SearchIndex {
     pub(crate) fn from_snapshot(snapshot: &crate::document::recipe::RecipeSnapshot) -> Self {
-        use crate::core::{Ears, Modulation, ParameterId};
         let recipe = snapshot.recipe();
         let mut facts = vec![recipe.document().id.to_string()];
         facts.extend(recipe.document().created_at.iter().map(ToString::to_string));
@@ -60,7 +59,7 @@ impl SearchIndex {
             crate::document::recipe::Origin::BuiltIn(id) => facts.push((*id).into()),
             crate::document::recipe::Origin::User { id, .. } => facts.push(id.to_string()),
             crate::document::recipe::Origin::File(path) => {
-                facts.push(path.to_string_lossy().into_owned())
+                facts.push(path.to_string_lossy().into_owned());
             }
             crate::document::recipe::Origin::Stream(label)
             | crate::document::recipe::Origin::Draft(label) => facts.push(label.clone()),
@@ -109,55 +108,7 @@ impl SearchIndex {
             recipe.sound().fade_seconds().get(),
         ];
         for component in recipe.sound().components() {
-            let form = component.form;
-            if let Some(kind) = form.primitive_kind() {
-                facts.push(
-                    match kind {
-                        crate::core::CarrierKind::Tone => "tone carrier frequency",
-                        crate::core::CarrierKind::Clicks => "click clicks rate width",
-                    }
-                    .into(),
-                );
-                if let Some(modulation) = form.modulation() {
-                    facts.push(
-                        match modulation {
-                            Modulation::Am { .. } => {
-                                "sinusoidal amplitude modulation am depth rate"
-                            }
-                            Modulation::Gate { .. } => "rectangular gate rate width",
-                        }
-                        .into(),
-                    );
-                }
-            } else {
-                facts.push(
-                    if form.route().is_none() {
-                        "pair left right"
-                    } else {
-                        "pair"
-                    }
-                    .into(),
-                );
-            }
-            if let Some(ears) = form.route() {
-                facts.push(
-                    match ears {
-                        Ears::Left => "left",
-                        Ears::Right => "right",
-                        Ears::Both => "both ears",
-                    }
-                    .into(),
-                );
-            }
-            for parameter in ParameterId::COMPONENT {
-                if let Some(value) = component.form.get(parameter) {
-                    let value = value.get();
-                    numbers.extend([value, parameter.descriptor().unit.to_display(value)]);
-                }
-            }
-            if let Some(pair) = component.form.pair() {
-                numbers.push(pair.first_hz.get() + pair.offset_hz.get());
-            }
+            component_terms(component, &mut facts, &mut numbers);
         }
         numbers.extend(snapshot.nominal().rhythms.iter().map(|r| r.hz));
         let text = normalize(&facts.join(" "));
@@ -227,7 +178,13 @@ impl QueryError {
     /// Failure category.
     #[must_use]
     pub const fn outcome(&self) -> Outcome {
-        Outcome::InvalidArgument
+        match self {
+            Self::TemporaryFilesScope { .. }
+            | Self::RangeOrder { .. }
+            | Self::Study { .. }
+            | Self::LocalDate { .. }
+            | Self::LocalOrder { .. } => Outcome::InvalidArgument,
+        }
     }
 }
 
@@ -268,7 +225,8 @@ crate::core::diagnostic_codes! {
                     crate::core::diagnostic_params! {"scope"=>scope.key()}
                 }
                 Self::RangeOrder { from, before } => {
-                    crate::core::diagnostic_params! {"from"=>from.to_string(),"before"=>before.to_string()}
+                    crate::core::diagnostic_params! {"from"=>from.to_string(),
+                        "before"=>before.to_string()}
                 }
                 Self::Study { value } | Self::LocalDate { value } => {
                     crate::core::diagnostic_params! {"value"=>value.clone()}
@@ -278,7 +236,8 @@ crate::core::diagnostic_codes! {
                     from,
                     through,
                 } => {
-                    crate::core::diagnostic_params! {"field"=>field.key(),"from"=>from.clone(),"through"=>through.clone()}
+                    crate::core::diagnostic_params! {"field"=>field.key(),"from"=>from.clone(),
+                        "through"=>through.clone()}
                 }
             }
         }
@@ -369,7 +328,8 @@ auditorylab_core::vocabulary! { Scope,"scope" {
 auditorylab_core::vocabulary! { SortBy,"sort_by" {
     Automatic => ("automatic","Automatic order","automatic order"),
     Rate => ("rate","Nominal rate","nominal rate"),
-    Title => ("title",auditorylab_core::vocabulary::TITLE.label,auditorylab_core::vocabulary::TITLE.phrase),
+    Title => ("title",auditorylab_core::vocabulary::TITLE.label,
+        auditorylab_core::vocabulary::TITLE.phrase),
     Created => ("created",CalendarField::Created.label(),CalendarField::Created.phrase()),
     Modified => ("modified","Modified","modified"),
     Added => ("added",CalendarField::Added.label(),CalendarField::Added.phrase()),
@@ -412,3 +372,59 @@ auditorylab_core::vocabulary! {CalendarField,"calendar_field" {
     Modified=>("modified","Modified","modified"),
     Added=>("added","Added here","added here"),
 }}
+
+fn component_terms(
+    component: &crate::core::Component,
+    facts: &mut Vec<String>,
+    numbers: &mut Vec<f64>,
+) {
+    use crate::core::{Ears, Modulation, ParameterId};
+
+    let form = component.form;
+    if let Some(kind) = form.primitive_kind() {
+        facts.push(
+            match kind {
+                crate::core::CarrierKind::Tone => "tone carrier frequency",
+                crate::core::CarrierKind::Clicks => "click clicks rate width",
+            }
+            .into(),
+        );
+        if let Some(modulation) = form.modulation() {
+            facts.push(
+                match modulation {
+                    Modulation::Am { .. } => "sinusoidal amplitude modulation am depth rate",
+                    Modulation::Gate { .. } => "rectangular gate rate width",
+                }
+                .into(),
+            );
+        }
+    } else {
+        facts.push(
+            if form.route().is_none() {
+                "pair left right"
+            } else {
+                "pair"
+            }
+            .into(),
+        );
+    }
+    if let Some(ears) = form.route() {
+        facts.push(
+            match ears {
+                Ears::Left => "left",
+                Ears::Right => "right",
+                Ears::Both => "both ears",
+            }
+            .into(),
+        );
+    }
+    for parameter in ParameterId::COMPONENT {
+        if let Some(value) = component.form.get(parameter) {
+            let value = value.get();
+            numbers.extend([value, parameter.descriptor().unit.to_display(value)]);
+        }
+    }
+    if let Some(pair) = component.form.pair() {
+        numbers.push(pair.first_hz.get() + pair.offset_hz.get());
+    }
+}

@@ -37,23 +37,6 @@ impl std::fmt::Display for ClockError {
 }
 impl std::error::Error for ClockError {}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn negative_subseconds_and_the_portable_year_limit_use_the_observed_value() {
-        use std::time::{Duration, SystemTime};
-        let before = SystemTime::UNIX_EPOCH - Duration::from_millis(500);
-        let value = from_system_time(before).unwrap();
-        assert_eq!(
-            (value.unix_seconds(), value.nanoseconds()),
-            (-1, 500_000_000)
-        );
-        let beyond = SystemTime::UNIX_EPOCH + Duration::from_secs(253_402_300_800);
-        assert_eq!(from_system_time(beyond).unwrap_err().observed, beyond);
-    }
-}
-
 crate::core::diagnostic_codes! {
     pub(crate) const CODES;
     ClockError {
@@ -66,7 +49,26 @@ crate::core::diagnostic_codes! {
                 Ok(duration) => (false, duration),
                 Err(error) => (true, error.duration()),
             };
-            crate::core::diagnostic_params! {"observed_before_epoch"=>before,"observed_seconds"=>duration.as_secs(),"observed_nanoseconds"=>duration.subsec_nanos()}
+            crate::core::diagnostic_params! {"observed_before_epoch"=>before,
+                "observed_seconds"=>duration.as_secs(),"observed_n\
+                anoseconds"=>duration.subsec_nanos()}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn negative_subseconds_and_the_portable_year_limit_use_the_observed_value() {
+        use std::time::{Duration, SystemTime};
+        let before = SystemTime::UNIX_EPOCH - Duration::from_millis(500);
+        let value = from_system_time(before).unwrap();
+        assert_eq!(
+            (value.unix_seconds(), value.nanoseconds()),
+            (-1, 500_000_000)
+        );
+        let beyond = SystemTime::UNIX_EPOCH + Duration::from_hours(70_389_528);
+        assert_eq!(from_system_time(beyond).unwrap_err().observed, beyond);
     }
 }

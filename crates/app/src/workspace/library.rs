@@ -3,7 +3,11 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use super::*;
+use super::{
+    Arc, AudioRequest, Cancel, DocumentId, DocumentLocation, Error, FacetCounts, FacetKind,
+    FileStatus, InventoryStatus, LibraryFacetView, LibraryRowView, LibraryStatus, LibraryView,
+    Recipe, RecipeSnapshot, Refusal, SampleRate, file, status,
+};
 use crate::discovery::collection::{CatalogQuery, EntrySummary};
 use crate::discovery::query::Scope;
 use crate::document::origin::{LibraryKey, VersionToken};
@@ -290,7 +294,12 @@ impl LibraryState {
             .inventory
             .diagnostics
             .iter()
-            .filter(|problem| problem.storage_id.ends_with(".toml"))
+            .filter(|problem| {
+                problem
+                    .storage_id
+                    .rsplit_once('.')
+                    .is_some_and(|(_, suffix)| suffix == "toml")
+            })
             .collect::<Vec<_>>();
         if !matches!(
             self.query.scope,
@@ -683,9 +692,9 @@ impl LibraryState {
         let key = if let Some((key, _)) = p.snapshots.iter().find(|(_, id)| *id == snapshot.id()) {
             key.clone()
         } else {
-            let key = match crate::document::origin::ExternalId::allocate() {
-                Ok(id) => LibraryKey::External(id),
-                Err(error) => return Err(error.into()),
+            let key = {
+                let id = crate::document::origin::ExternalId::allocate()?;
+                LibraryKey::External(id)
             };
             p.snapshots.push((key.clone(), snapshot.id()));
             p.entries
@@ -854,7 +863,7 @@ impl LibraryState {
         command: LibraryInput,
     ) -> Result<(), crate::discovery::query::QueryError> {
         match command {
-            LibraryInput::Query(query) => self.set_query(query)?,
+            LibraryInput::Query(query) => self.set_query(*query)?,
             LibraryInput::Search(text) => self.set_search(&text),
             LibraryInput::Rhythm(query) => self.set_rhythm(query),
             LibraryInput::Navigate(direction) => self.navigate(direction),
@@ -912,8 +921,8 @@ impl LibraryJob {
             LibraryRequest::Initialize => Term::LibraryInit,
             LibraryRequest::Load(_) => Term::LibraryRead,
             LibraryRequest::DiscardTrash { .. } => Term::LibraryTrash,
-            LibraryRequest::ExternalSave { .. } => Term::Save,
-            LibraryRequest::Write {
+            LibraryRequest::ExternalSave { .. }
+            | LibraryRequest::Write {
                 document: Some(_), ..
             } => Term::Save,
             LibraryRequest::Write { mutation, .. } => match mutation {
@@ -972,7 +981,8 @@ impl LibraryJob {
         let record_matches = |record: &LoadedRecord, key: &LibraryKey| {
             record.key == *key
                 && matches!(key,LibraryKey::User(id) if record.snapshot.recipe().document().id==*id)
-                && matches!(record.snapshot.origin(),crate::document::recipe::Origin::User {id,version} if key==&LibraryKey::User(*id) && version==&record.version_token)
+                && matches!(record.snapshot.origin(),crate::document::recipe::Origin::User {id,
+                    version} if key==&LibraryKey::User(*id) && version==&record.version_token)
         };
         let written_matches = |outcome: &WriteOutcome, key: &LibraryKey, kind: MutationKind| {
             outcome.key == *key
@@ -1044,7 +1054,7 @@ impl LibraryJob {
                 .map_err(Error::from),
             LibraryRequest::ExternalSave {
                 expected, recipe, ..
-            } => crate::services::save_external(&expected, recipe, &Cancel::default())
+            } => crate::services::save_external(&expected, &(recipe), &Cancel::default())
                 .map(|r| LibraryOutcome::ExternalWritten(Box::new(r)))
                 .map_err(Error::from),
             LibraryRequest::Scan => Ok(LibraryOutcome::Inventory(
@@ -1171,7 +1181,7 @@ impl LibraryState {
 }
 
 pub(super) enum LibraryInput {
-    Query(CatalogQuery),
+    Query(Box<CatalogQuery>),
     Search(String),
     Rhythm(crate::discovery::query::RhythmQuery),
     Navigate(i32),

@@ -1,10 +1,14 @@
 //! Shared status and refusal sentences for interactive frontends.
 use super::Explain;
+use std::fmt::Write as _;
 
 use auditorylab_app::outcome::Outcome;
 use auditorylab_app::workspace::WorkerFailure;
 use auditorylab_app::workspace::output::PreviewIssue;
-use auditorylab_app::workspace::status::*;
+use auditorylab_app::workspace::status::{
+    AudioStatus, EditStatus, FileAction, FileActivity, FileNotice, FileStatus, InventoryStatus,
+    LibraryContext, LibraryStatus, SaveFeedback,
+};
 use auditorylab_core::diagnostic::Code;
 
 pub(crate) fn shutdown_reset_failure(
@@ -23,7 +27,7 @@ pub fn output_issue_description(value: &auditorylab_app::workspace::output::Outp
             crate::capture_error_description(*(error))
         }
         auditorylab_app::workspace::output::OutputIssue::Preview(reason) => {
-            crate::workspace::status::preview_issue_description(&(reason))
+            crate::workspace::status::preview_issue_description(reason)
         }
     }
 }
@@ -33,7 +37,7 @@ pub fn job_context_description(value: &auditorylab_app::workspace::JobContext) -
         auditorylab_app::workspace::JobContext::Library(context) => {
             format!(
                 " · {}",
-                crate::workspace::status::library_context_description(&(context))
+                crate::workspace::status::library_context_description(context)
             )
         }
         auditorylab_app::workspace::JobContext::File(path) => format!(" · {}", path.display()),
@@ -49,7 +53,7 @@ pub fn preview_issue_description(value: &PreviewIssue) -> String {
             title,
             rate,
             error: Some(error),
-        } => crate::sound_error_at_rate(&(error), title, *rate),
+        } => crate::sound_error_at_rate(error, title, *rate),
         PreviewIssue::Acoustic {
             title,
             rate,
@@ -80,7 +84,7 @@ pub fn audio_status_description(value: &AudioStatus) -> String {
         }
         AudioStatus::Failed(error) => error.explain(),
         AudioStatus::WorkerFailed(error) => {
-            crate::workspace::status::worker_failure_description(&(error))
+            crate::workspace::status::worker_failure_description(error)
         }
     }
 }
@@ -94,18 +98,61 @@ pub fn edit_status_description(value: &EditStatus) -> String {
 
 pub fn file_status_description(value: &FileStatus) -> String {
     match value {
-        FileStatus::Idle=>String::new(),FileStatus::Running(activity)=>crate::workspace::status::file_activity_description(&(activity)),FileStatus::Refused(refusal)=>crate::workspace::refusal_text(refusal),
-        FileStatus::Failed(error)=>error.explain(),FileStatus::DialogFailed {cause}=>cause.clone(),
-        FileStatus::WorkerFailed {activity,error}=>format!("{} · {}{}",crate::workspace::status::worker_failure_description(&(error)),activity.path.display(),if activity.may_publish && !matches!(error,WorkerFailure::Launch(_)) {"\nDraft retained. Inspect the affected path before retrying; a failed worker does not establish that storage was unchanged."}else{""}),
-        FileStatus::Imported {snapshot,hidden}=>format!("Opened {}.{}",snapshot.title(),if *hidden {"\nHidden by current filters; clear filters to show the imported recipe."}else{""}),
-        FileStatus::RecipeExported {path,warnings}=>format!("Exported captured portable recipe to {}.{}",path.display(),warnings.iter().map(|warning|format!("\n{}", crate::errors::publication::warning(warning))).collect::<String>()),
-        FileStatus::Exported {path,exported}=>crate::workspace::exported_text(path,exported),FileStatus::Library(status)=>crate::workspace::status::library_status_description(&(status)),
-        FileStatus::Notice(notice)=>match notice {
-            FileNotice::RetainedSource=>"Showing the retained source snapshot; filters explicitly cleared. This does not reload or reconstruct an ancestor.".into(),
-            FileNotice::ChangedSelection=>"Saved selection changed. Refresh before editing this version.".into(),
-            FileNotice::MissingSavedEntry=>"The saved entry is no longer in the observed inventory; refresh before locating it.".into(),
-            FileNotice::SavedSnapshotStillDirty=>crate::SAVED_SNAPSHOT_STILL_DIRTY.into(),
-            FileNotice::ExportCancelled=>crate::EXPORT_CANCELLED.into(),
+        FileStatus::Idle => String::new(),
+        FileStatus::Running(activity) => {
+            crate::workspace::status::file_activity_description(activity)
+        }
+        FileStatus::Refused(refusal) => crate::workspace::refusal_text(refusal),
+        FileStatus::Failed(error) => error.explain(),
+        FileStatus::DialogFailed { cause } => cause.clone(),
+        FileStatus::WorkerFailed { activity, error } => format!(
+            "{} · {}{}",
+            crate::workspace::status::worker_failure_description(error),
+            activity.path.display(),
+            if activity.may_publish && !matches!(error, WorkerFailure::Launch(_)) {
+                "\nDraft \
+            retained. Inspect the affected path before retrying; a failed worker \
+            does not establish that storage was unchanged."
+            } else {
+                ""
+            }
+        ),
+        FileStatus::Imported { snapshot, hidden } => format!(
+            "Opened {}.{}",
+            snapshot.title(),
+            if *hidden {
+                "\nHidden \
+            by current filters; clear filters to show the imported recipe."
+            } else {
+                ""
+            }
+        ),
+        FileStatus::RecipeExported { path, warnings } => format!(
+            "Exported captured portable recipe to \
+            {}.{}",
+            path.display(),
+            warnings.iter().fold(String::new(), |mut text, warning| {
+                use std::fmt::Write as _;
+                let _ = write!(text, "\n{}", crate::errors::publication::warning(warning));
+                text
+            })
+        ),
+        FileStatus::Exported { path, exported } => crate::workspace::exported_text(path, exported),
+        FileStatus::Library(status) => crate::workspace::status::library_status_description(status),
+        FileStatus::Notice(notice) => match notice {
+            FileNotice::RetainedSource => {
+                "Showing the retained source snapshot; filters explicitly \
+                cleared. This does not reload or reconstruct an ancestor."
+                    .into()
+            }
+            FileNotice::ChangedSelection => "Saved selection changed. Refresh before editing this \
+                version."
+                .into(),
+            FileNotice::MissingSavedEntry => "The saved entry is no longer in the observed \
+                inventory; refresh before locating it."
+                .into(),
+            FileNotice::SavedSnapshotStillDirty => crate::SAVED_SNAPSHOT_STILL_DIRTY.into(),
+            FileNotice::ExportCancelled => crate::EXPORT_CANCELLED.into(),
         },
     }
 }
@@ -113,7 +160,7 @@ pub fn file_status_description(value: &FileStatus) -> String {
 pub fn library_status_description(value: &LibraryStatus) -> String {
     match value {
         LibraryStatus::Inventory(status) => {
-            crate::workspace::status::inventory_status_description(&(status))
+            crate::workspace::status::inventory_status_description(status)
         }
         LibraryStatus::Loaded => {
             "Saved version loaded; open draft and playing snapshot retained.".into()
@@ -128,7 +175,8 @@ pub fn library_status_description(value: &LibraryStatus) -> String {
             "{} · {key}\n{}{}",
             status.label(),
             if *document {
-                "Saved captured version; later edits remain independent. Use Show saved if filters hide it."
+                "Saved captured version; later edits remain independent. Use Show \
+                    saved if filters hide it."
             } else {
                 "Library operation confirmed."
             },
@@ -140,8 +188,11 @@ pub fn library_status_description(value: &LibraryStatus) -> String {
                         .iter()
                         .map(crate::workspace::status::save_feedback_description)
                 )
-                .map(|d| format!("\n{d}"))
-                .collect::<String>()
+                .fold(String::new(), |mut text, detail| {
+                    text.push('\n');
+                    text.push_str(&detail);
+                    text
+                })
         ),
         LibraryStatus::ExternalWritten {
             status,
@@ -160,7 +211,8 @@ pub fn library_status_description(value: &LibraryStatus) -> String {
             publishing,
             context,
         } => {
-            let recovery = "Draft retained. Refresh and reload the saved version, keep the draft, or save an independent copy.";
+            let recovery = "Draft retained. Refresh and reload the saved version, keep the draft, \
+                or save an independent copy.";
             let heading = match error.outcome() {
                 Outcome::Conflict if *publishing => {
                     "Saved version or identity conflicts with the captured operation"
@@ -196,7 +248,7 @@ pub fn library_status_description(value: &LibraryStatus) -> String {
             };
             format!(
                 "{heading}\n{}\n{error}{publication}\n{recovery}",
-                crate::workspace::status::library_context_description(&(context)),
+                crate::workspace::status::library_context_description(context),
                 error = error.explain()
             )
         }
@@ -217,12 +269,14 @@ pub fn library_context_description(value: &LibraryContext) -> String {
 pub fn save_feedback_description(value: &SaveFeedback) -> String {
     match value {
         SaveFeedback::InvalidAtRate { rate, error } => format!(
-            "Saved with validation errors at {} Hz: {error}. This finite document can be repaired later.",
+            "Saved with validation errors at {} Hz: {error}. This finite document \
+                can be repaired later.",
             rate.hz(),
             error = error.explain()
         ),
         SaveFeedback::EditorReset(error) => format!(
-            "Trash confirmed, but a blank editor could not be created: {error}. Open draft retained; dependent action stopped.",
+            "Trash confirmed, but a blank editor could not be created: {error}. \
+                Open draft retained; dependent action stopped.",
             error = error.explain()
         ),
         SaveFeedback::EditorRefresh(error) => {
@@ -250,17 +304,19 @@ pub fn inventory_status_description(value: &InventoryStatus) -> String {
         }
     );
     for problem in &value.diagnostics {
-        text.push_str(&format!(
+        let _ = write!(
+            text,
             "\n{}: {}",
             problem.code(),
-            crate::errors::library_diagnostic_message(&(problem))
-        ));
+            crate::errors::library_diagnostic_message(problem)
+        );
     }
     if !value.stages.is_empty() {
-        text.push_str(&format!(
+        let _ = write!(
+            text,
             "\n{} staging artifacts retained for recovery.",
             value.stages.len()
-        ));
+        );
     }
     text
 }

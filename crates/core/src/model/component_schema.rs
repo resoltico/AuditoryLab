@@ -7,29 +7,40 @@ macro_rules! component_schema {
         parameters {
             component {
                 /// A tone carrier's frequency.
-                ToneFrequency => ("tone_frequency","Tone frequency","tone frequency",Hertz,Some(crate::ValueRule::Positive));
+                ToneFrequency => ("tone_frequency","Tone frequency","tone frequency",Hertz,
+                    Some(crate::ValueRule::Positive));
                 /// A click carrier's repetition rate.
-                ClickRate => ("click_rate","Clicks rate","clicks rate",Hertz,Some(crate::ValueRule::Positive));
+                ClickRate => ("click_rate","Clicks rate","clicks rate",Hertz,
+                    Some(crate::ValueRule::Positive));
                 /// A click carrier's requested pulse length.
-                ClickWidth => ("click_width","Clicks width","clicks width",Milliseconds,Some(crate::ValueRule::Positive));
+                ClickWidth => ("click_width","Clicks width","clicks width",Milliseconds,
+                    Some(crate::ValueRule::Positive));
                 /// A primitive component's peak level.
-                PeakLevel => ("peak_level","Peak level","peak level",DecibelsFullScale,Some(crate::ValueRule::Peak));
+                PeakLevel => ("peak_level","Peak level","peak level",DecibelsFullScale,
+                    Some(crate::ValueRule::Peak));
                 /// Sine amplitude modulation's rate.
-                AmRate => ("am_rate","Modulation rate","modulation rate",Hertz,Some(crate::ValueRule::Positive));
+                AmRate => ("am_rate","Modulation rate","modulation rate",Hertz,
+                    Some(crate::ValueRule::Positive));
                 /// Sine amplitude modulation's depth.
-                AmDepth => ("am_depth","Modulation depth","modulation depth",Percent,Some(crate::ValueRule::Depth));
+                AmDepth => ("am_depth","Modulation depth","modulation depth",Percent,
+                    Some(crate::ValueRule::Depth));
                 /// Gating's repetition rate.
-                GateRate => ("gate_rate","Gate rate","gate rate",Hertz,Some(crate::ValueRule::Positive));
+                GateRate => ("gate_rate","Gate rate","gate rate",Hertz,
+                    Some(crate::ValueRule::Positive));
                 /// Gating's requested open length.
-                GateWidth => ("gate_width","Gate width","gate width",Milliseconds,Some(crate::ValueRule::Positive));
+                GateWidth => ("gate_width","Gate width","gate width",Milliseconds,
+                    Some(crate::ValueRule::Positive));
                 /// First/left carrier of an authored pair.
-                PairFirstFrequency => ("pair_first_frequency","First / left carrier","first / left carrier",Hertz,Some(crate::ValueRule::Positive));
+                PairFirstFrequency => ("pair_first_frequency","First / left carrier","first / \
+                    left carrier",Hertz,Some(crate::ValueRule::Positive));
                 /// Signed nominal carrier offset of an authored pair.
                 PairOffset => ("pair_offset","Signed offset","signed offset",Hertz,None);
                 /// First/left peak level of an authored pair.
-                PairFirstLevel => ("pair_first_level","First / left peak","first / left peak",DecibelsFullScale,Some(crate::ValueRule::Peak));
+                PairFirstLevel => ("pair_first_level","First / left peak","first / left peak",
+                    DecibelsFullScale,Some(crate::ValueRule::Peak));
                 /// Second/right peak level of an authored pair.
-                PairSecondLevel => ("pair_second_level","Second / right peak","second / right peak",DecibelsFullScale,Some(crate::ValueRule::Peak));
+                PairSecondLevel => ("pair_second_level","Second / right peak","second / right peak",
+                    DecibelsFullScale,Some(crate::ValueRule::Peak));
             }
             envelope {
                 /// The finite length of saved and exported audio.

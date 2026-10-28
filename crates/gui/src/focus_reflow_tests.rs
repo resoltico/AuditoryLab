@@ -19,7 +19,9 @@ fn snapshot(h: &Harness, item: &ItemRc, context: &str) {
     let focused = inner.focus_item.borrow().upgrade();
     let geometry = item.geometry();
     eprintln!(
-        "Workbench reflow {context}: font={} compact={} monitor={} active={} same-focus={} field-focus={} raw={:?} visible={} geometry={geometry:?} window-position={:?} editor-scroll={}",
+        "Workbench reflow {context}: font={} compact={} monitor={} active={} \
+            same-focus={} field-focus={} raw={:?} visible={} \
+            geometry={geometry:?} window-position={:?} editor-scroll={}",
         ui.get_ui_size(),
         ui.get_compact(),
         ui.get_monitor_open(),
@@ -134,234 +136,9 @@ fn pending_entry_survives_font_reflow_clipping_and_row_changes() {
     }
     h.settle();
     // Distinguish pure reflow from a non-click pointer event on a clipped entry.
-    let input = h.field(rate_label);
-    inner.set_focus_item(&input, true, FocusReason::Programmatic);
-    for _ in 0..4 {
-        h.key(Key::RightArrow);
-    }
-    h.key("5");
-    assert_eq!(
-        field_state(&h, ParameterId::ClickRate).0.as_deref(),
-        Some("405")
-    );
-    let root = inner.window_item_rc().unwrap();
-    let viewport = root
-        .visit_descendants(|item| {
-            if item.downcast::<Flickable>().is_some()
-                && item
-                    .visit_descendants(|child| {
-                        if *child == input {
-                            ControlFlow::Break(())
-                        } else {
-                            ControlFlow::Continue(())
-                        }
-                    })
-                    .is_some()
-            {
-                ControlFlow::Break(item.clone())
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
-        .unwrap();
-    let flickable = viewport.downcast::<Flickable>().unwrap();
-    let overflow = flickable.as_pin_ref().content_height().get() - viewport.geometry().size.height;
-    assert!(
-        overflow > 0.0,
-        "multi-component editor must actually overflow"
-    );
-    ui.set_editor_scroll_y(-overflow);
-    h.settle();
-    assert!(viewport.is_visible(), "the editor viewport remains visible");
-    assert_eq!(ui.get_tab_index(), 1, "the entry's tab remains selected");
-    assert!(
-        flickable.as_pin_ref().content_y().get() < 0.0,
-        "actual content must scroll"
-    );
-    snapshot(
-        &h,
-        &input,
-        "deliberately scrolled offscreen before pointer move",
-    );
-    assert!(
-        !input.is_visible(),
-        "control must actually be outside the viewport"
-    );
-    let input_geometry = input.geometry();
-    let input_position = input.map_to_window(input_geometry.origin);
-    let viewport_geometry = viewport.geometry();
-    let viewport_position = viewport.map_to_window(viewport_geometry.origin);
-    assert!(
-        input_position.y + input_geometry.size.height < viewport_position.y
-            || input_position.y > viewport_position.y + viewport_geometry.size.height,
-        "the visible Flickable must be the physical vertical clipping boundary"
-    );
-
-    // Escape is the first input after clipping: no pointer event or refocus.
-    assert!(inner.focus_item.borrow().upgrade().as_ref() == Some(&input));
-    h.key(Key::Escape);
-    assert!(
-        inner.focus_item.borrow().upgrade().as_ref() == Some(&input),
-        "no-pointer Escape must retain the clipped editor's focus"
-    );
-    assert_eq!(
-        field_state(&h, ParameterId::ClickRate),
-        (None, Some(40.0)),
-        "no-pointer Escape restores without committing"
-    );
-    assert_eq!(text(&input), "40");
-    assert!(
-        input.is_visible(),
-        "no-pointer Escape must reveal its restored editor"
-    );
-    for _ in 0..4 {
-        h.key(Key::RightArrow);
-    }
-    h.key("5");
-    ui.set_editor_scroll_y(-overflow);
-    h.settle();
-    assert!(!input.is_visible(), "pointer case must begin clipped again");
-    let scroll_before_pointer = ui.get_editor_scroll_y();
-    ui.window().dispatch_event(WindowEvent::PointerMoved {
-        position: slint::LogicalPosition::new(10.0, 10.0),
-    });
-    h.settle();
-    snapshot(&h, &input, "after non-click pointer move");
-    assert!(
-        inner.focus_item.borrow().upgrade().as_ref() == Some(&input),
-        "pointer movement must not discard an offscreen pending editor"
-    );
-    assert_eq!(
-        ui.get_editor_scroll_y(),
-        scroll_before_pointer,
-        "pointer movement must not move the viewport or retarget a later click"
-    );
-    assert_eq!(
-        field_state(&h, ParameterId::ClickRate),
-        (Some("405".into()), Some(40.0))
-    );
-    h.key("1");
-    assert_eq!(
-        field_state(&h, ParameterId::ClickRate).0.as_deref(),
-        Some("4051")
-    );
-    assert!(
-        input.is_visible(),
-        "keyboard editing must reveal the retained offscreen entry"
-    );
-    assert!(inner.focus_item.borrow().upgrade().as_ref() == Some(&input));
-    h.key(Key::Escape);
-    // A real click still activates its original target and commits the old field once.
-    for _ in 0..4 {
-        h.key(Key::RightArrow);
-    }
-    h.key("5");
-    let other = h.field(peak_label);
-    let geometry = other.geometry();
-    let origin = other.map_to_window(geometry.origin);
-    let position = slint::LogicalPosition::new(
-        origin.x + geometry.size.width / 2.0,
-        origin.y + geometry.size.height / 2.0,
-    );
-    assert!(
-        other.is_visible(),
-        "the intended click target must be visible before the click"
-    );
-    let scroll_before_click = ui.get_editor_scroll_y();
-    for pressed in [true, false] {
-        ui.window().dispatch_event(if pressed {
-            WindowEvent::PointerPressed {
-                position,
-                button: slint::platform::PointerEventButton::Left,
-            }
-        } else {
-            WindowEvent::PointerReleased {
-                position,
-                button: slint::platform::PointerEventButton::Left,
-            }
-        });
-    }
-    h.settle();
-    assert!(
-        inner.focus_item.borrow().upgrade().as_ref() == Some(&other),
-        "click must activate the measured target"
-    );
-    assert_eq!(
-        field_state(&h, ParameterId::ClickRate),
-        (None, Some(405.0)),
-        "ordinary blur commits the pending entry"
-    );
-    assert_eq!(
-        ui.get_editor_scroll_y(),
-        scroll_before_click,
-        "the pointer guard must not scroll before hit testing"
-    );
-    drop(other);
-    // Changing kind replaces the field, not its component row.
-    let old_field = input.clone();
-    let binding = ui.get_components().row_data(0).unwrap().key;
-    ui.invoke_set_carrier(binding.clone(), 0);
-    h.settle();
-    assert!(
-        root.visit_descendants(|item| {
-            if *item == old_field {
-                ControlFlow::Break(())
-            } else {
-                ControlFlow::Continue(())
-            }
-        })
-        .is_none(),
-        "kind change must remove the actual click-rate field"
-    );
-    ui.window().dispatch_event(WindowEvent::PointerMoved {
-        position: slint::LogicalPosition::new(10.0, 10.0),
-    });
-    h.settle();
-    assert!(
-        inner.focus_item.borrow().upgrade().as_ref() != Some(&old_field),
-        "a removed field must not retain focus"
-    );
-    drop(old_field);
-    drop(input);
-    let frequency = h.field("Steady tone · Component 1: Tone frequency (Hz)");
-    inner.set_focus_item(&frequency, true, FocusReason::Programmatic);
-    h.settle();
-    assert!(
-        inner.focus_item.borrow().upgrade().as_ref() == Some(&frequency),
-        "the replacement field is focusable"
-    );
-    let destroyed = frequency.downgrade();
-    drop(frequency);
-    while let Some(row) = ui.get_components().row_data(0) {
-        ui.invoke_remove_component(row.key);
-    }
-    h.settle();
-    assert_eq!(
-        ui.get_components().row_count(),
-        0,
-        "the row model must really be empty"
-    );
-    if let Some(detached) = destroyed.upgrade() {
-        assert!(
-            root.visit_descendants(|item| {
-                if *item == detached {
-                    ControlFlow::Break(())
-                } else {
-                    ControlFlow::Continue(())
-                }
-            })
-            .is_none(),
-            "removed input must leave the actual live item tree"
-        );
-    }
-    ui.window().dispatch_event(WindowEvent::PointerMoved {
-        position: slint::LogicalPosition::new(10.0, 10.0),
-    });
-    h.settle();
-    assert!(
-        inner.focus_item.borrow().upgrade().is_none(),
-        "destroyed field cannot retain focus"
-    );
+    let (input, overflow) = clip_pending_entry(&h);
+    assert_clipped_keyboard_and_pointer(&h, &input, overflow);
+    assert_replaced_and_removed_fields(&h, input);
 }
 
 #[test]
@@ -443,4 +220,257 @@ fn monitor_handoff_and_deactivation_preserve_numeric_entry() {
         staged_before,
         "opener handoff must leave the numeric field unfocused"
     );
+}
+
+fn assert_replaced_and_removed_fields(h: &Harness, input: ItemRc) {
+    let ui = h.ui();
+    let inner = WindowInner::from_pub(ui.window());
+    let root = inner.window_item_rc().unwrap();
+    // Changing kind replaces the field, not its component row.
+    let old_field = input.clone();
+    let binding = ui.get_components().row_data(0).unwrap().key;
+    ui.invoke_set_carrier(binding.clone(), 0);
+    h.settle();
+    assert!(
+        root.visit_descendants(|item| {
+            if *item == old_field {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .is_none(),
+        "kind change must remove the actual click-rate field"
+    );
+    ui.window().dispatch_event(WindowEvent::PointerMoved {
+        position: slint::LogicalPosition::new(10.0, 10.0),
+    });
+    h.settle();
+    assert!(
+        inner.focus_item.borrow().upgrade().as_ref() != Some(&old_field),
+        "a removed field must not retain focus"
+    );
+    drop(old_field);
+    drop(input);
+    let frequency = h.field("Steady tone · Component 1: Tone frequency (Hz)");
+    inner.set_focus_item(&frequency, true, FocusReason::Programmatic);
+    h.settle();
+    assert!(
+        inner.focus_item.borrow().upgrade().as_ref() == Some(&frequency),
+        "the replacement field is focusable"
+    );
+    let destroyed = frequency.downgrade();
+    drop(frequency);
+    while let Some(row) = ui.get_components().row_data(0) {
+        ui.invoke_remove_component(row.key);
+    }
+    h.settle();
+    assert_eq!(
+        ui.get_components().row_count(),
+        0,
+        "the row model must really be empty"
+    );
+    if let Some(detached) = destroyed.upgrade() {
+        assert!(
+            root.visit_descendants(|item| {
+                if *item == detached {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+            .is_none(),
+            "removed input must leave the actual live item tree"
+        );
+    }
+    ui.window().dispatch_event(WindowEvent::PointerMoved {
+        position: slint::LogicalPosition::new(10.0, 10.0),
+    });
+    h.settle();
+    assert!(
+        inner.focus_item.borrow().upgrade().is_none(),
+        "destroyed field cannot retain focus"
+    );
+}
+
+fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f32) {
+    let ui = h.ui();
+    let inner = WindowInner::from_pub(ui.window());
+    // Escape is the first input after clipping: no pointer event or refocus.
+    assert_eq!(inner.focus_item.borrow().upgrade().as_ref(), Some(input));
+    h.key(Key::Escape);
+    assert!(
+        inner.focus_item.borrow().upgrade().as_ref() == Some(input),
+        "no-pointer Escape must retain the clipped editor's focus"
+    );
+    assert_eq!(
+        field_state(h, ParameterId::ClickRate),
+        (None, Some(40.0)),
+        "no-pointer Escape restores without committing"
+    );
+    assert_eq!(text(input), "40");
+    assert!(
+        input.is_visible(),
+        "no-pointer Escape must reveal its restored editor"
+    );
+    for _ in 0..4 {
+        h.key(Key::RightArrow);
+    }
+    h.key("5");
+    ui.set_editor_scroll_y(-overflow);
+    h.settle();
+    assert!(!input.is_visible(), "pointer case must begin clipped again");
+    let scroll_before_pointer = ui.get_editor_scroll_y();
+    ui.window().dispatch_event(WindowEvent::PointerMoved {
+        position: slint::LogicalPosition::new(10.0, 10.0),
+    });
+    h.settle();
+    snapshot(h, input, "after non-click pointer move");
+    assert!(
+        inner.focus_item.borrow().upgrade().as_ref() == Some(input),
+        "pointer movement must not discard an offscreen pending editor"
+    );
+    assert_eq!(
+        ui.get_editor_scroll_y(),
+        scroll_before_pointer,
+        "pointer movement must not move the viewport or retarget a later click"
+    );
+    assert_eq!(
+        field_state(h, ParameterId::ClickRate),
+        (Some("405".into()), Some(40.0))
+    );
+    h.key("1");
+    assert_eq!(
+        field_state(h, ParameterId::ClickRate).0.as_deref(),
+        Some("4051")
+    );
+    assert!(
+        input.is_visible(),
+        "keyboard editing must reveal the retained offscreen entry"
+    );
+    assert_eq!(inner.focus_item.borrow().upgrade().as_ref(), Some(input));
+    h.key(Key::Escape);
+    assert_pointer_blur_commit(h);
+}
+
+fn clip_pending_entry(h: &Harness) -> (ItemRc, f32) {
+    let ui = h.ui();
+    let inner = WindowInner::from_pub(ui.window());
+    let rate_label = "Clicks · Component 1: Clicks rate (Hz)";
+    let input = h.field(rate_label);
+    inner.set_focus_item(&input, true, FocusReason::Programmatic);
+    for _ in 0..4 {
+        h.key(Key::RightArrow);
+    }
+    h.key("5");
+    assert_eq!(
+        field_state(h, ParameterId::ClickRate).0.as_deref(),
+        Some("405")
+    );
+    let root = inner.window_item_rc().unwrap();
+    let viewport = root
+        .visit_descendants(|item| {
+            if item.downcast::<Flickable>().is_some()
+                && item
+                    .visit_descendants(|child| {
+                        if *child == input {
+                            ControlFlow::Break(())
+                        } else {
+                            ControlFlow::Continue(())
+                        }
+                    })
+                    .is_some()
+            {
+                ControlFlow::Break(item.clone())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .unwrap();
+    let flickable = viewport.downcast::<Flickable>().unwrap();
+    let overflow = flickable.as_pin_ref().content_height().get() - viewport.geometry().size.height;
+    assert!(
+        overflow > 0.0,
+        "multi-component editor must actually overflow"
+    );
+    ui.set_editor_scroll_y(-overflow);
+    h.settle();
+    assert!(viewport.is_visible(), "the editor viewport remains visible");
+    assert_eq!(ui.get_tab_index(), 1, "the entry's tab remains selected");
+    assert!(
+        flickable.as_pin_ref().content_y().get() < 0.0,
+        "actual content must scroll"
+    );
+    snapshot(
+        h,
+        &input,
+        "deliberately scrolled offscreen before pointer move",
+    );
+    assert!(
+        !input.is_visible(),
+        "control must actually be outside the viewport"
+    );
+    let input_geometry = input.geometry();
+    let input_position = input.map_to_window(input_geometry.origin);
+    let viewport_geometry = viewport.geometry();
+    let viewport_position = viewport.map_to_window(viewport_geometry.origin);
+    assert!(
+        input_position.y + input_geometry.size.height < viewport_position.y
+            || input_position.y > viewport_position.y + viewport_geometry.size.height,
+        "the visible Flickable must be the physical vertical clipping boundary"
+    );
+
+    (input, overflow)
+}
+
+fn assert_pointer_blur_commit(h: &Harness) {
+    let ui = h.ui();
+    let inner = WindowInner::from_pub(ui.window());
+    let peak_label = "Clicks · Component 1: Peak level (dBFS)";
+    // A real click still activates its original target and commits the old field once.
+    for _ in 0..4 {
+        h.key(Key::RightArrow);
+    }
+    h.key("5");
+    let other = h.field(peak_label);
+    let geometry = other.geometry();
+    let origin = other.map_to_window(geometry.origin);
+    let position = slint::LogicalPosition::new(
+        origin.x + geometry.size.width / 2.0,
+        origin.y + geometry.size.height / 2.0,
+    );
+    assert!(
+        other.is_visible(),
+        "the intended click target must be visible before the click"
+    );
+    let scroll_before_click = ui.get_editor_scroll_y();
+    for pressed in [true, false] {
+        ui.window().dispatch_event(if pressed {
+            WindowEvent::PointerPressed {
+                position,
+                button: slint::platform::PointerEventButton::Left,
+            }
+        } else {
+            WindowEvent::PointerReleased {
+                position,
+                button: slint::platform::PointerEventButton::Left,
+            }
+        });
+    }
+    h.settle();
+    assert!(
+        inner.focus_item.borrow().upgrade().as_ref() == Some(&other),
+        "click must activate the measured target"
+    );
+    assert_eq!(
+        field_state(h, ParameterId::ClickRate),
+        (None, Some(405.0)),
+        "ordinary blur commits the pending entry"
+    );
+    assert_eq!(
+        ui.get_editor_scroll_y(),
+        scroll_before_click,
+        "the pointer guard must not scroll before hit testing"
+    );
+    drop(other);
 }
