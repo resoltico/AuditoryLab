@@ -6,7 +6,7 @@ use crate::adapter::{Shell, SlintAdapter, Windows, parameter_id, parameter_key};
 use crate::generated::{MainWindow, MetadataKey, ParameterKey};
 use crate::test_platform::{install, settle};
 use auditorylab_app::core::ParameterId;
-use auditorylab_app::core::query::{Direction, GroupBy, Scope, SortBy};
+use auditorylab_app::discovery::query::{Direction, GroupBy, Scope, SortBy};
 use auditorylab_app::document::editing::{EditingField, MetadataField};
 use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::workspace::{
@@ -2275,7 +2275,7 @@ fn compact_empty_filters_and_recovery_remain_reachable_through_real_controls() {
         h.wait_for_files();
         assert_eq!(
             h.adapter.inspect(|w| w.catalog_query().sort),
-            auditorylab_app::core::query::SortBy::Title
+            auditorylab_app::discovery::query::SortBy::Title
         );
         assert_eq!(ui.get_collection_choice(), scope);
     }
@@ -2581,8 +2581,8 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     h.key(Key::Escape);
     h.adapter.inspect(|w| {
         let q = w.catalog_query();
-        assert_eq!(q.scope, auditorylab_app::core::query::Scope::User);
-        assert_eq!(q.sort, auditorylab_app::core::query::SortBy::Automatic);
+        assert_eq!(q.scope, auditorylab_app::discovery::query::Scope::User);
+        assert_eq!(q.sort, auditorylab_app::discovery::query::SortBy::Automatic);
         assert!(q.direction.is_none());
         assert_eq!(q.search, "2");
     });
@@ -2755,19 +2755,19 @@ fn filter_controls_map_to_independent_typed_queries() {
         direction: Some(Direction::Desc),
         group_by: GroupBy::Study,
         created: auditorylab_app::discovery::calendar::local_range(
-            auditorylab_app::core::query::CalendarField::Created,
+            auditorylab_app::discovery::query::CalendarField::Created,
             "2026-01-01",
             "2026-01-02",
         )
         .unwrap(),
         modified: auditorylab_app::discovery::calendar::local_range(
-            auditorylab_app::core::query::CalendarField::Modified,
+            auditorylab_app::discovery::query::CalendarField::Modified,
             "2026-03-01",
             "2026-03-02",
         )
         .unwrap(),
         added: auditorylab_app::discovery::calendar::local_range(
-            auditorylab_app::core::query::CalendarField::Added,
+            auditorylab_app::discovery::query::CalendarField::Added,
             "2026-05-01",
             "2026-05-02",
         )
@@ -3509,9 +3509,9 @@ const fn finite(value: f64) -> auditorylab_app::core::Finite {
 
 #[test]
 fn runtime_filter_choices_cover_every_offered_facet_and_absence() {
-    use auditorylab_app::core::query::{Direction, GroupBy};
     use auditorylab_app::core::rhythm::Completeness;
     use auditorylab_app::core::{ConditionRole, Population};
+    use auditorylab_app::discovery::query::{Direction, GroupBy};
     let h = Harness::new();
     let ui = h.ui();
     let apply = |population, role, analysis, direction, group| {

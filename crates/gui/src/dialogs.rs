@@ -39,7 +39,7 @@ impl Shell for NativeShell {
                     &title, &key,
                 ))
                 .set_buttons(rfd::MessageButtons::OkCancelCustom(
-                    auditorylab_app::core::vocabulary::Operation::LibraryPurge
+                    auditorylab_app::vocabulary::Operation::LibraryPurge
                         .label()
                         .into(),
                     crate::terms::Action::Cancel.label().into(),
@@ -49,8 +49,7 @@ impl Shell for NativeShell {
             match choice {
                 rfd::MessageDialogResult::Ok => PromptAnswer::Confirm,
                 rfd::MessageDialogResult::Custom(label)
-                    if label
-                        == auditorylab_app::core::vocabulary::Operation::LibraryPurge.label() =>
+                    if label == auditorylab_app::vocabulary::Operation::LibraryPurge.label() =>
                 {
                     PromptAnswer::Confirm
                 }

@@ -40,7 +40,7 @@ impl TestWorkspace {
             inner
                 .apply(Command::Library(LibraryCommand::SetQuery(Box::new(
                     crate::discovery::collection::CatalogQuery {
-                        scope: crate::core::query::Scope::OpenFiles,
+                        scope: crate::discovery::query::Scope::OpenFiles,
                         ..Default::default()
                     },
                 ))))
@@ -1621,7 +1621,7 @@ fn diagnostic_codes_retain_typed_field_context_and_original_worker_causes() {
 
 #[test]
 fn file_activity_captures_the_operation_before_workers_run() {
-    use crate::core::vocabulary::Operation;
+    use crate::vocabulary::Operation;
     let mut ws = workspace();
     let _ = ws.apply(Command::Library(LibraryCommand::Refresh));
     assert_eq!(

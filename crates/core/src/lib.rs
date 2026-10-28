@@ -26,8 +26,6 @@ mod catalog_id;
 mod compiled;
 #[path = "model/contract.rs"]
 mod contract;
-#[path = "analysis/query.rs"]
-pub mod query;
 #[path = "model/vocabulary.rs"]
 pub mod vocabulary;
 pub use contract::{ContractError, ReferenceOwner};

@@ -1,7 +1,7 @@
 //! Shared persistent/temporary collection summaries; no target compilation or I/O.
-use crate::core::query::{Direction, GroupBy, Scope, SortBy};
 use crate::core::{DocumentUuid, Timestamp, rhythm};
 use crate::discovery::query::{self, SearchIndex};
+use crate::discovery::query::{Direction, GroupBy, Scope, SortBy};
 use crate::document::origin::{LibraryKey, VersionToken};
 use crate::document::recipe::RecipeSnapshot;
 use auditorylab_core::{ConditionRole, EvidenceScope, Measure, Population};
@@ -220,7 +220,7 @@ pub enum GroupLabel {
     /// A disclosed nominal reference band.
     Band(rhythm::Band),
     /// A nominal coverage or multiplicity state.
-    State(crate::core::query::RhythmState),
+    State(crate::discovery::query::RhythmState),
     /// A declared structural method.
     Method(rhythm::Method),
     /// No method is declared by the indexed source.
@@ -485,19 +485,19 @@ impl CatalogQuery {
                     if entry.nominal.outside_bands() {
                         values.push((
                             "other_rates".into(),
-                            GroupLabel::State(crate::core::query::RhythmState::OutsideBands),
+                            GroupLabel::State(crate::discovery::query::RhythmState::OutsideBands),
                         ));
                     }
                     if entry.nominal.no_rhythm() {
                         values.push((
                             "no_rhythm".into(),
-                            GroupLabel::State(crate::core::query::RhythmState::None),
+                            GroupLabel::State(crate::discovery::query::RhythmState::None),
                         ));
                     }
                     if entry.nominal.multiple() {
                         values.push((
                             "multiple_rhythms".into(),
-                            GroupLabel::State(crate::core::query::RhythmState::Multiple),
+                            GroupLabel::State(crate::discovery::query::RhythmState::Multiple),
                         ));
                     }
                     if entry.nominal.completeness != rhythm::Completeness::Complete
@@ -505,7 +505,7 @@ impl CatalogQuery {
                     {
                         values.push((
                             "needs_review".into(),
-                            GroupLabel::State(crate::core::query::RhythmState::NeedsReview),
+                            GroupLabel::State(crate::discovery::query::RhythmState::NeedsReview),
                         ));
                     }
                 }

@@ -20,7 +20,7 @@ use crate::vocabulary::NumberStyle;
 use crate::waveform_view::*;
 use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::document::recipe::Rendition;
-use auditorylab_core::vocabulary::Status;
+use auditorylab_app::vocabulary::Status;
 use auditorylab_core::{
     CarrierFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate, PulseFacts,
     SampleRate, Sound, SoundError, VoiceFacts, VoiceObservation, rhythm::Method, rhythm::Structure,
@@ -483,24 +483,28 @@ fn nominal_description(analysis: &auditorylab_core::rhythm::Analysis) -> String 
     let mut labels: Vec<String> = analysis.bands.iter().map(ToString::to_string).collect();
     if analysis.outside_bands() {
         labels.push(
-            auditorylab_core::query::RhythmState::OutsideBands
+            auditorylab_app::discovery::query::RhythmState::OutsideBands
                 .label()
                 .into(),
         );
     }
     if analysis.no_rhythm() {
-        labels.push(auditorylab_core::query::RhythmState::None.label().into());
+        labels.push(
+            auditorylab_app::discovery::query::RhythmState::None
+                .label()
+                .into(),
+        );
     }
     if analysis.multiple() {
         labels.push(
-            auditorylab_core::query::RhythmState::Multiple
+            auditorylab_app::discovery::query::RhythmState::Multiple
                 .label()
                 .into(),
         );
     }
     if analysis.completeness != auditorylab_core::rhythm::Completeness::Complete {
         labels.push(
-            auditorylab_core::query::RhythmState::NeedsReview
+            auditorylab_app::discovery::query::RhythmState::NeedsReview
                 .label()
                 .into(),
         );
@@ -582,7 +586,7 @@ impl AudioSummary for Option<&Observation> {
     fn summary(&self) -> String {
         self.map_or_else(
             || {
-                auditorylab_core::vocabulary::Status::WaitingForGeneratedAudio
+                auditorylab_app::vocabulary::Status::WaitingForGeneratedAudio
                     .label()
                     .into()
             },

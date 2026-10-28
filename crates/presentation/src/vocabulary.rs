@@ -1,7 +1,7 @@
 //! Presentation number styles and operation wording.
 use crate::DisplayText;
 
-use auditorylab_core::vocabulary::Operation;
+use auditorylab_app::vocabulary::Operation;
 /// Incomplete discovery cannot establish an empty library.
 pub const INVENTORY_INCOMPLETE: &str =
     "Incomplete inventory: valid results above do not establish an empty/complete library.";

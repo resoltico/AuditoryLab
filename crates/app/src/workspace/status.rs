@@ -21,7 +21,7 @@ pub enum FileAction {
     /// Read portable input without granting managed membership.
     Import,
     /// Read or mutate the persistent managed library.
-    Library(crate::core::vocabulary::Operation),
+    Library(crate::vocabulary::Operation),
     /// Publish captured portable content with unchanged identity and history.
     RecipeExport,
     /// Render and publish a finite audio file.
@@ -30,8 +30,8 @@ pub enum FileAction {
 impl FileAction {
     /// Shared operation term for the activity captured in this slot.
     #[must_use]
-    pub const fn operation(self) -> crate::core::vocabulary::Operation {
-        use crate::core::vocabulary::Operation;
+    pub const fn operation(self) -> crate::vocabulary::Operation {
+        use crate::vocabulary::Operation;
         match self {
             Self::Import => Operation::OpenRecipe,
             Self::Library(operation) => operation,

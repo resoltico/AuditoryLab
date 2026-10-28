@@ -4,6 +4,7 @@
 //! snapshots, [`discovery`] owns queries, [`services`] exposes operations,
 //! [`workspace`] coordinates interaction, and the presentation crate supplies shared text.
 #![forbid(unsafe_code)]
+extern crate alloc;
 pub use auditorylab_core as core;
 pub(crate) mod audio;
 pub mod clock;
@@ -15,6 +16,7 @@ pub mod job;
 pub mod outcome;
 pub mod services;
 pub(crate) mod storage;
+pub mod vocabulary;
 pub mod workspace;
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use std::{fs, process::Command};
 fn calendar_child() {
     let date = std::env::var("AUDITORYLAB_CALENDAR_TEST_DATE").unwrap();
     let range = auditorylab_app::discovery::calendar::local_range(
-        auditorylab_app::core::query::CalendarField::Created,
+        auditorylab_app::discovery::query::CalendarField::Created,
         &date,
         &date,
     )

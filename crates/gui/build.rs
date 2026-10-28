@@ -8,12 +8,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     macro_rules! terms_from {
         ($($kind:ty),* $(,)?)=>{$(append_terms::<$kind>(&mut vocabulary,&mut properties)?;)*};
     }
+    use auditorylab_app::{
+        discovery::query::{Direction, GroupBy, RhythmState, Scope, SortBy},
+        vocabulary::{Operation, Status},
+    };
     use auditorylab_core::{
         CarrierKind, ConditionRole, Ear, Ears, EvidenceScope, Measure, ModulationKind, PairKind,
         ParameterId, Population, SlotRole,
-        query::{Direction, GroupBy, RhythmState, Scope, SortBy},
         rhythm::{Band, Completeness, Method},
-        vocabulary::{Operation, Status},
     };
     terms_from!(
         Operation,

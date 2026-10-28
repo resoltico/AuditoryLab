@@ -4,7 +4,7 @@ use crate::discovery::collection::DateRange;
 use crate::discovery::query::QueryError as Error;
 use chrono::{Local, NaiveDate, TimeZone};
 
-use crate::core::query::CalendarField;
+use crate::discovery::query::CalendarField;
 
 /// Convert inclusive YYYY-MM-DD calendar bounds in the current native timezone.
 /// The upper bound is the next local midnight, including DST offset changes.

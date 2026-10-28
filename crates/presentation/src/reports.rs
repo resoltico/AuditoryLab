@@ -1,11 +1,11 @@
 //! Typed machine-readable application reports.
 use crate::Explain;
 use crate::*;
+use auditorylab_app::discovery::query::Direction;
+use auditorylab_app::discovery::query::SortBy;
 use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::document::origin::VersionToken;
-use auditorylab_core::query::Direction;
-use auditorylab_core::query::SortBy;
-use auditorylab_core::vocabulary::Operation;
+use auditorylab_app::vocabulary::Operation;
 use auditorylab_core::{Code, Params};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -233,9 +233,9 @@ impl Report {
     #[must_use]
     pub fn completion_failure(&self, error: impl std::fmt::Display) -> String {
         let truth = if self.complete {
-            auditorylab_core::vocabulary::Status::OperationConfirmed
+            auditorylab_app::vocabulary::Status::OperationConfirmed
         } else {
-            auditorylab_core::vocabulary::Status::OperationIncomplete
+            auditorylab_app::vocabulary::Status::OperationIncomplete
         }
         .label();
         format!("{truth}; completion output failed: {error}")

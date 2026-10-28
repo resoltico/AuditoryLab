@@ -136,7 +136,7 @@ pub struct LibraryView {
     /// Rate used for inspection and export.
     pub rate: SampleRate,
     /// Effective ordering used by the indexed rows.
-    pub sort: auditorylab_core::query::SortBy,
+    pub sort: crate::discovery::query::SortBy,
 }
 /// Disjunctive navigation membership whose count is independent of wording.
 #[derive(Debug, Clone, Copy)]
@@ -146,7 +146,7 @@ pub enum FacetKind {
     /// Membership in a disclosed reference interval.
     Band(auditorylab_core::rhythm::Band),
     /// Completeness or multiplicity of declared rates.
-    State(auditorylab_core::query::RhythmState),
+    State(crate::discovery::query::RhythmState),
     /// Every method after the other restrictions.
     AllMethods,
     /// One declared structural method.
@@ -246,7 +246,7 @@ pub struct ActionView {
     /// The transport button is enabled.
     pub transport_enabled: bool,
     /// The transport button's label.
-    pub transport_action: auditorylab_core::vocabulary::Operation,
+    pub transport_action: crate::vocabulary::Operation,
     /// What the next Play would play.
     pub play_target: String,
     /// Export progress from 0 to 1.
@@ -575,11 +575,11 @@ impl Workspace {
             exporting,
             transport_enabled: self.audio.stop_admission().is_ok() || play.is_ok(),
             transport_action: if playing {
-                crate::core::vocabulary::Operation::Stop
+                crate::vocabulary::Operation::Stop
             } else if self.view == View::Workbench {
-                crate::core::vocabulary::Operation::PlayLive
+                crate::vocabulary::Operation::PlayLive
             } else {
-                crate::core::vocabulary::Operation::PlaySelectedSound
+                crate::vocabulary::Operation::PlaySelectedSound
             },
             play_target: match self.view {
                 View::Workbench => self.editor.session.draft().title().to_owned(),

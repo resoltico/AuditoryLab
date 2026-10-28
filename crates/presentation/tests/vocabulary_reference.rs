@@ -1,7 +1,10 @@
 //! Checked public vocabulary and CLI query reference, without a generator command.
-use auditorylab_core::query::{CalendarField, Direction, GroupBy, RhythmState, Scope, SortBy};
+use auditorylab_app::discovery::query::{
+    CalendarField, Direction, GroupBy, RhythmState, Scope, SortBy,
+};
+use auditorylab_app::vocabulary::{Operation, Status};
 use auditorylab_core::rhythm::{Band, Completeness, Method};
-use auditorylab_core::vocabulary::{Operation, Status, Vocabulary};
+use auditorylab_core::vocabulary::Vocabulary;
 use auditorylab_core::{
     CarrierKind, ConditionRole, Ear, Ears, EvidenceScope, Measure, ModulationKind, PairKind,
     ParameterId, Population, SlotRole,
@@ -88,6 +91,7 @@ fn vocabulary_and_query_tables_match_every_owned_key() {
     );
     let declared = auditorylab_core::diagnostic::OWNERS
         .iter()
+        .chain(auditorylab_app::diagnostic::OWNERS)
         .flat_map(|owner| owner.iter())
         .filter_map(|code| code.strip_prefix("vocabulary."))
         .map(str::to_owned)

@@ -136,7 +136,7 @@ impl SlintAdapter {
                                 detail: text.map_or("", |text| text.detail.as_str()).into(),
                                 count: text
                                     .map_or(
-                                        auditorylab_app::core::vocabulary::Status::Unknown.label(),
+                                        auditorylab_app::vocabulary::Status::Unknown.label(),
                                         |text| text.count.as_str(),
                                     )
                                     .into(),
@@ -220,13 +220,13 @@ impl SlintAdapter {
         ui.set_library_heading(read_only(&library.heading));
         ui.set_rhythm_filtered(source.query.rhythm_filtered());
         ui.set_open_files_scope(
-            source.query.scope == auditorylab_app::core::query::Scope::OpenFiles,
+            source.query.scope == auditorylab_app::discovery::query::Scope::OpenFiles,
         );
         ui.set_show_built_in_dates(matches!(
             source.sort,
-            auditorylab_app::core::query::SortBy::Created
-                | auditorylab_app::core::query::SortBy::Modified
-                | auditorylab_app::core::query::SortBy::Added
+            auditorylab_app::discovery::query::SortBy::Created
+                | auditorylab_app::discovery::query::SortBy::Modified
+                | auditorylab_app::discovery::query::SortBy::Added
         ));
         self.counts
             .library_projections

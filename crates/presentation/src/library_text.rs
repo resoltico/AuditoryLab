@@ -7,15 +7,15 @@ use crate::vocabulary::NumberStyle;
 use crate::*;
 use auditorylab_app::discovery::collection::CatalogQuery;
 use auditorylab_app::discovery::collection::EntrySummary;
+use auditorylab_app::discovery::query::{CalendarField, RhythmState, Scope};
 use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::services::library::LibraryDiagnostic;
-use auditorylab_core::query::{CalendarField, RhythmState, Scope};
-use auditorylab_core::vocabulary::Status;
+use auditorylab_app::vocabulary::Status;
 /// Render a semantic row, without executing queries or selecting recipe ownership.
 pub fn row(
     row: &auditorylab_app::workspace::LibraryRowView,
-    sort: auditorylab_core::query::SortBy,
+    sort: auditorylab_app::discovery::query::SortBy,
 ) -> LibraryRowText {
     use auditorylab_app::workspace::LibraryRowView as Row;
     match row {
@@ -41,10 +41,10 @@ pub fn row(
 }
 fn entry_row(
     e: &EntrySummary,
-    sort: auditorylab_core::query::SortBy,
+    sort: auditorylab_app::discovery::query::SortBy,
     requires_read: bool,
 ) -> LibraryRowText {
-    use auditorylab_core::query::SortBy;
+    use auditorylab_app::discovery::query::SortBy;
     let (date_label, date) = match sort {
         SortBy::Created => (CalendarField::Created.label(), e.created_at),
         SortBy::Modified => (auditorylab_core::vocabulary::EDITED.label, e.modified_at),
@@ -150,8 +150,8 @@ pub fn facet(facet: &auditorylab_app::workspace::LibraryFacetView) -> LibraryFac
     use auditorylab_app::workspace::FacetKind;
 
     let (label, detail) = match facet.kind {
-        FacetKind::AllSounds => (auditorylab_core::vocabulary::ALL_SOUNDS.label.into(), ""),
-        FacetKind::AllMethods => (auditorylab_core::vocabulary::ALL_METHODS.label.into(), ""),
+        FacetKind::AllSounds => (auditorylab_app::vocabulary::ALL_SOUNDS.label.into(), ""),
+        FacetKind::AllMethods => (auditorylab_app::vocabulary::ALL_METHODS.label.into(), ""),
         FacetKind::Band(band) => (band.to_string(), band.interval()),
         FacetKind::State(state) => (state.label().into(), ""),
         FacetKind::Method(method) => (method.label().into(), ""),

@@ -2,6 +2,8 @@
 use crate::*;
 use auditorylab_app::discovery::calendar::local_range;
 use auditorylab_app::discovery::collection::CatalogQuery;
+use auditorylab_app::discovery::query::CalendarField;
+use auditorylab_app::discovery::query::{GroupBy, SortBy};
 use auditorylab_app::document::editing::Draft;
 use auditorylab_app::document::editing::EditingField;
 use auditorylab_app::job::Cancel;
@@ -12,8 +14,6 @@ use auditorylab_app::workspace::{
     Capabilities, Command, EditorCommand, Effect, FileCommand, JobKind, LibraryCommand, View,
     Workspace,
 };
-use auditorylab_core::query::CalendarField;
-use auditorylab_core::query::{GroupBy, SortBy};
 use auditorylab_core::test_support::finite;
 use auditorylab_core::{CarrierKind, ComponentForm, ComponentId, Ears, ParameterId, SampleRate};
 use std::ops::{Deref, DerefMut};
@@ -679,7 +679,7 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
         rhythm: auditorylab_app::discovery::query::RhythmQuery {
             bands: vec![auditorylab_core::rhythm::Band::Delta],
             methods: vec![auditorylab_core::rhythm::Method::Binaural],
-            state: Some(auditorylab_core::query::RhythmState::Multiple),
+            state: Some(auditorylab_app::discovery::query::RhythmState::Multiple),
         },
         created: DateRange {
             from: Some(from),
@@ -880,9 +880,9 @@ fn copied_attribution_and_reimported_notes_reach_library_details() {
 #[test]
 fn rows_show_sort_dates_unknown_edit_and_duration() {
     use auditorylab_app::discovery::collection::EntrySummary;
+    use auditorylab_app::discovery::query::SortBy;
     use auditorylab_app::document::origin::LibraryKey;
     use auditorylab_app::workspace::LibraryRowView;
-    use auditorylab_core::query::SortBy;
     let handles = workspace();
     let handle = handles.selected_entry_handle().unwrap();
     let snapshot = auditorylab_app::services::catalog().unwrap().remove(0);
@@ -954,7 +954,7 @@ fn operation_and_shutdown_failures_keep_recovery_context() {
     );
     let status = FileStatus::WorkerFailed {
         activity: FileActivity {
-            kind: FileAction::Library(auditorylab_core::vocabulary::Operation::LibraryRefresh),
+            kind: FileAction::Library(auditorylab_app::vocabulary::Operation::LibraryRefresh),
             path: path.clone(),
             title: None,
             may_publish: true,
@@ -1058,8 +1058,8 @@ fn preview_and_audio_failures_name_the_captured_rate() {
 
 #[test]
 fn file_activity_uses_the_captured_shared_operation_term() {
+    use auditorylab_app::vocabulary::Operation;
     use auditorylab_app::workspace::status::{FileAction, FileActivity};
-    use auditorylab_core::vocabulary::Operation;
     for (kind, operation, label) in [
         (FileAction::Import, Operation::OpenRecipe, "Open Recipe"),
         (

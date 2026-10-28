@@ -680,8 +680,8 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryTe
                 .map(|state| state.label().to_owned())
         })
         .unwrap_or_else(|| {
-            if data.query.scope == auditorylab_core::query::Scope::All {
-                auditorylab_core::vocabulary::ALL_SOUNDS.label.to_owned()
+            if data.query.scope == auditorylab_app::discovery::query::Scope::All {
+                auditorylab_app::vocabulary::ALL_SOUNDS.label.to_owned()
             } else {
                 data.query.scope.label().to_owned()
             }

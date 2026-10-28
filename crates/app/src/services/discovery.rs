@@ -3,7 +3,7 @@ use super::{
     Cancel,
     library::{DiagnosticDetail, LibraryContext, LibraryDiagnostic},
 };
-use crate::core::query::Scope;
+use crate::discovery::query::Scope;
 use crate::document::origin::LibraryKey;
 use std::{collections::HashMap, path::PathBuf};
 use {

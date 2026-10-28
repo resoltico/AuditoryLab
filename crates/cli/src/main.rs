@@ -6,8 +6,8 @@ use auditorylab_presentation::*;
 mod cli_text;
 mod library_cli;
 use auditorylab_app::core::SampleRate;
-use auditorylab_app::core::vocabulary::Operation;
 use auditorylab_app::outcome::Outcome;
+use auditorylab_app::vocabulary::Operation;
 
 use auditorylab_app::services::playback::{EndReason, PlaybackControl, Preparation, Session};
 use auditorylab_app::{self as lab};

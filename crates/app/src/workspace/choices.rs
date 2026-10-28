@@ -1,9 +1,9 @@
 //! Runtime library choices and atomic query edits.
 use super::*;
-use crate::core::query::{Direction, GroupBy, RhythmState, Scope, SortBy};
 use crate::core::rhythm::{Band, Completeness, Method};
 use crate::core::{ConditionRole, Population};
 use crate::discovery::collection::CatalogQuery;
+use crate::discovery::query::{Direction, GroupBy, RhythmState, Scope, SortBy};
 
 /// One library query facet, independent of control position or wording.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,7 +64,7 @@ impl Workspace {
             QueryFacet::Direction => {
                 option(
                     "automatic",
-                    crate::core::vocabulary::AUTOMATIC_DIRECTION.label,
+                    crate::vocabulary::AUTOMATIC_DIRECTION.label,
                     q.direction.is_none(),
                 );
                 values!(Direction, |v| q.direction == Some(v));
@@ -73,7 +73,7 @@ impl Workspace {
             QueryFacet::Band => {
                 option(
                     "any",
-                    crate::core::vocabulary::ALL_SOUNDS.label,
+                    crate::vocabulary::ALL_SOUNDS.label,
                     q.rhythm.bands.is_empty() && q.rhythm.state.is_none(),
                 );
                 values!(Band, |v| q.rhythm.bands.contains(&v));
@@ -82,7 +82,7 @@ impl Workspace {
             QueryFacet::Method => {
                 option(
                     "any",
-                    crate::core::vocabulary::ALL_METHODS.label,
+                    crate::vocabulary::ALL_METHODS.label,
                     q.rhythm.methods.is_empty(),
                 );
                 values!(Method, |v| q.rhythm.methods.contains(&v));
@@ -90,7 +90,7 @@ impl Workspace {
             QueryFacet::Population => {
                 option(
                     "any",
-                    crate::core::vocabulary::ANY_POPULATION.label,
+                    crate::vocabulary::ANY_POPULATION.label,
                     q.populations.is_empty(),
                 );
                 values!(Population, |v| q.populations.contains(&v));
@@ -98,7 +98,7 @@ impl Workspace {
             QueryFacet::Role => {
                 option(
                     "any",
-                    crate::core::vocabulary::ANY_CONDITION_ROLE.label,
+                    crate::vocabulary::ANY_CONDITION_ROLE.label,
                     q.roles.is_empty(),
                 );
                 values!(ConditionRole, |v| q.roles.contains(&v));
@@ -106,7 +106,7 @@ impl Workspace {
             QueryFacet::Analysis => {
                 option(
                     "any",
-                    crate::core::vocabulary::ANY_ANALYSIS_COVERAGE.label,
+                    crate::vocabulary::ANY_ANALYSIS_COVERAGE.label,
                     q.analysis.is_none(),
                 );
                 values!(Completeness, |v| q.analysis == Some(v));
@@ -160,7 +160,7 @@ impl Workspace {
     pub(super) fn edit_filters(&mut self, input: FilterInput) -> Result<(), Refusal> {
         let mut query = self.catalog_query().clone();
         let ranges = (|| {
-            use crate::core::query::CalendarField;
+            use crate::discovery::query::CalendarField;
             let [created, modified, added] = input.dates;
             Ok::<_, crate::discovery::query::QueryError>([
                 crate::discovery::calendar::local_range(

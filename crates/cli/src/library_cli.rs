@@ -2,9 +2,10 @@
 use super::{Source, output, prose, usage};
 use crate::cli_text::CommandProblem;
 use auditorylab_app::core::SampleRate;
-use auditorylab_app::core::query::{Direction, GroupBy, Scope, SortBy};
+use auditorylab_app::discovery::query::{Direction, GroupBy, Scope, SortBy};
 use auditorylab_app::document::origin::{LibraryKey, VersionToken};
 use auditorylab_app::job::Cancel;
+use auditorylab_app::vocabulary::Operation;
 use auditorylab_app::{
     self as lab,
     discovery::collection::{CatalogQuery, DateRange},
@@ -14,7 +15,6 @@ use auditorylab_presentation::DisplayText;
 use auditorylab_presentation::reports::Report;
 use auditorylab_presentation::*;
 use clap::{Args, Subcommand, ValueEnum};
-use lab::core::vocabulary::Operation;
 use lab::services::LibraryContext;
 use std::{
     io::{self, IsTerminal, Write},
@@ -74,8 +74,8 @@ pub(super) struct QueryArgs {
     #[arg(long,value_parser=parse_analysis)]
     analysis: Option<lab::core::rhythm::Completeness>,
     /// Special state: none, multiple, outside_bands or needs_review.
-    #[arg(long,value_parser=parse_choice::<lab::core::query::RhythmState>)]
-    rhythms: Option<auditorylab_app::core::query::RhythmState>,
+    #[arg(long,value_parser=parse_choice::<auditorylab_app::discovery::query::RhythmState>)]
+    rhythms: Option<auditorylab_app::discovery::query::RhythmState>,
     /// Inclusive explicit-offset creation instant.
     #[arg(long)]
     created_from: Option<lab::core::Timestamp>,
@@ -670,7 +670,7 @@ mod query_mapping_tests {
                 rhythm: lab::discovery::query::RhythmQuery {
                     bands: vec![lab::core::rhythm::Band::Theta],
                     methods: vec![lab::core::rhythm::Method::Monaural],
-                    state: Some(auditorylab_app::core::query::RhythmState::OutsideBands),
+                    state: Some(auditorylab_app::discovery::query::RhythmState::OutsideBands),
                 },
                 studies: vec!["key:source".into()],
                 roles: vec![lab::core::ConditionRole::Comparison],

@@ -4,8 +4,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use crate::core::query::Scope;
 use crate::discovery::collection::{CatalogQuery, EntrySummary};
+use crate::discovery::query::Scope;
 use crate::document::origin::{LibraryKey, VersionToken};
 use crate::services::library::Library;
 use crate::storage::library::{Inventory, LoadedRecord, Mutation, MutationKind, WriteOutcome};
@@ -366,8 +366,8 @@ pub enum LibraryOutcome {
     Written(Box<WriteOutcome>),
 }
 impl LibraryJob {
-    pub(super) fn operation_term(&self) -> crate::core::vocabulary::Operation {
-        use crate::core::vocabulary::Operation as Term;
+    pub(super) fn operation_term(&self) -> crate::vocabulary::Operation {
+        use crate::vocabulary::Operation as Term;
         match &self.operation {
             LibraryRequest::Scan => Term::LibraryRefresh,
             LibraryRequest::Initialize => Term::LibraryInit,
@@ -644,10 +644,8 @@ impl Workspace {
     /// Disjunctive unique counts from the shared query, with reference intervals.
     #[must_use]
     pub fn library_facets(&self) -> FacetCounts {
-        use crate::core::{
-            query::RhythmState,
-            rhythm::{Band, Method},
-        };
+        use crate::core::rhythm::{Band, Method};
+        use crate::discovery::query::RhythmState;
         let complete = self.library.inventory.complete;
         let facet = |query: &CatalogQuery, kind| LibraryFacetView {
             kind,

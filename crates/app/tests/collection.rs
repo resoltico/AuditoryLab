@@ -3,12 +3,12 @@ use auditorylab_app::core::{
     Component, ComponentForm, ComponentId, DocumentIdentity, Ears, Recipe, Sound, Timestamp,
     rhythm::{Band, Method},
 };
+use auditorylab_app::discovery::query::{Direction, GroupBy, Scope, SortBy};
 use auditorylab_app::document::recipe::{Origin, RecipeSnapshot};
 use auditorylab_app::{
     discovery::collection::{CatalogQuery, DateRange, EntrySummary},
     document::origin::LibraryKey,
 };
-use auditorylab_core::query::{Direction, GroupBy, Scope, SortBy};
 #[expect(
     clippy::unwrap_used,
     reason = "Curated UUID/time fixture construction must fail rather than silently substitute data"

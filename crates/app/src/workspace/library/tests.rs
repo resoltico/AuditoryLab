@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
-use crate::core::query::{Direction, GroupBy, SortBy};
+use crate::discovery::query::{Direction, GroupBy, SortBy};
 use crate::services::library::Library;
 
 fn fixture() -> (tempfile::TempDir, Library, Workspace) {
@@ -80,7 +80,7 @@ fn applied_summary_lists_values_from_committed_query_and_refuses_invalid_replace
         rhythm: crate::discovery::query::RhythmQuery {
             bands: vec![crate::core::rhythm::Band::Delta],
             methods: vec![crate::core::rhythm::Method::Binaural],
-            state: Some(crate::core::query::RhythmState::Multiple),
+            state: Some(crate::discovery::query::RhythmState::Multiple),
         },
         created: DateRange {
             from: Some(from),
@@ -685,9 +685,9 @@ fn selected_users() -> (
         .set_catalog_query(CatalogQuery {
             scope: Scope::User,
             search: "Shared".into(),
-            sort: crate::core::query::SortBy::Title,
-            direction: Some(crate::core::query::Direction::Desc),
-            group_by: crate::core::query::GroupBy::Collection,
+            sort: crate::discovery::query::SortBy::Title,
+            direction: Some(crate::discovery::query::Direction::Desc),
+            group_by: crate::discovery::query::GroupBy::Collection,
             ..CatalogQuery::default()
         })
         .unwrap();
@@ -1024,7 +1024,7 @@ fn clear_rhythm_command_retains_every_non_rhythm_query_field() {
             rhythm: crate::discovery::query::RhythmQuery {
                 bands: vec![crate::core::rhythm::Band::Gamma],
                 methods: vec![crate::core::rhythm::Method::Am],
-                state: Some(crate::core::query::RhythmState::OutsideBands),
+                state: Some(crate::discovery::query::RhythmState::OutsideBands),
             },
         };
         workspace

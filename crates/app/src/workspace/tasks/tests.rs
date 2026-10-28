@@ -596,7 +596,7 @@ fn wrong_loaded_identity_cannot_replace_the_selected_record() {
     let a = store.scan(&Cancel::default()).entries[0].key.clone();
     workspace
         .set_catalog_query(crate::discovery::collection::CatalogQuery {
-            scope: crate::core::query::Scope::User,
+            scope: crate::discovery::query::Scope::User,
             ..Default::default()
         })
         .unwrap();

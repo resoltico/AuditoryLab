@@ -7,8 +7,8 @@ use auditorylab_app::services::Exported;
 use auditorylab_app::services::library::Initialization;
 use auditorylab_app::services::library::Inventory;
 use auditorylab_app::services::library::RootInfo;
+use auditorylab_app::vocabulary::Status;
 use auditorylab_core::Timestamp;
-use auditorylab_core::vocabulary::Status;
 use std::path::Path;
 
 fn date(value: Option<Timestamp>) -> String {
