@@ -1588,7 +1588,6 @@ fn staged_envelope_diagnostics_retain_quantities_and_rate_in_metadata() {
     );
 }
 
-#[path = "tests/admissions.rs"]
 mod admissions;
 
 #[cfg(test)]

@@ -1493,7 +1493,6 @@ fn read_only(text: &str) -> SharedString {
 }
 
 #[cfg(test)]
-#[path = "adapter_test_support.rs"]
 pub(crate) mod tests;
 
 fn control_index(

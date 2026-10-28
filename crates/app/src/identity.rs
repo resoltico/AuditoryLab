@@ -87,9 +87,6 @@ pub const SOURCE_URL: &str = env!("CARGO_PKG_REPOSITORY");
 pub const BUILD_IDENTITY: BuildIdentity = generated::BUILD;
 
 #[cfg(test)]
-#[path = "../identity_input.rs"]
-mod input;
-#[cfg(test)]
 mod tests {
     #[test]
     fn random_failure_does_not_fall_back_to_clock_or_counter() {

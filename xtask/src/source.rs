@@ -1,6 +1,7 @@
 //! Frozen commit identity and deterministic archive time inputs.
 use crate::{Result, capture};
 use std::{env, process::Command};
+// Identity generation and packaging share validation of the canonical workspace inputs.
 #[path = "../../crates/app/identity_input.rs"]
 mod identity_input;
 
