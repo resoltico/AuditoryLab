@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Update the bundled Markdown parser to address RUSTSEC-2026-0414.
+
 - Contributors must install `slint-lsp` at the resolved Slint version and run `cargo xtask check-style` for source width and Slint formatting.
 - CI denies Clippy pedantic findings; intentional escaped native-path diagnostics have narrow, reasoned expectations.
 
