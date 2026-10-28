@@ -252,7 +252,9 @@ jobs:
           - source: analysis/facts
             shard: 0/1
           - source: analysis/rhythm
-            shard: 0/1
+            shard: 0/2
+          - source: analysis/rhythm
+            shard: 1/2
           - source: model/validity
             shard: 0/1
           - source: model/finite
