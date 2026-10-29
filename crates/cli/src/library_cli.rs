@@ -72,8 +72,12 @@ pub(super) struct QueryArgs {
     /// Nominal analysis coverage: complete or invalid.
     #[arg(long,value_parser=parse_analysis)]
     analysis: Option<lab::core::rhythm::Completeness>,
-    /// Special state: none, multiple, `outside_bands` or `needs_review`.
-    #[arg(long,value_parser=parse_choice::<auditorylab_app::discovery::query::RhythmState>)]
+    // A plain help string: rustdoc's Markdown lint would put backticks into rendered help.
+    #[arg(
+        long,
+        help = "Special state: none, multiple, outside_bands or needs_review",
+        value_parser = parse_choice::<auditorylab_app::discovery::query::RhythmState>
+    )]
     rhythms: Option<auditorylab_app::discovery::query::RhythmState>,
     /// Inclusive explicit-offset creation instant.
     #[arg(long)]

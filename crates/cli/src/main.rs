@@ -651,6 +651,28 @@ mod operation_tests {
 }
 
 #[cfg(test)]
+mod help_tests {
+    use super::*;
+    #[test]
+    fn help_text_is_plain_text_without_markdown_markup() {
+        fn check(command: &mut clap::Command) {
+            let help = command.render_long_help().to_string();
+            assert!(
+                !help.contains('`'),
+                "{} help contains Markdown backticks:\n{help}",
+                command.get_name()
+            );
+            for child in command.get_subcommands_mut() {
+                check(child);
+            }
+        }
+        let mut command = Cli::command();
+        command.build();
+        check(&mut command);
+    }
+}
+
+#[cfg(test)]
 mod diagnostic_tests {
     use super::*;
     use auditorylab_app::core::{diagnostic::Code, diagnostic::ParamValue};
