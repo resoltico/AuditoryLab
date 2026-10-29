@@ -429,7 +429,7 @@ pub(crate) const DUPLICATE_IDENTITY: &str =
 pub(crate) fn orphan_membership(id: auditorylab_core::DocumentUuid) -> String {
     format!("membership for {id} has no recipe; the next locked write will drop it")
 }
-pub(crate) fn unavailable_history_clock(error: &auditorylab_app::clock::ClockError) -> String {
+pub(crate) fn unavailable_history_clock(error: auditorylab_app::clock::ClockError) -> String {
     format!(
         "Cannot compare declared history with the observed clock: {}",
         error.explain()

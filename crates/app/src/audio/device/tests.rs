@@ -193,7 +193,12 @@ fn backend_recovery_can_run_before_the_stall_deadline() {
     assert!(supervision.poll(&state, recovered_at).is_none());
     assert!(
         supervision
-            .poll(&state, recovered_at + STALL_LIMIT - POLL_INTERVAL)
+            .poll(
+                &state,
+                (recovered_at + STALL_LIMIT)
+                    .checked_sub(POLL_INTERVAL)
+                    .unwrap()
+            )
             .is_none()
     );
     assert_eq!(

@@ -2,10 +2,7 @@
 use super::{Typography, TypographySink};
 use std::{
     process::{Command, Stdio},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
 fn parse_scale(text: &str) -> Option<f32> {
@@ -42,7 +39,7 @@ pub(super) fn requested_scale() -> Option<f32> {
         }
     }
 }
-pub(super) fn listen(sender: TypographySink, stop: Arc<AtomicBool>, base: Typography) {
+pub(super) fn listen(sender: &TypographySink, stop: &AtomicBool, base: &Typography) {
     let mut last = None;
     while !stop.load(Ordering::Relaxed) {
         let scale = requested_scale();

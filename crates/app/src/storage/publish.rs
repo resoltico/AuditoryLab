@@ -175,6 +175,13 @@ fn cleanup(dir: &Dir, stage: &Path, path: &Path, error: Error) -> Error {
         Err(e) => error.with_leftover(path.parent().unwrap_or(Path::new(".")).join(stage), e),
     }
 }
+#[cfg_attr(
+    not(unix),
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "Callers handle one fallible directory sync; only Unix directories can be synced"
+    )
+)]
 pub(crate) fn sync_directory(dir: &Dir) -> std::io::Result<()> {
     #[cfg(unix)]
     {

@@ -60,6 +60,6 @@ pub fn warning(warning: &auditorylab_app::services::StorageWarning) -> String {
         W::ModificationPrecedesCreation => crate::library::MODIFICATION_PRECEDES_CREATION.into(),
         W::ClockPredatesHistory => crate::library::CLOCK_PREDATES_HISTORY.into(),
         W::FutureHistory => crate::library::FUTURE_HISTORY.into(),
-        W::UnavailableHistoryClock { cause } => crate::library::unavailable_history_clock(cause),
+        W::UnavailableHistoryClock { cause } => crate::library::unavailable_history_clock(*cause),
     }
 }
