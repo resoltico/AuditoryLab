@@ -227,7 +227,9 @@ export component WorkbenchPane inherits Rectangle {
                 font-size: root.ui-size * 0.93;
                 vertical-stretch: 0;
             }
-            for row in root.components: VerticalBox {
+            for row in root.components: component-view := VerticalBox {
+                private property <bool> pattern-expanded: false;
+                private property <bool> options-expanded: false;
                 spacing: 4px;
                 vertical-stretch: 0;
                 Rectangle {
@@ -248,11 +250,18 @@ export component WorkbenchPane inherits Rectangle {
                     vertical-stretch: 0;
                 }
 
-                pattern := Disclosure {
+                if !root.has-pulse(row): Disclosure {
                     label: Terms.caption-waveform-pattern;
+                    expanded <=> component-view.pattern-expanded;
                 }
 
-                if pattern.expanded || root.has-pulse(row): VerticalBox {
+                if root.has-pulse(row): Text {
+                    text: Terms.caption-waveform-pattern;
+                    font-weight: 600;
+                    vertical-stretch: 0;
+                }
+
+                if component-view.pattern-expanded || root.has-pulse(row): VerticalBox {
                     vertical-stretch: 0;
                     Text {
                         min-width: 0px;
@@ -299,12 +308,18 @@ export component WorkbenchPane inherits Rectangle {
                         }
                     }
                 }
-                component-options := Disclosure {
+                if !root.has-pulse(row): Disclosure {
                     label: Terms.caption-routing-modulation-and-component-options;
+                    expanded <=> component-view.options-expanded;
+                }
+                if root.has-pulse(row): Text {
+                    text: Terms.caption-routing-modulation-and-component-options;
+                    font-weight: 600;
+                    vertical-stretch: 0;
                 }
                         // Labels beside choices sized to their content; the
                         // shared column keeps the three choices aligned.
-                        if component-options.expanded || root.has-pulse(row): GridLayout {
+                        if component-view.options-expanded || root.has-pulse(row): GridLayout {
                     spacing: 6px;
                     vertical-stretch: 0;
                     Row {

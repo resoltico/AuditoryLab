@@ -42,7 +42,7 @@ Library actions retain an app-issued handle for the rendered listing and capture
 
 Component names use their authored IDs; removing/restoring rows keeps those references stable. A pair's secondary lane is labeled as its second tone.
 
-Enter frequency/rate, width, level and modulation values. The UI uses Hz, milliseconds, dBFS and percent. Source, shared modulation, digital channel routing and Remove are in each component’s disclosure. **Undo remove** restores the latest removed component and its staged text when capacity permits.
+Enter frequency/rate, width, level and modulation values. The UI uses Hz, milliseconds, dBFS and percent. Source, shared modulation, digital channel routing and Remove are in each component’s options. Pulse options and their calculated envelope stay open together; other components use disclosures. **Undo remove** restores the latest removed component and its staged text when capacity permits.
 
 Pulse sources and pulsed modulation show separate width-intent and shape choices beside their calculated envelope. Duration fields use milliseconds; duty uses percent with a distinct semantic field. Raised-cosine controls expose rise/fall times. Width conversion applies the related pending rate/window values together and preserves other staged input; an invalid conversion changes nothing. Rectangular-to-shaped initialization uses 10% of the requested window per edge, without resizing it to satisfy a sample rate. Requested and resolved facts disclose rounding.
 
@@ -74,7 +74,7 @@ The monitor displays generated stereo samples before device conversion, with pea
 
 **Hold display** retains samples, source, rate, frame span, scale and meters together across navigation and sessions. **Return to live** selects current coverage. Monitor gaps, stale coverage and backend underruns remain distinct. Details opens selectable quantities; **Refresh diagnostics snapshot** updates them explicitly.
 
-Worker completion, export progress and native preference changes arrive as events. The desktop redraw timer runs while audio is bound or the monitor is visible; an idle closed monitor needs no workspace polling.
+Worker completion, export progress and native preference changes arrive as events. The desktop redraw timer runs while audio is bound or the monitor is visible; an idle closed monitor needs no periodic workspace polling. Commands refresh their calculated source models before projection, independently of that redraw timer.
 
 The drawer can be resized by pointer, keyboard or accessibility slider actions. When it cannot fit, a focused monitor window provides scrollable content. Closing that window returns focus to its opener. Reduce Motion defaults to a held display; Hold/Return to live overrides it, and **Follow system motion** restores the native preference.
 

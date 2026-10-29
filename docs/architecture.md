@@ -48,7 +48,7 @@ An **Export WAV** click follows this path:
 4. The coordinator captures a file job and emits `Effect::Run`. [Runner](../crates/app/src/workspace/tasks.rs) executes the service on a worker. Storage publishes with cancellation, conflict and no-clobber protections.
 5. The executor joins the worker before delivering `Response::Finished`. `Response::Prepared` is the separate audio-preparation response; frontend answers never enter `respond`.
 6. The coordinator records typed outcomes, continues pending work and advances its revision. `poll` refreshes captures/models and `take_effects` drains requested frontend work.
-7. The adapter receives typed views, renders their text through presentation and updates retained Slint models. Callback handles keep their original document/component or listing lifetime across unrelated projections.
+7. Command/response completion runs `poll` before draining effects and projecting, so closed-monitor models do not depend on a redraw timer. The adapter receives typed views, renders their text through presentation and updates retained Slint models. Callback handles keep their original document/component or listing lifetime across unrelated projections.
 
 Library, editor, audio and file parts keep their fields private and accept their own typed commands/transitions. The coordinator alone owns cross-part admission, prompts, pending document actions, close/exit, effects and job context. `Workspace` implementations are confined to `mod.rs` and `commands.rs`.
 

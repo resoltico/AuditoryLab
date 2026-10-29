@@ -415,7 +415,6 @@ impl SlintAdapter {
             for response in responses {
                 workspace.respond(response);
             }
-            workspace.poll();
         }
         self.after_command();
     }
@@ -425,7 +424,12 @@ impl SlintAdapter {
             .workspace
             .borrow_mut()
             .as_mut()
-            .map(Workspace::take_effects)
+            .map(|workspace| {
+                // Commands must refresh pure source models even when monitoring has
+                // stopped the redraw timer. Worker ticks use this same completion path.
+                workspace.poll();
+                workspace.take_effects()
+            })
             .unwrap_or_default();
         for effect in effects {
             self.perform(effect);

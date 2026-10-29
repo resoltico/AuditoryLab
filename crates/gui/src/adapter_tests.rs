@@ -4196,6 +4196,26 @@ fn pulse_mode_and_shape_callbacks_preserve_surviving_widgets_and_retire_old_inte
     let row = ui.get_components().row_data(0).unwrap();
     assert_eq!(row.modulation_width, 1);
     assert_eq!(row.modulation_shape, 1);
+    // Pulse sections stay open with their controls; static headings must not
+    // announce a collapsed disclosure while showing its content.
+    assert!(
+        find_control(ui, |item| {
+            item.is_visible()
+                && item
+                    .accessible_string_property(AccessibleStringProperty::Label)
+                    .as_deref()
+                    == Some("Waveform pattern")
+        })
+        .is_some()
+    );
+    assert!(
+        find_control(ui, |item| {
+            item.accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref()
+                == Some("Routing, modulation and component options · collapsed")
+        })
+        .is_none()
+    );
     let label = format!(
         "{}: {}",
         row.name,
@@ -4267,4 +4287,65 @@ fn pulse_mode_and_shape_callbacks_preserve_surviving_widgets_and_retire_old_inte
         h.adapter.inspect(|w| w.audio_phase().is_none()),
         "creation and interpretation edits never start playback"
     );
+}
+
+#[test]
+fn closed_monitor_commands_refresh_calculated_models_without_a_redraw_tick() {
+    use auditorylab_app::workspace::monitor::ModelSource;
+    let h = Harness::new();
+    let ui = h.ui();
+    ui.set_monitor_open(false);
+    h.adapter.tick();
+    h.settle();
+    assert_eq!(
+        h.adapter.inspect(|w| w.model_view().unwrap().source),
+        ModelSource::Recipe
+    );
+    let library_caption = ui.get_model_caption();
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 4);
+    // No adapter.tick: closed-monitor editing must not depend on a redraw timer.
+    assert_eq!(
+        h.adapter.inspect(|w| w.model_view().unwrap().source),
+        ModelSource::Draft
+    );
+    assert_ne!(ui.get_model_caption(), library_caption);
+    assert!(ui.get_model_caption().contains("Untitled sound"));
+    assert_eq!(ui.get_model_lanes().row_count(), 1);
+    assert!(
+        ui.get_model_lanes()
+            .row_data(0)
+            .unwrap()
+            .label
+            .contains("10 Hz pulsed modulation")
+    );
+    ui.invoke_commit_parameter(
+        parameter_field(&h.component_key(0), ParameterId::ModulationPulseRate),
+        "8".into(),
+    );
+    assert!(
+        ui.get_model_lanes()
+            .row_data(0)
+            .unwrap()
+            .label
+            .contains("8 Hz pulsed modulation")
+    );
+    ui.invoke_commit_parameter(
+        parameter_field(&h.component_key(0), ParameterId::ToneFrequency),
+        "0".into(),
+    );
+    assert!(h.adapter.inspect(|w| w.model_view().is_none()));
+    assert_eq!(ui.get_model_lanes().row_count(), 0);
+    ui.set_tab_index(0);
+    h.settle();
+    assert_eq!(
+        h.adapter.inspect(|w| w.model_view().unwrap().source),
+        ModelSource::Recipe
+    );
+    assert_eq!(ui.get_model_caption(), library_caption);
+    ui.set_tab_index(1);
+    h.settle();
+    assert!(h.adapter.inspect(|w| w.model_view().is_none()));
+    assert_eq!(ui.get_model_lanes().row_count(), 0);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
