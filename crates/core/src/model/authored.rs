@@ -303,10 +303,7 @@ impl Sound {
         Ok(Self { components })
     }
     fn check_structure(components: &[Component]) -> Result<(), StructureError> {
-        Self::check_capacity(
-            components.len(),
-            components.iter().map(|c| c.form.voices()).sum(),
-        )?;
+        Self::check_capacity(components.iter().map(|c| c.form.voices()).sum())?;
         for (index, component) in components.iter().enumerate() {
             if components[..index]
                 .iter()
@@ -317,7 +314,7 @@ impl Sound {
         }
         Ok(())
     }
-    fn check_capacity(_components: usize, voices: usize) -> Result<(), StructureError> {
+    fn check_capacity(voices: usize) -> Result<(), StructureError> {
         if voices > Self::MAX_VOICES {
             return Err(StructureError::VoiceBudget { count: voices });
         }
@@ -326,10 +323,9 @@ impl Sound {
     /// Check capacity for one additional form. Insertion checks identity again.
     ///
     /// # Errors
-    /// Returns the exceeded authored or expanded budget.
+    /// Returns the exceeded weighted lane budget.
     pub fn check_addition(&self, form: ComponentForm) -> Result<(), StructureError> {
         Self::check_capacity(
-            self.components.len() + 1,
             self.components
                 .iter()
                 .map(|c| c.form.voices())

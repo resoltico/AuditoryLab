@@ -250,13 +250,8 @@ pub(crate) fn pulse_spec(spec: crate::PulseSpec, fs: u32) -> Result<Pulse, crate
         } => {
             let rise = libm::round(rise_seconds.get() * f64::from(fs));
             let fall = libm::round(fall_seconds.get() * f64::from(fs));
-            if !(rise_seconds.get() > 0.0
-                && fall_seconds.get() > 0.0
-                && rise >= 1.0
-                && fall >= 1.0
-                && rise <= limit
-                && fall <= limit)
-            {
+            // A rounded edge of at least one frame implies a positive request.
+            if !(rise >= 1.0 && fall >= 1.0 && rise <= limit && fall <= limit) {
                 return Err(PulseError::Edges);
             }
             let (rise, fall) = (rise as u64, fall as u64);
