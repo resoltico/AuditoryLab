@@ -73,6 +73,11 @@ pub(crate) fn layout(rate: SampleRate, frames: u64) -> Layout {
     }
 }
 
+/// Exact byte length of the file `layout` and the samples produce.
+pub(crate) fn encoded_len(rate: SampleRate, frames: u64) -> u64 {
+    layout(rate, frames).header.len() as u64 + frames * MAX_BLOCK_ALIGN
+}
+
 /// Stereo IEEE float WAVEFORMATEX.
 fn fmt_body(rate: SampleRate) -> Vec<u8> {
     let mut body = Vec::with_capacity(18);

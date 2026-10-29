@@ -29,6 +29,15 @@ use {
     crate::storage::error::IoOperation, crate::storage::error::MutationPhase,
 };
 
+/// Who may read a published file. Library records stay private to their owner;
+/// exports and files the person saved elsewhere get ordinary file permissions.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Access {
+    /// Owner-only, inside the private library tree.
+    Private,
+    /// New files follow the process umask; a replaced file keeps its permissions.
+    Shared,
+}
 #[derive(Clone, Copy)]
 pub(crate) enum Policy<'a> {
     CreateNew,
@@ -195,12 +204,31 @@ pub(crate) fn sync_directory(dir: &Dir) -> std::io::Result<()> {
         Ok(())
     }
 }
+/// A shared replacement keeps the replaced file's permissions; a new file keeps
+/// the umask-derived mode it was created with.
+fn keep_replaced_permissions(
+    dir: &Dir,
+    name: &Path,
+    file: &File,
+    policy: Policy<'_>,
+    access: Access,
+) -> std::io::Result<()> {
+    if access == Access::Private || matches!(policy, Policy::CreateNew) {
+        return Ok(());
+    }
+    match dir.metadata(name) {
+        Ok(existing) => file.set_permissions(existing.permissions().into_std(file)?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
 /// Publish within an already-open parent, retaining its capability across pathname changes.
 pub(crate) fn publish_in<T>(
     dir: &Dir,
     name: &Path,
     path: &Path,
     policy: Policy<'_>,
+    access: Access,
     cancel: &Cancel,
     write: impl FnOnce(&mut File) -> Result<T, Error>,
 ) -> Result<Published<T>, Error> {
@@ -231,7 +259,11 @@ pub(crate) fn publish_in<T>(
     #[cfg(unix)]
     {
         use cap_std::fs::OpenOptionsExt;
-        options.mode(0o600);
+        // A partial file is owner-only either way; Shared lets the umask decide.
+        options.mode(match access {
+            Access::Private => 0o600,
+            Access::Shared => 0o666,
+        });
     }
     inject_fault!(FaultPoint::StageCreate).map_err(|e| io(path, IoOperation::CreateStage, e))?;
     let mut file = dir
@@ -243,6 +275,14 @@ pub(crate) fn publish_in<T>(
         Ok(v) => v,
         Err(e) => return Err(cleanup(dir, &stage, path, e)),
     };
+    if let Err(e) = keep_replaced_permissions(dir, name, &file, policy, access) {
+        return Err(cleanup(
+            dir,
+            &stage,
+            path,
+            io(path, IoOperation::SetPermissions, e),
+        ));
+    }
     pause(FaultPoint::BeforePublish);
     let publication = inject_fault!(FaultPoint::BeforePublish)
         .and_then(|()| match policy {
@@ -297,6 +337,7 @@ pub(crate) fn publish<T>(
             Replace::Never => Policy::CreateNew,
             Replace::Allowed => Policy::Replace,
         },
+        Access::Shared,
         cancel,
         write,
     )?;

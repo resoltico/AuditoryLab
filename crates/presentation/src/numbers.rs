@@ -77,6 +77,32 @@ pub(crate) fn axis_limit(limit: f64) -> String {
 
 /// One-decimal digital level; silence uses the minus-infinity symbol.
 #[must_use]
+/// A file size in decimal units, as file managers show it.
+pub(crate) fn file_size(bytes: u64) -> String {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "Sizes are shown to three significant digits"
+    )]
+    let value = bytes as f64;
+    match bytes {
+        0..1_000 => format!("{bytes} bytes"),
+        1_000..1_000_000 => format!("{:.1} kB", value / 1e3),
+        1_000_000..1_000_000_000 => format!("{:.1} MB", value / 1e6),
+        _ => format!("{:.2} GB", value / 1e9),
+    }
+}
+/// Per-ear peak level, or "silent" when neither ear has any signal.
+pub(crate) fn peak_level(peaks: [f64; 2]) -> String {
+    if peaks.iter().all(|peak| *peak == f64::NEG_INFINITY) {
+        "Peak level: silent".into()
+    } else {
+        format!(
+            "Peak level: left {} dBFS · right {} dBFS",
+            format_dbfs(peaks[0]),
+            format_dbfs(peaks[1])
+        )
+    }
+}
 pub(crate) fn format_dbfs(value: f64) -> String {
     if value == f64::NEG_INFINITY {
         "−∞".into()

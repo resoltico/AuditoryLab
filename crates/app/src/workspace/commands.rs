@@ -1092,7 +1092,6 @@ impl Workspace {
             export_rate: self.editor.export_rate(),
             task_title: self.audio.task().map(|task| task.title.clone()),
             failed_title: state.failed_title().map(str::to_owned),
-            view: self.view,
             motion: state.motion(),
             hold_override: state.hold_overridden(),
             model: state.model().cloned(),
@@ -1676,6 +1675,10 @@ impl Workspace {
     ) -> (FileStatus, Option<bool>) {
         let mut feedback = Vec::new();
         let key = outcome.key.clone();
+        let title = outcome
+            .record
+            .as_ref()
+            .map(|record| record.snapshot.title());
 
         if let Some(record) = outcome.record {
             if !self
@@ -1695,6 +1698,7 @@ impl Workspace {
         (
             FileStatus::Library(LibraryStatus::Written {
                 key,
+                title,
                 status: outcome.status,
                 document: document.is_some(),
                 diagnostics: outcome.diagnostics,

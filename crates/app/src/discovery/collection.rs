@@ -37,6 +37,10 @@ pub struct EvidenceFacet {
     pub role: ConditionRole,
     /// Measures of this condition, empty when not assessed.
     pub measures: Vec<Measure>,
+    /// Declared plain-language population and purpose of this same record. List
+    /// text only: the machine report (JSON schema 2) does not carry it.
+    #[serde(skip_serializing)]
+    pub population_detail: Option<String>,
 }
 /// Disposable index row; the managed envelope remains authoritative.
 #[derive(Debug, Clone)]
@@ -96,6 +100,7 @@ impl EntrySummary {
                 population: e.population,
                 role: e.condition_role,
                 measures: e.measures.clone(),
+                population_detail: e.population_detail.clone(),
             })
             .collect();
         Self {

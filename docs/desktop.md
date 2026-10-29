@@ -4,11 +4,11 @@ Open **Auditory Lab.app**, `auditorylab-gui.exe`, or `auditorylab-gui`. Start wi
 
 ## Browse the Library
 
-Selecting a row shows its sound description, study context, dates and preview. **Play selected sound** starts the selected captured recipe. The persistent transport keeps naming the actual playing session while you browse. **Stop current & play recipe** deliberately replaces it.
+Each row shows what its study was about. Selecting a row shows its sound description, study context, dates and preview. **Play selected sound** starts the selected captured recipe. The persistent transport keeps naming the actual playing session while you browse. **Stop current & play recipe** deliberately replaces it.
 
 Collections separate active **All**, read-only **Built-in**, managed **User**, temporary **Open files** and recoverable **Trash**. Wide windows show navigation, results and details together. Compact windows use list/detail navigation and retain scroll and selection when you return.
 
-Search, Method and Sort apply immediately. Filters also offer study, population, condition role, analysis coverage, grouping and date ranges. Press Apply to commit advanced criteria; invalid ranges retain the previous query. Close, Escape and clicking outside dismiss the popup. Band counts refer to unique sounds, including sounds with several rhythms. [Query rules](formats.md#queries-and-classification) define correlation and ordering.
+Search, Method and Sort apply immediately. Filters also offer study, population, study role, rhythm analysis, grouping and date ranges. Search also matches what a sound was studied for, such as memory or relaxation. Press Apply to commit advanced criteria; invalid ranges retain the previous query. Close, Escape and clicking outside dismiss the popup. Band counts refer to unique sounds, including sounds with several rhythms. [Query rules](formats.md#queries-and-classification) define correlation and ordering.
 
 Desktop date bounds are inclusive local days. The timezone is shown; **Exact UTC dates** provides canonical values. Created/Modified describe the recipe, while Added here/Trashed here describe this library. Unknown dates stay visible as Unknown and sort last.
 
@@ -28,7 +28,7 @@ The native per-user library can be overridden with an absolute `AUDITORYLAB_LIBR
 
 ## Open, copy and manage sounds
 
-**Open Recipe…** admits a regular portable file into Open files. **Close open file** removes its temporary entry. **Add to User Library** imports its content while keeping the original file unchanged.
+**Open recipe…** admits a regular portable file into Open files. **Close open file** removes its temporary entry. **Add to User Library** imports its content while keeping the original file unchanged.
 
 **Edit a copy** creates a new UUID and retains the source’s notes, bibliography and bounded ancestry. Its first User Library save sets Created and Modified. Source evidence becomes ancestor evidence. The copied-from snapshot remains inspectable during the session; saved lineage retains attribution after reopening.
 
@@ -38,7 +38,7 @@ Library actions retain an app-issued handle for the rendered listing and capture
 
 ## Build and edit a sound
 
-**New Sound** opens an empty, silent Workbench. **Add component…** offers tones, clicks and explicit pairs. Each raw component uses one voice; a pair uses two. [Fields and limits](formats.md#recipe-schema) define the budgets.
+**New sound** opens an empty, silent Workbench. **Add component…** offers tones, clicks and explicit pairs. Each raw component uses one voice; a pair uses two. [Fields and limits](formats.md#recipe-schema) define the budgets.
 
 Component names use their authored IDs; removing/restoring rows keeps those references stable. A pair's secondary lane is labeled as its second tone.
 
@@ -48,7 +48,7 @@ Typing stages text. Enter, leaving a field or a commit action applies the comple
 
 Set device volume low before Play. Workbench playback follows committed settings valid at the actual device rate. Invalid edits retain the last valid playing settings. Pending text is labeled; metadata-only edits leave audio transitions unchanged. Library and Workbench playback remain distinct captured sources.
 
-Saved duration and endpoint fades govern finite playback and WAV export. Live Workbench playback continues until Stop or its frame limit. **Draft classification** follows committed settings, and **Saved version** follows the exact confirmed save candidate.
+Saved duration and endpoint fades govern finite playback and WAV export. Live Workbench playback continues until Stop or its frame limit. **Rhythm** follows committed settings, and **Saved version** follows the exact confirmed save candidate.
 
 ## Save or export
 
@@ -64,7 +64,7 @@ New/copy/close/Quit protect unsaved content through Save/Discard/Cancel. Repeate
 
 ## View timing and output
 
-**Pattern explained** shows a static timing model for the selected recipe, committed draft or accepted live target. It names its source, rate and revision. **Show monitor** opens the Output monitor; **Preview waveform** shows a labeled seekable preview while idle.
+**Waveform pattern** shows the pattern calculated for the selected recipe, committed draft or playing revision; it is not recorded output. It names its source, rate and revision. **Show monitor** opens the Output monitor; **Preview waveform** shows a labeled seekable preview while idle.
 
 The monitor displays generated stereo samples before device conversion, with peak/RMS values and coverage status. Choose a 2/10/40/100 ms window. **Fit signal** changes the common stereo axis, while **Fixed ±1** uses digital full scale. Neither changes samples or levels.
 
@@ -82,4 +82,4 @@ Linux downloads require glibc 2.35 or later, ALSA, X11 or Wayland, fonts, fontco
 
 Windows requires Windows 10 on x86_64 or Windows 11 on ARM64 and an OpenGL 2.0 or newer driver. x86_64 requires SSE3, CMPXCHG16B and LAHF/SAHF. Fatal graphics/application failures use a native dialog.
 
-About is in the macOS application menu or the Windows/Linux Help menu. It shows product identity and links to source and licenses. Packaged dependency notices stay with the download and inside the macOS app. [Packaging](releasing.md) defines the complete delivered contents.
+The Edit menu applies Undo, Cut, Copy, Paste and Select All to the focused text field; keyboard shortcuts work in fields directly. **Help › Auditory Lab desktop guide** opens this guide as it was for the running build. About is in the macOS application menu or the Windows/Linux Help menu. It shows product identity and links to source and licenses. Packaged dependency notices stay with the download and inside the macOS app. [Packaging](releasing.md) defines the complete delivered contents.

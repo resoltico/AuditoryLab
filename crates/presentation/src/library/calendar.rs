@@ -4,10 +4,23 @@ use auditorylab_core::Timestamp;
 /// Current native timezone beside inclusive calendar fields.
 #[must_use]
 pub fn local_context() -> String {
+    let now = calendar::local_now();
     format!(
-        "Inclusive local calendar dates · {} · YYYY-MM-DD",
-        calendar::local_now().format("%Z (%:z)")
+        "Dates (your recipes and open files) · inclusive local days · {} · YYYY-MM-DD",
+        zone_label(
+            &now.format("%Z").to_string(),
+            &now.format("%:z").to_string()
+        )
     )
+}
+/// A zone name with its offset, or the offset alone when the zone has no name.
+#[must_use]
+pub fn zone_label(name: &str, offset: &str) -> String {
+    if name == offset {
+        offset.to_owned()
+    } else {
+        format!("{name} ({offset})")
+    }
 }
 /// A stored instant with local offset; canonical UTC remains available separately.
 #[must_use]

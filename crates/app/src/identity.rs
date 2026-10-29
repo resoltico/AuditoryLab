@@ -74,6 +74,17 @@ pub struct BuildIdentity {
     /// Validated full ASCII hexadecimal source revision, when supplied at build time.
     pub revision: Option<&'static str>,
 }
+impl BuildIdentity {
+    /// Link to a repository document as it was at this build: the exact source
+    /// revision when embedded, otherwise the release tag of this version.
+    #[must_use]
+    pub fn document_url(self, path: &str) -> String {
+        let reference = self
+            .revision
+            .map_or_else(|| format!("v{}", self.version), str::to_owned);
+        format!("{SOURCE_URL}/blob/{reference}/{path}")
+    }
+}
 mod generated {
     use super::BuildIdentity;
     include!(concat!(env!("OUT_DIR"), "/identity.rs"));

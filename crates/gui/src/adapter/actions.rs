@@ -281,6 +281,14 @@ fn install_workbench_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
     on!(adapter, ui, on_quit, |a| a
         .command(|w| w.apply(Command::Close)));
     on!(adapter, ui, on_about, |a| a.show_about());
+    on!(adapter, ui, on_open_guide, |_a| super::open_web(
+        &auditorylab_app::identity::BUILD_IDENTITY.document_url("docs/desktop.md")
+    ));
+    on!(adapter, ui, on_edit_shortcut, |a, key| {
+        if let Some(ui) = a.main.upgrade() {
+            forward_shortcut(ui.window(), &key);
+        }
+    });
 }
 
 fn install_detail_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
@@ -317,4 +325,23 @@ fn install_detail_actions(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
             present_details(&window, &ui);
         }
     });
+}
+
+/// Deliver a standard editing shortcut to the focused field exactly as the
+/// keyboard would, so every text field keeps its own editing behavior. Slint's
+/// Control is the Command key on macOS.
+fn forward_shortcut(window: &slint::Window, key: &str) {
+    use slint::platform::{Key, WindowEvent};
+    let control: slint::SharedString = Key::Control.into();
+    let key: slint::SharedString = key.into();
+    for event in [
+        WindowEvent::KeyPressed {
+            text: control.clone(),
+        },
+        WindowEvent::KeyPressed { text: key.clone() },
+        WindowEvent::KeyReleased { text: key },
+        WindowEvent::KeyReleased { text: control },
+    ] {
+        window.dispatch_event(event);
+    }
 }

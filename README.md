@@ -38,9 +38,9 @@ Edit the TOML to change the sound, then inspect it again. CLI exports keep exist
 
 ## Create a sound in the desktop
 
-Open **Auditory Lab.app**, `auditorylab-gui.exe`, or `auditorylab-gui`. Choose **New Sound** for an empty, silent Workbench. Add a component, enter its rate and level, and use the persistent Play/Stop control to audition it after setting device volume low. **Save sound** stores the draft in User Library. Stop audio before **Export WAV…**.
+Open **Auditory Lab.app**, `auditorylab-gui.exe`, or `auditorylab-gui`. Choose **New sound** for an empty, silent Workbench. Add a component, enter its rate and level, and use the persistent Play/Stop control to audition it after setting device volume low. **Save sound** stores the draft in User Library. Stop audio before **Export WAV…**.
 
-Selecting a Library row shows its description and preview. **Play selected sound** starts that captured recipe; browsing keeps the playing session unchanged. **Open Recipe…** adds temporary input. Use **Add to User Library**, **Edit a copy**, or **Save independent copy** when you want persistent content. See the [desktop guide](docs/desktop.md).
+Selecting a Library row shows its description and preview. **Play selected sound** starts that captured recipe; browsing keeps the playing session unchanged. **Open recipe…** adds temporary input. Use **Add to User Library**, **Edit a copy**, or **Save independent copy** when you want persistent content. See the [desktop guide](docs/desktop.md).
 
 ## Build from source
 

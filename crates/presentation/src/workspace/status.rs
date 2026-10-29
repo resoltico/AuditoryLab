@@ -157,6 +157,31 @@ pub fn file_status_description(value: &FileStatus) -> String {
     }
 }
 
+/// A confirmed library write, named by the sound's title when it has one.
+fn written_headline(
+    key: &auditorylab_app::document::origin::LibraryKey,
+    title: Option<&str>,
+    status: auditorylab_app::services::library::MutationStatus,
+    document: bool,
+) -> String {
+    use auditorylab_app::services::library::MutationStatus;
+    let name = || title.map_or_else(|| key.to_string(), crate::display_scalar);
+    match (document, title) {
+        (true, Some(title)) if status == MutationStatus::Published => format!(
+            "Saved “{}” to the User Library. Later edits stay separate until you save \
+                again; use Show saved if filters hide it.",
+            crate::display_scalar(title)
+        ),
+        (true, _) => format!(
+            "{} · {}. Later edits stay separate until you save again; use Show saved if \
+                filters hide it.",
+            status.label(),
+            name()
+        ),
+        (false, _) => format!("{} · {}", status.label(), name()),
+    }
+}
+
 pub fn library_status_description(value: &LibraryStatus) -> String {
     match value {
         LibraryStatus::Inventory(status) => {
@@ -167,19 +192,14 @@ pub fn library_status_description(value: &LibraryStatus) -> String {
         }
         LibraryStatus::Written {
             key,
+            title,
             status,
             document,
             diagnostics,
             feedback,
         } => format!(
-            "{} · {key}\n{}{}",
-            status.label(),
-            if *document {
-                "Saved captured version; later edits remain independent. Use Show \
-                    saved if filters hide it."
-            } else {
-                "Library operation confirmed."
-            },
+            "{}{}",
+            written_headline(key, title.as_deref(), *status, *document),
             diagnostics
                 .iter()
                 .map(crate::errors::publication::warning)

@@ -28,7 +28,7 @@ auditorylab list --study ioannou-2015 --population human --role test
 auditorylab list --file custom.toml --group-by method --format json
 ```
 
-`list` defaults to active Built-in and User entries. `--collection builtin` skips User discovery; `--collection user` selects active managed entries. Temporary `--file` inputs require All. Query Trash with `library list-trash`.
+`list` shows each entry's title, selector, rhythm, duration and what its study was about (**Custom recipe** when it has none). Built-in rows show dates only while sorting by a date. `list` defaults to active Built-in and User entries. `--collection builtin` skips User discovery; `--collection user` selects active managed entries. Temporary `--file` inputs require All. Query Trash with `library list-trash`.
 
 Search requires every Unicode-normalized term. A bare number matches a whole numeric value. Repeated facet options are alternatives. Band and method must match one rhythmic process; study, population and role must match one current evidence record. Vocabulary values use snake_case, including `steady_tone`, `outside_bands` and `needs_review`; CLI flag names retain kebab-case. See [query values and classification](formats.md#queries-and-classification).
 
@@ -44,9 +44,9 @@ auditorylab inspect --file pair.toml --sample-rate 48000
 auditorylab export --file pair.toml --output pair.wav --sample-rate 48000
 ```
 
-`inspect` opens no device. It reports the chosen rate, resolved frame count, per-ear peak bounds and generator-voice facts. Components are named by their authored ID; a pair's secondary lane is its second tone. WAV export writes the exact rendition inspected at its chosen rate as stereo 32-bit float RIFF/RF64. The [recipe guide](recipes.md) explains rate-dependent validity and waveforms.
+`describe` shows what a sound was studied for, its summary with limitations, what was measured, the study method, the adaptation, the citation and a link; records the sound inherits from an earlier recipe appear once under **Further evidence**. `inspect` opens no device. It reports the chosen rate, resolved frame count, per-ear peak levels and generator-voice facts. Components are named by their authored ID; a pair's secondary lane is its second tone. WAV export writes the exact rendition inspected at its chosen rate as stereo 32-bit float RIFF/RF64. The [recipe guide](recipes.md) explains rate-dependent validity and waveforms.
 
-`recipe SELECTOR` prints saved portable TOML; `--output PATH` writes it. Built-in output is standalone TOML assembled from embedded catalog conditions and study records; User output retains exact saved file bytes. Both preserve document identity and declared timestamps. CLI recipe and WAV exports never overwrite an existing destination.
+`recipe SELECTOR` prints saved portable TOML; `--output PATH` writes it. Built-in output is standalone TOML assembled from embedded catalog conditions and study records; User output retains exact saved file bytes. Both preserve document identity and declared timestamps. CLI recipe and WAV exports never overwrite an existing destination; export checks the destination before announcing the file and its size. Exported files get the same permissions as other new files you create; library records stay readable only by you.
 
 ## Root and lifecycle
 

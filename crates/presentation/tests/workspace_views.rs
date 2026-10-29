@@ -266,7 +266,8 @@ fn compact_rounding_never_becomes_exact_entry_and_model_width_remains_quantized(
     .unwrap();
     let m = ModelView::new(&(t), "draft".into(), ModelSource::Draft);
     assert!(
-        auditorylab_presentation::workspace::monitor::model_view_caption(&(m)).contains("origin 0")
+        auditorylab_presentation::workspace::monitor::model_view_caption(&(m))
+            .contains("calculated from the draft")
             && auditorylab_presentation::workspace::monitor::model_view_caption(&(m))
                 .contains("44100 Hz")
     );

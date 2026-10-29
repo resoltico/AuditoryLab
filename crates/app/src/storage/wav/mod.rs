@@ -11,6 +11,7 @@ pub(crate) use self::error::ExportError;
 pub use export::Exported;
 pub(crate) use export::encode;
 pub use header::Container;
+pub(crate) use header::encoded_len;
 
 #[cfg(test)]
 mod tests;

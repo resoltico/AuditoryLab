@@ -53,9 +53,16 @@ pub fn export(
         rate,
         error,
     })?;
-    export_rendition(&sound, path, replace, cancel, progress)
+    export_rendition(&sound, path, replace, cancel, progress, || {})
+}
+/// Exact size of the WAV file an export of this rendition writes.
+#[must_use]
+pub fn wav_size(sound: &Rendition) -> u64 {
+    let signal = sound.signal();
+    crate::storage::wav::encoded_len(signal.sample_rate(), signal.frames())
 }
 /// Export this already inspected rendition without realizing its snapshot again.
+/// `started` runs once writing begins, after the destination has been accepted.
 ///
 /// # Errors
 /// Preserves staged publication, cancellation and encoding failures.
@@ -65,8 +72,10 @@ pub fn export_rendition(
     replace: Replace,
     cancel: &Cancel,
     progress: &Progress,
+    started: impl FnOnce(),
 ) -> Result<Exported, ExportError> {
     publish::publish(path, replace, cancel, |file| {
+        started();
         wav::encode(sound.signal(), file, cancel.flag(), progress).map_err(|error| match error {
             wav::ExportError::Cancelled => FileError::Cancelled {
                 path: Some(path.to_owned()),

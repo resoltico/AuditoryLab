@@ -248,7 +248,7 @@ fn authored_description_cases() -> [(ComponentForm, &'static str); 7] {
                     right_peak_dbfs: pair.second_peak_dbfs,
                 }
             },
-            "binaural pair, first 200 Hz, signed offset -6 Hz, second 194 Hz, peaks -20 / -30 dBFS",
+            "binaural pair, first 200 Hz, beat offset -6 Hz, second 194 Hz, peaks -20 / -30 dBFS",
         ),
         (
             {
@@ -264,7 +264,7 @@ fn authored_description_cases() -> [(ComponentForm, &'static str); 7] {
                     second_peak_dbfs: pair.second_peak_dbfs,
                 }
             },
-            "monaural pair, first 200 Hz, signed offset 6 Hz, second 206 Hz, peaks -20 / -30 dBFS",
+            "monaural pair, first 200 Hz, beat offset 6 Hz, second 206 Hz, peaks -20 / -30 dBFS",
         ),
         (
             {

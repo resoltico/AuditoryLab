@@ -131,7 +131,7 @@ export component LibraryPane inherits Rectangle {
             spacing: 10px;
             LineEdit {
                 text <=> root.query;
-                placeholder-text: Terms.caption-title-id-sound-or-study-topic;
+                placeholder-text: Terms.caption-search-recipes;
                 accessible-label: Terms.caption-find-arecipe;
                 horizontal-stretch: 1;
                 edited(value) => { root.search(value); }
@@ -260,7 +260,7 @@ export component LibraryPane inherits Rectangle {
                         vertical-stretch: 0;
                         LineEdit {
                             text <=> root.query;
-                            placeholder-text: Terms.caption-title-id-sound-or-study-topic;
+                            placeholder-text: Terms.caption-search-recipes;
                             accessible-label: Terms.caption-find-arecipe;
                             edited(value) => {
                                 root.search(value);
@@ -336,7 +336,7 @@ export component LibraryPane inherits Rectangle {
                     }
 
                     Button {
-                        text: Terms.action-query-details;
+                        text: Terms.action-active-filters;
                         accessible-label: ViewCaptions.applied-library-filters;
                         accessible-expanded: root.library-query-open;
                         triggered => { root.open-query-details(); }
@@ -475,6 +475,12 @@ export component LibraryPane inherits Rectangle {
 
                                 if item.summary != "": Text {
                                     text: item.summary;
+                                    min-width: 0px;
+                                    wrap: word-wrap;
+                                    color: Palette.control-foreground;
+                                }
+                                if item.studied-for != "": Text {
+                                    text: item.studied-for;
                                     min-width: 0px;
                                     wrap: word-wrap;
                                     color: Palette.control-foreground;
@@ -845,7 +851,7 @@ export component LibraryPane inherits Rectangle {
                             triggered => { root.show-research(); }
                         }
                         library-pattern := Disclosure {
-                            label: Terms.caption-pattern-explained-static-core-model;
+                            label: Terms.caption-waveform-pattern;
                         }
 
                         if library-pattern.expanded: VerticalBox {
@@ -870,7 +876,7 @@ export component LibraryPane inherits Rectangle {
                                     height: 30px;
                                     background: Palette.control-background;
                                     accessible-role: image;
-                                    accessible-label: lane.label + Terms.caption-static-model;
+                                    accessible-label: lane.label + Terms.caption-calculated-pattern;
                                     Path {
                                         width: parent.width;
                                         height: parent.height;

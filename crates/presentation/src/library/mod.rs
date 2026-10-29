@@ -11,6 +11,19 @@ use auditorylab_app::document::origin::LibraryKey;
 use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::services::library::LibraryDiagnostic;
 use auditorylab_app::vocabulary::Status;
+/// What an entry's current reference condition was studied for, or that it is a
+/// custom recipe without one; the same rule as its research details.
+#[must_use]
+pub fn entry_studied_for(entry: &EntrySummary) -> String {
+    entry
+        .evidence
+        .iter()
+        .find(|e| e.scope == auditorylab_core::provenance::EvidenceScope::ReferenceCondition)
+        .map_or_else(
+            || "Custom recipe".into(),
+            |e| crate::recipe::studied_for(e.population_detail.as_deref(), e.population, e.role),
+        )
+}
 /// Render a semantic row, without executing queries or selecting recipe ownership.
 pub fn row(
     row: &auditorylab_app::workspace::LibraryRowView,
@@ -112,13 +125,17 @@ fn entry_row(
         memberships.push(RhythmState::NeedsReview.label().into());
     }
     let bands = memberships.join(" · ");
+    let studied_for = crate::display_scalar(&entry_studied_for(e));
     LibraryRowText {
         key: e.key.to_string(),
-        text: format!("{title} · {collection}\n{summary}\n{bands}\n{duration}\n{dates}"),
+        text: format!(
+            "{title} · {collection}\n{summary}\n{studied_for}\n{bands}\n{duration}\n{dates}"
+        ),
         title,
         collection,
         summary,
         bands,
+        studied_for,
         duration,
         dates,
     }
@@ -131,6 +148,7 @@ fn heading_row(text: String) -> LibraryRowText {
         collection: String::new(),
         summary: String::new(),
         bands: String::new(),
+        studied_for: String::new(),
         duration: String::new(),
         dates: String::new(),
     }

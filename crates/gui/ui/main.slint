@@ -339,6 +339,8 @@ export component MainWindow inherits Window {
     callback export-wav();
     callback export-recipe();
     callback close-open-file(EntryAddress);
+    callback edit-shortcut(string);
+    callback open-guide();
     callback about();
     callback based-on-source();
     callback quit();
@@ -466,7 +468,8 @@ export component MainWindow inherits Window {
                 activated => { root.stop-audio(); }
             }
 
-            MenuItem {
+            // macOS puts Quit in the application menu.
+            if !root.native-mac: MenuItem {
                 title: Terms.action-quit;
                 activated => {
                     root.quit();
@@ -474,11 +477,46 @@ export component MainWindow inherits Window {
             }
         }
 
-        if !root.native-mac: Menu {
+        // Edit items forward the standard keystroke to the focused field. They carry
+        // no shortcuts: menu shortcuts are matched before widgets, which would take
+        // the keystroke away from the field it is meant for.
+        Menu {
+            title: Terms.action-edit;
+            MenuItem {
+                title: Terms.action-undo;
+                activated => { root.edit-shortcut("z"); }
+            }
+
+            MenuItem {
+                title: Terms.action-cut;
+                activated => { root.edit-shortcut("x"); }
+            }
+
+            MenuItem {
+                title: Terms.action-copy;
+                activated => { root.edit-shortcut("c"); }
+            }
+
+            MenuItem {
+                title: Terms.action-paste;
+                activated => { root.edit-shortcut("v"); }
+            }
+
+            MenuItem {
+                title: Terms.action-select-all;
+                activated => { root.edit-shortcut("a"); }
+            }
+        }
+
+        Menu {
             title: Terms.caption-help;
             MenuItem {
-                title: Terms.caption-about-product;
+                title: Terms.action-desktop-guide;
+                activated => { root.open-guide(); }
+            }
 
+            if !root.native-mac: MenuItem {
+                title: Terms.caption-about-product;
                 activated => {
                     root.about();
                 }

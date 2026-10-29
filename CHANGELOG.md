@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+- `describe` states each research fact once (studied for, summary, measured, study, adaptation, citation, link); `inspect` text shows technical facts only.
+- `list` rows and desktop Library rows show what each sound's study was about; built-in CLI rows show dates only while sorting by a date.
+- CLI help describes every command and option in plain language; `export --output` and other options gained help.
+- `export` checks the destination before announcing the file and now states its size, such as 15.4 MB.
+- Exported WAV and recipe files get ordinary permissions instead of owner-only; a replaced external recipe keeps its permissions.
+- Desktop wording is plainer: **Waveform pattern**, **Active filters…**, **Not playing**, **Rhythm**, **Peak level**, named band definitions and silent-draft hints.
+- Desktop save confirmations name the saved sound; Filters label study role and rhythm analysis plainly and show the timezone once.
+- The desktop has an Edit menu for text fields and **Help › Auditory Lab desktop guide**; macOS no longer lists Quit twice.
+- Labels read **New sound**, **Open recipe…** and **Beat offset** (formerly signed offset); recipe keys are unchanged.
+
 - Sort the library by sound duration: `--sort duration` in the CLI and Duration in the desktop Sort menu; shortest first by default.
 
 ## [0.8.0] - 2026-10-29

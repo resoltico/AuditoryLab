@@ -289,14 +289,17 @@ fn export_rendition_uses_the_capture_even_after_its_cache_entry_is_evicted() {
     let compilations = snapshot.realization_count();
     assert_eq!(compilations, 3);
     let path = directory.path().join("captured.wav");
+    let mut started = 0;
     let exported = export_rendition(
         &captured,
         &path,
         Replace::Never,
         &Cancel::default(),
         &Progress::default(),
+        || started += 1,
     )
     .unwrap();
+    assert_eq!(started, 1);
     assert_eq!(exported.frames, 480);
     assert_eq!(exported.sample_rate, SampleRate::DEFAULT);
     assert_eq!(
@@ -305,4 +308,22 @@ fn export_rendition_uses_the_capture_even_after_its_cache_entry_is_evicted() {
         "export must not realize the snapshot again"
     );
     assert!(path.is_file());
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().len(),
+        super::wav_size(&captured),
+        "the announced size is the written size"
+    );
+    let mut started_again = false;
+    assert!(
+        export_rendition(
+            &captured,
+            &path,
+            Replace::Never,
+            &Cancel::default(),
+            &Progress::default(),
+            || started_again = true,
+        )
+        .is_err()
+    );
+    assert!(!started_again, "a refused destination never starts writing");
 }

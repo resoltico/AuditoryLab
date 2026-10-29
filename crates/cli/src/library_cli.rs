@@ -51,62 +51,62 @@ impl CollectionArg {
 }
 #[derive(Args)]
 pub(super) struct QueryArgs {
-    /// Token-AND Unicode-normalized text search; numeric terms match whole values.
+    /// Words to find in titles, IDs and what a sound was studied for; all words must match.
     #[arg(long, default_value = "")]
     search: String,
-    /// Nominal reference bands, OR within this facet.
+    /// Rhythm bands to include (any of them).
     #[arg(long,value_parser=parse_choice::<lab::core::rhythm::Band>)]
     band: Vec<lab::core::rhythm::Band>,
-    /// Structural methods; band/method must match one descriptor.
+    /// How the rhythm is made (any of them); with --band, both must describe the same rhythm.
     #[arg(long,value_parser=parse_choice::<lab::core::rhythm::Method>)]
     method: Vec<lab::core::rhythm::Method>,
-    /// Current-condition DOI or source key, never ancestor-only evidence.
+    /// Study DOI or source key of the sound's own study.
     #[arg(long)]
     study: Vec<String>,
-    /// Condition role correlated within the same evidence record.
+    /// The sound's role in its study.
     #[arg(long,value_parser=parse_role)]
     role: Vec<lab::core::provenance::ConditionRole>,
-    /// Population correlated within the same evidence record.
+    /// Who or what the study tested.
     #[arg(long,value_parser=parse_population)]
     population: Vec<lab::core::provenance::Population>,
-    /// Nominal analysis coverage: complete or invalid.
+    /// Whether the rhythm analysis is complete or invalid.
     #[arg(long,value_parser=parse_analysis)]
     analysis: Option<lab::core::rhythm::Completeness>,
     // A plain help string: rustdoc's Markdown lint would put backticks into rendered help.
     #[arg(
         long,
-        help = "Special state: none, multiple, outside_bands or needs_review",
+        help = "Rhythm state: none, multiple, outside_bands or needs_review",
         value_parser = parse_choice::<auditorylab_app::discovery::query::RhythmState>
     )]
     rhythms: Option<auditorylab_app::discovery::query::RhythmState>,
-    /// Inclusive explicit-offset creation instant.
+    /// Created at or after this time, such as 2026-10-24T00:00:00+03:00.
     #[arg(long)]
     created_from: Option<lab::core::Timestamp>,
-    /// Exclusive explicit-offset creation instant.
+    /// Created before this time.
     #[arg(long)]
     created_before: Option<lab::core::Timestamp>,
-    /// Inclusive explicit-offset edit instant.
+    /// Edited at or after this time.
     #[arg(long)]
     modified_from: Option<lab::core::Timestamp>,
-    /// Exclusive explicit-offset edit instant.
+    /// Edited before this time.
     #[arg(long)]
     modified_before: Option<lab::core::Timestamp>,
-    /// Inclusive explicit-offset Added here instant.
+    /// Added to your library at or after this time.
     #[arg(long)]
     added_from: Option<lab::core::Timestamp>,
-    /// Exclusive explicit-offset Added here instant.
+    /// Added to your library before this time.
     #[arg(long)]
     added_before: Option<lab::core::Timestamp>,
-    /// Explicit primary sort (default follows scope only while automatic).
+    /// Sort order; without it, user and Trash lists sort by last edit, others by rhythm rate.
     #[arg(long,value_parser=parse_sort)]
     sort: Option<SortBy>,
-    /// Primary direction; nulls always last, tie title/key always ascending.
+    /// Sort direction; unknown values always come last.
     #[arg(long,value_parser=parse_choice::<Direction>)]
     direction: Option<Direction>,
-    /// Virtual groups reference unique flat keys.
+    /// Show the results in groups.
     #[arg(long, default_value = "none",value_parser=parse_choice::<GroupBy>)]
     group_by: GroupBy,
-    /// Machine output has no headings/progress; IDs require complete discovery.
+    /// Output as readable text, JSON, or bare IDs (IDs need a complete listing).
     #[arg(long, value_enum, default_value = "text")]
     format: ListFormat,
 }
@@ -150,10 +150,10 @@ impl QueryArgs {
 }
 #[derive(Args)]
 pub(super) struct ListArgs {
-    /// Persistent collection; temporary --file inputs require all.
+    /// Which recipes to list; --file inputs need all.
     #[arg(long, value_enum, default_value = "all")]
     collection: CollectionArg,
-    /// Explicit temporary recipe inputs, not added to User Library.
+    /// Also list these recipe files for this run, without adding them to your library.
     #[arg(long = "file", value_name = "PATH")]
     files: Vec<PathBuf>,
     #[command(flatten)]
@@ -166,75 +166,99 @@ impl ListArgs {
 }
 #[derive(Subcommand)]
 pub(super) enum LibraryCommand {
-    /// Report configured root/format without creating anything.
+    /// Show where your User Library is and whether it is set up; changes nothing.
     Path {
+        /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
-    /// Initialize an empty/owned interrupted configured root; marker is published last.
+    /// Set up your User Library folder, or finish a setup that was interrupted.
     Init {
+        /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
-    /// Add one external recipe; preserve its original file and declared history.
+    /// Add a recipe file to your library; the original file stays untouched.
     Add {
+        /// Recipe file to add.
         #[arg(long, value_name = "PATH")]
         file: PathBuf,
+        /// Add it as a new copy with its own identity, noting the original.
         #[arg(long)]
         as_copy: bool,
+        /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
-    /// Update an existing User recipe, optionally checking its observed byte token.
+    /// Replace one of your recipes with the content of a recipe file.
     Update {
+        /// The User recipe, as user:<id> from list.
         selector: LibraryKey,
+        /// Recipe file with the new content.
         #[arg(long, value_name = "PATH")]
         file: PathBuf,
+        /// Refuse unless the recipe still has this version token (from an earlier report).
         #[arg(long)]
         expect: Option<VersionToken>,
+        /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
-    /// Rename a User title; identity, Added here and audio stay unchanged.
+    /// Change the title of one of your recipes; its sound and identity stay the same.
     Rename {
+        /// The User recipe, as user:<id> from list.
         selector: LibraryKey,
+        /// The new title.
         #[arg(long)]
         title: String,
+        /// Refuse unless the recipe still has this version token (from an earlier report).
         #[arg(long)]
         expect: Option<VersionToken>,
+        /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
-    /// Move a selected User record to recoverable Trash.
+    /// Move one of your recipes to Trash, where it can be restored.
     Trash {
+        /// The User recipe, as user:<id> from list.
         selector: LibraryKey,
+        /// Refuse unless the recipe still has this version token (from an earlier report).
         #[arg(long)]
         expect: Option<VersionToken>,
+        /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
-    /// Restore a selected trashed User record.
+    /// Bring a recipe back from Trash.
     Restore {
+        /// The User recipe, as user:<id> from list.
         selector: LibraryKey,
+        /// Refuse unless the recipe still has this version token (from an earlier report).
         #[arg(long)]
         expect: Option<VersionToken>,
+        /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
-    /// Permanently delete one trashed User record, never external originals/ancestors.
+    /// Permanently delete a recipe that is in Trash; files outside the library are never touched.
     Purge {
+        /// The User recipe, as user:<id> from list.
         selector: LibraryKey,
+        /// Refuse unless the recipe still has this version token (from an earlier report).
         #[arg(long)]
         expect: Option<VersionToken>,
+        /// Confirm the permanent deletion.
         #[arg(long)]
         yes: bool,
+        /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
-    /// Query only trashed managed records; no automatic purge.
+    /// List the recipes in Trash; nothing is deleted automatically.
     ListTrash(Box<QueryArgs>),
-    /// Diagnose records/stages without modifying or repairing them.
+    /// Check your library for problems without changing or repairing anything.
     Check {
+        /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: ReadFormat,
     },
@@ -376,8 +400,11 @@ fn print_list(
         ListFormat::Text => {
             for entry in listing.entries() {
                 output(
-                    auditorylab_presentation::library::entry_summary_list_description(entry)
-                        .as_bytes(),
+                    auditorylab_presentation::library::entry_summary_list_description(
+                        entry,
+                        listing.query().effective_sort().0,
+                    )
+                    .as_bytes(),
                 )?;
             }
             if !listing.complete() {

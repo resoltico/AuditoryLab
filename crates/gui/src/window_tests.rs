@@ -997,10 +997,10 @@ fn first_show_projects_nonempty_operation_labels_and_accessible_names() {
     );
     let ui = &harness.windows.main;
     let actions = ui.global::<crate::generated::Actions>();
-    assert_eq!(actions.get_open_recipe().label, "Open Recipe");
-    assert_eq!(actions.get_new_sound().label, "New Sound");
+    assert_eq!(actions.get_open_recipe().label, "Open recipe");
+    assert_eq!(actions.get_new_sound().label, "New sound");
     assert_eq!(actions.get_save().label, "Save sound");
-    assert!(exposed_bounds(ui.window(), "Open Recipe…").2 > 0.0);
+    assert!(exposed_bounds(ui.window(), "Open recipe…").2 > 0.0);
 }
 
 fn lane_check(window: &slint::Window, size: f32, context: &str, expected_controls: usize) {

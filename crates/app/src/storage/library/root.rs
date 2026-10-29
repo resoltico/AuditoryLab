@@ -158,6 +158,7 @@ impl LibraryRoot {
                 Path::new("membership.toml"),
                 &lease.canonical.join("membership.toml"),
                 Policy::CreateNew,
+                publish::Access::Private,
                 &Cancel::default(),
                 |file| {
                     use std::io::Write;
@@ -178,6 +179,7 @@ impl LibraryRoot {
             Path::new(MARKER),
             &lease.canonical.join(MARKER),
             Policy::CreateNew,
+            publish::Access::Private,
             &Cancel::default(),
             |file| {
                 use std::io::Write;
