@@ -48,7 +48,7 @@ pub struct PulseFacts {
     pub rate_hz: f64,
     /// Requested window in seconds; derived from fraction/rate in duty mode.
     pub requested_width_seconds: f64,
-    /// Generated pulse length: the requested length rounded to whole frames.
+    /// Generated window length, including shaped zero endpoints.
     pub width_frames: u64,
     /// The rate the width was resolved at.
     pub sample_rate: SampleRate,

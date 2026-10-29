@@ -359,7 +359,7 @@ pub fn parameter_help(value: ParameterId) -> &'static str {
             "How many pulses start each second; onsets follow the exact requested binary-rational \
                 rate."
         }
-        ParameterId::SourcePulseDuration => {
+        ParameterId::SourcePulseDuration | ParameterId::ModulationPulseDuration => {
             "Fixed pulse window duration, including zero-valued shaped endpoints; generation \
                 rounds it to whole frames."
         }
@@ -374,10 +374,6 @@ pub fn parameter_help(value: ParameterId) -> &'static str {
         }
         ParameterId::ModulationPulseRate => {
             "Repetitions per second of the one shared modulation pulse."
-        }
-        ParameterId::ModulationPulseDuration => {
-            "How long each gate stays open; generation rounds it to whole frames \
-                at the sample rate."
         }
         ParameterId::PairFirstFrequency => {
             "The first carrier; changing it also changes the second carrier \

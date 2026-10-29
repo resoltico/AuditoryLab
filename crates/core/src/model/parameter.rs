@@ -4,8 +4,8 @@
 //! The editable quantities of a recipe, their units and the component choices.
 //!
 //! Each [`ParameterId`] names one model quantity. Its [`ParameterDescriptor`]
-//! states the label, the unit people read and type it in, and a short help
-//! text. Model values keep the recipe's units (seconds, hertz, a 0..1 depth);
+//! states the label and the unit people read and type it in. Shared presentation
+//! supplies explanatory help. Model values keep the recipe's units (seconds, hertz, a 0..1 depth);
 //! [`Unit`] converts them to and from the displayed unit.
 #[cfg(test)]
 use crate::Carrier;

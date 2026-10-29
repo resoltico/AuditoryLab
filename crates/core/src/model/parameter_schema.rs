@@ -7,11 +7,11 @@ macro_rules! parameter_schema {
                     /// A tone carrier's frequency.
                     ToneFrequency => ("tone_frequency","Tone frequency","tone frequency",Hertz,
                         Some(crate::ValueRule::Positive));
-                    /// A click carrier's repetition rate.
+                    /// A pulse source's repetition rate.
                     SourcePulseRate => ("source_pulse_rate","Source pulse rate",
                         "source pulse rate",Hertz,
                         Some(crate::ValueRule::Positive));
-                    /// A click carrier's requested pulse length.
+                    /// A pulse source's requested window duration.
                     SourcePulseDuration => ("source_pulse_duration","Source pulse duration",
                         "source pulse duration",Milliseconds,
                         Some(crate::ValueRule::Positive));
@@ -25,11 +25,11 @@ macro_rules! parameter_schema {
                     ModulationDepth => ("modulation_depth","Modulation depth","modulation depth",
                         Percent,
                         Some(crate::ValueRule::Depth));
-                    /// Gating's repetition rate.
+                    /// Shared pulse modulation's repetition rate.
                     ModulationPulseRate => ("modulation_pulse_rate","Modulation pulse rate",
                         "modulation pulse rate",Hertz,
                         Some(crate::ValueRule::Positive));
-                    /// Gating's requested open length.
+                    /// Shared pulse modulation's requested window duration.
                     ModulationPulseDuration => ("modulation_pulse_duration",
                         "Modulation pulse duration","modulation pulse duration",Milliseconds,
                         Some(crate::ValueRule::Positive));
