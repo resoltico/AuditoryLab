@@ -84,7 +84,7 @@ impl TypographyService {
             let stop = stop.clone();
             Some(std::thread::spawn(move || {
                 #[cfg(target_os = "windows")]
-                windows_listener(sender, stop);
+                windows_listener(&sender, &stop);
             }))
         };
         #[cfg(not(target_os = "windows"))]
@@ -122,7 +122,7 @@ impl TypographyService {
             let stop = self.stop.clone();
             let base = base.clone();
             self.worker = Some(std::thread::spawn(move || {
-                linux::listen(sender, stop, base)
+                linux::listen(&sender, &stop, &base);
             }));
         }
     }
@@ -158,7 +158,7 @@ impl Drop for TypographyService {
     reason = "read-only Win32 metrics at 96 DPI use an initialized ABI structure \
         with a fixed-size u32 length and UTF16 font name"
 )]
-fn windows_listener(sender: TypographySink, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+fn windows_listener(sender: &TypographySink, stop: &std::sync::atomic::AtomicBool) {
     use windows_sys::Win32::UI::{
         HiDpi::SystemParametersInfoForDpi,
         WindowsAndMessaging::{NONCLIENTMETRICSW, SPI_GETNONCLIENTMETRICS},

@@ -44,6 +44,13 @@ fn entries(parent: &Path, at: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
     out.sort();
     Ok(())
 }
+#[cfg_attr(
+    not(unix),
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "Only Unix permission metadata can fail; other platforms derive the mode"
+    )
+)]
 fn mode(path: &Path) -> Result<u32> {
     #[cfg(unix)]
     {
