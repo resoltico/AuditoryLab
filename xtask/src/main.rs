@@ -118,53 +118,72 @@ fn rust_standard_library_copyright() -> Result<Vec<u8>> {
     Ok(bytes)
 }
 fn readme(version: &str, gui: bool, target: &str) -> String {
+    let os = if target.contains("apple") {
+        "macos"
+    } else if target.contains("windows") {
+        "windows"
+    } else {
+        "linux"
+    };
+    let start = match (gui, os) {
+        (false, _) => {
+            "Run auditorylab --help, then auditorylab list. Use auditorylab describe \
+            builtin:ID to read about a sound, and auditorylab recipe builtin:ID \
+            --output recipe.toml to edit one."
+        }
+        (true, "macos") => {
+            "Open Auditory Lab.app. Select a sound, read its summary, then use \
+            Play selected sound or Export WAV…."
+        }
+        (true, "windows") => {
+            "Open auditorylab-gui.exe. Select a sound, read its summary, then use \
+            Play selected sound or Export WAV…."
+        }
+        (true, _) => {
+            "Open auditorylab-gui. Select a sound, read its summary, then use \
+            Play selected sound or Export WAV…."
+        }
+    };
+    let needs = match (gui, os) {
+        (_, "macos") => {
+            "macOS 15 or later. If first launch is blocked, use System Settings > \
+            Privacy & Security > Open Anyway after trying to open the app. Apple \
+            instructions: https://support.apple.com/en-us/102445"
+        }
+        (true, "windows") => {
+            "Windows 10 or later on x86_64; Windows 11 on ARM64. Desktop drawing \
+            needs an OpenGL 2.0 or newer graphics driver."
+        }
+        (false, "windows") => "Windows 10 or later on x86_64; Windows 11 on ARM64.",
+        (true, _) => {
+            "Linux with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, \
+            xkbcommon (including its X11 library on X11), fonts, GLib gsettings for \
+            GNOME Wayland text scaling, OpenGL and an xdg-desktop-portal for file \
+            dialogs."
+        }
+        (false, _) => "Linux with glibc 2.35 or later and ALSA.",
+    };
+    let notes = match (gui, os) {
+        (false, _) => "",
+        (true, "macos") => {
+            "\nAll legal materials are also inside the app at Contents/Resources.\n\
+            The About window provides Licenses and component notices.\n"
+        }
+        (true, "windows") => "\nThe About window provides Licenses and component notices.\n",
+        (true, _) => {
+            "\nThe About window provides Licenses and component notices.\n\n\
+            For a desktop launcher, keep the extracted folder and its legal files\n\
+            together and add that folder to PATH. Install auditorylab-gui.desktop under\n\
+            ~/.local/share/applications/ and merge hicolor/ into \
+            ~/.local/share/icons/hicolor/.\nKeep icon names unchanged.\n"
+        }
+    };
     include_str!("../templates/archive-readme.txt")
         .replace("{version}", version)
         .replace("{product}", if gui { "Desktop" } else { "CLI" })
-        .replace(
-            "{start}",
-            if gui {
-                "Open \
-        Auditory Lab.app on macOS, auditorylab-gui.exe on Windows, or \
-        auditorylab-gui on Linux. Select a sound, read its summary, then use \
-        Play selected sound or Export WAV…."
-            } else {
-                "Run \
-        auditorylab --help, then auditorylab list. Use auditorylab describe \
-        builtin:ID to read about a sound, and auditorylab recipe builtin:ID \
-        --output recipe.toml to edit one."
-            },
-        )
-        .replace(
-            "{platform_\
-        needs}",
-            if target.contains("apple") {
-                "macOS 15 \
-        or later. If first launch is blocked, use System Settings > Privacy & \
-        Security > Open Anyway after trying to open the app. Apple \
-        instructions: https://support.apple.com/en-us/102445"
-            } else if target.contains("windows") {
-                if gui {
-                    "Windows \
-        10 or later on x86_64; Windows 11 on ARM64. Desktop drawing needs an \
-        OpenGL 2.0 or newer graphics driver."
-                } else {
-                    "Windows \
-        10 or later on x86_64; Windows 11 on ARM64."
-                }
-            } else {
-                if gui {
-                    "Linux \
-        with glibc 2.35 or later, ALSA, X11 or Wayland, fontconfig, xkbcommon \
-        (including its X11 library on X11), fonts, GLib gsettings for GNOME \
-        Wayland text scaling, OpenGL and an xdg-desktop-portal for file \
-        dialogs."
-                } else {
-                    "Linux \
-        with glibc 2.35 or later and ALSA."
-                }
-            },
-        )
+        .replace("{start}", start)
+        .replace("{platform_needs}", needs)
+        .replace("{platform_notes}\n", notes)
 }
 fn section<'a>(changelog: &'a str, version: &str) -> Result<(&'a str, &'a str)> {
     let marker = format!("## [{version}]");
@@ -698,7 +717,51 @@ mod tests {
         assert!(platform("unknown").is_err());
         let text = readme("0.4.0", true, "aarch64-unknown-linux-gnu");
         assert!(text.contains("Desktop") && text.contains("xdg-desktop-portal"));
+        assert!(text.contains("Install auditorylab-gui.desktop under"));
         assert!(!text.contains("{version}"));
+    }
+    #[test]
+    fn each_readme_names_only_its_own_platform() {
+        let cases = [
+            (
+                "aarch64-apple-darwin",
+                true,
+                "Open Auditory Lab.app. Select a sound",
+            ),
+            (
+                "x86_64-pc-windows-msvc",
+                true,
+                "Open auditorylab-gui.exe. Select a sound",
+            ),
+            (
+                "x86_64-unknown-linux-gnu",
+                true,
+                "Open auditorylab-gui. Select a sound",
+            ),
+            ("aarch64-pc-windows-msvc", false, "Run auditorylab --help"),
+        ];
+        for (target, gui, start) in cases {
+            let text = readme("0.4.0", gui, target);
+            assert!(text.contains(start), "{target}");
+            assert!(!text.contains('{'), "{target}: unreplaced placeholder");
+            assert!(text.ends_with(".\n") && !text.ends_with("\n\n"), "{target}");
+            let mentions = [
+                (
+                    "macos",
+                    ["macOS", "Auditory Lab.app", "Contents/Resources"].as_slice(),
+                ),
+                ("windows", ["Windows", ".exe"].as_slice()),
+                ("linux", ["Linux", ".desktop", "hicolor"].as_slice()),
+            ];
+            for (os, words) in mentions {
+                if !target.contains(if os == "macos" { "apple" } else { os }) {
+                    for word in words {
+                        assert!(!text.contains(word), "{target} mentions {word}");
+                    }
+                }
+            }
+            assert_eq!(text.contains("About window"), gui, "{target}");
+        }
     }
 
     #[test]

@@ -110,6 +110,13 @@ pub(crate) fn validate_icons(directory: &Path, source: &Source) -> Result<()> {
     Ok(())
 }
 
+/// Escape text placed in an XML element.
+fn xml_text(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 pub(crate) fn bundle(
     binary: &Path,
     root: &Path,
@@ -144,6 +151,8 @@ pub(crate) fn bundle(
     }
     let partial = resources.join("icon-partial.plist");
     let plist = contents.join("Info.plist");
+    let manifest: toml::Value = toml::from_str(&fs::read_to_string("Cargo.toml")?)?;
+    let product = crate::source::identity_input::product(&manifest)?;
     fs::write(
         &plist,
         format!(
@@ -157,8 +166,9 @@ pub(crate) fn bundle(
                 ng><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleSho\
                 rtVersionString</key><string>{version}</string><key>CFBundleVersion</k\
                 ey><string>{bundle_version}</string><key>LSMinimumSystemVersion</key><\
-                string>15.0</string><key>NSHighResolutionCapable</key><true/></dict></\
-                plist>"
+                string>15.0</string><key>NSHighResolutionCapable</key><true/><key>NSHuma\
+                nReadableCopyright</key><string>{copyright}</string></dict></plist>",
+            copyright = xml_text(product.copyright)
         ),
     )?;
     run(Command::new("/usr/libexec/PlistBuddy")
@@ -200,6 +210,13 @@ mod tests {
         .unwrap();
     }
 
+    #[test]
+    fn plist_text_escapes_markup_and_keeps_unicode() {
+        assert_eq!(
+            super::xml_text("Copyright © 2026 A & B <x>"),
+            "Copyright © 2026 A &amp; B &lt;x&gt;"
+        );
+    }
     #[test]
     fn icons_reject_missing_mismatched_and_incomplete_source_inputs() {
         let temp = tempfile::tempdir().unwrap();

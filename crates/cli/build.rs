@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let manifest: toml::Value = toml::from_str(&std::fs::read_to_string("../../Cargo.toml")?)?;
         let resource = identity_input::windows_resource(
             identity_input::product(&manifest)?,
+            identity_input::Executable::Cli,
             &std::env::var("CARGO_PKG_VERSION")?,
         )?;
         let path = std::path::Path::new(&std::env::var("OUT_DIR")?).join("version.rc");
