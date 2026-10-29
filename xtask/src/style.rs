@@ -68,7 +68,13 @@ fn check_formatter_version() -> Result<()> {
     let [version] = versions.as_slice() else {
         return Err("one resolved Slint version is required".into());
     };
-    let installed = String::from_utf8(capture(Command::new("slint-lsp").arg("--version"))?)?;
+    let installed = capture(Command::new("slint-lsp").arg("--version")).map_err(|error| {
+        format!(
+            "cannot run slint-lsp ({error}); install it with \
+             `cargo install slint-lsp --version ={version} --locked --no-default-features`"
+        )
+    })?;
+    let installed = String::from_utf8(installed)?;
     if installed.trim() != format!("slint-lsp {version}") {
         return Err(format!(
             "formatter version {} differs from resolved Slint {version}",
