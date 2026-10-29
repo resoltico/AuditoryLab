@@ -83,7 +83,7 @@ impl Display for SoundText<'_> {
                 error,
             } => write!(
                 f,
-                "{}: first carrier {first_hz} Hz and signed offset {offset_hz} Hz: {}",
+                "{}: first carrier {first_hz} Hz and beat offset {offset_hz} Hz: {}",
                 voice_reference(*id),
                 VoiceText(error)
             ),

@@ -119,7 +119,7 @@ pub fn pair_error(error: &PairError) -> String {
         }
     };
     format!(
-        "Component {}: first/left carrier {} Hz and signed offset {} Hz: {reason}",
+        "Component {}: first/left carrier {} Hz and beat offset {} Hz: {reason}",
         error.id, error.first_hz, error.offset_hz
     )
 }

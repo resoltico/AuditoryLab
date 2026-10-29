@@ -1453,27 +1453,18 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
         parameter_field(&binding.clone(), ParameterId::ClickRate),
         "2".into(),
     );
-    assert!(
-        ui.get_draft_brief()
-            .contains("Draft classification · Delta")
-    );
+    assert!(ui.get_draft_brief().contains("Applied rhythm · Delta"));
     ui.invoke_stage_parameter(
         parameter_field(&binding.clone(), ParameterId::ClickRate),
         "bad".into(),
     );
-    assert!(
-        ui.get_draft_brief()
-            .contains("Last committed classification · Delta")
-    );
+    assert!(ui.get_draft_brief().contains("Applied rhythm · Delta"));
     ui.invoke_commit_parameter(
         parameter_field(&binding.clone(), ParameterId::ClickRate),
         "6".into(),
     );
-    assert!(
-        ui.get_draft_brief()
-            .contains("Draft classification · Theta")
-    );
-    assert!(ui.get_draft_brief().contains("Saved version · Not saved"));
+    assert!(ui.get_draft_brief().contains("Applied rhythm · Theta"));
+    assert!(ui.get_draft_brief().contains("Saved version: Not saved"));
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
 
@@ -1667,11 +1658,8 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
         parameter_field(&binding.clone(), ParameterId::PairOffset),
         "6".into(),
     );
-    assert!(
-        ui.get_draft_brief()
-            .contains("Draft classification · Theta")
-    );
-    assert!(ui.get_draft_brief().contains("Saved version · Delta"));
+    assert!(ui.get_draft_brief().contains("Applied rhythm · Theta"));
+    assert!(ui.get_draft_brief().contains("Saved version: Delta"));
     ui.invoke_rhythm_filter(1, 0);
     ui.invoke_collection_filter(2, 0);
     h.wait_for_files();
@@ -3715,11 +3703,11 @@ fn assert_unavailable_root_sizes(h: &Harness) {
             "Filters",
             "Library options…",
             "Clear all filters",
-            "Open Recipe…",
+            "Open recipe…",
             "Create sound",
             "Play selected sound",
         ] {
-            let item = if matches!(name, "Clear all filters" | "Open Recipe…" | "Create sound") {
+            let item = if matches!(name, "Clear all filters" | "Open recipe…" | "Create sound") {
                 find_control(ui, |item| {
                     item.is_accessible()
                         && item
@@ -3731,7 +3719,7 @@ fn assert_unavailable_root_sizes(h: &Harness) {
             } else {
                 action_button(ui, name)
             };
-            if matches!(name, "Clear all filters" | "Open Recipe…" | "Create sound") {
+            if matches!(name, "Clear all filters" | "Open recipe…" | "Create sound") {
                 let owns_focus = || {
                     let focused = WindowInner::from_pub(ui.window())
                         .focus_item
@@ -4139,5 +4127,32 @@ fn submit_date_inputs(ui: &MainWindow, from: [&str; 3], through: [&str; 3]) {
             from_text: from[2].into(),
             through_text: through[2].into(),
         },
+    );
+}
+
+#[test]
+fn edit_menu_commands_reach_the_focused_text_field() {
+    let h = Harness::new();
+    let ui = h.ui();
+    let search = labelled(ui, "Find a recipe");
+    let point = centre(&search);
+    drag(ui, point, point);
+    for character in ["a", "b", "c"] {
+        h.key(character);
+    }
+    let value = || {
+        search
+            .accessible_string_property(AccessibleStringProperty::Value)
+            .unwrap_or_default()
+    };
+    assert_eq!(value(), "abc");
+    // Edit > Select All, then typing replaces the whole field.
+    ui.invoke_edit_shortcut("a".into());
+    h.settle();
+    h.key("q");
+    assert_eq!(
+        value(),
+        "q",
+        "Select All from the menu selected the focused field"
     );
 }

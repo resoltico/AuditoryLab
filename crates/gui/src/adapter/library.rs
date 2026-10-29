@@ -251,6 +251,7 @@ impl SlintAdapter {
                         collection: read_only(&row.collection),
                         summary: read_only(&row.summary),
                         bands: read_only(&row.bands),
+                        studied_for: read_only(&row.studied_for),
                         duration: read_only(&row.duration),
                         dates: read_only(&row.dates),
                     }

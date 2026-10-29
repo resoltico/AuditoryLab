@@ -28,7 +28,7 @@ export component Disclosure inherits Rectangle {
         y: 0px;
         width: parent.width;
         height: parent.height;
-        text: (root.expanded ? "▾ " : "▸ ") + root.label;
+        text: (root.expanded ? "▼ " : "▶ ") + root.label;
         accessible-label: root.accessible-name + (root.expanded ? Terms.caption-expanded :
             Terms.caption-collapsed);
         accessible-expanded: root.expanded;

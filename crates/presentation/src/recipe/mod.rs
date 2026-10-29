@@ -24,6 +24,8 @@ pub struct Research {
     pub studied_for: Option<String>,
     /// Findings with limitations.
     pub summary: Option<String>,
+    /// What the study measured.
+    pub measured: Option<String>,
     /// Primary source citation.
     pub citation: Option<String>,
     /// Explicit source URL, never fetched automatically.
@@ -33,42 +35,121 @@ pub struct Research {
     /// Disclosed adaptations.
     pub adaptation: Option<String>,
 }
-/// Derive concise presentation while leaving full records on the recipe.
+/// Plain-language purpose of a study condition: its declared detail, otherwise
+/// its population and role. Lists and details use this one rule.
 #[must_use]
-pub fn about(recipe: &Recipe) -> Option<About> {
-    let description = recipe.description()?;
-    let research = recipe
+pub fn studied_for(
+    detail: Option<&str>,
+    population: auditorylab_core::provenance::Population,
+    role: auditorylab_core::provenance::ConditionRole,
+) -> String {
+    detail.map_or_else(
+        || format!("{} study · {}", population.label(), role.label()),
+        str::to_owned,
+    )
+}
+/// The evidence record and source the research view describes: the first current
+/// reference condition whose source is declared.
+pub(crate) fn research_record(
+    recipe: &Recipe,
+) -> Option<(
+    usize,
+    &auditorylab_core::provenance::Evidence,
+    &auditorylab_core::provenance::BibliographySource,
+)> {
+    recipe
         .evidence()
         .iter()
-        .find(|e| e.scope == EvidenceScope::ReferenceCondition)
-        .and_then(|e| {
+        .enumerate()
+        .filter(|(_, e)| e.scope == EvidenceScope::ReferenceCondition)
+        .find_map(|(index, e)| {
             recipe
                 .sources()
                 .iter()
                 .find(|s| s.key == e.source)
-                .map(|s| Research {
-                    studied_for: e.population_detail.clone().or_else(|| {
-                        Some(format!(
-                            "{} study · {}",
-                            e.population.label(),
-                            e.condition_role.label()
-                        ))
-                    }),
-                    summary: Some(format!("{} {}", e.summary, e.limitations)),
-                    citation: Some(s.citation.clone()),
-                    source_url: s
-                        .url
-                        .clone()
-                        .or_else(|| s.doi.as_ref().map(|d| format!("https://doi.org/{d}"))),
-                    study: Some(e.methods_locator.clone()),
-                    adaptation: Some(e.adaptation.clone()),
-                })
-        });
+                .map(|s| (index, e, s))
+        })
+}
+fn source_link(source: &auditorylab_core::provenance::BibliographySource) -> Option<String> {
+    source
+        .url
+        .clone()
+        .or_else(|| source.doi.as_ref().map(|d| format!("https://doi.org/{d}")))
+}
+fn measures(evidence: &auditorylab_core::provenance::Evidence) -> Option<String> {
+    (!evidence.measures.is_empty()).then(|| {
+        evidence
+            .measures
+            .iter()
+            .map(|measure| measure.label())
+            .collect::<Vec<_>>()
+            .join(", ")
+    })
+}
+/// Derive concise presentation while leaving full records on the recipe.
+#[must_use]
+pub fn about(recipe: &Recipe) -> Option<About> {
+    let description = recipe.description()?;
+    let research = research_record(recipe).map(|(_, e, s)| Research {
+        studied_for: Some(studied_for(
+            e.population_detail.as_deref(),
+            e.population,
+            e.condition_role,
+        )),
+        summary: Some(format!("{} {}", e.summary, e.limitations)),
+        measured: measures(e),
+        citation: Some(s.citation.clone()),
+        source_url: source_link(s),
+        study: Some(e.methods_locator.clone()),
+        adaptation: Some(e.adaptation.clone()),
+    });
     Some(About {
         title: description.title.clone(),
         summary: description.notes.clone(),
         research,
     })
+}
+
+/// Evidence records and sources the research view does not describe, such as
+/// ancestor findings, each rendered once with its scope and study key.
+pub(crate) fn further_evidence(recipe: &Recipe) -> String {
+    let primary = research_record(recipe);
+    let mut text = String::new();
+    for (index, e) in recipe.evidence().iter().enumerate() {
+        if primary.is_some_and(|(used, _, _)| used == index) {
+            continue;
+        }
+        let _ = write!(
+            text,
+            "Further evidence ({}, {}):\nStudied for: {}\nSummary: {} {}\nStudy: {}\n\
+            Adaptation: {}\n",
+            e.scope.label(),
+            e.source,
+            studied_for(
+                e.population_detail.as_deref(),
+                e.population,
+                e.condition_role
+            ),
+            e.summary,
+            e.limitations,
+            e.methods_locator,
+            e.adaptation
+        );
+        if let Some(measured) = measures(e) {
+            let _ = writeln!(text, "Measured: {measured}");
+        }
+    }
+    let primary_source = primary.map(|(_, _, s)| s.key.as_str());
+    for source in recipe.sources() {
+        if Some(source.key.as_str()) == primary_source {
+            continue;
+        }
+        let _ = writeln!(text, "Further source ({}): {}", source.key, source.citation);
+        if let Some(link) = source_link(source) {
+            let _ = writeln!(text, "Link: {link}");
+        }
+    }
+    text
 }
 
 /// Describe one authored component without compiling it at a sample rate.
@@ -80,7 +161,7 @@ pub fn component(component: &Component) -> String {
             .pair_kind()
             .unwrap_or_else(|| unreachable!("pair kind"));
         format!(
-            "{}, first {} Hz, signed offset {} Hz, second {} Hz, peaks {} / {} dBFS",
+            "{}, first {} Hz, beat offset {} Hz, second {} Hz, peaks {} / {} dBFS",
             kind.phrase(),
             pair.first_hz,
             pair.offset_hz,

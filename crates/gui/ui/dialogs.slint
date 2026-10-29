@@ -191,6 +191,13 @@ export component Dialogs inherits Rectangle {
                     accessible-label: Terms.caption-library-filters;
                     VerticalBox {
                         width: filter-scroll.visible-width;
+                        Text {
+                            text: Terms.caption-find-by-purpose;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            vertical-stretch: 0;
+                        }
+
                         if root.compact: Text {
                             text: ViewCaptions.structural-method;
                             vertical-stretch: 0;
@@ -203,13 +210,6 @@ export component Dialogs inherits Rectangle {
                                 root.rhythm-filter(root.band-choice,
                                 root.method-choice);
                             }
-                        }
-
-                        Text {
-                            text: root.calendar-context;
-                            wrap: word-wrap;
-                            min-width: 0px;
-                            vertical-stretch: 0;
                         }
 
                         LineEdit {
@@ -246,6 +246,13 @@ export component Dialogs inherits Rectangle {
                             model: root.group-labels;
                             current-index <=> root.group-choice;
                             accessible-label: ViewCaptions.library-result-grouping;
+                        }
+
+                        Text {
+                            text: root.calendar-context;
+                            wrap: word-wrap;
+                            min-width: 0px;
+                            vertical-stretch: 0;
                         }
 
                         LineEdit {

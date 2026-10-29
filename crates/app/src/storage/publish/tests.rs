@@ -20,6 +20,7 @@ fn put(dir: &Dir, path: &Path, policy: Policy<'_>, bytes: &[u8]) -> Result<Publi
         Path::new("entry"),
         path,
         policy,
+        Access::Private,
         &Cancel::default(),
         |file| {
             file.write_all(bytes)
@@ -117,6 +118,7 @@ fn precommit_failures_preserve_previous_bytes_and_cleanup_only_our_stage() {
         Path::new("entry"),
         &path,
         Policy::Replace,
+        Access::Private,
         &Cancel::default(),
         |file| {
             file.write_all(b"partial").unwrap();
@@ -176,6 +178,7 @@ fn no_clobber_race_and_cleanup_failure_preserve_publication_truth() {
         Path::new("entry"),
         &path,
         Policy::CreateNew,
+        Access::Private,
         &Cancel::default(),
         |file| {
             file.write_all(b"ours").unwrap();
@@ -656,11 +659,19 @@ fn precommit_hashing_checks_cancellation_between_blocks() {
                 identity: identity.as_ref().unwrap(),
             },
         };
-        let result = publish_in(&dir, Path::new("entry"), &path, policy, &cancel, |file| {
-            written.set(true);
-            file.write_all(&candidate)
-                .map_err(|error| io(&path, IoOperation::Write, error))
-        });
+        let result = publish_in(
+            &dir,
+            Path::new("entry"),
+            &path,
+            policy,
+            Access::Private,
+            &cancel,
+            |file| {
+                written.set(true);
+                file.write_all(&candidate)
+                    .map_err(|error| io(&path, IoOperation::Write, error))
+            },
+        );
         HASH_BLOCK.with(|slot| *slot.borrow_mut() = None);
         assert_eq!(
             result.unwrap_err().outcome(),
@@ -696,6 +707,7 @@ fn cancellation_after_publication_does_not_interrupt_truth_verification() {
         Path::new("entry"),
         &path,
         Policy::Replace,
+        Access::Private,
         &cancel,
         |file| {
             file.write_all(&candidate)
@@ -830,4 +842,49 @@ fn unreadable_relocation_verification_does_not_guess_source_removal() {
         assert_eq!(path.exists(), source_exists);
         assert_eq!(fs::read(destination).unwrap(), b"original");
     }
+}
+#[cfg(unix)]
+#[test]
+fn shared_files_get_ordinary_permissions_and_private_files_stay_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    let (_temp, dir, path) = fixture();
+    let parent = path.parent().unwrap();
+    // An ordinary new file shows what the process umask allows.
+    let reference = parent.join("reference");
+    std::fs::File::create(&reference).unwrap();
+    let ordinary = mode(&reference);
+
+    let publish = |name: &str, policy: Policy<'_>, access: Access| {
+        let target = parent.join(name);
+        publish_in(
+            &dir,
+            Path::new(name),
+            &target,
+            policy,
+            access,
+            &Cancel::default(),
+            |file| {
+                file.write_all(b"bytes")
+                    .map_err(|e| Error::Io(IoFailure::new(IoOperation::Write, None, e)))
+            },
+        )
+        .unwrap();
+        target
+    };
+    let shared = publish("shared", Policy::CreateNew, Access::Shared);
+    assert_eq!(mode(&shared), ordinary, "a new export follows the umask");
+
+    let replaced = parent.join("replaced");
+    std::fs::write(&replaced, b"old").unwrap();
+    std::fs::set_permissions(&replaced, std::fs::Permissions::from_mode(0o640)).unwrap();
+    publish("replaced", Policy::Replace, Access::Shared);
+    assert_eq!(
+        mode(&replaced),
+        0o640,
+        "a replaced file keeps its permissions"
+    );
+
+    let private = publish("private", Policy::CreateNew, Access::Private);
+    assert_eq!(mode(&private), 0o600, "library records stay owner-only");
 }

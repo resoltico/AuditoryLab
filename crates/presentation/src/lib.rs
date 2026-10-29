@@ -54,3 +54,5 @@ pub use workspace::sample_format_label;
 pub use workspace::{DesktopDiagnostics, recipe_exported, retained_stage};
 #[cfg(test)]
 mod application_tests;
+#[cfg(test)]
+mod listener_text_tests;

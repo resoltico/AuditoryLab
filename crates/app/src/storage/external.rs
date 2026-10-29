@@ -121,6 +121,7 @@ pub(crate) fn save(
             fingerprint: expected.fingerprint,
             identity: &expected.handle,
         },
+        publish::Access::Shared,
         cancel,
         |file| {
             file.write_all(&bytes)

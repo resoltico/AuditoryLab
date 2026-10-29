@@ -131,8 +131,8 @@ fn committed_brief_never_borrows_pending_pair_facts() {
         .unwrap();
         let view = crate::workspace::editor_view(&ws.editor_view());
         assert_eq!(
-            view.brief,
-            original.replace("Draft classification", "Last committed classification")
+            view.brief, original,
+            "pending text never changes the applied brief"
         );
         assert!(!view.brief.contains("357") && !view.brief.contains("No valid sound"));
         assert_eq!(
@@ -791,9 +791,10 @@ fn copied_attribution_and_reimported_notes_reach_library_details() {
     let recipe = draft.recipe().unwrap();
     assert!(crate::recipe::about(&recipe).unwrap().research.is_none());
     let derived = RecipeSnapshot::new(Origin::Stream("derivative".into()), recipe);
-    assert!(
-        crate::snapshot_details_at(&(derived), SampleRate::DEFAULT).contains("Source citation:")
-    );
+    // The copy's ancestor study is not its own research; it appears once as further evidence.
+    let details = crate::snapshot_details_at(&(derived), SampleRate::DEFAULT);
+    assert!(details.contains("Further evidence (Ancestor") && details.contains("Further source ("));
+    assert!(!details.contains("Studied for: Human study: Brain-rhythm response\nStudied for"));
     let mut changed = derived.recipe().clone().into_builder();
     changed.content.lineage[0].note = "reimport-source-marker".into();
     let changed = RecipeSnapshot::new(
@@ -993,7 +994,7 @@ fn file_activity_uses_the_captured_shared_operation_term() {
     use auditorylab_app::vocabulary::Operation;
     use auditorylab_app::workspace::status::{FileAction, FileActivity};
     for (kind, operation, label) in [
-        (FileAction::Import, Operation::OpenRecipe, "Open Recipe"),
+        (FileAction::Import, Operation::OpenRecipe, "Open recipe"),
         (
             FileAction::RecipeExport,
             Operation::ExportRecipe,

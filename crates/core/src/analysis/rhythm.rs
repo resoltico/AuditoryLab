@@ -9,6 +9,8 @@ use core::fmt::{self, Display, Formatter};
 
 /// The disclosed band convention, independent of a study's own terminology.
 pub const CONVENTION: &str = "ifcn-2017-corrected-2019";
+/// The disclosed band convention, named for people.
+pub const CONVENTION_LABEL: &str = "the IFCN 2017 band definitions (2019 correction)";
 /// Revision of the nominal interpretation rules.
 pub const CLASSIFIER_REVISION: u32 = 2;
 

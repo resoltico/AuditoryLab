@@ -77,14 +77,14 @@ pub(crate) const fn route(ears: Ears) -> &'static str {
 #[must_use]
 pub(crate) fn voice_description(facts: &VoiceFacts, detail: bool) -> String {
     let generated = format!(
-        "{} · {} · voice peak bound {} dBFS",
+        "{} · {} · peak level {} dBFS",
         generator_description(facts, detail),
         route(facts.ears),
         format_dbfs(facts.peak_dbfs)
     );
     if detail && let Some(pair) = facts.pair {
         format!(
-            "Authored pair {} · nominal signed offset {} Hz · requested carriers \
+            "Authored pair {} · nominal beat offset {} Hz · requested carriers \
                 {} / {} Hz · {generated}",
             pair.owner, pair.offset_hz, pair.first_hz, pair.second_hz
         )
@@ -196,7 +196,7 @@ pub(crate) fn structure_description(structure: &Structure) -> String {
     }
     let text = relation.unwrap_or_else(|| {
         if parts.is_empty() {
-            "Silence · no active generators".into()
+            "Silent: add a component to make a sound.".into()
         } else if parts.len() > 4 {
             format!(
                 "{} voices · {} + {} more processes (voice details)",
@@ -338,13 +338,13 @@ pub fn parameter_help(value: ParameterId) -> &'static str {
         }
         ParameterId::PairFirstFrequency => {
             "The first carrier; changing it also changes the second carrier \
-                through the signed offset."
+                through the beat offset."
         }
         ParameterId::PairOffset => {
             "Second carrier minus first carrier; its absolute value is the nominal pair rhythm."
         }
-        ParameterId::PairFirstLevel => "Peak bound of the first or left tone.",
-        ParameterId::PairSecondLevel => "Peak bound of the second or right tone.",
+        ParameterId::PairFirstLevel => "Peak level of the first or left tone.",
+        ParameterId::PairSecondLevel => "Peak level of the second or right tone.",
         ParameterId::Duration => "The finite sound duration.",
         ParameterId::Fade => "The raised-cosine fade at each edge of a finite sound.",
     }

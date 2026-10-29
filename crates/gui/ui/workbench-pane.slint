@@ -243,7 +243,7 @@ export component WorkbenchPane inherits Rectangle {
                 }
 
                 pattern := Disclosure {
-                    label: Terms.caption-pattern-explained-static-core-model;
+                    label: Terms.caption-waveform-pattern;
                 }
 
                 if pattern.expanded: VerticalBox {
@@ -277,7 +277,7 @@ export component WorkbenchPane inherits Rectangle {
                                     background: Palette.control-background;
                                     accessible-role: image;
                                     accessible-label: lane.label +
-                                        Terms.caption-static-model-origin-zero;
+                                        Terms.caption-calculated-pattern;
                                     Path {
                                         width: parent.width;
                                         height: parent.height;

@@ -56,12 +56,12 @@ pub fn waveform_capture_caption(value: &WaveformCapture, frozen: bool, ended: bo
 /// Explicit model rate/origin/provenance, with insufficient-cycle warning when capped.
 pub fn model_view_caption(value: &ModelView) -> String {
     format!(
-        "Timing model · {} · {} · origin 0 · {} Hz · {:.1} ms · projection, not recorded output{}",
+        "Pattern of {} · {} · {} Hz · first {:.1} ms · not recorded output{}",
         value.title,
         match value.source {
-            ModelSource::Draft => "committed draft".into(),
-            ModelSource::Recipe => "validated recipe".into(),
-            ModelSource::Accepted(r) => format!("accepted target revision {r}; not phase history"),
+            ModelSource::Draft => "calculated from the draft".into(),
+            ModelSource::Recipe => "calculated from the recipe".into(),
+            ModelSource::Accepted(r) => format!("calculated from playing revision {r}"),
         },
         value.projection.rate.hz(),
         value.projection.rate.seconds_in(value.projection.frames) * 1000.0,

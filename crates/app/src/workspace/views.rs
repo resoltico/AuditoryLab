@@ -4,7 +4,7 @@
 // Copyright 2026 Ervins Strauhmanis
 // SPDX-License-Identifier: MPL-2.0
 
-use super::{Refusal, View};
+use super::Refusal;
 use crate::document::editing::FieldHandle;
 use crate::document::editing::RowKey;
 use crate::document::recipe::RecipeSnapshot;
@@ -270,8 +270,6 @@ pub struct TransportView {
     pub task_title: Option<String>,
     /// Title retained after failed playback preparation.
     pub failed_title: Option<String>,
-    /// Selected editing surface, independent of the playing source.
-    pub view: View,
     /// Effective system motion preference.
     pub motion: super::MotionPreference,
     /// Explicit user hold choice, if present.

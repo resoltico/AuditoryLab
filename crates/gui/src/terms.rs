@@ -21,7 +21,11 @@ chrome! {
         Discard => ("action-discard", "Discard"),
         Cancel => ("action-cancel", "Cancel"),
         Edit => ("action-edit", "Edit"),
+        Undo => ("action-undo", "Undo"),
+        Cut => ("action-cut", "Cut"),
         Copy => ("action-copy", "Copy"),
+        Paste => ("action-paste", "Paste"),
+        DesktopGuide => ("action-desktop-guide", "Auditory Lab desktop guide"),
         SelectAll => ("action-select-all", "Select All"),
         ThirdPartyLicensesDialog => ("action-third-party-licenses-dialog", "Third-party licenses…"),
         Hide => ("action-hide", "Hide"),
@@ -35,7 +39,7 @@ chrome! {
             diagnostics snapshot"),
         Close => ("action-close", "Close"),
         CloseFilters => ("action-close-filters", "Close filters"),
-        QueryDetails => ("action-query-details", "Query details…"),
+        ActiveFilters => ("action-active-filters", "Active filters…"),
         ShowOutputMonitor => ("action-show-output-monitor", "Show output monitor"),
         ClearRhythmFilters => ("action-clear-rhythm-filters", "Clear rhythm filters"),
         ClearSearch => ("action-clear-search", "Clear search"),
@@ -126,8 +130,9 @@ chrome! {
         File => ("caption-file", "File"),
         Help => ("caption-help", "Help"),
         TaskDetailsDialog => ("caption-task-details-dialog", "Task details…"),
-        TitleIdSoundOrStudyTopic => ("caption-title-id-sound-or-study-topic", "Title, ID, sound \
-            or study topic"),
+        SearchRecipes => ("caption-search-recipes", "Title, ID or what it was studied for"),
+        FindByPurpose => ("caption-find-by-purpose", "To find sounds by what they were studied \
+            for, search for words such as memory or relaxation."),
         FindARecipe => ("caption-find-arecipe", "Find a recipe"),
         LibraryResults => ("caption-library-results", "Library results"),
         LineBreak => ("caption-line-break", "\n"),
@@ -138,11 +143,8 @@ chrome! {
         ResearchCitationAndSoundAdaptations => ("caption-research-citation-and-sound-adaptations",
             "Research, \
             citation and sound adaptations"),
-        PatternExplainedStaticCoreModel => ("caption-pattern-explained-static-core-model",
-            "Pattern \
-            explained · static core model"),
-        StaticModel => ("caption-static-model", " static model"),
-        StaticModelOriginZero => ("caption-static-model-origin-zero", " static model, origin zero"),
+        WaveformPattern => ("caption-waveform-pattern", "Waveform pattern"),
+        CalculatedPattern => ("caption-calculated-pattern", " calculated pattern"),
         RoutingModulationAndComponentOptions => ("caption-routing-modulation-and-component-options",
             "Routing, \
             modulation and component options"),

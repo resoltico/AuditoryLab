@@ -19,57 +19,71 @@ use std::{
     process::ExitCode,
 };
 #[derive(Parser)]
-#[command(name = "auditorylab", about = "Explore, export and play auditory recipes",
+#[command(name = "auditorylab", about = "Browse, export and play research-inspired sounds",
     version = auditorylab_presentation::build_info::build_identity_version_text(
         auditorylab_app::identity::BUILD_IDENTITY
     ))]
 struct Cli {
-    /// Absolute persistent User Library override (then environment, then native data).
-    #[arg(long,global=true,value_name="ABSOLUTE_PATH",value_parser=library_override)]
+    // A plain help string: rustdoc's Markdown lint would put backticks into rendered help.
+    #[arg(
+        long,
+        global = true,
+        value_name = "ABSOLUTE_PATH",
+        value_parser = library_override,
+        help = "Use this User Library folder (an absolute path) instead of \
+            AUDITORYLAB_LIBRARY_DIR or the default"
+    )]
     library_dir: Option<lab::services::LibraryContext>,
     #[command(subcommand)]
     command: Option<Command>,
 }
 #[derive(Subcommand)]
 enum Command {
-    /// Query persistent Built-in/User entries and explicit temporary inputs.
+    /// List built-in sounds and your own recipes, with search, filters and sorting.
     List(library_cli::ListArgs),
-    /// Persistent User Library lifecycle, diagnostics and root configuration.
+    /// Manage your User Library: set it up, add, rename, trash, restore and check recipes.
     Library {
         #[command(subcommand)]
         command: library_cli::LibraryCommand,
     },
-    /// Read a recipe's description and research context.
+    /// Read what a sound is, what it was studied for, and how it was adapted.
     Describe {
         #[command(flatten)]
         source: Source,
+        /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: library_cli::ReadFormat,
     },
-    /// Print or save the portable TOML of a Built-in or User recipe.
+    /// Print a recipe as an editable TOML file, or save it with --output.
     Recipe {
+        /// The recipe, as builtin:<id> or user:<id> from list.
         selector: String,
+        /// File to create; an existing file is never replaced.
         #[arg(long, value_name = "PATH")]
         output: Option<PathBuf>,
     },
-    /// Validate a recipe and inspect its technical parameters at one sample rate.
+    /// Check a recipe and show its technical details at one sample rate.
     Inspect {
+        /// Output as readable text or JSON for scripts.
         #[arg(long, value_enum, default_value = "text")]
         format: library_cli::ReadFormat,
         #[command(flatten)]
         source: Source,
+        /// Sample rate in Hz.
         #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(),
             value_parser=clap::value_parser!(u32), value_name="HZ")]
         sample_rate: u32,
     },
-    /// Play on the default audio output device.
+    /// Play a sound on the default audio output; turn the volume down first.
     Play(Source),
-    /// Write a stereo float WAV file; never replace an existing file.
+    /// Save a sound as a stereo WAV file (32-bit float); an existing file is never replaced.
     Export {
         #[command(flatten)]
         source: Source,
+        /// WAV file to create.
         #[arg(long, value_name = "PATH")]
         output: PathBuf,
+        /// Sample rate in Hz.
         #[arg(long, default_value=SampleRate::DEFAULT.hz().to_string(),
             value_parser=clap::value_parser!(u32), value_name="HZ")]
         sample_rate: u32,
@@ -78,13 +92,13 @@ enum Command {
 #[derive(Args)]
 #[group(id = "source", required = true, multiple = false)]
 struct Source {
-    /// Persistent builtin:<catalog-id> or user:<canonical-uuid> selector.
+    /// The recipe, as builtin:<id> or user:<id> from list.
     #[arg(value_name = "SOURCE")]
     selector: Option<String>,
-    /// Read a UTF-8 TOML recipe file.
+    /// Use a recipe file instead.
     #[arg(long, value_name = "PATH")]
     file: Option<PathBuf>,
-    /// Read a UTF-8 TOML recipe until EOF.
+    /// Read a recipe from standard input instead.
     #[arg(long)]
     stdin: bool,
 }
@@ -429,18 +443,20 @@ fn run(cli: Cli) -> Result<Ended, CliError> {
             let cancel = Cancel::default();
             let request = cancel.clone();
             on_interrupt(move || request.request())?;
-            eprintln!(
-                "{}",
-                prose(&auditorylab_presentation::rendition_export_preamble(
-                    sound, &path
-                ))
-            );
             let result = lab::services::export_rendition(
                 sound,
                 &path,
                 Replace::Never,
                 &cancel,
                 &Progress::default(),
+                || {
+                    eprintln!(
+                        "{}",
+                        prose(&auditorylab_presentation::rendition_export_preamble(
+                            sound, &path
+                        ))
+                    );
+                },
             )?;
             for warning in &result.warnings {
                 eprintln!(

@@ -7,6 +7,7 @@ use auditorylab_app::services::library::Inventory;
 use auditorylab_app::services::library::RootInfo;
 use auditorylab_app::vocabulary::Status;
 use auditorylab_core::Timestamp;
+use std::fmt::Write as _;
 fn date(value: Option<Timestamp>) -> String {
     value.map_or_else(|| Status::Unknown.label().into(), |value| value.to_string())
 }
@@ -68,18 +69,34 @@ pub fn root_info_description(value: &RootInfo) -> String {
     )
 }
 
-/// One complete discovery row, including explicit declared and membership dates.
-pub fn entry_summary_list_description(value: &EntrySummary) -> String {
-    format!(
-        "{}\n  {}\n  {} · {}\n  Created {} · Edited {} · Added here {}\n",
+/// One discovery row: title, selector, rhythm, duration and purpose. Built-in rows
+/// show dates only while the listing sorts by a date, as the desktop does.
+pub fn entry_summary_list_description(
+    value: &EntrySummary,
+    sort: auditorylab_app::discovery::query::SortBy,
+) -> String {
+    let mut text = format!(
+        "{}\n  {}\n  {} · {}\n  {}\n",
         crate::display_scalar(&(value.title)),
         value.key,
         crate::analysis_summary(&(value.nominal)),
         crate::numbers::format(NumberStyle::Duration, value.duration_seconds),
-        date(value.created_at),
-        date(value.modified_at),
-        date(value.added_at)
-    )
+        crate::display_scalar(&crate::library::entry_studied_for(value))
+    );
+    if !matches!(
+        value.key,
+        auditorylab_app::document::origin::LibraryKey::BuiltIn(_)
+    ) || sort.calendar_field().is_some()
+    {
+        let _ = writeln!(
+            text,
+            "  Created {} · Edited {} · Added here {}",
+            date(value.created_at),
+            date(value.modified_at),
+            date(value.added_at)
+        );
+    }
+    text
 }
 
 /// Membership details shown next to the selected portable description.

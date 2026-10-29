@@ -133,6 +133,8 @@ pub enum LibraryStatus {
     Written {
         /// Managed identity captured by the admitted operation.
         key: LibraryKey,
+        /// Title of the confirmed content; absent after a purge.
+        title: Option<String>,
         /// Confirmed publication state, independent of report output.
         status: MutationStatus,
         /// Publication captured the editor document rather than only a library mutation.

@@ -1,26 +1,40 @@
 //! recipe render presentation.
 use crate::{
-    Explain, Notice, format_dbfs, human_duration, nominal_description, structure_description,
-    voice_description,
+    Explain, Notice, human_duration, nominal_description, structure_description, voice_description,
 };
+use auditorylab_app::document::recipe::Origin;
 use auditorylab_app::document::recipe::RecipeSnapshot;
 use auditorylab_app::document::recipe::Rendition;
-use auditorylab_app::vocabulary::Status;
 use auditorylab_core::SampleRate;
 use std::fmt::Write as _;
 use std::path::Path;
+/// Where a recipe came from, in the form a person can use to find it again.
+pub(crate) fn origin_line(origin: &Origin) -> String {
+    match origin {
+        Origin::BuiltIn(id) => format!("Recipe: builtin:{id}"),
+        Origin::User { id, .. } => format!("Recipe: user:{id}"),
+        Origin::File(path) => format!(
+            "Recipe file: {}",
+            crate::display_scalar(&path.display().to_string())
+        ),
+        Origin::Stream(label) => format!("Recipe input: {}", crate::display_scalar(label)),
+        Origin::Draft(title) => format!("Draft: {}", crate::display_scalar(title)),
+    }
+}
+/// Identity and history a person cannot read elsewhere: the portable document ID
+/// when the origin does not already carry it, declared dates, notes and lineage.
 pub(crate) fn document_notes(snapshot: &RecipeSnapshot) -> String {
     let document = &snapshot.recipe().document();
-    let mut text = format!(
-        "Document: {}\nCreated (declared): {}\nEdited (declared): {}\n",
-        document.id,
-        document
-            .created_at
-            .map_or_else(|| Status::Unknown.label().into(), |t| t.to_string()),
-        document
-            .modified_at
-            .map_or_else(|| Status::Unknown.label().into(), |t| t.to_string())
-    );
+    let mut text = String::new();
+    if !matches!(snapshot.origin(), Origin::BuiltIn(_) | Origin::User { .. }) {
+        let _ = writeln!(text, "Document: {}", document.id);
+    }
+    if let Some(created) = document.created_at {
+        let _ = writeln!(text, "Created: {created}");
+    }
+    if let Some(modified) = document.modified_at {
+        let _ = writeln!(text, "Edited: {modified}");
+    }
     if let Some(notes) = crate::recipe::snapshot_about(snapshot)
         .and_then(|a| a.summary)
         .filter(|s| !s.is_empty())
@@ -33,47 +47,6 @@ pub(crate) fn document_notes(snapshot: &RecipeSnapshot) -> String {
             "Based on: {}\nAncestor note: {}\nResearch findings describe the \
             ancestor, not this sound.\n",
             ancestor.title, ancestor.note
-        );
-    }
-    for source in snapshot.recipe().sources() {
-        let _ = write!(
-            text,
-            "Source {}: {}\nSource citation: {}\n",
-            source.key, source.label, source.citation
-        );
-        if let Some(url) = &source.url {
-            let _ = writeln!(text, "Source URL: {url}");
-        }
-        if let Some(doi) = &source.doi {
-            let _ = writeln!(text, "Source DOI: {doi}");
-        }
-    }
-    for evidence in snapshot.recipe().evidence() {
-        if let Some(detail) = &evidence.population_detail {
-            let _ = writeln!(text, "Population detail: {detail}");
-        }
-        let _ = writeln!(
-            text,
-            "Measures: {}",
-            evidence
-                .measures
-                .iter()
-                .map(|measure| measure.label())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        let _ = write!(
-            text,
-            "Evidence {} · source {} · population {} · role {}\nSummary: \
-            {}\nLimitations: {}\nMethods: {}\nAdaptation: {}\n",
-            evidence.scope.label(),
-            evidence.source,
-            evidence.population.label(),
-            evidence.condition_role.label(),
-            evidence.summary,
-            evidence.limitations,
-            evidence.methods_locator,
-            evidence.adaptation
         );
     }
     text
@@ -123,10 +96,11 @@ pub fn snapshot_research(value: &RecipeSnapshot) -> Vec<(&'static str, String)> 
             [
                 ("Studied for", a.studied_for),
                 ("Summary", a.summary),
-                ("Citation", a.citation),
-                ("Source", a.source_url),
+                ("Measured", a.measured),
                 ("Study", a.study),
                 ("Adaptation", a.adaptation),
+                ("Citation", a.citation),
+                ("Link", a.source_url),
             ]
             .into_iter()
             .filter_map(|(label, value)| value.map(|text| (label, text)))
@@ -170,11 +144,10 @@ pub fn snapshot_library_label(value: &RecipeSnapshot) -> String {
 /// explicit inspection rate.
 pub fn snapshot_details_at(value: &RecipeSnapshot, rate: SampleRate) -> String {
     let snapshot = value;
-    let mut text = format!("Source: {}\n\n", snapshot.origin());
+    let mut text = format!("{}\n", origin_line(snapshot.origin()));
     text.push_str(&document_notes(snapshot));
-    for (name, value) in crate::snapshot_research(snapshot) {
-        let _ = write!(text, "{name}: {value}\n\n");
-    }
+    text.push_str(&crate::recipe::further_evidence(snapshot.recipe()));
+    text.push('\n');
     for c in snapshot.sound().components() {
         let _ = writeln!(text, "Component {}: {}", c.id, crate::recipe::component(c));
     }
@@ -184,13 +157,12 @@ pub fn snapshot_details_at(value: &RecipeSnapshot, rate: SampleRate) -> String {
             text.push_str(&crate::rendition_description(&(sound), true));
             let _ = write!(
                 text,
-                "\n{} Hz · {} frames · {}\nFade: {} frames\nPeak bounds: {} / {} dBFS",
+                "\n{} Hz · {} frames · {}\nFade: {} frames\n{}",
                 rate.hz(),
                 s.frames(),
                 human_duration(s.duration_seconds()),
                 s.fade_frames(),
-                format_dbfs(s.peak_dbfs()[0]),
-                format_dbfs(s.peak_dbfs()[1])
+                crate::numbers::peak_level(s.peak_dbfs())
             );
         }
         Err(e) => text.push_str(&e.explain()),
@@ -214,9 +186,9 @@ pub fn snapshot_description_with_history(
     let snapshot = value;
     let s = snapshot.sound();
     let mut out = format!(
-        "{}\nSource: {}\nDuration: {}\nFade: {} at each edge\n",
+        "{}\n{}\nDuration: {} · fade {} at each edge\n",
         snapshot.title(),
-        snapshot.origin().explain(),
+        origin_line(snapshot.origin()),
         human_duration(s.duration_seconds().get()),
         human_duration(s.fade_seconds().get())
     );
@@ -227,6 +199,7 @@ pub fn snapshot_description_with_history(
     for (label, value) in crate::snapshot_research(snapshot) {
         let _ = writeln!(out, "{label}: {value}");
     }
+    out.push_str(&crate::recipe::further_evidence(snapshot.recipe()));
     let rate = SampleRate::DEFAULT;
     match snapshot.at(rate) {
         Ok(sound) => {
@@ -315,22 +288,18 @@ pub fn rendition_inspection(value: &Rendition) -> String {
     let sound = value;
     let snapshot = sound.snapshot();
     let signal = sound.signal();
-    let mut out = format!("{}\nSource: {}\n", snapshot.title(), snapshot.origin());
+    let mut out = format!("{}\n{}\n", snapshot.title(), origin_line(snapshot.origin()));
     out.push_str(&document_notes(snapshot));
-    for (label, value) in crate::snapshot_research(snapshot) {
-        let _ = writeln!(out, "{label}: {value}");
-    }
     let _ = write!(
         out,
         "Sample rate: {} Hz\nFrames: {}\nDuration: {}\nFade: {} frames ({} \
-            s)\nPeak bounds: left {} dBFS, right {} dBFS\n{}",
+            s)\n{}\n{}",
         signal.sample_rate().hz(),
         signal.frames(),
         human_duration(signal.duration_seconds()),
         signal.fade_frames(),
         signal.fade_seconds(),
-        format_dbfs(signal.peak_dbfs()[0]),
-        format_dbfs(signal.peak_dbfs()[1]),
+        crate::numbers::peak_level(signal.peak_dbfs()),
         crate::rendition_description(sound, true)
     );
     out
@@ -339,8 +308,9 @@ pub fn rendition_inspection(value: &Rendition) -> String {
 /// Explain the captured export and selected rate before writing.
 pub fn rendition_export_preamble(value: &Rendition, path: &Path) -> String {
     format!(
-        "Exporting {} to {} at {} Hz. Press Ctrl-C to stop.",
+        "Exporting {} ({}) to {} at {} Hz. Press Ctrl-C to stop.",
         value.snapshot().title(),
+        crate::numbers::file_size(auditorylab_app::services::wav_size(value)),
         crate::display_scalar(&(path.display().to_string())),
         value.signal().sample_rate().hz()
     )

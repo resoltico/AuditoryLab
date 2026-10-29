@@ -747,6 +747,7 @@ fn persist_memberships(
             Path::new(MEMBERSHIP),
             &lease.canonical.join(MEMBERSHIP),
             Policy::Replace,
+            publish::Access::Private,
             &Cancel::default(),
             |file| {
                 file.write_all(text.as_bytes()).map_err(|e| {
@@ -1245,6 +1246,7 @@ fn publish_record(
         } else {
             Policy::Replace
         },
+        publish::Access::Private,
         cancel,
         |file| {
             file.write_all(&bytes).map_err(|e| {

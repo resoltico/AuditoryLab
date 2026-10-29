@@ -72,10 +72,10 @@ The following recipes use schema 4 and 0.1 s endpoint fades. All levels are unca
 | `martorell-2019-tone-pips-8-hz` | 10000 Hz tone, Both | gate 8 Hz / 1 ms | 3600 s | -20 dBFS |
 | `martorell-2019-tone-pips-40-hz` | 10000 Hz tone, Both | gate 40 Hz / 1 ms | 3600 s | -20 dBFS |
 | `martorell-2019-tone-pips-80-hz` | 10000 Hz tone, Both | gate 80 Hz / 1 ms | 3600 s | -20 dBFS |
-| `orozco-perez-2020-binaural-7-hz` | `binaural_pair`, 396.5 Hz Left / 403.5 Hz Right | signed offset +7 Hz | 480 s | -20 dBFS |
-| `orozco-perez-2020-binaural-40-hz` | `binaural_pair`, 380 Hz Left / 420 Hz Right | signed offset +40 Hz | 480 s | -20 dBFS |
-| `orozco-perez-2020-monaural-7-hz` | `monaural_pair`, 396.5 + 403.5 Hz, Both | signed offset +7 Hz | 480 s | -23.0103 dBFS |
-| `orozco-perez-2020-monaural-40-hz` | `monaural_pair`, 380 + 420 Hz, Both | signed offset +40 Hz | 480 s | -23.0103 dBFS |
+| `orozco-perez-2020-binaural-7-hz` | `binaural_pair`, 396.5 Hz Left / 403.5 Hz Right | beat offset +7 Hz | 480 s | -20 dBFS |
+| `orozco-perez-2020-binaural-40-hz` | `binaural_pair`, 380 Hz Left / 420 Hz Right | beat offset +40 Hz | 480 s | -20 dBFS |
+| `orozco-perez-2020-monaural-7-hz` | `monaural_pair`, 396.5 + 403.5 Hz, Both | beat offset +7 Hz | 480 s | -23.0103 dBFS |
+| `orozco-perez-2020-monaural-40-hz` | `monaural_pair`, 380 + 420 Hz, Both | beat offset +40 Hz | 480 s | -23.0103 dBFS |
 | `van-eeckhoutte-2018-am-500-hz` | 500 Hz tone, Left | SAM 39.0625 Hz / depth 1 | 307.2 s | -20 dBFS |
 | `van-eeckhoutte-2018-am-1000-hz` | 1000 Hz tone, Left | SAM 39.0625 Hz / depth 1 | 307.2 s | -20 dBFS |
 | `van-eeckhoutte-2018-am-2000-hz` | 2000 Hz tone, Left | SAM 39.0625 Hz / depth 1 | 307.2 s | -20 dBFS |

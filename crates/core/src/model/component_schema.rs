@@ -34,7 +34,7 @@ macro_rules! component_schema {
                 PairFirstFrequency => ("pair_first_frequency","First / left carrier","first / \
                     left carrier",Hertz,Some(crate::ValueRule::Positive));
                 /// Signed nominal carrier offset of an authored pair.
-                PairOffset => ("pair_offset","Signed offset","signed offset",Hertz,None);
+                PairOffset => ("pair_offset","Beat offset","beat offset",Hertz,None);
                 /// First/left peak level of an authored pair.
                 PairFirstLevel => ("pair_first_level","First / left peak","first / left peak",
                     DecibelsFullScale,Some(crate::ValueRule::Peak));

@@ -17,13 +17,13 @@ pub const ANY_POPULATION: Term = Term {
 };
 /// Absence of a condition-role restriction.
 pub const ANY_CONDITION_ROLE: Term = Term {
-    label: "Any condition role",
-    phrase: "any condition role",
+    label: "Any study role",
+    phrase: "any study role",
 };
 /// Absence of an analysis-coverage restriction.
 pub const ANY_ANALYSIS_COVERAGE: Term = Term {
-    label: "Any analysis coverage",
-    phrase: "any analysis coverage",
+    label: "Any rhythm analysis",
+    phrase: "any rhythm analysis",
 };
 /// Use the query sort’s normal direction.
 pub const AUTOMATIC_DIRECTION: Term = Term {
@@ -74,7 +74,7 @@ pub enum Operation {
     LibraryRefresh,
     /// Read saved recipe.
     LibraryRead,
-    /// New Sound.
+    /// New sound.
     NewSound,
     /// Edit a copy.
     EditCopy,
@@ -82,7 +82,7 @@ pub enum Operation {
     Save,
     /// Save independent copy.
     SaveCopy,
-    /// Open Recipe.
+    /// Open recipe.
     OpenRecipe,
     /// Export portable recipe.
     ExportRecipe,
@@ -129,11 +129,11 @@ vocabulary! {Operation,"operation" {
     LibraryCheck => ("library_check","Check library","check library"),
     LibraryRefresh => ("library_refresh","Refresh","refresh"),
     LibraryRead => ("library_read","Read saved recipe","read saved recipe"),
-    NewSound => ("new_sound","New Sound","new Sound"),
+    NewSound => ("new_sound","New sound","new sound"),
     EditCopy => ("edit_copy","Edit a copy","edit a copy"),
     Save => ("save","Save sound","save sound"),
     SaveCopy => ("save_copy","Save independent copy","save independent copy"),
-    OpenRecipe => ("open_recipe","Open Recipe","open Recipe"),
+    OpenRecipe => ("open_recipe","Open recipe","open recipe"),
     ExportRecipe => ("export_recipe","Export portable recipe","export portable recipe"),
     StopCurrentAndPlayRecipe => ("stop_current_and_play_recipe","Stop current & play recipe","stop \
         current & play recipe"),
@@ -315,8 +315,8 @@ impl ViewCaption {
             Self::AppliedLibraryFilters => "Applied library filters",
             Self::StudyEvidenceFilter => "Study evidence filter",
             Self::PopulationEvidenceFilter => "Population evidence filter",
-            Self::ConditionRoleEvidenceFilter => "Condition role evidence filter",
-            Self::NominalAnalysisCoverage => "Nominal analysis coverage",
+            Self::ConditionRoleEvidenceFilter => "Study role filter",
+            Self::NominalAnalysisCoverage => "Rhythm analysis",
             Self::SortDirection => "Sort direction",
             Self::LibraryResultGrouping => "Library result grouping",
             Self::CreatedFromLocalCalendarDate => "Created from local calendar date",
@@ -347,7 +347,7 @@ impl ViewCaption {
                 auditorylab_core::vocabulary::NOMINAL_RHYTHM_REFERENCE_BAND.label
             }
             Self::StructuralMethod => auditorylab_core::vocabulary::STRUCTURAL_METHOD.label,
-            Self::StudyDoiOrKeySource => "Study DOI or key:source",
+            Self::StudyDoiOrKeySource => "Study DOI or source key",
             Self::CreatedFromYyyyMmDd => "Created from YYYY-MM-DD",
             Self::CreatedThroughYyyyMmDd => "Created through YYYY-MM-DD",
             Self::ModifiedFromYyyyMmDd => "Modified from YYYY-MM-DD",

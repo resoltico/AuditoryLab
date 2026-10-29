@@ -322,18 +322,16 @@ pub fn component_text(
 /// Render document wording without copying its structure or admission state.
 #[must_use]
 pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorText {
-    use crate::numbers::NumberStyle;
     let context = editor_context(view);
     let peak = match &view.target {
         Ok(target) => format!(
-            "{}Peak bounds: {} / {} dBFS {context}",
+            "{}{} {context}",
             if view.pending {
                 "Pending validation · "
             } else {
                 ""
             },
-            crate::numbers::format(NumberStyle::Decibels, target.peak_dbfs()[0]),
-            crate::numbers::format(NumberStyle::Decibels, target.peak_dbfs()[1])
+            crate::numbers::peak_level(target.peak_dbfs())
         ),
         Err(error) if error.parameters().is_empty() => format!(
             "{} ({context})",
@@ -353,12 +351,9 @@ pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorText 
         crate::structure_summary,
     );
     let brief = format!(
-        "{} classification · {}\nSaved version · {}\n{}",
-        if view.pending {
-            "Last committed"
-        } else {
-            "Draft"
-        },
+        // One label in every state: the brief always describes applied settings, and a
+        // label that changed with pending text would reflow the editor under the caret.
+        "Applied rhythm · {}\nSaved version: {}\n{}",
         crate::analysis_summary(&(view.nominal)),
         view.saved
             .as_ref()
@@ -567,6 +562,8 @@ pub struct LibraryRowText {
     pub summary: String,
     /// Independent calculated memberships, never an efficacy claim.
     pub bands: String,
+    /// What the current reference condition was studied for.
+    pub studied_for: String,
     /// Requested duration in shared presentation units.
     pub duration: String,
     /// Sort-relevant date and any necessary unknown-history context.
@@ -660,9 +657,9 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryTe
         heading,
         title: snapshot.title(),
         classification: format!(
-            "{}\nReference: {}. This describes the sound, not measured brain activity.",
+            "{}\nBands follow {}. This describes the sound, not measured brain activity.",
             crate::analysis_summary(snapshot.nominal()),
-            auditorylab_core::rhythm::CONVENTION
+            auditorylab_core::rhythm::CONVENTION_LABEL
         ),
         ownership,
         structure: snapshot
@@ -908,11 +905,9 @@ fn render_transport_session(
 ) {
     use crate::numbers::NumberStyle;
     use crate::workspace::monitor::phase_text;
-    use auditorylab_app::workspace::View;
     let reader = data.monitor.as_ref();
     let held = data.output.held;
     let task_title = data.task_title.as_deref();
-    let view_kind = data.view;
     let audio = task_title.is_some();
     if let Some(reader) = reader {
         let status = reader.status;
@@ -981,10 +976,8 @@ fn render_transport_session(
             format!("Failed · {title}")
         } else if let Some(title) = task_title {
             format!("Preparing · {title}")
-        } else if view_kind == View::Workbench {
-            "Draft preview · not playing".into()
         } else {
-            "Recipe preview · not playing".into()
+            "Not playing".into()
         };
         view.receipt_age = "No generated publication received".into();
         view.monitor_state = if audio {
