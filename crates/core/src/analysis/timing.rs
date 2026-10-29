@@ -10,9 +10,9 @@ use alloc::vec::Vec;
 pub enum ModelKind {
     /// A continuous carrier, with no invented low-rate pulsing.
     Steady,
-    /// Exact frame-quantized click schedule.
+    /// Exact frame-quantized pulse-source envelope.
     PulseTrain,
-    /// Exact frame-quantized gate schedule.
+    /// Shared frame-quantized pulse-modulation envelope.
     Pulsed,
     /// Sinusoidal amplitude envelope bounds, not carrier waveform samples.
     Envelope,

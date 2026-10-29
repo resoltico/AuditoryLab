@@ -15,7 +15,7 @@ pub enum CaptureError {
 pub enum WaveformScale {
     /// Digital full scale.
     Fixed,
-    /// One symmetric extent shared by both route; silence uses ±1.
+    /// One symmetric extent shared by both channels; silence uses ±1.
     Fit,
 }
 /// An owned immutable view. Freeze retains this entire value, not just graph paths.
@@ -35,7 +35,7 @@ pub struct WaveformCapture {
     underruns: u64,
     /// Last-generated-frame state captured at the same publication.
     observation: Option<Observation>,
-    /// Per-column per-ear extrema over all copied samples; at most512 bins.
+    /// Per-column per-channel extrema over all copied samples; at most 512 bins.
     bins: Vec<[Extent; 2]>,
     /// Measured levels of exactly the captured window, independent of visual scale.
     meters: [Meter; 2],
