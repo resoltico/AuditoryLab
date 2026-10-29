@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Sort the library by sound duration: `--sort duration` in the CLI and Duration in the desktop Sort menu; shortest first by default.
+
 ## [0.8.0] - 2026-10-29
 
 - `--version` prints `X.Y.Z (REVISION)` with the full source revision, replacing `X.Y.Z (build N) · SHORT`; update scripts that parse it.

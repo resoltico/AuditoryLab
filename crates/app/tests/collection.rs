@@ -226,6 +226,39 @@ fn date_nulls_stay_last_in_both_directions_and_ties_do_not_reverse() {
     assert!(q.execute(&rows).is_err());
 }
 #[test]
+fn duration_sort_starts_shortest_and_keeps_title_ties_ascending() {
+    let rows = [
+        ("long", 300.0),
+        ("b tie", 60.0),
+        ("short", 0.5),
+        ("a tie", 60.0),
+    ]
+    .into_iter()
+    .zip(1..)
+    .map(|((title, seconds), id)| {
+        let mut row = entry(id, title, Vec::new(), None);
+        row.duration_seconds = seconds;
+        row
+    })
+    .collect::<Vec<_>>();
+    let mut q = CatalogQuery {
+        sort: SortBy::Duration,
+        ..Default::default()
+    };
+    assert_eq!(q.effective_sort(), (SortBy::Duration, Direction::Asc));
+    let titles = |q: &CatalogQuery| {
+        q.execute(&rows)
+            .unwrap()
+            .entries
+            .iter()
+            .map(|e| e.title.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(titles(&q), ["short", "a tie", "b tie", "long"]);
+    q.direction = Some(Direction::Desc);
+    assert_eq!(titles(&q), ["long", "a tie", "b tie", "short"]);
+}
+#[test]
 fn automatic_defaults_follow_scope_but_explicit_sort_is_retained() {
     let mut q = CatalogQuery::default();
     assert_eq!(q.effective_sort(), (SortBy::Rate, Direction::Asc));

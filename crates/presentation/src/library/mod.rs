@@ -43,15 +43,15 @@ fn entry_row(
     sort: auditorylab_app::discovery::query::SortBy,
     requires_read: bool,
 ) -> LibraryRowText {
-    use auditorylab_app::discovery::query::SortBy;
-    let (date_label, date) = match sort {
-        SortBy::Created => (CalendarField::Created.label(), e.created_at),
-        SortBy::Modified => (auditorylab_core::vocabulary::EDITED.label, e.modified_at),
-        SortBy::Added => (CalendarField::Added.label(), e.added_at),
-        _ if matches!(e.key, LibraryKey::User(_) | LibraryKey::External(_)) => {
+    let (date_label, date) = match sort.calendar_field() {
+        Some(CalendarField::Modified) => {
             (auditorylab_core::vocabulary::EDITED.label, e.modified_at)
         }
-        _ => (CalendarField::Created.label(), e.created_at),
+        Some(CalendarField::Added) => (CalendarField::Added.label(), e.added_at),
+        None if matches!(e.key, LibraryKey::User(_) | LibraryKey::External(_)) => {
+            (auditorylab_core::vocabulary::EDITED.label, e.modified_at)
+        }
+        Some(CalendarField::Created) | None => (CalendarField::Created.label(), e.created_at),
     };
     let shown = |date: Option<auditorylab_core::Timestamp>| {
         date.map_or_else(

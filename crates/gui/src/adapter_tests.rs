@@ -1721,7 +1721,7 @@ fn persistent_native_filters_use_shared_query_and_invalid_dates_preserve_it() {
     );
     h.wait_for_files();
     let ui = h.ui();
-    ui.invoke_collection_filter(1, 2);
+    ui.invoke_collection_filter(1, sort_choice(ui, SortBy::Title));
     ui.invoke_more_filters(
         "".into(),
         0,
@@ -2063,7 +2063,7 @@ fn native_library_keyboard_has_one_tab_stop_and_keeps_selected_key_through_sort(
     assert_ne!(ui.get_library_key(), first);
     let selected = ui.get_library_key();
     assert_eq!(ui.get_focused_library_key(), selected);
-    ui.invoke_collection_filter(1, 2);
+    ui.invoke_collection_filter(1, sort_choice(ui, SortBy::Title));
     h.settle();
     assert_eq!(ui.get_library_key(), selected);
     assert_eq!(ui.get_focused_library_key(), selected);
@@ -2351,7 +2351,7 @@ fn local_dates_expose_exact_utc_and_reset_sort_preserves_committed_filters() {
     );
     h.wait_for_files();
     let ui = h.ui();
-    ui.invoke_collection_filter(2, 3);
+    ui.invoke_collection_filter(2, sort_choice(ui, SortBy::Created));
     h.wait_for_files();
     let row = ui.get_catalog().row_data(0).unwrap().text;
     assert!(
@@ -2471,17 +2471,8 @@ fn filter_controls_map_to_independent_typed_queries() {
         (3, Scope::OpenFiles),
         (4, Scope::Trash),
     ] {
-        for (sort_choice, sort) in [
-            (0, SortBy::Automatic),
-            (1, SortBy::Rate),
-            (2, SortBy::Title),
-            (3, SortBy::Created),
-            (4, SortBy::Modified),
-            (5, SortBy::Added),
-            (6, SortBy::Study),
-            (7, SortBy::Collection),
-        ] {
-            ui.invoke_collection_filter(choice, sort_choice);
+        for sort in SortBy::ALL {
+            ui.invoke_collection_filter(choice, sort_choice(ui, sort));
             h.wait_for_files();
             let expected = CatalogQuery {
                 scope,
@@ -3684,7 +3675,7 @@ fn assert_empty_scope_recovery(h: &Harness) {
     let ui = h.ui();
 
     for scope in [2, 3, 4] {
-        ui.invoke_collection_filter(scope, 2);
+        ui.invoke_collection_filter(scope, sort_choice(ui, SortBy::Title));
         h.settle();
         assert_eq!(ui.get_catalog().row_count(), 0);
         action_button(ui, "Library options…").accessible_action(&AccessibilityAction::Default);
@@ -4003,6 +3994,19 @@ fn apply_runtime_facets(
         },
     );
     h.wait_for_files();
+}
+
+/// The rendered sort menu position whose visible label names this sort.
+fn sort_choice(ui: &MainWindow, sort: SortBy) -> i32 {
+    let labels = ui.get_sort_labels();
+    let index = (0..labels.row_count())
+        .find(|&row| {
+            labels
+                .row_data(row)
+                .is_some_and(|label| label == sort.label())
+        })
+        .unwrap_or_else(|| panic!("{} is not offered in the sort menu", sort.key()));
+    i32::try_from(index).unwrap()
 }
 
 fn assert_reordered_sort_and_clear(h: &Harness) {

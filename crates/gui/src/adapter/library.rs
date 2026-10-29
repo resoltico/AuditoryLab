@@ -225,12 +225,7 @@ impl SlintAdapter {
         ui.set_open_files_scope(
             source.query.scope == auditorylab_app::discovery::query::Scope::OpenFiles,
         );
-        ui.set_show_built_in_dates(matches!(
-            source.sort,
-            auditorylab_app::discovery::query::SortBy::Created
-                | auditorylab_app::discovery::query::SortBy::Modified
-                | auditorylab_app::discovery::query::SortBy::Added
-        ));
+        ui.set_show_built_in_dates(source.sort.calendar_field().is_some());
         self.counts
             .library_projections
             .set(self.counts.library_projections.get() + 1);

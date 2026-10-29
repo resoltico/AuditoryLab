@@ -271,6 +271,8 @@ pub enum SortBy {
     Automatic,
     /// Matching nominal rate.
     Rate,
+    /// Requested sound duration.
+    Duration,
     /// Normalized title.
     Title,
     /// Current declared study identity.
@@ -333,6 +335,8 @@ auditorylab_core::vocabulary! { Scope,"scope" {
 auditorylab_core::vocabulary! { SortBy,"sort_by" {
     Automatic => ("automatic","Automatic order","automatic order"),
     Rate => ("rate","Nominal rate","nominal rate"),
+    Duration => ("duration",crate::core::ParameterId::Duration.label(),
+        crate::core::ParameterId::Duration.phrase()),
     Title => ("title",auditorylab_core::vocabulary::TITLE.label,
         auditorylab_core::vocabulary::TITLE.phrase),
     Created => ("created",CalendarField::Created.label(),CalendarField::Created.phrase()),
@@ -372,6 +376,24 @@ pub enum CalendarField {
     /// Directory-owned library membership instants.
     Added,
 }
+impl SortBy {
+    /// The calendar field a date sort orders by; other sorts order by a non-date value.
+    #[must_use]
+    pub const fn calendar_field(self) -> Option<CalendarField> {
+        match self {
+            Self::Created => Some(CalendarField::Created),
+            Self::Modified => Some(CalendarField::Modified),
+            Self::Added => Some(CalendarField::Added),
+            Self::Automatic
+            | Self::Rate
+            | Self::Duration
+            | Self::Title
+            | Self::Study
+            | Self::Collection => None,
+        }
+    }
+}
+
 auditorylab_core::vocabulary! {CalendarField,"calendar_field" {
     Created=>("created","Created","created"),
     Modified=>("modified","Modified","modified"),

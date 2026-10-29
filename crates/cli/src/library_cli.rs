@@ -284,20 +284,15 @@ fn parse_choice<T: lab::core::vocabulary::Vocabulary + std::str::FromStr>(
         .map_err(|_| expected_choices(T::ALL.iter().map(|value| value.key())))
 }
 fn parse_sort(text: &str) -> std::result::Result<SortBy, String> {
-    // Automatic applies when --sort is omitted.
-    const EXPLICIT: [SortBy; 7] = [
-        SortBy::Rate,
-        SortBy::Title,
-        SortBy::Study,
-        SortBy::Collection,
-        SortBy::Created,
-        SortBy::Modified,
-        SortBy::Added,
-    ];
-    EXPLICIT
-        .into_iter()
+    // Automatic applies when --sort is omitted, so only the app's other sorts are offered.
+    let explicit = || {
+        SortBy::ALL
+            .into_iter()
+            .filter(|&value| value != SortBy::Automatic)
+    };
+    explicit()
         .find(|value| value.key() == text)
-        .ok_or_else(|| expected_choices(EXPLICIT.iter().map(|value| value.key())))
+        .ok_or_else(|| expected_choices(explicit().map(SortBy::key)))
 }
 fn parse_role(text: &str) -> std::result::Result<lab::core::provenance::ConditionRole, String> {
     parse_choice(text)
