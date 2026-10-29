@@ -4196,26 +4196,6 @@ fn pulse_mode_and_shape_callbacks_preserve_surviving_widgets_and_retire_old_inte
     let row = ui.get_components().row_data(0).unwrap();
     assert_eq!(row.modulation_width, 1);
     assert_eq!(row.modulation_shape, 1);
-    // Pulse sections stay open with their controls; static headings must not
-    // announce a collapsed disclosure while showing its content.
-    assert!(
-        find_control(ui, |item| {
-            item.is_visible()
-                && item
-                    .accessible_string_property(AccessibleStringProperty::Label)
-                    .as_deref()
-                    == Some("Waveform pattern")
-        })
-        .is_some()
-    );
-    assert!(
-        find_control(ui, |item| {
-            item.accessible_string_property(AccessibleStringProperty::Label)
-                .as_deref()
-                == Some("Routing, modulation and component options · collapsed")
-        })
-        .is_none()
-    );
     let label = format!(
         "{}: {}",
         row.name,
@@ -4347,5 +4327,35 @@ fn closed_monitor_commands_refresh_calculated_models_without_a_redraw_tick() {
     h.settle();
     assert!(h.adapter.inspect(|w| w.model_view().is_none()));
     assert_eq!(ui.get_model_lanes().row_count(), 0);
+    assert!(!h.adapter.inspect(|w| w.audio_busy()));
+}
+
+#[test]
+fn pulse_sections_use_open_headings_instead_of_collapsed_controls() {
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    ui.invoke_add_component(ui.get_document(), 4);
+    h.settle();
+    // Pulse sections stay open with their controls; static headings must not
+    // announce a collapsed disclosure while showing its content.
+    assert!(
+        find_control(ui, |item| {
+            item.is_visible()
+                && item
+                    .accessible_string_property(AccessibleStringProperty::Label)
+                    .as_deref()
+                    == Some("Waveform pattern")
+        })
+        .is_some()
+    );
+    assert!(
+        find_control(ui, |item| {
+            item.accessible_string_property(AccessibleStringProperty::Label)
+                .as_deref()
+                == Some("Routing, modulation and component options · collapsed")
+        })
+        .is_none()
+    );
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
