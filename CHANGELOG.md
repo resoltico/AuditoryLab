@@ -2,14 +2,15 @@
 
 ## [Unreleased]
 
-- About and `--version` show the product version and optional source revision without a separate build counter.
+- `--version` prints `X.Y.Z (REVISION)` with the full source revision, replacing `X.Y.Z (build N) · SHORT`; update scripts that parse it.
+- About shows `Version X.Y.Z` with a 12-character source revision in place of the build number.
 - Contributors must install `slint-lsp` at the resolved Slint version and run `cargo xtask check-style` for source width and Slint formatting.
 - CI treats Clippy pedantic findings as errors.
 - macOS `CFBundleVersion` derives from `X*10000 + Y*100 + Z`; packaging rejects version suffixes and minor or patch values above 99.
 - Windows executables include version, product name, description and copyright details; the desktop shows as Auditory Lab and the CLI as Auditory Lab CLI.
 - The macOS app records its copyright for Finder's Get Info.
 - Each download's README.txt covers only its own platform.
-- Relative `--library-dir` errors name the rejected path and exit 2 before listing.
+- The relative `--library-dir` error names the rejected path.
 - Desktop ignores stale Save actions outside Workbench and selected-sound playback activations outside Library.
 - Update the bundled Markdown parser to address RUSTSEC-2026-0414.
 
