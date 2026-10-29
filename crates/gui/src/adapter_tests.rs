@@ -1453,17 +1453,17 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
         parameter_field(&binding.clone(), ParameterId::ClickRate),
         "2".into(),
     );
-    assert!(ui.get_draft_brief().contains("Rhythm · Delta"));
+    assert!(ui.get_draft_brief().contains("Applied rhythm · Delta"));
     ui.invoke_stage_parameter(
         parameter_field(&binding.clone(), ParameterId::ClickRate),
         "bad".into(),
     );
-    assert!(ui.get_draft_brief().contains("Last applied rhythm · Delta"));
+    assert!(ui.get_draft_brief().contains("Applied rhythm · Delta"));
     ui.invoke_commit_parameter(
         parameter_field(&binding.clone(), ParameterId::ClickRate),
         "6".into(),
     );
-    assert!(ui.get_draft_brief().contains("Rhythm · Theta"));
+    assert!(ui.get_draft_brief().contains("Applied rhythm · Theta"));
     assert!(ui.get_draft_brief().contains("Saved version: Not saved"));
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
@@ -1658,7 +1658,7 @@ fn persistent_library_slint_bindings_publish_exact_draft_and_keep_filter_identit
         parameter_field(&binding.clone(), ParameterId::PairOffset),
         "6".into(),
     );
-    assert!(ui.get_draft_brief().contains("Rhythm · Theta"));
+    assert!(ui.get_draft_brief().contains("Applied rhythm · Theta"));
     assert!(ui.get_draft_brief().contains("Saved version: Delta"));
     ui.invoke_rhythm_filter(1, 0);
     ui.invoke_collection_filter(2, 0);

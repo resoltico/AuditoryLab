@@ -351,12 +351,9 @@ pub fn editor_view(view: &auditorylab_app::workspace::EditorView) -> EditorText 
         crate::structure_summary,
     );
     let brief = format!(
-        "{} · {}\nSaved version: {}\n{}",
-        if view.pending {
-            "Last applied rhythm"
-        } else {
-            "Rhythm"
-        },
+        // One label in every state: the brief always describes applied settings, and a
+        // label that changed with pending text would reflow the editor under the caret.
+        "Applied rhythm · {}\nSaved version: {}\n{}",
         crate::analysis_summary(&(view.nominal)),
         view.saved
             .as_ref()

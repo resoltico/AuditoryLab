@@ -131,8 +131,8 @@ fn committed_brief_never_borrows_pending_pair_facts() {
         .unwrap();
         let view = crate::workspace::editor_view(&ws.editor_view());
         assert_eq!(
-            view.brief,
-            original.replace("Rhythm ·", "Last applied rhythm ·")
+            view.brief, original,
+            "pending text never changes the applied brief"
         );
         assert!(!view.brief.contains("357") && !view.brief.contains("No valid sound"));
         assert_eq!(

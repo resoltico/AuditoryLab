@@ -7,7 +7,7 @@
 - CLI help describes every command and option in plain language; `export --output` and other options gained help.
 - `export` checks the destination before announcing the file and now states its size, such as 15.4 MB.
 - Exported WAV and recipe files get ordinary permissions instead of owner-only; a replaced external recipe keeps its permissions.
-- Desktop wording is plainer: **Waveform pattern**, **Active filters…**, **Not playing**, **Rhythm**, **Peak level**, named band definitions and silent-draft hints.
+- Desktop wording is plainer: **Waveform pattern**, **Active filters…**, **Not playing**, **Applied rhythm**, **Peak level**, named band definitions and silent-draft hints.
 - Desktop save confirmations name the saved sound; Filters label study role and rhythm analysis plainly and show the timezone once.
 - The desktop has an Edit menu for text fields and **Help › Auditory Lab desktop guide**; macOS no longer lists Quit twice.
 - Labels read **New sound**, **Open recipe…** and **Beat offset** (formerly signed offset); recipe keys are unchanged.

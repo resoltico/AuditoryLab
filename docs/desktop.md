@@ -48,7 +48,7 @@ Typing stages text. Enter, leaving a field or a commit action applies the comple
 
 Set device volume low before Play. Workbench playback follows committed settings valid at the actual device rate. Invalid edits retain the last valid playing settings. Pending text is labeled; metadata-only edits leave audio transitions unchanged. Library and Workbench playback remain distinct captured sources.
 
-Saved duration and endpoint fades govern finite playback and WAV export. Live Workbench playback continues until Stop or its frame limit. **Rhythm** follows committed settings, and **Saved version** follows the exact confirmed save candidate.
+Saved duration and endpoint fades govern finite playback and WAV export. Live Workbench playback continues until Stop or its frame limit. **Applied rhythm** follows committed settings, and **Saved version** follows the exact confirmed save candidate.
 
 ## Save or export
 

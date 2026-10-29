@@ -148,5 +148,8 @@ fn list_purpose_text_stays_out_of_the_machine_report() {
     );
     assert!(entry.evidence[0].population_detail.is_some());
     let json = serde_json::to_string(&entry.evidence).unwrap();
-    assert!(!json.contains("population_detail"), "JSON schema 2 is unchanged: {json}");
+    assert!(
+        !json.contains("population_detail"),
+        "JSON schema 2 is unchanged: {json}"
+    );
 }
