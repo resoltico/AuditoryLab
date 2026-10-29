@@ -120,7 +120,7 @@ pub(crate) fn inspect(
         let bytes = fs::read(&executable)?;
         architecture_header(&bytes, target)?;
         if target.contains("windows") {
-            inspect_windows_identity(&executable, version)?;
+            inspect_windows_identity(&executable, binary, version)?;
         }
         if binary == "auditorylab-gui" && target.contains("windows") {
             crate::pe_icon::verify(
@@ -169,12 +169,17 @@ fn compare_tree(source: &Path, actual: &Path) -> Result<()> {
     Ok(())
 }
 
-fn inspect_windows_identity(executable: &Path, version: &str) -> Result<()> {
+fn inspect_windows_identity(executable: &Path, binary: &str, version: &str) -> Result<()> {
     if !cfg!(target_os = "windows") {
         return Err("Windows resource inspection requires a native Windows host".into());
     }
     let manifest: toml::Value = toml::from_str(&fs::read_to_string("Cargo.toml")?)?;
     let product = crate::source::identity_input::product(&manifest)?;
+    let kind = if binary == "auditorylab-gui" {
+        crate::source::identity_input::Executable::Desktop
+    } else {
+        crate::source::identity_input::Executable::Cli
+    };
     let output = capture(
         Command::new("powershell")
             .args([
@@ -189,7 +194,8 @@ fn inspect_windows_identity(executable: &Path, version: &str) -> Result<()> {
             $v.ProductMinorPart, $v.ProductBuildPart, $v.ProductPrivatePart)\n    \
             fileVersion = $v.FileVersion\n    productVersion = \
             $v.ProductVersion\n    name = $v.ProductName\n    copyright = \
-            $v.LegalCopyright\n} | ConvertTo-Json -Compress\n",
+            $v.LegalCopyright\n    description = $v.FileDescription\n} | \
+            ConvertTo-Json -Compress\n",
             ])
             .env("AUDITORYLAB_INSPECT_EXECUTABLE", executable),
     )?;
@@ -202,7 +208,8 @@ fn inspect_windows_identity(executable: &Path, version: &str) -> Result<()> {
     let native = format!("{version}.0");
     let expected = serde_json::json!({"file": components, "product": components,
         "fileVersion": native, "productVersion": native,
-        "name": product.name, "copyright": product.copyright});
+        "name": product.name, "copyright": product.copyright,
+        "description": crate::source::identity_input::file_description(product, kind)});
     if actual != expected {
         return Err(format!("Windows VERSIONINFO differs: {actual} vs {expected}").into());
     }
@@ -242,7 +249,10 @@ fn inspect_macos(
                 return Err(format!("missing icon resource: {file}").into());
             }
         }
+        let manifest: toml::Value = toml::from_str(&fs::read_to_string("Cargo.toml")?)?;
+        let product = crate::source::identity_input::product(&manifest)?;
         for (key, expected) in [
+            ("NSHumanReadableCopyright", product.copyright.to_owned()),
             ("CFBundleShortVersionString", version.to_owned()),
             ("CFBundleVersion", bundle_version.to_string()),
             ("LSMinimumSystemVersion", "15.0".into()),

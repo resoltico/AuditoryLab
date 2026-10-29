@@ -34,9 +34,23 @@ pub(crate) fn product(manifest: &toml::Value) -> Result<Product<'_>, &'static st
         .ok_or("workspace.metadata.auditorylab.copyright must be a nonempty string")?;
     Ok(Product { name, copyright })
 }
+/// Packaged executable whose native identity names it apart from its sibling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Executable {
+    Desktop,
+    Cli,
+}
+/// Name Windows shows for a running or listed executable, such as in Task Manager.
+pub(crate) fn file_description(product: Product<'_>, executable: Executable) -> String {
+    match executable {
+        Executable::Desktop => product.name.to_owned(),
+        Executable::Cli => format!("{} CLI", product.name),
+    }
+}
 /// Native executable resource; numeric versions are separate from identity text.
 pub(crate) fn windows_resource(
     product: Product<'_>,
+    executable: Executable,
     version: &str,
 ) -> Result<String, &'static str> {
     let plain = version.split(['-', '+']).next().ok_or("missing version")?;
@@ -62,6 +76,7 @@ BEGIN
     BEGIN
         BLOCK "040904B0"
         BEGIN
+            VALUE "FileDescription", {description:?}
             VALUE "FileVersion", {native:?}
             VALUE "ProductVersion", {native:?}
             VALUE "ProductName", {name:?}
@@ -74,6 +89,7 @@ BEGIN
     END
 END
 "#,
+        description = file_description(product, executable),
         name = product.name,
         copyright = product.copyright
     ))
@@ -123,11 +139,14 @@ mod product_tests {
             name: "Auditory Lab",
             copyright: "Copyright © 2026",
         };
-        let resource = windows_resource(product, "1.2.3").unwrap();
+        let resource = windows_resource(product, Executable::Desktop, "1.2.3").unwrap();
         assert!(resource.contains("FILEVERSION 1,2,3,0"));
         assert!(resource.contains("PRODUCTVERSION 1,2,3,0"));
         assert!(resource.contains("VALUE \"ProductName\", \"Auditory Lab\""));
         assert!(resource.contains("VALUE \"LegalCopyright\", \"Copyright © 2026\""));
-        assert!(windows_resource(product, "65536.0.0").is_err());
+        assert!(resource.contains("VALUE \"FileDescription\", \"Auditory Lab\""));
+        let cli = windows_resource(product, Executable::Cli, "1.2.3").unwrap();
+        assert!(cli.contains("VALUE \"FileDescription\", \"Auditory Lab CLI\""));
+        assert!(windows_resource(product, Executable::Desktop, "65536.0.0").is_err());
     }
 }
