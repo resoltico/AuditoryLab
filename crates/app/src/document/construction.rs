@@ -2,7 +2,7 @@
 use auditorylab_core::{
     CarrierKind, ChannelRouting, Finite, Modulation, ModulationKind, ParameterId,
 };
-/// A quiet unmodulated component, routed to both route.
+/// A quiet unmodulated component, routed to both channels.
 #[must_use]
 pub fn default_component(kind: CarrierKind) -> auditorylab_core::ComponentForm {
     let route = ChannelRouting::Both;

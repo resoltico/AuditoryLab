@@ -194,8 +194,8 @@ const fn method_search_terms(method: Method) -> &'static str {
     match method {
         Method::Binaural => "binaural interaural pair",
         Method::Monaural => "monaural pair",
-        Method::PulseTrain => "click clicks",
-        Method::Pulsed => "gate gated rectangular",
+        Method::PulseTrain => "pulse train repetition",
+        Method::Pulsed => "pulse pulsed modulation",
         Method::Sinusoidal => "am amplitude modulation sinusoidal",
         Method::SteadyTone => "steady tone",
     }
@@ -405,44 +405,35 @@ fn component_terms(
     facts: &mut Vec<String>,
     numbers: &mut Vec<f64>,
 ) {
-    use crate::core::{ChannelRouting, Modulation, ParameterId};
+    use crate::core::{ChannelRouting, Modulation, ParameterId, SoundSource};
 
     let form = component.form;
-    if let Some(kind) = form.primitive_kind() {
-        facts.push(
-            match kind {
-                crate::core::CarrierKind::Tone => "tone carrier frequency",
-                crate::core::CarrierKind::PulseTrain => "click clicks rate width",
-            }
-            .into(),
-        );
-        if let Some(modulation) = form.modulation() {
-            facts.push(
-                match modulation {
-                    Modulation::Sinusoidal { .. } => {
-                        "sinusoidal amplitude modulation am depth rate"
-                    }
-                    Modulation::Pulsed { .. } => "rectangular gate rate width",
-                }
-                .into(),
-            );
+    let source = match form.source {
+        SoundSource::Tone { .. } => "tone carrier frequency",
+        SoundSource::PulseTrain { pulse, .. } => {
+            pulse_terms(pulse, facts);
+            "pulse train repetition"
         }
-    } else {
-        facts.push(
-            if form.route().is_none() {
-                "pair left right"
-            } else {
-                "pair"
+        SoundSource::BinauralPair { .. } => "pair left right",
+        SoundSource::MonauralPair { .. } => "pair",
+    };
+    facts.push(source.into());
+    if let Some(modulation) = form.modulation {
+        let modulation = match modulation {
+            Modulation::Sinusoidal { .. } => "sinusoidal amplitude modulation am depth rate",
+            Modulation::Pulsed { pulse } => {
+                pulse_terms(pulse, facts);
+                "pulse pulsed modulation"
             }
-            .into(),
-        );
+        };
+        facts.push(modulation.into());
     }
     if let Some(route) = form.route() {
         facts.push(
             match route {
                 ChannelRouting::Left => "left",
                 ChannelRouting::Right => "right",
-                ChannelRouting::Both => "both route",
+                ChannelRouting::Both => "both channels",
             }
             .into(),
         );
@@ -456,4 +447,22 @@ fn component_terms(
     if let Some(pair) = component.form.pair() {
         numbers.push(pair.first_hz.get() + pair.offset_hz.get());
     }
+}
+
+fn pulse_terms(pulse: crate::core::PulseSpec, facts: &mut Vec<String>) {
+    use crate::core::{PulseShape, PulseWidth};
+    facts.push(
+        match pulse.width {
+            PulseWidth::Duration { .. } => "duration seconds width",
+            PulseWidth::DutyCycle { .. } => "duty cycle fraction width",
+        }
+        .into(),
+    );
+    facts.push(
+        match pulse.shape {
+            PulseShape::Rectangular {} => "rectangular",
+            PulseShape::RaisedCosine { .. } => "raised_cosine raised cosine rise fall",
+        }
+        .into(),
+    );
 }

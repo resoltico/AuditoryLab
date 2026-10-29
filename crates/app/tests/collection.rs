@@ -300,3 +300,56 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
         None => panic!("nonfinite fixture value"),
     }
 }
+
+#[test]
+fn search_indexes_actual_pulse_intent_and_modulation_on_pairs() {
+    use auditorylab_core::{Modulation, PulseShape, PulseSpec, PulseWidth};
+    let mut shaped = pair(6.0);
+    shaped.form.modulation = Some(Modulation::Pulsed {
+        pulse: PulseSpec {
+            rate_hz: finite(10.0),
+            width: PulseWidth::DutyCycle {
+                fraction: finite(0.5),
+            },
+            shape: PulseShape::RaisedCosine {
+                rise_seconds: finite(0.002),
+                fall_seconds: finite(0.003),
+            },
+        },
+    });
+    let mut rectangular = shaped;
+    let Some(Modulation::Pulsed { pulse }) = &mut rectangular.form.modulation else {
+        panic!("specified pulse fixture");
+    };
+    pulse.shape = PulseShape::Rectangular {};
+    pulse.width = PulseWidth::Duration {
+        seconds: finite(0.05),
+    };
+    let input = [
+        entry(1, "A", vec![shaped], None),
+        entry(2, "B", vec![rectangular], None),
+    ];
+    for (search, titles) in [
+        ("pulsed modulation", vec!["A", "B"]),
+        ("raised cosine duty", vec!["A"]),
+        ("rectangular duration", vec!["B"]),
+        ("rectangular duty", vec![]),
+        ("sinusoidal", vec![]),
+    ] {
+        let result = CatalogQuery {
+            search: search.into(),
+            ..Default::default()
+        }
+        .execute(&input)
+        .unwrap();
+        assert_eq!(
+            result
+                .entries
+                .iter()
+                .map(|e| e.title.as_str())
+                .collect::<Vec<_>>(),
+            titles,
+            "{search}"
+        );
+    }
+}
