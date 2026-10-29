@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-29
+
 - `--version` prints `X.Y.Z (REVISION)` with the full source revision, replacing `X.Y.Z (build N) · SHORT`; update scripts that parse it.
 - About shows `Version X.Y.Z` with a 12-character source revision in place of the build number.
 - Contributors must install `slint-lsp` at the resolved Slint version and run `cargo xtask check-style` for source width and Slint formatting.
