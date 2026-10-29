@@ -417,21 +417,35 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
     let ui = h.ui();
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 0);
-    let binding = h.component_key(0);
     // Independent oracle: the fields each kind has.
     let carriers = [
         (0, vec![ParameterId::ToneFrequency]),
-        (1, vec![ParameterId::ClickRate, ParameterId::ClickWidth]),
+        (
+            1,
+            vec![
+                ParameterId::SourcePulseRate,
+                ParameterId::SourcePulseDuration,
+            ],
+        ),
     ];
     let modulations = [
         (0, vec![]),
-        (1, vec![ParameterId::AmRate, ParameterId::AmDepth]),
-        (2, vec![ParameterId::GateRate, ParameterId::GateWidth]),
+        (
+            1,
+            vec![ParameterId::ModulationRate, ParameterId::ModulationDepth],
+        ),
+        (
+            2,
+            vec![
+                ParameterId::ModulationPulseRate,
+                ParameterId::ModulationPulseDuration,
+            ],
+        ),
     ];
     for (carrier, carrier_keys) in &carriers {
         for (modulation, modulation_keys) in &modulations {
-            ui.invoke_set_carrier(binding.clone(), *carrier);
-            ui.invoke_set_modulation(binding.clone(), *modulation);
+            ui.invoke_set_carrier(h.component_key(0), *carrier);
+            ui.invoke_set_modulation(h.component_key(0), *modulation);
             let mut expected = carrier_keys.clone();
             expected.push(ParameterId::PeakLevel);
             expected.extend(modulation_keys);
@@ -467,10 +481,10 @@ fn each_carrier_and_modulation_renders_exactly_its_semantic_fields() {
         }
     }
     // A key the component does not have is refused, not redirected.
-    ui.invoke_set_carrier(binding.clone(), 0);
-    ui.invoke_set_modulation(binding.clone(), 0);
+    ui.invoke_set_carrier(h.component_key(0), 0);
+    ui.invoke_set_modulation(h.component_key(0), 0);
     ui.invoke_stage_parameter(
-        parameter_field(&binding.clone(), ParameterId::GateRate),
+        parameter_field(&h.component_key(0), ParameterId::ModulationPulseRate),
         "5".into(),
     );
     assert!(!h.adapter.inspect(|w| w.editor().has_staged()));
@@ -486,7 +500,7 @@ fn a_focused_field_survives_updates_to_other_rows() {
     }
     h.settle();
     let nested_before = ui.get_components().row_data(1).unwrap().parameters;
-    let input = h.field("Clicks · Component 2: Clicks rate (Hz)");
+    let input = h.field("Pulse train · Component 2: Source pulse rate (Hz)");
     let inner = WindowInner::from_pub(ui.window());
     inner.set_focus_item(&input, true, FocusReason::Programmatic);
     for _ in 0..4 {
@@ -503,7 +517,7 @@ fn a_focused_field_survives_updates_to_other_rows() {
     let first = h.component_key(0);
     let third = h.component_key(2);
     // Structural commands change other rows without committing staged text.
-    ui.invoke_set_ears(first.clone(), 2);
+    ui.invoke_set_routing(first.clone(), 2);
     ui.invoke_set_modulation(third.clone(), 2);
     ui.invoke_remove_component(first.clone());
     h.settle();
@@ -528,11 +542,13 @@ fn a_focused_field_survives_updates_to_other_rows() {
         "the nested model object is kept"
     );
     assert_eq!(
-        field(ui, "Clicks · Component 2: Clicks rate (Hz)"),
+        field(ui, "Pulse train · Component 2: Source pulse rate (Hz)"),
         input,
         "the moved row keeps its authored identity and the same widget"
     );
-    let rate = h.adapter.inspect(parameter(0, ParameterId::ClickRate));
+    let rate = h
+        .adapter
+        .inspect(parameter(0, ParameterId::SourcePulseRate));
     assert_eq!(
         h.adapter
             .inspect(|w| w.editor().staged(rate).map(str::to_owned)),
@@ -913,7 +929,7 @@ fn component_options_are_sized_to_their_content() {
         remove_width < width / 4.0,
         "Remove is {remove_width} of {width}"
     );
-    let choices: Vec<_> = ["ears", "carrier", "modulation"]
+    let choices: Vec<_> = ["route", "carrier", "modulation"]
         .iter()
         .map(|choice| bounds(&format!("{name}: {choice}")))
         .collect();
@@ -1447,20 +1463,20 @@ fn nominal_filter_callbacks_and_committed_draft_labels_use_production_bindings()
     assert!(!ui.get_has_results());
     ui.invoke_rhythm_filter(0, 0);
     h.workbench();
-    ui.invoke_add_component(ui.get_document(), 1); // Clicks.
+    ui.invoke_add_component(ui.get_document(), 1); // PulseTrain.
     let binding = h.component_key(0);
     ui.invoke_commit_parameter(
-        parameter_field(&binding.clone(), ParameterId::ClickRate),
+        parameter_field(&binding.clone(), ParameterId::SourcePulseRate),
         "2".into(),
     );
     assert!(ui.get_draft_brief().contains("Applied rhythm · Delta"));
     ui.invoke_stage_parameter(
-        parameter_field(&binding.clone(), ParameterId::ClickRate),
+        parameter_field(&binding.clone(), ParameterId::SourcePulseRate),
         "bad".into(),
     );
     assert!(ui.get_draft_brief().contains("Applied rhythm · Delta"));
     ui.invoke_commit_parameter(
-        parameter_field(&binding.clone(), ParameterId::ClickRate),
+        parameter_field(&binding.clone(), ParameterId::SourcePulseRate),
         "6".into(),
     );
     assert!(ui.get_draft_brief().contains("Applied rhythm · Theta"));
@@ -1566,28 +1582,35 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
         .recipe()
         .unwrap()
         .into_builder();
-    recipe.content.sound = auditorylab_app::core::Sound::new(
-        recipe.content.sound.duration_seconds(),
-        recipe.content.sound.fade_seconds(),
-        vec![
-            auditorylab_app::core::Component {
-                id: auditorylab_app::core::ComponentId::new(u32::MAX).unwrap(),
-                form: auditorylab_app::core::ComponentForm::BinauralPair {
-                    left_hz: finite(200.0),
-                    offset_hz: finite(2.0),
-                    left_peak_dbfs: finite(-30.0),
-                    right_peak_dbfs: finite(-30.0),
+    recipe.content.sound = {
+        let fixture = auditorylab_app::core::test_support::FiniteFixture::new(
+            recipe.content.timing.duration_seconds,
+            recipe.content.timing.fade_seconds,
+            vec![
+                auditorylab_app::core::Component {
+                    id: auditorylab_app::core::ComponentId::new(u32::MAX).unwrap(),
+                    form: auditorylab_app::core::ComponentForm {
+                        source: auditorylab_app::core::SoundSource::BinauralPair {
+                            first_hz: finite(200.0),
+                            offset_hz: finite(2.0),
+                            first_peak_dbfs: finite(-30.0),
+                            second_peak_dbfs: finite(-30.0),
+                        },
+                        modulation: None,
+                    },
                 },
-            },
-            auditorylab_app::core::Component {
-                id: auditorylab_app::core::ComponentId::new(u32::MAX - 1).unwrap(),
-                form: auditorylab_app::workspace::controls::default_component(
-                    auditorylab_app::core::CarrierKind::Clicks,
-                ),
-            },
-        ],
-    )
-    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+                auditorylab_app::core::Component {
+                    id: auditorylab_app::core::ComponentId::new(u32::MAX - 1).unwrap(),
+                    form: auditorylab_app::workspace::controls::default_component(
+                        auditorylab_app::core::CarrierKind::PulseTrain,
+                    ),
+                },
+            ],
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+        recipe.content.timing = fixture.timing;
+        fixture.sound
+    };
     let snapshot = auditorylab_app::document::recipe::RecipeSnapshot::new(
         auditorylab_app::document::recipe::Origin::Stream("large owners".into()),
         recipe.build().unwrap(),
@@ -1611,7 +1634,7 @@ fn full_u32_owner_ids_keep_distinct_model_groups_and_edit_bindings() {
     assert_eq!(
         h.adapter.inspect(|w| w.editor().draft().components()[1]
             .form
-            .get(ParameterId::ClickRate)),
+            .get(ParameterId::SourcePulseRate)),
         Some(finite(40.0))
     );
 }
@@ -2476,9 +2499,9 @@ fn filter_controls_map_to_independent_typed_queries() {
     for (index, method) in [
         Method::Binaural,
         Method::Monaural,
-        Method::Clicks,
-        Method::Gate,
-        Method::Am,
+        Method::PulseTrain,
+        Method::Pulsed,
+        Method::Sinusoidal,
         Method::SteadyTone,
     ]
     .iter()
@@ -2497,9 +2520,9 @@ fn filter_controls_map_to_independent_typed_queries() {
         for (method_choice, method) in [
             (1, Method::Binaural),
             (2, Method::Monaural),
-            (3, Method::Clicks),
-            (4, Method::Gate),
-            (5, Method::Am),
+            (3, Method::PulseTrain),
+            (4, Method::Pulsed),
+            (5, Method::Sinusoidal),
             (6, Method::SteadyTone),
         ] {
             ui.invoke_rhythm_filter(band_choice, method_choice);
@@ -3005,7 +3028,7 @@ fn library_ux_component_menu_adds_every_kind_and_retains_its_document() {
     let ui = h.ui();
     for (index, label) in [
         "Add steady tone",
-        "Add clicks",
+        "Add pulse train",
         "Add binaural pair",
         "Add monaural pair",
     ]
@@ -3509,13 +3532,13 @@ fn assert_metadata_and_component_callbacks(h: &Harness) {
         [
             ParameterId::ToneFrequency,
             ParameterId::PeakLevel,
-            ParameterId::AmRate,
-            ParameterId::AmDepth
+            ParameterId::ModulationRate,
+            ParameterId::ModulationDepth
         ]
     );
-    ui.invoke_set_ears(binding.clone(), 1);
-    assert_eq!(ui.get_components().row_data(0).unwrap().ears, 1);
-    ui.invoke_remove_component(binding.clone());
+    ui.invoke_set_routing(h.component_key(0), 1);
+    assert_eq!(ui.get_components().row_data(0).unwrap().route, 1);
+    ui.invoke_remove_component(h.component_key(0));
     assert_eq!(ui.get_components().row_count(), 0);
 }
 
@@ -4154,5 +4177,94 @@ fn edit_menu_commands_reach_the_focused_text_field() {
         value(),
         "q",
         "Select All from the menu selected the focused field"
+    );
+}
+
+#[test]
+fn pulse_mode_and_shape_callbacks_preserve_surviving_widgets_and_retire_old_interpretations() {
+    use auditorylab_app::document::construction::CreationKind;
+    let h = Harness::new();
+    let ui = h.ui();
+    h.workbench();
+    let index = CreationKind::ALL
+        .iter()
+        .position(|kind| *kind == CreationKind::PulsedTone)
+        .unwrap();
+    ui.invoke_add_component(ui.get_document(), i32::try_from(index).unwrap());
+    h.settle();
+    let old = h.component_key(0);
+    let row = ui.get_components().row_data(0).unwrap();
+    assert_eq!(row.modulation_width, 1);
+    assert_eq!(row.modulation_shape, 1);
+    let label = format!(
+        "{}: {}",
+        row.name,
+        auditorylab_presentation::parameter_input_label(ParameterId::ToneFrequency)
+    );
+    let input = h.field(&label);
+    let inner = WindowInner::from_pub(ui.window());
+    inner.set_focus_item(&input, true, FocusReason::Programmatic);
+    h.key(Key::End);
+    h.key("x");
+    let before = text_of(&input);
+    let cursor = input
+        .downcast::<TextInput>()
+        .unwrap()
+        .as_pin_ref()
+        .cursor_position_byte_offset();
+    ui.invoke_set_pulse_option(old.clone(), 2, 0);
+    h.settle();
+    assert!(h.keys(0).contains(&ParameterId::ModulationPulseDuration));
+    assert!(!h.keys(0).contains(&ParameterId::ModulationDuty));
+    assert_eq!(inner.focus_item.borrow().upgrade().as_ref(), Some(&input));
+    assert_eq!(text_of(&input), before);
+    assert_eq!(
+        input
+            .downcast::<TextInput>()
+            .unwrap()
+            .as_pin_ref()
+            .cursor_position_byte_offset(),
+        cursor
+    );
+    // The old focused field is still continuously applicable: another native keystroke remains
+    // admitted.
+    h.key("y");
+    let staged = text_of(&input);
+    let mut expected = before.clone();
+    expected.insert(usize::try_from(cursor).unwrap(), 'y');
+    assert_eq!(staged, expected);
+    assert_eq!(
+        h.adapter.inspect(|w| {
+            let field = parameter(0, ParameterId::ToneFrequency)(w);
+            w.editor().staged(field).map(str::to_owned)
+        }),
+        Some(staged)
+    );
+    ui.invoke_set_pulse_option(h.component_key(0), 2, 1);
+    h.settle();
+    ui.invoke_commit_parameter(
+        parameter_field(&old, ParameterId::ModulationDuty),
+        "25".into(),
+    );
+    assert_eq!(
+        h.adapter.inspect(|w| w.editor().draft().components()[0]
+            .form
+            .get(ParameterId::ModulationDuty)),
+        Some(finite(0.5))
+    );
+    ui.invoke_set_pulse_option(h.component_key(0), 3, 0);
+    h.settle();
+    assert!(!h.keys(0).contains(&ParameterId::ModulationRise));
+    ui.invoke_set_pulse_option(h.component_key(0), 3, 1);
+    h.settle();
+    assert_eq!(
+        h.adapter.inspect(|w| w.editor().draft().components()[0]
+            .form
+            .get(ParameterId::ModulationRise)),
+        Some(finite(0.05 * 0.1))
+    );
+    assert!(
+        h.adapter.inspect(|w| w.audio_phase().is_none()),
+        "creation and interpretation edits never start playback"
     );
 }

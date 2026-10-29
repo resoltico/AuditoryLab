@@ -4,7 +4,7 @@
 // Independently decode caller-owned encoded streams and test writer boundaries.
 
 use crate::storage::wav::{Container, Exported, encode};
-use auditorylab_core::{ComponentForm, Ears, Recipe, SampleRate, Signal, Sound, catalog};
+use auditorylab_core::{ChannelRouting, ComponentForm, Recipe, SampleRate, Signal, catalog};
 fn export(
     session: &Signal,
     path: &Path,
@@ -26,13 +26,15 @@ fn rate() -> SampleRate {
 }
 
 fn tone_session(frames: u32, sample_rate: SampleRate) -> Signal {
-    Sound::new(
+    auditorylab_core::test_support::FiniteFixture::new(
         finite(f64::from(frames) / f64::from(sample_rate.hz())),
         finite(0.001),
-        (vec![ComponentForm::Tone {
-            frequency_hz: finite(500.0),
-            ears: Ears::Both,
-            peak_dbfs: finite(-20.0),
+        (vec![ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(500.0),
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-20.0),
+            },
             modulation: None,
         }])
         .into_iter()
@@ -122,7 +124,7 @@ fn an_independent_decoder_reads_the_format_length_and_nearest_f32_samples() {
 fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("silence.wav");
-    let silence = Sound::new(
+    let silence = auditorylab_core::test_support::FiniteFixture::new(
         finite(5.0 / 8_000.0),
         finite(0.0),
         (vec![])
@@ -158,10 +160,8 @@ fn a_stereo_file_holds_exactly_the_58_byte_header_and_payload() {
 }
 
 fn short_catalog_session(name: &str) -> Signal {
-    let mut sound = Recipe::parse(&catalog::find(name).unwrap().text())
-        .unwrap()
-        .sound()
-        .clone();
+    let recipe = Recipe::parse(&catalog::find(name).unwrap().text()).unwrap();
+    let mut sound = auditorylab_core::FiniteFixture::from_recipe(&recipe);
     sound.set_duration(finite(0.125));
     sound.set_fade(finite(0.01));
     sound.signal(rate()).unwrap()
@@ -324,5 +324,95 @@ const fn finite(value: f64) -> auditorylab_core::Finite {
     match auditorylab_core::Finite::new(value) {
         Some(value) => value,
         None => panic!("nonfinite fixture value"),
+    }
+}
+
+#[test]
+fn independent_wav_samples_cover_shaped_sources_and_shared_pair_modulation() {
+    use auditorylab_core::{Modulation, PulseShape, PulseSpec, PulseWidth, SoundSource};
+    let pulse = PulseSpec {
+        rate_hz: finite(10.0),
+        width: PulseWidth::Duration {
+            seconds: finite(0.05),
+        },
+        shape: PulseShape::RaisedCosine {
+            rise_seconds: finite(0.002),
+            fall_seconds: finite(0.002),
+        },
+    };
+    let directory = tempfile::tempdir().unwrap();
+    for kind in 0..3 {
+        let form = match kind {
+            0 => ComponentForm {
+                source: SoundSource::PulseTrain {
+                    route: ChannelRouting::Left,
+                    pulse,
+                    peak_dbfs: finite(-40.0),
+                },
+                modulation: Some(Modulation::Sinusoidal {
+                    rate_hz: finite(20.0),
+                    depth: finite(0.5),
+                }),
+            },
+            1 => ComponentForm {
+                source: SoundSource::MonauralPair {
+                    route: ChannelRouting::Both,
+                    first_hz: finite(400.0),
+                    offset_hz: finite(20.0),
+                    first_peak_dbfs: finite(-40.0),
+                    second_peak_dbfs: finite(-40.0),
+                },
+                modulation: Some(Modulation::Pulsed { pulse }),
+            },
+            _ => ComponentForm {
+                source: SoundSource::BinauralPair {
+                    first_hz: finite(400.0),
+                    offset_hz: finite(20.0),
+                    first_peak_dbfs: finite(-40.0),
+                    second_peak_dbfs: finite(-40.0),
+                },
+                modulation: Some(Modulation::Pulsed { pulse }),
+            },
+        };
+        let signal = auditorylab_core::test_support::FiniteFixture::new(
+            finite(0.125),
+            finite(0.0),
+            vec![auditorylab_core::Component {
+                id: auditorylab_core::ComponentId::new(1).unwrap(),
+                form,
+            }],
+        )
+        .unwrap()
+        .signal(rate())
+        .unwrap();
+        let path = directory.path().join(format!("shaped-{kind}.wav"));
+        export(&signal, &path, &never()).unwrap();
+        let decoded = decoded_frames(&path, 1000, rate());
+        for (n, actual) in (0_u32..).zip(decoded) {
+            let local = n % 800;
+            let envelope = if local >= 400 {
+                0.0
+            } else {
+                let distance = f64::from(local.min(399 - local).min(16));
+                (1.0 - (std::f64::consts::PI * distance / 16.0).cos()) / 2.0
+            };
+            let t = f64::from(n) / 8000.0;
+            let first = (std::f64::consts::TAU * 400.0 * t).sin() * 0.01;
+            let second = (std::f64::consts::TAU * 420.0 * t).sin() * 0.01;
+            let expected = match kind {
+                0 => [
+                    envelope * 0.01 * (1.0 + 0.5 * (std::f64::consts::TAU * 20.0 * t).sin()) / 1.5,
+                    0.0,
+                ],
+                1 => [(first + second) * envelope; 2],
+                _ => [first * envelope, second * envelope],
+            };
+            for channel in 0..2 {
+                assert!(
+                    (f64::from(actual[channel]) - expected[channel]).abs() < 2e-9,
+                    "kind={kind}, frame={n}, channel={channel}"
+                );
+            }
+        }
     }
 }

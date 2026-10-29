@@ -84,7 +84,7 @@ impl Signal {
     }
 
     /// Check a duration and fade at `rate` with the same rules and order as
-    /// [`Sound::signal`](crate::Sound::signal), without voices.
+    /// [`crate::Recipe::signal`], without voices.
     ///
     /// # Errors
     /// Returns [`SoundError::Duration`], [`SoundError::Fade`] or
@@ -179,15 +179,10 @@ impl Signal {
             return [0.0; 2];
         }
         let mut out = [0.0; 2];
-        for entry in self.target.mix().entries() {
-            let voice = &entry.voice;
-            let value = voice.sample(n);
-            if voice.left {
-                out[0] += value;
-            }
-            if voice.right {
-                out[1] += value;
-            }
+        for component in self.target.mix().components() {
+            let value = component.frame(n);
+            out[0] += value[0];
+            out[1] += value[1];
         }
         let gain = self.envelope.gain_at(n);
         out.map(|sample| sample * gain)

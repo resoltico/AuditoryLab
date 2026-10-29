@@ -495,13 +495,16 @@ fn accepted_live_revision_changes_update_model_even_for_identical_audio() {
     workspace
         .apply(Command::Editor(EditorCommand::AddComponent {
             row: workspace.editor().document_key(),
-            kind: CarrierKind::Clicks,
+            kind: CarrierKind::PulseTrain,
         }))
         .unwrap();
     let id = workspace.editor().draft().components()[0].id;
     let width = workspace
         .editor()
-        .handle(EditingField::Parameter(id, ParameterId::ClickWidth))
+        .handle(EditingField::Parameter(
+            id,
+            ParameterId::SourcePulseDuration,
+        ))
         .unwrap();
     workspace
         .apply(Command::Editor(EditorCommand::CommitField {
@@ -696,9 +699,9 @@ fn invalid_editor_replacement_is_refused_before_becoming_a_snapshot() {
         form: crate::workspace::controls::default_component(CarrierKind::Tone),
     };
     assert!(
-        crate::core::Sound::new(
-            candidate.content.sound.duration_seconds(),
-            candidate.content.sound.fade_seconds(),
+        auditorylab_core::test_support::FiniteFixture::new(
+            candidate.content.timing.duration_seconds,
+            candidate.content.timing.fade_seconds,
             vec![component; 2]
         )
         .is_err()

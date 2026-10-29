@@ -136,7 +136,7 @@ pub fn snapshot_library_label(value: &RecipeSnapshot) -> String {
             .and_then(|a| a.research)
             .and_then(|a| a.studied_for)
             .unwrap_or_else(|| "Custom recipe".into()),
-        human_duration(snapshot.sound().duration_seconds().get())
+        human_duration(snapshot.recipe().timing().duration_seconds.get())
     )
 }
 
@@ -184,13 +184,13 @@ pub fn snapshot_description_with_history(
     warnings: &[auditorylab_app::services::StorageWarning],
 ) -> String {
     let snapshot = value;
-    let s = snapshot.sound();
+    let s = snapshot.recipe().timing();
     let mut out = format!(
         "{}\n{}\nDuration: {} · fade {} at each edge\n",
         snapshot.title(),
         origin_line(snapshot.origin()),
-        human_duration(s.duration_seconds().get()),
-        human_duration(s.fade_seconds().get())
+        human_duration(s.duration_seconds.get()),
+        human_duration(s.fade_seconds.get())
     );
     out.push_str(&document_notes(snapshot));
     for warning in warnings {
@@ -211,7 +211,7 @@ pub fn snapshot_description_with_history(
             );
         }
         Err(error) => {
-            for component in s.components() {
+            for component in snapshot.sound().components() {
                 let _ = writeln!(
                     out,
                     "Component {}: {}",

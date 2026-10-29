@@ -64,10 +64,10 @@ fn pending_entry_survives_font_reflow_clipping_and_row_changes() {
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 1);
     let inner = WindowInner::from_pub(ui.window());
-    let rate_label = "Clicks · Component 1: Clicks rate (Hz)";
-    let peak_label = "Clicks · Component 1: Peak level (dBFS)";
+    let rate_label = "Pulse train · Component 1: Source pulse rate (Hz)";
+    let peak_label = "Pulse train · Component 1: Peak level (dBFS)";
     for (label, id, committed, raw, height) in [
-        (rate_label, ParameterId::ClickRate, 40.0, "405", 900.0),
+        (rate_label, ParameterId::SourcePulseRate, 40.0, "405", 900.0),
         (peak_label, ParameterId::PeakLevel, -30.0, "-305", 700.0),
     ] {
         ui.set_ui_size(13.0);
@@ -304,7 +304,7 @@ fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f3
         "no-pointer Escape must retain the clipped editor's focus"
     );
     assert_eq!(
-        field_state(h, ParameterId::ClickRate),
+        field_state(h, ParameterId::SourcePulseRate),
         (None, Some(40.0)),
         "no-pointer Escape restores without committing"
     );
@@ -336,12 +336,12 @@ fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f3
         "pointer movement must not move the viewport or retarget a later click"
     );
     assert_eq!(
-        field_state(h, ParameterId::ClickRate),
+        field_state(h, ParameterId::SourcePulseRate),
         (Some("405".into()), Some(40.0))
     );
     h.key("1");
     assert_eq!(
-        field_state(h, ParameterId::ClickRate).0.as_deref(),
+        field_state(h, ParameterId::SourcePulseRate).0.as_deref(),
         Some("4051")
     );
     assert!(
@@ -356,7 +356,7 @@ fn assert_clipped_keyboard_and_pointer(h: &Harness, input: &ItemRc, overflow: f3
 fn clip_pending_entry(h: &Harness) -> (ItemRc, f32) {
     let ui = h.ui();
     let inner = WindowInner::from_pub(ui.window());
-    let rate_label = "Clicks · Component 1: Clicks rate (Hz)";
+    let rate_label = "Pulse train · Component 1: Source pulse rate (Hz)";
     let input = h.field(rate_label);
     inner.set_focus_item(&input, true, FocusReason::Programmatic);
     for _ in 0..4 {
@@ -364,7 +364,7 @@ fn clip_pending_entry(h: &Harness) -> (ItemRc, f32) {
     }
     h.key("5");
     assert_eq!(
-        field_state(h, ParameterId::ClickRate).0.as_deref(),
+        field_state(h, ParameterId::SourcePulseRate).0.as_deref(),
         Some("405")
     );
     let root = inner.window_item_rc().unwrap();
@@ -426,7 +426,7 @@ fn clip_pending_entry(h: &Harness) -> (ItemRc, f32) {
 fn assert_pointer_blur_commit(h: &Harness) {
     let ui = h.ui();
     let inner = WindowInner::from_pub(ui.window());
-    let peak_label = "Clicks · Component 1: Peak level (dBFS)";
+    let peak_label = "Pulse train · Component 1: Peak level (dBFS)";
     // A real click still activates its original target and commits the old field once.
     for _ in 0..4 {
         h.key(Key::RightArrow);
@@ -463,7 +463,7 @@ fn assert_pointer_blur_commit(h: &Harness) {
         "click must activate the measured target"
     );
     assert_eq!(
-        field_state(h, ParameterId::ClickRate),
+        field_state(h, ParameterId::SourcePulseRate),
         (None, Some(405.0)),
         "ordinary blur commits the pending entry"
     );

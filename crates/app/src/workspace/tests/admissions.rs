@@ -574,33 +574,39 @@ fn prepare_document_case(ws: &mut TestWorkspace, case: Case) {
     } else {
         u32::from(!matches!(case, Case::FullLineage))
     };
-    recipe.content.sound = auditorylab_core::Sound::new(
-        recipe.content.sound.duration_seconds(),
-        recipe.content.sound.fade_seconds(),
-        (0..count)
-            .map(|index| crate::core::Component {
-                id: ComponentId::new(
-                    if matches!(case, Case::Exhausted | Case::RestorableExhausted) {
-                        u32::MAX
-                    } else {
-                        index + 1
+    recipe.content.sound = {
+        let fixture = auditorylab_core::test_support::FiniteFixture::new(
+            recipe.content.timing.duration_seconds,
+            recipe.content.timing.fade_seconds,
+            (0..count)
+                .map(|index| crate::core::Component {
+                    id: ComponentId::new(
+                        if matches!(case, Case::Exhausted | Case::RestorableExhausted) {
+                            u32::MAX
+                        } else {
+                            index + 1
+                        },
+                    )
+                    .unwrap(),
+                    form: crate::core::ComponentForm {
+                        source: crate::core::SoundSource::Tone {
+                            frequency_hz: if matches!(case, Case::AcousticInvalid) {
+                                finite(30000.0)
+                            } else {
+                                finite(440.0)
+                            },
+                            route: crate::core::ChannelRouting::Both,
+                            peak_dbfs: finite(-40.0),
+                        },
+                        modulation: None,
                     },
-                )
-                .unwrap(),
-                form: crate::core::ComponentForm::Tone {
-                    frequency_hz: if matches!(case, Case::AcousticInvalid) {
-                        finite(30000.0)
-                    } else {
-                        finite(440.0)
-                    },
-                    ears: crate::core::Ears::Both,
-                    peak_dbfs: finite(-40.0),
-                    modulation: None,
-                },
-            })
-            .collect(),
-    )
-    .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+                })
+                .collect(),
+        )
+        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+        recipe.content.timing = fixture.timing;
+        fixture.sound
+    };
     if matches!(case, Case::FullLineage) {
         recipe.content.lineage = (0..16)
             .map(|index| crate::core::provenance::Lineage {

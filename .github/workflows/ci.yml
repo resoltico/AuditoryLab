@@ -285,7 +285,17 @@ jobs:
             shard: 0/1
           - source: model/catalog_id
             shard: 0/1
-          - source: render/voice
+          - source: render/source
+            shard: 0/1
+          - source: model/pulse
+            shard: 0/1
+          - source: model/modulation
+            shard: 0/1
+          - source: model/component_codec
+            shard: 0/1
+          - source: model/table_fields
+            shard: 0/1
+          - source: render/pulse
             shard: 0/1
           - source: render/finite_source
             shard: 0/1
@@ -323,16 +333,10 @@ jobs:
                 --timeout 60 --cargo-arg=--locked --output target/mutations)
           if [[ "$MUTATION_SOURCE" == render/synthesis ]]; then
             # Bit 52 is clear in the fraction; OR and XOR are equivalent.
-            # At the step shift boundary both branches return 1.
             # The times_at_most enclosing != guard excludes equality.
             # Operator/function exclusions keep the other guards mutated.
             args+=(--exclude-re 'replace \| with \^ in parts$'
-                   --exclude-re 'replace < with <= in step$'
                    --exclude-re 'replace < with <= in times_at_most$')
-          fi
-          if [[ "$MUTATION_SOURCE" == model/authored ]]; then
-            # ComponentForm has no identity; both unit-valued successes are Ok(()).
-            args+=(--exclude-re 'replace <impl FromComponentFields for ComponentForm>::identity.*with Ok\(Default::default\(\)\)$')
           fi
           if [[ "$MUTATION_SOURCE" == render/finite_source ]]; then
             # Reachable non-ended sources have cursor < total; ended sources are

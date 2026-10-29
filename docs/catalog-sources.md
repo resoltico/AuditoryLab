@@ -28,7 +28,7 @@ Broader-literature caution is separate from checking individual source parameter
 | `beauchene-2016-binaural-5-hz` | L245/R240 Hz pure tones | 5 min | exact frequencies, routing and 300 s match |
 | `beauchene-2016-binaural-10-hz` | L250/R240 Hz pure tones | 5 min | exact frequencies, routing and 300 s match |
 | `beauchene-2016-binaural-15-hz` | L255/R240 Hz pure tones | 5 min | exact frequencies, routing and 300 s match |
-| `beauchene-2016-pure-tone-240-hz` | L240/R240 Hz control | 5 min | `ears=both`, 240 Hz and 300 s match |
+| `beauchene-2016-pure-tone-240-hz` | L240/R240 Hz control | 5 min | `route=both`, 240 Hz and 300 s match |
 
 No pulse width or physical amplitude modulation is prescribed; binaural difference is a percept rather than an amplitude-modulator parameter. MATLAB generation and Sony MDR-NC7 stereo headphones are stated; participants selected volume. **Audio** sample rate, starting phases, digital amplitude and endpoint ramps are unspecified. The paper's 128 Hz number is EEG acquisition, not an audio rate. All four recipes explicitly add phase-zero starts, -20 dBFS component peaks and 0.1 s fades without claiming acoustic calibration.
 

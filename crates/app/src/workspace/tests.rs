@@ -606,9 +606,9 @@ fn over_budget_copy_content_is_refused_before_becoming_a_snapshot() {
         })
         .collect();
     assert!(
-        crate::core::Sound::new(
-            candidate.sound().duration_seconds(),
-            candidate.sound().fade_seconds(),
+        auditorylab_core::test_support::FiniteFixture::new(
+            candidate.timing().duration_seconds,
+            candidate.timing().fade_seconds,
             components
         )
         .is_err()
@@ -627,7 +627,7 @@ fn copy_inputs_reject_nonfinite_construction_and_full_lineage() {
             form: crate::workspace::controls::default_component(CarrierKind::Tone),
         })
         .unwrap();
-    source.content.sound.set_duration(finite(-1.0));
+    source.content.timing.duration_seconds = finite(-1.0);
     let finite = RecipeSnapshot::new(
         crate::document::recipe::Origin::Stream("finite invalid".into()),
         source.build().unwrap(),

@@ -215,7 +215,7 @@ impl RecipeSnapshot {
             {
                 cache.compilations += 1;
             }
-            let result = self.sound().signal(rate).map(Arc::new);
+            let result = self.recipe.signal(rate).map(Arc::new);
             if cache.values.len() == 2 {
                 let _ = cache.values.remove(0);
             }

@@ -1,24 +1,61 @@
 //! sound presentation.
 use crate::{compact_number, format_dbfs};
 use auditorylab_core::{
-    CarrierFacts, Ears, ModulationFacts, Observation, ParameterId, PhaseRate, PulseFacts,
+    CarrierFacts, ChannelRouting, ModulationFacts, Observation, ParameterId, PhaseRate, PulseFacts,
     VoiceFacts, VoiceObservation, rhythm::Method, rhythm::Structure,
 };
+/// Requested pulse intent, with model units converted only for display.
+pub(crate) fn pulse_spec(p: auditorylab_core::PulseSpec) -> String {
+    let width = match p.width {
+        auditorylab_core::PulseWidth::Duration { seconds } => {
+            format!(
+                "requested {} ms fixed window",
+                compact_number(seconds.get() * 1000.0)
+            )
+        }
+        auditorylab_core::PulseWidth::DutyCycle { fraction } => {
+            format!("{}% requested duty", compact_number(fraction.get() * 100.0))
+        }
+    };
+    let shape = match p.shape {
+        auditorylab_core::PulseShape::Rectangular {} => "rectangular".into(),
+        auditorylab_core::PulseShape::RaisedCosine {
+            rise_seconds,
+            fall_seconds,
+        } => format!(
+            "raised cosine, {} / {} ms rise/fall",
+            compact_number(rise_seconds.get() * 1000.0),
+            compact_number(fall_seconds.get() * 1000.0)
+        ),
+    };
+    format!(
+        "{} pulses/s · {width} · {shape}",
+        compact_number(p.rate_hz.get())
+    )
+}
 pub(crate) fn pulse_detail(p: PulseFacts) -> String {
     format!(
-        "{} Hz · requested {} ms · realized {} frame{} ({} ms) at {} Hz",
-        p.rate_hz,
-        p.requested_width_seconds * 1000.0,
+        "{} · realized {} frame{} ({} ms), rise/fall {} / {} frames at {} Hz · derived nominal \
+            duty {}%",
+        pulse_spec(auditorylab_core::PulseSpec {
+            rate_hz: auditorylab_core::Finite::new(p.rate_hz)
+                .unwrap_or_else(|| unreachable!("validated pulse rate")),
+            width: p.width,
+            shape: p.shape
+        }),
         p.width_frames,
         if p.width_frames == 1 { "" } else { "s" },
         compact_number(p.realized_width_seconds() * 1000.0),
-        p.sample_rate.hz()
+        p.edge_frames[0],
+        p.edge_frames[1],
+        p.sample_rate.hz(),
+        compact_number(p.nominal_duty() * 100.0)
     )
 }
 
 pub(crate) fn pulse_brief(p: PulseFacts) -> String {
     format!(
-        "{} repetitions/s · nominal {} ms between onsets · {} ms open",
+        "{} repetitions/s · nominal {} ms between onsets · {} ms window",
         compact_number(p.rate_hz),
         compact_number(1000.0 / p.rate_hz),
         compact_number(p.realized_width_seconds() * 1000.0)
@@ -52,24 +89,26 @@ pub(crate) fn generator_description(facts: &VoiceFacts, detail: bool) -> String 
             auditorylab_core::CarrierKind::Tone.phrase(),
             phase(rate),
         ),
-        CarrierFacts::Clicks(p) => ("Pulse rate", "pulse rate", pulse(p)),
+        CarrierFacts::PulseTrain(p) => ("Pulse rate", "pulse rate", pulse(p)),
     };
     match facts.modulation {
         None => format!("{opening} {value}"),
-        Some(ModulationFacts::Am { rate, depth }) if depth > 0.0 => format!(
+        Some(ModulationFacts::Sinusoidal { rate, depth }) if depth > 0.0 => format!(
             "Modulation {} · depth {}% · carrier {inner} {value}",
             phase(rate),
             compact_number(depth * 100.0)
         ),
-        Some(ModulationFacts::Am { .. }) => {
+        Some(ModulationFacts::Sinusoidal { .. }) => {
             format!("{opening} {value} · Modulation inactive (depth 0%)")
         }
-        Some(ModulationFacts::Gate(p)) => format!("Gate {} · carrier {inner} {value}", pulse(p)),
+        Some(ModulationFacts::Pulsed(p)) => {
+            format!("Pulsed {} · carrier {inner} {value}", pulse(p))
+        }
     }
 }
 
-pub(crate) const fn route(ears: Ears) -> &'static str {
-    ears.label()
+pub(crate) const fn route(route: ChannelRouting) -> &'static str {
+    route.label()
 }
 
 /// A validated voice's quantities, route and peak bound. `detail` adds
@@ -79,7 +118,7 @@ pub(crate) fn voice_description(facts: &VoiceFacts, detail: bool) -> String {
     let generated = format!(
         "{} · {} · peak level {} dBFS",
         generator_description(facts, detail),
-        route(facts.ears),
+        route(facts.route),
         format_dbfs(facts.peak_dbfs)
     );
     if detail && let Some(pair) = facts.pair {
@@ -95,9 +134,9 @@ pub(crate) fn voice_description(facts: &VoiceFacts, detail: bool) -> String {
 
 pub(crate) fn gain_route(gains: [f64; 2]) -> &'static str {
     match gains {
-        [l, r] if l > 0.0 && r > 0.0 => Ears::Both.label(),
-        [l, _] if l > 0.0 => Ears::Left.label(),
-        [_, r] if r > 0.0 => Ears::Right.label(),
+        [l, r] if l > 0.0 && r > 0.0 => ChannelRouting::Both.label(),
+        [l, _] if l > 0.0 => ChannelRouting::Left.label(),
+        [_, r] if r > 0.0 => ChannelRouting::Right.label(),
         _ => "Zero gain",
     }
 }
@@ -119,7 +158,7 @@ pub(crate) fn observation_description(voice: &VoiceObservation) -> String {
     )
 }
 
-/// Every generated voice with its role and actual per-ear gains.
+/// Every generated voice with its role and actual per-channel gains.
 #[must_use]
 pub(crate) fn generated_details(observation: &Observation) -> String {
     observation
@@ -152,11 +191,11 @@ pub(crate) fn structure_description(structure: &Structure) -> String {
             .iter()
             .find(|v| v.id == r.owner && v.role == r.role)
             .map(|v| match (r.method, v.facts.carrier, v.facts.modulation) {
-                (Method::Am, _, Some(ModulationFacts::Am { depth, .. })) => {
+                (Method::Sinusoidal, _, Some(ModulationFacts::Sinusoidal { depth, .. })) => {
                     format!(" · depth {}%", compact_number(depth * 100.0))
                 }
-                (Method::Gate, _, Some(ModulationFacts::Gate(p)))
-                | (Method::Clicks, CarrierFacts::Clicks(p), _) => {
+                (Method::Pulsed, _, Some(ModulationFacts::Pulsed(p)))
+                | (Method::PulseTrain, CarrierFacts::PulseTrain(p), _) => {
                     format!(
                         " · {} ms",
                         compact_number(p.realized_width_seconds() * 1000.0)
@@ -184,8 +223,8 @@ pub(crate) fn structure_description(structure: &Structure) -> String {
         if let CarrierFacts::Tone(rate) = v.facts.carrier {
             let steady = match v.facts.modulation {
                 None => true,
-                Some(ModulationFacts::Am { depth, .. }) => depth == 0.0,
-                Some(ModulationFacts::Gate(_)) => false,
+                Some(ModulationFacts::Sinusoidal { depth, .. }) => depth == 0.0,
+                Some(ModulationFacts::Pulsed(_)) => false,
             };
             parts.push(format!(
                 "{} Hz {}tone",
@@ -316,23 +355,27 @@ pub fn analysis_summary(value: &auditorylab_core::rhythm::Analysis) -> String {
 pub fn parameter_help(value: ParameterId) -> &'static str {
     match value {
         ParameterId::ToneFrequency => "How many cycles per second the sine tone has.",
-        ParameterId::ClickRate => {
-            "How many clicks start each second; every click starts at its exact scheduled time."
+        ParameterId::SourcePulseRate => {
+            "How many pulses start each second; onsets follow the exact requested binary-rational \
+                rate."
         }
-        ParameterId::ClickWidth => {
-            "How long each click lasts; generation rounds it to whole frames at the sample rate."
+        ParameterId::SourcePulseDuration => {
+            "Fixed pulse window duration, including zero-valued shaped endpoints; generation \
+                rounds it to whole frames."
         }
         ParameterId::PeakLevel => {
             "The component's highest level relative to digital full scale; 0 dBFS is the maximum."
         }
-        ParameterId::AmRate => {
+        ParameterId::ModulationRate => {
             "How many times each second the sinusoidal envelope rises and falls."
         }
-        ParameterId::AmDepth => {
+        ParameterId::ModulationDepth => {
             "How far the envelope dips: 0% leaves the level steady and 100% reaches silence."
         }
-        ParameterId::GateRate => "How many times each second the gate opens.",
-        ParameterId::GateWidth => {
+        ParameterId::ModulationPulseRate => {
+            "Repetitions per second of the one shared modulation pulse."
+        }
+        ParameterId::ModulationPulseDuration => {
             "How long each gate stays open; generation rounds it to whole frames \
                 at the sample rate."
         }
@@ -345,6 +388,16 @@ pub fn parameter_help(value: ParameterId) -> &'static str {
         }
         ParameterId::PairFirstLevel => "Peak level of the first or left tone.",
         ParameterId::PairSecondLevel => "Peak level of the second or right tone.",
+        ParameterId::SourceDuty | ParameterId::ModulationDuty => {
+            "Requested fraction of the nominal pulse period; frame rounding can change the \
+                generated duty."
+        }
+        ParameterId::SourceRise | ParameterId::ModulationRise => {
+            "Positive raised-cosine rise, including the zero-valued first sample."
+        }
+        ParameterId::SourceFall | ParameterId::ModulationFall => {
+            "Positive raised-cosine fall, including the zero-valued final sample."
+        }
         ParameterId::Duration => "The finite sound duration.",
         ParameterId::Fade => "The raised-cosine fade at each edge of a finite sound.",
     }
@@ -375,6 +428,7 @@ pub fn rhythm_diagnostic(issue: &auditorylab_core::rhythm::Issue) -> String {
                     ValueRule::Positive => "finite and positive",
                     ValueRule::Peak => "at most 0 dBFS",
                     ValueRule::Depth => "between 0% and 100%",
+                    ValueRule::Duty => "strictly between 0% and 100%",
                 }
             )
         }
@@ -395,22 +449,22 @@ fn pair_description(structure: &Structure) -> Option<String> {
         .first()
         .filter(|_| structure.voices.len() == 2)
         .map(|pair| match pair.kind {
-            auditorylab_core::PairKind::Binaural if pair.first == pair.second => format!(
-                "Unison · Left/right {} Hz steady tones",
+            auditorylab_core::PairKind::Binaural if pair.difference_hz == 0.0 => format!(
+                "Unison · Left/right {} Hz carriers",
                 compact_number(pair.first)
             ),
             auditorylab_core::PairKind::Binaural => format!(
-                "{} Hz interaural difference · Left {} / Right {} Hz steady tones",
-                compact_number((pair.first - pair.second).abs()),
+                "{} Hz binaural difference · Left {} / Right {} Hz carriers",
+                compact_number(pair.difference_hz),
                 compact_number(pair.first),
                 compact_number(pair.second)
             ),
-            auditorylab_core::PairKind::Monaural if pair.first == pair.second => {
-                format!("Unison · {} Hz steady tones", compact_number(pair.first))
+            auditorylab_core::PairKind::Monaural if pair.difference_hz == 0.0 => {
+                format!("Unison · {} Hz carriers", compact_number(pair.first))
             }
             auditorylab_core::PairKind::Monaural => format!(
-                "{} Hz monaural beat · {} + {} Hz steady tones",
-                compact_number((pair.first - pair.second).abs()),
+                "{} Hz monaural difference · {} + {} Hz carriers",
+                compact_number(pair.difference_hz),
                 compact_number(pair.first),
                 compact_number(pair.second)
             ),
@@ -420,7 +474,7 @@ fn pair_description(structure: &Structure) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use crate::NumberStyle;
-    use auditorylab_core::{SampleRate, Sound};
+    use auditorylab_core::SampleRate;
     #[test]
     fn capacity_text_names_current_counts_and_the_exceeded_budget() {
         use auditorylab_app::document::editing::EditRefusal;
@@ -454,7 +508,7 @@ mod tests {
     fn expanded_pair_structure_counts_voices_instead_of_authored_components() {
         use auditorylab_app::workspace::controls;
         use auditorylab_core::{Component, ComponentId, PairKind};
-        let sound = Sound::new(
+        let sound = auditorylab_app::core::test_support::FiniteFixture::new(
             finite(1.0),
             finite(0.0),
             (1..=8)
@@ -554,11 +608,14 @@ mod tests {
         // 29 % is 0.29, whose naive display is 28.999999999999996.
         assert_eq!(0.29 * 100.0, 28.999_999_999_999_996);
         assert_eq!(
-            auditorylab_app::document::input::parameter_text(ParameterId::AmDepth, 0.29),
+            auditorylab_app::document::input::parameter_text(ParameterId::ModulationDepth, 0.29),
             "29"
         );
         assert_eq!(
-            auditorylab_app::document::input::parameter_text(ParameterId::ClickWidth, 0.0011),
+            auditorylab_app::document::input::parameter_text(
+                ParameterId::SourcePulseDuration,
+                0.0011
+            ),
             "1.1"
         );
         assert_eq!(
@@ -596,8 +653,8 @@ mod tests {
             }
         }
         assert_eq!(
-            crate::parameter_input_label(ParameterId::ClickWidth),
-            "Clicks width (ms)"
+            crate::parameter_input_label(ParameterId::SourcePulseDuration),
+            "Source pulse duration (ms)"
         );
     }
 

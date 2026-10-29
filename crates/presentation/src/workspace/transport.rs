@@ -7,8 +7,8 @@ use auditorylab_core::Sound;
 pub enum Notice {
     /// Start quietly.
     LowStartingVolume,
-    /// Use separate ear channels.
-    HeadphonesForSeparateEars,
+    /// Use headphones for channel separation.
+    HeadphonesForChannelSeparation,
     /// Reported buffer underruns.
     Underruns(u64),
 }
@@ -17,9 +17,10 @@ impl std::fmt::Display for Notice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::LowStartingVolume => f.write_str("Turn the volume down before playing."),
-            Self::HeadphonesForSeparateEars => {
-                f.write_str("Use headphones for sounds that differ between the ears.")
-            }
+            Self::HeadphonesForChannelSeparation => f.write_str(
+                "Use headphones for left/right separation; software cannot verify \
+                    delivery to separate ears.",
+            ),
             Self::Underruns(n) => write!(f, "The audio backend reported {n} buffer underruns."),
         }
     }
@@ -43,7 +44,7 @@ impl Notice {
         format!(
             "{} {}",
             Self::LowStartingVolume,
-            Self::HeadphonesForSeparateEars
+            Self::HeadphonesForChannelSeparation
         )
     }
 
@@ -51,8 +52,8 @@ impl Notice {
     #[must_use]
     pub fn for_sound(sound: &Sound) -> Vec<Notice> {
         let mut notices = vec![Notice::LowStartingVolume];
-        if sound.uses_separate_ears() {
-            notices.push(Notice::HeadphonesForSeparateEars);
+        if sound.uses_separate_channels() {
+            notices.push(Notice::HeadphonesForChannelSeparation);
         }
         notices
     }
@@ -165,6 +166,14 @@ pub fn edit_refusal_description(value: auditorylab_app::document::editing::EditR
         EditRefusal::IdentitiesExhausted => {
             "This sound has exhausted an editing identity; start a new sound to continue.".into()
         }
+        EditRefusal::PulseConversion => {
+            "Pulse width conversion needs a positive rate and a finite \
+            positive duration or duty strictly between 0% and 100%; nothing was changed."
+                .into()
+        }
+        EditRefusal::PulseWindow => "The requested pulse window cannot initialize finite edges; \
+            correct its rate and width first."
+            .into(),
         EditRefusal::StaleDocument
         | EditRefusal::StaleRow
         | EditRefusal::UnknownComponent

@@ -17,16 +17,26 @@ flowchart TD
 
 - [Core](../crates/core/src/lib.rs) is `no_std + alloc`: portable recipes, sound/research invariants, validation, structural analysis and synthesis. Its ordinary module tree groups [model](../crates/core/src/model/mod.rs), [analysis](../crates/core/src/analysis/mod.rs) and [rendering](../crates/core/src/render/mod.rs). Everyday types have one public root path; `catalog`, `provenance`, `vocabulary`, `diagnostic`, `rhythm`, `timing`, `live`, `waveform` and `finite_source` are namespaced families.
 - [App](../crates/app/src/lib.rs) owns application decisions: editable documents, discovery, library/file operations, device preparation and interactive coordination. Private storage and audio adapters enforce rules against the resources used by the action.
-- [Presentation](../crates/presentation/src/lib.rs) owns rendering. `sound`, `recipe`, `library`, `workspace` and `numbers` expose typed free functions. The `errors` tree owns every `Explain` implementation, the presentation trait for polymorphic error chains. `report` owns machine JSON. It calls human renderers for diagnostic messages and schema-2 group display captions; group keys and membership stay independent.
+- [Presentation](../crates/presentation/src/lib.rs) owns rendering. `sound`, `recipe`, `library`, `workspace` and `numbers` expose typed free functions. The `errors` tree owns every `Explain` implementation, the presentation trait for polymorphic error chains. `report` owns machine JSON. It calls human renderers for diagnostic messages and schema-3 group display captions; group keys and membership stay independent.
 - [CLI](../crates/cli/src/main.rs) owns argument grammar, terminal I/O, interrupts and exit mapping. It passes explicit library overrides through the app constructor and renders app outcomes through presentation.
 - [GUI](../crates/gui/src/adapter.rs) owns desktop chrome, native windows/dialogs, focus, layout and reconciliation of retained Slint models. Its build script sees GUI-owned chrome, Slint and validated product metadata; it has no core or app build dependency.
 - [xtask](../xtask/src/main.rs) owns contributor gates, dependency notices, native resources, archives and independent extracted-package checks. [Packaging](releasing.md) defines supported inputs and deliverables.
 
 A term lives with the type that gives it meaning. [Core vocabulary](../crates/core/src/model/vocabulary.rs) describes sound, research and portable document terms. [App vocabulary](../crates/app/src/vocabulary.rs) describes operations, statuses, query absence and application views. Discovery owns [query choices](../crates/app/src/discovery/query.rs), with defaults, reset behavior and execution in [collection queries](../crates/app/src/discovery/collection.rs). Desktop-only wording stays in [GUI terms](../crates/gui/src/terms.rs). Labels never identify commands or records. Both owners participate in the checked [diagnostic and vocabulary references](formats.md).
 
-The built-in [catalog](../crates/core/src/model/catalog.rs) contains curated condition/study lists. Requesting an entry merges its study citation and shared limitation into standalone schema-4 TOML without comments. Directory/order tests check the lists; [catalog documentation](catalog.md) supplies explanations.
+The built-in [catalog](../crates/core/src/model/catalog.rs) contains curated condition/study lists. Requesting an entry merges its study citation and shared limitation into standalone schema-5 TOML without comments. Directory/order tests check the lists; [catalog documentation](catalog.md) supplies explanations.
 
 Root [Cargo.toml](../Cargo.toml) owns product name, copyright and version. Build readers share metadata validation. About and executable version text belong to [build-info presentation](../crates/presentation/src/build_info.rs); native version fields derive from the version. LICENSE supplies legal terms independently.
+
+## Authored and compiled boundaries
+
+`Sound` owns ordered components; `FiniteTiming` independently owns finite duration and overall fade in `RecipeContent`. Finite editable candidates can be serialized with diagnostics. Only a checked `Target` contains compiled components; `Signal` adds resolved finite timing. `CompiledComponent` owns source lanes and one shared modulation plan. The live component slot owns one modulation clock, origin and transition progress, including both pair lanes. Component order is retained after settlement; source-kind tags force atomic structural transitions. Rendering allocates nothing, locks nothing and performs no I/O.
+
+[Pulse intent](../crates/core/src/model/pulse.rs), [resolved pulse queries](../crates/core/src/render/pulse.rs), [source compilation](../crates/core/src/render/source.rs), [acoustic failures](../crates/core/src/render/error.rs), [digital routing](../crates/core/src/model/routing.rs) and compositional analysis have separate responsibilities. Requested facts travel with their generator. Pair differences derive from integer phase-step differences, not rounded displayed carrier frequencies. Static previews use generator extrema; output captures remain actual pre-conversion samples.
+
+Application construction/defaults belong to [document construction](../crates/app/src/document/construction.rs), independently of slider ranges. [Editor bindings](../crates/app/src/document/editing/bindings.rs), [portable drafts](../crates/app/src/document/editing/draft.rs), [candidate analysis](../crates/app/src/document/editing/candidate.rs) and [session transactions](../crates/app/src/document/editing/session.rs) are separate. The analysis cache includes sound, finite timing and sample rate. Numeric grammar and display conversion belong to `document::input`. Native [projection/reconciliation](../crates/gui/src/adapter/projection.rs) is separate from window/effect lifecycle.
+
+Menu admission requires the current row generation. Field admission uses the birth generation of its continuously applicable semantic interpretation: surviving fields retain pending text and caret across unrelated changes; removed/reintroduced fields cannot accept old callbacks, including away/back and undo. Related rate/window staging participates atomically in pulse interpretation edits; unrelated staging stays staged. No UI range or display string defines authored defaults or acoustic validity.
 
 ## One desktop command end to end
 
@@ -57,7 +67,7 @@ For `auditorylab list --collection builtin --band alpha --format json`:
 
 ### Add a component kind or recipe field
 
-Declare wire fields, units, applicability and intrinsic rules in the [component schema](../crates/core/src/model/component_schema.rs). Define lowering, validation, voice facts and relevant rhythm/timing behavior in core. Preserve authored order, owner/lane identity and sample contracts. Add independent structure, sample, round-trip and rejection expectations.
+Define authored structure in [authored types](../crates/core/src/model/authored.rs), located nested decoding in [component tables](../crates/core/src/model/component_codec.rs), and semantic units/rules in [parameter metadata](../crates/core/src/model/parameter_schema.rs). Compile atomic components and their associated facts in core; source adaptation is bounded and shared modulation has one authority. Preserve authored order, owner/lane identity and sample contracts. Add independent structure, sample, round-trip and rejection expectations.
 
 Portable metadata belongs in the recipe contract, including checked construction and strict serialization. [Document editing](../crates/app/src/document/editing.rs) stages untrusted text and commits the complete candidate atomically. The app projects applicable fields and diagnostics; presentation renders them. The GUI consumes handles and choices without generating parameter enums or copying defaults.
 
@@ -78,7 +88,7 @@ Choose one presentation subject. Keep JSON schema logic in `report`; human rende
 | Term | Meaning |
 | --- | --- |
 | Recipe | Portable document identity/history, authored sound and attributed research. |
-| Component | One identified authored form; a pair expands into two generator lanes. |
+| Component | One identified source relationship with one shared modulator; pairs cost two generator lanes. |
 | Target | Sound validated and compiled at one sample rate, without a finite envelope. |
 | Signal | Target plus its finite duration and edge envelope. |
 | Snapshot | Immutable captured recipe with an origin and memoized interpretation. |

@@ -2,7 +2,8 @@
 //! --release`.
 //! Each case renders twenty seconds. No audio device is opened.
 use auditorylab_core::{
-    Component, ComponentForm, ComponentId, Ears, Modulation, SampleRate, Sound, live::Engine,
+    ChannelRouting, Component, ComponentForm, ComponentId, Modulation, SampleRate, Sound,
+    live::Engine,
 };
 use std::{error::Error, hint::black_box, time::Instant};
 const RATE: u32 = 48_000;
@@ -19,12 +20,12 @@ fn measure(components: Vec<ComponentForm>) -> Result<[f64; 3], Box<dyn Error>> {
             })
         })
         .collect::<Result<Vec<_>, &str>>()?;
-    let sound = Sound::new(
-        finite(f64::from(FRAMES) / f64::from(RATE)),
-        finite(0.0),
-        components,
-    )?;
-    let signal = sound.signal(rate)?;
+    let sound = Sound::new(components)?;
+    let timing = auditorylab_core::FiniteTiming {
+        duration_seconds: finite(f64::from(FRAMES) / f64::from(RATE)),
+        fade_seconds: finite(0.0),
+    };
+    let signal = timing.signal(&sound.target(rate)?)?;
     let offset = u32::try_from(Sound::MAX_COMPONENTS)?;
     let components = sound
         .components()
@@ -40,8 +41,10 @@ fn measure(components: Vec<ComponentForm>) -> Result<[f64; 3], Box<dyn Error>> {
             Ok(component)
         })
         .collect::<Result<Vec<_>, &str>>()?;
-    let alternate = Sound::new(sound.duration_seconds(), sound.fade_seconds(), components)?;
-    let targets = [sound.target(rate)?, alternate.target(rate)?];
+    let alternate = Sound::new(components)?;
+    let first = sound.target(rate)?;
+    let second = alternate.target(rate)?;
+    let targets = [&first, &second];
     let mut engine = Engine::new(rate);
     let batch = usize::try_from(engine.ramp_frames())?;
     let mut buffer = vec![[0.0; 2]; batch];
@@ -57,7 +60,7 @@ fn measure(components: Vec<ComponentForm>) -> Result<[f64; 3], Box<dyn Error>> {
     let mut costs = [signal_cost, 0.0, 0.0];
     for (index, crossfade) in [false, true].into_iter().enumerate() {
         engine = Engine::new(rate);
-        assert!(engine.set(&targets[0]));
+        assert!(engine.set(targets[0]));
         assert_eq!(engine.render(&mut buffer), batch);
         let mut frame = 0;
         let mut target = 1;
@@ -65,7 +68,7 @@ fn measure(components: Vec<ComponentForm>) -> Result<[f64; 3], Box<dyn Error>> {
         while frame < FRAMES {
             if crossfade {
                 // Fresh identities force actual crossfades, with up to 32 active AM voices.
-                assert!(engine.set(&targets[target]));
+                assert!(engine.set(targets[target]));
                 target ^= 1;
             }
             let n = batch.min(usize::try_from(FRAMES - frame)?);
@@ -78,30 +81,83 @@ fn measure(components: Vec<ComponentForm>) -> Result<[f64; 3], Box<dyn Error>> {
     Ok(costs)
 }
 fn main() -> Result<(), Box<dyn Error>> {
-    let tones = [Ears::Left, Ears::Right]
+    let tones = [ChannelRouting::Left, ChannelRouting::Right]
         .into_iter()
         .zip([250.0, 256.0])
-        .map(|(ears, frequency_hz)| ComponentForm::Tone {
-            frequency_hz: finite(frequency_hz),
-            ears,
-            peak_dbfs: finite(-20.0),
+        .map(|(route, frequency_hz)| ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(frequency_hz),
+                route,
+                peak_dbfs: finite(-20.0),
+            },
             modulation: None,
         })
         .collect();
     let am = (0..16)
-        .map(|i| ComponentForm::Tone {
-            frequency_hz: finite(200.0 + 50.0 * f64::from(i)),
-            ears: Ears::Both,
-            peak_dbfs: finite(-30.0),
-            modulation: Some(Modulation::Am {
+        .map(|i| ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(200.0 + 50.0 * f64::from(i)),
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-30.0),
+            },
+            modulation: Some(Modulation::Sinusoidal {
                 rate_hz: finite(40.0),
                 depth: finite(1.0),
             }),
         })
         .collect();
+    let shaped = (0..16)
+        .map(|n| ComponentForm {
+            source: auditorylab_core::SoundSource::PulseTrain {
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-30.0),
+                pulse: auditorylab_core::PulseSpec {
+                    rate_hz: finite(40.0 + f64::from(n)),
+                    width: auditorylab_core::PulseWidth::DutyCycle {
+                        fraction: finite(0.5),
+                    },
+                    shape: auditorylab_core::PulseShape::RaisedCosine {
+                        rise_seconds: finite(0.002),
+                        fall_seconds: finite(0.001),
+                    },
+                },
+            },
+            modulation: Some(Modulation::Sinusoidal {
+                rate_hz: finite(23.0 + f64::from(n) * 0.75),
+                depth: finite(1.0),
+            }),
+        })
+        .collect();
+    let pairs = (0..8)
+        .map(|n| ComponentForm {
+            source: auditorylab_core::SoundSource::BinauralPair {
+                first_hz: finite(200.0 + 50.0 * f64::from(n)),
+                offset_hz: finite(6.0 + f64::from(n)),
+                first_peak_dbfs: finite(-30.0),
+                second_peak_dbfs: finite(-30.0),
+            },
+            modulation: Some(Modulation::Pulsed {
+                pulse: auditorylab_core::PulseSpec {
+                    rate_hz: finite(18.0 + f64::from(n)),
+                    width: auditorylab_core::PulseWidth::DutyCycle {
+                        fraction: finite(0.5),
+                    },
+                    shape: auditorylab_core::PulseShape::RaisedCosine {
+                        rise_seconds: finite(0.002),
+                        fall_seconds: finite(0.001),
+                    },
+                },
+            }),
+        })
+        .collect();
     println!("48 kHz, twenty seconds rendered per case, ns/frame");
     println!("case,Signal,live steady,live crossfading");
-    for (name, components) in [("2 tones", tones), ("16 AM voices", am)] {
+    for (name, components) in [
+        ("2 tones", tones),
+        ("16 AM sources", am),
+        ("16 shaped pulse sources with AM", shaped),
+        ("8 pairs with shared shaped pulses", pairs),
+    ] {
         let [signal, steady, crossfading] = measure(components)?;
         println!("{name},{signal:.2},{steady:.2},{crossfading:.2}");
     }

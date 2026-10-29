@@ -101,10 +101,10 @@ fn install_component_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
         }
     };
     let w = with.clone();
-    ui.on_set_ears(move |binding, index| {
+    ui.on_set_routing(move |binding, index| {
         w(&|a| {
             a.choose_control(
-                auditorylab_app::workspace::ControlMenu::Ears,
+                auditorylab_app::workspace::ControlMenu::ChannelRouting,
                 Some(&binding),
                 index,
             );
@@ -128,6 +128,20 @@ fn install_component_editing(adapter: &Rc<SlintAdapter>, ui: &MainWindow) {
                 Some(&binding),
                 index,
             );
+        });
+    });
+    let w = with.clone();
+    ui.on_set_pulse_option(move |binding, menu, index| {
+        w(&|a| {
+            use auditorylab_app::workspace::ControlMenu;
+            let menu = match menu {
+                0 => ControlMenu::SourceWidth,
+                1 => ControlMenu::SourceShape,
+                2 => ControlMenu::ModulationWidth,
+                3 => ControlMenu::ModulationShape,
+                _ => return,
+            };
+            a.choose_control(menu, Some(&binding), index);
         });
     });
     let w = with.clone();

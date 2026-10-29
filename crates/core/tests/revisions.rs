@@ -2,8 +2,8 @@
 //! change facts and revisions, never generated samples, ramps or phases.
 //! Expected samples come from engines that never received those edits.
 use auditorylab_core::{
-    CarrierFacts, Component, ComponentForm, ComponentId, Ears, Observation, SampleRate, SlotRole,
-    Sound, Target, live::Engine,
+    CarrierFacts, ChannelRouting, Component, ComponentForm, ComponentId, Observation, SampleRate,
+    SlotRole, Target, live::Engine,
 };
 
 const fn rate() -> SampleRate {
@@ -14,11 +14,18 @@ const fn rate() -> SampleRate {
 }
 
 fn clicks(rate_hz: f64, width_seconds: f64) -> ComponentForm {
-    ComponentForm::Clicks {
-        rate_hz: finite(rate_hz),
-        width_seconds: finite(width_seconds),
-        ears: Ears::Both,
-        peak_dbfs: finite(-20.0),
+    ComponentForm {
+        source: auditorylab_core::SoundSource::PulseTrain {
+            route: ChannelRouting::Both,
+            peak_dbfs: finite(-20.0),
+            pulse: auditorylab_core::PulseSpec {
+                rate_hz: finite(rate_hz),
+                width: auditorylab_core::PulseWidth::Duration {
+                    seconds: finite(width_seconds),
+                },
+                shape: auditorylab_core::PulseShape::Rectangular {},
+            },
+        },
         modulation: None,
     }
 }
@@ -29,7 +36,7 @@ fn clicks(rate_hz: f64, width_seconds: f64) -> ComponentForm {
         failing the calling test"
 )]
 fn target(component: ComponentForm) -> Target {
-    Sound::new(
+    auditorylab_core::test_support::FiniteFixture::new(
         finite(1.0),
         finite(0.0),
         vec![Component {
@@ -59,14 +66,16 @@ fn b_prime() -> Target {
 fn c() -> Target {
     target({
         let base = clicks(1.0, 0.1);
-        ComponentForm::Tone {
-            frequency_hz: finite(120.0),
-            ears: base
-                .route()
-                .unwrap_or_else(|| panic!("primitive fixture route")),
-            peak_dbfs: base
-                .get(auditorylab_core::ParameterId::PeakLevel)
-                .unwrap_or_else(|| panic!("primitive fixture level")),
+        ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(120.0),
+                route: base
+                    .route()
+                    .unwrap_or_else(|| panic!("primitive fixture route")),
+                peak_dbfs: base
+                    .get(auditorylab_core::ParameterId::PeakLevel)
+                    .unwrap_or_else(|| panic!("primitive fixture level")),
+            },
             modulation: base.modulation(),
         }
     })
@@ -80,7 +89,7 @@ fn render(engine: &mut Engine, frames: usize) -> Vec<[f64; 2]> {
 
 fn requested_width(voice: &auditorylab_core::VoiceObservation) -> f64 {
     match voice.facts.carrier {
-        CarrierFacts::Clicks(p) => p.requested_width_seconds,
+        CarrierFacts::PulseTrain(p) => p.requested_width_seconds,
         CarrierFacts::Tone(_) => panic!("click facts expected"),
     }
 }
@@ -237,7 +246,7 @@ fn a_target_matching_the_outgoing_side_is_a_real_return() {
     let back = edited.observation().unwrap();
     assert_eq!(back.settled_revision, 3);
     match voices(&back)[0].facts.carrier {
-        CarrierFacts::Clicks(p) => {
+        CarrierFacts::PulseTrain(p) => {
             assert_eq!(p.rate_hz, 40.0);
             assert_eq!(p.requested_width_seconds, 0.000_11);
         }

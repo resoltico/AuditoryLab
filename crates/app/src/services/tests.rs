@@ -201,7 +201,7 @@ fn source_errors_keep_raw_path_data() {
     let bytes = crate::test_recipes::silent(1.0, 0.0)
         .to_toml()
         .unwrap()
-        .replacen("schema_version = 4", "schema_version = 3", 1);
+        .replacen("schema_version = 5", "schema_version = 3", 1);
     std::fs::write(&path, &bytes).unwrap();
     let error = open_file(&path).unwrap_err();
     assert!(matches!(&error, crate::storage::load::LoadError::Recipe {

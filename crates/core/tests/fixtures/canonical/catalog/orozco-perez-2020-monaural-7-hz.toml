@@ -1,4 +1,4 @@
-schema_version = 4
+schema_version = 5
 
 [document]
 id = "46436f54-474a-4ec2-b12b-252baa7f3c85"
@@ -6,18 +6,23 @@ id = "46436f54-474a-4ec2-b12b-252baa7f3c85"
 [description]
 title = "7 Hz monaural beat"
 
-[sound]
+[timing]
 duration_seconds = 480.0
 fade_seconds = 0.1
 
 [[sound.component]]
-kind = "monaural_pair"
 id = 1
-ears = "both"
+
+[sound.component.source]
+kind = "monaural_pair"
+route = "both"
 first_hz = 396.5
 offset_hz = 7.0
 first_peak_dbfs = -23.0103
 second_peak_dbfs = -23.0103
+
+[sound.component.modulation]
+kind = "none"
 
 [[source]]
 key = "orozco-perez-2020"

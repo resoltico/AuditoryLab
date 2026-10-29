@@ -1,177 +1,253 @@
-//! Live rendering for interactive editing.
-//!
-//! An [`Engine`] renders an open-ended stereo stream and moves between
-//! validated [`Target`]s without discontinuities. Each change takes one ramp
-//! of [`Engine::RAMP_SECONDS`]:
-//!
-//! - levels, ear routes and sinusoidal depth move linearly;
-//! - tone and sinusoidal-modulation frequencies glide with continuous phase;
-//! - a voice whose carrier or modulation kind changes, or whose pulse
-//!   rate or width changes, crossfades from the old generator to the new one.
-//!
-//! Every ramp runs from one validated state to another with one shared
-//! progress, so each ear's summed level stays within full scale throughout.
-//! A target that arrives during a ramp waits for it to finish; only the
-//! newest waiting target is kept. A target that generates the same audio as
-//! the engine's current destination changes only its facts and revision: it
-//! starts no ramp, resets no phase and discards an older waiting target.
-//! Rendering allocates nothing, takes no lock and performs no I/O.
-use crate::synthesis::{self, Carrier, GeneratorVoice, Modulator};
-use crate::{Observation, SampleRate, Signal, SlotRole, Target, VoiceId};
-
+//! Atomic component transitions with one modulation clock per source relationship.
+//! Source lanes sum in authored order, then shared modulation scales the component.
+//! Component order is preserved at settlement; linear gains retain peak bounds.
+use crate::compiled::CompiledComponent;
+use crate::synthesis::{self, Carrier, Modulator};
+use crate::{Observation, SampleRate, Signal, SlotRole, Target};
+use alloc::{boxed::Box, vec};
 const SLOTS: usize = Engine::SLOTS;
-
 #[derive(Debug, Clone, Copy)]
-struct Slot {
-    id: VoiceId,
-    facts: crate::VoiceFacts,
-    role: SlotRole,
-    voice: GeneratorVoice,
-    gain: (f64, f64, f64, f64),
-    carrier_step: (u64, u64),
-    modulation_step: (u64, u64),
-    depth: (f64, f64),
-    carrier_phase: u64,
-    modulation_phase: u64,
-    origin: u64,
+struct LaneState {
+    gain: ([f64; 2], [f64; 2]),
+    step: (u64, u64),
+    phase: u64,
 }
-
-fn steps(voice: &GeneratorVoice) -> (u64, u64, f64) {
-    let carrier = match voice.carrier {
+fn step(carrier: Carrier) -> u64 {
+    match carrier {
         Carrier::Tone { step } => step,
         Carrier::Pulse(_) => 0,
-    };
-    let (modulation, depth) = match voice.modulation {
-        Some(Modulator::Am { step, depth }) => (step, depth),
+    }
+}
+fn modulation_steps(modulation: Option<Modulator>) -> (u64, f64) {
+    match modulation {
+        Some(Modulator::Sinusoidal { step, depth }) => (step, depth),
         _ => (0, 0.0),
-    };
-    (carrier, modulation, depth)
+    }
 }
-
-/// Whether `next` can continue `current`'s generator: same kinds, same pulses.
-fn continues(current: &GeneratorVoice, next: &GeneratorVoice) -> bool {
-    let carrier = match (current.carrier, next.carrier) {
-        (Carrier::Tone { .. }, Carrier::Tone { .. }) => true,
-        (Carrier::Pulse(a), Carrier::Pulse(b)) => a == b,
-        _ => false,
-    };
-    let modulation = match (current.modulation, next.modulation) {
-        (None, None) | (Some(Modulator::Am { .. }), Some(Modulator::Am { .. })) => true,
-        (Some(Modulator::Gate(a)), Some(Modulator::Gate(b))) => a == b,
-        _ => false,
-    };
-    carrier && modulation
+fn compatible(a: &CompiledComponent, b: &CompiledComponent) -> bool {
+    a.source_kind == b.source_kind
+        && a.lanes
+            .iter()
+            .zip(b.lanes.iter())
+            .all(|(a, b)| match (a, b) {
+                (None, None) => true,
+                (Some(a), Some(b)) => match (a.voice.carrier, b.voice.carrier) {
+                    (Carrier::Tone { .. }, Carrier::Tone { .. }) => true,
+                    (Carrier::Pulse(a), Carrier::Pulse(b)) => a == b,
+                    _ => false,
+                },
+                _ => false,
+            })
+        && match (a.modulation, b.modulation) {
+            (None, None)
+            | (Some(Modulator::Sinusoidal { .. }), Some(Modulator::Sinusoidal { .. })) => true,
+            (Some(Modulator::Pulsed(a)), Some(Modulator::Pulsed(b))) => a == b,
+            _ => false,
+        }
 }
-
 #[inline]
-fn between(from: f64, to: f64, progress: f64) -> f64 {
-    from * (1.0 - progress) + to * progress
+fn between(a: f64, b: f64, p: f64) -> f64 {
+    if p >= 1.0 || a == b {
+        b
+    } else {
+        a * (1.0 - p) + b * p
+    }
 }
-
 #[inline]
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    reason = "Validated nonnegative phase steps below 2^63 interpolate within their \
-        endpoint range; rounding to binary64 and truncating back is the \
-        specified glide"
+    reason = "Validated nonnegative phase steps interpolate within their endpoint range; \
+        conversion specifies glide rounding"
 )]
-fn glide(from: u64, to: u64, progress: f64) -> u64 {
-    if from == to || progress >= 1.0 {
-        to
+fn glide(a: u64, b: u64, p: f64) -> u64 {
+    if a == b || p >= 1.0 {
+        b
     } else {
-        between(from as f64, to as f64, progress) as u64
+        between(a as f64, b as f64, p) as u64
     }
 }
-
+#[derive(Debug, Clone, Copy)]
+struct Slot {
+    component: CompiledComponent,
+    lanes: [Option<LaneState>; 2],
+    role: SlotRole,
+    origin: u64,
+    modulation_step: (u64, u64),
+    modulation_phase: u64,
+    depth: (f64, f64),
+}
 impl Slot {
-    fn level(&self, ear: usize, progress: Option<f64>) -> f64 {
-        let (from_left, from_right, to_left, to_right) = self.gain;
-        let (from, to) = if ear == 0 {
-            (from_left, to_left)
-        } else {
-            (from_right, to_right)
-        };
-        progress.map_or(to, |p| between(from, to, p))
-    }
-
-    fn depth_at(&self, p: f64) -> f64 {
-        if p >= 1.0 {
-            self.depth.1
-        } else {
-            between(self.depth.0, self.depth.1, p)
+    fn new(component: &CompiledComponent, origin: u64) -> Self {
+        let (s, d) = modulation_steps(component.modulation);
+        Self {
+            component: *component,
+            origin,
+            role: SlotRole::Incoming,
+            lanes: component.lanes.map(|lane| {
+                lane.map(|compiled| LaneState {
+                    gain: ([0.0; 2], compiled.voice.gains()),
+                    step: (step(compiled.voice.carrier), step(compiled.voice.carrier)),
+                    phase: 0,
+                })
+            }),
+            modulation_step: (s, s),
+            modulation_phase: 0,
+            depth: (d, d),
         }
     }
-
-    #[inline]
-    fn sample(&mut self, frame: u64, progress: Option<f64>) -> f64 {
-        let p = progress.unwrap_or(1.0);
-        let carrier = match self.voice.carrier {
-            Carrier::Tone { .. } => {
-                let value = synthesis::sine(self.carrier_phase);
-                let step = glide(self.carrier_step.0, self.carrier_step.1, p);
-                self.carrier_phase = self.carrier_phase.wrapping_add(step);
-                value
+    fn transition(&mut self, next: &CompiledComponent) {
+        for (lane, next) in self.lanes.iter_mut().zip(next.lanes) {
+            if let (Some(lane), Some(next)) = (lane, next) {
+                lane.gain = (lane.gain.1, next.voice.gains());
+                lane.step = (lane.step.1, step(next.voice.carrier));
             }
-            Carrier::Pulse(pulse) => pulse.sample(frame - self.origin),
-        };
-        let gain = match self.voice.modulation {
+        }
+        let (s, d) = modulation_steps(next.modulation);
+        self.modulation_step = (self.modulation_step.1, s);
+        self.depth = (self.depth.1, d);
+        self.component = *next;
+        self.role = SlotRole::Continuing;
+    }
+    fn gains(&self, p: f64) -> [[f64; 2]; 2] {
+        self.lanes.map(|lane| {
+            lane.map_or([0.0; 2], |lane| {
+                [
+                    between(lane.gain.0[0], lane.gain.1[0], p),
+                    between(lane.gain.0[1], lane.gain.1[1], p),
+                ]
+            })
+        })
+    }
+    fn frame(&mut self, frame: u64, p: f64) -> [f64; 2] {
+        let mut samples = [0.0; 2];
+        for (i, (state, definition)) in self
+            .lanes
+            .iter_mut()
+            .zip(self.component.lanes.iter())
+            .enumerate()
+        {
+            if let (Some(state), Some(definition)) = (state, definition) {
+                samples[i] = match definition.voice.carrier {
+                    Carrier::Tone { .. } => {
+                        let sample = synthesis::sine(state.phase);
+                        state.phase =
+                            state
+                                .phase
+                                .wrapping_add(glide(state.step.0, state.step.1, p));
+                        sample
+                    }
+                    Carrier::Pulse(pulse) => pulse.sample(frame - self.origin),
+                };
+            }
+        }
+        let modulation = match self.component.modulation {
             None => 1.0,
-            Some(Modulator::Am { .. }) => {
-                let step = glide(self.modulation_step.0, self.modulation_step.1, p);
-                let phase = self.modulation_phase;
-                self.modulation_phase = self.modulation_phase.wrapping_add(step);
-                // A closed pulse cannot contribute audio, but its modulation
-                // clock must continue so the next open pulse has the same phase.
-                if carrier == 0.0 {
-                    return carrier;
-                }
-                let depth = self.depth_at(p);
-                synthesis::am_gain(phase, depth)
+            Some(Modulator::Pulsed(pulse)) => pulse.sample(frame - self.origin),
+            Some(Modulator::Sinusoidal { .. }) => {
+                let sample = synthesis::am_gain(
+                    self.modulation_phase,
+                    between(self.depth.0, self.depth.1, p),
+                );
+                self.modulation_phase = self.modulation_phase.wrapping_add(glide(
+                    self.modulation_step.0,
+                    self.modulation_step.1,
+                    p,
+                ));
+                sample
             }
-            Some(Modulator::Gate(pulse)) => pulse.sample(frame - self.origin),
         };
-        carrier * gain
+        synthesis::component_frame(samples, self.gains(p), modulation)
+    }
+    fn observe(
+        &self,
+        rate: SampleRate,
+        p: f64,
+        out: &mut [Option<crate::VoiceObservation>],
+        cursor: &mut usize,
+    ) {
+        let pair_rate = match self.lanes {
+            [Some(first), Some(second)] => Some(crate::facts::pair_rate(
+                glide(first.step.0, first.step.1, p),
+                glide(second.step.0, second.step.1, p),
+                rate,
+            )),
+            _ => None,
+        };
+        for ((state, definition), gains) in self
+            .lanes
+            .iter()
+            .zip(self.component.lanes.iter())
+            .zip(self.gains(p))
+        {
+            if let (Some(lane), Some(definition)) = (state, definition) {
+                let mut facts = definition.facts;
+                if let Some(pair) = &mut facts.pair {
+                    pair.realized_offset_hz = pair_rate;
+                }
+                if let crate::CarrierFacts::Tone(ref mut hz) = facts.carrier {
+                    *hz = crate::PhaseRate::from_step(
+                        hz.requested_hz,
+                        glide(lane.step.0, lane.step.1, p),
+                        rate,
+                    );
+                }
+                if let Some(crate::ModulationFacts::Sinusoidal {
+                    rate: ref mut hz,
+                    ref mut depth,
+                }) = facts.modulation
+                {
+                    *hz = crate::PhaseRate::from_step(
+                        hz.requested_hz,
+                        glide(self.modulation_step.0, self.modulation_step.1, p),
+                        rate,
+                    );
+                    *depth = between(self.depth.0, self.depth.1, p);
+                }
+                out[*cursor] = Some(crate::VoiceObservation {
+                    id: definition.id,
+                    role: self.role,
+                    facts,
+                    gains,
+                });
+                *cursor += 1;
+            }
+        }
     }
 }
-
-/// An open-ended live renderer at one sample rate.
+/// An open-ended, allocation-free renderer of atomic components.
 #[derive(Debug, Clone)]
 pub struct Engine {
     rate: SampleRate,
     ramp_frames: u64,
     frame: u64,
-    slots: [Option<Slot>; SLOTS],
+    slots: Box<[Option<Slot>]>,
+    // Both bounded buffers are allocated during preparation, never during a callback.
+    spare: Box<[Option<Slot>]>,
     ramp: Option<u64>,
-    /// The target the current or last ramp moved to, with its revision.
     destination: Option<(Target, u64)>,
-    /// The newest target waiting for the current ramp to end.
     pending: Option<(Target, u64)>,
     requested_revision: u64,
     active_revision: u64,
     settled_revision: u64,
-    last: Option<crate::Observation>,
+    last: Option<Observation>,
     stopping: bool,
     finished: bool,
 }
-
 impl Engine {
-    /// Maximum simultaneous generator slots during a target crossfade.
-    pub const SLOTS: usize = 2 * crate::Sound::MAX_VOICES;
-
-    /// How long every change takes, in seconds.
+    /// Storage derives from the single authored lane budget; active work is at most 32 lanes.
+    pub const SLOTS: usize = 2 * crate::Sound::MAX_COMPONENTS;
+    /// Interactive startup/change/Stop duration; independent of authored fades and pulse edges.
     pub const RAMP_SECONDS: f64 = 0.03;
-
-    /// A silent engine; the first target fades in.
-    #[must_use]
+    /// Start silently at the selected sample rate.
     pub fn new(rate: SampleRate) -> Self {
-        let ramp_frames = Self::ramp_frames_at(rate);
         Self {
             rate,
-            ramp_frames,
+            ramp_frames: Self::ramp_frames_at(rate),
             frame: 0,
-            slots: [None; SLOTS],
+            slots: vec![None; SLOTS].into_boxed_slice(),
+            spare: vec![None; SLOTS].into_boxed_slice(),
             ramp: None,
             destination: None,
             pending: None,
@@ -183,105 +259,180 @@ impl Engine {
             finished: false,
         }
     }
-
-    /// Shared live/finite Stop-ramp length at the selected sample rate.
-    #[must_use]
+    /// Resolved interactive transition duration, at least one frame.
     pub fn ramp_frames_at(rate: SampleRate) -> u64 {
         rate.frames_in(Self::RAMP_SECONDS).unwrap_or(1).max(1)
     }
-
-    /// The engine's sample rate.
-    #[must_use]
+    /// Rendering sample rate.
     pub const fn sample_rate(&self) -> SampleRate {
         self.rate
     }
-
-    /// Frames rendered so far.
-    #[must_use]
+    /// Next frame index.
     pub const fn frame(&self) -> u64 {
         self.frame
     }
-
-    /// Frames in one ramp at this rate.
-    #[must_use]
+    /// Frames in each interactive transition.
     pub const fn ramp_frames(&self) -> u64 {
         self.ramp_frames
     }
-
-    /// Move to `target` with the next ramp. Returns `false`, changing nothing,
-    /// for a target validated at another rate or after [`Engine::stop`].
+    /// Submit a target under the next revision.
     pub fn set(&mut self, target: &Target) -> bool {
         self.set_revision(target, self.requested_revision.saturating_add(1))
     }
-
-    /// Submit a target under a strictly increasing caller revision; invalid
-    /// revisions, another rate and targets after [`Engine::stop`] leave the
-    /// state unchanged and return `false`.
-    ///
-    /// A target that generates the same audio as the current destination is
-    /// a facts-only revision: it discards any waiting target and takes effect
-    /// at once without a ramp, keeping phases and an active ramp's progress.
-    /// Outgoing generators keep the facts of the target they belong to, and
-    /// observations of earlier frames are not rewritten. Any other target
-    /// waits for the current ramp to end, replacing an older waiting target.
+    /// Submit a strictly newer target; same-audio updates preserve all generator state and retire
+    /// waiting work.
     pub fn set_revision(&mut self, target: &Target, revision: u64) -> bool {
-        if self.stopping || target.sample_rate() != self.rate || revision <= self.requested_revision
+        if self.finished
+            || self.stopping
+            || target.sample_rate() != self.rate
+            || revision <= self.requested_revision
         {
             return false;
         }
         self.requested_revision = revision;
-        match &mut self.destination {
-            Some((destination, destination_revision)) if destination.same_audio(target) => {
-                *destination = *target;
-                *destination_revision = revision;
-                self.pending = None;
-                self.active_revision = revision;
-                if self.ramp.is_none() {
-                    self.settled_revision = revision;
-                }
-                for slot in self
-                    .slots
-                    .iter_mut()
-                    .flatten()
-                    .filter(|slot| slot.role != SlotRole::Outgoing)
+        if self
+            .destination
+            .as_ref()
+            .is_some_and(|(destination, _)| destination.same_audio(target))
+        {
+            self.destination = Some((*target, revision));
+            self.pending = None;
+            self.active_revision = revision;
+            if self.ramp.is_none() {
+                self.settled_revision = revision;
+            }
+            for slot in self
+                .slots
+                .iter_mut()
+                .flatten()
+                .filter(|slot| slot.role != SlotRole::Outgoing)
+            {
+                if let Some(next) = target
+                    .mix()
+                    .components()
+                    .find(|entry| entry.id == slot.component.id)
                 {
-                    if let Some((_, facts)) = target.voices().find(|(id, _)| *id == slot.id) {
-                        slot.facts = *facts;
-                    }
+                    slot.component = *next;
                 }
             }
-            _ => self.pending = Some((*target, revision)),
+        } else {
+            self.pending = Some((*target, revision));
         }
         true
     }
-
-    /// Last generated frame, or None before any nonempty render. Does not advance phase.
-    #[must_use]
+    /// Last actual generated frame's observation; never advances clocks.
     pub const fn observation(&self) -> Option<Observation> {
         self.last
     }
-
-    /// Fade to silence with the next ramp, then finish.
+    /// Stop takes precedence over subsequent targets and fades after the active transition.
     pub fn stop(&mut self) {
         if !self.stopping {
             self.stopping = true;
             self.pending = Some((Target::silence(self.rate), self.active_revision));
         }
     }
-
-    /// Whether the engine has faded out after [`Engine::stop`], or reached
-    /// [`Signal::MAX_FRAMES`].
-    #[must_use]
+    /// Stop has settled or the rendering horizon has been exhausted.
     pub const fn is_finished(&self) -> bool {
         self.finished
     }
-
-    /// Fill `out` with the next frames and return how many precede the end
-    /// of the stream; frames after the end are silence.
+    fn begin(&mut self, target: &Target) {
+        self.spare.fill(None);
+        let mut used = [false; SLOTS];
+        let mut cursor = 0;
+        for component in target.mix().components() {
+            let found = self
+                .slots
+                .iter()
+                .enumerate()
+                .find(|(i, slot)| {
+                    !used[*i]
+                        && slot.as_ref().is_some_and(|slot| {
+                            slot.component.id == component.id
+                                && compatible(&slot.component, component)
+                        })
+                })
+                .map(|(i, _)| i);
+            let slot = if let Some(i) = found {
+                used[i] = true;
+                let mut slot = self.slots[i].unwrap_or_else(|| unreachable!("present slot"));
+                slot.transition(component);
+                slot
+            } else {
+                Slot::new(component, self.frame)
+            };
+            self.spare[cursor] = Some(slot);
+            cursor += 1;
+        }
+        for (i, slot) in self.slots.iter().enumerate() {
+            if !used[i]
+                && let Some(mut slot) = *slot
+            {
+                slot.role = SlotRole::Outgoing;
+                for lane in slot.lanes.iter_mut().flatten() {
+                    lane.gain = (lane.gain.1, [0.0; 2]);
+                }
+                self.spare[cursor] = Some(slot);
+                cursor += 1;
+            }
+        }
+        core::mem::swap(&mut self.slots, &mut self.spare);
+        self.ramp = Some(0);
+    }
+    fn end_ramp(&mut self) {
+        for slot in self.slots.as_mut() {
+            if let Some(value) = slot {
+                if value.role == SlotRole::Outgoing {
+                    *slot = None;
+                } else {
+                    value.role = SlotRole::Continuing;
+                    for lane in value.lanes.iter_mut().flatten() {
+                        lane.gain.0 = lane.gain.1;
+                        lane.step.0 = lane.step.1;
+                    }
+                    value.modulation_step.0 = value.modulation_step.1;
+                    value.depth.0 = value.depth.1;
+                }
+            }
+        }
+        self.ramp = None;
+        self.settled_revision = self.active_revision;
+        if self.stopping && self.pending.is_none() && self.slots.iter().all(Option::is_none) {
+            self.finished = true;
+        }
+    }
+    fn snapshot(&self, p: f64) -> Observation {
+        let mut voices = [None; Observation::MAX_VOICES];
+        let mut cursor = 0;
+        for slot in self
+            .slots
+            .iter()
+            .flatten()
+            .filter(|slot| slot.role == SlotRole::Outgoing)
+            .chain(
+                self.slots
+                    .iter()
+                    .flatten()
+                    .filter(|slot| slot.role != SlotRole::Outgoing),
+            )
+        {
+            slot.observe(self.rate, p, &mut voices, &mut cursor);
+        }
+        Observation {
+            frame: self.frame,
+            active_revision: self.active_revision,
+            settled_revision: if p >= 1.0 {
+                self.active_revision
+            } else {
+                self.settled_revision
+            },
+            transitioning: p < 1.0,
+            voices,
+        }
+    }
+    /// Render arbitrary buffer sizes without allocation, locks or I/O; zero the exhausted tail.
     #[expect(
         clippy::cast_precision_loss,
-        reason = "The 30 ms ramp is at most 23040 frames at the supported maximum \
-            sample rate; its counts fit binary64 exactly"
+        reason = "Transition counters are at most 23040 and exactly representable"
     )]
     pub fn render(&mut self, out: &mut [[f64; 2]]) -> usize {
         for index in 0..out.len() {
@@ -296,27 +447,21 @@ impl Engine {
                 self.destination = Some((target, revision));
                 self.begin(&target);
             }
-            let progress = self
+            let p = self
                 .ramp
-                .map(|done| (done + 1) as f64 / self.ramp_frames as f64);
+                .map_or(1.0, |done| (done + 1) as f64 / self.ramp_frames as f64);
             let mut frame = [0.0; 2];
             for slot in self.slots.iter_mut().flatten() {
-                let value = slot.sample(self.frame, progress);
-                for (ear, sample) in frame.iter_mut().enumerate() {
-                    let level = slot.level(ear, progress);
-                    if level != 0.0 {
-                        *sample += level * value;
-                    }
-                }
+                let sample = slot.frame(self.frame, p);
+                frame[0] += sample[0];
+                frame[1] += sample[1];
             }
-            // Ramps between validated states keep each ear within full scale;
-            // the clamp removes only rounding-level excess.
-            out[index] = frame.map(|sample| sample.clamp(-1.0, 1.0));
+            out[index] = frame.map(|value| value.clamp(-1.0, 1.0));
             if index + 1 == out.len()
-                || progress == Some(1.0)
+                || (self.ramp.is_some() && p == 1.0)
                 || self.frame + 1 >= Signal::MAX_FRAMES
             {
-                self.last = Some(self.snapshot(progress));
+                self.last = Some(self.snapshot(p));
             }
             self.frame += 1;
             if let Some(done) = self.ramp {
@@ -332,179 +477,74 @@ impl Engine {
         }
         out.len()
     }
-
-    fn begin(&mut self, target: &Target) {
-        let mut continued = [false; SLOTS];
-        for slot in self.slots.iter_mut().flatten() {
-            let (_, _, left, right) = slot.gain;
-            slot.gain = (left, right, 0.0, 0.0);
-            slot.role = SlotRole::Outgoing;
-        }
-        for entry in target.mix().entries() {
-            let (id, voice, facts) = (entry.id, &entry.voice, &entry.facts);
-            let found = (0..SLOTS).find(|&k| {
-                !continued[k]
-                    && self.slots[k]
-                        .as_ref()
-                        .is_some_and(|slot| slot.id == id && continues(&slot.voice, voice))
-            });
-            let [left, right] = voice.gains();
-            let (carrier, modulation, depth) = steps(voice);
-            if let Some(k) = found {
-                continued[k] = true;
-                if let Some(slot) = self.slots[k].as_mut() {
-                    slot.gain = (slot.gain.0, slot.gain.1, left, right);
-                    slot.carrier_step = (slot.carrier_step.1, carrier);
-                    slot.modulation_step = (slot.modulation_step.1, modulation);
-                    slot.depth = (slot.depth.1, depth);
-                    slot.voice = *voice;
-                    slot.facts = *facts;
-                    slot.role = SlotRole::Continuing;
-                }
-            } else if let Some(k) = (0..SLOTS).find(|&k| self.slots[k].is_none()) {
-                continued[k] = true;
-                self.slots[k] = Some(Slot {
-                    id,
-                    facts: *facts,
-                    role: SlotRole::Incoming,
-                    voice: *voice,
-                    gain: (0.0, 0.0, left, right),
-                    carrier_step: (carrier, carrier),
-                    modulation_step: (modulation, modulation),
-                    depth: (depth, depth),
-                    carrier_phase: 0,
-                    modulation_phase: 0,
-                    origin: self.frame,
-                });
-            }
-        }
-        self.ramp = Some(0);
-    }
-
-    fn end_ramp(&mut self) {
-        for entry in &mut self.slots {
-            if let Some(slot) = entry {
-                let (_, _, left, right) = slot.gain;
-                if left == 0.0 && right == 0.0 {
-                    *entry = None;
-                } else {
-                    slot.gain = (left, right, left, right);
-                    slot.role = SlotRole::Continuing;
-                    slot.carrier_step.0 = slot.carrier_step.1;
-                    slot.modulation_step.0 = slot.modulation_step.1;
-                    slot.depth.0 = slot.depth.1;
-                }
-            }
-        }
-        self.ramp = None;
-        self.settled_revision = self.active_revision;
-        if self.stopping && self.pending.is_none() && self.slots.iter().all(Option::is_none) {
-            self.finished = true;
-        }
-    }
-
-    fn snapshot(&self, progress: Option<f64>) -> Observation {
-        let p = progress.unwrap_or(1.0);
-        let mut voices = [None; SLOTS];
-        for (index, slot) in self
-            .slots
+    #[cfg(test)]
+    fn live_slots(&self) -> usize {
+        self.slots
             .iter()
-            .enumerate()
-            .filter_map(|(i, s)| s.as_ref().map(|s| (i, s)))
-        {
-            let mut facts = slot.facts;
-            if let crate::CarrierFacts::Tone(ref mut rate) = facts.carrier {
-                *rate = crate::PhaseRate::from_step(
-                    rate.requested_hz,
-                    glide(slot.carrier_step.0, slot.carrier_step.1, p),
-                    self.rate,
-                );
-            }
-            if let Some(crate::ModulationFacts::Am {
-                ref mut rate,
-                ref mut depth,
-            }) = facts.modulation
-            {
-                *rate = crate::PhaseRate::from_step(
-                    rate.requested_hz,
-                    glide(slot.modulation_step.0, slot.modulation_step.1, p),
-                    self.rate,
-                );
-                *depth = slot.depth_at(p);
-            }
-            voices[index] = Some(crate::VoiceObservation {
-                id: slot.id,
-                role: slot.role,
-                facts,
-                gains: [slot.level(0, progress), slot.level(1, progress)],
-            });
-        }
-        Observation {
-            frame: self.frame,
-            active_revision: self.active_revision,
-            settled_revision: if p >= 1.0 {
-                self.active_revision
-            } else {
-                self.settled_revision
-            },
-            transitioning: p < 1.0,
-            voices,
-        }
+            .flatten()
+            .map(|slot| slot.lanes.iter().flatten().count())
+            .sum()
     }
-
     #[cfg(test)]
     #[expect(
         clippy::cast_precision_loss,
-        reason = "The ramp is at most 23040 frames; conversion to binary64 is exact in \
-            this test oracle"
+        reason = "Small transition counters are exact"
     )]
     fn level_sums(&self) -> [f64; 2] {
-        let progress = self
+        let p = self
             .ramp
-            .map(|done| (done + 1) as f64 / self.ramp_frames as f64);
+            .map_or(1.0, |done| (done + 1) as f64 / self.ramp_frames as f64);
         let mut sums = [0.0; 2];
         for slot in self.slots.iter().flatten() {
-            for (ear, sum) in sums.iter_mut().enumerate() {
-                *sum += slot.level(ear, progress);
+            for gains in slot.gains(p) {
+                sums[0] += gains[0];
+                sums[1] += gains[1];
             }
         }
         sums
     }
-
-    #[cfg(test)]
-    fn live_slots(&self) -> usize {
-        self.slots.iter().flatten().count()
-    }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Carrier as Source, Ear, Ears, Modulation, Recipe, Sound, SoundError, Voice};
+    use crate::{
+        Carrier as Source, Channel, ChannelRouting, Modulation, Recipe, SoundError, SourceLane,
+    };
     use alloc::vec;
     use alloc::vec::Vec;
     use proptest::{prelude::*, test_runner::Config, test_runner::TestRunner};
+
+    #[test]
+    fn terminal_horizon_refuses_late_targets_without_rewriting_generated_state() {
+        let mut engine = Engine::new(SampleRate::DEFAULT);
+        engine.frame = Signal::MAX_FRAMES - 1;
+        assert_eq!(engine.render(&mut [[0.0; 2]; 2]), 1);
+        let last = engine.observation();
+        assert!(engine.is_finished());
+        assert!(!engine.set_revision(&Target::silence(SampleRate::DEFAULT), 1));
+        assert_eq!(engine.observation(), last);
+        assert!(engine.pending.is_none());
+    }
 
     fn rate() -> SampleRate {
         SampleRate::new(48_000).unwrap()
     }
 
-    fn tone(hz: f64, peak_dbfs: f64, ears: Ears) -> Voice {
-        Voice {
-            ears,
+    fn tone(hz: f64, peak_dbfs: f64, route: ChannelRouting) -> SourceLane {
+        SourceLane {
+            route,
             peak_dbfs,
             carrier: Source::Tone { frequency_hz: hz },
             modulation: None,
         }
     }
 
-    fn clicks(hz: f64, peak_dbfs: f64) -> Voice {
-        Voice {
-            ears: Ears::Both,
+    fn clicks(hz: f64, peak_dbfs: f64) -> SourceLane {
+        SourceLane {
+            route: ChannelRouting::Both,
             peak_dbfs,
-            carrier: Source::Clicks {
-                rate_hz: hz,
-                width_seconds: 0.001,
+            carrier: Source::PulseTrain {
+                pulse: crate::test_support::rectangular_pulse(hz, 0.001),
             },
             modulation: None,
         }
@@ -514,7 +554,7 @@ mod tests {
         crate::ComponentId::new(n + 1).unwrap()
     }
 
-    fn numbered(components: &[Voice]) -> Vec<(crate::ComponentId, Voice)> {
+    fn numbered(components: &[SourceLane]) -> Vec<(crate::ComponentId, SourceLane)> {
         components
             .iter()
             .enumerate()
@@ -540,8 +580,8 @@ mod tests {
     fn closed_pulses_keep_modulation_phase_and_exact_reopening_samples() {
         for hz in [8_000, 44_100, 48_000, 768_000] {
             for depth in [0.0, 0.3, 1.0] {
-                let voice = Voice {
-                    modulation: Some(Modulation::Am {
+                let voice = SourceLane {
+                    modulation: Some(Modulation::Sinusoidal {
                         rate_hz: crate::test_support::finite(39.0625),
                         depth: crate::test_support::finite(depth),
                     }),
@@ -552,14 +592,14 @@ mod tests {
                 let mut engine = Engine::new(rate);
                 engine.begin(&target);
                 let mut slot = engine.slots.iter().flatten().next().copied().unwrap();
-                let reference = target.mix().entries().next().unwrap().voice;
+                let reference = target.mix().components().next().unwrap();
                 let mut closed = false;
                 let mut reopened = false;
                 for frame in 0..u64::from(hz / 10) {
                     // The seekable generator computes phase from the absolute
                     // frame, independently of the live slot's advancing clock.
-                    let expected = reference.sample(frame);
-                    assert_eq!(slot.sample(frame, None).to_bits(), expected.to_bits());
+                    let expected = reference.frame(frame)[0];
+                    assert_eq!(slot.frame(frame, 1.0)[0].to_bits(), expected.to_bits());
                     if expected == 0.0 {
                         closed = true;
                     } else if closed {
@@ -579,8 +619,8 @@ mod tests {
         for shared_depth in [true, false] {
             for hz in [8_000, 44_100, 48_000, 96_000, 768_000] {
                 let components: Vec<_> = (0..16)
-                    .map(|n| Voice {
-                        modulation: Some(Modulation::Am {
+                    .map(|n| SourceLane {
+                        modulation: Some(Modulation::Sinusoidal {
                             rate_hz: crate::test_support::finite(39.0625),
                             depth: if shared_depth {
                                 crate::test_support::finite(1.0)
@@ -588,7 +628,7 @@ mod tests {
                                 crate::test_support::finite(f64::from(n) / 15.0)
                             },
                         }),
-                        ..tone(200.0 + f64::from(n) * 20.0, -30.0, Ears::Both)
+                        ..tone(200.0 + f64::from(n) * 20.0, -30.0, ChannelRouting::Both)
                     })
                     .collect();
                 let mut engine = Engine::new(SampleRate::new(hz).unwrap());
@@ -596,7 +636,7 @@ mod tests {
                     &crate::test_support::target(engine.rate, &numbered(&components)).unwrap(),
                 );
                 engine.render(&mut [[0.0; 2]]);
-                let mut slots: Vec<_> = engine.slots.into_iter().flatten().collect();
+                let mut slots: Vec<_> = engine.slots.iter().copied().flatten().collect();
                 for progress in [None, Some(0.0), Some(0.25), Some(0.999), Some(1.0)] {
                     for frame in 0..64 {
                         for (n, slot) in slots.iter_mut().enumerate() {
@@ -613,14 +653,18 @@ mod tests {
                             }
                             let p = progress.unwrap_or(1.0);
                             // Independent sample and clock expectations.
-                            let carrier = synthesis::sine(slot.carrier_phase);
-                            let depth = slot.depth_at(p);
+                            let carrier = synthesis::sine(slot.lanes[0].unwrap().phase);
+                            let depth = between(slot.depth.0, slot.depth.1, p);
                             let gain = (1.0 + depth * synthesis::sine(slot.modulation_phase))
                                 / (1.0 + depth);
-                            let expected = carrier * gain;
-                            let carrier_phase = slot.carrier_phase.wrapping_add(glide(
-                                slot.carrier_step.0,
-                                slot.carrier_step.1,
+                            let expected = if slot.gains(p)[0][0] == 0.0 {
+                                0.0
+                            } else {
+                                (0.0 + carrier * slot.gains(p)[0][0]) * gain
+                            };
+                            let carrier_phase = slot.lanes[0].unwrap().phase.wrapping_add(glide(
+                                slot.lanes[0].unwrap().step.0,
+                                slot.lanes[0].unwrap().step.1,
                                 p,
                             ));
                             let modulation_phase = slot.modulation_phase.wrapping_add(glide(
@@ -628,8 +672,8 @@ mod tests {
                                 slot.modulation_step.1,
                                 p,
                             ));
-                            assert_eq!(slot.sample(frame, progress).to_bits(), expected.to_bits());
-                            assert_eq!(slot.carrier_phase, carrier_phase);
+                            assert_eq!(slot.frame(frame, p)[0].to_bits(), expected.to_bits());
+                            assert_eq!(slot.lanes[0].unwrap().phase, carrier_phase);
                             assert_eq!(slot.modulation_phase, modulation_phase);
                         }
                     }
@@ -645,17 +689,17 @@ mod tests {
             binary64 conversion is exact for these bounded fixtures"
     )]
     fn an_unedited_session_equals_the_signal_after_its_start_ramp() {
-        let mut stimuli: Vec<crate::Sound> = crate::catalog::ENTRIES
+        let mut stimuli: Vec<crate::FiniteFixture> = crate::catalog::ENTRIES
             .iter()
-            .map(|entry| Recipe::parse(&entry.text()).unwrap().sound().clone())
+            .map(|entry| crate::FiniteFixture::from_recipe(&Recipe::parse(&entry.text()).unwrap()))
             .collect();
         stimuli.push(
-            Sound::new(
+            crate::test_support::FiniteFixture::new(
                 crate::test_support::finite(1.0),
                 crate::test_support::finite(0.0),
                 (vec![
-                    tone(250.0, -20.0, Ears::Left),
-                    tone(256.0, -20.0, Ears::Right),
+                    tone(250.0, -20.0, ChannelRouting::Left),
+                    tone(256.0, -20.0, ChannelRouting::Right),
                     clicks(40.0, -20.0),
                 ])
                 .into_iter()
@@ -694,11 +738,11 @@ mod tests {
 
     #[test]
     fn targets_reject_what_signals_reject_with_the_same_errors() {
-        let too_high = tone(30_000.0, -20.0, Ears::Both);
-        let sound = Sound::new(
+        let too_high = tone(30_000.0, -20.0, ChannelRouting::Both);
+        let sound = crate::test_support::FiniteFixture::new(
             crate::test_support::finite(1.0),
             crate::test_support::finite(0.0),
-            (vec![tone(440.0, -20.0, Ears::Both), too_high])
+            (vec![tone(440.0, -20.0, ChannelRouting::Both), too_high])
                 .into_iter()
                 .enumerate()
                 .map(|(index, voice)| crate::Component {
@@ -712,15 +756,21 @@ mod tests {
             sound.check(rate()).into_result().unwrap_err(),
             sound.signal(rate()).unwrap_err()
         );
-        let loud = [tone(440.0, -3.0, Ears::Left), tone(441.0, -3.0, Ears::Left)];
+        let loud = [
+            tone(440.0, -3.0, ChannelRouting::Left),
+            tone(441.0, -3.0, ChannelRouting::Left),
+        ];
         assert!(matches!(
             crate::test_support::target(rate(), &numbered(&loud)),
-            Err(SoundError::Peak { ear: Ear::Left, .. })
+            Err(SoundError::Peak {
+                channel: Channel::Left,
+                ..
+            })
         ));
-        let many = vec![tone(440.0, -40.0, Ears::Both); 17];
+        let many = vec![tone(440.0, -40.0, ChannelRouting::Both); 17];
         assert_eq!(
             crate::test_support::sound(&numbered(&many)),
-            Err(crate::StructureError::ComponentBudget { count: 17 })
+            Err(crate::StructureError::VoiceBudget { count: 17 })
         );
         let other = SampleRate::new(44_100).unwrap();
         let mut engine = Engine::new(rate());
@@ -736,14 +786,20 @@ mod tests {
     fn a_retuned_tone_keeps_its_phase_and_a_reset_would_not() {
         let mut engine = Engine::new(rate());
         engine.set(
-            &crate::test_support::target(rate(), &[(id(7), tone(440.0, -6.0, Ears::Both))])
-                .unwrap(),
+            &crate::test_support::target(
+                rate(),
+                &[(id(7), tone(440.0, -6.0, ChannelRouting::Both))],
+            )
+            .unwrap(),
         );
         // 4,827 frames end near a crest of 440 Hz, where a phase reset would jump.
         let mut frames = render(&mut engine, 4_827);
         engine.set(
-            &crate::test_support::target(rate(), &[(id(7), tone(880.0, -6.0, Ears::Both))])
-                .unwrap(),
+            &crate::test_support::target(
+                rate(),
+                &[(id(7), tone(880.0, -6.0, ChannelRouting::Both))],
+            )
+            .unwrap(),
         );
         frames.extend(render(&mut engine, 9_600));
         let amplitude = libm::pow(10.0, -6.0 / 20.0);
@@ -777,19 +833,18 @@ mod tests {
     )]
     fn a_level_change_moves_linearly_over_one_ramp() {
         // A pulse wider than the session holds the carrier at one.
-        let held = Voice {
-            ears: Ears::Both,
+        let held = SourceLane {
+            route: ChannelRouting::Both,
             peak_dbfs: -20.0,
-            carrier: Source::Clicks {
-                rate_hz: 0.1,
-                width_seconds: 5.0,
+            carrier: Source::PulseTrain {
+                pulse: crate::test_support::rectangular_pulse(0.1, 5.0),
             },
             modulation: None,
         };
         let mut engine = Engine::new(rate());
         engine.set(&crate::test_support::target(rate(), &[(id(1), held)]).unwrap());
         render(&mut engine, 2_000);
-        let louder = Voice {
+        let louder = SourceLane {
             peak_dbfs: -6.0,
             ..held
         };
@@ -822,15 +877,21 @@ mod tests {
         render(&mut engine, ramp);
         assert_eq!(engine.live_slots(), 1);
         engine.set(
-            &crate::test_support::target(rate(), &[(id(1), tone(300.0, -20.0, Ears::Left))])
-                .unwrap(),
+            &crate::test_support::target(
+                rate(),
+                &[(id(1), tone(300.0, -20.0, ChannelRouting::Left))],
+            )
+            .unwrap(),
         );
         render(&mut engine, 1);
         assert_eq!(engine.live_slots(), 2);
         render(&mut engine, ramp);
         engine.set(
-            &crate::test_support::target(rate(), &[(id(1), tone(600.0, -10.0, Ears::Right))])
-                .unwrap(),
+            &crate::test_support::target(
+                rate(),
+                &[(id(1), tone(600.0, -10.0, ChannelRouting::Right))],
+            )
+            .unwrap(),
         );
         render(&mut engine, 1);
         assert_eq!(engine.live_slots(), 1);
@@ -844,14 +905,21 @@ mod tests {
     )]
     fn targets_during_a_ramp_wait_and_only_the_newest_applies() {
         let mut engine = Engine::new(rate());
-        let quiet = crate::test_support::target(rate(), &[(id(1), tone(440.0, -40.0, Ears::Both))])
-            .unwrap();
-        let skipped =
-            crate::test_support::target(rate(), &[(id(2), tone(500.0, -10.0, Ears::Both))])
-                .unwrap();
-        let newest =
-            crate::test_support::target(rate(), &[(id(3), tone(600.0, -20.0, Ears::Left))])
-                .unwrap();
+        let quiet = crate::test_support::target(
+            rate(),
+            &[(id(1), tone(440.0, -40.0, ChannelRouting::Both))],
+        )
+        .unwrap();
+        let skipped = crate::test_support::target(
+            rate(),
+            &[(id(2), tone(500.0, -10.0, ChannelRouting::Both))],
+        )
+        .unwrap();
+        let newest = crate::test_support::target(
+            rate(),
+            &[(id(3), tone(600.0, -20.0, ChannelRouting::Left))],
+        )
+        .unwrap();
         engine.set(&quiet);
         render(&mut engine, 10);
         engine.set(&skipped);
@@ -860,8 +928,20 @@ mod tests {
         render(&mut engine, remaining);
         assert_eq!(engine.live_slots(), 1);
         render(&mut engine, 1);
-        assert!(engine.slots.iter().flatten().all(|s| s.id != id(2).into()));
-        assert!(engine.slots.iter().flatten().any(|s| s.id == id(3).into()));
+        assert!(
+            engine
+                .slots
+                .iter()
+                .flatten()
+                .all(|s| s.component.id != id(2))
+        );
+        assert!(
+            engine
+                .slots
+                .iter()
+                .flatten()
+                .any(|s| s.component.id == id(3))
+        );
     }
 
     #[test]
@@ -873,8 +953,11 @@ mod tests {
     fn stopping_fades_out_within_one_ramp_and_then_finishes() {
         let mut engine = Engine::new(rate());
         engine.set(
-            &crate::test_support::target(rate(), &[(id(1), tone(440.0, -6.0, Ears::Both))])
-                .unwrap(),
+            &crate::test_support::target(
+                rate(),
+                &[(id(1), tone(440.0, -6.0, ChannelRouting::Both))],
+            )
+            .unwrap(),
         );
         render(&mut engine, 4_800);
         assert!(!engine.is_finished());
@@ -891,10 +974,10 @@ mod tests {
 
     #[test]
     fn sixteen_voices_changing_kind_use_every_slot_within_full_scale() {
-        let tones: Vec<Voice> = (0..16)
-            .map(|i| tone(200.0 + 50.0 * f64::from(i), -24.1, Ears::Both))
+        let tones: Vec<SourceLane> = (0..16)
+            .map(|i| tone(200.0 + 50.0 * f64::from(i), -24.1, ChannelRouting::Both))
             .collect();
-        let pulses: Vec<Voice> = (0..16).map(|_| clicks(40.0, -24.1)).collect();
+        let pulses: Vec<SourceLane> = (0..16).map(|_| clicks(40.0, -24.1)).collect();
         let mut engine = Engine::new(rate());
         engine.set(&crate::test_support::target(rate(), &numbered(&tones)).unwrap());
         render(&mut engine, 2_000);
@@ -915,28 +998,36 @@ mod tests {
     )]
     fn random_edits_keep_every_ear_within_full_scale() {
         let component = (0_u8..3, 0_u8..4, 1.0_f64..20_000.0, 0.0_f64..1.0, 0_u32..4).prop_map(
-            |(ears, kind, hz, level, id)| {
-                let ears = [Ears::Left, Ears::Right, Ears::Both][usize::from(ears)];
+            |(route, kind, hz, level, id)| {
+                let route = [
+                    ChannelRouting::Left,
+                    ChannelRouting::Right,
+                    ChannelRouting::Both,
+                ][usize::from(route)];
                 let carrier = if kind == 3 {
-                    Source::Clicks {
-                        rate_hz: hz.min(1_000.0),
-                        width_seconds: 0.0005,
+                    Source::PulseTrain {
+                        pulse: crate::test_support::rectangular_pulse(hz.min(1_000.0), 0.0005),
                     }
                 } else {
                     Source::Tone { frequency_hz: hz }
                 };
                 let modulation = match kind {
-                    1 => Some(Modulation::Am {
+                    1 => Some(Modulation::Sinusoidal {
                         rate_hz: crate::test_support::finite(40.0),
                         depth: crate::test_support::finite(level),
                     }),
-                    2 => Some(Modulation::Gate {
-                        rate_hz: crate::test_support::finite(40.0),
-                        width_seconds: crate::test_support::finite(0.001),
+                    2 => Some(Modulation::Pulsed {
+                        pulse: crate::PulseSpec {
+                            rate_hz: crate::test_support::finite(40.0),
+                            width: crate::PulseWidth::Duration {
+                                seconds: crate::test_support::finite(0.001),
+                            },
+                            shape: crate::PulseShape::Rectangular {},
+                        },
                     }),
                     _ => None,
                 };
-                (id, ears, carrier, modulation, level)
+                (id, route, carrier, modulation, level)
             },
         );
         let strategy = prop::collection::vec(
@@ -955,16 +1046,16 @@ mod tests {
                 for (parts, frames) in edits {
                     // Scale levels so that each ear's sum is exactly at most one.
                     let n = parts.len().max(1) as f64;
-                    let components: Vec<(crate::ComponentId, Voice)> = parts
+                    let components: Vec<(crate::ComponentId, SourceLane)> = parts
                         .iter()
                         .enumerate()
-                        .map(|(i, (id, ears, carrier, modulation, level))| {
+                        .map(|(i, (id, route, carrier, modulation, level))| {
                             let amplitude = (0.05 + 0.95 * level) / n;
                             (
                                 crate::ComponentId::new(id * 16 + u32::try_from(i).unwrap() + 1)
                                     .unwrap(),
-                                Voice {
-                                    ears: *ears,
+                                SourceLane {
+                                    route: *route,
                                     peak_dbfs: 20.0 * libm::log10(amplitude),
                                     carrier: *carrier,
                                     modulation: *modulation,
@@ -992,12 +1083,18 @@ mod tests {
     fn rendering_and_editing_allocate_nothing() {
         let a = crate::test_support::target(
             rate(),
-            &numbered(&[tone(440.0, -20.0, Ears::Left), clicks(40.0, -20.0)]),
+            &numbered(&[
+                tone(440.0, -20.0, ChannelRouting::Left),
+                clicks(40.0, -20.0),
+            ]),
         )
         .unwrap();
         let b = crate::test_support::target(
             rate(),
-            &numbered(&[clicks(80.0, -20.0), tone(450.0, -26.0, Ears::Right)]),
+            &numbered(&[
+                clicks(80.0, -20.0),
+                tone(450.0, -26.0, ChannelRouting::Right),
+            ]),
         )
         .unwrap();
         let mut engine = Engine::new(rate());
@@ -1020,13 +1117,18 @@ mod tests {
         assert!(engine.is_finished());
     }
 
-    fn gated(hz: f64, peak_dbfs: f64, width_seconds: f64) -> Voice {
-        Voice {
-            modulation: Some(Modulation::Gate {
-                rate_hz: crate::test_support::finite(40.0),
-                width_seconds: crate::test_support::finite(width_seconds),
+    fn gated(hz: f64, peak_dbfs: f64, width_seconds: f64) -> SourceLane {
+        SourceLane {
+            modulation: Some(Modulation::Pulsed {
+                pulse: crate::PulseSpec {
+                    rate_hz: crate::test_support::finite(40.0),
+                    width: crate::PulseWidth::Duration {
+                        seconds: crate::test_support::finite(width_seconds),
+                    },
+                    shape: crate::PulseShape::Rectangular {},
+                },
             }),
-            ..tone(hz, peak_dbfs, Ears::Both)
+            ..tone(hz, peak_dbfs, ChannelRouting::Both)
         }
     }
 
@@ -1055,12 +1157,12 @@ mod tests {
             binary64 conversion is exact for these bounded fixtures"
     )]
     fn frequencies_glide_through_intermediate_steps_during_a_ramp() {
-        let am = |hz: f64, rate_hz: f64, depth: f64| Voice {
-            modulation: Some(Modulation::Am {
+        let am = |hz: f64, rate_hz: f64, depth: f64| SourceLane {
+            modulation: Some(Modulation::Sinusoidal {
                 rate_hz: crate::test_support::finite(rate_hz),
                 depth: crate::test_support::finite(depth),
             }),
-            ..tone(hz, -20.0, Ears::Both)
+            ..tone(hz, -20.0, ChannelRouting::Both)
         };
         let mut engine = Engine::new(rate());
         engine.set(&crate::test_support::target(rate(), &[(id(1), am(440.0, 10.0, 0.0))]).unwrap());
@@ -1071,24 +1173,27 @@ mod tests {
         let slot = engine.slots.iter().flatten().next().copied().unwrap();
         render(&mut engine, 1);
         let next = engine.slots.iter().flatten().next().copied().unwrap();
-        let carrier = next.carrier_phase.wrapping_sub(slot.carrier_phase);
+        let carrier = next.lanes[0]
+            .unwrap()
+            .phase
+            .wrapping_sub(slot.lanes[0].unwrap().phase);
         let modulation = next.modulation_phase.wrapping_sub(slot.modulation_phase);
-        assert!(slot.carrier_step.0 < carrier && carrier < slot.carrier_step.1);
+        assert!(slot.lanes[0].unwrap().step.0 < carrier && carrier < slot.lanes[0].unwrap().step.1);
         assert!(slot.modulation_step.0 < modulation && modulation < slot.modulation_step.1);
         // Depth is halfway too: recompute the frame from the slot's own phases.
         let p = (ramp / 2 + 1) as f64 / ramp as f64;
         let depth = slot.depth.0 * (1.0 - p) + slot.depth.1 * p;
         assert!(0.4 < depth && depth < 0.6);
         let mut copy = slot;
-        let value = copy.sample(engine.frame() - 1, Some(p));
-        let expected = synthesis::sine(slot.carrier_phase)
+        let value = copy.frame(engine.frame() - 1, p)[0];
+        let expected = (synthesis::sine(slot.lanes[0].unwrap().phase) * slot.gains(p)[0][0])
             * ((1.0 + depth * synthesis::sine(slot.modulation_phase)) / (1.0 + depth));
         assert_eq!(value.to_bits(), expected.to_bits());
         render(&mut engine, ramp);
         let settled = engine.slots.iter().flatten().next().copied().unwrap();
         assert_eq!(
-            settled.carrier_step,
-            (slot.carrier_step.1, slot.carrier_step.1)
+            settled.lanes[0].unwrap().step,
+            (slot.lanes[0].unwrap().step.1, slot.lanes[0].unwrap().step.1)
         );
         assert_eq!(settled.depth, (1.0, 1.0));
     }
@@ -1138,8 +1243,11 @@ mod tests {
     fn stop_waits_for_the_active_ramp_then_fades_for_one_ramp() {
         let mut engine = Engine::new(rate());
         engine.set(
-            &crate::test_support::target(rate(), &[(id(1), tone(440.0, -30.0, Ears::Both))])
-                .unwrap(),
+            &crate::test_support::target(
+                rate(),
+                &[(id(1), tone(440.0, -30.0, ChannelRouting::Both))],
+            )
+            .unwrap(),
         );
         render(&mut engine, 1);
         engine.stop();
@@ -1194,8 +1302,11 @@ mod tests {
         assert!(out.iter().all(|f| *f == [0.0; 2]));
         assert!(!engine.is_finished());
         engine.set(
-            &crate::test_support::target(rate(), &[(id(1), tone(440.0, -20.0, Ears::Both))])
-                .unwrap(),
+            &crate::test_support::target(
+                rate(),
+                &[(id(1), tone(440.0, -20.0, ChannelRouting::Both))],
+            )
+            .unwrap(),
         );
         engine.render(&mut out);
         engine.set(&Target::silence(rate()));

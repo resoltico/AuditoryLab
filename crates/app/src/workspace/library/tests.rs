@@ -1036,7 +1036,7 @@ fn clear_rhythm_command_retains_every_non_rhythm_query_field() {
             group_by: GroupBy::Study,
             rhythm: crate::discovery::query::RhythmQuery {
                 bands: vec![crate::core::rhythm::Band::Gamma],
-                methods: vec![crate::core::rhythm::Method::Am],
+                methods: vec![crate::core::rhythm::Method::Sinusoidal],
                 state: Some(crate::discovery::query::RhythmState::OutsideBands),
             },
         };

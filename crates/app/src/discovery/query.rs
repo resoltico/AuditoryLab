@@ -104,8 +104,8 @@ impl SearchIndex {
             facts.push(band.key().into());
         }
         let mut numbers = vec![
-            recipe.sound().duration_seconds().get(),
-            recipe.sound().fade_seconds().get(),
+            recipe.timing().duration_seconds.get(),
+            recipe.timing().fade_seconds.get(),
         ];
         for component in recipe.sound().components() {
             component_terms(component, &mut facts, &mut numbers);
@@ -194,9 +194,9 @@ const fn method_search_terms(method: Method) -> &'static str {
     match method {
         Method::Binaural => "binaural interaural pair",
         Method::Monaural => "monaural pair",
-        Method::Clicks => "click clicks",
-        Method::Gate => "gate gated rectangular",
-        Method::Am => "am amplitude modulation sinusoidal",
+        Method::PulseTrain => "click clicks",
+        Method::Pulsed => "gate gated rectangular",
+        Method::Sinusoidal => "am amplitude modulation sinusoidal",
         Method::SteadyTone => "steady tone",
     }
 }
@@ -405,22 +405,24 @@ fn component_terms(
     facts: &mut Vec<String>,
     numbers: &mut Vec<f64>,
 ) {
-    use crate::core::{Ears, Modulation, ParameterId};
+    use crate::core::{ChannelRouting, Modulation, ParameterId};
 
     let form = component.form;
     if let Some(kind) = form.primitive_kind() {
         facts.push(
             match kind {
                 crate::core::CarrierKind::Tone => "tone carrier frequency",
-                crate::core::CarrierKind::Clicks => "click clicks rate width",
+                crate::core::CarrierKind::PulseTrain => "click clicks rate width",
             }
             .into(),
         );
         if let Some(modulation) = form.modulation() {
             facts.push(
                 match modulation {
-                    Modulation::Am { .. } => "sinusoidal amplitude modulation am depth rate",
-                    Modulation::Gate { .. } => "rectangular gate rate width",
+                    Modulation::Sinusoidal { .. } => {
+                        "sinusoidal amplitude modulation am depth rate"
+                    }
+                    Modulation::Pulsed { .. } => "rectangular gate rate width",
                 }
                 .into(),
             );
@@ -435,12 +437,12 @@ fn component_terms(
             .into(),
         );
     }
-    if let Some(ears) = form.route() {
+    if let Some(route) = form.route() {
         facts.push(
-            match ears {
-                Ears::Left => "left",
-                Ears::Right => "right",
-                Ears::Both => "both ears",
+            match route {
+                ChannelRouting::Left => "left",
+                ChannelRouting::Right => "right",
+                ChannelRouting::Both => "both route",
             }
             .into(),
         );

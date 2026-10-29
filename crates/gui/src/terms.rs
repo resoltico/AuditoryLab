@@ -148,7 +148,11 @@ chrome! {
         RoutingModulationAndComponentOptions => ("caption-routing-modulation-and-component-options",
             "Routing, \
             modulation and component options"),
-        EarsSuffix => ("caption-ears-suffix", ": ears"),
+        SourcePulseWidth => ("caption-source-pulse-width", "Source pulse width"),
+        SourcePulseShape => ("caption-source-pulse-shape", "Source pulse shape"),
+        ModulationPulseWidth => ("caption-mod-width", "Modulation pulse width"),
+        ModulationPulseShape => ("caption-mod-shape", "Modulation pulse shape"),
+        ChannelRoutingSuffix => ("caption-channel-routing-suffix", ": route"),
         CarrierSuffix => ("caption-carrier-suffix", ": carrier"),
         ModulationSuffix => ("caption-modulation-suffix", ": modulation"),
         SoundSettingsNotesAndSavedExportedAudio => ("caption-sound-settings-notes-and-saved-export\

@@ -1,4 +1,4 @@
-schema_version = 4
+schema_version = 5
 added_at = "2026-10-24T00:00:00Z"
 
 [document]
@@ -10,14 +10,19 @@ modified_at = "2026-10-24T06:30:00.000000000Z"
 title = "My 6 Hz exploration"
 notes = "Design fixture, not a clinical claim."
 
-[sound]
+[timing]
 duration_seconds = 60.0
 fade_seconds = 0.1
 
 [[sound.component]]
 id = 1
+
+[sound.component.source]
 kind = "binaural_pair"
-left_hz = 200.0
+first_hz = 200.0
 offset_hz = 6.0
-left_peak_dbfs = -20.0
-right_peak_dbfs = -20.0
+first_peak_dbfs = -20.0
+second_peak_dbfs = -20.0
+
+[sound.component.modulation]
+kind = "none"

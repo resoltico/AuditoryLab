@@ -1,4 +1,4 @@
-schema_version = 4
+schema_version = 5
 
 [document]
 id = "89fd4faf-4afb-4835-8d96-7877b04153d5"
@@ -6,19 +6,21 @@ id = "89fd4faf-4afb-4835-8d96-7877b04153d5"
 [description]
 title = "39.0625 Hz amplitude-modulated 500 Hz tone, left ear"
 
-[sound]
+[timing]
 duration_seconds = 307.2
 fade_seconds = 0.1
 
 [[sound.component]]
-kind = "tone"
 id = 1
-ears = "left"
+
+[sound.component.source]
+kind = "tone"
+route = "left"
 frequency_hz = 500.0
 peak_dbfs = -20.0
 
 [sound.component.modulation]
-kind = "am"
+kind = "sinusoidal"
 rate_hz = 39.0625
 depth = 1.0
 

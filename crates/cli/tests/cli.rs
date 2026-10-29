@@ -212,19 +212,23 @@ fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
     let file = d.path().join("meaning.toml");
     for (components, needle, rejected) in cli_meaning_cases() {
         let mut recipe = common::silent(1.0, 0.0).into_builder();
-        recipe.content.sound = auditorylab_app::core::Sound::new(
-            recipe.content.sound.duration_seconds(),
-            recipe.content.sound.fade_seconds(),
-            components
-                .into_iter()
-                .enumerate()
-                .map(|(index, form)| Component {
-                    id: ComponentId::numbered(index).unwrap(),
-                    form,
-                })
-                .collect(),
-        )
-        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+        recipe.content.sound = {
+            let fixture = auditorylab_app::core::test_support::FiniteFixture::new(
+                recipe.content.timing.duration_seconds,
+                recipe.content.timing.fade_seconds,
+                components
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, form)| Component {
+                        id: ComponentId::numbered(index).unwrap(),
+                        form,
+                    })
+                    .collect(),
+            )
+            .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+            recipe.content.timing = fixture.timing;
+            fixture.sound
+        };
         fs::write(&file, recipe.build().unwrap().to_toml().unwrap()).unwrap();
         for command in ["describe", "inspect"] {
             let out = cli(&[command, "--file", file.to_str().unwrap()]);
@@ -236,13 +240,13 @@ fn public_cli_renders_explicit_pairs_and_keeps_raw_tones_independent() {
 }
 
 #[test]
-fn public_analysis_grammar_rejects_partial_and_reports_classifier_revision_two() {
+fn public_analysis_grammar_rejects_partial_and_reports_classifier_revision_three() {
     let rejected = cli(&["list", "--collection", "builtin", "--analysis", "partial"]);
     assert_eq!(rejected.status.code(), Some(2));
     let report = cli(&["list", "--collection", "builtin", "--format", "json"]);
     assert!(report.status.success());
     let value: serde_json::Value = serde_json::from_slice(&report.stdout).unwrap();
-    assert_eq!(value["classifier_revision"], 2);
+    assert_eq!(value["classifier_revision"], 3);
 }
 
 #[test]
@@ -255,11 +259,18 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
         .sound
         .push(auditorylab_app::core::Component {
             id: auditorylab_app::core::ComponentId::new(1).unwrap(),
-            form: auditorylab_app::core::ComponentForm::Clicks {
-                rate_hz: finite(40.0),
-                width_seconds: finite(0.0001),
-                ears: auditorylab_app::core::Ears::Both,
-                peak_dbfs: finite(-30.0),
+            form: auditorylab_app::core::ComponentForm {
+                source: auditorylab_app::core::SoundSource::PulseTrain {
+                    route: auditorylab_app::core::ChannelRouting::Both,
+                    peak_dbfs: finite(-30.0),
+                    pulse: auditorylab_app::core::PulseSpec {
+                        rate_hz: finite(40.0),
+                        width: auditorylab_app::core::PulseWidth::Duration {
+                            seconds: finite(0.0001),
+                        },
+                        shape: auditorylab_app::core::PulseShape::Rectangular {},
+                    },
+                },
                 modulation: None,
             },
         })
@@ -278,11 +289,13 @@ fn inspection_uses_its_selected_rate_throughout_and_states_requested_and_realize
     assert!(text.contains("Sample rate: 8000 Hz"), "{text}");
     assert!(text.contains("Frames: 400"), "{text}");
     assert!(
-        text.contains("requested 0.1 ms · realized 1 frame (0.125 ms) at 8000 Hz"),
+        text.contains("requested 0.1 ms fixed window")
+            && text.contains("realized 1 frame (0.125 ms)")
+            && text.contains("at 8000 Hz"),
         "{text}"
     );
     assert!(
-        text.contains("40 Hz clicks · 0.125 ms"),
+        text.contains("40 Hz pulse train · 0.125 ms"),
         "the model view states the realized width: {text}"
     );
     assert!(
@@ -425,7 +438,7 @@ fn nonfinite_recipe_diagnostic_names_the_key_line_and_column() {
         assert_eq!(output.stdout, [] as [u8; 0]);
         let message = String::from_utf8(output.stderr).unwrap();
         let words = message.split_whitespace().collect::<Vec<_>>().join(" ");
-        assert!(words.contains("line 20, column 13"), "{message}");
+        assert!(words.contains("line 22, column 13"), "{message}");
         assert!(message.contains("offset_hz = nan"), "{message}");
         assert!(words.contains("expected a finite number"), "{message}");
     }
@@ -458,7 +471,7 @@ fn json_failures_keep_fixed_codes_and_structured_values() {
     ]);
     assert_eq!(range.status.code(), Some(2));
     let value: serde_json::Value = serde_json::from_slice(&range.stdout).unwrap();
-    assert_eq!(value["output_schema_version"], 2);
+    assert_eq!(value["output_schema_version"], 3);
     assert_eq!(value["operation"], "inspect");
     assert_eq!(value["diagnostics"][0]["code"], "sample_rate.range");
     assert_eq!(
@@ -471,10 +484,16 @@ fn json_failures_keep_fixed_codes_and_structured_values() {
     );
     assert!(!missing.exists(), "range refusal precedes source access");
 
-    let component = "\n[[sound.component]]\nid = 7\nkind = \"tone\"\nears = \
-        \"both\"\nfrequency_hz = 440.0\npeak_dbfs = -40.0\n";
-    let duplicate = format!("{}{}{}", silence(), component, component);
-    let unsupported = silence().replacen("schema_version = 4", "schema_version = 3", 1);
+    let component = "\n[[sound.component]]\nid=7\n[sound.component.source]\nkind='tone'\n\
+        route='both'\nfrequency_hz=440.0\npeak_dbfs=-40.0\n[sound.component.modulation]\n\
+        kind='none'\n";
+    let duplicate = format!(
+        "{}{}{}",
+        silence().replace("component = []\n", ""),
+        component,
+        component
+    );
+    let unsupported = silence().replacen("schema_version = 5", "schema_version = 3", 1);
     for (name, text, code, parameter, expected) in [
         (
             "duplicate.toml",
@@ -507,7 +526,7 @@ fn json_failures_keep_fixed_codes_and_structured_values() {
         assert_eq!(diagnostic["params"][parameter], expected);
         assert_eq!(diagnostic["params"]["origin"], file.to_str().unwrap());
         if name == "version.toml" {
-            assert_eq!(diagnostic["params"]["supported"], 4);
+            assert_eq!(diagnostic["params"]["supported"], 5);
         }
         assert_eq!(fs::read(&file).unwrap(), text.as_bytes());
     }
@@ -518,19 +537,28 @@ fn cli_meaning_cases() -> [(
     &'static str,
     &'static str,
 ); 6] {
-    use auditorylab_app::core::{ComponentForm, Ears, Pair};
-    let tone = |frequency_hz: f64, ears, peak_dbfs: f64| ComponentForm::Tone {
-        frequency_hz: finite(frequency_hz),
-        ears,
-        peak_dbfs: finite(peak_dbfs),
+    use auditorylab_app::core::{ChannelRouting, ComponentForm, Pair};
+    let tone = |frequency_hz: f64, route, peak_dbfs: f64| ComponentForm {
+        source: auditorylab_app::core::SoundSource::Tone {
+            frequency_hz: finite(frequency_hz),
+            route,
+            peak_dbfs: finite(peak_dbfs),
+        },
         modulation: None,
     };
     let forms = |voices: Vec<ComponentForm>| voices.into_iter().collect::<Vec<_>>();
-    let click = ComponentForm::Clicks {
-        rate_hz: finite(40.0),
-        width_seconds: finite(0.001),
-        ears: Ears::Both,
-        peak_dbfs: finite(-40.0),
+    let click = ComponentForm {
+        source: auditorylab_app::core::SoundSource::PulseTrain {
+            route: ChannelRouting::Both,
+            peak_dbfs: finite(-40.0),
+            pulse: auditorylab_app::core::PulseSpec {
+                rate_hz: finite(40.0),
+                width: auditorylab_app::core::PulseWidth::Duration {
+                    seconds: finite(0.001),
+                },
+                shape: auditorylab_app::core::PulseShape::Rectangular {},
+            },
+        },
         modulation: None,
     };
     let pair = Pair {
@@ -541,68 +569,78 @@ fn cli_meaning_cases() -> [(
     };
     [
         (
-            forms(vec![click, tone(440.0, Ears::Both, -40.0)]),
-            "40 Hz clicks",
+            forms(vec![click, tone(440.0, ChannelRouting::Both, -40.0)]),
+            "40 Hz pulse train",
             "400 Hz",
         ),
         (
             forms(vec![
-                tone(380.0, Ears::Left, -40.0),
-                tone(420.0, Ears::Right, -40.0),
+                tone(380.0, ChannelRouting::Left, -40.0),
+                tone(420.0, ChannelRouting::Right, -40.0),
             ]),
             "380 Hz steady tone",
-            "interaural difference",
+            "binaural difference",
         ),
         (
             forms(vec![
-                tone(380.0, Ears::Both, -40.0),
-                tone(420.0, Ears::Both, -40.0),
+                tone(380.0, ChannelRouting::Both, -40.0),
+                tone(420.0, ChannelRouting::Both, -40.0),
             ]),
             "380 Hz steady tone",
             "monaural",
         ),
         (
             forms(vec![
-                tone(380.0, Ears::Both, -40.0),
-                tone(420.0, Ears::Both, -41.0),
+                tone(380.0, ChannelRouting::Both, -40.0),
+                tone(420.0, ChannelRouting::Both, -41.0),
             ]),
             "380 Hz steady tone",
             "monaural",
         ),
         (
             vec![{
-                ComponentForm::BinauralPair {
-                    left_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    left_peak_dbfs: pair.first_peak_dbfs,
-                    right_peak_dbfs: pair.second_peak_dbfs,
+                ComponentForm {
+                    source: auditorylab_app::core::SoundSource::BinauralPair {
+                        first_hz: pair.first_hz,
+                        offset_hz: pair.offset_hz,
+                        first_peak_dbfs: pair.first_peak_dbfs,
+                        second_peak_dbfs: pair.second_peak_dbfs,
+                    },
+                    modulation: None,
                 }
             }],
-            "40 Hz interaural difference",
+            "40 Hz binaural difference",
             "monaural",
         ),
         (
             vec![{
-                ComponentForm::MonauralPair {
-                    ears: Ears::Both,
-                    first_hz: pair.first_hz,
-                    offset_hz: pair.offset_hz,
-                    first_peak_dbfs: pair.first_peak_dbfs,
-                    second_peak_dbfs: pair.second_peak_dbfs,
+                ComponentForm {
+                    source: auditorylab_app::core::SoundSource::MonauralPair {
+                        route: ChannelRouting::Both,
+                        first_hz: pair.first_hz,
+                        offset_hz: pair.offset_hz,
+                        first_peak_dbfs: pair.first_peak_dbfs,
+                        second_peak_dbfs: pair.second_peak_dbfs,
+                    },
+                    modulation: None,
                 }
             }],
             "40 Hz monaural",
-            "interaural",
+            "binaural difference",
         ),
     ]
 }
 
 #[test]
-fn grouped_schema_two_json_retains_display_labels_and_member_keys() {
+fn grouped_schema_three_json_retains_display_labels_and_member_keys() {
     for (group_by, expected) in [
         (
             "method",
-            vec![("am", "AM"), ("binaural", "Binaural"), ("clicks", "Clicks")],
+            vec![
+                ("sinusoidal", "Sinusoidal AM"),
+                ("binaural", "Binaural"),
+                ("pulse_train", "Pulse train"),
+            ],
         ),
         (
             "band",
@@ -632,7 +670,7 @@ fn grouped_schema_two_json_retains_display_labels_and_member_keys() {
         ]);
         assert!(output.status.success(), "{output:?}");
         let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(value["output_schema_version"], 2);
+        assert_eq!(value["output_schema_version"], 3);
         for (key, label) in expected {
             let group = value["groups"]
                 .as_array()

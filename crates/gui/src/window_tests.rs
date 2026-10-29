@@ -583,7 +583,7 @@ fn assert_audio_controls_keep_stop_visible(
         previous_height = minimum.height;
         controls.window().set_size(minimum);
         slint::platform::update_timers_and_animations();
-        // Clicks inside the bottom row of the actual generated window at its native minimum.
+        // PulseTrain inside the bottom row of the actual generated window at its native minimum.
         let position = slint::LogicalPosition::new(minimum.width / 2.0, minimum.height - 24.0);
         controls
             .window()
@@ -1068,7 +1068,7 @@ fn lane_check(window: &slint::Window, size: f32, context: &str, expected_control
         (plots[0].0 - plots[1].0).abs() < 0.01
             && (plots[0].2 - plots[1].2).abs() < 0.01
             && (plots[0].3 - plots[1].3).abs() < 0.01,
-        "both ears must retain the same plot origin, time scale, and amplitude height"
+        "both route must retain the same plot origin, time scale, and amplitude height"
     );
 }
 fn lane_settle(window: &slint::Window) {

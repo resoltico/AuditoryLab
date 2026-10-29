@@ -107,8 +107,8 @@ impl crate::Code for VocabularyError {
 macro_rules! vocabularies {
     ($consumer:ident) => {
         $consumer! {
-            ears:crate::Ears,
-            ear:crate::Ear,
+            channel_routing:crate::ChannelRouting,
+            channel:crate::Channel,
             pair_kind:crate::PairKind,
             slot_role:crate::SlotRole,
             parameters:crate::ParameterId,
@@ -176,10 +176,10 @@ pub const STRUCTURAL_METHOD: Term = Term {
     phrase: "Structural method",
 };
 
-/// Heading for the Ears domain concept.
-pub const EARS: Term = Term {
-    label: "Ears",
-    phrase: "Ears",
+/// Heading for the `ChannelRouting` domain concept.
+pub const CHANNEL_ROUTING: Term = Term {
+    label: "Channel routing",
+    phrase: "ChannelRouting",
 };
 
 /// Heading for the Carrier domain concept.

@@ -1,6 +1,6 @@
 //! The editable document, location and editor admission/transitions.
 use super::{
-    Arc, AudioRequest, CarrierKind, CommitRefusal, DocumentId, Draft, Ears, EditRefusal,
+    Arc, AudioRequest, CarrierKind, ChannelRouting, CommitRefusal, DocumentId, Draft, EditRefusal,
     EditStatus, EditingField, EditorCommand, EditorSession, FieldHandle, ModulationKind, Recipe,
     Refusal, RowKey, SampleRate, SaveFeedback, SaveRefusal, controls, file, file_name,
 };
@@ -97,8 +97,12 @@ impl EditorState {
             .map(|_| ())
             .map_err(|CommitRefusal { problems }| Refusal::Input(problems))
     }
-    pub(super) fn set_ears(&mut self, row: RowKey, ears: Ears) -> Result<(), Refusal> {
-        self.session.set_ears(row, ears).map_err(Refusal::Edit)
+    pub(super) fn set_routing(
+        &mut self,
+        row: RowKey,
+        route: ChannelRouting,
+    ) -> Result<(), Refusal> {
+        self.session.set_routing(row, route).map_err(Refusal::Edit)
     }
     pub(super) fn set_carrier(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
         self.session
@@ -109,13 +113,9 @@ impl EditorState {
         &mut self,
         row: RowKey,
         kind: Option<ModulationKind>,
-        rate: SampleRate,
     ) -> Result<(), Refusal> {
         self.session
-            .set_modulation(
-                row,
-                kind.map(|kind| super::controls::default_modulation(kind, rate)),
-            )
+            .set_modulation(row, kind.map(super::controls::default_modulation))
             .map_err(Refusal::Edit)
     }
     pub(super) fn add_component(&mut self, row: RowKey, kind: CarrierKind) -> Result<(), Refusal> {
@@ -369,11 +369,35 @@ impl EditorState {
                     Err(refusal) => T::Refused(refusal),
                 }
             }
-            EditorCommand::SetEars { row, ears } => T::Committed(self.set_ears(row, ears)),
+            EditorCommand::SetRouting { row, route } => T::Committed(self.set_routing(row, route)),
             EditorCommand::SetCarrier { row, kind } => T::Committed(self.set_carrier(row, kind)),
             EditorCommand::SetModulation { row, kind } => {
-                T::Committed(self.set_modulation(row, kind, rate))
+                T::Committed(self.set_modulation(row, kind))
             }
+            EditorCommand::AddConstruction { row, kind } => T::Committed(
+                self.session
+                    .add_component(row, kind.component())
+                    .map(|_| ())
+                    .map_err(Refusal::Edit),
+            ),
+            EditorCommand::SetPulseWidth {
+                row,
+                modulation,
+                duty,
+            } => T::Committed(
+                self.session
+                    .set_pulse_width_mode(row, modulation, duty)
+                    .map_err(Refusal::Edit),
+            ),
+            EditorCommand::SetPulseShape {
+                row,
+                modulation,
+                shaped,
+            } => T::Committed(
+                self.session
+                    .set_pulse_shape(row, modulation, shaped)
+                    .map_err(Refusal::Edit),
+            ),
             EditorCommand::AddComponent { row, kind } => {
                 T::Committed(self.add_component(row, kind))
             }

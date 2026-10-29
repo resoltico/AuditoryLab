@@ -1,7 +1,7 @@
 # Copyright 2026 Ervins Strauhmanis
 # SPDX-License-Identifier: MPL-2.0
 # Source parameters and adaptations: see docs/catalog.md.
-schema_version = 4
+schema_version = 5
 
 [document]
 id = "46436f54-474a-4ec2-b12b-252baa7f3c85"
@@ -9,18 +9,23 @@ id = "46436f54-474a-4ec2-b12b-252baa7f3c85"
 [description]
 title = "7 Hz monaural beat"
 
-[sound]
+[timing]
 duration_seconds = 480.0
 fade_seconds = 0.1
 
 [[sound.component]]
 id = 1
+
+[sound.component.source]
 kind = "monaural_pair"
-ears = "both"
+route = "both"
 first_hz = 396.5
 offset_hz = 7.0
 first_peak_dbfs = -23.0103
 second_peak_dbfs = -23.0103
+
+[sound.component.modulation]
+kind = "none"
 
 [[source]]
 key = "orozco-perez-2020"

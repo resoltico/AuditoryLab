@@ -1,6 +1,6 @@
 //! Public domain vocabulary follows the glossary in both grammatical forms.
 use auditorylab_core::{
-    CarrierKind, Ear, Ears, ModulationKind, PairKind, ParameterId, SlotRole,
+    CarrierKind, Channel, ChannelRouting, ModulationKind, PairKind, ParameterId, SlotRole,
     provenance::ConditionRole,
     provenance::EvidenceScope,
     provenance::Measure,
@@ -12,11 +12,14 @@ use auditorylab_core::{
 fn selectable_terms_expose_ordered_labels_and_running_text() {
     assert_eq!(
         CarrierKind::ALL.map(|v| (v.label(), v.phrase())),
-        [("Tone", "tone"), ("Clicks", "clicks")]
+        [("Tone", "tone"), ("Pulse train", "pulse train")]
     );
     assert_eq!(
         ModulationKind::ALL.map(|v| (v.label(), v.phrase())),
-        [("AM", "AM"), ("Gate", "gate")]
+        [
+            ("Sinusoidal AM", "sinusoidal AM"),
+            ("Pulsed modulation", "pulsed modulation")
+        ]
     );
     assert_eq!(
         PairKind::ALL.map(|v| (v.label(), v.phrase())),
@@ -30,9 +33,9 @@ fn selectable_terms_expose_ordered_labels_and_running_text() {
         [
             ("Binaural", "binaural"),
             ("Monaural", "monaural"),
-            ("Clicks", "clicks"),
-            ("Gate", "gate"),
-            ("AM", "AM"),
+            ("Pulse train", "pulse train"),
+            ("Pulsed modulation", "pulsed modulation"),
+            ("Sinusoidal AM", "sinusoidal AM"),
             ("Steady tone", "steady tone")
         ]
     );
@@ -67,12 +70,12 @@ fn selectable_terms_expose_ordered_labels_and_running_text() {
         ]
     );
     assert_eq!(
-        Ears::ALL.map(auditorylab_core::Ears::phrase),
-        ["both ears", "left ear", "right ear"]
+        ChannelRouting::ALL.map(auditorylab_core::ChannelRouting::phrase),
+        ["both channels", "left channel", "right channel"]
     );
     assert_eq!(
-        Ear::ALL.map(auditorylab_core::Ear::phrase),
-        ["left ear", "right ear"]
+        Channel::ALL.map(auditorylab_core::Channel::phrase),
+        ["left channel", "right channel"]
     );
     assert_eq!(
         EvidenceScope::ALL.map(auditorylab_core::provenance::EvidenceScope::phrase),

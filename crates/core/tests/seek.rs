@@ -1,6 +1,8 @@
 //! Seekability, bounds, fades and trace extrema against independent oracles.
 use auditorylab_core::test_support as common;
-use auditorylab_core::{ComponentForm, Ears, Modulation, Recipe, SampleRate, catalog, waveform};
+use auditorylab_core::{
+    ChannelRouting, ComponentForm, Modulation, Recipe, SampleRate, catalog, waveform,
+};
 use proptest::prelude::*;
 proptest! {
     #![proptest_config(ProptestConfig { cases: 64, max_shrink_iters: 128, failure_persistence: None,
@@ -8,7 +10,8 @@ proptest! {
     #[test]
     fn arbitrary_windows_equal_a_full_render(start in 0_usize..5000, len in 0_usize..1000,
         entry in 0_usize..catalog::ENTRIES.len()) {
-        let mut sound = Recipe::parse(&catalog::ENTRIES[entry].text()).unwrap().sound().clone();
+        let recipe = Recipe::parse(&catalog::ENTRIES[entry].text()).unwrap();
+            let mut sound = auditorylab_core::FiniteFixture::from_recipe(&recipe);
         sound.set_duration(finite(0.1)); sound.set_fade(finite(0.01));
         let signal = sound.signal(SampleRate::DEFAULT).unwrap();
         let mut all = vec![[0.0; 2]; 6000]; signal.render(0, &mut all);
@@ -22,16 +25,21 @@ fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
     let signal = common::recipe(
         1.25,
         0.0,
-        &[ComponentForm::Clicks {
-            rate_hz: finite(3.0),
-            width_seconds: finite(0.000_125),
-            ears: Ears::Left,
-            peak_dbfs: finite(-20.0),
+        &[ComponentForm {
+            source: auditorylab_core::SoundSource::PulseTrain {
+                route: ChannelRouting::Left,
+                peak_dbfs: finite(-20.0),
+                pulse: auditorylab_core::PulseSpec {
+                    rate_hz: finite(3.0),
+                    width: auditorylab_core::PulseWidth::Duration {
+                        seconds: finite(0.000_125),
+                    },
+                    shape: auditorylab_core::PulseShape::Rectangular {},
+                },
+            },
             modulation: None,
         }],
     )
-    .sound()
-    .clone()
     .signal(SampleRate::new(8000).unwrap())
     .unwrap();
     let mut out = Vec::new();
@@ -70,14 +78,13 @@ fn trace_equals_naive_extrema_and_retains_one_frame_pulses() {
 }
 #[test]
 fn fades_and_late_tones_follow_independent_sine_formulas() {
-    let mut sound = Recipe::parse(
+    let recipe = Recipe::parse(
         &catalog::find("ioannou-2015-pure-tone-200-hz")
             .unwrap()
             .text(),
     )
-    .unwrap()
-    .sound()
-    .clone();
+    .unwrap();
+    let mut sound = auditorylab_core::FiniteFixture::from_recipe(&recipe);
     sound.set_duration(finite(68_719_476_736.0 / 48_000.0));
     let signal = sound.signal(SampleRate::DEFAULT).unwrap();
     for n in [0, 1, 4799, 4800, 4801, (1 << 36) - 4801, (1 << 36) - 1] {
@@ -99,18 +106,18 @@ fn sinusoidal_modulation_at_early_and_late_frames_matches_rational_cycles() {
     let signal = common::recipe(
         1_431_655.765_333_333_3,
         0.0,
-        &[ComponentForm::Tone {
-            frequency_hz: finite(8000.0),
-            ears: Ears::Both,
-            peak_dbfs: finite(-20.0),
-            modulation: Some(Modulation::Am {
+        &[ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(8000.0),
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-20.0),
+            },
+            modulation: Some(Modulation::Sinusoidal {
                 rate_hz: finite(39.0625),
                 depth: finite(0.7),
             }),
         }],
     )
-    .sound()
-    .clone()
     .signal(SampleRate::DEFAULT)
     .unwrap();
     for n in [0_u64, 1, 23456, 172_800_000, (1 << 36) - 100] {
@@ -134,16 +141,21 @@ fn raised_cosine_is_symmetric_and_matches_sine_squared() {
     let signal = common::recipe(
         0.125_125,
         0.008,
-        &[ComponentForm::Clicks {
-            rate_hz: finite(0.5),
-            width_seconds: finite(0.25),
-            ears: Ears::Both,
-            peak_dbfs: finite(0.0),
+        &[ComponentForm {
+            source: auditorylab_core::SoundSource::PulseTrain {
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(0.0),
+                pulse: auditorylab_core::PulseSpec {
+                    rate_hz: finite(0.5),
+                    width: auditorylab_core::PulseWidth::Duration {
+                        seconds: finite(0.25),
+                    },
+                    shape: auditorylab_core::PulseShape::Rectangular {},
+                },
+            },
             modulation: None,
         }],
     )
-    .sound()
-    .clone()
     .signal(SampleRate::new(8000).unwrap())
     .unwrap();
     assert_eq!(signal.frames(), 1001);
@@ -174,18 +186,23 @@ fn public_signals_preserve_slow_onsets_and_widths_longer_than_a_second() {
         common::recipe(
             3.0,
             0.0,
-            &[ComponentForm::Clicks {
-                rate_hz: finite(rate),
-                width_seconds: finite(width),
-                ears: Ears::Both,
-                peak_dbfs: finite(-20.0),
+            &[ComponentForm {
+                source: auditorylab_core::SoundSource::PulseTrain {
+                    route: ChannelRouting::Both,
+                    peak_dbfs: finite(-20.0),
+                    pulse: auditorylab_core::PulseSpec {
+                        rate_hz: finite(rate),
+                        width: auditorylab_core::PulseWidth::Duration {
+                            seconds: finite(width),
+                        },
+                        shape: auditorylab_core::PulseShape::Rectangular {},
+                    },
+                },
                 modulation: None,
             }],
         )
     };
     let signal = recipe(1.0_f64.next_down(), 0.001)
-        .sound()
-        .clone()
         .signal(SampleRate::DEFAULT)
         .unwrap();
     for onset in [48001, 96001] {
@@ -194,11 +211,7 @@ fn public_signals_preserve_slow_onsets_and_widths_longer_than_a_second() {
         assert_eq!(signal.frame(onset + 47), [0.1; 2]);
         assert_eq!(signal.frame(onset + 48), [0.0; 2]);
     }
-    let signal = recipe(0.1, 2.0)
-        .sound()
-        .clone()
-        .signal(SampleRate::DEFAULT)
-        .unwrap();
+    let signal = recipe(0.1, 2.0).signal(SampleRate::DEFAULT).unwrap();
     assert_eq!(signal.frame(95999), [0.1; 2]);
     assert_eq!(signal.frame(96000), [0.0; 2]);
 }

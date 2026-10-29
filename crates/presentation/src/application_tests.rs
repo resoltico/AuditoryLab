@@ -15,7 +15,9 @@ use auditorylab_app::workspace::{
     Workspace,
 };
 use auditorylab_core::test_support::finite;
-use auditorylab_core::{CarrierKind, ComponentForm, ComponentId, Ears, ParameterId, SampleRate};
+use auditorylab_core::{
+    CarrierKind, ChannelRouting, ComponentForm, ComponentId, ParameterId, SampleRate,
+};
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 struct Harness {
@@ -68,11 +70,13 @@ fn idle(workspace: &mut Workspace) {
     }
     panic!("file work did not settle");
 }
-fn component(frequency_hz: f64, ears: Ears) -> ComponentForm {
-    ComponentForm::Tone {
-        frequency_hz: finite(frequency_hz),
-        ears,
-        peak_dbfs: finite(-30.0),
+fn component(frequency_hz: f64, route: ChannelRouting) -> ComponentForm {
+    ComponentForm {
+        source: auditorylab_app::core::SoundSource::Tone {
+            frequency_hz: finite(frequency_hz),
+            route,
+            peak_dbfs: finite(-30.0),
+        },
         modulation: None,
     }
 }
@@ -264,16 +268,19 @@ fn staged_envelope_failures_render_quantities_and_rate_in_metadata() {
 fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint() {
     use auditorylab_core::{Observation, SlotRole, VoiceObservation};
 
-    let check = auditorylab_core::Sound::new(
+    let check = auditorylab_app::core::test_support::FiniteFixture::new(
         finite(1.0),
         finite(0.0),
-        ([(ComponentId::new(1).unwrap(), component(440.0, Ears::Right))])
-            .iter()
-            .map(|(id, voice)| auditorylab_core::Component {
-                id: *id,
-                form: *voice,
-            })
-            .collect(),
+        ([(
+            ComponentId::new(1).unwrap(),
+            component(440.0, ChannelRouting::Right),
+        )])
+        .iter()
+        .map(|(id, voice)| auditorylab_core::Component {
+            id: *id,
+            form: *voice,
+        })
+        .collect(),
     )
     .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"))
     .check(SampleRate::DEFAULT);
@@ -293,14 +300,17 @@ fn generated_routing_text_reports_intermediate_gains_not_the_requested_endpoint(
         voices,
     };
     let text = crate::optional_observation_summary(Some(&observation));
-    assert!(text.contains("Both ears"), "{text}");
+    assert!(text.contains("Both channels"), "{text}");
     assert!(crate::observation_details(&(observation)).contains("gain L -26.0 / R -26.0 dBFS"));
     assert!(
         crate::observation_details(&(observation)).contains("Continuing"),
         "role label, not Debug"
     );
     assert!(text.starts_with("Changing"));
-    assert_eq!(ParameterId::ClickWidth.descriptor().label, "Clicks width");
+    assert_eq!(
+        ParameterId::SourcePulseDuration.descriptor().label,
+        "Source pulse duration"
+    );
 }
 
 #[test]
@@ -345,7 +355,7 @@ fn a_route_change_says_what_happened_and_what_to_do() {
     assert_eq!(busy.explain(), "audio backend: in use");
     assert_eq!(
         DeviceError::TooFewChannels { channels: 1 }.explain(),
-        "the default output device has 1 channel; stimuli need two, one for each ear"
+        "the default output device has 1 channel; stereo output needs two digital channels"
     );
 }
 
@@ -362,7 +372,7 @@ fn source_errors_keep_raw_path_data_and_escape_it_only_for_display() {
     let bytes = auditorylab_core::test_support::silent(1.0, 0.0)
         .to_toml()
         .unwrap()
-        .replacen("schema_version = 4", "schema_version = 3", 1);
+        .replacen("schema_version = 5", "schema_version = 3", 1);
     std::fs::write(&path, &bytes).unwrap();
     let error = auditorylab_app::services::open_file(&path).unwrap_err();
     assert!(
@@ -382,7 +392,7 @@ fn source_errors_keep_raw_path_data_and_escape_it_only_for_display() {
     };
     assert!(text.contains(displayed_filename), "{text}");
     assert!(!text.contains('\n') && !text.contains('\u{202e}'));
-    assert!(text.contains("schema_version 3; this build reads 4"));
+    assert!(text.contains("schema_version 3; this build reads 5"));
     assert_eq!(std::fs::read(&path).unwrap(), bytes.as_bytes());
 }
 

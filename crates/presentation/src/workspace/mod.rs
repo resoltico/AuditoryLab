@@ -674,9 +674,12 @@ pub fn library_view(data: &auditorylab_app::workspace::LibraryView) -> LibraryTe
             "Duration {} · fade {} at each edge",
             crate::numbers::format(
                 NumberStyle::Duration,
-                snapshot.sound().duration_seconds().get()
+                snapshot.recipe().timing().duration_seconds.get()
             ),
-            crate::numbers::format(NumberStyle::Duration, snapshot.sound().fade_seconds().get())
+            crate::numbers::format(
+                NumberStyle::Duration,
+                snapshot.recipe().timing().fade_seconds.get()
+            )
         ),
         summary: about
             .as_ref()
@@ -862,14 +865,36 @@ pub fn control_choice(
         ControlValue::ExportRate(rate) => {
             crate::numbers::format(crate::numbers::NumberStyle::Hertz, f64::from(rate.hz()))
         }
-        ControlValue::AddCarrier(kind) => crate::workspace::add_component(kind),
-        ControlValue::AddPair(kind) => crate::workspace::add_pair(kind),
+        ControlValue::Creation(kind) => match kind {
+            auditorylab_app::document::construction::CreationKind::Tone => "Add steady tone",
+            auditorylab_app::document::construction::CreationKind::PulseTrain => "Add pulse train",
+            auditorylab_app::document::construction::CreationKind::BinauralPair => {
+                "Add binaural pair"
+            }
+            auditorylab_app::document::construction::CreationKind::MonauralPair => {
+                "Add monaural pair"
+            }
+            auditorylab_app::document::construction::CreationKind::PulsedTone => "Add pulsed tone",
+        }
+        .into(),
+        ControlValue::PulseWidth { duty, .. } => if duty {
+            "Duty cycle (%)"
+        } else {
+            "Fixed duration (ms)"
+        }
+        .into(),
+        ControlValue::PulseShape { shaped, .. } => if shaped {
+            "Raised cosine"
+        } else {
+            "Rectangular"
+        }
+        .into(),
         ControlValue::WaveformScale(scale) => {
             crate::workspace::monitor::waveform_scale_label(scale).into()
         }
-        ControlValue::Ears(_) | ControlValue::Carrier(_) | ControlValue::Modulation(_) => {
-            option.label.into()
-        }
+        ControlValue::ChannelRouting(_)
+        | ControlValue::Carrier(_)
+        | ControlValue::Modulation(_) => option.label.into(),
     }
 }
 

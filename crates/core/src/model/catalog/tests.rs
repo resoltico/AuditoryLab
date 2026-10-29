@@ -8,7 +8,7 @@
 
 use crate as auditorylab_core;
 use auditorylab_core::catalog::{self, Entry};
-use auditorylab_core::{Carrier, Ears, Modulation, Recipe, SampleRate};
+use auditorylab_core::{Carrier, ChannelRouting, Modulation, Recipe, SampleRate};
 use std::path::Path;
 use std::{borrow::ToOwned, format, string::String, vec::Vec};
 
@@ -17,20 +17,20 @@ use std::{borrow::ToOwned, format, string::String, vec::Vec};
 enum Mod {
     /// Full-depth sinusoidal modulation at this rate.
     Sam(f64),
-    /// Gate gating at this rate, open for 1 ms.
-    Gate(f64),
+    /// Pulsed gating at this rate, open for 1 ms.
+    Pulsed(f64),
 }
 
-/// (name, seconds, components as (ears, kind, Hz, peak dBFS, modulation)).
+/// (name, seconds, components as (route, kind, Hz, peak dBFS, modulation)).
 type Written = (
     &'static str,
     f64,
-    &'static [(Ears, &'static str, f64, f64, Option<Mod>)],
+    &'static [(ChannelRouting, &'static str, f64, f64, Option<Mod>)],
 );
 
-const L: Ears = Ears::Left;
-const R: Ears = Ears::Right;
-const B: Ears = Ears::Both;
+const L: ChannelRouting = ChannelRouting::Left;
+const R: ChannelRouting = ChannelRouting::Right;
+const B: ChannelRouting = ChannelRouting::Both;
 const MONAURAL: f64 = -23.0103;
 
 const RECIPES: &[Written] = &[
@@ -124,22 +124,22 @@ const RECIPES: &[Written] = &[
     (
         "lahijanian-2024-tone-pips-40-hz",
         40.0,
-        &[(B, "tone", 5000.0, -20.0, Some(Mod::Gate(40.0)))],
+        &[(B, "tone", 5000.0, -20.0, Some(Mod::Pulsed(40.0)))],
     ),
     (
         "martorell-2019-tone-pips-8-hz",
         3600.0,
-        &[(B, "tone", 10_000.0, -20.0, Some(Mod::Gate(8.0)))],
+        &[(B, "tone", 10_000.0, -20.0, Some(Mod::Pulsed(8.0)))],
     ),
     (
         "martorell-2019-tone-pips-40-hz",
         3600.0,
-        &[(B, "tone", 10_000.0, -20.0, Some(Mod::Gate(40.0)))],
+        &[(B, "tone", 10_000.0, -20.0, Some(Mod::Pulsed(40.0)))],
     ),
     (
         "martorell-2019-tone-pips-80-hz",
         3600.0,
-        &[(B, "tone", 10_000.0, -20.0, Some(Mod::Gate(80.0)))],
+        &[(B, "tone", 10_000.0, -20.0, Some(Mod::Pulsed(80.0)))],
     ),
     (
         "orozco-perez-2020-binaural-7-hz",
@@ -272,8 +272,8 @@ fn every_entry_has_its_independently_written_recipe() {
         RECIPES.iter().map(|r| r.0).collect::<Vec<_>>()
     );
     for (entry, (name, seconds, parts)) in catalog::ENTRIES.iter().zip(RECIPES) {
-        let authored = recipe(entry).sound().clone();
-        let sound = auditorylab_core::Sound::new(
+        let authored = crate::FiniteFixture::from_recipe(&recipe(entry));
+        let sound = crate::test_support::FiniteFixture::new(
             crate::test_support::finite(authored.duration_seconds().get()),
             crate::test_support::finite(authored.fade_seconds().get()),
             (crate::test_support::lower(authored.components())
@@ -293,22 +293,27 @@ fn every_entry_has_its_independently_written_recipe() {
         assert_eq!(sound.duration_seconds().get(), *seconds, "{name}");
         assert_eq!(sound.fade_seconds().get(), 0.1, "{name}");
         assert_eq!(sound.components().len(), parts.len(), "{name}");
-        for (component, (ears, kind, hz, level, modulation)) in
+        for (component, (route, kind, hz, level, modulation)) in
             sound.components().iter().zip(*parts)
         {
-            let component = component.form.primitive().unwrap();
-            assert_eq!(component.ears, *ears, "{name}");
+            let component = crate::test_support::primitive(component.form).unwrap();
+            assert_eq!(component.route, *route, "{name}");
             assert_eq!(component.peak_dbfs, *level, "{name}");
             assert_eq!(
                 component.modulation,
                 modulation.map(|modulation| match modulation {
-                    Mod::Sam(rate_hz) => Modulation::Am {
+                    Mod::Sam(rate_hz) => Modulation::Sinusoidal {
                         rate_hz: crate::test_support::finite(rate_hz),
                         depth: crate::test_support::finite(1.0),
                     },
-                    Mod::Gate(rate_hz) => Modulation::Gate {
-                        rate_hz: crate::test_support::finite(rate_hz),
-                        width_seconds: crate::test_support::finite(0.001),
+                    Mod::Pulsed(rate_hz) => Modulation::Pulsed {
+                        pulse: crate::PulseSpec {
+                            rate_hz: crate::test_support::finite(rate_hz),
+                            width: crate::PulseWidth::Duration {
+                                seconds: crate::test_support::finite(0.001)
+                            },
+                            shape: crate::PulseShape::Rectangular {}
+                        }
                     },
                 }),
                 "{name}"
@@ -317,22 +322,15 @@ fn every_entry_has_its_independently_written_recipe() {
                 (Carrier::Tone { frequency_hz, .. }, "tone") => {
                     assert_eq!(frequency_hz, hz, "{name}");
                 }
-                (
-                    Carrier::Clicks {
-                        rate_hz,
-                        width_seconds,
-                        ..
-                    },
-                    "clicks",
-                ) => {
-                    assert_eq!(rate_hz, hz, "{name}");
-                    assert_eq!(*width_seconds, 0.001, "{name}");
+                (Carrier::PulseTrain { pulse }, "clicks") => {
+                    assert_eq!(pulse.rate_hz.get(), *hz, "{name}");
+                    assert_eq!(pulse.requested_seconds(), 0.001, "{name}");
                 }
                 _ => panic!("{name}: expected a {kind}"),
             }
         }
         assert_eq!(
-            sound.uses_separate_ears(),
+            sound.uses_separate_channels(),
             parts.iter().any(|p| p.0 != B),
             "{name}"
         );
@@ -343,8 +341,8 @@ fn every_entry_has_its_independently_written_recipe() {
 fn every_entry_validates_and_pulses_follow_integer_onsets() {
     for entry in catalog::ENTRIES {
         for hz in [44_100, 48_000, 96_000] {
-            let authored = recipe(entry).sound().clone();
-            let mut sound = auditorylab_core::Sound::new(
+            let authored = crate::FiniteFixture::from_recipe(&recipe(entry));
+            let mut sound = crate::test_support::FiniteFixture::new(
                 crate::test_support::finite(authored.duration_seconds().get()),
                 crate::test_support::finite(authored.fade_seconds().get()),
                 (crate::test_support::lower(authored.components())
@@ -366,11 +364,11 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
             sound.set_fade(crate::test_support::finite(0.0));
             let signal = sound.signal(SampleRate::new(hz).unwrap()).unwrap();
             if let [part] = sound.components() {
-                let part = part.form.primitive().unwrap();
+                let part = crate::test_support::primitive(part.form).unwrap();
                 let pulse_rate = match part.carrier {
-                    Carrier::Clicks { rate_hz, .. } => Some(rate_hz),
+                    Carrier::PulseTrain { pulse } => Some(pulse.rate_hz.get()),
                     Carrier::Tone { .. } => match part.modulation {
-                        Some(Modulation::Gate { rate_hz, .. }) => Some(rate_hz.get()),
+                        Some(Modulation::Pulsed { pulse }) => Some(pulse.rate_hz.get()),
                         _ => None,
                     },
                 };
@@ -383,7 +381,7 @@ fn every_entry_validates_and_pulses_follow_integer_onsets() {
                             let value = signal.frame(onset + offset)[0];
                             if offset == width {
                                 assert_eq!(value, 0.0);
-                            } else if matches!(part.carrier, Carrier::Clicks { .. }) {
+                            } else if matches!(part.carrier, Carrier::PulseTrain { .. }) {
                                 assert!(value > 0.0);
                             }
                         }

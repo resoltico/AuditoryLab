@@ -38,11 +38,15 @@ Library actions retain an app-issued handle for the rendered listing and capture
 
 ## Build and edit a sound
 
-**New sound** opens an empty, silent Workbench. **Add component…** offers tones, clicks and explicit pairs. Each raw component uses one voice; a pair uses two. [Fields and limits](formats.md#recipe-schema) define the budgets.
+**New sound** opens an empty, silent Workbench. **Add component…** offers tones, pulse trains, both explicit pair kinds and pulsed tones. Tone/pulse sources cost one generator lane; pairs cost two within one 16-lane budget. [Fields and limits](formats.md#recipe-schema) define the budgets.
 
 Component names use their authored IDs; removing/restoring rows keeps those references stable. A pair's secondary lane is labeled as its second tone.
 
-Enter frequency/rate, width, level and modulation values. The UI uses Hz, milliseconds, dBFS and percent. Carrier, modulation, ears and Remove are in each component’s disclosure. **Undo remove** restores the latest removed component and its staged text when capacity permits.
+Enter frequency/rate, width, level and modulation values. The UI uses Hz, milliseconds, dBFS and percent. Source, shared modulation, digital channel routing and Remove are in each component’s disclosure. **Undo remove** restores the latest removed component and its staged text when capacity permits.
+
+Pulse sources and pulsed modulation show separate width-intent and shape choices beside their calculated envelope. Duration fields use milliseconds; duty uses percent with a distinct semantic field. Raised-cosine controls expose rise/fall times. Width conversion applies the related pending rate/window values together and preserves other staged input; an invalid conversion changes nothing. Rectangular-to-shaped initialization uses 10% of the requested window per edge, without resizing it to satisfy a sample rate. Requested and resolved facts disclose rounding.
+
+Pair modulation is shared across both lanes. Digital left/right/both routing cannot verify delivery to separate ears. Creation and interpretation changes never turn Play on automatically.
 
 Typing stages text. Enter, leaving a field or a commit action applies the complete finite candidate. Unparseable or nonfinite values preserve staged text for correction. Escape restores the committed value. Notes support multiple lines; Return inserts a line break. Sliders use comfortable ranges and gesture rounding; numeric fields accept values outside those spans without clamping. Display-unit conversion uses binary64 and can round or overflow for extreme finite model values. An unedited field callback preserves the exact committed bits; explicitly edited text is parsed in the displayed unit.
 
@@ -64,7 +68,7 @@ New/copy/close/Quit protect unsaved content through Save/Discard/Cancel. Repeate
 
 ## View timing and output
 
-**Waveform pattern** shows the pattern calculated for the selected recipe, committed draft or playing revision; it is not recorded output. It names its source, rate and revision. **Show monitor** opens the Output monitor; **Preview waveform** shows a labeled seekable preview while idle.
+**Waveform pattern** shows normalized pulse/envelope timing calculated for the selected recipe, committed draft or playing revision; it is not recorded output. It names its source, rate and revision. **Show monitor** opens the Output monitor; **Preview waveform** shows a labeled seekable preview while idle.
 
 The monitor displays generated stereo samples before device conversion, with peak/RMS values and coverage status. Choose a 2/10/40/100 ms window. **Fit signal** changes the common stereo axis, while **Fixed ±1** uses digital full scale. Neither changes samples or levels.
 

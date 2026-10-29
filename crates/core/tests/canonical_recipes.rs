@@ -2,7 +2,7 @@
 use auditorylab_core::{Recipe, catalog};
 use std::{collections::BTreeSet, fs, path::Path};
 #[test]
-fn catalog_and_fixture_serializations_preserve_the_schema_four_bytes() {
+fn catalog_and_fixture_serializations_preserve_the_schema_five_bytes() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let expected = root.join("canonical");
     let mut catalog_names = BTreeSet::new();

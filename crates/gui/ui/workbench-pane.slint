@@ -43,7 +43,9 @@ export component WorkbenchPane inherits Rectangle {
     in property <string> draft-location;
     in property <string> draft-location-details;
     in property <MetadataRow> duration-field;
-    in property <[string]> ears-choices;
+    in property <[string]> routing-choices;
+    in property <[string]> pulse-width-choices;
+    in property <[string]> pulse-shape-choices;
     in-out property <length> editor-scroll-y;
     in-out property <bool> edits-suspended;
     in property <[string]> export-rates;
@@ -72,7 +74,11 @@ export component WorkbenchPane inherits Rectangle {
     in property <string> save-reason;
     in-out property <bool> saved-audio;
     callback set-carrier(string, int);
-    callback set-ears(string, int);
+    function has-pulse(row: ComponentRow) -> bool {
+        return row.source-width >= 0 || row.modulation-width >= 0;
+    }
+    callback set-routing(string, int);
+    callback set-pulse-option(string, int, int);
     callback set-modulation(string, int);
     callback slide(string, float);
     callback stage-metadata(string, string);
@@ -246,7 +252,7 @@ export component WorkbenchPane inherits Rectangle {
                     label: Terms.caption-waveform-pattern;
                 }
 
-                if pattern.expanded: VerticalBox {
+                if pattern.expanded || root.has-pulse(row): VerticalBox {
                     vertical-stretch: 0;
                     Text {
                         min-width: 0px;
@@ -298,20 +304,20 @@ export component WorkbenchPane inherits Rectangle {
                 }
                         // Labels beside choices sized to their content; the
                         // shared column keeps the three choices aligned.
-                        if component-options.expanded: GridLayout {
+                        if component-options.expanded || root.has-pulse(row): GridLayout {
                     spacing: 6px;
                     vertical-stretch: 0;
                     Row {
                         if row.routing-editable: Text {
-                            text: ViewCaptions.ears;
+                            text: ViewCaptions.channel-routing;
                             vertical-alignment: center;
                         }
                         if row.routing-editable: ComboBox {
                             enabled: root.can-edit;
-                            model: root.ears-choices;
-                            current-index: row.ears;
-                            accessible-label: row.name + Terms.caption-ears-suffix;
-                            selected(value) => { root.set-ears(row.key, self.current-index); }
+                            model: root.routing-choices;
+                            current-index: row.route;
+                            accessible-label: row.name + Terms.caption-channel-routing-suffix;
+                            selected(value) => { root.set-routing(row.key, self.current-index); }
                         }
                         Rectangle {
                             horizontal-stretch: 1;
@@ -333,16 +339,80 @@ export component WorkbenchPane inherits Rectangle {
                     }
 
                     Row {
-                        if row.carrier >= 0: Text {
+                        if row.modulation >= 0: Text {
                             text: ViewCaptions.modulation;
                             vertical-alignment: center;
                         }
-                        if row.carrier >= 0: ComboBox {
+                        if row.modulation >= 0: ComboBox {
                             enabled: root.can-edit;
                             model: root.modulation-choices;
                             current-index: row.modulation;
                             accessible-label: row.name + Terms.caption-modulation-suffix;
                             selected(value) => { root.set-modulation(row.key, self.current-index); }
+                        }
+                    }
+
+                    Row {
+                        if row.source-width >= 0: Text {
+                            text: Terms.caption-source-pulse-width;
+                            vertical-alignment: center;
+                        }
+                        if row.source-width >= 0: ComboBox {
+                            enabled: root.can-edit;
+                            model: root.pulse-width-choices;
+                            current-index: row.source-width;
+                            accessible-label: row.name + ": " + Terms.caption-source-pulse-width;
+                            selected(value) => {
+                                root.set-pulse-option(row.key, 0, self.current-index);
+                            }
+                        }
+                    }
+
+                    Row {
+                        if row.source-shape >= 0: Text {
+                            text: Terms.caption-source-pulse-shape;
+                            vertical-alignment: center;
+                        }
+                        if row.source-shape >= 0: ComboBox {
+                            enabled: root.can-edit;
+                            model: root.pulse-shape-choices;
+                            current-index: row.source-shape;
+                            accessible-label: row.name + ": " + Terms.caption-source-pulse-shape;
+                            selected(value) => {
+                                root.set-pulse-option(row.key, 1, self.current-index);
+                            }
+                        }
+                    }
+
+                    Row {
+                        if row.modulation-width >= 0: Text {
+                            text: Terms.caption-mod-width;
+                            vertical-alignment: center;
+                        }
+                        if row.modulation-width >= 0: ComboBox {
+                            enabled: root.can-edit;
+                            model: root.pulse-width-choices;
+                            current-index: row.modulation-width;
+                            accessible-label: row.name + ": " + Terms.caption-mod-width;
+                            selected(value) => {
+                                root.set-pulse-option(row.key, 2, self.current-index);
+                            }
+                        }
+                    }
+
+                    Row {
+                        if row.modulation-shape >= 0: Text {
+                            text: Terms.caption-mod-shape;
+                            vertical-alignment: center;
+                        }
+                        if row.modulation-shape >= 0: ComboBox {
+                            enabled: root.can-edit;
+                            model: root.pulse-shape-choices;
+                            current-index: row.modulation-shape;
+                            accessible-label: row.name + ": " + Terms.caption-mod-shape;
+                            selected(value) => {
+                                root.set-pulse-option(row.key, 3, self.current-index);
+                            }
                         }
                     }
 

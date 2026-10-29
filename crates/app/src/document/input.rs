@@ -23,3 +23,42 @@ pub fn parameter_text(parameter: ParameterId, model: f64) -> String {
     }
     display.to_string()
 }
+
+/// Why staged text is not a usable value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputProblem {
+    /// The text is not a number.
+    Unparseable,
+    /// The value is not a finite number, whether typed or inherited.
+    Nonfinite,
+}
+
+/// Parse one explicitly edited number in the semantic parameter's display unit.
+pub fn parse_parameter(
+    parameter: ParameterId,
+    text: &str,
+) -> Result<crate::core::Finite, InputProblem> {
+    let display = text
+        .trim()
+        .parse::<f64>()
+        .map_err(|_| InputProblem::Unparseable)?;
+    crate::core::Finite::new(parameter.descriptor().unit.to_model(display))
+        .ok_or(InputProblem::Nonfinite)
+}
+impl std::fmt::Display for InputProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(crate::core::diagnostic::Code::code(self))
+    }
+}
+impl std::error::Error for InputProblem {}
+
+crate::core::diagnostic_codes! {
+    pub(crate) const CODES;
+    InputProblem {
+        codes {
+            Self::Unparseable => "input.unparseable",
+            Self::Nonfinite => "input.nonfinite",
+        }
+        delegates {}
+    }
+}

@@ -70,7 +70,9 @@ export component MainWindow inherits Window {
     in property <MetadataRow> fade-field;
     in property <[ComponentRow]> components;
     in property <[ModelLane]> model-lanes;
-    in property <[string]> ears-choices;
+    in property <[string]> routing-choices;
+    in property <[string]> pulse-width-choices;
+    in property <[string]> pulse-shape-choices;
     in property <[string]> carrier-choices;
     in property <[ControlOption]> add-choices;
     in property <string> add-binaural-label;
@@ -85,7 +87,8 @@ export component MainWindow inherits Window {
     callback stage-metadata(string, string);
     callback commit-metadata(string, string);
     callback restore-metadata(string);
-    callback set-ears(string, int);
+    callback set-routing(string, int);
+    callback set-pulse-option(string, int, int);
     callback set-carrier(string, int);
     callback set-modulation(string, int);
     callback remove-component(string);
@@ -692,7 +695,9 @@ export component MainWindow inherits Window {
                 draft-location: root.draft-location;
                 draft-location-details: root.draft-location-details;
                 duration-field: root.duration-field;
-                ears-choices: root.ears-choices;
+                routing-choices: root.routing-choices;
+                pulse-width-choices: root.pulse-width-choices;
+                pulse-shape-choices: root.pulse-shape-choices;
                 editor-scroll-y <=> root.editor-scroll-y;
                 edits-suspended <=> root.edits-suspended;
                 export-rates: root.export-rates;
@@ -721,7 +726,8 @@ export component MainWindow inherits Window {
                 save-reason: root.save-reason;
                 saved-audio <=> root.saved-audio;
                 set-carrier(arg0, arg1) => { root.set-carrier(arg0, arg1); }
-                set-ears(arg0, arg1) => { root.set-ears(arg0, arg1); }
+                set-pulse-option(arg0, arg1, arg2) => { root.set-pulse-option(arg0, arg1, arg2); }
+                set-routing(arg0, arg1) => { root.set-routing(arg0, arg1); }
                 set-modulation(arg0, arg1) => { root.set-modulation(arg0, arg1); }
                 slide(arg0, arg1) => { root.slide(arg0, arg1); }
                 stage-metadata(arg0, arg1) => { root.stage-metadata(arg0, arg1); }

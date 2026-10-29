@@ -61,7 +61,7 @@ use crate::document::editing::{
 use crate::document::editing::{DocumentId, Draft, EditorSession};
 use crate::document::recipe::file_name;
 use crate::document::recipe::{RecipeSnapshot, Rendition};
-use auditorylab_core::{CarrierKind, Ears, ModulationKind, Recipe, SampleRate};
+use auditorylab_core::{CarrierKind, ChannelRouting, ModulationKind, Recipe, SampleRate};
 use output::OutputState;
 use status::{
     AudioStatus, EditStatus, FileActivity, FileNotice, FileStatus, InventoryStatus, LibraryStatus,

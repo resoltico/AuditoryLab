@@ -128,7 +128,7 @@ pub const OWNERS: &[&[&str]] = &[
     crate::recipe::CODES,
     crate::validity::CODES,
     crate::rhythm::CODES,
-    crate::voice::CODES,
+    crate::render::error::CODES,
     crate::vocabulary::CODES,
 ];
 
@@ -161,7 +161,7 @@ mod tests {
         let version = crate::RecipeError::UnsupportedVersion { found: 3 };
         assert_eq!(version.code(), "recipe.schema_version");
         assert_eq!(version.params()["found"], ParamValue::Unsigned(3));
-        assert_eq!(version.params()["supported"], ParamValue::Unsigned(4));
+        assert_eq!(version.params()["supported"], ParamValue::Unsigned(5));
         assert_eq!(
             ParamValue::from(f64::INFINITY),
             ParamValue::Text("inf".into())

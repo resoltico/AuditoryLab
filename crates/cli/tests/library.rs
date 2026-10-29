@@ -41,7 +41,7 @@ fn input(path: &Path, title: &str) -> auditorylab_app::core::Recipe {
     draft.set_title(title.into());
     draft
         .add_node(auditorylab_app::workspace::controls::default_component(
-            auditorylab_app::core::CarrierKind::Clicks,
+            auditorylab_app::core::CarrierKind::PulseTrain,
         ))
         .unwrap();
     let id = draft.components()[0].id;
@@ -49,7 +49,7 @@ fn input(path: &Path, title: &str) -> auditorylab_app::core::Recipe {
     let field = editor
         .handle(auditorylab_app::document::editing::EditingField::Parameter(
             id,
-            auditorylab_app::core::ParameterId::ClickRate,
+            auditorylab_app::core::ParameterId::SourcePulseRate,
         ))
         .unwrap();
     editor.commit_field(field, "2").unwrap().unwrap();
@@ -126,7 +126,7 @@ fn native_cli_lifecycle_conflicts_dates_export_and_trash_are_shared_store_operat
     );
     assert!(add.status.success(), "{add:?}");
     let added = json(&add);
-    assert_eq!(added["output_schema_version"], 2);
+    assert_eq!(added["output_schema_version"], 3);
     assert_eq!(added["status"], "published");
     assert_eq!(added["entries"][0]["created_at"], serde_json::Value::Null);
     assert_eq!(added["entries"][0]["modified_at"], serde_json::Value::Null);
@@ -159,7 +159,7 @@ fn native_cli_lifecycle_conflicts_dates_export_and_trash_are_shared_store_operat
             "--band",
             "delta",
             "--method",
-            "clicks",
+            "pulse_train",
             "--format",
             "ids",
         ],
@@ -573,7 +573,7 @@ fn inspection_serializes_expanded_identity_without_conflating_authored_owners() 
     );
     assert!(result.status.success(), "{result:?}");
     let report = json(&result);
-    assert_eq!(report["output_schema_version"], 2);
+    assert_eq!(report["output_schema_version"], 3);
     assert!(
         report["entries"][0]["validation"]
             .get("components")
@@ -609,7 +609,7 @@ fn schema_three_library_diagnostic_keeps_path_version_and_original_bytes() {
     let bytes = recipe
         .to_toml()
         .unwrap()
-        .replacen("schema_version = 4", "schema_version = 3", 1);
+        .replacen("schema_version = 5", "schema_version = 3", 1);
     assert!(bytes.contains("schema_version = 3"));
     fs::write(&path, &bytes).unwrap();
     for format in ["text", "json"] {
@@ -640,7 +640,7 @@ fn schema_three_library_diagnostic_keeps_path_version_and_original_bytes() {
         );
         let words = report.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(words.contains("schema_version 3"), "{report}");
-        assert!(words.contains("this build reads 4"), "{report}");
+        assert!(words.contains("this build reads 5"), "{report}");
         assert_eq!(fs::read(&path).unwrap(), bytes.as_bytes());
     }
 }

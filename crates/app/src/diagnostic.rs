@@ -7,6 +7,7 @@ pub const OWNERS: &[&[&str]] = &[
     crate::document::origin::CODES,
     crate::document::error::CODES,
     crate::document::editing::CODES,
+    crate::document::input::CODES,
     crate::discovery::query::CODES,
     crate::services::DIAGNOSTIC_CODES,
     crate::audio::CODES,

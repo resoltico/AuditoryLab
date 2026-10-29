@@ -1,6 +1,6 @@
 //! Shared query counterexamples using actual authored classification and typed evidence.
 use auditorylab_app::core::{
-    Component, ComponentForm, ComponentId, DocumentIdentity, Ears, Recipe, Sound, Timestamp,
+    ChannelRouting, Component, ComponentForm, ComponentId, DocumentIdentity, Recipe, Timestamp,
     rhythm::{Band, Method},
 };
 use auditorylab_app::discovery::query::{Direction, GroupBy, Scope, SortBy};
@@ -24,8 +24,13 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
         title: title.into(),
         notes: None,
     });
-    recipe.content.sound = Sound::new(finite(60.0), finite(0.1), nodes)
-        .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+    recipe.content.sound = {
+        let fixture =
+            auditorylab_core::test_support::FiniteFixture::new(finite(60.0), finite(0.1), nodes)
+                .unwrap_or_else(|error| panic!("invalid sound fixture: {error}"));
+        recipe.content.timing = fixture.timing;
+        fixture.sound
+    };
     let key = LibraryKey::User(recipe.document.id);
     let snapshot = RecipeSnapshot::new(Origin::Stream("fixture".into()), recipe.build().unwrap());
     EntrySummary::from_snapshot(key, &snapshot, None)
@@ -37,11 +42,14 @@ fn entry(id: u32, title: &str, nodes: Vec<Component>, modified: Option<&str>) ->
 fn pair(offset_hz: f64) -> Component {
     Component {
         id: ComponentId::new(7).unwrap(),
-        form: ComponentForm::BinauralPair {
-            left_hz: finite(200.0),
-            offset_hz: finite(offset_hz),
-            left_peak_dbfs: finite(-30.0),
-            right_peak_dbfs: finite(-30.0),
+        form: ComponentForm {
+            source: auditorylab_core::SoundSource::BinauralPair {
+                first_hz: finite(200.0),
+                offset_hz: finite(offset_hz),
+                first_peak_dbfs: finite(-30.0),
+                second_peak_dbfs: finite(-30.0),
+            },
+            modulation: None,
         },
     }
 }
@@ -52,11 +60,13 @@ fn pair(offset_hz: f64) -> Component {
 fn am(rate_hz: f64) -> Component {
     Component {
         id: ComponentId::new(90).unwrap(),
-        form: ComponentForm::Tone {
-            frequency_hz: finite(1000.0),
-            ears: Ears::Both,
-            peak_dbfs: finite(-30.0),
-            modulation: Some(auditorylab_app::core::Modulation::Am {
+        form: ComponentForm {
+            source: auditorylab_core::SoundSource::Tone {
+                frequency_hz: finite(1000.0),
+                route: ChannelRouting::Both,
+                peak_dbfs: finite(-30.0),
+            },
+            modulation: Some(auditorylab_app::core::Modulation::Sinusoidal {
                 rate_hz: finite(rate_hz),
                 depth: finite(1.0),
             }),
@@ -72,7 +82,7 @@ fn correlated_rate_sort_and_groups_use_unique_actual_authored_keys() {
     q.rhythm.bands = vec![Band::Gamma];
     q.rhythm.methods = vec![Method::Binaural];
     assert_eq!(q.execute(&input).unwrap().unique_count(), 0);
-    q.rhythm.methods = vec![Method::Am];
+    q.rhythm.methods = vec![Method::Sinusoidal];
     q.group_by = GroupBy::Band;
     let result = q.execute(&input).unwrap();
     assert_eq!(result.unique_count(), 2);

@@ -15,7 +15,7 @@ pub enum CaptureError {
 pub enum WaveformScale {
     /// Digital full scale.
     Fixed,
-    /// One symmetric extent shared by both ears; silence uses ±1.
+    /// One symmetric extent shared by both route; silence uses ±1.
     Fit,
 }
 /// An owned immutable view. Freeze retains this entire value, not just graph paths.

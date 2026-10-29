@@ -1,5 +1,5 @@
 //! Runtime library choices and atomic query edits.
-use super::{CarrierKind, Ears, ModulationKind, RowKey, SampleRate};
+use super::{CarrierKind, ChannelRouting, ModulationKind, RowKey, SampleRate};
 
 /// One library query facet, independent of control position or wording.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,10 +39,14 @@ pub struct FilterInput {
 /// A menu whose values and selection are owned by the application.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlMenu {
-    Ears,
+    ChannelRouting,
     Carrier,
     Modulation,
     AddComponent,
+    SourceWidth,
+    ModulationWidth,
+    SourceShape,
+    ModulationShape,
     MonitorSpan,
     WaveformScale,
     ExportRate,
@@ -50,11 +54,12 @@ pub enum ControlMenu {
 /// Typed payload retained in the table for one rendered menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlValue {
-    Ears(Ears),
+    ChannelRouting(ChannelRouting),
     Carrier(CarrierKind),
     Modulation(Option<ModulationKind>),
-    AddCarrier(CarrierKind),
-    AddPair(crate::core::PairKind),
+    Creation(crate::document::construction::CreationKind),
+    PulseWidth { modulation: bool, duty: bool },
+    PulseShape { modulation: bool, shaped: bool },
     MonitorSpan(u32),
     WaveformScale(crate::workspace::monitor::WaveformScale),
     ExportRate(SampleRate),

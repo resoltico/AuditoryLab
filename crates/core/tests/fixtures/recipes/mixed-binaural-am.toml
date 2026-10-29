@@ -1,27 +1,35 @@
 # Synthetic correlated-filter fixture, not research evidence.
-schema_version = 4
+schema_version = 5
 [document]
 id = "00000000-0000-4000-8000-000000000201"
 [description]
 title = "6 Hz pair plus 40 Hz AM"
 notes = "Gamma plus binaural must not match by borrowing another process."
-[sound]
+[timing]
 duration_seconds = 10.0
 fade_seconds = 0.1
 [[sound.component]]
 id = 1
+
+[sound.component.source]
 kind = "binaural_pair"
-left_hz = 200.0
+first_hz = 200.0
 offset_hz = 6.0
-left_peak_dbfs = -30.0
-right_peak_dbfs = -30.0
+first_peak_dbfs = -30.0
+second_peak_dbfs = -30.0
+
+[sound.component.modulation]
+kind = "none"
 [[sound.component]]
 id = 2
+
+[sound.component.source]
 kind = "tone"
-ears = "both"
+route = "both"
 frequency_hz = 1000.0
 peak_dbfs = -30.0
+
 [sound.component.modulation]
-kind = "am"
+kind = "sinusoidal"
 rate_hz = 40.0
 depth = 1.0

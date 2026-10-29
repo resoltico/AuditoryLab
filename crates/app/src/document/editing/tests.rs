@@ -19,10 +19,12 @@ fn editor_with(components: &[ComponentForm]) -> EditorSession {
 }
 
 fn tone(frequency_hz: f64) -> ComponentForm {
-    ComponentForm::Tone {
-        frequency_hz: finite(frequency_hz),
-        ears: Ears::Both,
-        peak_dbfs: finite(-30.0),
+    ComponentForm {
+        source: auditorylab_core::SoundSource::Tone {
+            frequency_hz: finite(frequency_hz),
+            route: ChannelRouting::Both,
+            peak_dbfs: finite(-30.0),
+        },
         modulation: None,
     }
 }
@@ -120,15 +122,25 @@ fn commit_is_atomic_over_the_whole_candidate() {
 
 #[test]
 fn staged_nonfinite_values_block_commit_save_until_repaired() {
-    let text = "schema_version=4\n[sound]\nduration_seconds=nan\nfade_seconds=0\n[[sou\
-        nd.component]]\nid=1\nears='both'\npeak_dbfs=-30\nkind='tone'\nfrequen\
-        cy_hz=inf\n[[sound.component]]\nid=2\nears='both'\npeak_dbfs=-30\nkind\
-        ='tone'\nfrequency_hz=440\n\n[document]\nid=\"00000000-0000-4000-8000-\
-        000000000001\"\n";
-    assert!(
-        crate::storage::load::load_reader(text.as_bytes(), "nonfinite import").is_err(),
-        "nonfinite portable files are rejected"
-    );
+    let valid = auditorylab_core::test_support::recipe(60.0, 0.0, &[tone(440.0)])
+        .to_toml()
+        .unwrap();
+    for (field, value) in [
+        ("duration_seconds = 60.0", "duration_seconds = nan"),
+        ("frequency_hz = 440.0", "frequency_hz = inf"),
+    ] {
+        assert!(valid.contains(field));
+        let text = valid.replace(field, value);
+        let Err(crate::storage::load::LoadError::Recipe { error, .. }) =
+            crate::storage::load::load_reader(text.as_bytes(), "nonfinite import")
+        else {
+            panic!("nonfinite portable files must fail their recipe contract");
+        };
+        assert!(matches!(
+            *error,
+            auditorylab_core::RecipeError::Format { .. }
+        ));
+    }
     let mut draft = Draft::new().unwrap();
     draft
         .add_node(controls::default_component(CarrierKind::Tone))
@@ -189,7 +201,7 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
     editor
         .set_carrier(
             editor.component_key(first).unwrap(),
-            controls::default_component(CarrierKind::Clicks),
+            controls::default_component(CarrierKind::PulseTrain),
         )
         .unwrap();
     assert_eq!(
@@ -204,25 +216,25 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
             .draft()
             .component(first)
             .unwrap()
-            .get(ParameterId::ClickRate),
+            .get(ParameterId::SourcePulseRate),
         Some(finite(40.0))
     );
     assert_eq!(
         editor.stage(frequency, "440"),
-        Err(EditRefusal::Inapplicable),
-        "a stale field of the old carrier is rejected"
+        Err(EditRefusal::StaleRow),
+        "a retired field of the old source is rejected"
     );
     editor
         .set_modulation(
             editor.component_key(first).unwrap(),
-            Some(controls::default_modulation(
-                ModulationKind::Gate,
-                SampleRate::DEFAULT,
-            )),
+            Some(controls::default_modulation(ModulationKind::Pulsed)),
         )
         .unwrap();
     let gate = editor
-        .handle(EditingField::Parameter(first, ParameterId::GateWidth))
+        .handle(EditingField::Parameter(
+            first,
+            ParameterId::ModulationPulseDuration,
+        ))
         .unwrap();
     editor.stage(gate, "2").unwrap();
     editor
@@ -231,6 +243,11 @@ fn structural_choices_discard_only_inapplicable_or_removed_staging() {
     assert_eq!(editor.staged(gate.field), None);
     assert_eq!(editor.restore(level).unwrap(), "-30");
     assert_eq!(editor.staged(level.field), None);
+    assert_eq!(
+        editor.remove_component(first_row),
+        Err(EditRefusal::StaleRow)
+    );
+    let first_row = editor.component_key(first).unwrap();
     editor.remove_component(first_row).unwrap();
     assert_eq!(
         editor.staged(other.field),
@@ -370,7 +387,7 @@ fn stale_document_handles_are_rejected_everywhere() {
         Err(EditRefusal::StaleDocument)
     );
     assert_eq!(
-        replacement.set_ears(handle.row, Ears::Left),
+        replacement.set_routing(handle.row, ChannelRouting::Left),
         Err(EditRefusal::StaleDocument)
     );
     assert!(!replacement.has_staged());
@@ -440,7 +457,7 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
         .add_node(controls::default_component(CarrierKind::Tone))
         .unwrap();
     let b = d
-        .add_node(controls::default_component(CarrierKind::Clicks))
+        .add_node(controls::default_component(CarrierKind::PulseTrain))
         .unwrap();
     assert!(d.remove(a).is_some());
     let c = d
@@ -456,7 +473,7 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
         .unwrap()
     );
     assert!(
-        !d.replace(a, controls::default_component(CarrierKind::Clicks))
+        !d.replace(a, controls::default_component(CarrierKind::PulseTrain))
             .unwrap()
     );
     while d.components().len() < Sound::MAX_COMPONENTS {
@@ -464,7 +481,7 @@ fn identities_are_never_reused_and_the_limit_is_shared() {
             .unwrap();
     }
     assert_eq!(
-        d.add_node(controls::default_component(CarrierKind::Clicks)),
+        d.add_node(controls::default_component(CarrierKind::PulseTrain)),
         Err(EditRefusal::BudgetExceeded {
             components: 16,
             voices: 16,
@@ -523,7 +540,7 @@ fn save_round_trips_and_keeps_existing_destinations() {
     let dir = tempfile::tempdir_in(base).unwrap();
     let path = dir.path().join("recipe.toml");
     let mut d = Draft::new().unwrap();
-    d.add_node(controls::default_component(CarrierKind::Clicks))
+    d.add_node(controls::default_component(CarrierKind::PulseTrain))
         .unwrap();
     d.set_title("Quotes \" 🎧".into());
     save_content(&d.recipe().unwrap(), &path, crate::job::Replace::Never).unwrap();
@@ -640,8 +657,8 @@ fn the_entire_document_including_unicode_anchor_has_exact_byte_neighbours() {
 #[test]
 fn finite_invalid_content_serializes_and_nonfinite_input_is_rejected() {
     let mut builder = Draft::new().unwrap().recipe().unwrap().into_builder();
-    builder.content.sound.set_duration(finite(-1.0));
-    builder.content.sound.set_fade(finite(9.0));
+    builder.content.timing.duration_seconds = finite(-1.0);
+    builder.content.timing.fade_seconds = finite(9.0);
     let recipe = builder.clone().build().unwrap();
     let text = serialize(&recipe).unwrap();
     assert_eq!(Recipe::parse(&text).unwrap(), recipe);
@@ -683,17 +700,24 @@ fn descriptions_and_equivalent_text_do_not_recompile_sound_inputs() {
 #[test]
 fn nominal_cache_and_saved_memberships_follow_distinct_committed_snapshots() {
     let mut c = tone(240.0);
-    c = auditorylab_core::ComponentForm::Clicks {
-        ears: c.route().unwrap(),
-        peak_dbfs: c.get(ParameterId::PeakLevel).unwrap(),
+    c = auditorylab_core::ComponentForm {
+        source: auditorylab_core::SoundSource::PulseTrain {
+            route: c.route().unwrap(),
+            peak_dbfs: c.get(ParameterId::PeakLevel).unwrap(),
+            pulse: auditorylab_core::PulseSpec {
+                rate_hz: finite(2.0),
+                width: auditorylab_core::PulseWidth::Duration {
+                    seconds: finite(0.001),
+                },
+                shape: auditorylab_core::PulseShape::Rectangular {},
+            },
+        },
         modulation: c.modulation(),
-        rate_hz: finite(2.0),
-        width_seconds: finite(0.001),
     };
     let mut editor = editor_with(&[c]);
     let first = editor.nominal();
     let saved = editor.draft().recipe().unwrap();
-    let rate = field(&editor, 0, ParameterId::ClickRate);
+    let rate = field(&editor, 0, ParameterId::SourcePulseRate);
     editor.stage(rate, "bad").unwrap();
     assert!(Arc::ptr_eq(&first, &editor.nominal()));
     editor.commit_field(rate, "6").unwrap().unwrap();
@@ -867,20 +891,20 @@ fn the_application_rejects_retired_field_and_structural_callbacks_after_undo() {
     );
     assert_eq!(editor.restore(field), Err(EditRefusal::StaleRow));
     assert_eq!(
-        editor.set_ears(current, Ears::Left),
+        editor.set_routing(current, ChannelRouting::Left),
         Err(EditRefusal::StaleRow)
     );
     assert_eq!(
-        editor.set_carrier(current, controls::default_component(CarrierKind::Clicks)),
+        editor.set_carrier(
+            current,
+            controls::default_component(CarrierKind::PulseTrain)
+        ),
         Err(EditRefusal::StaleRow)
     );
     assert_eq!(
         editor.set_modulation(
             current,
-            Some(controls::default_modulation(
-                ModulationKind::Am,
-                SampleRate::DEFAULT
-            ))
+            Some(controls::default_modulation(ModulationKind::Sinusoidal))
         ),
         Err(EditRefusal::StaleRow)
     );
@@ -1104,16 +1128,23 @@ fn committing_an_unedited_display_preserves_unrepresentable_finite_model_bits() 
     for width in [f64::from_bits(0x3f1a_36e2_eb1c_4340), f64::MAX] {
         let mut draft = Draft::new().unwrap();
         draft
-            .add_node(ComponentForm::Clicks {
-                ears: Ears::Both,
-                rate_hz: finite(40.0),
-                width_seconds: finite(width),
-                peak_dbfs: finite(-30.0),
+            .add_node(ComponentForm {
+                source: auditorylab_core::SoundSource::PulseTrain {
+                    route: ChannelRouting::Both,
+                    peak_dbfs: finite(-30.0),
+                    pulse: auditorylab_core::PulseSpec {
+                        rate_hz: finite(40.0),
+                        width: auditorylab_core::PulseWidth::Duration {
+                            seconds: finite(width),
+                        },
+                        shape: auditorylab_core::PulseShape::Rectangular {},
+                    },
+                },
                 modulation: None,
             })
             .unwrap();
         let mut editor = EditorSession::new(draft).unwrap();
-        let field = field(&editor, 0, ParameterId::ClickWidth);
+        let field = field(&editor, 0, ParameterId::SourcePulseDuration);
         let before = editor.draft().to_toml().unwrap();
         let shown = editor.text(field.field);
         assert_eq!(editor.commit_field(field, &shown), Ok(Ok(false)));
@@ -1135,4 +1166,149 @@ fn committing_an_unedited_display_preserves_unrepresentable_finite_model_bits() 
             );
         }
     }
+}
+
+#[test]
+fn pulse_width_mode_retirement_survives_away_and_back_without_losing_other_text() {
+    use crate::document::construction::CreationKind;
+    let mut editor = editor_with(&[CreationKind::PulsedTone.component()]);
+    let frequency = field(&editor, 0, ParameterId::ToneFrequency);
+    let duty = field(&editor, 0, ParameterId::ModulationDuty);
+    editor.stage(frequency, "43x").unwrap();
+    let id = editor.draft().components()[0].id;
+    let original = editor.draft().component(id).copied().unwrap();
+    editor
+        .set_pulse_width_mode(editor.component_key(id).unwrap(), true, false)
+        .unwrap();
+    assert_eq!(editor.stage(duty, "25"), Err(EditRefusal::StaleRow));
+    assert_eq!(
+        editor
+            .draft()
+            .component(id)
+            .unwrap()
+            .get(ParameterId::ModulationPulseDuration),
+        Some(finite(0.05))
+    );
+    editor
+        .set_pulse_width_mode(editor.component_key(id).unwrap(), true, true)
+        .unwrap();
+    assert_eq!(*editor.draft().component(id).unwrap(), original);
+    assert_eq!(editor.stage(duty, "25"), Err(EditRefusal::StaleRow));
+    assert_eq!(editor.text(frequency.field), "43x");
+    assert_eq!(
+        editor.candidate().problems(),
+        [(frequency.field, InputProblem::Unparseable)]
+    );
+}
+
+#[test]
+fn impossible_pulse_conversion_preserves_the_whole_edit_transaction() {
+    use crate::document::construction::CreationKind;
+    use auditorylab_core::{Modulation, PulseWidth};
+    let mut form = CreationKind::PulsedTone.component();
+    if let Some(Modulation::Pulsed { pulse }) = &mut form.modulation {
+        pulse.width = PulseWidth::Duration {
+            seconds: finite(1.0),
+        };
+    }
+    let mut editor = editor_with(&[form]);
+    let id = editor.draft().components()[0].id;
+    let frequency = field(&editor, 0, ParameterId::ToneFrequency);
+    editor.stage(frequency, "512").unwrap();
+    let revision = editor.draft_revision();
+    assert_eq!(
+        editor.set_pulse_width_mode(editor.component_key(id).unwrap(), true, true),
+        Err(EditRefusal::PulseConversion)
+    );
+    assert_eq!(editor.draft_revision(), revision);
+    assert_eq!(*editor.draft().component(id).unwrap(), form);
+    assert_eq!(editor.text(frequency.field), "512");
+}
+
+#[test]
+fn finite_timing_changes_invalidate_finite_analysis_without_invalidating_live_sound() {
+    let mut editor = editor_with(&[tone(440.0)]);
+    let first = editor.committed_analysis(SampleRate::DEFAULT);
+    let field = metadata(&editor, MetadataField::Duration);
+    editor.commit_field(field, "-1").unwrap().unwrap();
+    let changed = editor.committed_analysis(SampleRate::DEFAULT);
+    assert!(!Arc::ptr_eq(&first, &changed));
+    assert!(changed.target().is_some());
+    assert!(changed.signal().is_none());
+    editor.commit_field(field, "2").unwrap().unwrap();
+    assert_eq!(
+        editor
+            .committed_analysis(SampleRate::DEFAULT)
+            .signal()
+            .unwrap()
+            .frames(),
+        96000
+    );
+}
+
+#[test]
+fn width_conversion_uses_staged_window_values_without_committing_unrelated_input() {
+    use crate::document::construction::CreationKind;
+    let mut editor = editor_with(&[CreationKind::PulsedTone.component()]);
+    let id = editor.draft().components()[0].id;
+    editor
+        .set_pulse_width_mode(editor.component_key(id).unwrap(), true, false)
+        .unwrap();
+    let rate = field(&editor, 0, ParameterId::ModulationPulseRate);
+    let width = field(&editor, 0, ParameterId::ModulationPulseDuration);
+    let carrier = field(&editor, 0, ParameterId::ToneFrequency);
+    editor.stage(rate, "20").unwrap();
+    editor.stage(width, "10").unwrap();
+    editor.stage(carrier, "44x").unwrap();
+    editor
+        .set_pulse_width_mode(editor.component_key(id).unwrap(), true, true)
+        .unwrap();
+    let form = editor.draft().component(id).unwrap();
+    assert_eq!(
+        form.get(ParameterId::ModulationPulseRate),
+        Some(finite(20.0))
+    );
+    assert_eq!(
+        form.get(ParameterId::ModulationDuty),
+        Some(finite(0.01 * 20.0))
+    );
+    assert!(editor.staged(rate.field).is_none());
+    assert!(editor.staged(width.field).is_none());
+    assert_eq!(editor.staged(carrier.field), Some("44x"));
+    assert_eq!(form.get(ParameterId::ToneFrequency), Some(finite(440.0)));
+}
+#[test]
+fn conversion_refusal_preserves_related_staging_and_shape_initialization_consumes_only_its_window()
+{
+    use crate::document::construction::CreationKind;
+    let mut editor = editor_with(&[CreationKind::PulseTrain.component()]);
+    let id = editor.draft().components()[0].id;
+    let width = field(&editor, 0, ParameterId::SourcePulseDuration);
+    let rate = field(&editor, 0, ParameterId::SourcePulseRate);
+    let level = field(&editor, 0, ParameterId::PeakLevel);
+    editor.stage(width, "50").unwrap();
+    editor.stage(rate, "20").unwrap();
+    editor.stage(level, "quiet").unwrap();
+    let revision = editor.draft_revision();
+    assert_eq!(
+        editor.set_pulse_width_mode(editor.component_key(id).unwrap(), false, true),
+        Err(EditRefusal::PulseConversion)
+    );
+    assert_eq!(editor.draft_revision(), revision);
+    assert_eq!(editor.staged(width.field), Some("50"));
+    assert_eq!(editor.staged(rate.field), Some("20"));
+    editor.stage(width, "25").unwrap();
+    editor
+        .set_pulse_shape(editor.component_key(id).unwrap(), false, true)
+        .unwrap();
+    let form = editor.draft().component(id).unwrap();
+    assert_eq!(
+        form.get(ParameterId::SourcePulseDuration),
+        Some(finite(0.025))
+    );
+    assert_eq!(form.get(ParameterId::SourceRise), Some(finite(0.025 * 0.1)));
+    assert_eq!(form.get(ParameterId::SourceFall), Some(finite(0.025 * 0.1)));
+    assert_eq!(editor.staged(level.field), Some("quiet"));
+    assert!(editor.staged(width.field).is_none());
+    assert!(editor.staged(rate.field).is_none());
 }
