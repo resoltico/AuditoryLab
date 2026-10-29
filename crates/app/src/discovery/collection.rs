@@ -341,13 +341,14 @@ impl CatalogQuery {
         } else {
             self.sort
         };
-        let direction = self.direction.unwrap_or(
-            if matches!(sort, SortBy::Created | SortBy::Modified | SortBy::Added) {
+        // Dates start with the most recent; every other sort starts with the lowest value.
+        let direction = self
+            .direction
+            .unwrap_or(if sort.calendar_field().is_some() {
                 Direction::Desc
             } else {
                 Direction::Asc
-            },
-        );
+            });
         (sort, direction)
     }
     /// Test one immutable summary, without I/O, device discovery or rendering.
@@ -424,6 +425,9 @@ impl CatalogQuery {
             SortBy::Created => optional_compare(a.created_at, b.created_at, direction, Ord::cmp),
             SortBy::Modified => optional_compare(a.modified_at, b.modified_at, direction, Ord::cmp),
             SortBy::Added => optional_compare(a.added_at, b.added_at, direction, Ord::cmp),
+            SortBy::Duration => {
+                directed(a.duration_seconds.total_cmp(&b.duration_seconds), direction)
+            }
         };
         primary
             .then_with(|| a.normalized_title.cmp(&b.normalized_title))

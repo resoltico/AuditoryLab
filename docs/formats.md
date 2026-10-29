@@ -104,7 +104,7 @@ Vocabulary values use snake_case in CLI options and JSON. CLI flag names use keb
 | `--population` | `human`, `mouse`, `other_animal`, `mixed`, `not_applicable`, `unspecified` |
 | `--role` | `test`, `comparison`, `mixed`, `unspecified` |
 | `--analysis` | `complete`, `invalid` |
-| `--sort` | `rate`, `title`, `created`, `modified`, `added`, `study`, `collection` |
+| `--sort` | `rate`, `duration`, `title`, `created`, `modified`, `added`, `study`, `collection` |
 | `--direction` | `asc`, `desc` |
 | `--group-by` | `none`, `band`, `method`, `study`, `collection` |
 <!-- query-options:end -->
@@ -144,7 +144,7 @@ These are the vocabulary keys used by queries, portable choices and JSON values.
 | `rhythm_state` | `outside_bands`, `none`, `multiple`, `needs_review` |
 | `scope` | `all`, `builtin`, `user`, `open_files`, `trash` |
 | `slot_role` | `continuing`, `outgoing`, `incoming` |
-| `sort_by` | `automatic`, `rate`, `title`, `created`, `modified`, `added`, `study`, `collection` |
+| `sort_by` | `automatic`, `rate`, `duration`, `title`, `created`, `modified`, `added`, `study`, `collection` |
 | `status` | `saved`, `saved_with_warning`, `unchanged`, `unknown`, `none`, `operation_incomplete`, `operation_confirmed`, `waiting_for_generated_audio` |
 <!-- vocabulary-keys:end -->
 
