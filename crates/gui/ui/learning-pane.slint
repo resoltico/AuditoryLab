@@ -340,7 +340,9 @@ export component LearningPane inherits Rectangle {
 
                     // Every construction is a visible choice; the selected one is checked.
                     if root.topic-key == "sound-types": construction-grid := Rectangle {
-                        property <int> columns: root.compact ? 2 : 3;
+                        // As many columns as fit a long label, at most three.
+                        property <int> columns: max(1, min(3,
+                            floor(self.width / (root.ui-size * 18))));
                         property <length> gap: 8px;
                         property <length> cell-width: (self.width - (self.columns - 1) * self.gap) /
                             self.columns;

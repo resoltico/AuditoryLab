@@ -925,7 +925,10 @@ fn component_options_are_visible_and_sized_to_their_content() {
         "choices are {:?} of {width}",
         choices[0]
     );
-    assert!(remove_x > choices[0].0, "Remove sits in the component header, right of the choices");
+    assert!(
+        remove_x > choices[0].0,
+        "Remove sits in the component header, right of the choices"
+    );
 }
 
 /// The first item whose accessible label starts with `prefix`.
@@ -1201,7 +1204,10 @@ fn toolbar_controls_share_one_height_and_centre_line() {
                 }
                 ControlFlow::<()>::Continue(())
             });
-            assert!(row.len() >= 3, "tabs and page actions share the row: {row:?}");
+            assert!(
+                row.len() >= 3,
+                "tabs and page actions share the row: {row:?}"
+            );
             for (label, y, height) in &row {
                 assert!(
                     (height - tab_height).abs() < 0.5 && (y - tab_y).abs() < 0.5,
@@ -1311,8 +1317,6 @@ fn library_play_command_obeys_unavailable_playback_capability() {
 
 #[test]
 fn notes_return_stages_newlines_and_save_preserves_exact_multiline_text() {
-    use slint::private_unstable_api::re_exports::AccessibilityAction;
-
     let h = Harness::new();
     let ui = h.ui();
     h.workbench();
@@ -3286,7 +3290,11 @@ fn library_ux_visible_component_choices_add_every_kind_to_the_current_document()
     assert_eq!(ui.get_components().row_count(), 0);
     action_button(ui, "Add steady tone").accessible_action(&AccessibilityAction::Default);
     h.settle();
-    assert_eq!(ui.get_components().row_count(), 1, "the visible choice targets the current document");
+    assert_eq!(
+        ui.get_components().row_count(),
+        1,
+        "the visible choice targets the current document"
+    );
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
 
@@ -4271,13 +4279,15 @@ fn assert_reordered_sort_and_clear(h: &Harness) {
     // sound's own Source and dates section still names them.
     assert!(
         labelled(ui, "Library results")
-            .visit_descendants(|item| if item
-                .accessible_string_property(AccessibleStringProperty::Label)
-                .is_some_and(|label| label.starts_with("Created:"))
-            {
-                ControlFlow::Break(())
-            } else {
-                ControlFlow::Continue(())
+            .visit_descendants(|item| {
+                if item
+                    .accessible_string_property(AccessibleStringProperty::Label)
+                    .is_some_and(|label| label.starts_with("Created:"))
+                {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
             })
             .is_none()
     );
@@ -4585,15 +4595,29 @@ fn workbench_and_library_show_every_section_without_disclosures() {
         found
     };
     assert_eq!(disclosures(), Vec::<slint::SharedString>::new(), "Library");
-    for label in ["Export WAV…", "Open study source", "Exact UTC recipe and membership dates"] {
-        assert!(reveal_library_control(&h, label).is_visible(), "{label} shows without a toggle");
+    for label in [
+        "Export WAV…",
+        "Open study source",
+        "Exact UTC recipe and membership dates",
+    ] {
+        assert!(
+            reveal_library_control(&h, label).is_visible(),
+            "{label} shows without a toggle"
+        );
     }
     h.workbench();
     ui.invoke_add_component(ui.get_document(), 4);
     h.settle();
-    assert_eq!(disclosures(), Vec::<slint::SharedString>::new(), "Workbench");
+    assert_eq!(
+        disclosures(),
+        Vec::<slint::SharedString>::new(),
+        "Workbench"
+    );
     for label in ["Custom recipe notes", "Saved duration", "Add steady tone"] {
-        assert!(reveal_library_control(&h, label).is_visible(), "{label} shows without a toggle");
+        assert!(
+            reveal_library_control(&h, label).is_visible(),
+            "{label} shows without a toggle"
+        );
     }
     assert!(!h.adapter.inspect(|w| w.audio_busy()));
 }
@@ -4960,7 +4984,10 @@ fn learning_construction_picker_projects_real_sound_and_envelope_without_documen
         assert_eq!(waveforms.len(), 1, "stereo is shown in one plot");
         if construction == Construction::BinauralPair {
             assert!(waveforms[0].label.contains("Left") && waveforms[0].label.contains("Right"));
-            assert!(!waveforms[0].overlay.is_empty(), "the right channel is drawn over the left");
+            assert!(
+                !waveforms[0].overlay.is_empty(),
+                "the right channel is drawn over the left"
+            );
             assert_ne!(waveforms[0].trace, waveforms[0].overlay);
         } else {
             assert!(waveforms[0].label.contains("Both channels"));
@@ -5675,7 +5702,6 @@ fn exercise_preference_notice_popup(h: &Harness) -> String {
 #[test]
 fn guide_sources_are_named_and_separate_from_application_documentation() {
     use auditorylab_app::learning::LearningSource;
-    use slint::private_unstable_api::re_exports::AccessibilityAction;
     let h = Harness::new();
     let ui = h.ui();
     ui.set_monitor_open(false);
@@ -5813,7 +5839,10 @@ fn selected_construction(ui: &MainWindow) -> Option<String> {
         }
         ControlFlow::<()>::Continue(())
     });
-    assert!(checked.len() <= 1, "one construction is checked: {checked:?}");
+    assert!(
+        checked.len() <= 1,
+        "one construction is checked: {checked:?}"
+    );
     checked.pop()
 }
 

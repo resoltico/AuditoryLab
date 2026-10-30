@@ -11,14 +11,14 @@ Open **Auditory Lab.app**, `auditorylab-gui.exe`, or `auditorylab-gui`. Start wi
 | Overview | Routes to the real Library or a pulsed-tone starter in Workbench. |
 | Library guide | Explains built-ins, saved sounds and research context. |
 | Pitch and rhythm | Compares a carrier, its pulse-modulation gain and the resulting sound, with actual example rates and labeled time windows. |
-| Sound types | Six selectable constructions and **Open this example in Workbench**. |
+| Sound types | Six constructions shown as choices at once, and **Open this example in Workbench**. |
 | Rhythm ranges | A combined five-band spectrum, selected-band detail, observed EEG/MEG contexts and source links. |
 
 Choose **Library** or **Workbench** to leave. Reading preserves drafts, pending text, Library selection and running tasks. Play, Save and Export require a working destination; Stop and Cancel export still address the actual running work. Guide entry focuses the selected lesson.
 
 **Create a pulsed tone** opens the starter; **Open this example in Workbench** opens the selected construction. Both capture a complete fresh example through Save/Discard/Cancel. Successful replacement focuses its title. Cancel or failed Save retains the guide and current draft. Nothing plays or saves automatically; **New sound** starts empty and silent.
 
-Sound diagrams use actual compiled data. Signed waveforms share one fitted scale across channels, so height does not show digital full scale or listening volume. Identical channels share one labeled trace. Modulation gain runs from zero (off) to one (original source level); pulse-source on/off timing is distinct. **Technical details and sources** supplies the precise quantities.
+Sound diagrams use actual compiled data. Signed waveforms share one fitted scale across channels, so height does not show digital full scale or listening volume. Identical channels share one labeled trace; different channels are drawn together, left in blue and right in orange, so their difference is visible. Level plots run from silent at the bottom to the tone's full level at the top; pulse-source on/off timing is distinct. Each lesson ends with **Details and sources**, which gives the precise quantities.
 
 Band illustrations are one-second, zero-phase normalized sine schematics, with native labels and light/dark colors. They are not recorded EEG, rendered audio or pulse envelopes. Observed EEG/MEG associations overlap and depend on region, task and measurement; matching an audio rate to a band does not establish a brain state or promise an effect. Direct references open the [IFCN glossary](https://pmc.ncbi.nlm.nih.gov/articles/PMC6123891/), [memory-study record](https://pubmed.ncbi.nlm.nih.gov/16837600/) and [NIH sleep-stage overview](https://www.nhlbi.nih.gov/health/sleep/stages-of-sleep), independently of application-manual version links. The memory study used 4.5–8.5 and 60–90 Hz, rather than the app’s exact reference intervals.
 
@@ -32,7 +32,7 @@ Collections separate active **All**, read-only **Built-in**, managed **User**, t
 
 Search, Method and Sort apply immediately. Filters also offer study, population, study role, rhythm analysis, grouping and date ranges. Search also matches what a sound was studied for, such as memory or relaxation. Press Apply to commit advanced criteria; invalid ranges retain the previous query. Close, Escape and clicking outside dismiss the popup. Band counts refer to unique sounds, including sounds with several rhythms. [Query rules](formats.md#queries-and-classification) define correlation and ordering.
 
-Desktop date bounds are inclusive local days. The timezone is shown; **Exact UTC dates** provides canonical values. Created/Modified describe the recipe, while Added here/Trashed here describe this library. Unknown dates stay visible as Unknown and sort last.
+Desktop date bounds are inclusive local days. The timezone is shown; the selected sound's **Source and dates** section also shows the exact canonical UTC values. Created/Modified describe the recipe, while Added here/Trashed here describe this library. Unknown dates stay visible as Unknown and sort last.
 
 **Library options…** provides Open, Refresh, Show saved, filter resets and storage details, including when results are empty. Saving itself preserves the current query. **Show saved** selects the confirmed entry in User or Trash and restores an unrestricted query with automatic ordering and no grouping. Incomplete discovery keeps healthy and last-observed rows with a warning. Use Refresh and inspect the named files before editing a saved version.
 
@@ -60,13 +60,13 @@ Library actions retain an app-issued handle for the rendered listing and capture
 
 ## Build and edit a sound
 
-**New sound** opens an empty, silent Workbench. **Add component…** offers tones, pulse trains, both explicit pair kinds and pulsed tones. Tone/pulse sources cost one generator lane; pairs cost two within one 16-lane budget. [Fields and limits](formats.md#recipe-schema) define the budgets.
+**New sound** opens an empty, silent Workbench. Its **Start with** choices, and **Add a component** below existing components, offer tones, pulse trains, both explicit pair kinds and pulsed tones as visible buttons. Tone/pulse sources cost one generator lane; pairs cost two within one 16-lane budget. [Fields and limits](formats.md#recipe-schema) define the budgets.
 
 **Pulsed tone (isochronic)** adds a single tone with shared pulsed modulation. The [recipe guide](recipes.md#sinusoidal-and-pulsed-modulation) explains its waveform and defaults. Pulse trains and pulsed pairs have distinct names.
 
 Component names use their authored IDs; removing/restoring rows keeps those references stable. A pair's secondary lane is labeled as its second tone.
 
-Enter frequency/rate, width, level and modulation values. The UI uses Hz, milliseconds, dBFS and percent. Source, shared modulation, digital channel routing and Remove are in each component’s options. Pulse options and their calculated envelope stay open together; other components use disclosures. **Undo remove** restores the latest removed component and its staged text when capacity permits.
+Enter frequency/rate, width, level and modulation values. The UI uses Hz, milliseconds, dBFS and percent. Each component card shows its calculated pattern, values, source, shared modulation and digital channel routing together, with Remove in its header. **Saved audio and export**, **Sound notes** and **Location** sections follow the components. **Undo remove** restores the latest removed component and its staged text when capacity permits.
 
 Pulse sources and pulsed modulation show separate width-intent and shape choices beside their calculated envelope. Duration fields use milliseconds; duty uses percent with a distinct semantic field. Raised-cosine controls expose rise/fall times. Width conversion applies the related pending rate/window values together and preserves other staged input; an invalid conversion changes nothing. Rectangular-to-shaped initialization uses 10% of the requested window per edge, without resizing it to satisfy a sample rate. Requested and resolved facts disclose rounding.
 
@@ -82,7 +82,7 @@ Saved duration and endpoint fades govern finite playback and WAV export. Live Wo
 
 **Save sound** captures the current complete draft. New drafts go to User Library, managed edits use their captured key/token, and external edits use the observed file. Later edits remain dirty after an earlier captured save completes.
 
-**Save independent copy** creates a separate User identity. Portable recipe export preserves identity/history and does not mark a draft saved. In Library, **Export sound** groups the WAV, portable recipe and export-rate controls. **Export WAV…** validates at the export rate and opens the native Save dialog; stop audio first. Native Save dialogs confirm replacement.
+**Save independent copy** creates a separate User identity. Portable recipe export preserves identity/history and does not mark a draft saved. In Library, the **Export** section holds the WAV, portable recipe and export-rate controls. **Export WAV…** validates at the export rate and opens the native Save dialog; stop audio first. Native Save dialogs confirm replacement.
 
 Finite but acoustically invalid documents can be saved for repair. File errors keep the draft and identify the affected path. A content conflict requires Refresh/reload, retaining the draft, or saving an independent copy. A confirmed durability/cleanup warning remains a successful save. [Publication and recovery](formats.md#publication-and-recovery) explains these outcomes.
 
@@ -92,7 +92,7 @@ New/copy/close/Quit protect unsaved content through Save/Discard/Cancel. Repeate
 
 ## View timing and output
 
-**Waveform pattern** shows normalized pulse/envelope timing calculated for the selected recipe, committed draft or playing revision; it is not recorded output. It names its source, rate and revision. **Show monitor** opens the Output monitor; **Preview waveform** shows a labeled seekable preview while idle.
+**Waveform pattern** shows normalized pulse/envelope timing calculated for the selected recipe, committed draft or playing revision; it is not recorded output. It names its source, rate and revision. **Monitor** in the player row opens or closes the Output monitor; **Preview waveform** shows a labeled seekable preview while idle.
 
 The monitor displays generated stereo samples before device conversion, with peak/RMS values and coverage status. Choose a 2/10/40/100 ms window. **Fit signal** changes the common stereo axis, while **Fixed ±1** uses digital full scale. Neither changes samples or levels.
 
@@ -104,7 +104,7 @@ The drawer can be resized by pointer, keyboard or accessibility slider actions. 
 
 ## Appearance, typography and accessibility
 
-The desktop follows the resolved native light/dark appearance and system UI font family. Changing appearance updates native diagram colors and controls without selecting a different lesson or band. Diagram labels follow the application font and text size; names identify bands alongside their colors. Use Tab to reach controls. Guide entry focuses the selected lesson. Arrow keys follow the compact lesson grid’s rows and columns; Home and End select its first and last topics. Enter or Space activates buttons; technical disclosures announce their expanded state.
+The desktop follows the resolved native light/dark appearance and system UI font family. Changing appearance updates native diagram colors and controls without selecting a different lesson or band. Diagram labels follow the application font and text size; names identify bands alongside their colors. Use Tab to reach controls. Guide entry focuses the selected lesson. Arrow keys follow the compact lesson grid’s rows and columns; Home and End select its first and last topics. Enter or Space activates buttons; construction and band choices announce which one is checked. Library, Workbench and lesson sections are always open.
 
 Font sizing follows the platform adapter: macOS uses AppKit’s `systemFontSize`, Windows uses message-font metrics at 96 DPI, and Linux uses toolkit DPI with GNOME Wayland’s text-scaling preference where applicable. The macOS Accessibility **Text size** preferred-reading control does not resize this application. It applies to its listed compatible apps; the desktop does not expose a separate font-size setting.
 

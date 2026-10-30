@@ -699,7 +699,8 @@ export component LibraryPane inherits Rectangle {
                                 horizontal-stretch: 1;
                             }
                         }
-                                if root.library-token != "" && !root.library-trashed: BoundButton {
+
+                        if root.library-token != "" && !root.library-trashed: BoundButton {
                             enabled: Actions.edit-saved-recipe.enabled;
                             text: Actions.edit-saved-recipe.label;
                             entry: root.library-entry;
@@ -800,7 +801,8 @@ export component LibraryPane inherits Rectangle {
                         }
 
                         // A custom recipe has no study or summary to show.
-                        if root.studied != "" || root.summary != "" || root.can-open-study: Section {
+                        if root.studied != "" || root.summary != "" ||
+                            root.can-open-study: Section {
                             title: Terms.caption-research-summary;
                             ui-size: root.ui-size;
                             if root.studied != "": Text {
@@ -825,10 +827,11 @@ export component LibraryPane inherits Rectangle {
                                     triggered => { root.open-study(); }
                                 }
                                 Button {
-                                    text: Terms.action-read-selectable-research-and-recipe-details-dialog;
+                                    text: Terms.action-full-research-details-dialog;
                                     horizontal-stretch: 0;
                                     triggered => { root.show-research(); }
                                 }
+
                                 Rectangle {
                                     horizontal-stretch: 1;
                                 }
@@ -859,10 +862,12 @@ export component LibraryPane inherits Rectangle {
                                     edit-enabled: true;
                                     changed(i) => { root.rate-changed(i); }
                                 }
+
                                 Rectangle {
                                     horizontal-stretch: 1;
                                 }
                             }
+
                             HorizontalBox {
                                 padding: 0px;
                                 vertical-stretch: 0;
@@ -872,12 +877,14 @@ export component LibraryPane inherits Rectangle {
                                     horizontal-stretch: 0;
                                     triggered => { root.export-wav(); }
                                 }
+
                                 Button {
                                     text: Actions.export-recipe.label + "…";
                                     enabled: Actions.export-recipe.enabled;
                                     horizontal-stretch: 0;
                                     triggered => { root.export-recipe(); }
                                 }
+
                                 Rectangle {
                                     horizontal-stretch: 1;
                                 }
@@ -902,6 +909,7 @@ export component LibraryPane inherits Rectangle {
                                 height: root.ui-size * 6;
                                 vertical-stretch: 0;
                             }
+
                             if root.library-key != "": Text {
                                 text: root.library-key;
                                 wrap: word-wrap;

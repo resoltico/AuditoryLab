@@ -11,7 +11,12 @@ import {
     HorizontalBox,
     ScrollView,
 } from "std-widgets.slint";
-import { ComponentRow, ControlOption, MetadataRow, ModelLane } from "models.slint";
+import {
+    ComponentRow,
+    ControlOption,
+    MetadataRow,
+    ModelLane,
+} from "models.slint";
 import {
     Section,
     ParameterControl,
@@ -357,7 +362,9 @@ export component WorkbenchPane inherits Rectangle {
                                 model: root.routing-choices;
                                 current-index: row.route;
                                 accessible-label: row.name + Terms.caption-channel-routing-suffix;
-                                selected(value) => { root.set-routing(row.key, self.current-index); }
+                                selected(value) => {
+                                    root.set-routing(row.key, self.current-index);
+                                }
                             }
                             Rectangle {
                                 horizontal-stretch: 1;
@@ -374,7 +381,9 @@ export component WorkbenchPane inherits Rectangle {
                                 model: root.carrier-choices;
                                 current-index: row.carrier;
                                 accessible-label: row.name + Terms.caption-carrier-suffix;
-                                selected(value) => { root.set-carrier(row.key, self.current-index); }
+                                selected(value) => {
+                                    root.set-carrier(row.key, self.current-index);
+                                }
                             }
                         }
 
@@ -388,7 +397,9 @@ export component WorkbenchPane inherits Rectangle {
                                 model: root.modulation-choices;
                                 current-index: row.modulation;
                                 accessible-label: row.name + Terms.caption-modulation-suffix;
-                                selected(value) => { root.set-modulation(row.key, self.current-index); }
+                                selected(value) => {
+                                    root.set-modulation(row.key, self.current-index);
+                                }
                             }
                         }
 
@@ -401,7 +412,8 @@ export component WorkbenchPane inherits Rectangle {
                                 enabled: root.can-edit;
                                 model: root.pulse-width-choices;
                                 current-index: row.source-width;
-                                accessible-label: row.name + ": " + Terms.caption-source-pulse-width;
+                                accessible-label: row.name + ": " +
+                                    Terms.caption-source-pulse-width;
                                 selected(value) => {
                                     root.set-pulse-option(row.key, 0, self.current-index);
                                 }
@@ -417,7 +429,8 @@ export component WorkbenchPane inherits Rectangle {
                                 enabled: root.can-edit;
                                 model: root.pulse-shape-choices;
                                 current-index: row.source-shape;
-                                accessible-label: row.name + ": " + Terms.caption-source-pulse-shape;
+                                accessible-label: row.name + ": " +
+                                    Terms.caption-source-pulse-shape;
                                 selected(value) => {
                                     root.set-pulse-option(row.key, 1, self.current-index);
                                 }
@@ -455,7 +468,6 @@ export component WorkbenchPane inherits Rectangle {
                                 }
                             }
                         }
-
                     }
                 }
             }
@@ -473,7 +485,8 @@ export component WorkbenchPane inherits Rectangle {
                 ui-size: root.ui-size;
                 // Every component kind is offered at once, in a grid of equal buttons.
                 add-grid := Rectangle {
-                    property <int> columns: root.compact ? 2 : 3;
+                    // As many columns as fit a long label, at most three.
+                    property <int> columns: max(1, min(3, floor(self.width / (root.ui-size * 18))));
                     property <length> gap: 8px;
                     property <length> cell-width: (self.width - (self.columns - 1) * self.gap) /
                         self.columns;

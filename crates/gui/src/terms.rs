@@ -48,8 +48,8 @@ chrome! {
         ApplyFilters => ("action-apply-filters", "Apply filters"),
         PreviewWaveform => ("action-preview-waveform", "Preview waveform"),
         OpenStudySource => ("action-open-study-source", "Open study source"),
-        ReadSelectableResearchAndRecipeDetailsDialog => ("action-read-selectable-research-and-reci\
-            pe-details-dialog", "Full research and recipe details…"),
+        FullResearchDetailsDialog => ("action-full-research-details-dialog", "Full research and \
+            recipe details…"),
         ExportSettings => ("action-export-settings", "Export settings"),
         ShowCopiedFromSnapshotInLibrary => ("action-show-copied-from-snapshot-in-library", "Show \
             copied-from snapshot in Library"),
@@ -122,8 +122,6 @@ chrome! {
         FullAudioDiagnosticsAndCaptureSource => ("caption-full-audio-diagnostics-and-capture-sourc\
             e", "Full \
             audio diagnostics and capture source"),
-        Expanded => ("caption-expanded", " · expanded"),
-        Collapsed => ("caption-collapsed", " · collapsed"),
         Slider => ("caption-slider", " slider"),
         File => ("caption-file", "File"),
         Help => ("caption-help", "Help"),
@@ -150,8 +148,6 @@ chrome! {
         ChooseComponent => ("caption-choose-component", "Start with"),
         AddComponent => ("caption-add-component", "Add a component"),
         DocumentLocation => ("caption-document-location", "Location"),
-        YourNotesAboutThisSound => ("caption-your-notes-about-this-sound", "Your notes about this \
-            sound"),
         CustomRecipeNotes => ("caption-custom-recipe-notes", "Custom recipe notes"),
         SavedAudioHelp => ("caption-saved-audio-help", "Live playback continues until Stop. These \
             settings affect saved recipes and WAV export."),
